@@ -116,8 +116,8 @@ import {
   type ZeropsGroupTags,
   type ZeropsProjectOrder,
 } from "@t3tools/client-runtime/zerops";
-import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
-import { creationRefreshWanted, useCreationInventoryRefresh } from "~/zerops/creationRefresh";
+import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
+import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -218,6 +218,20 @@ export function autoConnectServedZeropsEnvironment(input: {
 
   input.attempted.current = true;
   input.connect(appOrigin);
+}
+
+/**
+ * The intent a row's re-probe, start or restart sends once it is accepted
+ * (DESIGN §6.2): its container is read again. The platform pushes the status
+ * change itself; a row without a container has nothing to read.
+ */
+export function containerInvalidation(candidate: {
+  readonly project: { readonly id: string };
+  readonly service?: { readonly id: string } | undefined;
+}): Invalidation | null {
+  return candidate.service === undefined
+    ? null
+    : { topic: "container", target: `${candidate.project.id}:${candidate.service.id}` };
 }
 
 /**
@@ -521,6 +535,7 @@ export function useZeropsProjectConnection(): {
 } {
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
   const provisioning = useZeropsProvisioning(creatingIn);
+  const { organizationRef } = useZeropsData();
   const exchangeZeropsIdentity = useZeropsIdentityExchange("user");
   const navigate = useNavigate();
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -565,17 +580,20 @@ export function useZeropsProjectConnection(): {
       // that postdates it. Nothing here closes the project off again —
       // doing it here, after the person is already in, would be the
       // second write sharing the birth's restart budget.
-      // The environment is real now. When the lists last reloaded — right
+      // The environment is real now. When the lists last read it — right
       // after the creation writes — the project was still NEW with no
       // container, which the left menu rightly leaves out; here it is ACTIVE
-      // with a zcp, so every mounted list reloads and the row appears.
-      refreshZeropsCandidates();
+      // with a zcp, so its organization's inventory is read again and the row
+      // appears.
+      if (creatingIn !== null) {
+        invalidateZerops({ topic: "inventory", organization: organizationRef(creatingIn) });
+      }
       provisioning.cancel();
       setCreatingIn(null);
       setConnectError(null);
       await navigate({ to: "/", search: { environmentId: String(environmentId) } });
     },
-    [clearBirthRetry, navigate, provisioning],
+    [clearBirthRetry, creatingIn, navigate, organizationRef, provisioning],
   );
 
   // Fed by `scheduleBirthRetry` below and read by the timer it sets — a ref
@@ -711,7 +729,13 @@ function ZeropsProjectsContent() {
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-  const { candidates: observedCandidates, listing, isLoading, error } = useZeropsCandidates();
+  const {
+    candidates: observedCandidates,
+    listing,
+    isLoading,
+    error,
+    refresh: refreshCandidates,
+  } = useZeropsCandidates();
   const nowMs = useNowMs();
   const {
     creatingIn,
@@ -912,14 +936,6 @@ function ZeropsProjectsContent() {
   // to spend, and nothing this component holds changes when it does.
   const pendingCreations = new Set(pendingCreationProjects());
   const creationPending = pendingCreations.size > 0;
-  // A creation's container reaches this page through the pushed inventory,
-  // and a push can be missed: the card then waits at "Almost there." on a Mate
-  // that answered minutes ago, while a reload finds it at once (the owner's
-  // run of 2026-09-17). While a creation is on its way, the inventory is
-  // re-read on a clock as well (`creationRefresh.ts`).
-  useCreationInventoryRefresh(
-    creationRefreshWanted({ creationPending, waitPhase: provisioning.state?.phase ?? null }),
-  );
 
   const rowInput = (
     candidate: ZeropsCandidatePresentation,
@@ -1366,10 +1382,12 @@ function ZeropsProjectsContent() {
         return;
       // A harmless re-probe (H9) — `unreachable`/`stalled` cannot be told
       // apart from `predates-mate` by a browser, so nothing here writes;
-      // this only asks the inventory (and so the health probe) to run again.
-      case "retry-probe":
-        refreshZeropsCandidates();
+      // this only asks for the container to be read again.
+      case "retry-probe": {
+        const intent = containerInvalidation(candidate);
+        if (intent !== null) invalidateZerops(intent);
         return;
+      }
       case "enable": {
         const serviceId = candidate.service?.id;
         if (!serviceId || activeOrganization === null) return;
@@ -1424,7 +1442,8 @@ function ZeropsProjectsContent() {
         }
         void write
           .then(() => {
-            refreshZeropsCandidates();
+            const intent = containerInvalidation(candidate);
+            if (intent !== null) invalidateZerops(intent);
           })
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
@@ -1449,7 +1468,8 @@ function ZeropsProjectsContent() {
           }),
         )
           .then(() => {
-            refreshZeropsCandidates();
+            const intent = containerInvalidation(candidate);
+            if (intent !== null) invalidateZerops(intent);
           })
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
@@ -1473,7 +1493,11 @@ function ZeropsProjectsContent() {
               }),
             ),
           forgetCreation: forgetPendingCreation,
-          refresh: refreshZeropsCandidates,
+          refresh: () =>
+            invalidateZerops({
+              topic: "inventory",
+              organization: organizationRef(activeOrganization.id),
+            }),
         })
           .then((outcome) => {
             if (!outcome.ok) setConnectError(outcome.error);
@@ -2232,7 +2256,7 @@ function ZeropsProjectsContent() {
   // stale read offers a retry, and the page it would go to is this one.
   const listingAffordance =
     listingNotice?.affordance == null ? null : (
-      <Button onClick={refreshZeropsCandidates} size="sm" variant="outline">
+      <Button onClick={refreshCandidates} size="sm" variant="outline">
         {listingNotice.affordance.label}
       </Button>
     );

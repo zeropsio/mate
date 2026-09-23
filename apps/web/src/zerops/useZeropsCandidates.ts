@@ -43,7 +43,7 @@ import { Atom } from "effect/unstable/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
 import { writeCachedZeropsMates } from "./mateIdentitiesCache";
-import { refreshZeropsCandidates } from "./candidatesRefresh";
+import { invalidateZerops } from "./accountInvalidations";
 import { zeropsEnvironmentNames } from "./environmentNames";
 import {
   MATES_UNREAD,
@@ -428,9 +428,11 @@ export function useZeropsCandidates(): {
     );
   }, [listing, registeredOrigins, status]);
 
+  // The header's reload: the active organization's inventory is read again (DESIGN §6.2).
   const refresh = useCallback(() => {
-    refreshZeropsCandidates();
-  }, []);
+    if (activeOrganizationRef === null) return;
+    invalidateZerops({ topic: "inventory", organization: activeOrganizationRef });
+  }, [activeOrganizationRef]);
 
   return { candidates, listing, isLoading, error, refresh };
 }

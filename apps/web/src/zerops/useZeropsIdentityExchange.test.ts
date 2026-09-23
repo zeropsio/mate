@@ -2,7 +2,15 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
+import {
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+  makeZeropsApiOrigin,
+  type OrganizationRef,
+} from "@t3tools/client-runtime/zerops/data";
+import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 
+import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   connectResult,
@@ -177,6 +185,57 @@ describe("the install port answers whether the registry took the credential", ()
       expect(mock.remembered).toHaveLength(ok ? 1 : 0);
     } finally {
       closeAccountLifetime();
+    }
+  });
+});
+
+describe("the presence port asks for the target's organization's inventory (DESIGN §6.2)", () => {
+  const organizationRef = (organizationId: string): OrganizationRef => ({
+    kind: "organization",
+    account: {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account"),
+    },
+    organizationId: ZeropsOrganizationId.make(organizationId),
+  });
+
+  it.each([
+    {
+      name: "a listed target: its project's organization",
+      candidates: [{ key: "project-1:service-1", project: { id: "project-1", clientId: "org-2" } }],
+      activeOrganizationId: "org-1",
+      heard: [{ topic: "inventory", organization: organizationRef("org-2") }],
+    },
+    {
+      name: "a target the inventory no longer names: the active organization",
+      candidates: [],
+      activeOrganizationId: "org-1",
+      heard: [{ topic: "inventory", organization: organizationRef("org-1") }],
+    },
+    {
+      name: "no organization to ask",
+      candidates: [],
+      activeOrganizationId: undefined,
+      heard: [],
+    },
+  ])("$name", async ({ candidates, activeOrganizationId, heard: expected }) => {
+    vi.useFakeTimers();
+    openAccountLifetime("account");
+    const heard: Array<Invalidation> = [];
+    const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
+    const inputs = {
+      candidates,
+      activeOrganizationId,
+      organizationRef,
+    } as unknown as ExchangeInputs;
+    try {
+      webExchangePorts(() => inputs).refreshPresence("project-1:service-1");
+      await vi.advanceTimersByTimeAsync(250);
+      expect(heard).toEqual(expected);
+    } finally {
+      stop();
+      closeAccountLifetime();
+      vi.useRealTimers();
     }
   });
 });

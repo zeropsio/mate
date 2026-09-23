@@ -1,4 +1,3 @@
-import { useZeropsCandidatesVersion } from "./candidatesRefresh";
 /**
  * Probes each reachable candidate's container so the picker can say, per row,
  * whether Zerops Mate is actually there — rather than making the user click
@@ -25,6 +24,7 @@ import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/conta
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { ZeropsServiceId, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
+import { onZeropsInvalidation } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { findInventoryProjectRef, useZeropsInventory } from "./inventoryContext";
 import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
@@ -52,26 +52,28 @@ async function readCandidateHealth(origin: string) {
   };
 }
 
-// The sidebar and project picker inspect the same containers. Keep both pending
-// and completed probes for this account's explicit inventory refresh cycle.
-const probes = new Map<string, ReturnType<typeof readCandidateHealth>>();
-let probeVersion: number | undefined;
+// The sidebar and project picker inspect the same containers. Each target keeps
+// its pending or completed probe until a container intent names it (DESIGN §6.2).
+// This listener is added when the module loads, so it forgets a target before
+// any mounted hook hears the same intent and reads it again.
+const probes = new Map<
+  string,
+  { readonly origin: string; readonly result: ReturnType<typeof readCandidateHealth> }
+>();
 onAccountLifetimeClose(() => {
   probes.clear();
-  probeVersion = undefined;
+});
+onZeropsInvalidation((invalidation) => {
+  if (invalidation.topic === "container") probes.delete(invalidation.target);
 });
 
-export function probeCandidateHealth(origin: string, refreshVersion: number, targetKey = origin) {
-  if (probeVersion !== refreshVersion) {
-    probes.clear();
-    probeVersion = refreshVersion;
-  }
+export function probeCandidateHealth(origin: string, targetKey = origin) {
   const normalizedOrigin = origin.replace(/\/+$/, "");
-  const key = JSON.stringify([targetKey.replace(/\/+$/, ""), normalizedOrigin]);
+  const key = targetKey.replace(/\/+$/, "");
   const existing = probes.get(key);
-  if (existing !== undefined) return existing;
+  if (existing !== undefined && existing.origin === normalizedOrigin) return existing.result;
   const result = readCandidateHealth(normalizedOrigin);
-  probes.set(key, result);
+  probes.set(key, { origin: normalizedOrigin, result });
   return result;
 }
 
@@ -226,7 +228,6 @@ export function useZeropsCandidateHealth(
   candidates: ReadonlyArray<ZeropsCandidate>,
   options: { readonly isProcessRunning?: (candidateKey: string) => boolean } = {},
 ): HealthSnapshot {
-  const refreshVersion = useZeropsCandidatesVersion();
   const [snapshot, setSnapshot] = useState<HealthSnapshot>({
     health: new Map(),
     serverVersions: new Map(),
@@ -269,38 +270,57 @@ export function useZeropsCandidateHealth(
       }));
     };
 
+    /** Each target's poll; a newer poll of the same target ends the one before it. */
+    const polls = new Map<string, { cancelled: boolean }>();
+    const poll = (target: (typeof targets)[number]): Promise<void> => {
+      const previous = polls.get(target.key);
+      if (previous !== undefined) previous.cancelled = true;
+      const run = { cancelled: false };
+      polls.set(target.key, run);
+      return pollCandidateHealth({
+        firstProbe: () => probeCandidateHealth(target.origin, target.key),
+        reprobe: () => readCandidateHealth(target.origin),
+        isProcessRunning: () => isProcessRunning?.(target.key) ?? false,
+        now: () => Date.now(),
+        isCancelled: () => cancelled || run.cancelled,
+        onVerdict: (health, serverVersion, update) => {
+          setVerdict(target.key, health, serverVersion, update);
+        },
+      });
+    };
+
     const worker = async (): Promise<void> => {
       for (;;) {
         if (cancelled) return;
         const target = targets[cursor];
         cursor += 1;
         if (!target) return;
-        await pollCandidateHealth({
-          firstProbe: () => probeCandidateHealth(target.origin, refreshVersion, target.key),
-          reprobe: () => readCandidateHealth(target.origin),
-          isProcessRunning: () => isProcessRunning?.(target.key) ?? false,
-          now: () => Date.now(),
-          isCancelled: () => cancelled,
-          onVerdict: (health, serverVersion, update) => {
-            setVerdict(target.key, health, serverVersion, update);
-          },
-        });
+        // A container intent may have started this target's poll already.
+        if (!polls.has(target.key)) await poll(target);
       }
     };
 
     void Promise.all(
       Array.from({ length: Math.min(PROBE_CONCURRENCY, targets.length) }, () => worker()),
     );
+    // A container intent reads its target again (DESIGN §6.2); the module's
+    // own listener has already forgotten the probe this account held for it.
+    const stopListening = onZeropsInvalidation((invalidation) => {
+      if (invalidation.topic !== "container") return;
+      const target = targets.find(({ key }) => key === invalidation.target);
+      if (target !== undefined) void poll(target);
+    });
     const unsubscribe = onAccountLifetimeClose(() => {
       cancelled = true;
     });
     return () => {
       cancelled = true;
+      stopListening();
       unsubscribe();
     };
     // `targetKey` is the identity of `targets`; depending on the array itself
     // would restart every probe on each incremental render.
-  }, [targetKey, refreshVersion, isProcessRunning]);
+  }, [targetKey, isProcessRunning]);
 
   return snapshot;
 }

@@ -279,6 +279,10 @@
       "types": "./src/zerops/projections/index.ts",
       "default": "./src/zerops/projections/index.ts"
     },
+    "./zerops/knowledge/invalidation": {
+      "types": "./src/zerops/knowledge/invalidation.ts",
+      "default": "./src/zerops/knowledge/invalidation.ts"
+    },
     "./zerops/account": {
       "types": "./src/zerops/account/session.ts",
       "default": "./src/zerops/account/session.ts"

@@ -1,4 +1,5 @@
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
+import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -87,6 +88,10 @@ describe("ZeropsInventoryProvider first admission", () => {
     expect(retries).toHaveLength(1);
 
     await tab.run(() => press(retries[0]!));
+    // The retry is an intent: it reaches the grant when its window closes (DESIGN §6.2).
+    await tab.run(
+      () => new Promise<void>((resolve) => setTimeout(resolve, INVALIDATION_COALESCE_MS)),
+    );
 
     expect(tab.text()).toContain(CHILD);
     expect(tab.text()).not.toContain("Could not load your Zerops projects.");

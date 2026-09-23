@@ -1,12 +1,18 @@
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import {
   pollCandidateHealth,
   probeCandidateHealth,
   reconcileHealthSnapshot,
+  useZeropsCandidateHealth,
   type HealthSnapshot,
   type PollTimers,
 } from "./useZeropsCandidateHealth";
+import { TestNode } from "./__fixtures__/testDom";
+import { invalidateZerops } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 
 const probe = vi.hoisted(() => vi.fn());
@@ -15,6 +21,7 @@ vi.mock("@t3tools/client-runtime/zerops/containerHealth", () => ({
 }));
 afterEach(() => {
   closeAccountLifetime();
+  vi.useRealTimers();
   probe.mockReset();
   vi.unstubAllGlobals();
 });
@@ -27,13 +34,13 @@ it("shares a probe across sidebar, picker and incremental candidate snapshots", 
       finish = resolve;
     });
   });
-  const first = probeCandidateHealth("https://container.example", 0);
-  const second = probeCandidateHealth("https://container.example/", 0);
+  const first = probeCandidateHealth("https://container.example");
+  const second = probeCandidateHealth("https://container.example/");
   expect(probe).toHaveBeenCalledTimes(1);
   finish("ready");
   expect(await first).toEqual({ health: "ready", serverVersion: "1.2.3" });
   expect(await second).toEqual(await first);
-  expect(await probeCandidateHealth("https://container.example", 0)).toEqual(await first);
+  expect(await probeCandidateHealth("https://container.example")).toEqual(await first);
   expect(probe).toHaveBeenCalledTimes(1);
 });
 it("carries the descriptor's update field alongside the server version", async () => {
@@ -48,33 +55,90 @@ it("carries the descriptor's update field alongside the server version", async (
     onVersion("0.8.0", update);
     return Promise.resolve("ready");
   });
-  expect(await probeCandidateHealth("https://update.example", 0)).toEqual({
+  expect(await probeCandidateHealth("https://update.example")).toEqual({
     health: "ready",
     serverVersion: "0.8.0",
     update,
   });
 });
 
-it("re-probes on explicit refresh and never carries a result into another account", async () => {
+it("reads a container again on its intent, and only that container", async () => {
+  vi.useFakeTimers();
+  openAccountLifetime("account");
+  probe.mockResolvedValue("unreachable");
+  await probeCandidateHealth("https://one.example", "p1:s1");
+  await probeCandidateHealth("https://two.example", "p2:s2");
+  probe.mockResolvedValue("ready");
+
+  invalidateZerops({ topic: "container", target: "p1:s1" });
+  await vi.advanceTimersByTimeAsync(250);
+
+  expect(await probeCandidateHealth("https://one.example", "p1:s1")).toEqual({ health: "ready" });
+  expect(await probeCandidateHealth("https://two.example", "p2:s2")).toEqual({
+    health: "unreachable",
+  });
+  expect(probe).toHaveBeenCalledTimes(3);
+});
+
+it("the hook reads a candidate's container again on its intent", async () => {
+  vi.useFakeTimers();
+  openAccountLifetime("account");
+  const document = new TestNode("#document", null, 9);
+  vi.stubGlobal("document", document);
+  vi.stubGlobal("window", { document, HTMLIFrameElement: TestNode });
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const candidates = [
+    {
+      key: "p1:s1",
+      project: { id: "p1", name: "One", status: "ACTIVE" },
+      service: { id: "s1" },
+      group: "ready",
+      containerOrigin: "https://one.example",
+    },
+  ] as unknown as ReadonlyArray<ZeropsCandidate>;
+  let latest: HealthSnapshot | null = null;
+  function Reader() {
+    latest = useZeropsCandidateHealth(candidates);
+    return null;
+  }
+  const root = createRoot(document.createElement("div") as unknown as Element);
+  probe.mockResolvedValue("ready");
+  await act(async () => {
+    root.render(createElement(Reader));
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(latest!.health.get("p1:s1")).toBe("ready");
+
+  probe.mockResolvedValue("initializing");
+  invalidateZerops({ topic: "container", target: "p1:s1" });
+  await act(() => vi.advanceTimersByTimeAsync(250));
+
+  expect(probe).toHaveBeenCalledTimes(2);
+  expect(latest!.health.get("p1:s1")).toBe("initializing");
+  act(() => root.unmount());
+});
+
+it("never carries a result into another account", async () => {
   openAccountLifetime("account-a");
   probe.mockResolvedValue("unreachable");
-  await probeCandidateHealth("https://container.example", 0);
-  probe.mockResolvedValue("ready");
-  expect(await probeCandidateHealth("https://container.example", 1)).toEqual({ health: "ready" });
+  await probeCandidateHealth("https://container.example", "p1:s1");
   closeAccountLifetime();
   openAccountLifetime("account-b");
-  await probeCandidateHealth("https://container.example", 1);
-  expect(probe).toHaveBeenCalledTimes(3);
+  probe.mockResolvedValue("ready");
+  expect(await probeCandidateHealth("https://container.example", "p1:s1")).toEqual({
+    health: "ready",
+  });
+  expect(probe).toHaveBeenCalledTimes(2);
 });
 
 it("does not reuse the previous service's health when its address is reused", async () => {
   openAccountLifetime("account");
   probe.mockResolvedValue("ready");
-  await probeCandidateHealth("https://container.example", 0, "project:old-service");
+  await probeCandidateHealth("https://container.example", "project:old-service");
   probe.mockResolvedValue("initializing");
-  expect(await probeCandidateHealth("https://container.example", 0, "project:new-service")).toEqual(
-    { health: "initializing" },
-  );
+  expect(await probeCandidateHealth("https://container.example", "project:new-service")).toEqual({
+    health: "initializing",
+  });
   expect(probe).toHaveBeenCalledTimes(2);
 });
 

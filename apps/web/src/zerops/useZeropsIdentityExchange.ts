@@ -6,6 +6,7 @@ import {
   zeropsMateBaseUrl,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
+import type { OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type { IdentityExchangeReason } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import {
@@ -43,8 +44,8 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 
+import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { promoteCreationHandoff } from "./creationHandoffStorage";
 import { rememberZeropsEnvironment } from "./firstPromptStorage";
 import { inventoryCandidates } from "./inventoryContext";
@@ -141,6 +142,7 @@ export interface ExchangeInputs {
   readonly registry: AtomRegistry.AtomRegistry;
   readonly client: ZeropsApiClient;
   readonly activeOrganizationId: string | undefined;
+  readonly organizationRef: (organizationId: string) => OrganizationRef;
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
 }
 
@@ -232,7 +234,14 @@ export function webExchangePorts(
     retryLink: (environmentId) => {
       void runAtomCommand(read().registry, retryLinkCommand, environmentId, quiet);
     },
-    refreshPresence: () => refreshZeropsCandidates(),
+    // The inventory of the organization that owns the target's project, or of the active one
+    // when the inventory no longer names the target (DESIGN §6.2).
+    refreshPresence: (key) => {
+      const { activeOrganizationId, organizationRef } = read();
+      const organizationId = candidateFor(key)?.project.clientId ?? activeOrganizationId;
+      if (organizationId === undefined) return;
+      invalidateZerops({ topic: "inventory", organization: organizationRef(organizationId) });
+    },
     retire: (_key, environmentId) => {
       if (environmentId === null) return;
       void runAtomCommand(read().registry, environmentCatalog.remove, environmentId, quiet);

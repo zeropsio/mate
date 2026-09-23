@@ -44,7 +44,7 @@ import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShe
 import { dismissContextMenu } from "../contextMenuFallback";
 import { grantFailure, readProjectAccess, runAccessRound } from "./accessRounds";
 import { setAccountActionsAllowed } from "./accountLifetime";
-import { refreshZeropsCandidates, useZeropsCandidatesVersion } from "./candidatesRefresh";
+import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import {
   InventoryContext,
   inventoryProjectRefKey,
@@ -382,7 +382,6 @@ function AccessLapse({
 export function ZeropsInventoryProvider({ children }: { readonly children: ReactNode }) {
   const { client, organizations, updateVerifiedMemberships, signOut } = useZeropsSession();
   const { runtime, organizationRef, projectRef } = useZeropsData();
-  const refreshKey = useZeropsCandidatesVersion();
   const [grant, setGrant] = useState<GrantMachine>(() =>
     initialGrant({ hidden: false, online: true }, now()),
   );
@@ -395,7 +394,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   const [waitedTooLong, setWaitedTooLong] = useState(false);
   /** Why the last round failed, in the platform's words. */
   const [roundFailure, setRoundFailure] = useState<string | null>(null);
-  const dispatch = useRef<(event: GrantEvent) => void>(() => undefined);
   /** Hands the evidence held now to the data runtime; `null` when none is held then. */
   const publishGrant = useRef<() => Promise<Evidence | null>>(async () => null);
   /** Each project's status as its last read gave it, until the runtime has read it. */
@@ -487,8 +485,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         );
       } else {
         mateDiagnostics.record({ kind: "access-timer", timer: "renewal" });
-        // The consumers of the candidates refresh still ride on the renewal (DESIGN G8).
-        refreshZeropsCandidates();
       }
       void (async () => {
         // Projects a command established since are the grant's too: read them.
@@ -631,7 +627,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       for (const effect of effects) interpret(effect);
       syncGrant();
     };
-    dispatch.current = send;
 
     let hiddenAt: number | null = hidden() ? performance.now() : null;
     let lastWake = Number.NEGATIVE_INFINITY;
@@ -662,8 +657,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
 
+    // A person's "Try again" on access (DESIGN §6.2); a retry during a round joins it (G7).
+    const stopListening = onZeropsInvalidation((invalidation) => {
+      if (invalidation.topic === "access" && invalidation.change === "renew-now") {
+        send({ type: "USER_RETRY" });
+      }
+    });
+
     send({ type: "START" });
     return () => {
+      stopListening();
       send({ type: "EPOCH_CLOSED" });
       alive = false;
       roundSpan?.drop();
@@ -676,21 +679,19 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     };
   }, [client, organizationRef, projectRef, runtime, updateVerifiedMemberships]);
 
-  // A refresh re-reads every organization's inventory on a fresh receiver
-  // while the rows already read stay up (`runtime.refresh`). The leases are
-  // never re-taken for it: a released lease drops what it read, and the
-  // projects page painted "Reading your projects…" over the list it had a
-  // moment ago — every twenty seconds while a creation was on its way (the
-  // owner's run of 2026-09-17). The key at mount is not a refresh: the
-  // leases read their baseline by themselves.
-  const refreshedKey = useRef(refreshKey);
-  useEffect(() => {
-    if (refreshedKey.current === refreshKey) return;
-    refreshedKey.current = refreshKey;
-    for (const descriptor of organizationDescriptors) {
-      void Effect.runPromise(runtime.refresh(descriptor.organization));
-    }
-  }, [organizationDescriptors, refreshKey, runtime]);
+  // An inventory intent re-reads that organization on a fresh receiver while
+  // the rows already read stay up (`runtime.refresh`). The leases are never
+  // re-taken for it: a released lease drops what it read, and the projects
+  // page painted "Reading your projects…" over the list it had a moment ago
+  // (the owner's run of 2026-09-17).
+  useEffect(
+    () =>
+      onZeropsInvalidation((invalidation) => {
+        if (invalidation.topic !== "inventory") return;
+        void Effect.runPromise(runtime.refresh(invalidation.organization));
+      }),
+    [runtime],
+  );
 
   const evidence = heldEvidence(grant);
   const accessReadEntries = useMemo(() => [["access", runtime.reads.access] as const], [runtime]);
@@ -941,11 +942,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   /** What the overlay names while the grant is lapsed, and nothing otherwise. */
   const lapseCause = readWindowExpired ? (error ?? "Project access verification expired.") : null;
   const visibleError = lapseCause ?? error;
-  // "Try again" retries the grant (joining a round in flight) and the data.
-  const retry = () => {
-    dispatch.current({ type: "USER_RETRY" });
-    refreshZeropsCandidates();
-  };
+  const retry = () => invalidateZerops({ topic: "access", change: "renew-now" });
 
   const snapshot = selectSnapshot({
     projects: projected.projects,

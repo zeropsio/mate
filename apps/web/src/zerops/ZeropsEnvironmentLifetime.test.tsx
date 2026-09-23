@@ -52,6 +52,10 @@ vi.mock("./useZeropsCandidateHealth", () => {
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ client: {}, activeOrganization: null }),
 }));
+vi.mock("./zeropsDataContext", () => {
+  const data = { organizationRef: () => undefined };
+  return { useZeropsData: () => data };
+});
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: mock.environments }),
 }));

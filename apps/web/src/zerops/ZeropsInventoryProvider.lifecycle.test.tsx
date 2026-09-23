@@ -26,11 +26,15 @@ import {
   ZeropsOrganizationId,
   ZeropsProjectId,
   makeZeropsApiOrigin,
+  type OrganizationRef,
   type ProjectRef,
   type VerifiedAccessGrant,
   type ManagedZeropsDataRuntime,
 } from "@t3tools/client-runtime/zerops/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
+import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
+import { buttonsLabelled, press } from "./__fixtures__/testDom";
+import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
@@ -297,9 +301,15 @@ const mountInventory = Effect.fn(function* (
     },
   });
   const grants: VerifiedAccessGrant[] = [];
+  /** Every organization the provider asked the runtime to re-read. */
+  const refreshed: Array<OrganizationRef> = [];
   let admitted = signal();
   const runtime: ManagedZeropsDataRuntime = {
     ...actual,
+    refresh: (organization) =>
+      Effect.sync(() => refreshed.push(organization)).pipe(
+        Effect.andThen(actual.refresh(organization)),
+      ),
     observeAccess: (observation) =>
       actual.observeAccess(observation).pipe(
         Effect.tap(() =>
@@ -365,6 +375,8 @@ const mountInventory = Effect.fn(function* (
     indexed,
     failing,
     grants,
+    refreshed,
+    organization,
     projectRef,
     inventory: () => inventory,
     unmount: () => Effect.promise(async () => act(async () => root.unmount())),
@@ -456,6 +468,34 @@ const mountInventory = Effect.fn(function* (
 
 /** When the renewal of a grant admitted at mount comes due (start + 15 min − the 3 min lead). */
 const RENEWAL_DUE_MS = 12 * 60_000;
+
+it.live("the renewal never calls runtime.refresh", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory();
+      const renewal = harness.holdRenewal();
+      yield* harness.advance(RENEWAL_DUE_MS);
+      yield* renewal.verify();
+      yield* renewal.establish();
+      yield* harness.advance(60_000);
+      expect(harness.client.fetchUser).toHaveBeenCalledTimes(2);
+      expect(harness.refreshed).toEqual([]);
+    }),
+  ),
+);
+
+it.live("an inventory intent re-reads its organization and verifies nothing", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory();
+      invalidateZerops({ topic: "inventory", organization: harness.organization });
+      invalidateZerops({ topic: "inventory", organization: harness.organization });
+      yield* harness.advance(250);
+      expect(harness.refreshed).toEqual([harness.organization]);
+      expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
+    }),
+  ),
+);
 
 it.live("renews from REST alone while the push half still establishes", () =>
   Effect.scoped(
@@ -718,6 +758,25 @@ it.live("offers a way off the checking screen when the round never settles", () 
       expect(harness.container.textContent).toContain("Still checking your Zerops projects.");
       expect(harness.container.textContent).toContain("Try again");
       expect(harness.container.textContent).toContain("Sign out");
+    }),
+  ),
+);
+
+it.live("Try again asks the grant to renew now and re-reads no inventory", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory(["kept"], { holdFirstRound: true });
+      const heard: Array<Invalidation> = [];
+      const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
+      yield* Effect.addFinalizer(() => Effect.sync(stop));
+      yield* harness.advance(20_000);
+      const [retry] = buttonsLabelled(harness.container as never, "Try again");
+      yield* Effect.promise(async () => act(async () => press(retry!)));
+      yield* harness.advance(250);
+      expect(heard).toEqual([{ topic: "access", change: "renew-now" }]);
+      expect(harness.refreshed).toEqual([]);
+      // A retry during the round joins it (G7).
+      expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
     }),
   ),
 );

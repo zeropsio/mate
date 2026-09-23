@@ -38,6 +38,7 @@ import {
 } from "./useZeropsIdentityExchange";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useZeropsData } from "./zeropsDataContext";
 
 /** A tab hidden at least this long wakes its retries when it is shown again (§6.4). */
 const WAKE_AFTER_HIDDEN_MS = 30_000;
@@ -168,6 +169,7 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   const inventory = useZeropsInventory();
   const { environments } = useEnvironments();
   const { client, activeOrganization } = useZeropsSession();
+  const { organizationRef } = useZeropsData();
   const registry = useContext(RegistryContext);
   const identityVersion = useEnvironmentIdentityVersion();
   const candidates = useMemo(
@@ -183,9 +185,10 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
       registry,
       client,
       activeOrganizationId: activeOrganization?.id,
+      organizationRef,
       candidates,
     });
-  }, [activeOrganization?.id, candidates, client, registry]);
+  }, [activeOrganization?.id, candidates, client, organizationRef, registry]);
 
   // Mounted means granted: this tree renders only inside an admitted grant, and a lapse
   // unmounts it until the next one. Exchanges wait on access meanwhile, and resume on their own.

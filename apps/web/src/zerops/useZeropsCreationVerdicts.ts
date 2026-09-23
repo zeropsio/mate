@@ -5,12 +5,13 @@
  * says otherwise — and when that process has FAILED the project never leaves
  * NEW (measured 2026-09-16), so the page has to ask. One process search per
  * such project, only while it is on its way up; a terminal verdict is kept
- * per project id for the page's lifetime and read again only on a refresh,
- * because the platform does not change its mind about a finished process.
+ * per project id for the page's lifetime and read again only on an inventory
+ * intent for its organization (DESIGN §6.2), because the platform does not
+ * change its mind about a finished process.
  *
  * H20: a `running` verdict is never stored (`settledRef` only ever holds a
  * terminal one), so a project a wait is actively watching is re-asked on
- * every `activeWaitProjectId` tick as well as on a refresh — otherwise a
+ * every `activeWaitProjectId` tick as well as on an intent — otherwise a
  * creation that fails late, after the page's one read of it came back
  * `running`, never turns the row's "Coming up." into "Could not be
  * created." until somebody happens to refresh.
@@ -20,7 +21,7 @@ import { projectCreationOutcome, type ZeropsProjectCreation } from "@t3tools/cli
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { useEffect, useRef, useState } from "react";
 
-import { useZeropsCandidatesVersion } from "./candidatesRefresh";
+import { onZeropsInvalidation } from "./accountInvalidations";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const ON_ITS_WAY = new Set(["NEW", "CREATING"]);
@@ -45,7 +46,20 @@ export function useZeropsCreationVerdicts(
 ): ReadonlyMap<string, ZeropsProjectCreation> {
   const { activeOrganization, client } = useZeropsSession();
   const clientId = activeOrganization?.id;
-  const version = useZeropsCandidatesVersion();
+  // Bumped by each inventory intent for this organization: ask again about everything.
+  const [version, setVersion] = useState(0);
+  useEffect(
+    () =>
+      onZeropsInvalidation((invalidation) => {
+        if (
+          invalidation.topic === "inventory" &&
+          invalidation.organization.organizationId === clientId
+        ) {
+          setVersion((current) => current + 1);
+        }
+      }),
+    [clientId],
+  );
   const settledRef = useRef(new Map<string, ZeropsProjectCreation>());
   const readVersionRef = useRef(version);
   const [verdicts, setVerdicts] = useState<ReadonlyMap<string, ZeropsProjectCreation>>(
@@ -54,7 +68,7 @@ export function useZeropsCreationVerdicts(
   const targets = creationVerdictTargets(candidates).join(",");
 
   // A wait watches one project; its own poll cadence is reason enough to ask
-  // again, independent of a refresh or a candidate-list change.
+  // again, independent of an intent or a candidate-list change.
   const [activeWaitTick, setActiveWaitTick] = useState(0);
   useEffect(() => {
     if (activeWaitProjectId === null) return;
@@ -68,7 +82,7 @@ export function useZeropsCreationVerdicts(
 
   useEffect(() => {
     if (clientId === undefined || targets === "") return;
-    // A refresh asks again about everything; a change in what is on its way
+    // An intent asks again about everything; a change in what is on its way
     // asks only about what has no settled answer yet.
     const again = readVersionRef.current !== version;
     readVersionRef.current = version;

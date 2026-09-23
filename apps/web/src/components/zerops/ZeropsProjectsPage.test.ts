@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   autoConnectServedZeropsEnvironment,
+  containerInvalidation,
   hasNoZeropsProject,
   isZeropsBirthConnectTarget,
   nextZeropsBirthRetryDelayMs,
@@ -429,6 +430,28 @@ describe("isZeropsBirthConnectTarget", () => {
         pendingCreationProjectIds: new Set(["proj-1"]),
       }),
     ).toBe(false);
+  });
+});
+
+describe("the page's refreshes are intents (DESIGN §6.2)", () => {
+  it.each([
+    {
+      name: "a Mate's re-probe, start or restart reads its container again",
+      candidate: { project: { id: "project-1" }, service: { id: "service-1" } },
+      intent: { topic: "container", target: "project-1:service-1" },
+    },
+    {
+      name: "a row without a container asks for nothing",
+      candidate: { project: { id: "project-1" } },
+      intent: null,
+    },
+  ])("$name", ({ candidate, intent }) => {
+    expect(containerInvalidation(candidate)).toEqual(intent);
+  });
+
+  it("creation triggers no verification rounds: nothing re-reads the account on a clock", () => {
+    expect(projectsPageSource).not.toContain("creationRefresh");
+    expect(projectsPageSource).not.toContain("refreshZeropsCandidates");
   });
 });
 
