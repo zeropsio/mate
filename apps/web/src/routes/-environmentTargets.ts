@@ -48,9 +48,9 @@ export type Machines = ReadonlyMap<TargetKey, EnvironmentMachine>;
 
 /**
  * A credential still on its way: not yet judged, exchanging, answered but not yet installed,
- * waiting for a slot or the grant, or on a presence not read yet. A target whose presence was
- * read and is not there, that waits on its container, or backs off has no end discovery could
- * wait for.
+ * waiting for a slot or the grant, or on a presence not read yet (unknown, or only remembered from
+ * its record, A16). A target whose presence was read and is not there, that waits on its
+ * container, or backs off has no end discovery could wait for.
  */
 function onItsWay(machine: EnvironmentMachine): boolean {
   const credential = machine.credential;
@@ -62,7 +62,8 @@ function onItsWay(machine: EnvironmentMachine): boolean {
       return (
         credential.on === "budget" ||
         credential.on === "access" ||
-        (credential.on === "presence" && machine.presence.kind === "unknown")
+        (credential.on === "presence" &&
+          (machine.presence.kind === "unknown" || machine.presence.kind === "remembered"))
       );
     case "held":
       return !credential.installed;

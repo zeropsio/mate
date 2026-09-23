@@ -652,6 +652,22 @@ describe("useRouteGateInputs", () => {
       gate: { kind: "unavailable", reachability: null },
     },
     {
+      // A16: its services are not read yet, so the listing may still name another origin.
+      name: "a remembered Mate's descriptor named another environment, and it waits for its presence",
+      machines: new Map([
+        [
+          OTHER,
+          machine({
+            record: null,
+            presence: { kind: "remembered", origin: "https://other.example" },
+            credential: { kind: "waiting", on: "presence", reconnect: false },
+          }),
+        ],
+      ]),
+      records: [{ targetKey: OTHER, environmentId: ENV_B }],
+      gate: { kind: "wait", reachability: null },
+    },
+    {
       name: "the only present Mate serves no Mate at all",
       machines: other({ kind: "none", reconnect: false }),
       readings: new Map([[OTHER, { kind: "predates-mate" }]]),
