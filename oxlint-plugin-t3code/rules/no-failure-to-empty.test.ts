@@ -247,4 +247,72 @@ describe(RULE, () => {
   ] as const) {
     webComponent.valid(`allows ${name}`, source);
   }
+
+  for (const [name, source] of [
+    [
+      "a known value's field or []",
+      `export function Rows({ read }) { return read?.state === "known" ? read.value.recentTools : []; }`,
+    ],
+    [
+      "a known value or undefined",
+      `export function Rows({ read }) { return read.state === "known" ? read.value : undefined; }`,
+    ],
+    [
+      "a known value or null, the literal first",
+      `export function Rows({ read }) { return "known" === read.state ? read.value : null; }`,
+    ],
+    [
+      "a known value or an EMPTY_ constant",
+      `export function Rows({ read }) { return read.state === "known" ? read.value.rows : EMPTY_ROWS; }`,
+    ],
+    [
+      "a value that is not known turned into null",
+      `export function Rows({ read }) { return read.state !== "known" ? null : read.value; }`,
+    ],
+    [
+      "a known value rendered or nothing",
+      `export function Rows({ read }) { return read.state === "known" ? <List rows={read.value} /> : null; }`,
+    ],
+    [
+      "a successful result's value or undefined",
+      `export function Rows({ result }) { return result._tag === "Success" ? result.value : undefined; }`,
+    ],
+    [
+      "a successful result's value or [], by its guard",
+      `export function Rows({ result }) { return AsyncResult.isSuccess(result) ? result.value : []; }`,
+    ],
+    [
+      "a result that did not succeed turned into []",
+      `export function Rows({ result }) { return !AsyncResult.isSuccess(result) ? [] : result.value; }`,
+    ],
+  ] as const) {
+    webComponent.invalid(`reports ${name}`, source, (output) =>
+      assert.match(output, /"kind":"ConditionalExpression"/u),
+    );
+  }
+
+  for (const [name, source] of [
+    [
+      "a known value or a placeholder",
+      `export function Rows({ read }) { return read.state === "known" ? read.value : UNREAD_ROWS; }`,
+    ],
+    [
+      "a known value's bookkeeping or null",
+      `export function Rows({ read }) { return read.state === "known" ? read.freshness : null; }`,
+    ],
+    [
+      "another value checked on a Known state",
+      `export function Rows({ read, rows }) { return read.state === "known" ? rows.value : []; }`,
+    ],
+    [
+      "a state that is not a Known state",
+      `export function Rows({ view }) { return view.kind === "known" ? view.value : undefined; }`,
+    ],
+    [
+      "a test that is not a state check",
+      `export function Rows({ read, open }) { return open ? read.value : []; }`,
+    ],
+  ] as const) {
+    webComponent.valid(`allows ${name}`, source);
+  }
 });

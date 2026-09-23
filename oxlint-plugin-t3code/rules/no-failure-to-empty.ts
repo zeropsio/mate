@@ -181,6 +181,92 @@ const isStoreRead = (context: Context, node: unknown, seen: Set<ESTree.Node>): b
   );
 };
 
+/** The property a Known's or an AsyncResult's state is in, and the state that holds a value. */
+const HELD_STATES = new Map([
+  ["state", "known"],
+  ["_tag", "Success"],
+]);
+/** `AsyncResult.isSuccess(result)`: the guard form of the same check. */
+const HELD_GUARDS = new Set(["isSuccess"]);
+const EQUALITY_OPERATORS = new Set(["===", "==", "!==", "!="]);
+
+/** An expression's source as a subject, so `read?.value` and `read.value` name one subject. */
+const subjectText = (context: Context, node: ESTree.Node): string =>
+  context.sourceCode.text.slice(node.start, node.end).replaceAll("?.", ".").replace(/\s+/gu, "");
+
+interface HeldCheck {
+  /** The Known or AsyncResult the test checks. */
+  readonly subject: string;
+  /** Whether the conditional's consequent is the branch that holds its value. */
+  readonly heldInConsequent: boolean;
+}
+
+/**
+ * A test that checks whether a Known holds its value (`read.state === "known"`, the literal on
+ * either side, `!==` inverted) or an AsyncResult does (`result._tag === "Success"`,
+ * `AsyncResult.isSuccess(result)`), negated with `!` or not.
+ */
+const heldCheck = (context: Context, node: unknown): HeldCheck | undefined => {
+  const test = Option.getOrUndefined(unwrapExpression(node));
+  if (test?.type === "UnaryExpression" && test.operator === "!") {
+    const inner = heldCheck(context, test.argument);
+    return inner === undefined
+      ? undefined
+      : { ...inner, heldInConsequent: !inner.heldInConsequent };
+  }
+  if (test?.type === "CallExpression") {
+    const callee = Option.getOrUndefined(unwrapExpression(test.callee));
+    const name =
+      callee?.type === "MemberExpression" && !callee.computed
+        ? Option.getOrUndefined(getPropertyName(callee.property))
+        : Option.getOrUndefined(getPropertyName(callee));
+    const subject = Option.getOrUndefined(unwrapExpression(test.arguments[0]));
+    return name !== undefined && HELD_GUARDS.has(name) && subject !== undefined
+      ? { subject: subjectText(context, subject), heldInConsequent: true }
+      : undefined;
+  }
+  if (test?.type !== "BinaryExpression" || !EQUALITY_OPERATORS.has(test.operator)) return undefined;
+  for (const [stateSide, literalSide] of [
+    [test.left, test.right],
+    [test.right, test.left],
+  ] as const) {
+    const state = Option.getOrUndefined(unwrapExpression(stateSide));
+    const literal = Option.getOrUndefined(unwrapExpression(literalSide));
+    if (state?.type !== "MemberExpression" || state.computed || literal?.type !== "Literal") {
+      continue;
+    }
+    const property = Option.getOrUndefined(getPropertyName(state.property));
+    const held = property === undefined ? undefined : HELD_STATES.get(property);
+    if (held === undefined || literal.value !== held) continue;
+    const subject = Option.getOrUndefined(unwrapExpression(state.object));
+    if (subject === undefined) return undefined;
+    return {
+      subject: subjectText(context, subject),
+      heldInConsequent: test.operator === "===" || test.operator === "==",
+    };
+  }
+  return undefined;
+};
+
+/** Whether `node` reads `<subject>.value` anywhere inside it, JSX included. */
+const readsValueOf = (context: Context, node: unknown, subject: string): boolean => {
+  if (typeof node !== "object" || node === null) return false;
+  if (Array.isArray(node)) return node.some((child) => readsValueOf(context, child, subject));
+  if (!("type" in node)) return false;
+  const current = node as ESTree.Node;
+  if (
+    current.type === "MemberExpression" &&
+    !current.computed &&
+    Option.getOrUndefined(getPropertyName(current.property)) === "value"
+  ) {
+    const object = Option.getOrUndefined(unwrapExpression(current.object));
+    if (object !== undefined && subjectText(context, object) === subject) return true;
+  }
+  return Object.entries(current).some(
+    ([key, child]) => key !== "parent" && readsValueOf(context, child, subject),
+  );
+};
+
 const TRANSPARENT_PARENTS = new Set([
   "AwaitExpression",
   "ChainExpression",
@@ -232,8 +318,11 @@ const isDiscarded = (node: ESTree.Node): boolean => {
  * Guards the failure-to-empty shapes of the client state model
  * (`docs/internals/zerops/client-state-model.md`, "Negatives are earned") in the Zerops client
  * code: a rejected read turned into `[]`, `undefined` or `null` by `.catch` (a handler that
- * returns nothing or runs off its end answers `undefined`), and a store read defaulted to `[]` or
- * an `EMPTY_…` constant with `??`. Without types or inter-file data flow, these stay gaps: a
+ * returns nothing or runs off its end answers `undefined`), a store read defaulted to `[]` or
+ * an `EMPTY_…` constant with `??`, and a conditional that checks whether a Known or an
+ * AsyncResult holds its value, reads that `.value` on one branch and answers `[]`, `undefined`,
+ * `null` or an `EMPTY_…` constant on the other (`read.state === "known" ? read.value.rows : []`,
+ * JSX that renders `null` included). Without types or inter-file data flow, these stay gaps: a
  * store read that reaches the default through a prop, a parameter or another module;
  * `.then(onFulfilled, () => [])`; Effect's `orElseSucceed` or `catch` into `Effect.succeed([])`;
  * a handler that stores the empty with a setter instead of returning it; a handler ending in a
@@ -281,6 +370,19 @@ export default defineRule({
         report(
           node,
           "A failed read caught into an empty reads as a negative. Keep the failure: hold the value as Known and let the view say it could not read it.",
+        );
+      },
+      ConditionalExpression(node) {
+        const check = heldCheck(context, node.test);
+        if (check === undefined) return;
+        const [held, otherwise] = check.heldInConsequent
+          ? [node.consequent, node.alternate]
+          : [node.alternate, node.consequent];
+        if (!isEmptyValue(otherwise) && !isEmptyDefault(otherwise)) return;
+        if (!readsValueOf(context, held, check.subject)) return;
+        report(
+          node,
+          "A Known or a result that holds no value turned into an empty reads unread or failed as a negative. Render its state: a placeholder while it is read, the cause when it failed.",
         );
       },
       LogicalExpression(node) {

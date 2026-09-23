@@ -208,6 +208,14 @@
     "expires": "never"
   },
   {
+    "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "result._tag === \"Success\" ? result.value : undefined",
+    "owner": "karel",
+    "reason": "a Data console command's settled result, not a read: undefined is the caller's failure signal and the catalog marks itself failed, never empty",
+    "expires": "never"
+  },
+  {
     "path": "apps/web/src/zerops/useZeropsDeployedVersion.ts",
     "kind": "CallExpression",
     "fingerprint": "readZeropsResource(resources, request, signal).catch(() => undefined)",
@@ -312,11 +320,27 @@
     "expires": "never"
   },
   {
+    "path": "packages/client-runtime/src/zerops/agentLogin.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "result._tag === \"Success\" ? result.value.terminalId : undefined",
+    "owner": "karel",
+    "reason": "a login start's settled command result, not a read: a failed start focuses no terminal, and the command itself reports the failure",
+    "expires": "never"
+  },
+  {
     "path": "packages/client-runtime/src/zerops/giteaClient.ts",
     "kind": "CallExpression",
     "fingerprint": "response.json().catch(() => null)",
     "owner": "karel",
     "reason": "an unparseable error body carries no detail; the refusal itself is still thrown, so no failure becomes a negative",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/model/deriveThreadModel.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "lifecycle?.state === \"known\" ? lifecycle.value.envelope : undefined",
+    "owner": "karel",
+    "reason": "an unknown lifecycle has no envelope, as a known one may not: the session has no phase and the strip says nothing, never a phase or a none",
     "expires": "never"
   }
 ]
