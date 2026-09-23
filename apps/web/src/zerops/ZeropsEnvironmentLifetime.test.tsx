@@ -316,6 +316,8 @@ describe("a restore is pending only while a remembered target's exchange is on i
   const rows: ReadonlyArray<{
     readonly name: string;
     readonly services: ReadonlyArray<typeof service>;
+    /** Replaces parts of the settled inventory the services are read into. */
+    readonly inventory?: Partial<Inventory>;
     readonly records: ReadonlyArray<string>;
     readonly route: ReadonlyArray<string>;
     /** The answer each exchange gets; `hang` never answers. */
@@ -337,6 +339,24 @@ describe("a restore is pending only while a remembered target's exchange is on i
       route: [],
       answer: () => doorFailed(503),
       pending: false,
+    },
+    {
+      name: "the inventory is still loading: its presence is unread",
+      services: [service],
+      inventory: { projects: [], services: new Map(), isLoading: true },
+      records: ["project:service"],
+      route: [],
+      answer: () => admitted(),
+      pending: true,
+    },
+    {
+      name: "its project's services are unread",
+      services: [service],
+      inventory: { services: new Map() },
+      records: ["project:service"],
+      route: [],
+      answer: () => admitted(),
+      pending: true,
     },
     {
       name: "its exchange is in flight",
@@ -364,6 +384,7 @@ describe("a restore is pending only while a remembered target's exchange is on i
     liveInventory = {
       ...inventory(),
       services: new Map([[project.id, { status: "resolved", services: [...row.services] }]]),
+      ...row.inventory,
     };
     mock.exchange.mockImplementation((request: ExchangeRequest) => {
       const answer = row.answer(request);
