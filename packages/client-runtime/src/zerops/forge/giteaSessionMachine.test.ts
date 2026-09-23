@@ -353,6 +353,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       // One failure: what was read with the token still stands.
       expect(giteaSessionView(expired.machine)).toEqual({
         signedIn: true,
+        readable: false,
         login: "u-person",
         trouble: null,
       });
@@ -387,6 +388,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       expect(runs(run.last)).toEqual(["acquire"]);
       expect(giteaSessionView(run.machine)).toEqual({
         signedIn: true,
+        readable: true,
         login: "u-person",
         trouble: null,
       });
@@ -406,12 +408,14 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
         signedIn().machine,
       );
       expect(first.machine.phase.kind).toBe("unavailable");
+      // The facts stand, and the view says nothing can be read meanwhile: no token to send, none
+      // on its way.
       expect(giteaSessionView(first.machine)).toEqual({
         signedIn: true,
+        readable: false,
         login: "u-person",
         trouble: null,
       });
-      // Nothing is read meanwhile: no token to send, none on its way.
       expect(giteaSessionReadable(first.machine)).toBe(false);
 
       // The retry's liveness check runs with the facts still up.
@@ -421,6 +425,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       const second = play([[liveness(3, false), 1 * MIN + 10 * S]], checking.machine);
       expect(giteaSessionView(second.machine)).toEqual({
         signedIn: false,
+        readable: false,
         login: undefined,
         trouble: "Gitea isn't answering.",
       });
@@ -488,6 +493,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       ]);
       expect(giteaSessionView(once.machine)).toEqual({
         signedIn: false,
+        readable: false,
         login: undefined,
         trouble: null,
       });
@@ -541,6 +547,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       expect(run.machine.failures).toBe(0);
       expect(giteaSessionView(run.machine)).toEqual({
         signedIn: true,
+        readable: true,
         login: "u-person",
         trouble: null,
       });
@@ -570,6 +577,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       expect(giteaSessionToken(late.machine)).toBeUndefined();
       expect(giteaSessionView(late.machine)).toEqual({
         signedIn: false,
+        readable: false,
         login: undefined,
         trouble: null,
       });

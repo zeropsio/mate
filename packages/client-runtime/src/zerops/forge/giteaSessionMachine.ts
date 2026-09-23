@@ -529,10 +529,14 @@ export function transitionGiteaSession(
 export interface GiteaSessionView {
   /**
    * What was read as the person stands: a token is held, or the session is getting another after
-   * holding one, for up to {@link FAILURES_BEFORE_CAUSE} failed acquisitions. Only
-   * {@link giteaSessionReadable} says whether a request can go out now.
+   * holding one, for up to {@link FAILURES_BEFORE_CAUSE} failed acquisitions.
    */
   readonly signedIn: boolean;
+  /**
+   * A request can go out now ({@link giteaSessionReadable}). False while the facts stand with no
+   * token held or on its way: a surface keeps what it read, starts no read and offers no verb.
+   */
+  readonly readable: boolean;
   /** The person's login on that Gitea, `u-…`, while signed in. */
   readonly login: string | undefined;
   /** The cause, once the regions show it: a refusal at once, a wait after two failures. */
@@ -541,6 +545,7 @@ export interface GiteaSessionView {
 
 export const GITEA_SIGNED_OUT: GiteaSessionView = {
   signedIn: false,
+  readable: false,
   login: undefined,
   trouble: null,
 };
@@ -560,7 +565,12 @@ function retryingCause(machine: GiteaSessionMachine, retrying: GiteaRetrying): s
 /** No token held: the facts stand until a cause is named, if a token was held before. */
 function withoutToken(machine: GiteaSessionMachine, trouble: string | null): GiteaSessionView {
   if (trouble === null && machine.lastLogin !== null && machine.failures < FAILURES_BEFORE_CAUSE) {
-    return { signedIn: true, login: machine.lastLogin, trouble: null };
+    return {
+      signedIn: true,
+      readable: giteaSessionReadable(machine),
+      login: machine.lastLogin,
+      trouble: null,
+    };
   }
   return trouble === null ? GITEA_SIGNED_OUT : { ...GITEA_SIGNED_OUT, trouble };
 }
@@ -569,7 +579,7 @@ export function giteaSessionView(machine: GiteaSessionMachine): GiteaSessionView
   const phase = machine.phase;
   switch (phase.kind) {
     case "signed-in":
-      return { signedIn: true, login: phase.session.login, trouble: null };
+      return { signedIn: true, readable: true, login: phase.session.login, trouble: null };
     case "reacquiring":
       return withoutToken(machine, null);
     case "refused":

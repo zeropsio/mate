@@ -7,6 +7,11 @@ describe("@t3tools/client-runtime/zerops/forge", () => {
     expect(typeof forge.makeGiteaSessions).toBe("function");
     expect(typeof forge.transitionGiteaSession).toBe("function");
     expect(typeof forge.giteaSessionView).toBe("function");
-    expect(forge.GITEA_SIGNED_OUT).toEqual({ signedIn: false, login: undefined, trouble: null });
+    expect(forge.GITEA_SIGNED_OUT).toEqual({
+      signedIn: false,
+      readable: false,
+      login: undefined,
+      trouble: null,
+    });
   });
 });

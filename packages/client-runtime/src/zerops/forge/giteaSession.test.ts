@@ -151,7 +151,7 @@ describe("the account's Gitea sessions", () => {
     ]);
     // The first acquisition goes straight to the mint: no liveness check.
     expect(livenessChecks(w)).toEqual([]);
-    expect(w.view()).toEqual({ signedIn: true, login: "u-person", trouble: null });
+    expect(w.view()).toEqual({ signedIn: true, readable: true, login: "u-person", trouble: null });
     await expect(readTags(w.sessions)).resolves.toEqual([{ name: "v1.0.0" }]);
     expect(w.gitea.requests().map((request) => request.bearer)).toEqual(["gitea-token-1"]);
 
@@ -172,7 +172,7 @@ describe("the account's Gitea sessions", () => {
     // The first failure is not said yet.
     expect(w.throwaways.minted).toHaveLength(1);
     expect(w.throwaways.removed).toEqual(["throwaway-1"]);
-    expect(w.view()).toEqual({ signedIn: false, login: undefined, trouble: null });
+    expect(w.view()).toEqual({ signedIn: false, readable: false, login: undefined, trouble: null });
 
     // Every rung checks the broker without credentials first and mints nothing while it is down.
     await w.time.advance(10 * S);
@@ -187,7 +187,7 @@ describe("the account's Gitea sessions", () => {
     expect(w.throwaways.minted).toHaveLength(2);
     expect(livenessChecks(w).map((check) => check.mode)).toEqual(["no-cors"]);
     expect(livenessChecks(w).every((check) => check.bearer === null)).toBe(true);
-    expect(w.view()).toEqual({ signedIn: true, login: "u-person", trouble: null });
+    expect(w.view()).toEqual({ signedIn: true, readable: true, login: "u-person", trouble: null });
     await expect(readTags(w.sessions)).resolves.toEqual([{ name: "v1.0.0" }]);
   });
 
@@ -235,7 +235,7 @@ describe("the account's Gitea sessions", () => {
     w.sessions.wake();
     await w.time.advance(0);
     expect(brokerPosts(w)).toHaveLength(3);
-    expect(w.view()).toEqual({ signedIn: true, login: "u-person", trouble: null });
+    expect(w.view()).toEqual({ signedIn: true, readable: true, login: "u-person", trouble: null });
   });
 
   it("shown again after a short hide, a refusal that came due while hidden is asked at once", async () => {
@@ -277,7 +277,7 @@ describe("the account's Gitea sessions", () => {
     );
     w.demand();
     await w.time.advance(0);
-    expect(w.view()).toEqual({ signedIn: false, login: undefined, trouble: null });
+    expect(w.view()).toEqual({ signedIn: false, readable: false, login: undefined, trouble: null });
     expect(brokerPosts(w)).toEqual([]);
 
     w.throwaways.refuseMints(null);
@@ -370,7 +370,12 @@ describe("the account's Gitea sessions", () => {
       // The broker's own deadline ends the attempt: unavailable, and the throwaway taken back.
       // One failure: the facts still stand, but nothing is read without a token.
       await w.time.advance(BROKER_DEADLINE_MS);
-      expect(w.view()).toEqual({ signedIn: true, login: "u-person", trouble: null });
+      expect(w.view()).toEqual({
+        signedIn: true,
+        readable: false,
+        login: "u-person",
+        trouble: null,
+      });
       expect(w.sessions.clientFor(HARNESS_GITEA_ORIGIN)).toBeNull();
       expect(w.throwaways.removed).toEqual(["throwaway-1", "throwaway-2"]);
 
@@ -378,8 +383,48 @@ describe("the account's Gitea sessions", () => {
       await w.time.advance(BROKER_DEADLINE_MS);
       expect(w.view()).toEqual({
         signedIn: false,
+        readable: false,
         login: undefined,
         trouble: "Gitea isn't answering.",
+      });
+    });
+
+    it("whose reacquire fails tells the surfaces when nothing can be read, and when it can again", async () => {
+      let brokerDown = false;
+      const w = world({
+        wrapFetch: (fetch) =>
+          (async (input: string | URL | Request, init?: RequestInit) => {
+            if (brokerDown && String(input).endsWith("/person/token")) {
+              return new Response("", { status: 502 });
+            }
+            return fetch(input, init);
+          }) as Fetch,
+      });
+      w.demand();
+      await w.time.advance(0);
+      w.gitea.revoke("gitea-token-1");
+      brokerDown = true;
+      w.views.length = 0;
+
+      await readTags(w.sessions).catch(() => undefined);
+      await w.time.advance(0);
+      // The facts stand, and a surface is told that it can read nothing meanwhile.
+      expect(w.views.at(-1)).toEqual({
+        signedIn: true,
+        readable: false,
+        login: "u-person",
+        trouble: null,
+      });
+
+      brokerDown = false;
+      w.sessions.retry(HARNESS_GITEA_ORIGIN);
+      await w.time.advance(0);
+      // The token is back: a surface that kept what it read reads again.
+      expect(w.views.at(-1)).toEqual({
+        signedIn: true,
+        readable: true,
+        login: "u-person",
+        trouble: null,
       });
     });
   });
@@ -411,7 +456,9 @@ describe("the account's Gitea sessions", () => {
 
       w.sessions.close();
 
-      expect(w.views).toEqual([{ signedIn: false, login: undefined, trouble: null }]);
+      expect(w.views).toEqual([
+        { signedIn: false, readable: false, login: undefined, trouble: null },
+      ]);
       expect(w.view().signedIn).toBe(false);
       expect(w.sessions.clientFor(HARNESS_GITEA_ORIGIN)).toBeNull();
       await expect(client?.listTags("acme", "group")).rejects.toBeInstanceOf(GiteaApiError);
@@ -440,7 +487,12 @@ describe("the account's Gitea sessions", () => {
       await w.time.advance(0);
 
       expect(w.views).toEqual([]);
-      expect(w.view()).toEqual({ signedIn: false, login: undefined, trouble: null });
+      expect(w.view()).toEqual({
+        signedIn: false,
+        readable: false,
+        login: undefined,
+        trouble: null,
+      });
       expect(w.throwaways.removed).toEqual(["throwaway-1"]);
       // Nothing starts after close.
       w.demand();
@@ -474,7 +526,12 @@ describe("the account's Gitea sessions", () => {
       expect(w.throwaways.minted).toHaveLength(1);
       expect(brokerPosts(w)).toEqual([]);
       expect(w.throwaways.removed).toEqual(["throwaway-1"]);
-      expect(w.view()).toEqual({ signedIn: false, login: undefined, trouble: null });
+      expect(w.view()).toEqual({
+        signedIn: false,
+        readable: false,
+        login: undefined,
+        trouble: null,
+      });
     });
   });
 });

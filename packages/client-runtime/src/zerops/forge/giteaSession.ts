@@ -215,6 +215,7 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
     const view = giteaSessionView(state);
     if (
       view.signedIn !== entry.view.signedIn ||
+      view.readable !== entry.view.readable ||
       view.login !== entry.view.login ||
       view.trouble !== entry.view.trouble
     ) {
