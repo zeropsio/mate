@@ -33,7 +33,7 @@ import type { ForgeFact, ForgePriority } from "@t3tools/client-runtime/zerops/fo
 import type { GitCheckoutState } from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { randomUUID } from "../lib/utils";
 import { bindAccountGiteaSessions } from "./accountGiteaSessions";
@@ -123,15 +123,23 @@ export function lifecycleEnvelopeChanged(
   }
 }
 
-/** A checkout's VCS status moved on: a push re-reads its Gitea repository (§6.1). */
-export function checkoutChanged(
-  previous: GitCheckoutState | undefined,
-  next: GitCheckoutState,
+/**
+ * One checkout's VCS statuses as pushes: a status that shows commits leaving for the remote
+ * re-reads its Gitea repository (§6.1). `null` while the checkout has not answered: only a status
+ * it reported is compared, so its first answer, or one after a refetch, is no push.
+ */
+export function useCheckoutPushes(
+  status: GitCheckoutState | null,
   repository: ForgeRepository | null,
 ): void {
-  for (const invalidation of checkoutInvalidations(previous, next, repository)) {
-    invalidateZerops(invalidation);
-  }
+  const heard = useRef<GitCheckoutState | undefined>(undefined);
+  useEffect(() => {
+    if (status === null) return;
+    for (const invalidation of checkoutInvalidations(heard.current, status, repository)) {
+      invalidateZerops(invalidation);
+    }
+    heard.current = status;
+  }, [repository, status]);
 }
 
 // ── What surfaces read ───────────────────────────────────────────────────────────────────────

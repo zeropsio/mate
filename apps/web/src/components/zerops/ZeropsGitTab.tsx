@@ -5,7 +5,7 @@
  * per repository, because a hook cannot be called in a loop and because each
  * mount's subscription then lives and dies with its own row. Each status is
  * also a push: commits leaving a checkout for its remote re-read that
- * repository in the account's forge (`checkoutChanged`, DESIGN §6.1). The forge half is
+ * repository in the account's forge (`useCheckoutPushes`, DESIGN §6.1). The forge half is
  * `useZeropsGitForge`, re-read on open, after each action and every sixty
  * seconds. What the two mean together is `gitTab.ts`, which this file does not
  * second-guess.
@@ -36,10 +36,10 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ForgeRepository } from "@t3tools/client-runtime/zerops/flow";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
-import { checkoutChanged } from "../../zerops/accountForge";
+import { useCheckoutPushes } from "../../zerops/accountForge";
 import { useZeropsChangeCommits } from "../../zerops/useZeropsRepositoryCommits";
 import { useNowMs } from "../../zerops/useNowMs";
 
@@ -104,11 +104,7 @@ function CheckoutProbe({
         : { origin: giteaOrigin, owner, repo: hostname },
     [giteaOrigin, hostname, owner],
   );
-  const heard = useRef<GitCheckoutState | undefined>(undefined);
-  useEffect(() => {
-    checkoutChanged(heard.current, state, repository);
-    heard.current = state;
-  }, [repository, state]);
+  useCheckoutPushes(data === undefined ? null : state, repository);
   return null;
 }
 
