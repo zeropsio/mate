@@ -10,11 +10,17 @@
  */
 
 import {
+  ZEROPS_REFRESH_LOCK,
+  ZEROPS_SESSION_OWNER_STORAGE_KEY,
   ZEROPS_SESSION_STORAGE_KEY,
   ZeropsApiClient,
   clearZeropsSession,
   loadZeropsSelection,
   loadZeropsSession,
+  makeZeropsSessionDriver,
+  parseZeropsSession,
+  parseZeropsSessionOwner,
+  probeZeropsPrincipal,
   requiresZeropsTwoFactor,
   resolveActiveZeropsOrganization,
   saveZeropsSelection,
@@ -24,12 +30,24 @@ import {
   type ZeropsRegistrationInput,
   type ZeropsRegistrationResponse,
   type ZeropsSession,
+  type ZeropsSessionDriver,
+  type ZeropsSessionOwner,
+  type ZeropsSessionState,
   type ZeropsStorageAdapter,
   type ZeropsUser,
 } from "@t3tools/client-runtime/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
+import { randomUUID } from "../lib/utils";
 import { browserZeropsStorage } from "./storage";
 
 export type ZeropsSessionStatus =
@@ -80,6 +98,98 @@ export interface ZeropsSessionValue {
 import { ZeropsSessionContext } from "./sessionContext";
 export { useZeropsSession, useZeropsSessionOptional } from "./sessionContext";
 
+/** What a page reads of the session machine's state. */
+function statusOf(state: ZeropsSessionState): ZeropsSessionStatus {
+  switch (state.status) {
+    case "booting":
+    case "verifying":
+      return "loading";
+    case "second-factor":
+      return "totp-required";
+    default:
+      return state.status;
+  }
+}
+
+/**
+ * The owner record in the origin's shared `localStorage`, beside the session
+ * key. Where storage is blocked, the tab adopts by principal alone.
+ */
+function ownerRecordIn(localStorage: Storage) {
+  return {
+    read: (): ZeropsSessionOwner | null => {
+      try {
+        return parseZeropsSessionOwner(localStorage.getItem(ZEROPS_SESSION_OWNER_STORAGE_KEY));
+      } catch {
+        return null;
+      }
+    },
+    write: (owner: ZeropsSessionOwner) => {
+      try {
+        localStorage.setItem(ZEROPS_SESSION_OWNER_STORAGE_KEY, JSON.stringify(owner));
+      } catch {
+        /* A storage policy can make this login memory-only. */
+      }
+    },
+  };
+}
+
+/**
+ * The tab's Zerops client and the session machine over it. The browser's
+ * storage, lock manager and timers are this tab's, taken once: the client and
+ * the machine keep them for the page's lifetime.
+ */
+function makeSession(storage: ZeropsStorageAdapter) {
+  // The recipe endpoint mock passes all other traffic to the platform.
+  const fetch = globalThis.fetch.bind(globalThis);
+  const browser = window;
+  const locks = browser.navigator.locks;
+  let driver!: ZeropsSessionDriver;
+  const client = new ZeropsApiClient({
+    fetch,
+    onSessionChange: (session: ZeropsSession | null) => {
+      if (session === null) {
+        // The client clears itself when a refresh fails mid-flight, so a
+        // session that dies between renders cannot leave an
+        // authorized-looking UI behind.
+        driver.send({ type: "SESSION_ENDED" });
+        return clearZeropsSession(storage);
+      }
+      return saveZeropsSession(storage, session);
+    },
+    renewSession: (stale, refresh) => driver.renew(stale, refresh),
+  });
+  driver = makeZeropsSessionDriver({
+    loadStored: () => loadZeropsSession(storage),
+    verify: async (session) => {
+      client.restoreSession(session);
+      try {
+        return { kind: "user", user: await client.fetchUser() };
+      } catch {
+        // The client has already cleared a session the API refused.
+        return client.session === null ? { kind: "unauthorized" } : { kind: "unavailable" };
+      }
+    },
+    probe: (session) => probeZeropsPrincipal({ fetch, baseUrl: client.baseUrl }, session),
+    adopt: (session) => client.adoptRenewedSession(session),
+    forgetSession: () => {
+      void client.signOutLocally();
+    },
+    openAccount: (user) => openAccountLifetime(user.id),
+    closeAccount: closeAccountLifetime,
+    owner: ownerRecordIn(browser.localStorage),
+    withRefreshLock: (work) => locks.request(ZEROPS_REFRESH_LOCK, work),
+    nowMs: () => performance.now(),
+    setTimer: (delayMs, fire) => {
+      const timer = browser.setTimeout(fire, delayMs);
+      return () => browser.clearTimeout(timer);
+    },
+    random: Math.random,
+    newGeneration: randomUUID,
+  });
+  return { client, driver };
+}
+
 export function ZeropsSessionProvider({
   children,
   storage = browserZeropsStorage,
@@ -87,68 +197,49 @@ export function ZeropsSessionProvider({
   readonly children: ReactNode;
   readonly storage?: ZeropsStorageAdapter;
 }) {
-  const [status, setStatus] = useState<ZeropsSessionStatus>("loading");
-  const [user, setUser] = useState<ZeropsUser | null>(null);
   const [lastRegistration, setLastRegistration] = useState<ZeropsRegistrationResponse | null>(null);
   const [selectedMembershipId, setSelectedMembershipId] = useState<string | null>(null);
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
   const preferredClientIdRef = useRef<string | null>(null);
 
-  const lifetimeGeneration = useRef(0);
-  const acceptUser = useCallback((verified: ZeropsUser) => {
-    openAccountLifetime(verified.id);
-    setUser(verified);
-    setStatus("signed-in");
-  }, []);
+  const { client, driver } = useMemo(() => makeSession(storage), [storage]);
+  const machine = useSyncExternalStore(driver.subscribe, driver.state);
+  const status = statusOf(machine);
+  const user = machine.status === "signed-in" ? machine.user : null;
 
-  const client = useMemo(
-    () =>
-      new ZeropsApiClient({
-        // The recipe endpoint mock passes all other traffic to the platform.
-        fetch: globalThis.fetch.bind(globalThis),
-        onSessionChange: (session: ZeropsSession | null) => {
-          if (session === null) {
-            // The client clears itself when a refresh fails mid-flight, so a
-            // session that dies between renders cannot leave an
-            // authorized-looking UI behind.
-            lifetimeGeneration.current += 1;
-            closeAccountLifetime();
-            setStatus("signed-out");
-            setUser(null);
-            return clearZeropsSession(storage);
-          }
-          return saveZeropsSession(storage, session);
-        },
-      }),
-    [storage],
-  );
+  useEffect(() => driver.start(), [driver]);
 
+  // Identity is shared across tabs; organization and navigation are not. A
+  // session another tab writes is verified before this tab holds it, and a
+  // sign-in or sign-out there reaches this tab in any state, without a reload.
   useEffect(() => {
-    let cancelled = false;
-    const generation = lifetimeGeneration.current;
-    void (async () => {
-      const session = await loadZeropsSession(storage);
-      if (cancelled || generation !== lifetimeGeneration.current) return;
-      if (!session) {
-        setStatus("signed-out");
+    const document = window.document;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === ZEROPS_SESSION_OWNER_STORAGE_KEY) {
+        driver.send({ type: "OWNER_CHANGED", owner: parseZeropsSessionOwner(event.newValue) });
         return;
       }
-      client.restoreSession(session);
-      try {
-        const restored = await client.fetchUser();
-        if (cancelled || generation !== lifetimeGeneration.current) return;
-        acceptUser(restored);
-      } catch {
-        // A stored session that no longer works reads as signed out; the
-        // client has already cleared it if the API said so.
-        if (cancelled || generation !== lifetimeGeneration.current) return;
-        setStatus(client.session ? "unavailable" : "signed-out");
-      }
-    })();
-    return () => {
-      cancelled = true;
+      if (event.key !== ZEROPS_SESSION_STORAGE_KEY && event.key !== null) return;
+      const next = event.key === null ? null : parseZeropsSession(event.newValue);
+      driver.send({
+        type: "STORAGE_CHANGED",
+        next,
+        held: next !== null && next.accessToken === client.session?.accessToken,
+      });
     };
-  }, [acceptUser, client, storage]);
+    const onOnline = () => driver.send({ type: "WAKE", trigger: "online" });
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") driver.send({ type: "WAKE", trigger: "visible" });
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [client, driver]);
 
   const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
   const activeOrganization = useMemo(
@@ -194,22 +285,6 @@ export function ZeropsSessionProvider({
     };
   }, [organizations, storage, user]);
 
-  // Identity is shared across tabs; organization and navigation are not.
-  // A full renderer reload also drops stale route loaders and module stores.
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== ZEROPS_SESSION_STORAGE_KEY && event.key !== null) return;
-      if (event.oldValue === event.newValue && event.key !== null) return;
-      lifetimeGeneration.current += 1;
-      closeAccountLifetime();
-      setUser(null);
-      setStatus("loading");
-      window.location.reload();
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
-
   const selectOrganization = useCallback(
     async (membershipId: string) => {
       if (!user) return;
@@ -229,15 +304,19 @@ export function ZeropsSessionProvider({
     [organizations, storage, user],
   );
 
-  const updateVerifiedMemberships = useCallback((verified: ZeropsUser) => {
-    setUser((previous) => {
-      if (!previous || previous.id !== verified.id) return previous;
-      return JSON.stringify(zeropsClientsFromUser(previous)) ===
+  const updateVerifiedMemberships = useCallback(
+    (verified: ZeropsUser) => {
+      const current = driver.state();
+      if (current.status !== "signed-in" || current.user.id !== verified.id) return;
+      if (
+        JSON.stringify(zeropsClientsFromUser(current.user)) ===
         JSON.stringify(zeropsClientsFromUser(verified))
-        ? previous
-        : verified;
-    });
-  }, []);
+      )
+        return;
+      driver.send({ type: "USER_UPDATED", user: verified });
+    },
+    [driver],
+  );
 
   const value = useMemo<ZeropsSessionValue>(
     () => ({
@@ -250,14 +329,11 @@ export function ZeropsSessionProvider({
       selectOrganization,
       updateVerifiedMemberships,
       adoptHandover: async ({ token, clientId, zcpClaimed }) => {
-        const generation = lifetimeGeneration.current;
         preferredClientIdRef.current = clientId;
         try {
           const session = await client.adoptPersonalToken(token);
           const adopted = await client.fetchUser();
-          if (generation !== lifetimeGeneration.current)
-            throw new Error("This sign-in was cancelled.");
-          acceptUser(adopted);
+          driver.signedIn(adopted);
           if (zcpClaimed) {
             // The picker reads this to enter the provisioning wait for the
             // project the claim handed over, instead of waiting for a candidate
@@ -277,37 +353,23 @@ export function ZeropsSessionProvider({
         }
       },
       signIn: async (email, password) => {
-        const generation = lifetimeGeneration.current;
         const response = await client.login(email, password);
-        if (generation !== lifetimeGeneration.current)
-          throw new Error("This sign-in was cancelled.");
         if (requiresZeropsTwoFactor(response.auth)) {
-          setStatus("totp-required");
+          driver.send({ type: "SECOND_FACTOR_REQUIRED" });
           return;
         }
-        const verified = response.user ?? (await client.fetchUser());
-        if (generation !== lifetimeGeneration.current)
-          throw new Error("This sign-in was cancelled.");
-        acceptUser(verified);
+        driver.signedIn(response.user ?? (await client.fetchUser()));
       },
       register: async (input) => {
-        const generation = lifetimeGeneration.current;
         const response = await client.register(input);
         preferredClientIdRef.current = response.clientId ?? null;
-        const verified = response.user ?? (await client.fetchUser());
-        if (generation !== lifetimeGeneration.current)
-          throw new Error("This sign-in was cancelled.");
-        acceptUser(verified);
+        driver.signedIn(response.user ?? (await client.fetchUser()));
         setLastRegistration(response);
         return response;
       },
       verifyTotp: async (code) => {
-        const generation = lifetimeGeneration.current;
         await client.verifyTotp(code);
-        const verified = await client.fetchUser();
-        if (generation !== lifetimeGeneration.current)
-          throw new Error("This sign-in was cancelled.");
-        acceptUser(verified);
+        driver.signedIn(await client.fetchUser());
       },
       signOut: async () => {
         setLastRegistration(null);
@@ -319,16 +381,15 @@ export function ZeropsSessionProvider({
       },
     }),
     [
-      acceptUser,
       activeOrganization,
       client,
+      driver,
       lastRegistration,
       organizationStatus,
       organizations,
       selectOrganization,
       updateVerifiedMemberships,
       status,
-      storage,
       user,
     ],
   );

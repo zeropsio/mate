@@ -7,6 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { mountTab, settle, unmountTabs } from "./__fixtures__/harnessTabs";
 
+/** The login a tab verified, beside the session key and never inside it (DESIGN §1.1). */
+const OWNER_KEY = "zerops-mate.zerops-session-owner.v1";
+
 const person: ZeropsUser = {
   id: "user-1",
   email: "person@example.test",
@@ -31,6 +34,49 @@ function harnessWith(options: Partial<AccountHarnessOptions> = {}) {
 
 const storedSession = (harness: ReturnType<typeof harnessWith>) =>
   harness.browser.openTab().localStorage.getItem(ZEROPS_SESSION_STORAGE_KEY);
+
+/** One render of a tab's page: what the session said and which account the tab had open. */
+interface Frame {
+  readonly status: string;
+  readonly userId: string | null;
+  readonly accountId: string | null;
+}
+
+/** A tab whose page records every frame it renders. */
+async function recordingTab(harness: ReturnType<typeof harnessWith>) {
+  const frames: Frame[] = [];
+  const page = await mountTab(harness, harness.browser.openTab(), {
+    page: async () => {
+      const [{ useZeropsSession }, { currentAccountId }, { createElement }] = await Promise.all([
+        import("./ZeropsSessionProvider"),
+        import("./accountLifetime"),
+        import("react"),
+      ]);
+      function Recorder() {
+        const { status, user } = useZeropsSession();
+        frames.push({ status, userId: user?.id ?? null, accountId: currentAccountId() });
+        return null;
+      }
+      return createElement(Recorder);
+    },
+  });
+  /** The frames rendered after the one at `from`, which a test took as its starting point. */
+  const framesSince = (from: number) => frames.slice(from);
+  return { ...page, frames: () => [...frames], framesSince };
+}
+
+const storedToken = (harness: ReturnType<typeof harnessWith>) =>
+  (JSON.parse(storedSession(harness)!) as { accessToken: string }).accessToken;
+
+const requestsOf = (
+  harness: ReturnType<typeof harnessWith>,
+  tab: { readonly tab: { readonly id: string } },
+  token: string,
+) =>
+  harness.rest
+    .requests()
+    .filter((request) => request.tab === tab.tab.id && request.token === token)
+    .map(({ route }) => route);
 
 afterEach(async () => {
   await unmountTabs();
@@ -145,6 +191,21 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(storedSession(harness)).not.toBeNull();
   });
 
+  it("retries a boot the network failed, and signs in once the tab is back online", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const offline = harness.browser.openTab();
+    offline.signals.offline();
+    const tab = await mountTab(harness, offline);
+    expect(tab.session().status).toBe("unavailable");
+
+    offline.signals.online();
+    await settle();
+
+    expect(tab.session().status).toBe("signed-in");
+    expect(tab.accountId()).toBe("user-1");
+    expect(tab.tab.reloads).toBe(0);
+  });
+
   it("renews an expired stored token at boot and signs in", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const stale = JSON.parse(storedSession(harness)!).accessToken as string;
@@ -230,5 +291,186 @@ describe("ZeropsSessionProvider across two tabs", () => {
     expect(harness.rest.refreshes()).toBe(1);
     expect([a.session().status, b.session().status]).toEqual(["signed-in", "signed-in"]);
     expect(b.accountId()).toBe("user-1");
+  });
+});
+
+describe("ZeropsSessionProvider verified adoption across tabs", () => {
+  it("adopts another tab's renewed session, which carries no userId, without a reload", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const a = await recordingTab(harness);
+    const b = await recordingTab(harness);
+    const from = b.frames().length;
+    harness.rest.expireAccessToken(storedToken(harness));
+
+    await a.run(() => a.session().client.fetchUser());
+    await settle();
+
+    const renewed = JSON.parse(storedSession(harness)!) as { accessToken: string; userId?: string };
+    expect(renewed.userId).toBeUndefined();
+    expect(b.session().client.session?.accessToken).toBe(renewed.accessToken);
+    expect(requestsOf(harness, b, renewed.accessToken)).toEqual(["GET /user/info"]);
+    expect(b.framesSince(from)).toEqual(
+      b
+        .framesSince(from)
+        .map(() => ({ status: "signed-in", userId: "user-1", accountId: "user-1" })),
+    );
+    expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
+  });
+
+  it("stays signed in while the probe answers 503, and adopts when it retries", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const b = await recordingTab(harness);
+    const from = b.frames().length;
+    const held = storedToken(harness);
+    const next = harness.rest.issueSession("user-1");
+    const probe = harness.rest.hold("GET /user/info");
+
+    harness.browser
+      .openTab()
+      .localStorage.setItem(ZEROPS_SESSION_STORAGE_KEY, JSON.stringify(next));
+    await settle();
+    expect(probe.waiting()).toBe(1);
+    probe.fail(503);
+    await settle();
+
+    expect(b.session().status).toBe("signed-in");
+    expect(b.accountId()).toBe("user-1");
+    expect(b.session().client.session?.accessToken).toBe(held);
+
+    b.tab.signals.hide();
+    b.tab.signals.show();
+    await settle();
+
+    expect(b.session().client.session?.accessToken).toBe(next.accessToken);
+    expect(b.framesSince(from)).toEqual(
+      b
+        .framesSince(from)
+        .map(() => ({ status: "signed-in", userId: "user-1", accountId: "user-1" })),
+    );
+    expect(b.tab.reloads).toBe(0);
+  });
+
+  it("closes the account before another principal's session renders a frame", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const b = await recordingTab(harness);
+    const from = b.frames().length;
+    const other = harness.rest.issueSession("user-2");
+
+    harness.browser
+      .openTab()
+      .localStorage.setItem(ZEROPS_SESSION_STORAGE_KEY, JSON.stringify(other));
+    await settle();
+
+    expect(b.session().user?.id).toBe("user-2");
+    expect(b.accountId()).toBe("user-2");
+    const frames = b.framesSince(from);
+    for (const frame of frames)
+      if (frame.userId !== null) expect(frame.accountId).toBe(frame.userId);
+    const firstOther = frames.findIndex((frame) => frame.userId === "user-2");
+    expect(frames.slice(0, firstOther)).toContainEqual({
+      status: "loading",
+      userId: null,
+      accountId: null,
+    });
+    expect(requestsOf(harness, b, other.accessToken)).toEqual(["GET /user/info", "GET /user/info"]);
+    expect(b.tab.reloads).toBe(0);
+  });
+
+  it("closes and re-verifies when another tab signs in anew as the same person", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const a = await recordingTab(harness);
+    const b = await recordingTab(harness);
+    const fromA = a.frames().length;
+    const fromB = b.frames().length;
+    const before = harness.browser.openTab().localStorage.getItem(OWNER_KEY);
+
+    await a.run(() => a.session().signIn("person@example.test", "secret"));
+    await settle();
+
+    expect(harness.browser.openTab().localStorage.getItem(OWNER_KEY)).not.toBe(before);
+    expect(b.session().status).toBe("signed-in");
+    expect(b.accountId()).toBe("user-1");
+    expect(b.session().client.session?.accessToken).toBe(storedToken(harness));
+    expect(b.framesSince(fromB)).toContainEqual({
+      status: "loading",
+      userId: null,
+      accountId: null,
+    });
+    expect(a.framesSince(fromA).every((frame) => frame.accountId === "user-1")).toBe(true);
+    expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
+  });
+
+  it("brings two tabs booting on one legacy session to one owner record, with no close loop", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const boot = harness.rest.hold("GET /user/info");
+    const a = await recordingTab(harness);
+    const b = await recordingTab(harness);
+
+    boot.release();
+    await settle();
+    await settle();
+
+    const owner = JSON.parse(harness.browser.openTab().localStorage.getItem(OWNER_KEY)!);
+    expect(owner).toEqual({ userId: "user-1", loginGeneration: expect.any(String) });
+    for (const tab of [a, b]) {
+      const signedIn = tab.frames().findIndex((frame) => frame.status === "signed-in");
+      expect(tab.framesSince(signedIn).every((frame) => frame.accountId === "user-1")).toBe(true);
+      expect(tab.tab.reloads).toBe(0);
+    }
+    expect(harness.rest.requests().map(({ route }) => route)).toEqual([
+      "GET /user/info",
+      "GET /user/info",
+    ]);
+  });
+
+  it("keeps both legacy tabs signed in when one renews the session", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const boot = harness.rest.hold("GET /user/info");
+    const a = await recordingTab(harness);
+    const b = await recordingTab(harness);
+    boot.release();
+    await settle();
+    const fromB = b.frames().length;
+    harness.rest.expireAccessToken(storedToken(harness));
+
+    await a.run(() => a.session().client.fetchUser());
+    await settle();
+
+    expect(harness.rest.refreshes()).toBe(1);
+    expect(a.session().client.session?.accessToken).toBe(storedToken(harness));
+    expect(b.session().client.session?.accessToken).toBe(storedToken(harness));
+    expect(b.framesSince(fromB).every((frame) => frame.accountId === "user-1")).toBe(true);
+    expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
+  });
+
+  it("signs the other tab out without a reload and forgets the token it held", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const a = await recordingTab(harness);
+    const b = await recordingTab(harness);
+
+    await a.run(() => a.session().signOut());
+    await settle();
+
+    expect(b.session().status).toBe("signed-out");
+    expect(b.accountId()).toBeNull();
+    expect(b.session().client.session).toBeNull();
+    expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
+  });
+
+  it("renews once over the network when two tabs hit an expired token at once", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const a = await recordingTab(harness);
+    const b = await recordingTab(harness);
+    harness.rest.expireAccessToken(storedToken(harness));
+
+    const reads = [a.session().client.fetchUser(), b.session().client.fetchUser()];
+    await settle();
+    const answers = await Promise.allSettled(reads);
+
+    expect(answers.map(({ status }) => status)).toEqual(["fulfilled", "fulfilled"]);
+    expect(harness.rest.refreshes()).toBe(1);
+    expect([a.session().status, b.session().status]).toEqual(["signed-in", "signed-in"]);
+    expect(a.session().client.session?.accessToken).toBe(storedToken(harness));
+    expect(b.session().client.session?.accessToken).toBe(storedToken(harness));
   });
 });

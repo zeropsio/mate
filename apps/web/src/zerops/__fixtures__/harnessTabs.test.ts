@@ -10,13 +10,30 @@ const person: ZeropsUser = {
   clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
 };
 
+/** A page that reloads itself when another tab writes storage. */
+async function reloadingOnStorage() {
+  const { createElement, useEffect } = await import("react");
+  function ReloadOnStorage() {
+    useEffect(() => {
+      const reload = () => window.location.reload();
+      window.addEventListener("storage", reload);
+      return () => window.removeEventListener("storage", reload);
+    }, []);
+    return null;
+  }
+  return createElement(ReloadOnStorage);
+}
+
 async function twoSignedInTabs() {
   const harness = makeAccountHarness({
     people: [{ user: person, password: "secret" }],
     signedIn: "user-1",
   });
   const a = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/a" });
-  const b = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/b" });
+  const b = await mountTab(harness, harness.browser.openTab(), {
+    path: "/zerops/b",
+    page: reloadingOnStorage,
+  });
   return { a, b };
 }
 
