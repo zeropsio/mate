@@ -227,6 +227,10 @@
       "types": "./src/zerops/autoEnterProvisioning.ts",
       "default": "./src/zerops/autoEnterProvisioning.ts"
     },
+    "./zerops/birth": {
+      "types": "./src/zerops/birth/index.ts",
+      "default": "./src/zerops/birth/index.ts"
+    },
     "./zerops/birthProgress": {
       "types": "./src/zerops/birthProgress.ts",
       "default": "./src/zerops/birthProgress.ts"

@@ -119,7 +119,11 @@ function keyOf(key: ZeropsCreationHandoffKey): string {
 
 const ROLES: ReadonlySet<ZeropsEnvironmentRole> = new Set(["dev", "devstage", "stage", "prod"]);
 
-/** Whether a parsed value is a handoff this version knows how to say. */
+/** A stored hand-off this version knows how to say, or undefined for anything else. */
+export function parseCreationHandoff(value: unknown): ZeropsCreationHandoff | undefined {
+  return isHandoff(value) ? value : undefined;
+}
+
 function isHandoff(value: unknown): value is ZeropsCreationHandoff {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
