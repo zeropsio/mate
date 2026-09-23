@@ -4,9 +4,11 @@ import type { Capability } from "../data/access/capabilities.ts";
 import { project, service } from "../data/__fixtures__/index.ts";
 import { GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
+import { flowVerbKey } from "../projectFlow.ts";
 import { RELEASE_NOT_A_RELEASER } from "../release.ts";
 import {
   FLOW_COMMAND_UNCERTAIN,
+  flowCommandFor,
   makeFlowCommands,
   mergeCommand,
   releaseCommand,
@@ -43,6 +45,8 @@ function rig(initial: Capability = { allowed: true }) {
     createTag: (owner: string, repo: string, input: { readonly tag: string }) =>
       call(`tag ${owner}/${repo} ${input.tag}`),
     listTags: (owner: string, repo: string) => call(`tags ${owner}/${repo}`),
+    createPullRequest: (owner: string, repo: string, input: { readonly head: string }) =>
+      call(`open ${owner}/${repo} ${input.head}`),
   } as unknown as GiteaClient;
   const ports: FlowCommandPorts = {
     capability: () => capability,
@@ -132,6 +136,26 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
     ).toEqual({ phase: "accepted" });
     const group = { topic: "forge-repo", origin: GITEA, owner: "harbor", repo: "group" };
     expect(invalidated).toEqual([group, group]);
+  });
+
+  it("Open re-reads only that repo's pull requests", async () => {
+    const { commands, invalidated, calls } = rig();
+
+    const attempt = await commands.run({
+      kind: "open",
+      origin: GITEA,
+      slug: "harbor",
+      repository: "appdev",
+      head: "mate/ada",
+      base: "main",
+      title: "Add cart",
+    });
+
+    expect(attempt).toEqual({ phase: "accepted" });
+    expect(calls).toEqual(["open harbor/appdev mate/ada"]);
+    expect(invalidated).toEqual([
+      { topic: "forge-repo", origin: GITEA, owner: "harbor", repo: "appdev" },
+    ]);
   });
 
   it("a capability nothing can bring back refuses at once, typed, and writes nothing", async () => {
@@ -229,6 +253,29 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
     expect(invalidated).toEqual([]);
   });
 
+  it("a group's attempts are listed by their verb's key, and no other group's", async () => {
+    const { commands, answerWith } = rig();
+    const landings: Array<() => void> = [];
+    answerWith(() => new Promise<void>((resolve) => landings.push(resolve)));
+    const cove: FlowCommand = { ...MERGE, slug: "cove", feeds: [] };
+
+    const merging = commands.run(MERGE);
+    const other = commands.run(cove);
+    await flush();
+    expect(commands.attemptsIn("harbor")).toEqual(
+      new Map([[flowVerbKey(MERGE), { phase: "pending" }]]),
+    );
+    expect([...commands.attemptsIn("cove").keys()]).toEqual([flowVerbKey(cove)]);
+    expect(commands.attemptsIn("atoll")).toEqual(new Map());
+
+    for (const land of landings) land();
+    await merging;
+    await other;
+    expect(commands.attemptsIn("harbor")).toEqual(
+      new Map([[flowVerbKey(MERGE), { phase: "accepted" }]]),
+    );
+  });
+
   it("a second press while one runs is the same attempt", async () => {
     const { commands, answerWith, calls } = rig();
     let land: () => void = () => undefined;
@@ -284,5 +331,51 @@ describe("a group flow's commands", () => {
     });
     expect(releaseCommand(known, GITEA)).toEqual(RELEASE);
     expect(releaseCommand(flow({ state: "reading", sinceMs: 1, attempt: 1 }), GITEA)).toBeNull();
+  });
+
+  it("verbs are addressed as surfaces call them: a pull request by its group's slug, a release by its group", () => {
+    const flows = [
+      flow({
+        state: "known",
+        value: offer,
+        asOf: { ordinal: 1, atMs: 1 },
+        coverage: "complete",
+        freshness: { kind: "live" },
+      }),
+    ];
+
+    expect(
+      flowCommandFor(
+        { kind: "merge", slug: "harbor", repository: "appdev", number: 4 },
+        flows,
+        GITEA,
+      ),
+    ).toEqual(MERGE);
+    // A group whose flow is not read merges all the same; the platform re-reads what it feeds.
+    expect(
+      flowCommandFor(
+        { kind: "merge", slug: "cove", repository: "appdev", number: 4 },
+        flows,
+        GITEA,
+      ),
+    ).toEqual({ ...MERGE, slug: "cove", feeds: [] });
+    const open = {
+      kind: "open",
+      slug: "harbor",
+      repository: "appdev",
+      head: "mate/ada",
+      base: "main",
+      title: "Add cart",
+    } as const;
+    expect(flowCommandFor(open, flows, GITEA)).toEqual({ ...open, origin: GITEA });
+    expect(flowCommandFor({ kind: "release", groupId: "g1" }, flows, GITEA)).toEqual(RELEASE);
+    expect(
+      flowCommandFor({ kind: "roll-back", groupId: "g1", tag: "v1.0.0" }, flows, GITEA),
+    ).toEqual({ kind: "roll-back", origin: GITEA, slug: "harbor", groupId: "g1", tag: "v1.0.0" });
+    // A group whose flow is not read has no offer to tag and no slug to tag in.
+    expect(flowCommandFor({ kind: "release", groupId: "g2" }, flows, GITEA)).toBeNull();
+    expect(
+      flowCommandFor({ kind: "roll-back", groupId: "g2", tag: "v1.0.0" }, flows, GITEA),
+    ).toBeNull();
   });
 });
