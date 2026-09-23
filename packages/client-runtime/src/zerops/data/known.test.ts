@@ -479,5 +479,49 @@ describe("inventory knowledge", () => {
         coverage: "partial",
       });
     });
+
+    const runningRecord = running.knowledge === "observed" ? running.record : null;
+    const unavailableMember = (
+      reason: Extract<
+        EntityKnowledge<ServiceRecord>,
+        { readonly knowledge: "unavailable" }
+      >["reason"],
+    ): EntityKnowledge<ServiceRecord> => ({
+      knowledge: "unavailable",
+      ref: service("db", owner),
+      reason,
+      since: stamp(5),
+    });
+
+    // A denial of a scope says nothing about what the scope holds: an account-scope denial is
+    // not an empty organization, so a revoked member keeps the listing from a complete none.
+    it.each<{
+      readonly name: string;
+      readonly members: ReadonlyArray<EntityKnowledge<ServiceRecord>>;
+      readonly known: object;
+    }>([
+      {
+        name: "a member read as forbidden is gone, and the rest is complete",
+        members: [running, unavailableMember("forbidden")],
+        known: { state: "known", value: [runningRecord], coverage: "complete" },
+      },
+      {
+        name: "a member read as not found is gone, and the rest is complete",
+        members: [running, unavailableMember("not-found")],
+        known: { state: "known", value: [runningRecord], coverage: "complete" },
+      },
+      {
+        name: "a member whose access was revoked leaves the rest partial",
+        members: [running, unavailableMember("access-revoked")],
+        known: { state: "known", value: [runningRecord], coverage: "partial" },
+      },
+      {
+        name: "every member's access revoked waits for the grant, never a complete none",
+        members: [unavailableMember("access-revoked")],
+        known: { state: "unread", waitingFor: "access-grant" },
+      },
+    ])("an unavailable member: $name", ({ members, known }) => {
+      expect(knownServicesOf(listing([], members), NOW)).toEqual(expect.objectContaining(known));
+    });
   });
 });

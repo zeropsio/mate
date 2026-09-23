@@ -142,10 +142,17 @@ function knownCollection<Record extends ProjectRecord | ServiceRecord>(
   if (query.status !== "observed") return notYetKnown(source, nowMs);
   const records: Record[] = [];
   let pending = query.unresolvedMemberKeys.length > 0;
+  let revoked = 0;
   for (const member of read.value) {
     if (member.knowledge === "observed") records.push(member.record);
     else if (member.knowledge === "unresolved") pending = true;
+    else if (member.reason === "access-revoked") revoked += 1;
   }
+  // A revoked access is a denial of a scope, not a read of what it holds: the listing is partial
+  // while any member waits for the grant, and waits for it when every member does (§3.4).
+  if (revoked > 0 && revoked === read.value.length)
+    return { state: "unread", waitingFor: "access-grant" };
+  if (revoked > 0) pending = true;
   const asOf = stampOf(query.stamp);
   return {
     state: "known",
