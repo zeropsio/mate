@@ -60,14 +60,18 @@ export function useZeropsGiteaOverview(input: {
 
   useEffect(() => {
     if (key === "" || giteaOrigin === undefined) return;
-    const client = giteaClientFor(giteaOrigin);
+    // A read whose 401 no token recovered answers nothing, not an empty account (DESIGN §4.6).
+    let unauthorized = false;
+    const client = giteaClientFor(giteaOrigin, () => {
+      unauthorized = true;
+    });
     if (client === null) return;
     const controller = new AbortController();
     void Promise.all([
       client.listUserRepositories().catch(() => []),
       client.searchPullRequests().catch(() => []),
     ]).then(([repositories, pulls]) => {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || unauthorized) return;
       setAnswer({ key, answer: { repositories, pulls } });
     });
     return () => {
