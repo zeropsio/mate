@@ -723,6 +723,10 @@ const projectResult = (
     return machine;
   }
   const held = phase.evidence;
+  // §4.0: a read that started before the admitted round is superseded by it; joined to that
+  // round, its evidence would be stamped later than itself (G2). Ordered on the monotonic clock,
+  // so a wall clock set back within the tolerance cannot make every fresh read look stale.
+  if (attempt.startedAt.mono < held.account.startedAt.mono) return machine;
   const closed = held.closedProjects.get(id);
   if (attempt.kind === "confirm") {
     if (closed === undefined || closed.confirmation.status !== "due") return machine;
@@ -739,12 +743,12 @@ const projectResult = (
       });
       return withEvidence(machine, { ...held, closedProjects });
     }
-  } else if (closed !== undefined) {
+  } else if (!held.unverified.has(id)) {
+    // Only a project the admitted evidence still holds as unverified takes a read's answer.
     return machine;
   }
   if (outcome.kind === "failed") {
-    const entry = held.unverified.get(id);
-    if (entry === undefined) return machine;
+    const entry = held.unverified.get(id)!;
     const unverified = new Map(held.unverified);
     unverified.set(id, {
       ...entry,
@@ -850,6 +854,8 @@ const apply = (
       const round = grantRoundInFlight(machine);
       if (round === null || round.id !== event.round) return machine;
       const id = event.project.projectId;
+      // A denial recorded while this round ran is newer than the round's own read (G6).
+      if (round.outcomes.get(id)?.outcome.kind === "denied") return machine;
       const answered: GrantRound = {
         ...round,
         outcomes: new Map(round.outcomes).set(id, { outcome: event.outcome, at: ctx.now }),

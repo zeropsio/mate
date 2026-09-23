@@ -487,6 +487,35 @@ describe("access grant reducer", () => {
     expect(sim.write(A).allowed).toBe(false);
   });
 
+  it.each([
+    ["a 200", verified(A)],
+    ["a 5xx", failed],
+  ] as const)(
+    "keeps a denial seen mid-first-round over that round's own later answer of %s (G6)",
+    (_label, answer) => {
+      const sim = new GrantSim();
+      sim.send({ type: "START" });
+      const round = sim.round();
+      sim.elapse(SECOND);
+      sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
+      sim.elapse(SECOND);
+      sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
+      sim.elapse(SECOND);
+      const before = sim.effects.length;
+      sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: answer });
+      sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+      expect(sim.state.phase.phase).toBe("granted");
+      expect(sim.write(A)).toEqual({ allowed: false, reason: "project-closed", waitable: false });
+      expect(sim.write(B)).toEqual({ allowed: true });
+      expect(sim.effectsSince(before)).toContainEqual({
+        kind: "withhold",
+        scope: { kind: "project", project: A },
+        reason: "access-denied",
+        cause: null,
+      });
+    },
+  );
+
   it("keeps the account granted when one project's read 5xx's, and that project's writes lapse at its own deadline (C2b, T-L19)", () => {
     const sim = grantedSim();
     const failingB: Responder = (run) => {
@@ -777,6 +806,55 @@ describe("access grant reducer", () => {
     expect(sim.write(B)).toEqual({ allowed: true });
   });
 
+  it.each([
+    ["the round no longer lists it", [[A, verified(A)]], "project-unverified", true],
+    [
+      "the round read a lowered role",
+      [
+        [A, verified(A)],
+        [B, verified(B, false)],
+      ],
+      "role-denies",
+      false,
+    ],
+  ] as const)(
+    "drops a project read that started before the round it would join: %s (G2, G12, §4.0)",
+    (_label, renewal, reason, waitable) => {
+      const sim = new GrantSim();
+      sim.send({ type: "START" });
+      sim.elapse(2 * SECOND);
+      sim.answerRound([
+        [A, verified(A)],
+        [B, failed],
+      ]);
+      sim.elapse(11 * MINUTE + 38 * SECOND);
+      sim.send({ type: "USER_RETRY" });
+      const stale = sim.lastRun("verify-project");
+      expect(stale.op).toEqual({ kind: "verify-project", project: B });
+      sim.elapse(20 * SECOND);
+      sim.send({ type: "TICK" });
+      const renewalStart = grantRoundInFlight(sim.state)!.startedAt;
+      sim.answerRound(renewal);
+      expect(sim.state.phase.phase).toBe("granted");
+      sim.elapse(2 * SECOND);
+      const before = sim.effects.length;
+      sim.send({
+        type: "PROJECT_RESULT",
+        attempt: stale.attempt,
+        project: B,
+        outcome: verified(B),
+      });
+      expect(sim.write(B)).toEqual({ allowed: false, reason, waitable });
+      expect(sim.effectsSince(before)).not.toContainEqual({
+        kind: "restore-authority",
+        scope: { kind: "project", project: B },
+      });
+      const evidence = sim.state.phase.phase === "granted" ? sim.state.phase.evidence : null;
+      const own = evidence?.projects.get(B.projectId);
+      if (own !== undefined) expect(own.startedAt).toEqual(renewalStart);
+    },
+  );
+
   it("drops every result after the epoch closes", () => {
     const sim = new GrantSim();
     sim.send({ type: "START" });
@@ -849,6 +927,11 @@ describe("access grant invariants over enumerated event sequences", () => {
           now,
           event: { type: "ROUND_ACCOUNT", round: round.id, organizations, projects: [A, B] },
         },
+        // A project the platform no longer lists: a proper subset of what the grant carries.
+        {
+          now,
+          event: { type: "ROUND_ACCOUNT", round: round.id, organizations, projects: [A] },
+        },
         {
           now,
           event: { type: "ROUND_FAILED", round: round.id, failure: { kind: "offline" } },
@@ -865,6 +948,19 @@ describe("access grant invariants over enumerated event sequences", () => {
           });
         }
       }
+      // The round's own read of a project another GET already found denied answers late.
+      for (const target of round.targets) {
+        if (round.outcomes.get(target.projectId)?.outcome.kind !== "denied") continue;
+        steps.push({
+          now,
+          event: {
+            type: "ROUND_PROJECT",
+            round: round.id,
+            project: target,
+            outcome: verified(target),
+          },
+        });
+      }
     }
     const attempt = [...state.projectAttempts.values()][0];
     if (attempt !== undefined) {
@@ -880,7 +976,7 @@ describe("access grant invariants over enumerated event sequences", () => {
         });
       }
     }
-    if (evidenceOf(state) !== null) {
+    if (evidenceOf(state) !== null || round !== null) {
       steps.push({
         now,
         event: { type: "PROJECT_DENIED", project: A, evidence: "direct-not-found" },
@@ -889,13 +985,86 @@ describe("access grant invariants over enumerated event sequences", () => {
     return steps;
   };
 
+  /**
+   * Every denial still in force: closed projects, and denials the round in flight recorded for a
+   * project without positive evidence (a confirming 200 lifts one while the round runs on).
+   */
+  const denialsOf = (state: GrantMachine): ReadonlyMap<string, Instant> => {
+    const evidence = evidenceOf(state);
+    const denials = new Map<string, Instant>();
+    for (const [id, entry] of evidence?.closedProjects ?? []) denials.set(id, entry.deniedAt);
+    for (const [id, answer] of grantRoundInFlight(state)?.outcomes ?? []) {
+      if (answer.outcome.kind !== "denied" || denials.has(id)) continue;
+      if (evidence?.projects.has(id) !== true) denials.set(id, answer.at);
+    }
+    return denials;
+  };
+
+  /** Hundreds of thousands of steps: a plain throw keeps the hot loop off `expect`'s cost. */
+  const invariant = (holds: boolean, label: string): void => {
+    if (!holds) throw new Error(`invariant broken: ${label}`);
+  };
+
   const check = (
     previous: GrantMachine,
+    event: GrantEvent,
     state: GrantMachine,
     effects: ReadonlyArray<GrantEffect>,
     now: Instant,
   ): void => {
     const evidence = evidenceOf(state);
+    const before = evidenceOf(previous);
+    const admitted = effects.some(
+      (effect) => effect.kind === "observe" && effect.observation.kind === "access-verified",
+    );
+    const read =
+      event.type === "PROJECT_RESULT"
+        ? previous.projectAttempts.get(event.project.projectId)
+        : undefined;
+    const answeredRead =
+      event.type === "PROJECT_RESULT" && read?.attempt === event.attempt ? read : undefined;
+
+    // G2 — evidence a project read adds is never stamped later than that read started.
+    if (answeredRead !== undefined && !admitted) {
+      const id = answeredRead.project.projectId;
+      const own = evidence?.projects.get(id);
+      if (own !== undefined && own !== before?.projects.get(id)) {
+        invariant(own.startedAt.mono <= answeredRead.startedAt.mono, "G2 read stamp");
+      }
+    }
+
+    // G12 — only an admitted round lists a project; one missing from the held evidence stays out.
+    if (before !== null && !admitted) {
+      for (const project of PROJECTS) {
+        const id = project.projectId;
+        const held =
+          before.projects.has(id) || before.unverified.has(id) || before.closedProjects.has(id);
+        invariant(held || evidence?.projects.has(id) !== true, "G12 unlisted project");
+      }
+    }
+
+    // G6 — a denial is lifted only by a confirming read or a round that started after it; one
+    // only a round held may end with that round, never while it runs.
+    const denials = denialsOf(state);
+    const roundBefore = grantRoundInFlight(previous);
+    const roundAfter = grantRoundInFlight(state);
+    for (const [id, deniedAt] of denialsOf(previous)) {
+      if (denials.has(id)) continue;
+      const confirmedLater =
+        answeredRead?.kind === "confirm" &&
+        answeredRead.project.projectId === id &&
+        answeredRead.startedAt.mono >= deniedAt.mono;
+      if (confirmedLater) continue;
+      const own = evidence?.projects.get(ZeropsProjectId.make(id));
+      if (own !== undefined) {
+        invariant(own.startedAt.mono >= deniedAt.mono, "G6 denial lifted by an older read");
+      } else {
+        invariant(
+          roundAfter === null || roundAfter.id !== roundBefore?.id,
+          "G6 denial lost inside its round",
+        );
+      }
+    }
 
     // I3 — asked at this instant and at later ones no event has reached yet.
     for (const probe of [
@@ -906,12 +1075,15 @@ describe("access grant invariants over enumerated event sequences", () => {
     ]) {
       for (const project of PROJECTS) {
         if (!grantPlatformWrite(state, project.projectId, { now: probe, policy }).allowed) continue;
-        expect(state.phase.phase).toBe("granted");
-        expect(expiredAt(evidence!.account.startedAt, probe)).toBe(false);
-        const own = evidence!.projects.get(project.projectId);
-        expect(own).toBeDefined();
-        expect(expiredAt(own!.startedAt, probe)).toBe(false);
-        expect(evidence!.closedProjects.has(project.projectId)).toBe(false);
+        const own = evidence?.projects.get(project.projectId);
+        invariant(
+          state.phase.phase === "granted" &&
+            !expiredAt(evidence!.account.startedAt, probe) &&
+            own !== undefined &&
+            !expiredAt(own.startedAt, probe) &&
+            !evidence!.closedProjects.has(project.projectId),
+          "I3 write without fresh evidence",
+        );
       }
     }
 
@@ -919,63 +1091,68 @@ describe("access grant invariants over enumerated event sequences", () => {
     const roundRuns = effects.filter(
       (effect) => effect.kind === "run" && effect.op.kind === "verify-round",
     );
-    expect(roundRuns.length).toBeLessThanOrEqual(1);
+    invariant(roundRuns.length <= 1, "I4 one round");
     if (roundRuns[0]?.kind === "run") {
-      expect(grantRoundInFlight(state)?.id).toBe(roundRuns[0].attempt);
+      invariant(roundAfter?.id === roundRuns[0].attempt, "I4 the started round is in flight");
     }
-    const admitted = effects.some(
-      (effect) => effect.kind === "observe" && effect.observation.kind === "access-verified",
-    );
     if (admitted) {
-      expect(state.phase.phase).toBe("granted");
-      expect(expiredAt(evidence!.account.startedAt, now)).toBe(false);
+      invariant(
+        state.phase.phase === "granted" && !expiredAt(evidence!.account.startedAt, now),
+        "I4 admitted evidence is fresh",
+      );
     }
 
     // I11 — authority is restored only to scopes positively present in admitted, fresh evidence.
     for (const effect of effects) {
       if (effect.kind !== "restore-authority") continue;
-      expect(state.phase.phase).toBe("granted");
-      expect(expiredAt(evidence!.account.startedAt, now)).toBe(false);
+      invariant(
+        state.phase.phase === "granted" && !expiredAt(evidence!.account.startedAt, now),
+        "I11 account restored under fresh evidence",
+      );
       if (effect.scope.kind === "project") {
         const id = effect.scope.project.projectId;
         const own = evidence!.projects.get(id);
-        expect(own).toBeDefined();
-        expect(expiredAt(own!.startedAt, now)).toBe(false);
-        expect(evidence!.closedProjects.has(id)).toBe(false);
+        invariant(
+          own !== undefined && !expiredAt(own.startedAt, now) && !evidence!.closedProjects.has(id),
+          "I11 project restored under fresh evidence",
+        );
       }
     }
     // G6 — a confirming read starts at least the confirmation delay after its denial.
     for (const effect of effects) {
       if (effect.kind !== "run" || effect.op.kind !== "confirm-denial") continue;
       const closed = evidence!.closedProjects.get(effect.op.project.projectId)!;
-      expect(
+      invariant(
         now.mono - closed.deniedAt.mono >= policy.denialConfirmationDelayMs ||
           now.wall - closed.deniedAt.wall >= policy.denialConfirmationDelayMs,
-      ).toBe(true);
+        "G6 confirmation delay",
+      );
     }
 
     // What the runtime was last told agrees with what a reader is allowed now.
     for (const [id, entry] of state.published.projects) {
-      expect(entry.authority.kind === "authorized").toBe(
-        grantPlatformRead(state, id, { now, policy }).allowed,
+      invariant(
+        (entry.authority.kind === "authorized") ===
+          grantPlatformRead(state, id, { now, policy }).allowed,
+        "G12 published authority matches platformRead",
       );
     }
 
     // I6 (the grant's half) and I7 — every non-terminal state has an exit.
     const timerAhead =
       state.timer !== null && state.timer.mono > now.mono && state.timer.wall > now.wall;
-    expect(state.timer === null || timerAhead).toBe(true);
+    invariant(state.timer === null || timerAhead, "I6 timer ahead");
     const online = state.signals.online;
     switch (state.phase.phase) {
       case "unverified":
-        expect(previous.phase.phase).toBe("unverified");
+        invariant(previous.phase.phase === "unverified", "I7 unverified only before START");
         break;
       case "verifying":
       case "granted":
-        expect(timerAhead).toBe(true);
+        invariant(timerAhead, `I7 ${state.phase.phase} has a timer`);
         break;
       case "unverified-failed":
-        expect(timerAhead || !online).toBe(true);
+        invariant(timerAhead || !online, "I7 unverified-failed retries");
         break;
       case "lapsed": {
         const renewal = state.phase.renewal;
@@ -985,7 +1162,7 @@ describe("access grant invariants over enumerated event sequences", () => {
             : renewal.status === "dormant" ||
               !online ||
               (renewal.status === "backoff" && timerAhead);
-        expect(exit).toBe(true);
+        invariant(exit, "I7 lapsed has an exit");
         break;
       }
       case "closed":
@@ -993,12 +1170,24 @@ describe("access grant invariants over enumerated event sequences", () => {
     }
   };
 
-  it("holds I3, I4, I6 and I11 after every step of every sequence to depth 6", () => {
+  it("holds I3, I4, I6, I11, G2, G6 and G12 after every step of every sequence to depth 6", () => {
     const roots: Array<{ state: GrantMachine; now: Instant }> = [
       { state: initialGrant({ hidden: false, online: true }, T0), now: T0 },
     ];
     const granted = grantedSim();
     roots.push({ state: granted.state, now: granted.now });
+    // B's read failed in the admitted round, and its per-project retry is in flight.
+    const retrying = new GrantSim();
+    retrying.send({ type: "START" });
+    retrying.elapse(2 * SECOND);
+    retrying.answerRound([
+      [A, verified(A)],
+      [B, failed],
+    ]);
+    retrying.elapse(policy.projectRetryMs[0]!);
+    retrying.send({ type: "TICK" });
+    expect(retrying.state.projectAttempts.has(B.projectId)).toBe(true);
+    roots.push({ state: retrying.state, now: retrying.now });
     const visited = new Set<string>();
     let frontier = roots;
     let explored = 0;
@@ -1008,7 +1197,7 @@ describe("access grant invariants over enumerated event sequences", () => {
         for (const step of stepsFrom(node.state, node.now)) {
           const result = transitionGrant(node.state, step.event, { now: step.now, policy });
           explored++;
-          check(node.state, result.state, result.effects, step.now);
+          check(node.state, step.event, result.state, result.effects, step.now);
           const key = nodeKey(result.state, step.now);
           if (visited.has(key)) continue;
           visited.add(key);
@@ -1018,5 +1207,6 @@ describe("access grant invariants over enumerated event sequences", () => {
       frontier = next;
     }
     expect(explored).toBeGreaterThan(10_000);
-  });
+    // Exhaustive by design: the root config's 60 s, also when the package runs its own tests.
+  }, 60_000);
 });
