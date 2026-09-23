@@ -435,7 +435,8 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
   const context: StopContext = {
     ...stopBuilds,
     names: namedBy(reads.names, stopBuilds.builds),
-    source,
+    // A service's deployment stands on both listings: its builds are the processes'.
+    source: worstSource([...read.observation.required, ...reads.processes.observation.required]),
     nowMs,
   };
   const listed = read.value.map((knowledge) => listedService(knowledge, context));

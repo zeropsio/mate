@@ -454,6 +454,23 @@ describe("stopServices", () => {
       expected: [["app", "unread"]],
     },
     {
+      name: "a process read that failed fails the none it could not prove",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead([], {
+        coverage: { kind: "none" },
+        project: PROJECT,
+        interest: {
+          status: "failed",
+          identity: identity(),
+          reason: "read refused",
+          retryable: true,
+          attempts: 2,
+          retryAtMs: NOW + 4_000,
+        },
+      }),
+      expected: [["app", "failed"]],
+    },
+    {
       name: "a process not yet read may be a build",
       read: listed([record("s1", "app", deployed(null))]),
       processes: processesRead(["unresolved"], { project: PROJECT }),
