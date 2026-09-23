@@ -255,18 +255,6 @@ describe("the account's Gitea sessions", () => {
     expect(w.view().signedIn).toBe(true);
   });
 
-  it("a user retry asks a refusal again at once", async () => {
-    const w = world();
-    w.broker.answer("not-a-member");
-    w.demand();
-    await w.time.advance(0);
-
-    w.broker.answer("answering");
-    w.sessions.retry(HARNESS_GITEA_ORIGIN);
-    await w.time.advance(0);
-    expect(w.view().signedIn).toBe(true);
-  });
-
   it("a mint that waited out a closed account window asks again soon and says nothing", async () => {
     const w = world();
     w.throwaways.refuseMints(
@@ -455,7 +443,7 @@ describe("the account's Gitea sessions", () => {
       });
 
       brokerDown = false;
-      w.sessions.retry(HARNESS_GITEA_ORIGIN);
+      w.sessions.online();
       await w.time.advance(0);
       // The token is back: a surface that kept what it read reads again.
       expect(w.views.at(-1)).toEqual({

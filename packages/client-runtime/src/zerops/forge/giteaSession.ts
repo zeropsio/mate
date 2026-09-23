@@ -93,8 +93,6 @@ export interface GiteaSessions {
   /** The tab is visible again after a short hide: what came due while it was hidden runs now. */
   readonly resume: () => void;
   readonly online: () => void;
-  /** The person's "Try now". */
-  readonly retry: (giteaOrigin: string) => void;
   /** The account closed: everything is forgotten and nothing runs again. */
   readonly close: () => void;
 }
@@ -392,7 +390,6 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
     wake: () => toEvery({ type: "WAKE" }),
     resume: () => toEvery({ type: "TICK" }),
     online: () => toEvery({ type: "ONLINE" }),
-    retry: (giteaOrigin) => dispatch(normalize(giteaOrigin), { type: "USER_RETRY" }),
     close: () => {
       if (closing.signal.aborted) return;
       // Each machine forgets its token, disarms its timer and releases its waiting requests.

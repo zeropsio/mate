@@ -152,7 +152,6 @@ export type GiteaSessionEvent =
   /** §6.4's visible wake. */
   | { readonly type: "WAKE" }
   | { readonly type: "ONLINE" }
-  | { readonly type: "USER_RETRY" }
   /** The account epoch closed. */
   | { readonly type: "CLOSE" };
 
@@ -395,14 +394,12 @@ function apply(
       };
     }
     case "WAKE":
-    case "ONLINE":
-    case "USER_RETRY": {
+    case "ONLINE": {
       if (!machine.demanded) return machine;
+      // A refusal is not a network matter: it is asked again on its own clock.
       if (phase.kind === "pending" || phase.kind === "unavailable" || phase.kind === "waiting") {
         return retry({ ...machine, rung: 0 }, out);
       }
-      // A refusal is not a network matter: only the person asks it again early.
-      if (phase.kind === "refused" && event.type === "USER_RETRY") return retry(machine, out);
       return machine;
     }
     case "TICK":

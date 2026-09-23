@@ -241,7 +241,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       expect(runs(play([[TICK, 2 * S]], run.machine).last)).toEqual(["acquire"]);
     });
 
-    it("a visible wake, online or a user retry resets the ladder and tries now", () => {
+    it("a visible wake or online resets the ladder and tries now", () => {
       const down = play([
         [DEMAND, 0],
         [failed(1, BROKER_DOWN), 0],
@@ -251,7 +251,6 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       for (const event of [
         { type: "WAKE" },
         { type: "ONLINE" },
-        { type: "USER_RETRY" },
       ] as ReadonlyArray<GiteaSessionEvent>) {
         const woken = play([[event, 11 * S]], down.machine);
         expect(runs(woken.last)).toEqual(["liveness"]);
@@ -291,23 +290,15 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       expect(runs(play([[{ type: "WAKE" }, 7 * MIN]], hidden.machine).last)).toEqual(["acquire"]);
     });
 
-    it("a wake before the 5 minutes asks nothing; a user retry asks at once", () => {
+    it("a wake or online before the 5 minutes asks nothing", () => {
       expect(runs(play([[{ type: "WAKE" }, 1 * MIN]], refused.machine).last)).toEqual([]);
       expect(runs(play([[{ type: "ONLINE" }, 1 * MIN]], refused.machine).last)).toEqual([]);
-      expect(runs(play([[{ type: "USER_RETRY" }, 1 * MIN]], refused.machine).last)).toEqual([
-        "acquire",
-      ]);
     });
 
     it("keeps saying the refusal while it is asked again, until the answer lands", () => {
-      for (const [event, atMs] of [
-        [TICK, 5 * MIN],
-        [{ type: "USER_RETRY" }, 1 * MIN],
-      ] as ReadonlyArray<Step>) {
-        const asking = play([[event, atMs]], refused.machine);
-        expect(asking.machine.phase.kind).toBe("acquiring");
-        expect(giteaSessionView(asking.machine).trouble).toBe(NOT_A_MEMBER.reason);
-      }
+      const asking = play([[TICK, 5 * MIN]], refused.machine);
+      expect(asking.machine.phase.kind).toBe("acquiring");
+      expect(giteaSessionView(asking.machine).trouble).toBe(NOT_A_MEMBER.reason);
     });
 
     it("stays at or under 12 asks an hour", () => {
