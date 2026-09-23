@@ -60,7 +60,10 @@ import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers"
 import {
   beginBirth,
   birthEnabled,
+  birthWithoutContainer,
+  bornOnAccept,
   forgetBirth,
+  importedContainer,
   retryBirth,
   useZeropsBirths,
   type BirthsSnapshot,
@@ -1808,100 +1811,14 @@ function ZeropsProjectsContent() {
         return;
       }
 
-      setToolError(null);
-      setCreationNowMs(Date.now());
-      setCreation({
-        name,
-        tier: role === "stage" ? "stage" : role === "prod" ? "production" : "mate",
-        progress: plan.steps.map((step) => ({ step, state: "queued" })),
-      });
-      const outcome = await runEnvironmentCreation({
-        clientId: activeOrganization.id,
-        steps: plan.steps,
-        isCurrent,
-        platform: {
-          createProject: ({ clientId: _clientId, ...input }) =>
-            runZeropsCommand(
-              runtime.commands.createProject({
-                organization: organizationRef(activeOrganization.id),
-                ...input,
-              }),
-            ),
-          // A read, not a write: the platform's verdict on the project the
-          // command above made, waited on by the executor.
-          readProjectCreation: (input) =>
-            client.readProjectCreation(input, unmountRef.current?.signal),
-          importDevelopmentContainer: ({ projectId, ...input }) =>
-            runZeropsCommand(
-              runtime.commands.importDevelopmentContainer({
-                project: projectRef(activeOrganization.id, projectId),
-                ...input,
-              }),
-            ),
-          importServices: (projectId, yaml) =>
-            runZeropsCommand(
-              runtime.commands.importServices(projectRef(activeOrganization.id, projectId), yaml),
-            ),
-          listIntegrationTokenGrants: async ({ clientId: _clientId }) =>
-            integrationTokensFromGrantMetadata(
-              await runZeropsCommand(
-                runtime.commands.listIntegrationTokenGrants(organizationRef(activeOrganization.id)),
-              ),
-            ),
-          setIntegrationTokenProjects: ({ clientId: _clientId, ...input }) =>
-            runZeropsCommand(
-              runtime.commands.setIntegrationTokenProjects({
-                organization: organizationRef(activeOrganization.id),
-                ...input,
-              }),
-            ),
-          listTokenDelegations: ({ clientId: _clientId, ...input }) =>
-            runZeropsCommand(
-              runtime.commands.listTokenDelegations({
-                organization: organizationRef(activeOrganization.id),
-                ...input,
-              }),
-            ),
-          deleteTokenDelegation: ({ clientId: _clientId, ...input }) =>
-            runZeropsCommand(
-              runtime.commands.deleteTokenDelegation({
-                organization: organizationRef(activeOrganization.id),
-                ...input,
-              }),
-            ),
-          importProject: ({ clientId: _clientId, yaml }) =>
-            runZeropsCommand(
-              runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),
-            ),
-          readObservedServices: async (projectId) => {
-            const outcome = inventoryRef.current.services.get(projectId);
-            return outcome?.status === "resolved"
-              ? outcome.services.map((service) => ({
-                  name: service.name,
-                  status: service.status,
-                }))
-              : [];
-          },
-        },
-        describeError: zeropsErrorMessage,
-        sleep: (ms) =>
-          new Promise<void>((resolve) => {
-            setTimeout(resolve, ms);
-          }),
-        onProgress: (progress) => {
-          if (!isCurrent()) return;
-          setCreation((current) => (current === null ? current : { ...current, progress }));
-        },
-      });
-
-      if (!isCurrent()) return;
-
-      // The project exists: from here on it is a birth (`zeropsBirths.ts`,
-      // DESIGN §4.5), which the account's worker finishes whatever this page
-      // does next. It carries what this environment is for, said once where
-      // the Mate that has to do it will read it (`creationHandoff.ts`) — a
-      // Mate whose creation failed a step later still opens on its own job
-      // (Fen, 2026-09-17) — and the group writes this person makes:
+      // The project is a birth from the moment the platform accepts it
+      // (`zeropsBirths.ts`, DESIGN §4.5), which the account's worker finishes
+      // whatever this page does next — a reload or a closed tab during the
+      // steps below included. It carries what this environment is for, said
+      // once where the Mate that has to do it will read it
+      // (`creationHandoff.ts`) — a Mate whose creation failed a step later
+      // still opens on its own job (Fen, 2026-09-17) — and the group writes
+      // this person makes:
       //
       // - A Mate an owner or an admin makes is registered as soon as its
       //   project exists, the way *New project* registers the first — a
@@ -1912,17 +1829,16 @@ function ZeropsProjectsContent() {
       // - A stage or a production is a **group environment**: it goes in the
       //   registry, the broker's token has to reach it, and its sources are
       //   declared on the group repo before the broker deploys anything
-      //   (guide 5.2) — once its creation went through.
-      if (outcome.projectId !== undefined) {
-        const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
-        const registers =
-          tier === null ? role === "dev" && canWriteRegistry(activeOrganization) : outcome.ok;
-        if (tier !== null && registers && giteaProjectId === undefined) {
-          setToolError("Your account's Gitea is still being set up.");
-        }
+      //   (guide 5.2).
+      const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
+      const registers = tier !== null || canWriteRegistry(activeOrganization);
+      const withAgent = plan.steps.some((step) => step.kind === "import-container");
+      const organizationId = activeOrganization.id;
+      const accepted = (projectId: string) => {
+        if (!isCurrent()) return;
         beginBirth({
-          projectId: outcome.projectId,
-          organizationId: activeOrganization.id,
+          projectId,
+          organizationId,
           registration:
             registers && giteaProjectId !== undefined
               ? {
@@ -1933,9 +1849,7 @@ function ZeropsProjectsContent() {
                   displayName: name,
                 }
               : null,
-          container: outcome.ok
-            ? outcome.awaitingAgent
-            : plan.steps.some((step) => step.kind === "await-ready" && step.withAgent),
+          container: withAgent,
           handoff: {
             environmentName: name,
             groupName: group.name,
@@ -1949,6 +1863,108 @@ function ZeropsProjectsContent() {
                 : { kind: "none" },
           },
         });
+      };
+
+      setToolError(
+        tier !== null && giteaProjectId === undefined
+          ? "Your account's Gitea is still being set up."
+          : null,
+      );
+      setCreationNowMs(Date.now());
+      setCreation({
+        name,
+        tier: tier ?? "mate",
+        progress: plan.steps.map((step) => ({ step, state: "queued" })),
+      });
+      const outcome = await runEnvironmentCreation({
+        clientId: activeOrganization.id,
+        steps: plan.steps,
+        isCurrent,
+        platform: bornOnAccept(
+          {
+            createProject: ({ clientId: _clientId, ...input }) =>
+              runZeropsCommand(
+                runtime.commands.createProject({
+                  organization: organizationRef(activeOrganization.id),
+                  ...input,
+                }),
+              ),
+            // A read, not a write: the platform's verdict on the project the
+            // command above made, waited on by the executor.
+            readProjectCreation: (input) =>
+              client.readProjectCreation(input, unmountRef.current?.signal),
+            importDevelopmentContainer: ({ projectId, ...input }) =>
+              runZeropsCommand(
+                runtime.commands.importDevelopmentContainer({
+                  project: projectRef(activeOrganization.id, projectId),
+                  ...input,
+                }),
+              ),
+            importServices: (projectId, yaml) =>
+              runZeropsCommand(
+                runtime.commands.importServices(projectRef(activeOrganization.id, projectId), yaml),
+              ),
+            listIntegrationTokenGrants: async ({ clientId: _clientId }) =>
+              integrationTokensFromGrantMetadata(
+                await runZeropsCommand(
+                  runtime.commands.listIntegrationTokenGrants(
+                    organizationRef(activeOrganization.id),
+                  ),
+                ),
+              ),
+            setIntegrationTokenProjects: ({ clientId: _clientId, ...input }) =>
+              runZeropsCommand(
+                runtime.commands.setIntegrationTokenProjects({
+                  organization: organizationRef(activeOrganization.id),
+                  ...input,
+                }),
+              ),
+            listTokenDelegations: ({ clientId: _clientId, ...input }) =>
+              runZeropsCommand(
+                runtime.commands.listTokenDelegations({
+                  organization: organizationRef(activeOrganization.id),
+                  ...input,
+                }),
+              ),
+            deleteTokenDelegation: ({ clientId: _clientId, ...input }) =>
+              runZeropsCommand(
+                runtime.commands.deleteTokenDelegation({
+                  organization: organizationRef(activeOrganization.id),
+                  ...input,
+                }),
+              ),
+            importProject: ({ clientId: _clientId, yaml }) =>
+              runZeropsCommand(
+                runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),
+              ),
+            readObservedServices: async (projectId) => {
+              const outcome = inventoryRef.current.services.get(projectId);
+              return outcome?.status === "resolved"
+                ? outcome.services.map((service) => ({
+                    name: service.name,
+                    status: service.status,
+                  }))
+                : [];
+            },
+          },
+          accepted,
+        ),
+        describeError: zeropsErrorMessage,
+        sleep: (ms) =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, ms);
+          }),
+        onProgress: (progress) => {
+          if (!isCurrent()) return;
+          setCreation((current) => (current === null ? current : { ...current, progress }));
+        },
+      });
+
+      if (!isCurrent()) return;
+
+      // A container import that never went through leaves the birth nothing to bring up.
+      if (outcome.projectId !== undefined && withAgent && !importedContainer(plan.steps, outcome)) {
+        birthWithoutContainer(outcome.projectId);
       }
 
       if (!outcome.ok) {

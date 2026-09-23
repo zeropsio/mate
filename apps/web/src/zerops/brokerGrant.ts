@@ -125,8 +125,9 @@ export async function registerMateProject(input: {
 
 /**
  * Registers a Mate in its group and says what is outstanding, if anything: the
- * one path *Add Mate* takes at birth for an owner or an admin, and the card's
- * *Register in {group}* takes for a member's Mate (guide 4.2).
+ * card's *Register in {group}* for a member's Mate (guide 4.2). A Mate's birth
+ * makes the same two writes as its `tags` and `registry` steps
+ * (`zeropsBirths.ts`).
  *
  * `null` once the entry is written and the broker reaches the project, or when
  * the account has no broker to reach it with; the words to show otherwise. A

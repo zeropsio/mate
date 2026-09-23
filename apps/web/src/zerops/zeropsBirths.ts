@@ -11,7 +11,11 @@
  */
 import {
   planGroupMembership,
+  projectCreationOutcome,
   ZeropsApiError,
+  type EnvironmentCreationOutcome,
+  type EnvironmentCreationPlatform,
+  type EnvironmentCreationStep,
   type ZeropsApiClient,
   type ZeropsCreationHandoff,
 } from "@t3tools/client-runtime/zerops";
@@ -44,6 +48,7 @@ import { invalidateZerops } from "./accountInvalidations";
 import {
   accountLocalStorage,
   accountStorageKey,
+  captureAccountLifetime,
   currentAccountEpoch,
   currentAccountId,
   onAccountLifetimeClose,
@@ -104,6 +109,9 @@ export function birthStepFailure(cause: unknown): BirthStepOutcome {
 
 const DONE: BirthStepOutcome = { kind: "done" };
 
+/** A project the platform is still creating; one whose creation failed never leaves them. */
+const NEW_PROJECT_STATUSES: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
+
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
 
 /** What the ports act through: the newest the account tree committed. */
@@ -139,16 +147,40 @@ function runningOn(activity: ProjectActivityRead, serviceId: string | null): boo
 }
 
 /**
- * The worker's ports over the account tree's inputs. The activity feed of a birth's project is
- * demanded from the first read of it until the birth ends (`release`).
+ * The tab's one client, for as long as the account the births belong to is the one signed in: the
+ * client outlives an account, and a step already running when the person signs out must not carry
+ * on under the next person's token.
  */
-export function webBirthPorts(read: () => BirthInputs | null): Omit<
-  BirthWorkerPorts,
-  "store" | "clock" | "locks" | "outstanding"
-> & {
+function accountBound(client: ZeropsApiClient, isCurrent: () => boolean): ZeropsApiClient {
+  return new Proxy(client, {
+    get(target, key) {
+      const value: unknown = Reflect.get(target, key, target);
+      if (typeof value !== "function") return value;
+      return (...args: ReadonlyArray<unknown>): unknown => {
+        if (!isCurrent()) throw new Error("This account session has ended.");
+        return Reflect.apply(value, target, args);
+      };
+    },
+  });
+}
+
+/**
+ * The worker's ports over the account tree's inputs, for as long as `isCurrent` says the account
+ * they were made for is signed in. The activity feed of a birth's project is demanded from the
+ * first read of it until the birth ends (`release`).
+ */
+export function webBirthPorts(
+  bound: () => BirthInputs | null,
+  isCurrent: () => boolean,
+): Omit<BirthWorkerPorts, "store" | "clock" | "locks" | "outstanding"> & {
   readonly release: (projectId: string) => void;
 } {
   const leases = new Map<string, AbortController>();
+  const read = (): BirthInputs | null => {
+    const inputs = bound();
+    if (inputs === null || !isCurrent()) return null;
+    return { ...inputs, client: accountBound(inputs.client, isCurrent) };
+  };
   const refOf = (inputs: BirthInputs, birth: BirthRecord): ProjectRef =>
     inputs.projectRef(birth.organizationId, birth.projectId);
 
@@ -236,6 +268,14 @@ export function webBirthPorts(read: () => BirthInputs | null): Omit<
           inputs.client.fetchProject(birth.projectId),
           inputs.client.listProjectServices(birth.projectId),
         ]);
+        // A project whose creation the platform failed stays new for good (`candidates.ts`).
+        if (NEW_PROJECT_STATUSES.has(project.status)) {
+          const creation = await inputs.client.readProjectCreation({
+            clientId: birth.organizationId,
+            projectId: birth.projectId,
+          });
+          if (projectCreationOutcome(creation).kind === "failed") return "creation-failed";
+        }
         return { project, services };
       } catch (cause) {
         if (cause instanceof ZeropsApiError && cause.kind === "not-found") return "gone";
@@ -293,6 +333,41 @@ export function webBirthPorts(read: () => BirthInputs | null): Omit<
   };
 }
 
+// ── A creation's birth ───────────────────────────────────────────────────────────────────────
+
+/**
+ * A creation's platform that says when the project was accepted: the birth begins there, not
+ * after the creation's later steps — a reload or a closed tab during any of them leaves it behind.
+ */
+export function bornOnAccept(
+  platform: EnvironmentCreationPlatform,
+  accepted: (projectId: string) => void,
+): EnvironmentCreationPlatform {
+  return {
+    ...platform,
+    createProject: async (input) => {
+      const project = await platform.createProject(input);
+      accepted(project.id);
+      return project;
+    },
+    importProject: async (input) => {
+      const imported = await platform.importProject(input);
+      accepted(imported.projectId);
+      return imported;
+    },
+  };
+}
+
+/** Whether a creation's container import went through: one that stopped on it or before made none. */
+export function importedContainer(
+  steps: ReadonlyArray<EnvironmentCreationStep>,
+  outcome: EnvironmentCreationOutcome,
+): boolean {
+  const importAt = steps.findIndex((step) => step.kind === "import-container");
+  if (importAt === -1) return false;
+  return outcome.ok || steps.indexOf(outcome.failedStep) > importAt;
+}
+
 // ── One store and one worker per account epoch ───────────────────────────────────────────────
 
 /** The page's exclusive locks; a browser without them has one tab to itself. */
@@ -336,7 +411,7 @@ function host(): Hosted {
     storage: accountLocalStorage,
     now: () => systemExchangeClock.now().wall,
   });
-  const ports = webBirthPorts(() => live.inputs);
+  const ports = webBirthPorts(() => live.inputs, captureAccountLifetime());
   const worker = makeBirthWorker({
     ...ports,
     store,
@@ -401,6 +476,11 @@ export function beginBirth(input: BeginBirth): void {
   current.live.outstanding = null;
   for (const listener of current.listeners) listener();
   current.store.begin(input);
+}
+
+/** The creation's container import failed: the birth owes its group writes and nothing more. */
+export function birthWithoutContainer(projectId: string): void {
+  host().store.update(projectId, { container: false });
 }
 
 /** The connect named the environment: the birth is over, and its opening job waits there. */

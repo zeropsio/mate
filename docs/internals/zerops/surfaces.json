@@ -927,7 +927,7 @@
         },
         {
           "kind": "inline",
-          "value": "Provisioning panel pool-exhausted Create a project"
+          "value": "Zerops projects page after a registration that claimed no project"
         }
       ],
       "clients": {
