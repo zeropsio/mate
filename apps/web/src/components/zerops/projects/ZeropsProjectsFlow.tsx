@@ -69,8 +69,14 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly tools: ReadonlyArray<{ readonly item: T; readonly kind: ZeropsToolKind }>;
   readonly getKey: (item: T) => string;
   readonly isMate: (item: T) => boolean;
-  /** A Mate's card — a `ZeropsMateCard` with every verb it has. */
-  readonly renderMate: (item: T) => ReactNode;
+  /**
+   * A Mate — a `ZeropsMateCard` with every verb it has: a `card` of its own,
+   * or a `row` in a project card's Mates step, its Preview on its first line.
+   */
+  readonly renderMate: (
+    item: T,
+    options: { readonly layout: "card" | "row"; readonly preview: string | undefined },
+  ) => ReactNode;
   /** A Mate's face: `sm` beside its name in a row, `md` on a tile. */
   readonly renderMateFace: (item: T, size: "sm" | "md") => ReactNode;
   /**

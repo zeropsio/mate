@@ -293,7 +293,9 @@ function OverviewRow<T>({
           {entry.mates.length > 0 ? (
             <div className="grid gap-2 @2xl/flow:grid-cols-2" data-zerops-surface="mate-cards">
               {entry.mates.map((item) => (
-                <Fragment key={props.getKey(item)}>{props.renderMate(item)}</Fragment>
+                <Fragment key={props.getKey(item)}>
+                  {props.renderMate(item, { layout: "card", preview: undefined })}
+                </Fragment>
               ))}
             </div>
           ) : null}
@@ -471,7 +473,7 @@ export function OtherContainers<T>({
             {rows.map(({ item }) => (
               <Fragment key={props.getKey(item)}>
                 {props.isMate(item) ? (
-                  props.renderMate(item)
+                  props.renderMate(item, { layout: "card", preview: undefined })
                 ) : (
                   <ul>{props.renderEnvironment(item, undefined)}</ul>
                 )}

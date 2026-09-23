@@ -205,7 +205,12 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
   renderEnvironment: (value) => h("li", { "data-test-environment": value.project.id }),
   renderGroupMenu: (group) => h("span", { "data-test-menu": group.groupId }),
   renderGroupRows: () => null,
-  renderMate: (value) => h("div", { "data-test-mate": value.project.id }),
+  renderMate: (value, options) =>
+    h("div", {
+      "data-test-mate": value.project.id,
+      "data-test-layout": options.layout,
+      "data-test-preview": options.preview,
+    }),
   renderMateFace: (value, size) =>
     h("span", { "data-test-face": value.project.id, "data-test-size": size }),
   openMate: () => undefined,

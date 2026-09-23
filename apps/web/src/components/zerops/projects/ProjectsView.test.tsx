@@ -86,6 +86,26 @@ describe("the Projects card", () => {
     },
   );
 
+  it("draws each Mate as a row that carries its Preview on its first line", () => {
+    const withPreview = entry([WREN], {
+      mates: [
+        {
+          projectId: "wren-dev",
+          name: "Wren",
+          preview: "https://wren.example/",
+          waiting: false,
+          talked: true,
+        },
+      ],
+    });
+    const mates = step(card(withPreview), "mates");
+    expect(mates).toContain(
+      'data-test-mate="wren-dev" data-test-layout="row" data-test-preview="https://wren.example/"',
+    );
+    // The row draws it on its own line 1: never a second link under the Mate.
+    expect(mates).not.toContain('data-zerops-surface="mate-preview"');
+  });
+
   it("merges once: the step's verb, not a second Merge on the row it names", () => {
     expect(step(card(MERGING), "pull-requests")).toContain(
       'data-test-compact="true" data-test-pull="1" data-test-with-merge="false"',

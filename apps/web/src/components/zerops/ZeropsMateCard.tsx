@@ -23,6 +23,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
+import { PreviewLink } from "./projects/flowSteps";
 
 /** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". Blue acts. */
 /** A verb that is about something with a state wears that state. */
@@ -138,7 +139,36 @@ export function ZeropsMateVerb({
 const CARD_SURFACE_CLASS =
   "relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-2.5 ps-3 pe-2";
 
+/**
+ * The row: the Mate as one entry of a list inside another surface (a project
+ * card's Mates step), so it has none of its own — no border, no card, no
+ * reserved height.
+ */
+const ROW_SURFACE_CLASS =
+  "relative -mx-1.5 flex w-full min-w-0 items-center gap-2.5 rounded-md px-1.5 py-1";
+
+const LAYOUT = {
+  card: {
+    surface: CARD_SURFACE_CLASS,
+    opens:
+      "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
+    hit: "after:rounded-[var(--zerops-card-radius)]",
+  },
+  row: {
+    surface: ROW_SURFACE_CLASS,
+    opens: "hover:bg-accent/60",
+    hit: "after:rounded-md",
+  },
+} as const;
+
 export interface ZeropsMateCardProps {
+  /**
+   * `card`, the default: the Mate's own surface. `row`: an entry in a list on
+   * another surface, its Preview on the name's line and no quoted last words.
+   */
+  readonly layout?: "card" | "row";
+  /** The Mate's running app, linked on the name's line — drawn in the row only. */
+  readonly preview?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
   readonly face: MateMarkState;
@@ -183,6 +213,8 @@ export interface ZeropsMateCardProps {
 }
 
 export function ZeropsMateCard({
+  layout = "card",
+  preview,
   name,
   tint,
   face,
@@ -200,10 +232,9 @@ export function ZeropsMateCard({
     <div
       aria-busy={busy || undefined}
       className={cn(
-        CARD_SURFACE_CLASS,
+        LAYOUT[layout].surface,
         "group/card transition-[border-color,background-color,transform] duration-150 motion-reduce:transition-none",
-        onSelect &&
-          "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
+        onSelect && LAYOUT[layout].opens,
         className,
       )}
       data-zerops-mate-card={onSelect ? "opens" : "still"}
@@ -213,7 +244,10 @@ export function ZeropsMateCard({
         <div className="flex min-w-0 items-center gap-2">
           {onSelect ? (
             <button
-              className="min-w-0 flex-1 truncate rounded-sm text-left text-sm leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:rounded-[var(--zerops-card-radius)] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring"
+              className={cn(
+                "min-w-0 flex-1 truncate rounded-sm text-left text-sm leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring",
+                LAYOUT[layout].hit,
+              )}
               data-zerops-surface="mate-open"
               onClick={onSelect}
               type="button"
@@ -233,6 +267,7 @@ export function ZeropsMateCard({
               {time}
             </span>
           )}
+          {layout === "row" && preview !== undefined ? <PreviewLink url={preview} /> : null}
         </div>
         {line === undefined || line === null ? null : (
           <div
@@ -242,7 +277,7 @@ export function ZeropsMateCard({
             {line}
           </div>
         )}
-        {snippet === undefined || snippet.length === 0 ? null : (
+        {layout === "row" || snippet === undefined || snippet.length === 0 ? null : (
           <div
             className="min-w-0 truncate text-xs leading-4 text-muted-foreground"
             data-zerops-surface="mate-snippet"

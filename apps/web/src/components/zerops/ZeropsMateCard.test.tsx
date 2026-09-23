@@ -93,6 +93,39 @@ describe("ZeropsMateCard", () => {
     expect(card({ busy: true })).toContain('aria-busy="true"');
     expect(card()).not.toContain("aria-busy");
   });
+
+  it("lies flat in a row: no surface, its Preview on the name's line, no quoted last words", () => {
+    const html = card({
+      layout: "row",
+      line: <span>Reviewing the migration</span>,
+      onSelect: () => {},
+      preview: "https://app.example/",
+      snippet: "Done — the column is nullable now",
+      time: "2h",
+    });
+    const open = html.slice(0, html.indexOf(">"));
+    expect(open).toContain('data-zerops-mate-card="opens"');
+    expect(open).not.toContain("bg-card");
+    expect(open).not.toContain("border-border/60");
+    expect(open).not.toContain("min-h-");
+    expect(open).toContain("hover:bg-accent/60");
+    expect(html).toContain('data-mate-face-size="md"');
+    // Line 1 is the name, its time, then the Preview; line 2 the line.
+    const name = html.indexOf(">Fen<");
+    const time = html.indexOf(">2h<");
+    const preview = html.indexOf('data-zerops-surface="mate-preview"');
+    const line = html.indexOf('data-zerops-surface="mate-line"');
+    expect(name).toBeLessThan(time);
+    expect(time).toBeLessThan(preview);
+    expect(preview).toBeLessThan(line);
+    expect(html).toContain('href="https://app.example/"');
+    expect(html).not.toContain("mate-snippet");
+  });
+
+  it("draws no Preview as a card, and none in a row without one", () => {
+    expect(card({ preview: "https://app.example/" })).not.toContain("mate-preview");
+    expect(card({ layout: "row" })).not.toContain("mate-preview");
+  });
 });
 
 describe("ZeropsMateVerb", () => {

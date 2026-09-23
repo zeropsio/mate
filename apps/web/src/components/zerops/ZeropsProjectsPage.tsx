@@ -2493,7 +2493,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     );
   };
 
-  const renderMate = (candidate: ZeropsCandidatePresentation): React.ReactNode => {
+  const renderMate = (
+    candidate: ZeropsCandidatePresentation,
+    { layout, preview }: { readonly layout: "card" | "row"; readonly preview: string | undefined },
+  ): React.ReactNode => {
     const role = roleOf.get(candidate.project.id);
     const withheld = withheldProjectNotice(inventory, candidate.project.id);
     if (withheld !== null) {
@@ -2501,8 +2504,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       return (
         <ZeropsMateCard
           face="idle"
+          layout={layout}
           line={withheld}
           name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+          preview={preview}
           tint={tints.get(candidate.project.id) ?? "slate"}
         />
       );
@@ -2564,10 +2569,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               action={startAction ?? removeAction}
               busy={busy}
               face={mateFace(candidate)}
+              layout={layout}
               line={renderMateLine(candidate, presentation, action, live, busy)}
               menu={renderEnvironmentMenu(candidate, tags, true, action, menuActions)}
               name={name}
               onSelect={select}
+              preview={preview}
               snippet={live?.subject === undefined ? undefined : live.snippet}
               time={live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)}
               tint={tint}
@@ -2581,10 +2588,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         action={startAction ?? removeAction}
         busy={busy}
         face={mateFace(candidate)}
+        layout={layout}
         line={renderMateLine(candidate, presentation, action, live, busy)}
         menu={renderEnvironmentMenu(candidate, tags, true, action, [])}
         name={name}
         onSelect={select}
+        preview={preview}
         tint={tint}
       />
     );

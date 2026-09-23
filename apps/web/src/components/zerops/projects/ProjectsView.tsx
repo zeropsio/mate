@@ -11,8 +11,8 @@ import {
   EmptyStep,
   GroupName,
   MainStep,
+  matesOf,
   mergesHere,
-  PreviewLink,
   ProductionStep,
   releaseVerbFor,
   STEP_CELL_CLASS,
@@ -192,15 +192,11 @@ export function ProjectCard<T>({
           placement="@5xl/flow:col-start-1"
         >
           <OwnCell name="mates" verb={verbFor(entry, "mates", props.renderNextStep)}>
-            {entry.mates.map((item, index) => {
-              const preview = flow.mates[index]?.preview;
-              return (
-                <div className="flex min-w-0 flex-col gap-1" key={props.getKey(item)}>
-                  {props.renderMate(item)}
-                  {preview === undefined ? null : <PreviewLink url={preview} />}
-                </div>
-              );
-            })}
+            {matesOf(entry).map(({ item, mate }) => (
+              <Fragment key={props.getKey(item)}>
+                {props.renderMate(item, { layout: "row", preview: mate.preview })}
+              </Fragment>
+            ))}
             {entry.mates.length === 0 ? <EmptyStep>No Mate yet</EmptyStep> : null}
           </OwnCell>
         </Step>
