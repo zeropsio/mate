@@ -1,19 +1,21 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
-import type { GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
+import type { GiteaCommitStatus, GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
 import type { GroupEnvironment, GroupEnvironmentTier } from "../groupEnvironments.ts";
-import { deployedVersion } from "../groupRows.ts";
+import { deployedVersion, deployStatusContext, environmentRow } from "../groupRows.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { FailureReason, Known, Shown } from "../knowledge/known.ts";
-import { RELEASE_NOTHING_NEW_ON_MAIN } from "../release.ts";
+import { RELEASE_NOTHING_NEW_ON_MAIN, releaseStatusContext } from "../release.ts";
 import { CHECKING_RELEASE } from "./release.ts";
 import type { Deployment, SettledDeployment, StopService } from "./deployment.ts";
 import {
   groupFlow,
+  groupFlowStatusReads,
   pullKey,
   releaseContentKey,
   releaseContentReads,
+  statusKey,
   tiersOnMain,
   type GroupFlowInputs,
   type GroupFlowMember,
@@ -125,9 +127,14 @@ const inputs = (overrides: Partial<GroupFlowInputs> = {}): GroupFlowInputs => ({
     ["group", known([])],
   ]),
   pulls: new Map([[pullKey("appdev", 4), known(openPull(4))]]),
+  merged: new Map([
+    ["appdev", known([])],
+    ["group", known([])],
+  ]),
   tags: known(TAGS),
   tiers: known({ tiers: ["stage", "production"], repositories: new Map([["appdev", "appdev"]]) }),
   mainHeads: new Map([["appdev", known(MAIN_SHA)]]),
+  statuses: new Map(),
   contents: new Map(),
   stops: new Map([
     ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
@@ -561,5 +568,134 @@ describe("groupFlow (DESIGN §4.7)", () => {
       state: "known",
       value: [],
     });
+  });
+
+  it("releases come newest first from the group repo's tags, each with the broker's verdict on its commit", () => {
+    const tag = (name: string, sha: string): GiteaTag => ({
+      name,
+      message: `appdev ${MAIN_SHA}`,
+      commit: { sha },
+    });
+    const verdict = (name: string, state: GiteaCommitStatus["state"], description?: string) =>
+      known([{ context: releaseStatusContext(name), state, description }]);
+    const tags = known([
+      tag("v1.0.0", "s1"),
+      tag("v1.10.0", "s3"),
+      { name: "latest", commit: { sha: "s3" } },
+      tag("v1.2.0", "s2"),
+    ]);
+    const statuses = new Map([
+      [statusKey("group", "s1"), verdict("v1.0.0", "success")],
+      [statusKey("group", "s2"), verdict("v1.2.0", "failure", "No stage runs it.")],
+      [statusKey("group", "s3"), verdict("v1.10.0", "success")],
+    ]);
+    const flowOf = (overrides: Partial<GroupFlowInputs>) =>
+      groupFlow(inputs({ tags, statuses, ...overrides }), RELEASER, NOW);
+
+    expect(groupFlowStatusReads(inputs({ tags }))).toEqual([
+      { repository: "appdev", sha: MAIN_SHA },
+      { repository: "appdev", sha: PRODUCTION_SHA },
+      { repository: "group", sha: "s3" },
+      { repository: "group", sha: "s2" },
+      { repository: "group", sha: "s1" },
+    ]);
+    expect(flowOf({}).releases).toMatchObject({
+      state: "known",
+      value: [
+        { tag: "v1.10.0", verdict: "approved", word: "Approved", rollBack: false },
+        { tag: "v1.2.0", verdict: "refused", line: "No stage runs it.", rollBack: false },
+        {
+          tag: "v1.0.0",
+          verdict: "approved",
+          line: `appdev ${MAIN_SHA.slice(0, 7)}`,
+          rollBack: true,
+        },
+      ],
+    });
+    // A verdict still being read holds the history; it never reads as "not judged".
+    const reading = new Map(statuses).set(statusKey("group", "s2"), READING);
+    expect(flowOf({ statuses: reading }).releases.state).toBe("reading");
+  });
+
+  it("the landed pull requests come from each repository's recent landings, in the org's order", () => {
+    const landed = (number: number) =>
+      pull(number, { state: "closed", merged: true, merge_commit_sha: `m${String(number)}` });
+    const merged = new Map([
+      ["appdev", known([landed(3)])],
+      ["group", known([landed(2), landed(1)])],
+    ]);
+
+    expect(groupFlow(inputs({ merged }), RELEASER, NOW).merged).toMatchObject({
+      state: "known",
+      value: [
+        { repository: "appdev", pull: { number: 3 } },
+        { repository: "group", pull: { number: 2 } },
+        { repository: "group", pull: { number: 1 } },
+      ],
+    });
+    // One repository still being read holds the landings, never the pull requests.
+    const reading = groupFlow(
+      inputs({ merged: new Map(merged).set("group", READING) }),
+      RELEASER,
+      NOW,
+    );
+    expect(reading.merged.state).toBe("reading");
+    expect(reading.pullRequests.state).toBe("known");
+  });
+
+  it("a declared stop's environment row names what each service runs and how its deploy went", () => {
+    const runs = (sha: string, name?: string): SettledDeployment => ({
+      kind: "running",
+      activatedAt: null,
+      version: deployedVersion(name === undefined ? sha : `${sha} ${name} ada`),
+    });
+    const success: ReadonlyArray<GiteaCommitStatus> = [
+      { context: deployStatusContext("stage", "appdev"), state: "success" },
+    ];
+    const stops = new Map([
+      ["p-stage", known([stopService("p-stage", "appdev", known(runs(MAIN_SHA)))])],
+      ["p-prod", known([stopService("p-prod", "appdev", known(runs(PRODUCTION_SHA, "v1.0.0")))])],
+    ]);
+    const flowOf = (overrides: Partial<GroupFlowInputs>) =>
+      groupFlow(inputs({ stops, ...overrides }), RELEASER, NOW);
+    const statuses = new Map([
+      [statusKey("appdev", MAIN_SHA), known(success)],
+      [statusKey("appdev", PRODUCTION_SHA), known<ReadonlyArray<GiteaCommitStatus>>([])],
+    ]);
+    const environment = (overrides: Partial<GroupFlowInputs>, projectId: string) => {
+      const stops = flowOf(overrides).stops;
+      return stops.state === "known"
+        ? stops.value.find((stop) => stop.projectId === projectId)?.environment
+        : undefined;
+    };
+
+    expect(groupFlowStatusReads(inputs({ stops }))).toEqual([
+      { repository: "appdev", sha: MAIN_SHA },
+      { repository: "appdev", sha: PRODUCTION_SHA },
+    ]);
+    const stage = environment({ statuses }, "p-stage");
+    expect(stage).toMatchObject({
+      state: "known",
+      value: {
+        projectId: "p-stage",
+        name: "harbor stage",
+        tier: "stage",
+        environment: "stage",
+        services: [{ hostname: "appdev", repository: "appdev", statuses: success }],
+      },
+    });
+    if (stage?.state !== "known") throw new Error("stage not known");
+    const row = environmentRow(stage.value);
+    expect(row).toMatchObject({ tone: "good", version: { sha: MAIN_SHA } });
+    const production = environment({ statuses }, "p-prod");
+    if (production?.state !== "known") throw new Error("production not known");
+    expect(environmentRow(production.value).version).toMatchObject({
+      name: "v1.0.0",
+      sha: PRODUCTION_SHA,
+      taggedBy: "ada",
+    });
+
+    // The build status still being read holds the row, never a neutral one.
+    expect(environment({ statuses: new Map() }, "p-stage")?.state).toBe("unread");
   });
 });

@@ -8,7 +8,7 @@ import { deployedVersion } from "../groupRows.ts";
 import { RECIPE_TIER_PATHS } from "../recipeTier.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";
 import type { Deployment, StopService } from "./deployment.ts";
-import { pullKey, releaseContentKey } from "./groupFlow.ts";
+import { pullKey, releaseContentKey, statusKey } from "./groupFlow.ts";
 import {
   groupFlowFacts,
   groupFlowInputs,
@@ -100,6 +100,7 @@ describe("a group flow's reads", () => {
       tier(RECIPE_TIER_PATHS.production),
       { kind: "branch", ...repo("appdev"), branch: "main" },
       { kind: "open-pulls", ...repo("appdev") },
+      { kind: "merged-pulls", ...repo("appdev") },
       { kind: "statuses", ...repo("appdev"), sha: "h4" },
     ]);
   });
@@ -232,5 +233,38 @@ describe("a group flow's reads", () => {
     for (const shown of [inputs.declarations, inputs.repos, inputs.tags, inputs.tiers]) {
       expect(shown).toEqual(waiting);
     }
+  });
+
+  it("reads each release tag's statuses, where the broker's verdict on it is written", () => {
+    const approved = known([{ context: "mate/release/v1.0.0", state: "success" }]);
+    const stores = {
+      forge: forge([
+        ...HELD,
+        [{ kind: "tags", ...repo("group") }, known([{ name: "v1.0.0", commit: { sha: "s1" } }])],
+        [{ kind: "statuses", ...repo("group"), sha: "s1" }, approved],
+      ]),
+      deployments: deployments(new Map([["p-prod", PRODUCTION_STOP]])),
+    };
+
+    expect(groupFlowFacts(stores, SOURCE)).toContainEqual({
+      kind: "statuses",
+      ...repo("group"),
+      sha: "s1",
+    });
+    expect(groupFlowInputs(stores, SOURCE).statuses.get(statusKey("group", "s1"))).toBe(approved);
+  });
+
+  it("reads each repository's recent landings", () => {
+    const landings = known([{ number: 3, title: "x", state: "closed", merged: true }]);
+    const stores = {
+      forge: forge([...HELD, [{ kind: "merged-pulls", ...repo("appdev") }, landings]]),
+      deployments: deployments(new Map([["p-prod", PRODUCTION_STOP]])),
+    };
+
+    expect(groupFlowFacts(stores, SOURCE)).toContainEqual({
+      kind: "merged-pulls",
+      ...repo("appdev"),
+    });
+    expect(groupFlowInputs(stores, SOURCE).merged.get("appdev")).toBe(landings);
   });
 });

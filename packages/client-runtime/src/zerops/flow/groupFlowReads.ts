@@ -13,7 +13,7 @@
  */
 import type { ProjectRef } from "../data/types.ts";
 import type { ForgeFact, ForgeStore } from "../forge/forgeStore.ts";
-import type { GiteaCommit } from "../giteaClient.ts";
+import type { GiteaCommit, GiteaCommitStatus, GiteaPullRequest } from "../giteaClient.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Shown } from "../knowledge/known.ts";
@@ -22,9 +22,11 @@ import { RECIPE_TIER_PATHS } from "../recipeTier.ts";
 import type { StopService } from "./deployment.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";
 import {
+  groupFlowStatusReads,
   pullKey,
   releaseContentKey,
   releaseContentReads,
+  statusKey,
   tiersOnMain,
   TIERS_ON_MAIN,
   type GroupFlowInputs,
@@ -172,7 +174,10 @@ export function groupFlowFacts(
   const repos = forge.read({ kind: "repos", origin, org: source.entry.slug });
   if (repos.state !== "known") return facts;
   for (const { name } of repos.value) {
-    facts.push({ kind: "open-pulls", ...repository(name) });
+    facts.push(
+      { kind: "open-pulls", ...repository(name) },
+      { kind: "merged-pulls", ...repository(name) },
+    );
     const open = forge.read({ kind: "open-pulls", ...repository(name) });
     if (open.state !== "known") continue;
     for (const number of open.value) {
@@ -182,6 +187,9 @@ export function groupFlowFacts(
     }
   }
   const inputs = groupFlowInputs(stores, source);
+  for (const { repository: repo, sha } of groupFlowStatusReads(inputs)) {
+    facts.push({ kind: "statuses", ...repository(repo), sha });
+  }
   for (const read of releaseContentReads(inputs)) {
     facts.push(contentFact(origin, source.entry.slug, read));
   }
@@ -200,10 +208,12 @@ export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource
   const repos = read({ kind: "repos", origin: origin ?? "", org: slug });
   const openPulls = new Map<string, Shown<ReadonlyArray<number>>>();
   const pulls = new Map<string, Shown<GroupFlowPull>>();
+  const merged = new Map<string, Shown<ReadonlyArray<GiteaPullRequest>>>();
   let repoNames: Shown<ReadonlyArray<string>> = repos as Shown<never>;
   if (repos.state === "known") {
     repoNames = { ...repos, value: repos.value.map(({ name }) => name) };
     for (const { name } of repos.value) {
+      merged.set(name, read({ kind: "merged-pulls", ...repository(name) }));
       const open = read({ kind: "open-pulls", ...repository(name) });
       openPulls.set(name, open);
       if (open.state !== "known") continue;
@@ -243,20 +253,26 @@ export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource
     repos: repoNames,
     openPulls,
     pulls,
+    merged,
     tags: read({ kind: "tags", ...repository(GROUP_REPOSITORY) }),
     tiers:
       forge === null || origin === undefined ? WAITING_FOR_GITEA : readTiers(forge, origin, slug),
     mainHeads,
+    statuses: new Map(),
     contents: new Map(),
     stops,
   };
   if (forge === null || origin === undefined) return inputs;
-  // What the release reads is named by what the rest answered.
+  // Which commits' statuses and what the release carries are named by what the rest answered.
+  const statuses = new Map<string, Shown<ReadonlyArray<GiteaCommitStatus>>>();
+  for (const { repository: repo, sha } of groupFlowStatusReads(inputs)) {
+    statuses.set(statusKey(repo, sha), read({ kind: "statuses", ...repository(repo), sha }));
+  }
   const contents = new Map<string, Shown<ReadonlyArray<GiteaCommit>>>();
   for (const content of releaseContentReads(inputs)) {
     contents.set(releaseContentKey(content), contentOf(forge, origin, slug, content));
   }
-  return { ...inputs, contents };
+  return { ...inputs, statuses, contents };
 }
 
 /** A group's flow inputs before the epoch's first grant built the stores: nothing is read yet. */
@@ -270,9 +286,11 @@ export function unboundGroupFlowInputs(
     repos: UNBOUND,
     openPulls: new Map(),
     pulls: new Map(),
+    merged: new Map(),
     tags: UNBOUND,
     tiers: UNBOUND,
     mainHeads: new Map(),
+    statuses: new Map(),
     contents: new Map(),
     stops: new Map(),
   };

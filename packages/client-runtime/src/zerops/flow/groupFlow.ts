@@ -1,9 +1,14 @@
 /**
- * One group's flow, as a projection over per-key facts (DESIGN §4.7): its open pull requests, its
- * stops and what each runs, and the release offer.
+ * One group's flow, as a projection over per-key facts (DESIGN §4.7): its open and landed pull
+ * requests, its stops and what each runs, the tiers it has not added, its releases and the
+ * release offer.
  *
  * - **The halves are independent.** The pull requests are known once every repository's open
- *   list is; each stop carries its own deployment. Nothing fills a missing half with `[]`.
+ *   list is, the landings once every repository's recent landings are; each stop carries its own
+ *   deployment, and a declared stop its environment row — each service's version and how its
+ *   deploy went, from the statuses on that commit. Nothing fills a missing half with `[]`.
+ * - **Releases** are the group repo's release tags, newest first, each with the broker's verdict
+ *   on its commit; a verdict not read yet holds the list rather than reading as not judged.
  * - **The release offer** is known only when every input it is measured from is known — the
  *   declarations, the group repo's tags, the tiers on `main`, each production service's
  *   deployment (what it runs, or what it deploys while a build runs) and the head of `main` of the
@@ -26,13 +31,20 @@
  */
 import type { ServiceRef } from "../data/types.ts";
 import type { MergeState } from "../forge/mergeState.ts";
-import type { GiteaCommit, GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
+import type { GiteaCommit, GiteaCommitStatus, GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
 import {
   environmentTierForRole,
   type GroupEnvironment,
   type GroupEnvironmentTier,
 } from "../groupEnvironments.ts";
-import { missingEnvironmentRows, type MissingEnvironmentRow } from "../groupRows.ts";
+import type { GroupEnvironmentRowInput } from "../groupDeploys.ts";
+import {
+  missingEnvironmentRows,
+  shortCommit,
+  type DeployedVersion,
+  type EnvironmentServiceState,
+  type MissingEnvironmentRow,
+} from "../groupRows.ts";
 import type { ZeropsEnvironmentRole } from "../groups.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
@@ -41,9 +53,22 @@ import {
   type KnowledgeSource,
   type KnownAffordance,
 } from "../knowledge/presentation.ts";
-import { planReleaseReads } from "../projectFlow.ts";
+import {
+  GROUP_REPOSITORY,
+  planReleaseReads,
+  releaseRow,
+  type FlowRelease,
+  type FlowReleaseRow,
+} from "../projectFlow.ts";
 import { importReadyTier } from "../recipeTier.ts";
-import { isReleaseTag, releaseOffer, type ReleaseGate } from "../release.ts";
+import {
+  isReleaseTag,
+  readReleaseMessage,
+  readSemver,
+  releaseOffer,
+  releaseVerdict,
+  type ReleaseGate,
+} from "../release.ts";
 import type { Deployment, StopService } from "./deployment.ts";
 import { CHECKING_RELEASE } from "./release.ts";
 
@@ -82,6 +107,12 @@ export interface TiersOnMain {
 /** The tiers a group repo's `main` may offer, in the order they are added. */
 export const TIERS_ON_MAIN: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
 
+/** One pull request of the group that landed. */
+export interface GroupFlowLanding {
+  readonly repository: string;
+  readonly pull: GiteaPullRequest;
+}
+
 export interface GroupFlowInputs {
   readonly entry: ZeropsRegistryGroup;
   readonly members: Shown<ReadonlyArray<GroupFlowMember>>;
@@ -92,12 +123,16 @@ export interface GroupFlowInputs {
   readonly openPulls: ReadonlyMap<string, Shown<ReadonlyArray<number>>>;
   /** Each pull request by {@link pullKey}. */
   readonly pulls: ReadonlyMap<string, Shown<GroupFlowPull>>;
+  /** Each repository's recent landings, newest first. */
+  readonly merged: ReadonlyMap<string, Shown<ReadonlyArray<GiteaPullRequest>>>;
   /** The group repo's tags. */
   readonly tags: Shown<ReadonlyArray<GiteaTag>>;
   /** The tiers on the group repo's `main` ({@link tiersOnMain}). */
   readonly tiers: Shown<TiersOnMain>;
   /** The sha each repository's `main` holds, by repository. */
   readonly mainHeads: ReadonlyMap<string, Shown<string>>;
+  /** Each commit's statuses the flow reads ({@link groupFlowStatusReads}), by {@link statusKey}. */
+  readonly statuses: ReadonlyMap<string, Shown<ReadonlyArray<GiteaCommitStatus>>>;
   /** What each release content read answered, by {@link releaseContentKey}. */
   readonly contents: ReadonlyMap<string, Shown<ReadonlyArray<GiteaCommit>>>;
   /** Each stop's runtime services and what each runs, by Zerops project id. */
@@ -124,9 +159,19 @@ export type StopRow = {
       /** What the stop runs: its first running service by hostname, or none once each runs none. */
       readonly deployment: Shown<Deployment>;
       readonly services: Shown<ReadonlyArray<StopService>>;
+      /**
+       * The declared environment's row: the version each service runs and how its deploy went;
+       * `null` for a member not declared yet, whose statuses nothing names.
+       */
+      readonly environment: Shown<GroupEnvironmentRowInput> | null;
     }
   /** No project runs the stop, so there is nothing to read and nothing to wait for. */
-  | { readonly standing: "missing-project"; readonly deployment: null; readonly services: null }
+  | {
+      readonly standing: "missing-project";
+      readonly deployment: null;
+      readonly services: null;
+      readonly environment: null;
+    }
 );
 
 export type ReleaseOffer = ReturnType<typeof releaseOffer>;
@@ -142,6 +187,8 @@ export interface GroupFlow {
   readonly slug: string;
   /** Every repository's open pull requests, in the org's order. */
   readonly pullRequests: Shown<ReadonlyArray<GroupFlowPullRequest>>;
+  /** Every repository's recent landings, in the org's order: what a conversation's timeline places. */
+  readonly merged: Shown<ReadonlyArray<GroupFlowLanding>>;
   /** Declared stops in the file's order, then members not declared yet. */
   readonly stops: Shown<ReadonlyArray<StopRow>>;
   /** The tiers the recipe on `main` offers and the group has not added: the rows that ask. */
@@ -149,6 +196,8 @@ export interface GroupFlow {
   readonly release: Shown<ReleaseOffer>;
   /** What pressing *Release* would put live: per service, the commits production does not run. */
   readonly releaseContents: Shown<ReadonlyArray<ReleaseContent>>;
+  /** The group repo's releases, newest first, each with the broker's verdict on it. */
+  readonly releases: Shown<ReadonlyArray<FlowReleaseRow>>;
   /** Whether *Release* is offered now, and why not. */
   readonly releaseGate: ReleaseGate;
   /** What the person can do about a gate an input holds shut: *Try again* after a failed read. */
@@ -156,6 +205,15 @@ export interface GroupFlow {
   /** The stage services a merge into `repository`'s `main` deploys to. */
   readonly feeds: (repository: string) => ReadonlyArray<ServiceRef>;
 }
+
+/** One commit whose statuses the flow reads. */
+export interface StatusRead {
+  readonly repository: string;
+  readonly sha: string;
+}
+
+/** A commit's statuses' key in {@link GroupFlowInputs.statuses}. */
+export const statusKey = (repository: string, sha: string): string => `${repository}@${sha}`;
 
 /** A pull request's key in {@link GroupFlowInputs.pulls}. */
 export const pullKey = (repository: string, number: number): string =>
@@ -297,6 +355,20 @@ function pullRequestsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowP
   return withValue(combine(parts).shown, () => rows);
 }
 
+function mergedOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowLanding>> {
+  const repos = inputs.repos;
+  if (!isKnown(repos)) return repos as Shown<never>;
+  const parts: Array<Part> = [{ shown: repos, source: "gitea" }];
+  const landings: Array<GroupFlowLanding> = [];
+  for (const repository of repos.value) {
+    const merged = inputs.merged.get(repository) ?? UNREAD;
+    parts.push({ shown: merged, source: "gitea" });
+    if (!isKnown(merged)) continue;
+    for (const pull of merged.value) landings.push({ repository, pull });
+  }
+  return withValue(combine(parts).shown, () => landings);
+}
+
 /**
  * What a stop runs, from its services: the first deploying one by hostname, else the first
  * running one, else the first that is not known, else none — which only services that each run
@@ -317,6 +389,93 @@ export function stopDeploymentOf(services: Shown<ReadonlyArray<StopService>>): S
   return withValue(combined.shown, (): Deployment => ({ kind: "none" }));
 }
 
+/** The version a service's row names: what it runs, or what it builds while a build runs. */
+function rowVersionOf(deployment: Deployment): DeployedVersion | undefined {
+  return deployment.kind === "none" ? undefined : deployment.version;
+}
+
+/**
+ * The name a version was read from, as `environmentRow` reads one back (`deployedVersion`): the
+ * sha, then the name and who tagged it; a hand-made name whole.
+ */
+function versionName(version: DeployedVersion): string | undefined {
+  if (version.sha === undefined) return version.name;
+  return [version.sha, version.name, version.taggedBy]
+    .filter((token) => token !== undefined)
+    .join(" ");
+}
+
+/**
+ * Each service a declared stop runs whose build status is read: the version it runs or builds,
+ * at the repository its tier on `main` builds it from.
+ */
+function declaredVersions(
+  inputs: GroupFlowInputs,
+): ReadonlyArray<{ readonly repository: string; readonly sha: string }> {
+  const { declarations, members, tiers } = inputs;
+  if (!isKnown(declarations) || !isKnown(members) || !isKnown(tiers)) return [];
+  const versions: Array<{ readonly repository: string; readonly sha: string }> = [];
+  for (const { project } of declarations.value) {
+    if (!members.value.some(({ projectId }) => projectId === project)) continue;
+    const services = inputs.stops.get(project);
+    if (services === undefined || !isKnown(services)) continue;
+    for (const { hostname, deployment } of services.value) {
+      if (!isKnown(deployment)) continue;
+      const sha = rowVersionOf(deployment.value)?.sha;
+      const repository = tiers.value.repositories.get(hostname);
+      if (sha !== undefined && repository !== undefined) versions.push({ repository, sha });
+    }
+  }
+  return versions;
+}
+
+/**
+ * A declared stop's environment row (`environmentRow`'s input): each service's version and the
+ * statuses on its commit, where the tier names its repository. Known once the services, what
+ * each runs, the tiers on `main` and every status read are.
+ */
+function environmentOf(
+  inputs: GroupFlowInputs,
+  declaration: GroupEnvironment,
+  name: string,
+  services: Shown<ReadonlyArray<StopService>>,
+): Shown<GroupEnvironmentRowInput> {
+  const { tiers } = inputs;
+  const parts: Array<Part> = [
+    { shown: services, source: "zerops" },
+    { shown: tiers, source: "gitea" },
+  ];
+  if (!isKnown(services) || !isKnown(tiers)) return combine(parts).shown as Shown<never>;
+  const states: Array<EnvironmentServiceState> = [];
+  for (const { hostname, deployment } of services.value) {
+    parts.push({ shown: deployment, source: "zerops" });
+    if (!isKnown(deployment)) continue;
+    const version = rowVersionOf(deployment.value);
+    const repository = tiers.value.repositories.get(hostname);
+    const appVersionName = version === undefined ? undefined : versionName(version);
+    let statuses: ReadonlyArray<GiteaCommitStatus> | undefined;
+    if (version?.sha !== undefined && repository !== undefined) {
+      const read = inputs.statuses.get(statusKey(repository, version.sha)) ?? UNREAD;
+      parts.push({ shown: read, source: "gitea" });
+      if (isKnown(read)) statuses = read.value;
+    }
+    states.push({
+      hostname,
+      ...(repository === undefined ? {} : { repository }),
+      ...(appVersionName === undefined ? {} : { appVersionName }),
+      ...(statuses === undefined ? {} : { statuses }),
+    });
+  }
+  return withValue(combine(parts).shown, () => ({
+    projectId: declaration.project,
+    name,
+    tier: declaration.tier,
+    sources: declaration.sources,
+    environment: declaration.name,
+    services: states,
+  }));
+}
+
 function stopsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<StopRow>> {
   const { declarations, members } = inputs;
   const combined = combine([
@@ -324,26 +483,23 @@ function stopsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<StopRow>> {
     { shown: members, source: "zerops" },
   ]);
   if (!isKnown(declarations) || !isKnown(members)) return combined.shown as Shown<never>;
-  const row = (
-    projectId: string,
-    name: string,
-    tier: StopRow["tier"],
-    standing: Exclude<StopStanding, "missing-project">,
-  ): StopRow => {
+  const row = (projectId: string, name: string, declaration: GroupEnvironment | null): StopRow => {
     const services = inputs.stops.get(projectId) ?? UNREAD;
     return {
       projectId,
       name,
-      tier,
-      standing,
+      tier: declaration?.tier ?? null,
+      standing: declaration === null ? "not-declared" : "declared",
       services,
       deployment: stopDeploymentOf(services),
+      environment: declaration === null ? null : environmentOf(inputs, declaration, name, services),
     };
   };
   const memberNames = new Map(members.value.map(({ projectId, name }) => [projectId, name]));
   const declared = new Set(declarations.value.map(({ project }) => project));
   return withValue(combined.shown, () => [
-    ...declarations.value.map(({ project, name, tier }): StopRow => {
+    ...declarations.value.map((declaration): StopRow => {
+      const { project, name, tier } = declaration;
       const memberName = memberNames.get(project);
       return memberName === undefined
         ? {
@@ -353,14 +509,15 @@ function stopsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<StopRow>> {
             standing: "missing-project",
             deployment: null,
             services: null,
+            environment: null,
           }
-        : row(project, memberName, tier, "declared");
+        : row(project, memberName, declaration);
     }),
     // Filtered into a fresh array, so the sort touches nothing else (`toSorted` is not in Hermes).
     ...members.value
       .filter(({ projectId }) => !declared.has(projectId))
       .sort((left, right) => left.name.localeCompare(right.name, "en"))
-      .map(({ projectId, name }) => row(projectId, name, null, "not-declared")),
+      .map(({ projectId, name }) => row(projectId, name, null)),
   ]);
 }
 
@@ -387,6 +544,79 @@ function missingOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<MissingEnvironm
         const tier = environmentTierForRole(role);
         return tier === undefined ? [] : [tier];
       }),
+    }),
+  );
+}
+
+function byVersionDescending(left: GiteaTag, right: GiteaTag): number {
+  const a = readSemver(left.name);
+  const b = readSemver(right.name);
+  if (a === undefined || b === undefined) return 0;
+  return b.major - a.major || b.minor - a.minor || b.patch - a.patch;
+}
+
+/** The group repo's release tags, newest version first. */
+const releaseTagsOf = (tags: ReadonlyArray<GiteaTag>): ReadonlyArray<GiteaTag> =>
+  // Filtered into a fresh array, so the sort touches nothing else.
+  tags.filter(({ name }) => isReleaseTag(name)).sort(byVersionDescending);
+
+/**
+ * The commits whose statuses the flow reads, as far as what is known names them: each version a
+ * declared stop runs, where the broker writes how its deploy went, and each release tag's, where
+ * it writes its verdict on the release.
+ */
+export function groupFlowStatusReads(inputs: GroupFlowInputs): ReadonlyArray<StatusRead> {
+  const reads = new Map<string, StatusRead>();
+  for (const read of declaredVersions(inputs)) {
+    reads.set(statusKey(read.repository, read.sha), read);
+  }
+  if (isKnown(inputs.tags)) {
+    for (const { commit } of releaseTagsOf(inputs.tags.value)) {
+      if (commit?.sha === undefined) continue;
+      reads.set(statusKey(GROUP_REPOSITORY, commit.sha), {
+        repository: GROUP_REPOSITORY,
+        sha: commit.sha,
+      });
+    }
+  }
+  return [...reads.values()];
+}
+
+/**
+ * The group's releases, newest first: known once the tags are and the broker's verdict on every
+ * tagged commit is read — a verdict not read yet is never "not judged yet".
+ */
+function releasesOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<FlowReleaseRow>> {
+  const { tags } = inputs;
+  if (!isKnown(tags)) return tags as Shown<never>;
+  const parts: Array<Part> = [{ shown: tags, source: "gitea" }];
+  const judged: Array<{
+    readonly tag: GiteaTag;
+    readonly statuses: ReadonlyArray<GiteaCommitStatus>;
+  }> = [];
+  for (const tag of releaseTagsOf(tags.value)) {
+    const sha = tag.commit?.sha;
+    // A tag naming no commit has nothing the broker could have judged.
+    if (sha === undefined) {
+      judged.push({ tag, statuses: [] });
+      continue;
+    }
+    const statuses = inputs.statuses.get(statusKey(GROUP_REPOSITORY, sha)) ?? UNREAD;
+    parts.push({ shown: statuses, source: "gitea" });
+    if (isKnown(statuses)) judged.push({ tag, statuses: statuses.value });
+  }
+  return withValue(combine(parts).shown, () =>
+    judged.map(({ tag, statuses }, index) => {
+      const { verdict, detail } = releaseVerdict(tag.name, statuses);
+      const release: FlowRelease = {
+        tag: tag.name,
+        verdict,
+        detail: verdict === "refused" ? detail : undefined,
+        line: readReleaseMessage(tag.message ?? "")
+          .map((entry) => `${entry.service} ${shortCommit(entry.commit)}`)
+          .join(" · "),
+      };
+      return releaseRow(release, index);
     }),
   );
 }
@@ -604,10 +834,12 @@ export function groupFlow(
     groupId: inputs.entry.groupId,
     slug: inputs.entry.slug,
     pullRequests: pullRequestsOf(inputs),
+    merged: mergedOf(inputs),
     stops,
     missing: missingOf(inputs),
     release,
     releaseContents: releaseContentsOf(inputs, release),
+    releases: releasesOf(inputs),
     releaseGate: gate,
     releaseAffordance: affordance,
     feeds: (repository) => fed.get(repository) ?? [],
