@@ -94,69 +94,52 @@ describe("threadRoutes", () => {
     ).toBeNull();
   });
 
-  it("keeps shell-only server threads in the loading state", () => {
+  // The thread gate (DESIGN §4.8): "no longer available" only from a live shell that lacks the
+  // thread, or a detail the server deleted; anything else waits on the environment's reachability.
+  it.each([
+    ["an empty shell waits", "empty", {}, "loading"],
+    ["a cached shell without the thread waits", "cached", {}, "loading"],
+    ["a synchronizing shell without the thread waits", "synchronizing", {}, "loading"],
+    ["a live shell without the thread: no longer available", "live", {}, "missing"],
+    [
+      "a live shell with only the thread's shell waits for its detail",
+      "live",
+      { shell: true },
+      "loading",
+    ],
+    [
+      "a cached shell with the thread's detail shows it",
+      "cached",
+      { shell: true, detail: true },
+      "ready",
+    ],
+    [
+      "a synchronizing shell with a local draft shows it",
+      "synchronizing",
+      { draft: true },
+      "ready",
+    ],
+    [
+      "a detail the server deleted: no longer available",
+      "cached",
+      { shell: true, deleted: true },
+      "missing",
+    ],
+  ] as const)("%s", (_case, shell, thread, expected) => {
+    const has = thread as {
+      readonly shell?: boolean;
+      readonly detail?: boolean;
+      readonly deleted?: boolean;
+      readonly draft?: boolean;
+    };
     expect(
       resolveThreadRouteRenderState({
-        bootstrapComplete: true,
-        serverThreadShellExists: true,
-        serverThreadDetailExists: false,
-        serverThreadDetailDeleted: false,
-        draftThreadExists: false,
+        shell,
+        serverThreadShellExists: has.shell === true,
+        serverThreadDetailExists: has.detail === true,
+        serverThreadDetailDeleted: has.deleted === true,
+        draftThreadExists: has.draft === true,
       }),
-    ).toBe("loading");
-  });
-
-  it("renders server details and local drafts when they are ready", () => {
-    expect(
-      resolveThreadRouteRenderState({
-        bootstrapComplete: true,
-        serverThreadShellExists: true,
-        serverThreadDetailExists: true,
-        serverThreadDetailDeleted: false,
-        draftThreadExists: false,
-      }),
-    ).toBe("ready");
-    expect(
-      resolveThreadRouteRenderState({
-        bootstrapComplete: true,
-        serverThreadShellExists: false,
-        serverThreadDetailExists: false,
-        serverThreadDetailDeleted: false,
-        draftThreadExists: true,
-      }),
-    ).toBe("ready");
-  });
-
-  it("distinguishes bootstrap loading from a missing thread", () => {
-    expect(
-      resolveThreadRouteRenderState({
-        bootstrapComplete: false,
-        serverThreadShellExists: false,
-        serverThreadDetailExists: false,
-        serverThreadDetailDeleted: false,
-        draftThreadExists: false,
-      }),
-    ).toBe("loading");
-    expect(
-      resolveThreadRouteRenderState({
-        bootstrapComplete: true,
-        serverThreadShellExists: false,
-        serverThreadDetailExists: false,
-        serverThreadDetailDeleted: false,
-        draftThreadExists: false,
-      }),
-    ).toBe("missing");
-  });
-
-  it("redirects deleted shell-only threads", () => {
-    expect(
-      resolveThreadRouteRenderState({
-        bootstrapComplete: true,
-        serverThreadShellExists: true,
-        serverThreadDetailExists: false,
-        serverThreadDetailDeleted: true,
-        draftThreadExists: false,
-      }),
-    ).toBe("missing");
+    ).toBe(expected);
   });
 });

@@ -1,22 +1,18 @@
 import {
-  AccountEpoch,
   makeZeropsApiOrigin,
   ZeropsAccountId,
   ZeropsOrganizationId,
-  ZeropsProjectId,
-  type AccessState,
+  type GrantFailure,
   type InterestIdentity,
   type InterestState,
-  type ProjectRef,
 } from "@t3tools/client-runtime/zerops/data";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { InventoryServiceOutcome } from "./inventoryContext";
 import {
+  accessLapseCopy,
   carryForwardServiceOutcome,
-  inventoryProjectRefs,
   isInterestBlocked,
-  isPausedOnlyRound,
   retryInvalidations,
 } from "./ZeropsInventoryProvider";
 
@@ -29,11 +25,6 @@ const organization = {
   account,
   organizationId: ZeropsOrganizationId.make("org-a"),
 };
-const project = (projectId: string): ProjectRef => ({
-  kind: "project",
-  organization,
-  projectId: ZeropsProjectId.make(projectId),
-});
 
 describe("retryInvalidations", () => {
   const other = { ...organization, organizationId: ZeropsOrganizationId.make("org-b") };
@@ -68,29 +59,6 @@ describe("retryInvalidations", () => {
     },
   ])("$name", ({ granted, blocked, want }) => {
     expect(retryInvalidations({ granted, blockedOrganizations: blocked })).toEqual(want);
-  });
-});
-
-describe("inventoryProjectRefs", () => {
-  it("includes command-established project access before external membership refresh", () => {
-    const existing = project("existing");
-    const created = project("created");
-    const access: AccessState = {
-      status: "verified",
-      account,
-      accountEpoch: AccountEpoch.make(1),
-      verifiedAtMs: 0,
-      deadlineMs: 10_000,
-      mutationsAllowed: true,
-      organizations: [{ organization, mutationsAllowed: true }],
-      projects: [
-        { project: existing, role: "ADMIN", mutationsAllowed: true },
-        { project: created, role: "OWNER", mutationsAllowed: true },
-        { project: project("denied"), role: "NO_ACCESS", mutationsAllowed: false },
-      ],
-    };
-
-    expect(inventoryProjectRefs([existing], access)).toEqual([existing, created]);
   });
 });
 
@@ -201,49 +169,6 @@ describe("isInterestBlocked", () => {
   });
 });
 
-describe("isPausedOnlyRound", () => {
-  const identity = {} as InterestIdentity;
-  const paused: InterestState = { status: "paused", identity, reason: "background" };
-  const observing: InterestState = {
-    status: "observing",
-    identity,
-    guarantee: "source-order-unverified",
-    sinceReceiptOrdinal: 0 as never,
-  };
-  const recovering: InterestState = {
-    status: "recovering",
-    identity,
-    reason: "disconnect",
-    attempt: 1,
-    nextRetryAtMs: 0,
-    progress: {
-      requiredRegistrations: 1,
-      completedRegistrations: 0,
-      requiredReads: 1,
-      completedReads: 0,
-      crossedReceiptOrdinal: 0 as never,
-    } as InterestState extends { readonly progress: infer P } ? P : never,
-  };
-
-  it("is false when there is no demand", () => {
-    expect(isPausedOnlyRound([])).toBe(false);
-  });
-
-  it("is false when every demanded interest is already observing", () => {
-    expect(isPausedOnlyRound([observing, observing])).toBe(false);
-  });
-
-  it("is true when the only interests not yet observing are paused", () => {
-    expect(isPausedOnlyRound([observing, paused])).toBe(true);
-    expect(isPausedOnlyRound([paused, paused])).toBe(true);
-  });
-
-  it("is false when any demanded interest is stuck for a reason other than background pause", () => {
-    expect(isPausedOnlyRound([paused, recovering])).toBe(false);
-    expect(isPausedOnlyRound([paused, undefined])).toBe(false);
-  });
-});
-
 describe("carryForwardServiceOutcome", () => {
   const resolved: InventoryServiceOutcome = { status: "resolved", services: [] };
   const failed: InventoryServiceOutcome = { status: "failed" };
@@ -284,5 +209,19 @@ describe("carryForwardServiceOutcome", () => {
 
   it.each(cases)("$name", ({ previous, projectId, computed, expected }) => {
     expect(carryForwardServiceOutcome(previous, projectId, computed)).toEqual(expected);
+  });
+});
+
+describe("accessLapseCopy", () => {
+  const CHECKING = { sentence: "Checking your Zerops access…", retry: false };
+  const NOT_ANSWERING = { sentence: "Zerops isn't answering.", retry: true };
+  // One row per lapse reason (DESIGN §3.4): no cause yet, or a failure cause.
+  it.each<readonly [string, GrantFailure | null, typeof CHECKING]>([
+    ["no renewal failed since the grant", null, CHECKING],
+    ["a round timed out", { kind: "timeout", afterMs: 30_000 }, NOT_ANSWERING],
+    ["a round failed offline", { kind: "offline" }, NOT_ANSWERING],
+    ["Zerops answered 503", { kind: "server", status: 503 }, NOT_ANSWERING],
+  ])("%s", (_case, failure, copy) => {
+    expect(accessLapseCopy(failure)).toEqual(copy);
   });
 });

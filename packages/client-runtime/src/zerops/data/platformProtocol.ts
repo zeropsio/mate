@@ -80,6 +80,8 @@ const GitIntegrationRow = Schema.Struct({
 });
 
 const AppVersionRow = Schema.Struct({
+  id: OptionalNullableString,
+  status: OptionalNullableString,
   source: OptionalString,
   created: OptionalNullableString,
   lastUpdate: OptionalNullableString,
@@ -139,12 +141,16 @@ const ServiceRow = Schema.Struct({
   mode: OptionalNullableString,
   activeAppVersion: Schema.optionalKey(Schema.Union([AppVersionRow, Schema.Null])),
   currentAutoscaling: Schema.optionalKey(Schema.Union([AutoscalingRow, Schema.Null])),
+  userData: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ key: OptionalString, content: OptionalNullableString })),
+  ),
   ...SourceMetadataRow,
 });
 
 const EmbeddedServiceRow = Schema.Struct({ id: Schema.String });
 const ProcessAppVersionRow = Schema.Struct({
   id: OptionalNullableString,
+  name: OptionalNullableString,
   status: OptionalNullableString,
   build: Schema.optionalKey(
     Schema.Union([
@@ -496,6 +502,22 @@ const scalingRange = (minimum: number | null | undefined, maximum: number | null
     ? null
     : { min: nullable(minimum), max: nullable(maximum) };
 
+/**
+ * The active version's name. The app-version API never returns one; the
+ * service's `appVersionName` variable does, but it names the newest STARTED
+ * build — the active version only while `appVersionId` beside it is that
+ * version's id (A14, measured 2026-09-23).
+ */
+function activeVersionName(raw: typeof ServiceRow.Type): string | null {
+  const version = raw.activeAppVersion;
+  if (version === null || version === undefined) return null;
+  if (version.name !== undefined && version.name !== null) return version.name;
+  const variable = (key: string) =>
+    raw.userData?.find((entry) => entry.key === key)?.content?.trim() || null;
+  const id = version.id ?? null;
+  return id !== null && variable("appVersionId") === id ? variable("appVersionName") : null;
+}
+
 function serviceObservations(
   ref: ServiceRef,
   raw: typeof ServiceRow.Type,
@@ -586,13 +608,15 @@ function serviceObservations(
             ? {}
             : {
                 activeDeploy:
-                  raw.activeAppVersion === null || raw.activeAppVersion.source === undefined
+                  raw.activeAppVersion === null
                     ? null
                     : {
-                        source: raw.activeAppVersion.source,
+                        id: raw.activeAppVersion.id ?? null,
+                        status: raw.activeAppVersion.status ?? null,
+                        source: raw.activeAppVersion.source ?? null,
                         activatedAt:
                           raw.activeAppVersion.lastUpdate || raw.activeAppVersion.created || null,
-                        name: raw.activeAppVersion.name ?? null,
+                        name: activeVersionName(raw),
                         branch:
                           raw.activeAppVersion.githubIntegration?.branchName ??
                           raw.activeAppVersion.gitlabIntegration?.branchName ??
@@ -1049,8 +1073,7 @@ type ProjectResponseCommand = Extract<
   PlatformCommand,
   {
     readonly kind:
-      | "name-project-agent"
-      | "update-project-group-tags"
+      | "update-project-tags"
       | "set-project-member-role"
       | "create-project"
       | "create-project-with-mate"
@@ -1065,9 +1088,7 @@ export function decodeProjectCommandResponse(
 ): ProtocolDecodeResult {
   const row = Option.getOrUndefined(decodeProjectRow(input));
   const expectedProject =
-    command.kind === "name-project-agent" ||
-    command.kind === "update-project-group-tags" ||
-    command.kind === "set-project-member-role"
+    command.kind === "update-project-tags" || command.kind === "set-project-member-role"
       ? command.project
       : null;
   if (
@@ -1088,8 +1109,7 @@ export function decodeProjectCommandResponse(
     };
   const organization: ProjectRef["organization"] = (() => {
     switch (command.kind) {
-      case "name-project-agent":
-      case "update-project-group-tags":
+      case "update-project-tags":
       case "set-project-member-role":
         return command.project.organization;
       case "create-project":

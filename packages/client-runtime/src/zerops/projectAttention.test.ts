@@ -14,7 +14,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     url: undefined,
     checks: "passing",
     checkWord: "Passing",
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -45,7 +45,7 @@ describe("projectAttention", () => {
       ...EMPTY,
       waitingMates: [{ projectId: "p-theo", name: "Theo" }],
       failedStops: [{ projectId: "shop-stage", name: "stage" }],
-      pullRequests: [pull({ mergeable: false })],
+      pullRequests: [pull({ mergeability: "conflicting" })],
       notLive: 2,
       canRelease: true,
     });
@@ -58,7 +58,10 @@ describe("projectAttention", () => {
   });
 
   it("names the Mate on the verb, so the hand-over says who takes it", () => {
-    const [item] = projectAttention({ ...EMPTY, pullRequests: [pull({ mergeable: false })] });
+    const [item] = projectAttention({
+      ...EMPTY,
+      pullRequests: [pull({ mergeability: "conflicting" })],
+    });
     expect(item?.verb).toBe("Ask Theo");
     expect(item?.text).toBe("#4 needs a rebase");
   });
@@ -67,7 +70,7 @@ describe("projectAttention", () => {
     const [item] = projectAttention({
       ...EMPTY,
       mateNames: new Map(),
-      pullRequests: [pull({ mergeable: false })],
+      pullRequests: [pull({ mergeability: "conflicting" })],
     });
     expect(item?.verb).toBe("Ask the Mate");
   });
@@ -75,7 +78,7 @@ describe("projectAttention", () => {
   it("leaves checks that are merely running alone: waiting is the correct move", () => {
     const items = projectAttention({
       ...EMPTY,
-      pullRequests: [pull({ mergeable: false, checks: "pending" })],
+      pullRequests: [pull({ mergeability: "conflicting", checks: "pending" })],
     });
     expect(items).toEqual([]);
   });
@@ -98,7 +101,7 @@ describe("projectAttention", () => {
       ...EMPTY,
       waitingMates: [{ projectId: "p-theo", name: "Theo" }],
       failedStops: [{ projectId: "shop-stage", name: "stage" }],
-      pullRequests: [pull({ mergeable: false })],
+      pullRequests: [pull({ mergeability: "conflicting" })],
       notLive: 1,
       canRelease: true,
     });

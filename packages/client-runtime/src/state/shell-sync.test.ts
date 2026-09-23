@@ -59,6 +59,21 @@ function session(client: WsRpcProtocolClient): RpcSession.RpcSession {
   };
 }
 
+const noCache = Persistence.EnvironmentCacheStore.of({
+  loadShell: () => Effect.succeed(Option.none()),
+  saveShell: () => Effect.void,
+  loadThread: () => Effect.succeed(Option.none()),
+  saveThread: () => Effect.void,
+  removeThread: () => Effect.void,
+  loadServerConfig: () => Effect.succeed(Option.none()),
+  saveServerConfig: () => Effect.void,
+  loadVcsRefs: () => Effect.succeed(Option.none()),
+  saveVcsRefs: () => Effect.void,
+  removeVcsRefs: () => Effect.void,
+  clearVcsRefs: () => Effect.void,
+  clear: () => Effect.void,
+});
+
 describe("environment shell synchronization", () => {
   it.effect("publishes live state before persistence and preserves it when ready", () =>
     Effect.gen(function* () {
@@ -78,6 +93,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({
         loadShell: () => Effect.succeed(Option.none()),
@@ -152,6 +168,60 @@ describe("environment shell synchronization", () => {
     }),
   );
 
+  it.effect("a shell defect drops its session, and the shell leaves live as it reconnects", () =>
+    Effect.gen(function* () {
+      const defect = new Error("shell frame could not be decoded");
+      const client = {
+        [ORCHESTRATION_WS_METHODS.subscribeShell]: () =>
+          Stream.make<ReadonlyArray<OrchestrationShellStreamItem>>(
+            { kind: "snapshot", snapshot: LIVE_SHELL_SNAPSHOT },
+            { kind: "synchronized" },
+          ).pipe(Stream.concat(Stream.die(defect))),
+      } as unknown as WsRpcProtocolClient;
+      const live = session(client);
+      const defective: Array<RpcSession.RpcSession> = [];
+      const supervisorState = yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE);
+      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+        target: TARGET,
+        state: supervisorState,
+        session: yield* SubscriptionRef.make(Option.some(live)),
+        prepared: yield* SubscriptionRef.make(Option.some(PREPARED)),
+        connect: Effect.void,
+        disconnect: Effect.void,
+        retryNow: Effect.void,
+        reportStreamDefect: (dropped) => Effect.sync(() => defective.push(dropped)),
+      } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
+      const shellState = yield* makeEnvironmentShellState().pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.provideService(Persistence.EnvironmentCacheStore, noCache),
+        Effect.provideService(
+          ShellSnapshotLoader,
+          ShellSnapshotLoader.of({ load: () => Effect.succeed(Option.none()) }),
+        ),
+      );
+      yield* SubscriptionRef.changes(shellState).pipe(
+        Stream.filter((state) => state.status === "live"),
+        Stream.runHead,
+      );
+      for (let turn = 0; turn < 20 && defective.length === 0; turn += 1) yield* Effect.yieldNow;
+      expect(defective).toEqual([live]);
+
+      // The supervisor answers the defect by reconnecting on its backoff ladder.
+      yield* SubscriptionRef.set(supervisorState, {
+        desired: true,
+        network: "online",
+        phase: "backoff",
+        stage: null,
+        attempt: 1,
+        generation: 1,
+        lastFailure: null,
+        retryAt: 3_000,
+      });
+      for (let turn = 0; turn < 10; turn += 1) yield* Effect.yieldNow;
+      expect((yield* SubscriptionRef.get(shellState)).status).toBe("cached");
+    }),
+  );
+
   it.live.each([
     { bufferSize: Infinity, expectedSequences: [51] },
     // RpcClient defaults to a 16-event buffer, which splits larger server chunks.
@@ -174,6 +244,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({
         loadShell: () => Effect.succeed(Option.none()),
@@ -282,6 +353,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({
         loadShell: () => Effect.succeed(Option.some(cachedSnapshot)),
@@ -362,6 +434,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({
         loadShell: () => Effect.succeed(Option.some(LIVE_SHELL_SNAPSHOT)),

@@ -25,7 +25,7 @@ import { onZeropsInvalidation } from "./accountInvalidations";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const ON_ITS_WAY = new Set(["NEW", "CREATING"]);
-/** Same cadence as `useZeropsProvisioning`'s poll — "every poll tick is fine". */
+/** Same cadence as a birth's own poll (`BIRTH_POLL_MS`) — "every poll tick is fine". */
 const ACTIVE_WAIT_REVERDICT_MS = 2000;
 
 /** The projects whose creation is worth asking about: on their way up, each once. */
@@ -41,7 +41,7 @@ export function creationVerdictTargets(
 
 export function useZeropsCreationVerdicts(
   candidates: ReadonlyArray<ZeropsCandidate>,
-  /** The project id a provisioning wait is currently alive for, if any (H20). */
+  /** A birth not closed off yet, whose creation may still fail late (H20). */
   activeWaitProjectId: string | null = null,
 ): ReadonlyMap<string, ZeropsProjectCreation> {
   const { activeOrganization, client } = useZeropsSession();

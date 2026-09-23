@@ -1,15 +1,13 @@
 /**
- * "Preparing your project" — the wait between a pool claim and a container
- * that answers.
+ * "Preparing your project" — a birth's wait between an accepted creation and a
+ * container that answers (the birth worker, `birth/birthWorker.ts`).
  *
  * A pure state machine plus one read function, so the whole wait is testable
  * against a fake clock. Three rules it exists to enforce:
  *
- * 1. Prefer direct reads. `GET /client/{id}/project` and
- *    `GET /project/{id}/service-stack` are lag-free. A restricted
- *    Developer/Guest membership cannot call the client-wide read, so
- *    `listAccessibleClientProjects` falls back to the GUI's permission-filtered
- *    search and the poll naturally absorbs its short indexing delay.
+ * 1. Prefer direct reads. A birth reads its own project and its services
+ *    (`GET /project/{id}`, `GET /project/{id}/service-stack`), which are
+ *    lag-free, never a search index (MC-4).
  * 2. Absence is never a verdict. A just-claimed project's service list is
  *    briefly empty; that is a reason to keep waiting, not "there is no
  *    container".
@@ -43,7 +41,6 @@ export type ZeropsContainerHealth =
   | "stalled";
 
 export type ProvisioningPhase =
-  | "awaiting-project"
   | "awaiting-container"
   /** The container exists; waiting for its own boot process to finish before hardening it. */
   | "awaiting-settled"
@@ -52,7 +49,6 @@ export type ProvisioningPhase =
   | "awaiting-health"
   | "needs-enable"
   | "ready"
-  | "pool-exhausted"
   /**
    * A restart was already tried and the container still predates Zerops
    * Code: the zcp release running there simply does not carry it yet, so
@@ -75,7 +71,6 @@ export type ProvisioningPhase =
  * one move on.
  */
 export const PROVISIONING_CAPS = {
-  "awaiting-project": 60_000,
   "awaiting-container": 300_000,
   "awaiting-health": 90_000,
 } as const;
@@ -98,14 +93,8 @@ function capFor(phase: WaitingPhase): number | null {
   return phase in PROVISIONING_CAPS ? PROVISIONING_CAPS[phase as CappedWaitingPhase] : null;
 }
 
-/** Whether this state is still waiting on something, and so worth polling. */
-export function isProvisioningWaiting(state: ProvisioningState): boolean {
-  return isWaitingPhase(state.phase);
-}
-
 /** One label per phase this state machine can be in while waiting or acting. */
-export const PROVISIONING_PHASE_LABELS: Readonly<Record<WaitingPhase, string>> = {
-  "awaiting-project": "Waiting for your project to appear",
+const PROVISIONING_PHASE_LABELS: Readonly<Record<WaitingPhase, string>> = {
   "awaiting-container": "Waiting for the Zerops Mate container to start",
   "awaiting-settled": "Waiting for the container to finish coming up",
   hardening: "Closing the project off",
@@ -127,7 +116,7 @@ export interface ProvisioningState {
    * True once this phase's own cap has run out (B-2): words, not a stop.
    * The wait stays in its phase and keeps polling — a missed push still
    * resumes it — and "Keep waiting" only clears the flag and restarts the
-   * cap's clock; "Stop waiting" is the caller cancelling outright.
+   * cap's clock.
    */
   readonly overdue: boolean;
   /** Why the current wait is still going, when the platform said something useful. */
@@ -143,7 +132,6 @@ export interface ProvisioningState {
 }
 
 export type ProvisioningEvent =
-  | { readonly kind: "projects"; readonly projects: ReadonlyArray<ZeropsProject> }
   | {
       readonly kind: "services";
       readonly project: ZeropsProject;
@@ -202,7 +190,7 @@ function waiting(
 
 function settled(
   state: ProvisioningState,
-  phase: "needs-enable" | "ready" | "pool-exhausted" | "not-yet-available",
+  phase: "needs-enable" | "ready" | "not-yet-available",
   waitingFor: string,
   nowMs: number,
 ): ProvisioningState {
@@ -217,39 +205,9 @@ function settled(
 }
 
 /**
- * `zcpClaimed` comes straight from the registration response. Absent means the
- * signup was not pool-aware — which for our own request cannot happen, and
- * which the platform documents as "claimed", so absence is not treated as a
- * refusal.
- */
-export function startProvisioning(input: {
-  readonly zcpClaimed?: boolean;
-  readonly nowMs: number;
-}): ProvisioningState {
-  if (input.zcpClaimed === false) {
-    return {
-      phase: "pool-exhausted",
-      waitingFor: "No ready project was available",
-      capMs: null,
-      phaseStartedAtMs: input.nowMs,
-      projectId: null,
-      containerServiceId: null,
-      containerOrigin: null,
-      overdue: false,
-      detail: null,
-      enabled: false,
-      processRunning: false,
-    };
-  }
-  return waiting("awaiting-project", input.nowMs);
-}
-
-/**
- * Starts at the health wait for a container the caller already knows about —
- * the picker path, where a project and its container exist and the only
- * question is whether Zerops Mate answers on it. This container has already
- * been through its birth (it is being picked from the projects list, not
- * just created), so it starts past hardening rather than repeating it.
+ * Starts at the health wait for a container whose harden already ran — a
+ * birth taken up again after a reload or by another tab, on the container its
+ * harden found — so it starts past hardening rather than repeating it.
  */
 export function startProvisioningForContainer(input: {
   readonly projectId: string;
@@ -265,24 +223,15 @@ export function startProvisioningForContainer(input: {
 }
 
 /**
- * Starts at the container wait for a project the caller just created — the
- * environment-creation path, where the project id is known the moment the
- * platform answers, and following "the newest project on the account" would
- * be guessing at something already in hand.
+ * Starts at the container wait for a project whose creation the platform
+ * accepted: the project id is known the moment it answers, and the wait finds
+ * its container, closes the project off and waits for the Mate to answer.
  */
 export function startProvisioningForProject(input: {
   readonly projectId: string;
   readonly nowMs: number;
 }): ProvisioningState {
   return waiting("awaiting-container", input.nowMs, { projectId: input.projectId });
-}
-
-function newestProject(projects: ReadonlyArray<ZeropsProject>): ZeropsProject | undefined {
-  // A claim hands over a brand-new project, so on an account that already had
-  // one the newest row is the one to follow.
-  return [...projects].sort((left, right) =>
-    (right.created ?? "").localeCompare(left.created ?? ""),
-  )[0];
 }
 
 export function advanceProvisioning(
@@ -293,9 +242,8 @@ export function advanceProvisioning(
   if (event.kind === "retry") {
     if (state.phase === "hardening") {
       // Not a wait that ran out — a real harden failure. Retrying re-enters
-      // the same phase so the hook's harden effect, keyed on when the phase
-      // began, tries again; it never re-runs `awaiting-settled`, whose READ
-      // proof already stands.
+      // the same phase so the birth worker's harden tries again; it never
+      // re-runs `awaiting-settled`, whose READ proof already stands.
       return { ...state, detail: null, phaseStartedAtMs: nowMs };
     }
     if (state.phase === "not-yet-available") {
@@ -383,12 +331,6 @@ export function advanceProvisioning(
     return { ...state, overdue: true };
   }
 
-  if (event.kind === "projects" && state.phase === "awaiting-project") {
-    const project = newestProject(event.projects);
-    if (!project) return state;
-    return waiting("awaiting-container", nowMs, { projectId: project.id });
-  }
-
   if (
     event.kind === "services" &&
     (state.phase === "awaiting-container" || state.phase === "awaiting-settled")
@@ -465,16 +407,11 @@ export function advanceProvisioning(
  */
 export async function readProvisioning(input: {
   readonly state: ProvisioningState;
-  readonly projects: ReadonlyArray<ZeropsProject>;
   readonly project: ZeropsProject | undefined;
   readonly services: ReadonlyArray<ZeropsService> | undefined;
   readonly probeHealth: (origin: string) => Promise<ZeropsContainerHealth>;
 }): Promise<ProvisioningEvent> {
   const { state, probeHealth } = input;
-
-  if (state.phase === "awaiting-project") {
-    return { kind: "projects", projects: input.projects };
-  }
 
   if (
     (state.phase === "awaiting-container" || state.phase === "awaiting-settled") &&

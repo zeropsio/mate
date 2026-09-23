@@ -106,14 +106,13 @@ export function countDoorEnvironments(environments: ReadonlyArray<DoorEnvironmen
 export type DoorRegistry = Pick<AtomRegistry.AtomRegistry, "get" | "subscribe">;
 
 /**
- * The door's environment count, taken once the catalog has loaded what the
- * browser saved.
+ * The door's environment count, taken once the catalog has loaded.
  *
- * A route guard runs before anything renders, and the catalog hydrates from
- * IndexedDB after the runtime boots. A guard that read it synchronously saw
- * its empty initial value whenever the primary's session answer came back
- * first, counted zero, and sent a refreshed deep link to /pair — a race the
- * next load usually won. A catalog that failed to load holds nothing usable.
+ * A route guard runs before anything renders, and the catalog loads after the
+ * runtime boots. A guard that read it synchronously would see its empty
+ * initial value whenever the primary's session answer comes back first, count
+ * zero, and send a deep link to /pair. A catalog that failed to load holds
+ * nothing usable.
  */
 export function awaitDoorEnvironmentCount<
   Catalog extends { readonly isReady: boolean },

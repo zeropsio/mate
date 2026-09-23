@@ -240,8 +240,8 @@ export const ChatHeader = memo(function ChatHeader({
     [activeThreadEnvironmentId, activeThreadId],
   );
   // The face the lists draw, by the same rule: a Mate is known from its
-  // project's tags and its container's origin — before its socket is up, and
-  // from the last reload's cache — so an unconnected one sleeps here too
+  // project's tags and its container's origin — before its socket is up — so
+  // an unconnected one sleeps here too
   // rather than wearing an idle face it has not earned.
   const mateActivity = useZeropsAgentActivity().get(activeThreadEnvironmentId);
   const mateFace = mateFaceFor(mate?.connected === true, mateActivity);

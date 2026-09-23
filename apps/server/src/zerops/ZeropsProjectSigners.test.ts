@@ -1,21 +1,26 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import {
   isMemberListComplete,
   isTurnStartingCommand,
+  make as makeProjectSigners,
   parseSignerTags,
   planAgentSignOut,
   readActiveMemberIds,
   readProjectSigners,
+  SIGNERS_CACHE_TTL,
   signerTag,
   turnRefusal,
 } from "./ZeropsProjectSigners.ts";
@@ -431,5 +436,118 @@ describe("readActiveMemberIds", () => {
         ).layer,
       ),
     ),
+  );
+});
+
+describe("the turn gate", () => {
+  const signedIn = {
+    state: "authorized",
+    providerAuth: "authenticated",
+    credPresent: true,
+    flagToken: false,
+  } as const;
+
+  /**
+   * The service over a project whose tags the test changes between calls,
+   * counting every project read the service makes. The member list is
+   * unreadable, so the leave check never signs anybody out.
+   */
+  const gate = (initialTags: ReadonlyArray<string>) =>
+    Effect.gen(function* () {
+      let tags = initialTags;
+      let projectReads = 0;
+      const signers = yield* makeProjectSigners.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            httpLayer((url) => {
+              if (url.endsWith("/user/list")) return json({ message: "down" }, 500);
+              projectReads += 1;
+              return json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: tags });
+            }).layer,
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+            NodeServices.layer,
+          ),
+        ),
+      );
+      // The leave check's first pass reads the tags at start, and fills the cache.
+      yield* TestClock.adjust(Duration.zero);
+      return {
+        signers,
+        setTags: (next: ReadonlyArray<string>) => {
+          tags = next;
+        },
+        reads: () => projectReads,
+      };
+    });
+
+  it.effect(
+    "a refusal on a cached signer read re-reads the tags and admits who just signed in",
+    () =>
+      Effect.gen(function* () {
+        const { signers, setTags, reads } = yield* gate([]);
+        const before = reads();
+        // The person's sign-in lands inside the cache's lifetime.
+        setTags([signerTag("claude-code", JAN)]);
+        yield* TestClock.adjust(Duration.seconds(5));
+
+        const refusal = yield* signers.turnRefusal({
+          agentId: "claude-code",
+          agent: signedIn,
+          subject: JAN,
+        });
+        assert.isUndefined(refusal);
+        assert.strictEqual(reads() - before, 1, "one re-read, no more");
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("a re-read that still refuses refuses with the fresh answer", () =>
+    Effect.gen(function* () {
+      const { signers, setTags, reads } = yield* gate([signerTag("claude-code", EVA)]);
+      const before = reads();
+      setTags([]);
+      yield* TestClock.adjust(Duration.seconds(5));
+
+      const refusal = yield* signers.turnRefusal({
+        agentId: "claude-code",
+        agent: signedIn,
+        subject: JAN,
+      });
+      assert.deepStrictEqual(refusal, { kind: "unrecorded" });
+      assert.strictEqual(reads() - before, 1);
+      // The fresh read replaced the cached one.
+      assert.deepStrictEqual(yield* signers.signers, {});
+      assert.strictEqual(reads() - before, 1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a refusal on a read made for this very call is not read again", () =>
+    Effect.gen(function* () {
+      const { signers, reads } = yield* gate([signerTag("claude-code", EVA)]);
+      yield* TestClock.adjust(SIGNERS_CACHE_TTL);
+      const before = reads();
+
+      const refusal = yield* signers.turnRefusal({
+        agentId: "claude-code",
+        agent: signedIn,
+        subject: JAN,
+      });
+      assert.deepStrictEqual(refusal, { kind: "someone-else" });
+      assert.strictEqual(reads() - before, 1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("an agent that is not signed in is refused without reading the tags again", () =>
+    Effect.gen(function* () {
+      const { signers, reads } = yield* gate([]);
+      const before = reads();
+
+      const refusal = yield* signers.turnRefusal({
+        agentId: "claude-code",
+        agent: { ...signedIn, state: "not-authorized", credPresent: false },
+        subject: JAN,
+      });
+      assert.deepStrictEqual(refusal, { kind: "not-signed-in", auth: "not-authorized" });
+      assert.strictEqual(reads() - before, 0);
+    }).pipe(Effect.scoped),
   );
 });

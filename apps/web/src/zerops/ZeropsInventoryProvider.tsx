@@ -1,13 +1,17 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import {
+  evidenceProjectRefs,
+  heldEvidence,
+  inventoryProjectRefs,
+  pendingDenials,
+} from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   interestKeyOf,
   organizationKeyOf,
   projectRecordToZeropsProject,
   serviceRecordToZeropsService,
-  type AccessState,
-  type Evidence,
-  type GrantMachine,
+  type GrantFailure,
   type InterestState,
   type OrganizationRef,
   type ProjectRef,
@@ -18,14 +22,13 @@ import {
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { APP_DISPLAY_NAME } from "../branding";
-import { PortalGate } from "../components/ui/portal-gate";
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
-import { dismissContextMenu } from "../contextMenuFallback";
-import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
+import { zeropsDataRuntimeAtom, zeropsInventoryAtom, zeropsSessionAtom } from "../state/zerops";
+import { invalidateZerops } from "./accountInvalidations";
 import {
+  HeldInventoryContext,
   InventoryContext,
   inventoryProjectRefKey,
   type Inventory,
@@ -36,73 +39,15 @@ import {
   stabilizeZeropsAtom,
   useZeropsAtomSelections,
   useZeropsData,
-  useZeropsDataInterest,
   zeropsKnowledgeArraysEqual,
 } from "./zeropsDataContext";
 
 export { useZeropsInventory } from "./inventoryContext";
 
-/**
- * The projects admitted evidence names: verified ones, those whose latest
- * read failed, and those a denial withholds until a confirming read (G6).
- * A confirmed denial is the only way a project leaves.
- */
-function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRef> {
-  if (evidence === null) return [];
-  const refs = new Map<string, ProjectRef>();
-  for (const { access } of evidence.projects.values()) {
-    if (access.role !== "NO_ACCESS")
-      refs.set(inventoryProjectRefKey(access.project), access.project);
-  }
-  for (const { project } of evidence.unverified.values()) {
-    if (!evidence.projects.has(project.projectId))
-      refs.set(inventoryProjectRefKey(project), project);
-  }
-  for (const { project, confirmation } of evidence.closedProjects.values()) {
-    if (confirmation.status === "due") refs.set(inventoryProjectRefKey(project), project);
-  }
-  return [...refs.values()];
-}
-
-/** The projects a denial withholds until its confirming read (G6), by `inventoryProjectRefKey`. */
-function pendingDenials(evidence: Evidence | null): ReadonlySet<string> {
-  if (evidence === null) return new Set();
-  return new Set(
-    [...evidence.closedProjects.values()]
-      .filter(({ confirmation }) => confirmation.status === "due")
-      .map(({ project }) => inventoryProjectRefKey(project)),
-  );
-}
-
-/** Evidence projects plus those a command established since, from the runtime's grant. */
-export function inventoryProjectRefs(
-  granted: ReadonlyArray<ProjectRef>,
-  access: AccessState | undefined,
-): ReadonlyArray<ProjectRef> {
-  const refs = new Map(granted.map((ref) => [inventoryProjectRefKey(ref), ref]));
-  const established =
-    access?.status === "verified"
-      ? access.projects
-      : access?.status === "verifying" || access?.status === "failed"
-        ? (access.previous?.projects ?? [])
-        : [];
-  for (const { project: ref, role } of established) {
-    if (role !== "NO_ACCESS") refs.set(inventoryProjectRefKey(ref), ref);
-  }
-  return [...refs.values()];
-}
-
 type OrganizationInventoryDescriptor = Extract<
   RuntimeInterestDescriptor,
   { readonly kind: "organization-inventory" }
 >;
-
-const heldEvidence = (grant: GrantMachine): Evidence | null =>
-  grant.phase.phase === "granted"
-    ? grant.phase.evidence
-    : grant.phase.phase === "lapsed"
-      ? grant.phase.last
-      : null;
 
 /**
  * A project's service list can go transiently unread mid-re-projection (its
@@ -120,25 +65,6 @@ export function carryForwardServiceOutcome(
   if (computed.status === "resolved") return computed;
   const prior = previous.get(projectId);
   return prior?.status === "resolved" ? prior : computed;
-}
-
-/**
- * Whether the inventory round is incomplete only because the tab is
- * backgrounded: every demanded interest that hasn't reached `observing` is
- * `paused` on purpose (`pauseForBackground`), not stuck or failed. It
- * resolves on its own the moment the tab is visible again, so the wait
- * screen should read as "waiting for the tab", not "still checking".
- */
-export function isPausedOnlyRound(demanded: ReadonlyArray<InterestState | undefined>): boolean {
-  return (
-    demanded.some((interest) => interest?.status === "paused") &&
-    demanded.every((interest) => interest?.status === "paused" || interest?.status === "observing")
-  );
-}
-
-function InterestDemand({ descriptor }: { readonly descriptor: RuntimeInterestDescriptor }) {
-  useZeropsDataInterest(descriptor);
-  return null;
 }
 
 function demandedInterest(
@@ -232,6 +158,8 @@ function makeInventorySnapshotSelector() {
       [...next.services],
       [...next.projectRefs.keys()],
       [...next.authority],
+      next.account,
+      [...next.lost],
       next.isLoading,
       next.error,
     ]);
@@ -243,37 +171,47 @@ function makeInventorySnapshotSelector() {
 }
 
 /**
- * What a lapse of the account's access shows until the next grant: an opaque
- * layer over the product, which stays mounted beneath it and hidden from
- * every reader (DESIGN §4.2 G9, §9 C1; per-region withholding replaces it in
- * Phase 5). Nothing platform-derived shows beside it meanwhile: the portal
- * gate closes every floating layer, the fallback context menu is dismissed,
- * and the document title names only the app.
+ * What a lapse says (DESIGN §3.4, R-K3): one sentence that names its cause
+ * only, beside "Try now" once a renewal failed. The grant keeps that failure
+ * until the next grant, so the rounds a wake or "Try now" starts keep the
+ * failure's words, and no countdown changes them.
  */
-function AccessLapse({
-  cause,
+export function accessLapseCopy(failure: GrantFailure | null): {
+  readonly sentence: string;
+  readonly retry: boolean;
+} {
+  return failure === null
+    ? { sentence: "Checking your Zerops access…", retry: false }
+    : { sentence: "Zerops isn't answering.", retry: true };
+}
+
+/**
+ * The app's one banner while the account's access lapses (DESIGN §3.4): each
+ * platform region is withheld at its own read meanwhile, and the product stays
+ * mounted and usable around them (§4.2 G9, §9 C1). Whatever it says, it offers
+ * the session's own Sign out, so a lapse that never ends is never a dead end (A9).
+ */
+function AccessLapseBanner({
+  copy,
   onRetry,
   onSignOut,
 }: {
-  readonly cause: string;
+  readonly copy: ReturnType<typeof accessLapseCopy>;
   readonly onRetry: () => void;
   readonly onSignOut: () => void;
 }) {
-  useEffect(() => {
-    dismissContextMenu();
-    const title = document.title;
-    document.title = APP_DISPLAY_NAME;
-    return () => {
-      // A title set while the lapse lasted is newer than the one it hid.
-      if (document.title === APP_DISPLAY_NAME) document.title = title;
-    };
-  }, []);
   return (
-    <div role="alert" className="fixed inset-0 z-[200] bg-background p-8">
-      Could not load your Zerops projects. {cause}{" "}
-      <button type="button" onClick={onRetry}>
-        Try again
-      </button>{" "}
+    // Above every layer the app opens (dialogs, menus, tooltips): a dialog left open when the
+    // lapse starts must not stand between the person and Sign out.
+    <div role="alert" className="fixed inset-x-0 top-0 z-[200] bg-background p-4">
+      {copy.sentence}{" "}
+      {copy.retry ? (
+        <>
+          <button type="button" onClick={onRetry}>
+            Try now
+          </button>{" "}
+        </>
+      ) : null}
       <button type="button" onClick={onSignOut}>
         Sign out
       </button>
@@ -281,14 +219,40 @@ function AccessLapse({
   );
 }
 
+const AUTHORIZED: ScopeAuthority = { kind: "authorized" };
+
 /**
  * One account inventory, read from the data runtime: its projects and
  * services, and the access grant the runtime interprets (DESIGN §4.2) — the
  * evidence that names the projects, each project's authority, and the lapse.
+ *
+ * It holds no demand of its own: the account runtime holds the inventories it
+ * reads (DESIGN §5 L7). Its gate mounts the product on the epoch's first grant
+ * (D2), while those inventories may still be unread.
+ *
+ * It publishes the runtime, the session and, once the product mounts, the
+ * inventory into the account's atom registry (`state/zerops.ts`): the one base
+ * the derived candidate listing, names, Mates and topology read, which starts
+ * over when the account closes. Withholding is applied at that one read, per
+ * project and for the whole account while it lapses (§3.1, G12); a lapse is
+ * the app's one banner, never a cover over the product.
  */
 export function ZeropsInventoryProvider({ children }: { readonly children: ReactNode }) {
-  const { organizations, signOut } = useZeropsSession();
+  const { activeOrganization, organizationStatus, organizations, signOut, status } =
+    useZeropsSession();
   const { runtime, organizationRef } = useZeropsData();
+  const registry = useContext(RegistryContext);
+  useEffect(() => {
+    registry.set(zeropsDataRuntimeAtom, runtime);
+  }, [registry, runtime]);
+  useEffect(() => {
+    registry.set(zeropsSessionAtom, {
+      status,
+      organizationStatus,
+      activeOrganization:
+        activeOrganization === null ? null : organizationRef(activeOrganization.id),
+    });
+  }, [activeOrganization, organizationRef, organizationStatus, registry, status]);
   const grant = useAtomValue(runtime.access.view);
   /** The first mount happened; the product stays mounted from then on for the epoch. */
   const [admitted, setAdmitted] = useState(false);
@@ -301,31 +265,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         organization: organizationRef(organization.id),
       })),
     [organizationRef, organizations],
-  );
-
-  // A person's "Try again" on access (DESIGN §6.2); a retry during a round joins it (G7).
-  useEffect(
-    () =>
-      onZeropsInvalidation((invalidation) => {
-        if (invalidation.topic === "access" && invalidation.change === "renew-now") {
-          void Effect.runPromise(runtime.access.signal({ type: "USER_RETRY" }));
-        }
-      }),
-    [runtime],
-  );
-
-  // An inventory intent re-reads that organization on a fresh receiver while
-  // the rows already read stay up (`runtime.refresh`). The leases are never
-  // re-taken for it: a released lease drops what it read, and the projects
-  // page painted "Reading your projects…" over the list it had a moment ago
-  // (the owner's run of 2026-09-17).
-  useEffect(
-    () =>
-      onZeropsInvalidation((invalidation) => {
-        if (invalidation.topic !== "inventory") return;
-        void Effect.runPromise(runtime.refresh(invalidation.organization));
-      }),
-    [runtime],
   );
 
   const evidence = heldEvidence(grant.machine);
@@ -347,6 +286,18 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     [access, evidence],
   );
   const denied = useMemo(() => pendingDenials(evidence), [evidence]);
+  /** The account's authority, as the grant last published it (G12). */
+  const account = grant.machine.published.account ?? AUTHORIZED;
+  /** The projects a confirming read proved lost (G6). */
+  const lost = useMemo(
+    () =>
+      new Set(
+        [...(evidence?.closedProjects.values() ?? [])]
+          .filter(({ confirmation }) => confirmation.status === "confirmed")
+          .map(({ project }) => project.projectId),
+      ),
+    [evidence],
+  );
 
   const organizationReadEntries = useMemo(
     () =>
@@ -436,8 +387,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const previousOutcomes = prevServiceOutcomesRef.current;
     const resolvedOrCarried = (projectId: string, computed: InventoryServiceOutcome) =>
       carryForwardServiceOutcome(previousOutcomes, projectId, computed);
-    // Whether every project and its services are read; how live the push is
-    // is the first mount's concern alone.
+    // Whether every project and its services are read.
     let complete = evidence !== null;
     for (const ref of knownProjectRefs) {
       const key = inventoryProjectRefKey(ref);
@@ -526,16 +476,12 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         blocked.set(organizationKeyOf(organization), organization);
       }
     }
-    const observing = demanded.every(({ interest }) => interest?.status === "observing");
-    const pausedOnly = isPausedOnlyRound(demanded.map(({ interest }) => interest));
     return {
       projects,
       services,
       projectRefs,
       read: complete,
-      established: complete && observing,
       blockedOrganizations: [...blocked.values()],
-      pausedOnly,
     };
   }, [
     denied,
@@ -556,14 +502,15 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         ? "Some project access or services could not be verified."
         : null;
 
-  // The first mount waits for its data as well as its grant (G10), and the
-  // runtime holds the grant before the gate opens: `ready` is what mounts the
-  // children, and the first thing some of them do is lease a resource — which
-  // the broker refuses until the runtime holds a grant. Opening the gate first
-  // made `/zerops/new` fail its locations read on every cold load (measured
-  // 2026-09-20).
+  // The account gate: the first mount waits for the epoch's first grant and
+  // for nothing else (D2, §9 C10) — services render per region as they arrive.
+  // The runtime holds the grant before the gate opens: `ready` is what mounts
+  // the children, and the first thing some of them do is lease a resource —
+  // which the broker refuses until the runtime holds a grant. Opening the gate
+  // first made `/zerops/new` fail its locations read on every cold load
+  // (measured 2026-09-20).
   const firstRound =
-    phase.phase === "granted" && access?.status === "verified" && projected.established
+    phase.phase === "granted" && access?.status === "verified"
       ? phase.evidence.account.round
       : null;
   const ready = admitted || firstRound !== null;
@@ -580,10 +527,10 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       mateDiagnostics.record({ kind: "access-grant", round: grantedRound });
   }, [grantedRound]);
 
-  /** What the overlay names while the grant is lapsed, and nothing otherwise. */
-  const lapseCause =
-    ready && phase.phase === "lapsed" ? (error ?? "Project access verification expired.") : null;
-  const visibleError = lapseCause ?? error;
+  /** What the app's banner says while the mounted product's grant is lapsed, until the next grant. */
+  const lapse = ready && phase.phase === "lapsed" ? accessLapseCopy(phase.failure) : null;
+  /** The inventory's own trouble, which a lapse's one banner speaks over (§3.4). */
+  const shownError = lapse === null ? error : null;
   const retry = () => {
     const intents = retryInvalidations({
       granted: phase.phase === "granted",
@@ -592,27 +539,59 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     for (const intent of intents) invalidateZerops(intent);
   };
 
+  // Withholding is applied here, at the inventory's one read (DESIGN law 5, §3.1): a withheld
+  // project's content leaves `projects` and `services` and comes back with its next authority.
+  const shown = useMemo(() => {
+    const withheld = new Set<string>(
+      [...projected.projectRefs].flatMap(([key, ref]) =>
+        account.kind === "withheld" || authority.get(key)?.kind === "withheld"
+          ? [ref.projectId]
+          : [],
+      ),
+    );
+    return {
+      projects: projected.projects.filter(({ id }) => !withheld.has(id)),
+      services: new Map([...projected.services].filter(([id]) => !withheld.has(id))),
+    };
+  }, [account, authority, projected]);
+  const held = useMemo(
+    () => ({ projects: projected.projects, services: projected.services }),
+    [projected.projects, projected.services],
+  );
   const snapshot = selectSnapshot({
-    projects: projected.projects,
-    services: projected.services,
+    projects: shown.projects,
+    services: shown.services,
     projectRefs: projected.projectRefs,
     authority,
+    account,
+    lost,
     isLoading: !projected.read && error === null,
-    error: visibleError,
+    error: shownError,
   });
+  useEffect(() => {
+    if (!ready) return;
+    const {
+      projects,
+      services,
+      projectRefs,
+      authority: projectAuthority,
+      account: accountAuthority,
+    } = snapshot;
+    registry.set(zeropsInventoryAtom, {
+      projects,
+      services,
+      projectRefs,
+      authority: projectAuthority,
+      account: accountAuthority,
+    });
+  }, [ready, registry, snapshot]);
 
   return (
     <>
-      {organizationDescriptors.map((descriptor) => (
-        <InterestDemand key={interestKeyOf(descriptor)} descriptor={descriptor} />
-      ))}
-      {projectDescriptors.map((descriptor) => (
-        <InterestDemand key={interestKeyOf(descriptor)} descriptor={descriptor} />
-      ))}
       {!ready ? (
-        visibleError !== null ? (
+        error !== null ? (
           <div role="alert" className="p-8">
-            Could not load your Zerops projects. {visibleError}{" "}
+            Could not load your Zerops projects. {error}{" "}
             <button type="button" onClick={retry}>
               Try again
             </button>{" "}
@@ -620,8 +599,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               Sign out
             </button>
           </div>
-        ) : projected.pausedOnly ? (
-          <ZeropsLandingWait label="Paused while this tab is in the background…" />
         ) : grant.overdue ? (
           <div role="alert" className="p-8">
             Still checking your Zerops projects.{" "}
@@ -637,29 +614,24 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         )
       ) : (
         <InventoryContext value={snapshot}>
-          {error !== null && lapseCause === null ? (
-            <div role="alert" className="fixed inset-x-0 top-0 z-50 bg-background p-4">
-              Project access could not be verified.{" "}
-              <button type="button" onClick={retry}>
-                Try again
-              </button>{" "}
-              <button type="button" onClick={() => void signOut()}>
-                Sign out
-              </button>
-            </div>
-          ) : null}
-          <PortalGate closed={lapseCause !== null}>
-            <div
-              inert={visibleError !== null}
-              aria-hidden={lapseCause !== null || undefined}
-              className="contents"
-            >
+          <HeldInventoryContext value={held}>
+            {lapse !== null ? (
+              <AccessLapseBanner copy={lapse} onRetry={retry} onSignOut={() => void signOut()} />
+            ) : shownError !== null ? (
+              <div role="alert" className="fixed inset-x-0 top-0 z-50 bg-background p-4">
+                Project access could not be verified.{" "}
+                <button type="button" onClick={retry}>
+                  Try again
+                </button>{" "}
+                <button type="button" onClick={() => void signOut()}>
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+            <div inert={shownError !== null} className="contents">
               {children}
             </div>
-          </PortalGate>
-          {lapseCause === null ? null : (
-            <AccessLapse cause={lapseCause} onRetry={retry} onSignOut={() => void signOut()} />
-          )}
+          </HeldInventoryContext>
         </InventoryContext>
       )}
     </>

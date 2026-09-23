@@ -50,7 +50,7 @@ export function ZeropsReleaseConfirm({
     RELEASE_CHANGES_SHOWN,
   );
   return (
-    <DialogPanel>
+    <>
       <DialogHeader>
         <DialogTitle>{tag === undefined ? "Release" : `Release ${tag}`}</DialogTitle>
         <DialogDescription>
@@ -65,21 +65,23 @@ export function ZeropsReleaseConfirm({
               : `${String(summary.total)} changes go live.`}
         </DialogDescription>
       </DialogHeader>
-      {summary.total === 0 ? null : (
-        <ul
-          className="my-2 flex max-h-64 flex-col gap-1 overflow-y-auto"
-          data-zerops-surface="release-confirm-contents"
-        >
-          {summary.subjects.map((subject) => (
-            <li className="text-sm wrap-anywhere text-foreground" key={subject}>
-              {subject}
-            </li>
-          ))}
-          {summary.more === 0 ? null : (
-            <li className="text-sm text-muted-foreground">+{summary.more} more</li>
-          )}
-        </ul>
-      )}
+      <DialogPanel>
+        {summary.total === 0 ? null : (
+          <ul
+            className="my-2 flex max-h-64 flex-col gap-1 overflow-y-auto"
+            data-zerops-surface="release-confirm-contents"
+          >
+            {summary.subjects.map((subject) => (
+              <li className="text-sm wrap-anywhere text-foreground" key={subject}>
+                {subject}
+              </li>
+            ))}
+            {summary.more === 0 ? null : (
+              <li className="text-sm text-muted-foreground">+{summary.more} more</li>
+            )}
+          </ul>
+        )}
+      </DialogPanel>
       <DialogFooter>
         <DialogClose
           render={
@@ -97,7 +99,7 @@ export function ZeropsReleaseConfirm({
           {releasing ? "Releasing\u2026" : "Release"}
         </Button>
       </DialogFooter>
-    </DialogPanel>
+    </>
   );
 }
 

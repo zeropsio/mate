@@ -11,9 +11,6 @@
 
 export const ZEROPS_FIRST_PROMPT_STORAGE_KEY = "zerops-mate.first-prompt.v1";
 
-/** Which registered environments were reached through the Zerops door. */
-export const ZEROPS_ENVIRONMENTS_STORAGE_KEY = "zerops-mate.zerops-environments.v1";
-
 export const ZEROPS_ONBOARDING_PROMPT =
   "I just opened Zerops Mate on this project. Introduce yourself, tell me what is running here, and what we could do next.";
 

@@ -135,7 +135,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
 import * as ZeropsProjectSigners from "./zerops/ZeropsProjectSigners.ts";
-import { isTurnStartingCommand, turnRefusal } from "./zerops/ZeropsProjectSigners.ts";
+import { isTurnStartingCommand } from "./zerops/ZeropsProjectSigners.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./zerops/ZeropsMembershipWatch.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
@@ -1254,7 +1254,8 @@ const makeWsRpcLayer = (
        * cannot write, so neither it nor its agent can forge it
        * (`ZeropsProjectSigners`). A read that fails leaves the record
        * unknown, and unknown refuses: "nobody recorded it" and "somebody
-       * else's" are the same thing to everyone but the person who knows.
+       * else's" are the same thing to everyone but the person who knows. A
+       * refusal on a cached record is re-read once before it stands.
        */
       const refuseTurnTheAgentCannotRun = Effect.fnUntraced(function* (
         normalizedCommand: OrchestrationCommand,
@@ -1283,10 +1284,9 @@ const makeWsRpcLayer = (
         const snapshot = yield* zeropsAgentAuth.latest;
         const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
         if (agent === undefined) return;
-        const signers = yield* projectSigners.signers;
-        const refusal = turnRefusal({
+        const refusal = yield* projectSigners.turnRefusal({
+          agentId,
           agent,
-          signer: signers[agentId],
           subject: currentSession.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
             ? currentSession.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
             : undefined,

@@ -181,7 +181,23 @@ interface SubscriptionOptions<TTag extends EnvironmentSubscriptionRpcTag> {
   ) => Effect.Effect<void, never, never>;
   readonly retryExpectedFailureAfter?: Duration.Input;
   readonly resubscribe?: Stream.Stream<unknown, never, never>;
+  /**
+   * A defect drops the session it arrived on: the supervisor reconnects on its
+   * backoff ladder and shows reconnecting, and the subscription resumes on the
+   * next session instead of ending.
+   */
+  readonly reconnectOnDefect?: true;
 }
+
+/** A protocol or programming defect, as opposed to a failure the method declares or a lost transport. */
+const isDefect = (cause: Cause.Cause<unknown>): boolean =>
+  cause.reasons.some(
+    (reason) =>
+      reason._tag === "Die" ||
+      (reason._tag === "Fail" &&
+        isRpcClientError(reason.error) &&
+        reason.error.reason._tag === "RpcClientDefect"),
+  );
 
 export function subscribeDynamic<TTag extends EnvironmentSubscriptionRpcTag>(
   tag: TTag,
@@ -238,18 +254,16 @@ export function subscribeDynamic<TTag extends EnvironmentSubscriptionRpcTag>(
                     }),
                   ).pipe(
                     Stream.tapCause((cause) =>
-                      options?.onDefect !== undefined &&
-                      cause.reasons.some(
-                        (reason) =>
-                          reason._tag === "Die" ||
-                          (reason._tag === "Fail" &&
-                            isRpcClientError(reason.error) &&
-                            reason.error.reason._tag === "RpcClientDefect"),
-                      )
+                      options?.onDefect !== undefined && isDefect(cause)
                         ? options.onDefect(cause)
                         : Effect.void,
                     ),
                     Stream.catchCause((cause) => {
+                      if (options?.reconnectOnDefect === true && isDefect(cause)) {
+                        return Stream.fromEffect(supervisor.reportStreamDefect(session)).pipe(
+                          Stream.drain,
+                        );
+                      }
                       const hasOnlyExpectedFailures =
                         cause.reasons.length > 0 &&
                         cause.reasons.every((reason) => reason._tag === "Fail");

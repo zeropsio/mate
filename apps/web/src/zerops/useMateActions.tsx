@@ -28,6 +28,7 @@ import {
   type ZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
+import { heldCandidates, takenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { resolveMateVerbs, resolveMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -43,13 +44,14 @@ import { ZeropsMoveToGroupDialog } from "../components/zerops/ZeropsMoveToGroupD
 import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
 import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
-import { registerMateInGroup } from "./brokerGrant";
-import { findAccountGitea } from "./giteaProject";
+import { projectTagsWrite, registerMateInGroup } from "./brokerGrant";
+import { useAccountGitea } from "./giteaProject";
+import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useProjectOrderPreference } from "./projectOrderPreference";
 import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
-import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
+import { intendContainer } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -88,7 +90,7 @@ export interface MateActions {
  */
 export interface MateActionsInput {
   readonly registry: RegistryState;
-  /** `candidate.key → "0.11.25"`, from `useZeropsCandidateHealth`. */
+  /** `candidate.key → "0.11.25"`, from `useZeropsContainers`. */
   readonly serverVersions: ReadonlyMap<string, string>;
 }
 
@@ -100,9 +102,10 @@ interface RegistryState {
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
   const { activeOrganization, client } = useZeropsSession();
   const { projectRef, runtime } = useZeropsData();
-  const { candidates, refresh } = useZeropsCandidates();
-  const inventory = useZeropsInventory();
-  const [dialog, setDialog] = useState<MateDialog | null>(null);
+  const { listing, refresh } = useZeropsCandidates();
+  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
+  const [dialog, setDialog] = useProjectDialog((open: MateDialog) => open.candidate.project.id);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   // The same preference the projects screen's sort control writes — the
@@ -110,10 +113,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // their own list, not a fixed order of their own.
   const [projectOrder] = useProjectOrderPreference();
 
-  const giteaProjectId = useMemo(
-    () => findAccountGitea(inventory, activeOrganization?.id)?.projectId,
-    [activeOrganization?.id, inventory],
-  );
+  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
@@ -122,14 +122,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       }),
     [candidates, projectOrder],
   );
-  const takenBotNames = useMemo(
-    () =>
-      candidates.flatMap((candidate) => {
-        const bot = readZeropsGroupTags(candidate.project.tagList).bot;
-        return bot === undefined ? [] : [bot];
-      }),
-    [candidates],
-  );
+  const taken = useMemo(() => takenBotNames(listing), [listing]);
   const viewer = useMemo(
     () =>
       activeOrganization === null
@@ -243,7 +236,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               project,
               serviceId: ZeropsServiceId.make(serviceId),
             }),
-          ),
+          ).then((value) => {
+            intendContainer(candidate.key, { kind: "restart" });
+            return value;
+          }),
         refresh,
       );
     },
@@ -255,9 +251,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       if (activeOrganization === null) return;
       void write(candidate.key, () =>
         runZeropsCommand(
-          runtime.commands.nameProjectAgent(
+          runtime.commands.updateProjectTags(
             projectRef(activeOrganization.id, candidate.project.id),
-            name,
+            { kind: "agent-name", name },
           ),
         ),
       );
@@ -290,7 +286,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const project = projectRef(activeOrganization.id, candidate.project.id);
       void write(candidate.key, () => {
         if (membership.kind === "none") {
-          return runZeropsCommand(runtime.commands.updateProjectGroupTags(project, {}));
+          return runZeropsCommand(
+            runtime.commands.updateProjectTags(project, { kind: "group-membership", next: {} }),
+          );
         }
         // Joining an existing group carries its name along, so the mirror on
         // this member agrees with the others'.
@@ -299,11 +297,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         )?.group;
         const label = membership.label ?? known?.name;
         return runZeropsCommand(
-          runtime.commands.updateProjectGroupTags(project, {
-            groupId: membership.groupId,
-            role: membership.role,
-            ...(label !== undefined && known?.nameSource !== "id" ? { label } : {}),
-            ...(membership.label !== undefined ? { label: membership.label } : {}),
+          runtime.commands.updateProjectTags(project, {
+            kind: "group-membership",
+            next: {
+              groupId: membership.groupId,
+              role: membership.role,
+              ...(label !== undefined && known?.nameSource !== "id" ? { label } : {}),
+              ...(membership.label !== undefined ? { label: membership.label } : {}),
+            },
           }),
         );
       });
@@ -344,9 +345,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         // step this verb has to sequence.
         const outstanding = await registerMateInGroup({
           client,
+          writeTags: projectTagsWrite({ runtime, projectRef }, activeOrganization.id),
           clientId: activeOrganization.id,
           giteaProjectId,
-          registry: registry.registry,
           groupId,
           projectId: candidate.project.id,
         });
@@ -354,7 +355,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         if (outstanding !== null) setTrouble(outstanding);
       });
     },
-    [activeOrganization, client, giteaProjectId, registry, write],
+    [activeOrganization, client, giteaProjectId, projectRef, registry, runtime, write],
   );
 
   const actionsFor = useCallback(
@@ -456,14 +457,25 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             ]),
       ];
     },
-    [busyKey, move, register, registerVerbFor, restart, rowInputFor, serverVersions, start, viewer],
+    [
+      busyKey,
+      move,
+      register,
+      registerVerbFor,
+      restart,
+      rowInputFor,
+      serverVersions,
+      setDialog,
+      start,
+      viewer,
+    ],
   );
 
   const mintGroupId = useCallback(
     () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
     [],
   );
-  const close = useCallback(() => setDialog(null), []);
+  const close = useCallback(() => setDialog(null), [setDialog]);
   const dialogs = (
     <>
       {dialog?.kind === "rename" ? (
@@ -485,7 +497,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           title={`Rename the Mate in ${dialog.candidate.project.name}`}
           validate={(value) => {
             const current = readZeropsGroupTags(dialog.candidate.project.tagList).bot;
-            return validateBotName(value, takenBotNames, current === undefined ? {} : { current });
+            return validateBotName(value, taken, current === undefined ? {} : { current });
           }}
         />
       ) : null}

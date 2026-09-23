@@ -1,100 +1,63 @@
 /**
- * The account's Gitea sessions in this tab: one `GiteaSessions` per account epoch
- * (`@t3tools/client-runtime/zerops/forge`, DESIGN §4.6), made when the account opens and closed
- * when it closes (`accountLifetime.ts`). A second person on this tab never reads Gitea with the
- * first person's token, and an answer that belonged to the first lands nowhere.
+ * The web's binding to the account's Gitea sessions in this tab: one `GiteaSessions` per account
+ * epoch (`@t3tools/client-runtime/zerops/forge`, DESIGN §4.6), which the account runtime's
+ * post-grant stage builds on the epoch's first grant and ends when the account closes. A second
+ * person on this tab never reads Gitea with the first person's token, and an answer that belonged
+ * to the first lands nowhere.
  *
  * Signed in to Mate is signed in to Gitea (D21): `useGiteaSession` wants the account's Gitea
  * signed in for as long as the surface that calls it is mounted — the flow provider, for the
  * whole account — and every other reader takes a client from {@link giteaClientFor}.
  *
- * This module is the sessions' browser half: fetch, the clocks, timers and the tab's visibility.
- * It registers with the account lifetime when it loads, which is before any account opens: the
- * app imports it statically through `ZeropsProjectFlowProvider`. It listens to the document and
- * the window only while an account is open.
+ * The host binds the sessions of each post-grant stage it stands up (`accountForge.ts`). Closing
+ * the account lifetime unbinds them and forgets every token at once, before the account runtime's
+ * own close gets to them.
  */
 import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
 import type { GiteaClient } from "@t3tools/client-runtime/zerops";
 import {
   GITEA_SIGNED_OUT,
-  makeGiteaSessions,
   type GiteaSessions,
-  type GiteaSessionsPorts,
   type GiteaSessionView,
 } from "@t3tools/client-runtime/zerops/forge";
 import { useEffect, useSyncExternalStore } from "react";
 
-import { randomUUID } from "../lib/utils";
-import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./accountLifetime";
-
-/** A tab hidden at least this long wakes its waits when it is shown again (DESIGN §6.4). */
-const VISIBLE_WAKE_AFTER_HIDDEN_MS = 30_000;
-
-const tabVisible = (): boolean =>
-  typeof document === "undefined" || document.visibilityState === "visible";
-
-const browserPorts: GiteaSessionsPorts = {
-  fetch: (input, init) => globalThis.fetch(input, init),
-  now: () => ({ wall: Date.now(), mono: performance.now() }),
-  visible: tabVisible,
-  random: Math.random,
-  nonce: randomUUID,
-  setTimer: (delayMs, fire) => {
-    const timer = setTimeout(fire, delayMs);
-    return () => clearTimeout(timer);
-  },
-};
+import { onAccountLifetimeClose } from "./accountLifetime";
 
 let current: GiteaSessions | null = null;
-let unbindTabSignals: (() => void) | null = null;
 const listeners = new Set<() => void>();
+/** How the bound sessions tell this binding they changed, until they are unbound. */
+let unsubscribeCurrent: () => void = () => undefined;
 
 function changed(): void {
   for (const listener of listeners) listener();
 }
 
-/**
- * Tells the sessions when the tab is shown again and when it comes back online (DESIGN §6.4),
- * until the returned unbind.
- */
-function bindTabSignals(sessions: GiteaSessions): () => void {
-  if (typeof document === "undefined") return () => undefined;
-  // An account opened on a hidden tab has been hidden since it opened.
-  let hiddenSinceMs: number | null = tabVisible() ? null : performance.now();
-  const onVisibility = () => {
-    if (!tabVisible()) {
-      hiddenSinceMs = performance.now();
-      return;
-    }
-    const hiddenForMs = hiddenSinceMs === null ? 0 : performance.now() - hiddenSinceMs;
-    hiddenSinceMs = null;
-    if (hiddenForMs >= VISIBLE_WAKE_AFTER_HIDDEN_MS) sessions.wake();
-    else sessions.resume();
-  };
-  const onOnline = () => sessions.online();
-  document.addEventListener("visibilitychange", onVisibility);
-  window.addEventListener("online", onOnline);
-  return () => {
-    document.removeEventListener("visibilitychange", onVisibility);
-    window.removeEventListener("online", onOnline);
-  };
-}
-
-onAccountLifetimeOpen(() => {
-  current = makeGiteaSessions(browserPorts);
-  current.subscribe(changed);
-  unbindTabSignals = bindTabSignals(current);
+function publish(next: GiteaSessions | null): void {
+  unsubscribeCurrent();
+  unsubscribeCurrent = () => undefined;
+  current = next;
+  if (next !== null) unsubscribeCurrent = next.subscribe(changed);
   changed();
-});
+}
 
 onAccountLifetimeClose(() => {
   const closing = current;
-  current = null;
-  unbindTabSignals?.();
-  unbindTabSignals = null;
-  closing?.close();
-  changed();
+  if (closing === null) return;
+  publish(null);
+  closing.close();
 });
+
+/**
+ * Makes `sessions` — the open account's — the ones surfaces read. Returns the way to unbind them,
+ * which leaves a newer binding alone.
+ */
+export function bindAccountGiteaSessions(sessions: GiteaSessions): () => void {
+  publish(sessions);
+  return () => {
+    if (current === sessions) publish(null);
+  };
+}
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
@@ -103,7 +66,7 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/** The open account's Gitea sessions, or `null` while no account is open. */
+/** The open account's Gitea sessions, or `null` before its first grant and after sign-out. */
 export function accountGiteaSessions(): GiteaSessions | null {
   return current;
 }

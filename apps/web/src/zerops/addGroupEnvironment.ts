@@ -3,8 +3,10 @@
  * (guide 5.2), performed in an order that never leaves a half-made one.
  *
  * 1. **The registry** — `mate:gm:{groupId}:{projectId}:stage|production`, as
- *    the person, an org owner or admin. Without it nothing else knows the
- *    project belongs to the group, so it goes first.
+ *    the person, an org owner or admin: a patch through `updateProjectTags`,
+ *    applied to the Gitea project's tags as they are. Without it nothing else
+ *    knows the project belongs to the group, so it goes first, and the group's
+ *    Gitea org is read off the registry it met.
  * 2. **The broker's grants** — `BASIC_USER` on the new project, added to what
  *    the broker already holds (`brokerGrant.ts`, the same write a Mate's
  *    registration makes). Its token's value is never read or written; only
@@ -32,18 +34,17 @@ import {
   deriveEnvironmentName,
   ENVIRONMENTS_DOCUMENT_PATH,
   environmentCommitMessage,
+  parseZeropsRegistry,
   planEnvironmentWrite,
-  planGroupMembership,
   readGroupEnvironments,
   withGroupEnvironment,
   type GiteaClient,
   type GroupEnvironment,
   type GroupEnvironmentTier,
   type ZeropsApiClient,
-  type ZeropsRegistry,
 } from "@t3tools/client-runtime/zerops";
 
-import { grantBrokerProject } from "./brokerGrant";
+import { grantBrokerProject, type ProjectTagsWrite } from "./brokerGrant";
 import { ensureDeployToken } from "./deployToken";
 
 /** The group repo of a group, by its slug (`{slug}/group`). */
@@ -70,14 +71,12 @@ export interface AddGroupEnvironmentOutcome {
 
 export async function addGroupEnvironment(input: {
   readonly client: ZeropsApiClient;
+  readonly writeTags: ProjectTagsWrite;
   readonly gitea: GiteaClient | null;
   readonly clientId: string;
   /** The account's Gitea project — where the registry lives. */
   readonly giteaProjectId: string | undefined;
-  readonly registry: ZeropsRegistry;
   readonly groupId: string;
-  /** The group's Gitea org. */
-  readonly slug: string | undefined;
   readonly environment: {
     /** What the person called the project; the document name is derived. */
     readonly displayName: string;
@@ -98,18 +97,18 @@ export async function addGroupEnvironment(input: {
     return stop("registry", "Your account's Gitea is still being set up.");
   }
 
-  const membership = planGroupMembership({
-    registry: input.registry,
-    groupId: input.groupId,
-    projectId: input.environment.project,
-    kind: input.environment.tier,
-  });
-  if (!membership.ok) return stop("registry", membership.reason);
+  let slug: string | undefined;
   try {
-    await input.client.writeGroupRegistry(
-      { giteaProjectId: input.giteaProjectId, tagList: membership.tagList },
-      input.signal,
-    );
+    const written = await input.writeTags(input.giteaProjectId, {
+      kind: "registry-member",
+      groupId: input.groupId,
+      projectId: input.environment.project,
+      member: input.environment.tier,
+    });
+    if (written.kind === "refused") return stop("registry", written.refusal.reason);
+    slug = parseZeropsRegistry(written.project.tagList).groups.find(
+      (group) => group.groupId === input.groupId,
+    )?.slug;
     done.push("registry");
   } catch (cause) {
     return stop("registry", messageOf(cause));
@@ -140,7 +139,6 @@ export async function addGroupEnvironment(input: {
   done.push("deploy-token");
 
   const gitea = input.gitea;
-  const slug = input.slug;
   if (gitea === null || slug === undefined) {
     return stop(
       "environments-document",

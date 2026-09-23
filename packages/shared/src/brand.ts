@@ -6,8 +6,10 @@ export type ServiceStatusTone = Readonly<{
   surface: string;
 }>;
 
-// Exact 14% #56d364 over the #141918 dark surface.
-const DARK_MINT_SURFACE = "#1d3323";
+// Exact 7% #56d364 over the #141918 dark surface. Every dark tone surface is
+// the same 7% of its dot over that surface: at the light palette's 14% a
+// tinted header read as a solid green slab on the dark card.
+const DARK_MINT_SURFACE = "#19261d";
 
 export const PROVIDER_ACCENT_SWATCHES = [
   "#0077cc",
@@ -41,15 +43,15 @@ export const SERVICE_STATUS_TONES = {
     // inherited the body's — a blue chip with black text beside an amber chip
     // with amber text. Same mistake, same fix, as `failed` below.
     light: { dot: "#42a5f5", text: "#1565c0", surface: "#eff9fd" },
-    dark: { dot: "#58a6ff", text: "#58a6ff", surface: "#1e2e3b" },
+    dark: { dot: "#58a6ff", text: "#58a6ff", surface: "#192328" },
   },
   attention: {
     light: { dot: "#ffa726", text: "#a26000", surface: "#fff4e0" },
-    dark: { dot: "#e8a33d", text: "#ffb74d", surface: "#453f36" },
+    dark: { dot: "#e8a33d", text: "#ffb74d", surface: "#23231b" },
   },
   failed: {
     light: { dot: "#ef5350", text: "#c62828", surface: "#fdefef" },
-    dark: { dot: "#f47067", text: "#f47067", surface: "#312828" },
+    dark: { dot: "#f47067", text: "#f47067", surface: "#241f1e" },
   },
   off: {
     light: { dot: "#bdbdbd", surface: "#f3f5f7" },

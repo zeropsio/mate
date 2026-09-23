@@ -235,8 +235,6 @@ describe("exchangeZeropsContainerIdentity", () => {
     ["expired-session", false],
     ["forbidden", false],
     ["uncertain", true],
-    // The mint waited out the account window (DESIGN §4.4: retryable past the 30 s wait).
-    ["access-unverified", true],
   ] as const)("marks a door-mint failure of kind %s as retryable: %s", async (kind, retryable) => {
     const platform: ZeropsThrowawayPlatform = {
       mint: async () => {
@@ -523,12 +521,6 @@ describe("exchangeAtDoor: every answer read into the machine's failure classes (
       mate: { oldServer: true },
       answer: { ok: true, descriptor: { serverVersion: "0.11.0", identity: "unknown" } },
       minted: true,
-    },
-    {
-      name: "the mint waited out the account window: retryable",
-      platform: mintFailing(new ZeropsApiError("Still checking.", "access-unverified")),
-      answer: { ok: false, failure: { class: "retryable", cause: { kind: "access-unverified" } } },
-      minted: false,
     },
     {
       name: "the mint answered 429: retryable",

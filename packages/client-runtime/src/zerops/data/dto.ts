@@ -92,7 +92,15 @@ export function serviceRecordToZeropsService(record: ServiceRecord): ZeropsServi
             deployment.activeDeploy === null || deployment.activeDeploy === undefined
               ? null
               : {
-                  source: deployment.activeDeploy.source,
+                  ...(deployment.activeDeploy.id === null
+                    ? {}
+                    : { id: deployment.activeDeploy.id }),
+                  ...(deployment.activeDeploy.status === null
+                    ? {}
+                    : { status: deployment.activeDeploy.status }),
+                  ...(deployment.activeDeploy.source === null
+                    ? {}
+                    : { source: deployment.activeDeploy.source }),
                   ...(deployment.activeDeploy.activatedAt === null
                     ? {}
                     : { lastUpdate: deployment.activeDeploy.activatedAt }),

@@ -227,6 +227,10 @@
       "types": "./src/zerops/autoEnterProvisioning.ts",
       "default": "./src/zerops/autoEnterProvisioning.ts"
     },
+    "./zerops/birth": {
+      "types": "./src/zerops/birth/index.ts",
+      "default": "./src/zerops/birth/index.ts"
+    },
     "./zerops/birthProgress": {
       "types": "./src/zerops/birthProgress.ts",
       "default": "./src/zerops/birthProgress.ts"
@@ -234,10 +238,6 @@
     "./zerops/browserStream": {
       "types": "./src/zerops/browserStream.ts",
       "default": "./src/zerops/browserStream.ts"
-    },
-    "./zerops/candidateLoading": {
-      "types": "./src/zerops/candidateLoading.ts",
-      "default": "./src/zerops/candidateLoading.ts"
     },
     "./zerops/giteaSignIn": {
       "types": "./src/zerops/giteaSignIn.ts",
@@ -334,10 +334,6 @@
     "./zerops/operations/fixtures": {
       "types": "./src/zerops/operations/__fixtures__/index.ts",
       "default": "./src/zerops/operations/__fixtures__/index.ts"
-    },
-    "./zerops/environmentProjectRef": {
-      "types": "./src/zerops/environmentProjectRef.ts",
-      "default": "./src/zerops/environmentProjectRef.ts"
     },
     "./zerops/firstPrompt": {
       "types": "./src/zerops/firstPrompt.ts",

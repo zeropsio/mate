@@ -80,7 +80,11 @@ export interface ZeropsServiceRoute {
   readonly host: string;
 }
 
-/** The deploy a runtime is running; absent when it has never been deployed (`source: NONE`). */
+/**
+ * The deploy a runtime is running; absent when it has never been deployed
+ * (`source: NONE`) and while nobody has stated its source — a pushed frame
+ * names only the version's id, status and times (A14).
+ */
 export interface ZeropsServiceDeploy {
   /** `CLI`, `GIT`, `GITHUB`, `GITLAB` or `GUI`. */
   readonly source: string;
@@ -297,7 +301,10 @@ const withKey = <K extends string, V>(key: K, value: V | undefined): Partial<Rec
 
 const NEVER_DEPLOYED_SOURCE = "NONE";
 
-/** The running deploy, or undefined for a service that has none (managed, or a runtime never deployed). */
+/**
+ * The running deploy, or undefined for a service that has none (managed, or a
+ * runtime never deployed) or whose version's source is not stated yet.
+ */
 function serviceDeploy(service: ZeropsService): ZeropsServiceDeploy | undefined {
   const version = service.activeAppVersion;
   const source = present(version?.source);

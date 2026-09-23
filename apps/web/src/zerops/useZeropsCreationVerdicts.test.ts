@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
+import { bindTestInvalidationBus, type BoundTestBus } from "./__fixtures__/invalidationBus";
 import { invalidateZerops } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { creationVerdictTargets, useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
@@ -22,7 +23,10 @@ vi.mock("./ZeropsSessionProvider", () => ({
   }),
 }));
 
+let bus: BoundTestBus | null = null;
 afterEach(() => {
+  bus?.close();
+  bus = null;
   closeAccountLifetime();
   session.readProjectCreation.mockReset();
   vi.useRealTimers();
@@ -61,6 +65,7 @@ describe("useZeropsCreationVerdicts", () => {
   it("asks again about a settled creation on its organization's inventory intent", async () => {
     vi.useFakeTimers();
     openAccountLifetime("account");
+    bus = bindTestInvalidationBus();
     const document = new TestNode("#document", null, 9);
     vi.stubGlobal("document", document);
     vi.stubGlobal("window", { document, HTMLIFrameElement: TestNode });

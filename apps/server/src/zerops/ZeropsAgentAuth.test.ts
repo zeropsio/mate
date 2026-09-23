@@ -7,10 +7,12 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, it } from "vite-plus/test";
+import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 
 import {
   SIGNER_RECHECK_INTERVAL,
@@ -298,6 +300,87 @@ describe("signer catch-up", () => {
           yield* TestClock.adjust(Duration.times(SIGNER_RECHECK_INTERVAL, 2));
 
           assert.equal(yield* Ref.get(calls), before);
+        }),
+      ),
+    );
+  });
+});
+
+// A turn that failed because its agent is not signed in re-asks the agent's
+// own CLI at once, instead of the card saying "Authorized" until the next
+// credential event. The platform flag still decides: the state stays what the
+// flag says, and the re-probe only refines it (`needs-reauth`).
+describe("a turn's authentication failure", () => {
+  const agentState = (snapshot: ZeropsAgentAuthSnapshot, agentId: ZeropsAgentId) =>
+    snapshot.agents.find((agent) => agent.agentId === agentId);
+
+  const noWatch = (): WatcherHandle => ({ dispose: () => {} });
+
+  /** Blocks the current fiber for the next matching publish. */
+  const changeWhere = (
+    subscription: { readonly changes: Stream.Stream<ZeropsAgentAuthSnapshot> },
+    predicate: (snapshot: ZeropsAgentAuthSnapshot) => boolean,
+  ) =>
+    Stream.runHead(Stream.filter(subscription.changes, predicate)).pipe(
+      Effect.map(Option.getOrThrow),
+    );
+
+  itEffect.layer(NodeServices.layer)("ZeropsAgentAuth turn auth failures", (it) => {
+    it.effect("re-probes the agent, and the flag still decides", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-agent-auth-turn-" });
+          const envStorePath = path.join(homeDir, "zembed-env.json");
+          yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');
+          const credential = path.join(homeDir, ".claude", ".credentials.json");
+          yield* fs.makeDirectory(path.dirname(credential), { recursive: true });
+          yield* fs.writeFileString(credential, "{}");
+
+          const answer = yield* Ref.make<"authenticated" | "unauthenticated">("authenticated");
+          const probes = yield* Ref.make(0);
+          const failures = yield* Queue.unbounded<ZeropsAgentId>();
+          const feed = yield* make({
+            // The flag is already set; the startup check's write finds it so.
+            agentFlag: {
+              markSignedIn: () =>
+                Effect.succeed({
+                  key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+                  changed: false,
+                  migrated: false,
+                }),
+            },
+            refreshProviderAuth: () =>
+              Ref.update(probes, (n) => n + 1).pipe(Effect.andThen(Ref.get(answer))),
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: noWatch,
+            turnAuthFailures: Stream.fromQueue(failures),
+          });
+          const subscription = yield* feed.subscribe;
+          yield* TestClock.adjust(Duration.seconds(2));
+          yield* changeWhere(
+            subscription,
+            (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "authenticated",
+          );
+          const before = yield* Ref.get(probes);
+
+          // The login expired; the next turn fails on it.
+          yield* Ref.set(answer, "unauthenticated");
+          yield* Queue.offer(failures, "claude-code");
+          yield* TestClock.adjust(Duration.seconds(2));
+          const published = yield* changeWhere(
+            subscription,
+            (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
+          );
+
+          assert.equal(yield* Ref.get(probes), before + 1);
+          const claude = agentState(published, "claude-code")!;
+          assert.equal(claude.providerAuth, "unauthenticated");
+          assert.equal(claude.state, "authorized");
+          assert.deepStrictEqual(classifyZeropsAgentAuth(claude), { kind: "needs-reauth" });
         }),
       ),
     );

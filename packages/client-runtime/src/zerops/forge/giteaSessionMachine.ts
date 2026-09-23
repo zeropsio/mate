@@ -23,8 +23,6 @@ import { RETRY_JITTER, RETRY_RUNGS_MS } from "../knowledge/retryPolicy.ts";
 
 /** "Gitea still setting up": 5 s rising to 60 s. */
 export const PENDING_RUNGS_MS: ReadonlyArray<number> = [5_000, 10_000, 20_000, 40_000, 60_000];
-/** The broker, or Zerops behind the mint, does not answer: 10 s rising to 60 s. */
-export const UNAVAILABLE_RUNGS_MS: ReadonlyArray<number> = [10_000, 20_000, 40_000, 60_000];
 /** A refusal is asked again this long after it was said, while the tab is visible. */
 export const REFUSED_RETRY_MS = 5 * 60_000;
 /** This many Gitea 401s inside the window refuse instead of reacquiring again. */
@@ -56,8 +54,6 @@ export type GiteaAcquireFailure =
   | { readonly kind: "unreachable"; readonly source: "broker" | "zerops" }
   /** Gitea or the broker said no, in these words. */
   | { readonly kind: "refused"; readonly reason: string }
-  /** The throwaway mint waited out a closed account window (C5a). */
-  | { readonly kind: "access-unverified" }
   /** Zerops answered the mint 401; the Zerops session machine owns what follows. */
   | { readonly kind: "zerops-session" };
 
@@ -100,7 +96,7 @@ export type GiteaSessionPhase =
     }
   | {
       readonly kind: "waiting";
-      readonly on: "identity-mint" | "zerops-session";
+      readonly on: "zerops-session";
       readonly retryAt: Instant;
     }
   | { readonly kind: "refused"; readonly reason: string; readonly retryAt: Instant }
@@ -261,7 +257,8 @@ function failed(
       };
     }
     case "unreachable": {
-      const { retryAt, rung } = retryAfter(machine, UNAVAILABLE_RUNGS_MS, ctx);
+      // A transient failure: the broker, or Zerops behind the mint, is retried on the common ladder.
+      const { retryAt, rung } = retryAfter(machine, RETRY_RUNGS_MS, ctx);
       return {
         ...machine,
         rung,
@@ -279,17 +276,12 @@ function failed(
           retryAt: after(ctx.now, REFUSED_RETRY_MS),
         },
       };
-    case "access-unverified":
     case "zerops-session": {
       const { retryAt, rung } = retryAfter(machine, RETRY_RUNGS_MS, ctx);
       return {
         ...machine,
         rung,
-        phase: {
-          kind: "waiting",
-          on: failure.kind === "access-unverified" ? "identity-mint" : "zerops-session",
-          retryAt,
-        },
+        phase: { kind: "waiting", on: "zerops-session", retryAt },
       };
     }
   }

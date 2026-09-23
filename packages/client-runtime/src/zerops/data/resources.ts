@@ -60,9 +60,9 @@ export interface OrganizationIntegrationTokenGrantsResourceRequest {
 }
 
 /**
- * What a group environment's service is running — the sha in the deployed
- * version's name (guide 4.5, `groupDeploys.ts`). Read per service, because the
- * name lives on the service and nowhere else.
+ * What a group environment's service is running — its active version, and the
+ * sha in that version's name (guide 4.5, `groupDeploys.ts`). Read per service,
+ * because the name lives on the service and nowhere else (A14).
  */
 export interface ServiceDeployedVersionResourceRequest {
   readonly kind: "service-deployed-version";
@@ -98,11 +98,22 @@ export interface ZeropsIntegrationTokenGrantMetadata {
   readonly grants: ReadonlyArray<ZeropsProjectGrant>;
 }
 
+/**
+ * What a service runs, as the service itself states it (A14): its active version's id and source
+ * (`NONE` on a runtime nothing was ever deployed to), each `null` when it has no active version, and
+ * that version's name — `null` unless the newest deploy started is the active one (A11), since only
+ * then is the name the service carries the one it runs.
+ */
+export interface ZeropsServiceDeployedVersion {
+  readonly activeId: string | null;
+  readonly source: string | null;
+  readonly name: string | null;
+}
+
 export interface ZeropsResourceValues {
   readonly "organization-locations": ReadonlyArray<ZeropsLocation>;
   readonly "service-authorized-agents": ReadonlyArray<ZeropsAgentType>;
-  /** `undefined` for a service nothing has ever been deployed to. */
-  readonly "service-deployed-version": string | undefined;
+  readonly "service-deployed-version": ZeropsServiceDeployedVersion;
   /**
    * `"unknown"` for a read that failed rather than answered — never folded
    * into `false`, which is itself a fact a caller may act on (H9): a row

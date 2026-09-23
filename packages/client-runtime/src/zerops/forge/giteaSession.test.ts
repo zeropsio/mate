@@ -2,7 +2,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
-import { ZeropsApiError } from "../api.ts";
 import { GiteaApiError } from "../giteaClient.ts";
 import {
   fetchAcross,
@@ -10,6 +9,7 @@ import {
   HARNESS_GITEA_ORIGIN,
   makeAccountHarness,
 } from "../testing/accountHarness.ts";
+import { makeForgeStore, type ForgeFact } from "./forgeStore.ts";
 import {
   BROKER_DEADLINE_MS,
   makeGiteaSessions,
@@ -197,6 +197,54 @@ describe("the account's Gitea sessions", () => {
     expect(brokerPosts(w)).toHaveLength(1);
   });
 
+  it("a Gitea's forge capability follows its session (§4.3 forge(origin))", async () => {
+    const w = world();
+    const capability = () => w.sessions.capability(HARNESS_GITEA_ORIGIN);
+    expect(capability()).toEqual({ allowed: false, reason: "gitea-session", waitable: false });
+
+    const gate = brokerGate();
+    const held = world({ wrapFetch: gate.wrap });
+    gate.hold();
+    held.demand();
+    await held.time.advance(0);
+    expect(held.sessions.capability(HARNESS_GITEA_ORIGIN)).toEqual({
+      allowed: false,
+      reason: "gitea-session",
+      waitable: true,
+    });
+
+    w.demand();
+    await w.time.advance(0);
+    expect(capability()).toEqual({ allowed: true });
+
+    w.sessions.close();
+    expect(capability()).toEqual({ allowed: false, reason: "epoch-closed", waitable: false });
+  });
+
+  it("a client made with a signal ends its requests on it", async () => {
+    const w = world({
+      wrapFetch: (fetch) =>
+        (async (input: string | URL | Request, init?: RequestInit) =>
+          String(input).includes("/tags")
+            ? new Promise<Response>((_resolve, reject) => {
+                // As `fetch` does: a signal already ended rejects at once.
+                if (init?.signal?.aborted === true) reject(init.signal.reason);
+                init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+                  once: true,
+                });
+              })
+            : fetch(input, init)) as Fetch,
+    });
+    w.demand();
+    await w.time.advance(0);
+    const controller = new AbortController();
+    const client = w.sessions.clientFor(HARNESS_GITEA_ORIGIN, undefined, controller.signal);
+    if (client === null) throw new Error("no Gitea client");
+    const read = client.listTags("acme", "group");
+    controller.abort(new DOMException("The read's owner is gone.", "AbortError"));
+    await expect(read).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("Gitea down: after 2 failures regions show the cause; at most one mint per rung", async () => {
     const w = world();
     w.broker.answer("unreachable");
@@ -209,9 +257,9 @@ describe("the account's Gitea sessions", () => {
     expect(w.view()).toEqual({ signedIn: false, readable: false, login: undefined, trouble: null });
 
     // Every rung checks the broker without credentials first and mints nothing while it is down.
-    await w.time.advance(10 * S);
+    await w.time.advance(2 * S);
     expect(w.view().trouble).toBe("Gitea isn't answering.");
-    await w.time.advance(20 * S + 40 * S + 60 * S);
+    await w.time.advance(4 * S + 8 * S + 15 * S + 30 * S + 60 * S);
     expect(w.throwaways.minted).toHaveLength(1);
 
     // Up again: the next rung's liveness check answers, one mint, and the reads fill.
@@ -245,6 +293,71 @@ describe("the account's Gitea sessions", () => {
     await w.time.advance(10 * S);
     expect(w.view().signedIn).toBe(true);
     expect(w.throwaways.removed).toEqual(["throwaway-1", "throwaway-2", "throwaway-3"]);
+  });
+
+  it("a network failure of the first person-token call is retried after ~2 s and the PR rows appear", async () => {
+    // As a browser sees a 502 in front of the broker that carries no CORS headers: fetch rejects.
+    let corsFailures = 1;
+    const w = world({
+      wrapFetch: (fetch) =>
+        (async (input: string | URL | Request, init?: RequestInit) => {
+          const url = new URL(String(input));
+          if (url.pathname === "/person/token" && corsFailures > 0) {
+            corsFailures -= 1;
+            throw new TypeError("Failed to fetch");
+          }
+          if (
+            url.pathname === "/api/v1/repos/acme/app/pulls" &&
+            new Headers(init?.headers).get("authorization") === "Bearer gitea-token-1"
+          ) {
+            return new Response(
+              JSON.stringify([
+                {
+                  number: 1,
+                  title: "change",
+                  state: "open",
+                  head: { ref: "mate/x1", sha: "h1" },
+                  base: { ref: "main", sha: "b1" },
+                },
+              ]),
+              { status: 200, headers: { "content-type": "application/json" } },
+            );
+          }
+          return fetch(input, init);
+        }) as Fetch,
+    });
+    const forge = makeForgeStore({
+      now: w.time.now,
+      random: () => 0.5,
+      setTimer: w.time.setTimer,
+      sessions: w.sessions,
+    });
+    const openPulls: ForgeFact = {
+      kind: "open-pulls",
+      origin: HARNESS_GITEA_ORIGIN,
+      owner: "acme",
+      repo: "app",
+    };
+    w.demand();
+    forge.demand(openPulls, "route");
+    await w.time.advance(0);
+
+    // One failure is not a cause yet: the surfaces say "Signing in to Gitea…".
+    expect(w.throwaways.removed).toEqual(["throwaway-1"]);
+    expect(w.view()).toEqual({ signedIn: false, readable: false, login: undefined, trouble: null });
+    expect(forge.read(openPulls).state).not.toBe("known");
+
+    await w.time.advance(2 * S - 1);
+    expect(livenessChecks(w)).toEqual([]);
+
+    await w.time.advance(1);
+    expect(livenessChecks(w)).toHaveLength(1);
+    expect(brokerPosts(w)).toHaveLength(1);
+    expect(w.view()).toEqual({ signedIn: true, readable: true, login: "u-person", trouble: null });
+    const shown = forge.read(openPulls);
+    expect(shown.state).toBe("known");
+    if (shown.state === "known") expect(shown.value).toEqual([1]);
+    forge.dispose();
   });
 
   it("asks a refusal again every 5 minutes while the tab is visible, in the refuser's words", async () => {
@@ -286,24 +399,6 @@ describe("the account's Gitea sessions", () => {
     w.sessions.resume();
     await w.time.advance(0);
     expect(brokerPosts(w)).toHaveLength(2);
-    expect(w.view().signedIn).toBe(true);
-  });
-
-  it("a mint that waited out a closed account window asks again soon and says nothing", async () => {
-    const w = world();
-    w.throwaways.refuseMints(
-      new ZeropsApiError(
-        "Zerops access is still being checked. Try again in a moment.",
-        "access-unverified",
-      ),
-    );
-    w.demand();
-    await w.time.advance(0);
-    expect(w.view()).toEqual({ signedIn: false, readable: false, login: undefined, trouble: null });
-    expect(brokerPosts(w)).toEqual([]);
-
-    w.throwaways.refuseMints(null);
-    await w.time.advance(2 * S);
     expect(w.view().signedIn).toBe(true);
   });
 

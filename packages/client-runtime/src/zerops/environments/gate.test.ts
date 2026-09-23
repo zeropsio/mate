@@ -10,7 +10,17 @@ import {
   type Link,
   type Presence,
 } from "./environmentMachine.ts";
-import { routeGatePhrase, selectRouteGate, type RouteGate, type RouteTarget } from "./gate.ts";
+import {
+  CONVERSATION_UNVERIFIED_BOUND_MS,
+  conversationPhrase,
+  routeGatePhrase,
+  selectConversation,
+  selectRouteGate,
+  type ConversationAccess,
+  type ConversationView,
+  type RouteGate,
+  type RouteTarget,
+} from "./gate.ts";
 import { isTerminalReachability, selectReachability, type Reachability } from "./reachability.ts";
 
 const ENV_B = EnvironmentId.make("env-b");
@@ -374,5 +384,116 @@ describe("I9: the route gate over every machine and content", () => {
         "This conversation isn't in your Zerops projects.",
       );
     }
+  });
+});
+
+// ── C1b: a conversation without verified access ───────────────────────────────────────────────
+
+const MINUTE_MS = 60_000;
+const LAPSED: ConversationAccess = { kind: "withheld", reason: "access-lapsed", cause: null };
+const UNVERIFIED: ConversationAccess = {
+  kind: "withheld",
+  reason: "access-unverified",
+  cause: null,
+};
+const DENIED: ConversationAccess = { kind: "withheld", reason: "access-denied", cause: null };
+const NOW = at(100 * MINUTE_MS);
+const CONNECTED: Link = { phase: "connected", since: at(0) };
+const DOWN: Link = { phase: "backoff", retryAtMs: null };
+/** The route target's link, and when it dropped. */
+const linked = (link: Link, lostAgoMs: number | null) => ({
+  link,
+  linkLostAt: lostAgoMs === null ? null : at(NOW.wall - lostAgoMs),
+});
+
+/**
+ * DESIGN §9 C1b: a Mate conversation stays shown while its project's access is not verified only
+ * while its link is connected, or for at most 10 min after the link dropped; a confirmed loss
+ * suppresses it at once.
+ */
+const CONVERSATION_ROWS: ReadonlyArray<{
+  readonly name: string;
+  readonly access: ConversationAccess;
+  readonly machine: ReturnType<typeof linked> | undefined;
+  readonly now?: { readonly wall: number; readonly mono: number };
+  readonly view: ConversationView;
+}> = [
+  {
+    name: "verified access shows it whatever the link does",
+    access: { kind: "authorized" },
+    machine: linked({ phase: "idle" }, null),
+    view: { kind: "shown", until: null },
+  },
+  {
+    name: "a lapse over a connected link keeps it shown",
+    access: LAPSED,
+    machine: linked(CONNECTED, null),
+    view: { kind: "shown", until: null },
+  },
+  {
+    name: "a lapse keeps it shown 9 min after the link dropped, until the bound",
+    access: LAPSED,
+    machine: linked(DOWN, 9 * MINUTE_MS),
+    view: { kind: "shown", until: at(NOW.wall + MINUTE_MS) },
+  },
+  {
+    name: "a lapse suppresses it 10 min after the link dropped",
+    access: LAPSED,
+    machine: linked(DOWN, CONVERSATION_UNVERIFIED_BOUND_MS),
+    view: { kind: "suppressed", reason: "access-lapsed" },
+  },
+  {
+    name: "an unverified project suppresses it past the bound",
+    access: UNVERIFIED,
+    machine: linked({ phase: "offline" }, 11 * MINUTE_MS),
+    view: { kind: "suppressed", reason: "access-unverified" },
+  },
+  {
+    name: "a link that never connected vouches for nothing",
+    access: LAPSED,
+    machine: linked({ phase: "connecting" }, null),
+    view: { kind: "suppressed", reason: "access-lapsed" },
+  },
+  {
+    name: "no target known vouches for nothing",
+    access: LAPSED,
+    machine: undefined,
+    view: { kind: "suppressed", reason: "access-lapsed" },
+  },
+  {
+    name: "a denial awaiting its confirming read keeps a connected link's conversation",
+    access: DENIED,
+    machine: linked(CONNECTED, null),
+    view: { kind: "shown", until: null },
+  },
+  {
+    name: "a confirmed loss suppresses it even over a connected link",
+    access: { kind: "lost" },
+    machine: linked(CONNECTED, null),
+    view: { kind: "suppressed", reason: "access-denied" },
+  },
+  {
+    name: "the bound holds on the monotonic clock when the wall clock is set back",
+    access: LAPSED,
+    machine: linked(DOWN, 5 * MINUTE_MS),
+    now: { wall: NOW.wall - 60 * MINUTE_MS, mono: NOW.mono + 6 * MINUTE_MS },
+    view: { kind: "suppressed", reason: "access-lapsed" },
+  },
+];
+
+describe("selectConversation (C1b)", () => {
+  it.each(CONVERSATION_ROWS)("$name", ({ access, machine, now, view }) => {
+    expect(selectConversation({ access, machine, now: now ?? NOW })).toEqual(view);
+  });
+
+  it.each([
+    ["access-lapsed", { text: null, actions: [] }],
+    ["access-unverified", { text: "Checking your access to this project…", actions: [] }],
+    [
+      "access-denied",
+      { text: "Your access to this project changed.", actions: ["go-to-projects"] },
+    ],
+  ] as const)("a conversation suppressed for %s says its cause only", (reason, phrase) => {
+    expect(conversationPhrase({ kind: "suppressed", reason })).toEqual(phrase);
   });
 });

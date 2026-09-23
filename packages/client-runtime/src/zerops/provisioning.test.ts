@@ -5,7 +5,6 @@ import {
   PROVISIONING_CAPS,
   advanceProvisioning,
   readProvisioning,
-  startProvisioning,
   startProvisioningForProject,
   type ProvisioningState,
 } from "./provisioning.ts";
@@ -35,11 +34,7 @@ function container(overrides: Partial<ZeropsService> = {}): ZeropsService {
 
 /** Walks the happy path so individual tests can start from any phase. */
 function reachAwaitingContainer(nowMs = 0): ProvisioningState {
-  return advanceProvisioning(
-    startProvisioning({ zcpClaimed: true, nowMs }),
-    { kind: "projects", projects: [PROJECT] },
-    nowMs,
-  );
+  return startProvisioningForProject({ projectId: PROJECT.id, nowMs });
 }
 
 /** A container that exists and answers, but has not yet been through hardening. */
@@ -85,19 +80,18 @@ describe("provisioning state machine", () => {
       throw new Error("Date.now must not be used");
     });
 
-    const state = startProvisioning({ zcpClaimed: true, nowMs: 100 });
-    const advanced = advanceProvisioning(state, { kind: "projects", projects: [PROJECT] }, 200);
+    const state = startProvisioningForProject({ projectId: PROJECT.id, nowMs: 100 });
+    const advanced = advanceProvisioning(
+      state,
+      { kind: "services", project: PROJECT, services: [container()] },
+      200,
+    );
 
-    expect(advanced.phase).toBe("awaiting-container");
+    expect(advanced.phase).toBe("awaiting-settled");
     expect(advanced.phaseStartedAtMs).toBe(200);
   });
 
   it("every waiting state says what it waits for and how long it will wait", () => {
-    const awaitingProject = startProvisioning({ zcpClaimed: true, nowMs: 0 });
-    expect(awaitingProject.phase).toBe("awaiting-project");
-    expect(awaitingProject.waitingFor).toBeTruthy();
-    expect(awaitingProject.capMs).toBe(PROVISIONING_CAPS["awaiting-project"]);
-
     const awaitingContainer = reachAwaitingContainer();
     expect(awaitingContainer.phase).toBe("awaiting-container");
     expect(awaitingContainer.waitingFor).toBeTruthy();
@@ -128,16 +122,6 @@ describe("provisioning state machine", () => {
     expect(awaitingHealth.waitingFor).toBeTruthy();
     expect(awaitingHealth.capMs).toBe(PROVISIONING_CAPS["awaiting-health"]);
     expect(awaitingHealth.containerOrigin).toBe("https://zcp-24cb-8080.prg1.zerops.app");
-  });
-
-  it("an exhausted pool is a state of its own, not a failure", () => {
-    const state = startProvisioning({ zcpClaimed: false, nowMs: 0 });
-    expect(state.phase).toBe("pool-exhausted");
-    expect(state.capMs).toBeNull();
-  });
-
-  it("treats a missing zcpClaimed the way the platform means it — claimed", () => {
-    expect(startProvisioning({ nowMs: 0 }).phase).toBe("awaiting-project");
   });
 
   it("never concludes 'no container' from one read of a fresh project", () => {
@@ -244,14 +228,19 @@ describe("provisioning state machine", () => {
 
   it("measures each cap from the moment its phase started, not from the beginning", () => {
     const late = advanceProvisioning(
-      startProvisioning({ zcpClaimed: true, nowMs: 0 }),
-      { kind: "projects", projects: [PROJECT] },
-      PROVISIONING_CAPS["awaiting-project"] - 1000,
+      reachAwaitingSettled(0),
+      { kind: "process", running: false, observed: true },
+      PROVISIONING_CAPS["awaiting-container"] - 1000,
+    );
+    const health = advanceProvisioning(
+      late,
+      { kind: "hardened" },
+      PROVISIONING_CAPS["awaiting-container"] - 1000,
     );
     expect(
-      advanceProvisioning(late, { kind: "tick" }, PROVISIONING_CAPS["awaiting-project"] + 1000)
-        .phase,
-    ).toBe("awaiting-container");
+      advanceProvisioning(health, { kind: "tick" }, PROVISIONING_CAPS["awaiting-container"] + 1000)
+        .overdue,
+    ).toBe(false);
   });
 
   it("does not let the awaiting-health cap elapse while a process is running", () => {
@@ -298,19 +287,6 @@ describe("provisioning state machine", () => {
       0,
     );
     expect(unaffected).toBe(awaitingContainer);
-  });
-
-  it("follows the newest project, which is the one a claim just handed over", () => {
-    const older: ZeropsProject = { ...PROJECT, id: "old", created: "2020-01-01T00:00:00Z" };
-    const newer: ZeropsProject = { ...PROJECT, id: "new", created: "2026-08-28T00:00:00Z" };
-
-    const state = advanceProvisioning(
-      startProvisioning({ zcpClaimed: true, nowMs: 0 }),
-      { kind: "projects", projects: [older, newer] },
-      100,
-    );
-
-    expect(state.projectId).toBe("new");
   });
 });
 
@@ -377,22 +353,9 @@ describe("readProvisioning", () => {
     throw new Error("the health probe must not run before a container origin exists");
   };
 
-  it("uses the shared project observation supplied by the account runtime", async () => {
-    const event = await readProvisioning({
-      state: startProvisioning({ zcpClaimed: true, nowMs: 0 }),
-      projects: [PROJECT],
-      project: undefined,
-      services: undefined,
-      probeHealth: probeNeverCalled,
-    });
-
-    expect(event).toEqual({ kind: "projects", projects: [PROJECT] });
-  });
-
   it("uses the shared project and service observations while awaiting a container", async () => {
     const event = await readProvisioning({
       state: reachAwaitingContainer(),
-      projects: [PROJECT],
       project: PROJECT,
       services: [container()],
       probeHealth: probeNeverCalled,
@@ -404,7 +367,6 @@ describe("readProvisioning", () => {
   it("keeps reading the shared observations while awaiting-settled", async () => {
     const event = await readProvisioning({
       state: reachAwaitingSettled(),
-      projects: [PROJECT],
       project: PROJECT,
       services: [container()],
       probeHealth: probeNeverCalled,
@@ -413,10 +375,9 @@ describe("readProvisioning", () => {
     expect(event).toEqual({ kind: "services", project: PROJECT, services: [container()] });
   });
 
-  it("issues no read at all while hardening — the hook runs the harden command itself", async () => {
+  it("issues no read at all while hardening — the birth worker runs the harden command itself", async () => {
     const event = await readProvisioning({
       state: reachHardening(),
-      projects: [PROJECT],
       project: PROJECT,
       services: [container()],
       probeHealth: probeNeverCalled,
@@ -432,7 +393,6 @@ describe("readProvisioning", () => {
 
     const event = await readProvisioning({
       state: awaitingHealth,
-      projects: [PROJECT],
       project: PROJECT,
       services: [container()],
       probeHealth: (origin) => {
@@ -443,18 +403,6 @@ describe("readProvisioning", () => {
 
     expect(event).toEqual({ kind: "health", health: "initializing" });
     expect(probed).toEqual(["https://zcp-24cb-8080.prg1.zerops.app"]);
-  });
-
-  it("issues no read at all in a settled state", async () => {
-    const event = await readProvisioning({
-      state: startProvisioning({ zcpClaimed: false, nowMs: 0 }),
-      projects: [],
-      project: undefined,
-      services: undefined,
-      probeHealth: probeNeverCalled,
-    });
-
-    expect(event).toEqual({ kind: "tick" });
   });
 });
 

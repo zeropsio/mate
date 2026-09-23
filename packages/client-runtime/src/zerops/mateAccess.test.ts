@@ -5,7 +5,6 @@ import {
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateSignerTag,
-  mateSignerTagIsCurrent,
   resolveMateOwnerName,
   resolveMateVerbs,
   resolveMateVisibility,
@@ -159,11 +158,11 @@ describe("the signer tag (D6)", () => {
   });
 
   // Signing in again with the same account must cost a read and nothing else:
-  // the caller skips the write when the list already says the right thing.
-  it("recognises a list that already records exactly this signer", () => {
-    expect(mateSignerTagIsCurrent([OTHER, mateSignerTag("codex", "jan")], "codex", "jan")).toBe(
-      true,
-    );
+  // the TagWriter writes nothing when the list keeps the same tags.
+  it("keeps the tags of a list that already records exactly this signer", () => {
+    expect(
+      [...withMateSignerTag([mateSignerTag("codex", "jan"), OTHER], "codex", "jan")].sort(),
+    ).toEqual([OTHER, mateSignerTag("codex", "jan")].sort());
   });
 
   for (const [name, tagList] of [
@@ -173,10 +172,13 @@ describe("the signer tag (D6)", () => {
       "two signers for the same agent",
       [mateSignerTag("codex", "jan"), mateSignerTag("codex", "eva")],
     ],
-    ["nothing", undefined],
   ] as const) {
     it(`rewrites over ${name}`, () => {
-      expect(mateSignerTagIsCurrent(tagList, "codex", "jan")).toBe(false);
+      const written = withMateSignerTag(tagList, "codex", "jan");
+      expect(written.filter((tag) => tag.startsWith("mate:signer:codex:"))).toEqual([
+        mateSignerTag("codex", "jan"),
+      ]);
+      expect([...written].sort()).not.toEqual([...tagList].sort());
     });
   }
 });

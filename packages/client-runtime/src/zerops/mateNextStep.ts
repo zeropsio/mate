@@ -65,7 +65,12 @@ export function mateNextStep(input: {
   // The newest where a Mate somehow has two, so the card is stable.
   const pull = group.pullRequests
     .map((entry) => entry.pull)
-    .filter((entry) => entry.mateProjectId === mateProjectId && entry.mergeable)
+    .filter(
+      (entry) =>
+        entry.mateProjectId === mateProjectId &&
+        !entry.merged &&
+        entry.mergeability === "mergeable",
+    )
     .sort((left, right) => right.number - left.number)[0];
   if (pull !== undefined)
     return {

@@ -1,14 +1,21 @@
-import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
+import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
+import { CAPABILITY_WAIT_MS } from "@t3tools/client-runtime/zerops/data";
+import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { mountTab, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
+import { buttonsLabelled, press } from "./__fixtures__/testDom";
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
 }));
 
 const MINUTE_MS = 60_000;
+
+/** A project write as the TagWriter makes one: the project read, then its tags written. */
+const renameTags = async (client: ZeropsApiClient) =>
+  client.writeProjectTags(await client.fetchProject("p1"), ["mate:name:Renamed"]);
 const CHILD = "product mounted";
 
 const person: ZeropsUser = {
@@ -78,6 +85,27 @@ async function admittedProduct(
   return { harness, tab, pass, rounds, mounts: () => mounts, firstRoundBy };
 }
 
+type Product = Awaited<ReturnType<typeof admittedProduct>>;
+
+/**
+ * A write at or past the deadline, every renewal still out. The lapsed account
+ * is a refusal the grant can still lift, so the write waits it out for
+ * {@link CAPABILITY_WAIT_MS} and is then refused, never sent (DESIGN §4.3).
+ */
+async function refusedWrite({ harness, tab, pass }: Product) {
+  const writes = () =>
+    harness.rest.requests().filter(({ route }) => route === "PUT /project/p1").length;
+  const sent = writes();
+  const { refused } = await tab.run(() => ({
+    refused: expect(renameTags(tab.session().client)).rejects.toMatchObject({
+      message: "Project access could not be verified.",
+    }),
+  }));
+  await pass(CAPABILITY_WAIT_MS);
+  await refused;
+  expect(writes()).toBe(sent);
+}
+
 afterEach(async () => {
   await unmountTabs();
   vi.useRealTimers();
@@ -110,8 +138,7 @@ describe("ZeropsInventoryProvider renewal", () => {
     const { harness, tab, pass, rounds } = await admittedProduct();
     const before = rounds();
     const renewal = harness.rest.hold("GET /user/info");
-    const write = () =>
-      tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }));
+    const write = () => tab.run(() => renameTags(tab.session().client));
 
     // Past the renewal and short of the deadline, with every renewal attempt still out.
     await pass(14 * MINUTE_MS + 30_000);
@@ -130,20 +157,20 @@ describe("ZeropsInventoryProvider renewal", () => {
   it.each([
     [
       "the monotonic clock",
-      async ({ pass }: Awaited<ReturnType<typeof admittedProduct>>) => {
+      async ({ pass }: Product) => {
         vi.setSystemTime(Date.now() - 30_000);
         await pass(15 * MINUTE_MS - 2_000);
       },
-      async ({ pass }: Awaited<ReturnType<typeof admittedProduct>>) => {
+      async ({ pass }: Product) => {
         await pass(2_000);
       },
     ],
     [
       "the wall clock",
-      async ({ pass }: Awaited<ReturnType<typeof admittedProduct>>) => {
+      async ({ pass }: Product) => {
         await pass(13 * MINUTE_MS);
       },
-      async ({ tab }: Awaited<ReturnType<typeof admittedProduct>>) => {
+      async ({ tab }: Product) => {
         vi.setSystemTime(Date.now() + 2 * MINUTE_MS);
         tab.tab.signals.freeze();
         tab.tab.signals.resume();
@@ -157,23 +184,20 @@ describe("ZeropsInventoryProvider renewal", () => {
       const { harness, tab } = product;
       // Every renewal hangs: nothing extends the evidence the product was admitted on.
       harness.rest.hang("GET /user/info");
-      const write = () =>
-        tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }));
+      const write = () => tab.run(() => renameTags(tab.session().client));
 
       await toJustBefore(product);
       await expect(write()).resolves.toMatchObject({ id: "p1" });
       await toTheDeadline(product);
-      await expect(write()).rejects.toMatchObject({
-        message: "Project access could not be verified.",
-      });
+      await refusedWrite(product);
     },
   );
 
   it("a round that answers 40 s after it started ends its writes 15 min after it started", async () => {
-    const { harness, tab, pass, firstRoundBy } = await admittedProduct({ firstRoundMs: 40_000 });
+    const product = await admittedProduct({ firstRoundMs: 40_000 });
+    const { harness, tab, pass, firstRoundBy } = product;
     harness.rest.hang("GET /user/info");
-    const write = () =>
-      tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }));
+    const write = () => tab.run(() => renameTags(tab.session().client));
     const toDeadline = () => firstRoundBy + 15 * MINUTE_MS - performance.now();
 
     // Admitted 40 s into its round, the evidence is stamped when the round
@@ -181,9 +205,7 @@ describe("ZeropsInventoryProvider renewal", () => {
     await pass(toDeadline() - 10_000);
     await expect(write()).resolves.toMatchObject({ id: "p1" });
     await pass(toDeadline());
-    await expect(write()).rejects.toMatchObject({
-      message: "Project access could not be verified.",
-    });
+    await refusedWrite(product);
   });
 
   it("a lapse names its cause once, beside one way to try again", async () => {
@@ -192,9 +214,72 @@ describe("ZeropsInventoryProvider renewal", () => {
 
     await pass(16 * MINUTE_MS);
 
-    expect(tab.text()).toContain("Project access verification expired.");
-    expect(tab.text().match(/Try again/g)).toHaveLength(1);
+    expect(tab.readable().match(/Zerops isn't answering\./g)).toHaveLength(1);
+    expect(tab.readable().match(/Try now/g)).toHaveLength(1);
   });
+
+  // `online` is a wake (DESIGN §6.4): the lapse ends as soon as Zerops answers again.
+  it("lapsed + offline → online → a round starts at once and the lapse banner clears when it verifies", async () => {
+    const { tab, pass, rounds } = await admittedProduct();
+    tab.tab.signals.offline();
+    await pass(16 * MINUTE_MS);
+    expect(tab.readable()).toContain(CHILD);
+    expect(tab.readable()).toMatch(/Checking your Zerops access…|Zerops isn't answering\./);
+    const before = rounds();
+
+    tab.tab.signals.online();
+    await pass(0);
+
+    expect(rounds()).toBe(before + 1);
+    await pass(1_000);
+    expect(tab.readable()).toContain(CHILD);
+    expect(tab.text()).not.toMatch(/Checking your Zerops access|Zerops isn't answering/);
+    expect(tab.text()).not.toMatch(/Try (again|now)/);
+  });
+
+  // One cause-only sentence for the whole lapse, beside its two affordances (DESIGN §3.4, R-K3, A9).
+  // Twenty simulated minutes of rounds and presses take longer than the unit project's 15 s.
+  it(
+    "the lapse banner does not change while the lapse reason is unchanged",
+    { timeout: 60_000 },
+    async () => {
+      const { harness, tab, pass, rounds } = await admittedProduct();
+      harness.rest.hang("GET /user/info");
+      // The renewals fail before the deadline, so the lapse's first round runs after a failure.
+      await pass(15 * MINUTE_MS + 1_000);
+      const seen = [tab.readable()];
+      await pass(MINUTE_MS);
+      seen.push(tab.readable());
+      // Back after 2 min hidden, the visible wake starts a round at once, and the organizations'
+      // reads stall past their grace while the rounds keep failing: the inventory's own error
+      // stays unsaid beside the lapse's one banner (gate CD, gate F).
+      tab.tab.signals.hide();
+      await pass(2 * MINUTE_MS);
+      harness.datastream.holdRegistrations();
+      tab.tab.signals.show();
+      await pass(0);
+      seen.push(tab.readable());
+      for (let step = 0; step < 6; step++) {
+        await pass(30_000);
+        seen.push(tab.readable());
+      }
+      // "Try now" joins a running round; pressed between rounds, it starts one at once, and it
+      // stays beside the sentence while that round runs.
+      const before = rounds();
+      for (let second = 0; second < 2 * MINUTE_MS && rounds() === before; second += 1_000) {
+        await tab.run(() => press(buttonsLabelled(tab.container(), "Try now")[0]!));
+        await pass(INVALIDATION_COALESCE_MS);
+        seen.push(tab.readable());
+        await pass(1_000 - INVALIDATION_COALESCE_MS);
+      }
+      expect(rounds()).toBe(before + 1);
+
+      expect(new Set(seen).size).toBe(1);
+      expect(seen[0]).toContain(CHILD);
+      expect(seen[0]).toContain("Zerops isn't answering.");
+      expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now", "Sign out"]);
+    },
+  );
 
   // One project's read failing is that project's problem, never the account's (DESIGN G1, C2b).
   it.each([
@@ -215,9 +300,9 @@ describe("ZeropsInventoryProvider renewal", () => {
       // The failing project keeps its place; its content waits for fresh evidence.
       expect(tab.text()).toContain("p2: Checking your access to this project…");
       expect(tab.text()).not.toContain("p1:");
-      await expect(
-        tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" })),
-      ).resolves.toMatchObject({ id: "p1" });
+      await expect(tab.run(() => renameTags(tab.session().client))).resolves.toMatchObject({
+        id: "p1",
+      });
     },
   );
 });

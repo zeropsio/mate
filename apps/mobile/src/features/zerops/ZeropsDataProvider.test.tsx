@@ -49,16 +49,57 @@ vi.mock("react-native", () => ({
   },
 }));
 
+/** The account runtimes the provider built, each closing and reaching its first grant by hand. */
+const accounts = vi.hoisted(() => ({
+  built: [] as Array<{
+    readonly ports: unknown;
+    readonly closed: Array<string>;
+    grant: (environments: unknown) => void;
+  }>,
+}));
+
+vi.mock("@t3tools/client-runtime/zerops/account/runtime", async () => {
+  const Effect = await import("effect/Effect");
+  return {
+    makeAccountRuntime: (ports: { readonly data: { readonly scope: unknown } }) =>
+      Effect.sync(() => {
+        const closed: Array<string> = [];
+        let grant: (environments: unknown) => void = () => undefined;
+        const postGrant = new Promise((resolve) => {
+          grant = (environments) => resolve({ environments });
+        });
+        accounts.built.push({
+          ports,
+          closed,
+          grant: (environments) => grant(environments),
+        });
+        return {
+          data: ports.data,
+          postGrant: Effect.promise(() => postGrant),
+          close: (reason: string) =>
+            Effect.sync(() => {
+              closed.push(reason);
+              (ports.data as { readonly onClose?: (reason: string) => void }).onClose?.(reason);
+            }),
+        };
+      }),
+  };
+});
+
+// The device's ports reach native modules; the provider is handed them through its seam.
+vi.mock("./environment-ports", () => ({ mobileAccountPorts: () => Promise.resolve({}) }));
+
 import { it as itEffect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import type { AccountScope, ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 
 import {
   mobileZeropsVisibility,
   ZeropsDataProvider,
   type MobileZeropsDataAccount,
+  type ZeropsDataValue,
 } from "./ZeropsDataProvider";
 
 const account = (userId: string): MobileZeropsDataAccount =>
@@ -71,34 +112,89 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
+/** What the account runtime was handed besides its data, by account. */
+const PORTS = { verifier: "verifier", signals: "signals", environments: "environments" };
+
 function render(
   currentAccount: MobileZeropsDataAccount | null,
   runtimeFactory: NonNullable<Parameters<typeof ZeropsDataProvider>[0]["runtimeFactory"]>,
 ): () => void {
   hooks.beginRender();
   effects.length = 0;
-  ZeropsDataProvider({ account: currentAccount, children: null as ReactNode, runtimeFactory });
+  ZeropsDataProvider({
+    account: currentAccount,
+    children: null as ReactNode,
+    runtimeFactory,
+    accountPorts: async () => PORTS as never,
+  });
   const effect = effects[0];
   expect(effect).toBeDefined();
   return (effect?.() as () => void) ?? (() => undefined);
 }
 
+/** The provider's value, as a render now publishes it. */
+function rendered(
+  currentAccount: MobileZeropsDataAccount | null,
+  runtimeFactory: NonNullable<Parameters<typeof ZeropsDataProvider>[0]["runtimeFactory"]>,
+): ZeropsDataValue {
+  hooks.beginRender();
+  effects.length = 0;
+  const next = ZeropsDataProvider({
+    account: currentAccount,
+    children: null as ReactNode,
+    runtimeFactory,
+    accountPorts: async () => PORTS as never,
+  }) as unknown as { readonly props: { readonly value: ZeropsDataValue } };
+  return next.props.value;
+}
+
+/** A data runtime whose close — the account runtime closes it — is recorded in `events`. */
+const recordingRuntime =
+  (events: Array<string>) =>
+  async ({ account: scope }: { readonly account: AccountScope }) => {
+    events.push(`start:${scope.account.accountId}`);
+    return {
+      scope,
+      onClose: (reason: string) => events.push(`shutdown:${scope.account.accountId}:${reason}`),
+    } as unknown as ManagedZeropsDataRuntime;
+  };
+
 describe("ZeropsDataProvider account lifecycle", () => {
   beforeEach(() => {
     hooks.reset();
     effects.length = 0;
+    accounts.built.length = 0;
+  });
+
+  it("hosts one account runtime per account, its Mate environments bound once its first grant built them", async () => {
+    const events: Array<string> = [];
+    const runtimeFactory = vi.fn(recordingRuntime(events));
+
+    const cleanup = render(account("account-a"), runtimeFactory);
+    await settle();
+    const [built] = accounts.built;
+    // The account runtime reaches the platform and the device through the account's ports.
+    expect(built?.ports).toMatchObject({ ...PORTS, atomRegistry: expect.anything() });
+    expect(rendered(account("account-a"), runtimeFactory)).toMatchObject({
+      binding: { account: { account: { accountId: "account-a" } } },
+      environments: null,
+    });
+
+    // No Mate environment stands before the epoch's first grant; the grant builds them.
+    const environments = { machines: () => new Map() };
+    built?.grant(environments);
+    await settle();
+    expect(rendered(account("account-a"), runtimeFactory).environments).toBe(environments);
+
+    cleanup();
+    await settle();
+    expect(built?.closed).toEqual(["account-replaced"]);
+    expect(events).toEqual(["start:account-a", "shutdown:account-a:account-replaced"]);
   });
 
   it("fences and disposes the old account before starting a replacement", async () => {
     const events: string[] = [];
-    const runtimeFactory = vi.fn(async ({ account: scope }) => {
-      events.push(`start:${scope.account.accountId}`);
-      return {
-        scope,
-        shutdown: (reason: "logout" | "account-replaced") =>
-          Effect.sync(() => events.push(`shutdown:${scope.account.accountId}:${reason}`)),
-      } as unknown as ManagedZeropsDataRuntime;
-    });
+    const runtimeFactory = vi.fn(recordingRuntime(events));
 
     const cleanupA = render(account("account-a"), runtimeFactory);
     await settle();
@@ -119,14 +215,7 @@ describe("ZeropsDataProvider account lifecycle", () => {
 
   it("shuts down with logout when the account becomes null", async () => {
     const events: string[] = [];
-    const runtimeFactory = vi.fn(async ({ account: scope }) => {
-      events.push(`start:${scope.account.accountId}`);
-      return {
-        scope,
-        shutdown: (reason: "logout" | "account-replaced") =>
-          Effect.sync(() => events.push(`shutdown:${scope.account.accountId}:${reason}`)),
-      } as unknown as ManagedZeropsDataRuntime;
-    });
+    const runtimeFactory = vi.fn(recordingRuntime(events));
 
     const cleanupA = render(account("account-a"), runtimeFactory);
     await settle();
@@ -143,7 +232,7 @@ describe("ZeropsDataProvider account lifecycle", () => {
     const events: string[] = [];
     let resolveRuntime: () => void = () => undefined;
     const runtimeFactory = vi.fn(
-      ({ account: scope }) =>
+      ({ account: scope }: { readonly account: AccountScope }) =>
         new Promise<ManagedZeropsDataRuntime>((resolve) => {
           resolveRuntime = () =>
             resolve({

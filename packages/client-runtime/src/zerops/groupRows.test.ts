@@ -12,10 +12,7 @@ import {
   stopSourceLine,
   GROUP_BEING_SET_UP_LINE,
   mateRow,
-  missingEnvironmentRows,
-  MISSING_ENVIRONMENT_LINE,
   pullRequestRow,
-  shortCommit,
   type EnvironmentServiceState,
   type MateRowState,
 } from "./groupRows.ts";
@@ -56,10 +53,6 @@ describe("deployedCommit", () => {
     { name: "nothing deployed", value: undefined, expected: undefined },
   ])("reads $name", ({ value, expected }) => {
     expect(deployedCommit(value)).toBe(expected);
-  });
-
-  it("shortens a commit to the seven characters people read it by", () => {
-    expect(shortCommit(SHA)).toBe("3f9c1b2");
   });
 });
 
@@ -408,76 +401,6 @@ describe("buildGroupRows", () => {
     expect(group.line).toBe(expected);
     expect(group.rows).toEqual([]);
   });
-});
-
-describe("missingEnvironmentRows", () => {
-  // The owner, twice on 2026-09-17: "it never asked me to setup production".
-  const cases = [
-    {
-      name: "asks for both once the recipe offers both and the group has neither",
-      tiersOnMain: ["stage", "production"],
-      declared: [],
-      want: ["Stage", "Production"],
-    },
-    {
-      name: "asks only for what is missing",
-      tiersOnMain: ["stage", "production"],
-      declared: ["stage"],
-      want: ["Production"],
-    },
-    {
-      name: "asks for nothing before the recipe is on main",
-      tiersOnMain: [],
-      declared: [],
-      want: [],
-    },
-    {
-      name: "asks for nothing the recipe does not offer",
-      tiersOnMain: ["stage"],
-      declared: [],
-      want: ["Stage"],
-    },
-    {
-      name: "stage before production, whatever the order on main",
-      tiersOnMain: ["production", "stage"],
-      declared: [],
-      want: ["Stage", "Production"],
-    },
-    {
-      // A tier whose environment is being created has no declaration on the
-      // group repo yet — the recipe change lands minutes later. Asking for it
-      // meanwhile put "Stage — not set up yet — Add stage" directly under the
-      // stage it was watching come up (measured on the test account,
-      // 2026-09-20: the row stood for 75 seconds).
-      name: "does not ask for a tier the account already holds a project for",
-      tiersOnMain: ["stage", "production"],
-      declared: [],
-      filled: ["stage"],
-      want: ["Production"],
-    },
-    {
-      name: "asks for nothing once both tiers are held, declared or not",
-      tiersOnMain: ["stage", "production"],
-      declared: ["production"],
-      filled: ["stage"],
-      want: [],
-    },
-  ] as const;
-
-  for (const tc of cases) {
-    it(tc.name, () => {
-      const rows = missingEnvironmentRows({
-        tiersOnMain: tc.tiersOnMain,
-        declarations: tc.declared.map((tier) => ({ tier })),
-        ...("filled" in tc ? { filledTiers: tc.filled } : {}),
-      });
-      expect(rows.map((row) => row.name)).toEqual(tc.want);
-      for (const row of rows) {
-        expect(row.kind).toBe("missing-environment");
-        expect(row.line).toBe(MISSING_ENVIRONMENT_LINE);
-      }
-    });
-  }
 });
 
 describe("environmentNameUnderGroup", () => {

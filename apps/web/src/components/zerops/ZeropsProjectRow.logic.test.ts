@@ -50,6 +50,32 @@ function input(
   return { candidate, health, can };
 }
 
+describe("a Mate the platform restarts", () => {
+  const restarting = (status: string): ZeropsRowCandidate => ({
+    ...READY,
+    group: "provisioning",
+    reason: `container is starting (${status})`,
+    service: { id: "zcp", name: "zcp", status },
+  });
+
+  it.each(["RESTARTING", "UPGRADING"])(
+    "says it restarts, never that it is being made (%s)",
+    (status) => {
+      expect(deriveZeropsRowPresentation(input(restarting(status), "initializing"))).toEqual({
+        status: { label: "Restarting", pulse: true, tone: "busy" },
+        detail: "This Mate is restarting.",
+      });
+    },
+  );
+
+  it("a container starting is still on its way up", () => {
+    expect(deriveZeropsRowPresentation(input(restarting("STARTING"), undefined))).toEqual({
+      status: { label: "Preparing", pulse: true, tone: "busy" },
+      detail: "Coming up. A few minutes.",
+    });
+  });
+});
+
 describe("a project the platform failed to create", () => {
   const FAILED_CREATION: ZeropsRowCandidate = {
     key: "p-new",
@@ -377,25 +403,44 @@ describe("deriveZeropsRowPresentation", () => {
     expect(presentation.detail).toBe("Not answering right now.");
   });
 
-  it("lets a socket failure override the probe, and keeps its reason", () => {
-    const failed: ZeropsRowCandidate = {
-      ...READY,
-      connection: { phase: "error", error: "Session token expired.", traceId: null },
-    };
-    const presentation = deriveZeropsRowPresentation(input(failed, "ready"));
-    expect(presentation.status).toEqual({ label: "Connection failed", tone: "failed" });
-    expect(presentation.detail).toContain("Session token expired.");
-    expect(presentation.detailIsError).toBe(true);
-  });
+  describe("a socket failure overrides the probe and names its cause, never its words", () => {
+    // What a zcp restart put on screen (gate CD, zcp-restart/03-during-2.png).
+    const RAW_ERROR =
+      "Failed to fetch remote environment endpoint https://zcp-30db-8080.prg1.zerops.app/mate/.well-known/t3/environment (HttpClientError: Transport error (GET https://zcp-30db-8080.prg1.zerops.app/mate/.well-known/t3/environment)).";
+    const LEAKS = [
+      /https?:\/\//,
+      /\b[a-z0-9-]+(\.[a-z0-9-]+){2,}\b/i,
+      /\b[A-Z][A-Za-z]*Error\b/,
+      /Reason:/,
+    ];
 
-  it("says Reconnecting, with the reason, while a retry is under way", () => {
-    const retrying: ZeropsRowCandidate = {
-      ...READY,
-      connection: { phase: "reconnecting", error: "The container is unreachable.", traceId: null },
-    };
-    const presentation = deriveZeropsRowPresentation(input(retrying, "ready"));
-    expect(presentation.status.label).toBe("Reconnecting");
-    expect(presentation.detail).toContain("The container is unreachable.");
+    it.each([
+      {
+        name: "refused, with the failure",
+        connection: { phase: "error", error: RAW_ERROR, traceId: "trace-1" } as const,
+        status: { label: "Connection failed", tone: "failed" },
+        detail: "It refused the connection.",
+      },
+      {
+        name: "refused, without the failure",
+        connection: { phase: "error", error: null, traceId: null } as const,
+        status: { label: "Connection failed", tone: "failed" },
+        detail: "It refused the connection.",
+      },
+      {
+        name: "reconnecting after a failure",
+        connection: { phase: "reconnecting", error: RAW_ERROR, traceId: "trace-1" } as const,
+        status: { label: "Reconnecting", tone: "attention" },
+        detail: "It isn't answering. It may be restarting.",
+      },
+    ])("$name", ({ connection, status, detail }) => {
+      const presentation = deriveZeropsRowPresentation(input({ ...READY, connection }, "ready"));
+      expect(presentation).toEqual({ status, detail, detailIsError: true });
+      const rendered = [presentation.status.label, presentation.detail].join("\n");
+      for (const leak of LEAKS) {
+        expect(rendered).not.toMatch(leak);
+      }
+    });
   });
 
   describe("a row whose presence the inventory has not read", () => {

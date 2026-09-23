@@ -49,36 +49,38 @@ export function ZeropsMergeConfirm({
   const checks = checkDotTone(pull);
   const who = changeAuthorName(pull, mateName);
   return (
-    <DialogPanel>
+    <>
       <DialogHeader>
         <DialogTitle>Merge #{pull.number}</DialogTitle>
         <DialogDescription>{mergeConsequence(pull)}</DialogDescription>
       </DialogHeader>
-      <div className="my-2 flex flex-col gap-2" data-zerops-surface="merge-confirm-change">
-        {/* The whole title, and only it: the heading above already carries
-            the number and the row below names who wrote it. The menu row this
-            verb sits on shows as much of this as a 260px column allows, which
-            is not enough to merge on. */}
-        <p className="text-sm wrap-anywhere text-foreground">{pull.title}</p>
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs">
-          <dt className="text-muted-foreground">Repository</dt>
-          <dd className="min-w-0 truncate text-foreground">{pull.repository}</dd>
-          {who === undefined ? null : (
-            <>
-              <dt className="text-muted-foreground">Written by</dt>
-              <dd className="min-w-0 truncate text-foreground">{who}</dd>
-            </>
-          )}
-          <dt className="text-muted-foreground">Checks</dt>
-          <dd className="min-w-0 text-foreground">
-            {pull.checkWord === undefined || checks === undefined ? (
-              "Nothing ran"
-            ) : (
-              <StatusDot label={pull.checkWord} sentence tone={checks} />
+      <DialogPanel>
+        <div className="my-2 flex flex-col gap-2" data-zerops-surface="merge-confirm-change">
+          {/* The whole title, and only it: the heading above already carries
+              the number and the row below names who wrote it. The menu row this
+              verb sits on shows as much of this as a 260px column allows, which
+              is not enough to merge on. */}
+          <p className="text-sm wrap-anywhere text-foreground">{pull.title}</p>
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs">
+            <dt className="text-muted-foreground">Repository</dt>
+            <dd className="min-w-0 truncate text-foreground">{pull.repository}</dd>
+            {who === undefined ? null : (
+              <>
+                <dt className="text-muted-foreground">Written by</dt>
+                <dd className="min-w-0 truncate text-foreground">{who}</dd>
+              </>
             )}
-          </dd>
-        </dl>
-      </div>
+            <dt className="text-muted-foreground">Checks</dt>
+            <dd className="min-w-0 text-foreground">
+              {pull.checkWord === undefined || checks === undefined ? (
+                "Nothing ran"
+              ) : (
+                <StatusDot label={pull.checkWord} sentence tone={checks} />
+              )}
+            </dd>
+          </dl>
+        </div>
+      </DialogPanel>
       <DialogFooter>
         <DialogClose
           render={
@@ -91,7 +93,7 @@ export function ZeropsMergeConfirm({
           {merging ? "Merging…" : "Merge"}
         </Button>
       </DialogFooter>
-    </DialogPanel>
+    </>
   );
 }
 

@@ -1,9 +1,17 @@
 import { readString } from "../../cards/decode.ts";
-import { sentenceCase } from "../../operations/phrases.ts";
-import type { ZeropsCall, ZeropsOperationStep } from "../types.ts";
+import { OPEN_IN_ZEROPS, operationClosing, sentenceCase } from "../../operations/phrases.ts";
+import { zeropsProjectUrl } from "../../serviceMap.ts";
+import type {
+  ZeropsCall,
+  ZeropsOperationLink,
+  ZeropsOperationPhase,
+  ZeropsOperationStep,
+} from "../types.ts";
 import {
   type BuiltCardFields,
+  DEPLOY_BUILD_CAP_MS,
   KIND_LABEL,
+  type OperationBuildContext,
   buildStep,
   decodeCall,
   detailField,
@@ -18,18 +26,49 @@ import {
   undecodedDetail,
   urlHost,
 } from "./shared.ts";
-import { operationClosing } from "../../operations/phrases.ts";
 
-export function buildDeployFields(call: ZeropsCall): BuiltCardFields {
+/**
+ * The deploy tool call itself may complete while the build it triggered is
+ * still running — the phase then stays running regardless of the call's own
+ * terminal status, until the cap past the call's return makes it uncertain.
+ */
+function deployPhase(
+  call: ZeropsCall,
+  resultStatus: string | undefined,
+  nowMs: number,
+): ZeropsOperationPhase {
+  const basePhase = phaseFor(call.status);
+  if (basePhase !== "done" || resultStatus !== "BUILD_TRIGGERED") {
+    return basePhase;
+  }
+  const pastCap =
+    call.settledAt !== undefined && nowMs - Date.parse(call.settledAt) >= DEPLOY_BUILD_CAP_MS;
+  return pastCap ? "uncertain" : "running";
+}
+
+function deployLinks(
+  phase: ZeropsOperationPhase,
+  subdomainUrl: string | undefined,
+  projectId: string | undefined,
+): ReadonlyArray<ZeropsOperationLink> {
+  if (phase === "done" && subdomainUrl !== undefined) {
+    return [{ label: urlHost(subdomainUrl), url: subdomainUrl }];
+  }
+  if (phase === "uncertain" && projectId !== undefined) {
+    return [{ label: OPEN_IN_ZEROPS, url: zeropsProjectUrl(projectId) }];
+  }
+  return [];
+}
+
+export function buildDeployFields(
+  call: ZeropsCall,
+  context: OperationBuildContext,
+): BuiltCardFields {
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
   const card = decoded.card?.kind === "deploy" ? decoded.card : undefined;
   const resultStatus = card?.status;
-  const basePhase = phaseFor(call.status);
-  // The deploy tool call itself may complete while the build it triggered is
-  // still running — the phase then stays running regardless of the call's
-  // own terminal status.
-  const phase = basePhase === "done" && resultStatus === "BUILD_TRIGGERED" ? "running" : basePhase;
+  const phase = deployPhase(call, resultStatus, context.nowMs);
   const subject =
     pickFirst(readInputString(call.input, "targetService"), card?.target) ?? "the service";
   const { voice, voiceSource } = mateVoiceFor("deploy", subject);
@@ -62,10 +101,7 @@ export function buildDeployFields(call: ZeropsCall): BuiltCardFields {
     steps.push(buildStep("deploy", "Deploy", card.status));
   }
 
-  const links =
-    phase === "done" && card?.subdomainUrl !== undefined
-      ? [{ label: urlHost(card.subdomainUrl), url: card.subdomainUrl }]
-      : [];
+  const links = deployLinks(phase, card?.subdomainUrl, context.projectId);
 
   const closing =
     phase === "running"

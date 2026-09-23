@@ -8,6 +8,7 @@
  * own environment — the state lives outside React, keyed by environment, and
  * two tests sharing an id would share an update.
  */
+import type { ContainerVerdict } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -40,6 +41,22 @@ vi.mock("../state/zeropsCommands", () => ({
   zeropsCommands: { mateUpdate: MATE_UPDATE_TAG, mateCheckUpdate: MATE_CHECK_UPDATE_TAG },
 }));
 
+/** The Mate's container as the container store would hold it: an intent makes it `updating`. */
+const container = vi.hoisted(() => ({
+  verdict: { level: "ready" } as ContainerVerdict,
+  intents: [] as Array<unknown>,
+  /** Whether a container takes the intent. */
+  takes: true,
+}));
+vi.mock("./zeropsContainers", () => ({
+  useEnvironmentContainer: () => ({ key: "project:service", verdict: container.verdict }),
+  intendContainer: (key: string, intent: unknown) => {
+    container.intents.push({ key, intent });
+    if (container.takes) container.verdict = { level: "updating", overdue: false };
+    return container.takes;
+  },
+}));
+
 const { useZeropsMateUpdate } = await import("./useZeropsMateUpdate");
 
 let environments = 0;
@@ -47,16 +64,16 @@ let ENVIRONMENT_ID = EnvironmentId.make("environment-0");
 
 function render(serverVersion: string | undefined, environmentId: EnvironmentId = ENVIRONMENT_ID) {
   reactHookHarness.beginRender();
-  return useZeropsMateUpdate(environmentId, serverVersion, {
-    verifyAttempts: 3,
-    verifyIntervalMs: 1_000,
-  });
+  return useZeropsMateUpdate(environmentId, serverVersion);
 }
 
 beforeEach(() => {
   reactHookHarness.reset();
   commandSpy.mockReset();
   checkCommandSpy.mockReset();
+  container.verdict = { level: "ready" };
+  container.intents = [];
+  container.takes = true;
   environments += 1;
   ENVIRONMENT_ID = EnvironmentId.make(`environment-${environments}`);
   vi.useFakeTimers();
@@ -102,13 +119,15 @@ describe("useZeropsMateUpdate", () => {
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "already-current" });
+    // An update the RPC answers as already current creates no intent.
+    expect(container.intents).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(4_000);
     hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "idle" });
   });
 
-  it("action 'updated': waits for serverVersion to reach 'to', then settles to idle", async () => {
+  it("action 'updated': the container shows updating until it is back, then settles to idle", async () => {
     commandSpy.mockResolvedValue({
       _tag: "Success",
       value: {
@@ -127,16 +146,19 @@ describe("useZeropsMateUpdate", () => {
     await vi.advanceTimersByTimeAsync(0);
     hook = render(version);
     expect(hook.state).toMatchObject({ phase: "updating" });
+    expect(container.intents).toEqual([
+      { key: "project:service", intent: { kind: "update", from: "0.8.0" } },
+    ]);
 
-    // Still on the old version a moment later.
-    await vi.advanceTimersByTimeAsync(1_000);
+    // Still updating a while later: the container decides, not a clock here.
+    await vi.advanceTimersByTimeAsync(60_000);
     hook = render(version);
     expect(hook.state).toMatchObject({ phase: "updating" });
 
-    // The socket comes back on the new version.
+    // The container is back, on the new version.
+    container.verdict = { level: "ready" };
     version = "0.8.1";
-    hook = render(version);
-    await vi.advanceTimersByTimeAsync(1_000);
+    render(version);
     hook = render(version);
     expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
 
@@ -145,7 +167,7 @@ describe("useZeropsMateUpdate", () => {
     expect(hook.state).toEqual({ phase: "idle" });
   });
 
-  it("the socket never comes back: fails after the verify attempts run out", async () => {
+  it("an update past its budget says the server has not come back", async () => {
     commandSpy.mockResolvedValue({
       _tag: "Success",
       value: {
@@ -162,9 +184,41 @@ describe("useZeropsMateUpdate", () => {
     hook.confirm();
     await vi.advanceTimersByTimeAsync(0);
 
-    await vi.advanceTimersByTimeAsync(3_000);
+    container.verdict = { level: "updating", overdue: true };
+    render("0.8.0");
     hook = render("0.8.0");
     expect(hook.state.phase).toBe("failed");
+  });
+
+  it("an update no container follows waits for another version, within the update's budget", async () => {
+    container.takes = false;
+    commandSpy.mockResolvedValue({
+      _tag: "Success",
+      value: {
+        action: "updated",
+        from: "0.8.0",
+        to: "0.8.1",
+        restarted: true,
+        serverVersion: "0.8.0",
+      },
+    });
+    let hook = render("0.8.0");
+    hook.request();
+    hook = render("0.8.0");
+    hook.confirm();
+    await vi.advanceTimersByTimeAsync(0);
+    hook = render("0.8.0");
+    expect(hook.state).toEqual({ phase: "updating" });
+
+    // Past the update's budget with the version unchanged, it says the server has not come back.
+    await vi.advanceTimersByTimeAsync(120_000);
+    hook = render("0.8.0");
+    expect(hook.state.phase).toBe("failed");
+
+    // Coming back later on the new version, it has still updated.
+    render("0.8.1");
+    hook = render("0.8.1");
+    expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
   });
 
   it("the RPC's own ZeropsMateUpdateResult.error: fails with that message, never a transport error", async () => {
@@ -304,8 +358,10 @@ describe("useZeropsMateUpdate", () => {
     expect(hook.state).toMatchObject({ phase: "updating" });
 
     // The server comes back, on a version it did not have before. The render
-    // that carries the new version is the one that notices; the next one is
-    // what a subscriber sees.
+    // that carries it is the one that notices; the next one is what a
+    // subscriber sees.
+    expect(container.intents).toHaveLength(1);
+    container.verdict = { level: "ready" };
     render("0.8.1");
     hook = render("0.8.1");
     expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
@@ -322,7 +378,8 @@ describe("useZeropsMateUpdate", () => {
     hook.confirm();
     await vi.advanceTimersByTimeAsync(0);
 
-    await vi.advanceTimersByTimeAsync(3_000);
+    container.verdict = { level: "updating", overdue: true };
+    render("0.8.0");
     hook = render("0.8.0");
     expect(hook.state.phase).toBe("failed");
   });
@@ -338,11 +395,13 @@ describe("useZeropsMateUpdate", () => {
     hook.confirm();
     await vi.advanceTimersByTimeAsync(0);
 
-    await vi.advanceTimersByTimeAsync(3_000);
+    container.verdict = { level: "updating", overdue: true };
+    render("0.8.0");
     hook = render("0.8.0");
     expect(hook.state.phase).toBe("failed");
 
     // It was slow, not broken.
+    container.verdict = { level: "ready" };
     render("0.8.1");
     hook = render("0.8.1");
     expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });

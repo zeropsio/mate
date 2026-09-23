@@ -39,8 +39,7 @@ export type ZeropsIdentityExchangeResult =
       /**
        * Whether trying the same connect again, unchanged, might succeed — a
        * transient fault (the descriptor read timed out or the fetch itself
-       * failed, an internal error, an uncertain door-mint, a mint that waited
-       * out the account window) rather than a verdict
+       * failed, an internal error, an uncertain door-mint) rather than a verdict
        * (`ConnectionBlockedError`'s permission/read-only/authentication/
        * unsupported, or anything else the door said no to).
        * The birth's own connect loop (`ZeropsProjectsPage.tsx`) is the only
@@ -138,12 +137,9 @@ export async function exchangeZeropsContainerIdentity<E>(
     // The mint itself failed — the account is signed out, the platform is
     // down, or the org refused. The door was never reached, so there is
     // nothing to report about it. An "uncertain" mint (the write's own
-    // outcome was never learned) and one that waited out the account window
-    // (`access-unverified`, DESIGN §4.4) are worth trying again; every other
-    // kind is the platform's settled word.
-    const retryable =
-      cause instanceof ZeropsApiError &&
-      (cause.kind === "uncertain" || cause.kind === "access-unverified");
+    // outcome was never learned) is worth trying again; every other kind is
+    // the platform's settled word.
+    const retryable = cause instanceof ZeropsApiError && cause.kind === "uncertain";
     span.end({ outcome: "failure", retryable, ...diagnosticFailure(cause) });
     return {
       _tag: "Failure",
@@ -210,8 +206,6 @@ export function exchangeFailureOf(cause: unknown): ExchangeFailure {
     switch (cause.kind) {
       case "network":
         return retryableFailure({ kind: "network" });
-      case "access-unverified":
-        return retryableFailure({ kind: "access-unverified" });
       case "expired-session":
         return SESSION_ENDED;
       case "forbidden":

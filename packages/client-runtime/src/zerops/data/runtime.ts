@@ -4,6 +4,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Latch from "effect/Latch";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
@@ -13,8 +14,10 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
 import { createZeropsDataAtoms } from "./atoms.ts";
+import { grantCapabilities } from "./access/capabilities.ts";
 import { commandAdmissionError, commandTarget } from "./commands.ts";
 import { BuildLogTransportError, type BuildLogTransport } from "./logTransport.ts";
 import { makeBuildLogRegistry, type BuildLogRegistry } from "./logs.ts";
@@ -121,8 +124,22 @@ function organizationOfEntityRef(ref: EntityRef): OrganizationRef {
   return ref.kind === "project" ? ref.organization : ref.project.organization;
 }
 
-/** Stable desired-work identity. Disposable receiver/interest epochs stay out of this key. */
+const interestKeys = new WeakMap<RuntimeInterestDescriptor, InterestKey>();
+
+/**
+ * Stable desired-work identity. Disposable receiver/interest epochs stay out of this key. It is
+ * serialized once per descriptor object: descriptors are immutable.
+ */
 export function interestKeyOf(descriptor: RuntimeInterestDescriptor): InterestKey {
+  let key = interestKeys.get(descriptor);
+  if (key === undefined) {
+    key = serializedInterestKey(descriptor);
+    interestKeys.set(descriptor, key);
+  }
+  return key;
+}
+
+function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestKey {
   switch (descriptor.kind) {
     case "organization-inventory":
       return InterestKeySchema.make(
@@ -521,6 +538,8 @@ interface RuntimeReceiver {
   readonly organization: OrganizationRef;
   readonly identity: ReceiverIdentity;
   handle: ReceiverHandle | null;
+  /** Why its last socket login failed, until its recovery cycle retries it. */
+  openFailure: AdapterError | null;
   readonly registrations: Map<string, RuntimeRegistration>;
   readonly registrationOwners: Map<string, RuntimeRegistration>;
   registrationAttempts: number;
@@ -562,6 +581,12 @@ export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
     readonly logs: BuildLogRegistry;
     /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
     readonly access: ZeropsAccessGrant;
+    /**
+     * Hears the account's bus for the caller's scope (DESIGN §6.2): each `inventory` re-reads that
+     * organization with `refresh`, on a fresh receiver while the rows already read stay up. Its
+     * leases are never re-taken for it: a released lease drops what it read.
+     */
+    readonly listen: (bus: InvalidationBus) => Effect.Effect<void, never, Scope.Scope>;
   };
 
 const leaseError = (
@@ -741,12 +766,15 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     setTimer: logTimers.setTimer,
     clearTimer: logTimers.clearTimer,
   });
-  let logAccess = Ref.getUnsafe(model).access;
+  /** The access the build logs and the resource broker were last reconciled with. */
+  let reconciledAccess = Ref.getUnsafe(model).access;
   const runtimeScope = yield* Scope.make();
   // Demand arrives from independently run UI effects; workers retain the account scheduler.
   const forkOwned = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(Effect.forkIn(runtimeScope), Effect.provideService(Scheduler.Scheduler, scheduler));
   const closed = yield* Ref.make(false);
+  /** Open while the tab is online: offline, no establishment starts, so no socket login is sent. */
+  const network = yield* Latch.make(true);
   const visibility =
     options.visibility ??
     ({ current: Effect.succeed("visible"), changes: Stream.never } satisfies ZeropsVisibility);
@@ -797,26 +825,48 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
 
   let pendingPublication: ZeropsDataState | null = null;
   let publicationEvents = 0;
-  const flushPublication = Effect.sync(() => {
+  const flushPendingPublication = () => {
     const next = pendingPublication;
     pendingPublication = null;
     publicationEvents = 0;
     if (next !== null) options.atomRegistry.set(rootAtom, next);
-  });
+  };
+  const flushPublication = Effect.sync(flushPendingPublication);
+  // Every change a task makes reaches the atoms in one publication, after the task: each
+  // publication recomputes every projection, so the leases of a whole account taken one by one
+  // must not recompute them once per lease.
+  const publicationDispatcher = scheduler.makeDispatcher();
+  let publicationScheduled = false;
+  const publishAfterTask = () => {
+    if (publicationScheduled) return;
+    publicationScheduled = true;
+    publicationDispatcher.scheduleTask(() => {
+      publicationScheduled = false;
+      flushPendingPublication();
+    }, 0);
+  };
 
-  const publish = (next: ZeropsDataState, deferPublication = false): Effect.Effect<void> =>
+  /**
+   * Every change of access reaches the build logs and the resource broker, whatever made it. The
+   * atoms hear the change now, after the task, or when the ingress loop flushes its batch.
+   */
+  const publish = (
+    next: ZeropsDataState,
+    publication: "now" | "after-task" | "ingress-batch" = "now",
+  ): Effect.Effect<void> =>
     Ref.set(model, next).pipe(
       Effect.andThen(
-        Effect.sync(() => {
-          if (next.access !== logAccess) {
-            logAccess = next.access;
-            logs.reconcileAccess();
-          }
+        Effect.suspend(() => {
           pendingPublication = next;
           publicationEvents += 1;
+          if (publication === "after-task") publishAfterTask();
+          if (next.access === reconciledAccess) return Effect.void;
+          reconciledAccess = next.access;
+          logs.reconcileAccess();
+          return resources.reconcileAccess;
         }),
       ),
-      Effect.andThen(deferPublication ? Effect.void : flushPublication),
+      Effect.andThen(publication === "now" ? flushPublication : Effect.void),
     );
 
   const applyControl = (input: RuntimeControlInput): Effect.Effect<void> =>
@@ -824,7 +874,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       Effect.gen(function* () {
         const current = yield* Ref.get(model);
         const reduction = reduceZeropsDataState(current, input, policy);
-        if (reduction.state !== current) yield* publish(reduction.state);
+        if (reduction.state !== current) yield* publish(reduction.state, "after-task");
       }),
     );
 
@@ -937,7 +987,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             }
           }
           if (reduction.state !== current)
-            yield* publish(reduction.state, input.kind === "observation");
+            yield* publish(reduction.state, input.kind === "observation" ? "ingress-batch" : "now");
           return reduction.followUps;
         }),
       );
@@ -1142,6 +1192,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         receiverId: ZeropsReceiverId.make(options.makeOpaqueId()),
       },
       handle: null,
+      openFailure: null,
       registrations: new Map(),
       registrationOwners: new Map(),
       registrationAttempts: 0,
@@ -1524,10 +1575,31 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     receiverLock.withPermit(
       Effect.gen(function* () {
         if (receiver.handle !== null) return receiver.handle;
+        // A failed login, or one abandoned before it answered, is the attempt of every
+        // establishment that reaches the receiver until its recovery cycle retries on its
+        // backoff: one login per rung, never a burst.
+        if (receiver.openFailure !== null) return yield* Effect.fail(receiver.openFailure);
         const handle = yield* context(policy.establishmentDeadlineMs, (requestContext) =>
           options.adapter
             .openReceiver(options.scope, receiver.organization, receiver.identity, requestContext)
             .pipe(Scope.provide(runtimeScope)),
+        ).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              receiver.openFailure = error;
+            }),
+          ),
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              receiver.openFailure = {
+                _tag: "ZeropsDataAdapterError",
+                kind: "timeout",
+                message: "The socket login was abandoned before it answered.",
+                retryable: true,
+                accountRevocationEvidence: false,
+              };
+            }),
+          ),
         );
         // A recovery/pause race may have replaced this receiver while the open call was
         // in flight. Nobody else can close a socket that never landed in `receivers`.
@@ -1670,7 +1742,27 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           ),
     );
 
+  /**
+   * Offline, an establishment waits for the network before it starts, so its deadline starts once
+   * the network is back (§4.0, §6.4). One whose interest was paused, given a new identity or
+   * released meanwhile is left to whatever did that.
+   */
   const establishInterest = (runtimeInterest: RuntimeInterest): Effect.Effect<void> =>
+    Effect.suspend(() => {
+      const waitedAs = runtimeInterest.identity;
+      return network.await.pipe(
+        Effect.andThen(Ref.get(model)),
+        Effect.flatMap((state) =>
+          runtimeInterest.identity === waitedAs &&
+          runtimeInterest.leases.size > 0 &&
+          state.interests.get(runtimeInterest.key)?.interest.status !== "paused"
+            ? establish(runtimeInterest)
+            : Effect.void,
+        ),
+      );
+    });
+
+  const establish = (runtimeInterest: RuntimeInterest): Effect.Effect<void> =>
     Effect.gen(function* () {
       if (yield* Ref.get(closed)) return;
       const organization = organizationOfInterest(runtimeInterest.descriptor);
@@ -2163,6 +2255,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             prepared = null;
             break;
           }
+          // The retries that came due log in once more, over the receiver they wait on.
+          if (retryable.length > 0) currentReplacement.openFailure = null;
           for (const interest of retryable) {
             yield* establishInterest(interest);
           }
@@ -2364,8 +2458,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       // A paused tab has no receivers left, so each organization gets a fresh one. A tab that
       // returned before the pause still holds its live receiver, which keeps serving the
       // interests observing on it: a failed interest retries there rather than replacing it.
+      // A visible wake is the first rung, now: a login that failed before it is not the attempt.
       for (const runtimeInterest of toResume) {
         const receiver = receiverFor(organizationOfInterest(runtimeInterest.descriptor));
+        receiver.openFailure = null;
         const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
         yield* applyControl({ kind: "interest-upserted", interest: desired });
       }
@@ -2578,164 +2674,189 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }),
     );
 
-  const acquire: ZeropsDataRuntime["acquire"] = (descriptor) =>
+  /**
+   * Admits one lease under the lifecycle lock. An interest that needs establishing is added to
+   * `establishments`, which the caller starts once the whole pass is admitted.
+   */
+  const admitLease = (
+    descriptor: RuntimeInterestDescriptor,
+    leaseScope: Scope.Scope,
+    establishments: Array<RuntimeInterest>,
+  ): Effect.Effect<InterestLease, LeaseAdmissionError> =>
+    Effect.gen(function* () {
+      if (yield* Ref.get(closed)) {
+        return yield* Effect.fail(
+          leaseError("runtime-closed", "The Zerops account data runtime is closed."),
+        );
+      }
+      if (!accountRefsEqual(organizationOfInterest(descriptor).account, options.scope.account)) {
+        return yield* Effect.fail(
+          leaseError("account-mismatch", "The requested interest belongs to another account."),
+        );
+      }
+      const key = interestKeyOf(descriptor);
+      let runtimeInterest = interests.get(key);
+      if (runtimeInterest === undefined) {
+        if (interests.size >= policy.activeInterestsPerAccount) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account interest budget is full."),
+          );
+        }
+        const organization = organizationOfInterest(descriptor);
+        const organizationKey = organizationKeyOf(organization);
+        const plan = planZeropsInterest(descriptor);
+        const plannedQueryKeys = queryKeysOfPlan(plan);
+        const activeQueryKeys = new Set(
+          [...interests.values()].flatMap((interest) =>
+            interest.leases.size > 0
+              ? queryKeysOfPlan(planZeropsInterest(interest.descriptor))
+              : [],
+          ),
+        );
+        const additionalQueries = plannedQueryKeys.filter(
+          (queryKey) => !activeQueryKeys.has(queryKey),
+        ).length;
+        if (activeQueryKeys.size + additionalQueries > policy.activeQueriesPerAccount) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account active-query budget is full."),
+          );
+        }
+        const activeHistorySeries = [...interests.values()].filter(
+          (interest) =>
+            interest.leases.size > 0 && interest.descriptor.kind === "project-metric-history",
+        ).length;
+        if (
+          descriptor.kind === "project-metric-history" &&
+          activeHistorySeries >= policy.activeHistorySeriesPerAccount
+        ) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account history-series budget is full."),
+          );
+        }
+        const organizationInterestCount = [...interests.values()].filter(
+          (interest) =>
+            organizationKeyOf(organizationOfInterest(interest.descriptor)) === organizationKey,
+        ).length;
+        if (organizationInterestCount >= policy.desiredInterestsPerReceiver) {
+          return yield* Effect.fail(
+            leaseError("receiver-capacity", "The organization receiver interest budget is full."),
+          );
+        }
+        if (!receivers.has(organizationKey) && receivers.size >= policy.receiversPerAccount) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account receiver budget is full."),
+          );
+        }
+        const currentReceiver = receivers.get(organizationKey);
+        const plannedRegistrationKeys = new Set(
+          plan.registrations.map((registration) => registrationKeyOf(registration.descriptor)),
+        );
+        const additionalRegistrations = [...plannedRegistrationKeys].filter(
+          (key) => !currentReceiver?.registrations.has(key),
+        ).length;
+        const activeRegistrationDemand = [...receivers.values()].reduce(
+          (total, receiver) => total + receiver.registrations.size,
+          0,
+        );
+        if (
+          activeRegistrationDemand + additionalRegistrations >
+          policy.activeRegistrationsPerAccount
+        ) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account registration budget is full."),
+          );
+        }
+        const receiver = receiverFor(organization);
+        // Placeholder identity only: updateInterestIdentity below is the single source
+        // that mints the real epoch and identity before establishment starts.
+        const identity: InterestIdentity = {
+          receiver: receiver.identity,
+          interestEpoch: InterestEpoch.make(interestEpoch),
+          key,
+        };
+        runtimeInterest = {
+          descriptor,
+          key,
+          leases: new Set(),
+          // Metrics and history enrich what the inventory interests hold: their
+          // failures retry on their own and never replace the organization receiver.
+          required:
+            descriptor.kind !== "project-current-metrics" &&
+            descriptor.kind !== "project-process-history" &&
+            descriptor.kind !== "project-metric-history",
+          identity,
+          recoveryAttempts: 0,
+          readController: new AbortController(),
+        };
+        interests.set(key, runtimeInterest);
+      }
+      const leaseId = options.makeOpaqueId();
+      runtimeInterest.leases.add(leaseId);
+      leases.set(leaseId, runtimeInterest);
+      const existing = (yield* Ref.get(model)).interests.get(key);
+      if (existing === undefined) {
+        const desired = yield* updateInterestIdentity(
+          runtimeInterest,
+          receiverFor(organizationOfInterest(descriptor)),
+        );
+        yield* applyControl({ kind: "interest-upserted", interest: desired });
+        establishments.push(runtimeInterest);
+      } else {
+        yield* applyControl({
+          kind: "interest-upserted",
+          interest: { ...existing, leases: runtimeInterest.leases.size },
+        });
+        // A fresh lease is a fresh reason to retry a failed interest now, rather than
+        // waiting out whatever backoff window a prior lessee's failures left behind.
+        // Minting a new identity (as resumeFromBackground does) is required, not
+        // optional: without it the still-sleeping scheduleFailedRetry fiber from the
+        // earlier failure passes its own identity check at the old retryAtMs and
+        // fires a second, concurrent establishment for the same interest.
+        if (existing.interest.status === "failed") {
+          runtimeInterest.recoveryAttempts = 0;
+          const desired = yield* updateInterestIdentity(
+            runtimeInterest,
+            receiverFor(organizationOfInterest(descriptor)),
+          );
+          yield* applyControl({ kind: "interest-upserted", interest: desired });
+          establishments.push(runtimeInterest);
+        }
+      }
+      const release = releaseLease(leaseId);
+      yield* Scope.addFinalizer(leaseScope, release);
+      return {
+        leaseId: ZeropsLeaseId.make(leaseId),
+        interest: key,
+        release,
+      } satisfies InterestLease;
+    });
+
+  const acquireMany: ZeropsDataRuntime["acquireMany"] = (descriptors) =>
     Effect.gen(function* () {
       const leaseScope = yield* Scope.Scope;
       return yield* lifecycleLock.withPermit(
         Effect.gen(function* () {
-          if (yield* Ref.get(closed)) {
-            return yield* Effect.fail(
-              leaseError("runtime-closed", "The Zerops account data runtime is closed."),
-            );
-          }
-          if (
-            !accountRefsEqual(organizationOfInterest(descriptor).account, options.scope.account)
-          ) {
-            return yield* Effect.fail(
-              leaseError("account-mismatch", "The requested interest belongs to another account."),
-            );
-          }
-          const key = interestKeyOf(descriptor);
-          let runtimeInterest = interests.get(key);
-          if (runtimeInterest === undefined) {
-            if (interests.size >= policy.activeInterestsPerAccount) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account interest budget is full."),
-              );
-            }
-            const organization = organizationOfInterest(descriptor);
-            const organizationKey = organizationKeyOf(organization);
-            const plan = planZeropsInterest(descriptor);
-            const plannedQueryKeys = queryKeysOfPlan(plan);
-            const activeQueryKeys = new Set(
-              [...interests.values()].flatMap((interest) =>
-                interest.leases.size > 0
-                  ? queryKeysOfPlan(planZeropsInterest(interest.descriptor))
-                  : [],
-              ),
-            );
-            const additionalQueries = plannedQueryKeys.filter(
-              (queryKey) => !activeQueryKeys.has(queryKey),
-            ).length;
-            if (activeQueryKeys.size + additionalQueries > policy.activeQueriesPerAccount) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account active-query budget is full."),
-              );
-            }
-            const activeHistorySeries = [...interests.values()].filter(
-              (interest) =>
-                interest.leases.size > 0 && interest.descriptor.kind === "project-metric-history",
-            ).length;
-            if (
-              descriptor.kind === "project-metric-history" &&
-              activeHistorySeries >= policy.activeHistorySeriesPerAccount
-            ) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account history-series budget is full."),
-              );
-            }
-            const organizationInterestCount = [...interests.values()].filter(
-              (interest) =>
-                organizationKeyOf(organizationOfInterest(interest.descriptor)) === organizationKey,
-            ).length;
-            if (organizationInterestCount >= policy.desiredInterestsPerReceiver) {
-              return yield* Effect.fail(
-                leaseError(
-                  "receiver-capacity",
-                  "The organization receiver interest budget is full.",
-                ),
-              );
-            }
-            if (!receivers.has(organizationKey) && receivers.size >= policy.receiversPerAccount) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account receiver budget is full."),
-              );
-            }
-            const currentReceiver = receivers.get(organizationKey);
-            const plannedRegistrationKeys = new Set(
-              plan.registrations.map((registration) => registrationKeyOf(registration.descriptor)),
-            );
-            const additionalRegistrations = [...plannedRegistrationKeys].filter(
-              (key) => !currentReceiver?.registrations.has(key),
-            ).length;
-            const activeRegistrationDemand = [...receivers.values()].reduce(
-              (total, receiver) => total + receiver.registrations.size,
-              0,
-            );
-            if (
-              activeRegistrationDemand + additionalRegistrations >
-              policy.activeRegistrationsPerAccount
-            ) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account registration budget is full."),
-              );
-            }
-            const receiver = receiverFor(organization);
-            // Placeholder identity only: updateInterestIdentity below is the single source
-            // that mints the real epoch and identity before establishment starts.
-            const identity: InterestIdentity = {
-              receiver: receiver.identity,
-              interestEpoch: InterestEpoch.make(interestEpoch),
-              key,
-            };
-            runtimeInterest = {
-              descriptor,
-              key,
-              leases: new Set(),
-              // Metrics and history enrich what the inventory interests hold: their
-              // failures retry on their own and never replace the organization receiver.
-              required:
-                descriptor.kind !== "project-current-metrics" &&
-                descriptor.kind !== "project-process-history" &&
-                descriptor.kind !== "project-metric-history",
-              identity,
-              recoveryAttempts: 0,
-              readController: new AbortController(),
-            };
-            interests.set(key, runtimeInterest);
-          }
-          const leaseId = options.makeOpaqueId();
-          runtimeInterest.leases.add(leaseId);
-          leases.set(leaseId, runtimeInterest);
-          const existing = (yield* Ref.get(model)).interests.get(key);
-          if (existing === undefined) {
-            const desired = yield* updateInterestIdentity(
-              runtimeInterest,
-              receiverFor(organizationOfInterest(descriptor)),
-            );
-            yield* applyControl({ kind: "interest-upserted", interest: desired });
-            yield* establishInterest(runtimeInterest).pipe(forkOwned);
-          } else {
-            yield* applyControl({
-              kind: "interest-upserted",
-              interest: { ...existing, leases: runtimeInterest.leases.size },
-            });
-            // A fresh lease is a fresh reason to retry a failed interest now, rather than
-            // waiting out whatever backoff window a prior lessee's failures left behind.
-            // Minting a new identity (as resumeFromBackground does) is required, not
-            // optional: without it the still-sleeping scheduleFailedRetry fiber from the
-            // earlier failure passes its own identity check at the old retryAtMs and
-            // fires a second, concurrent establishment for the same interest.
-            if (existing.interest.status === "failed") {
-              runtimeInterest.recoveryAttempts = 0;
-              const desired = yield* updateInterestIdentity(
-                runtimeInterest,
-                receiverFor(organizationOfInterest(descriptor)),
-              );
-              yield* applyControl({ kind: "interest-upserted", interest: desired });
-              yield* establishInterest(runtimeInterest).pipe(forkOwned);
-            }
-          }
-          const release = releaseLease(leaseId);
-          yield* Scope.addFinalizer(leaseScope, release);
-          return {
-            leaseId: ZeropsLeaseId.make(leaseId),
-            interest: key,
-            release,
-          } satisfies InterestLease;
+          const establishments: Array<RuntimeInterest> = [];
+          const taken = yield* Effect.forEach(descriptors, (descriptor) =>
+            admitLease(descriptor, leaseScope, establishments).pipe(Effect.result),
+          );
+          yield* Effect.forEach(
+            establishments,
+            (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
+            { discard: true },
+          );
+          return taken;
         }),
       );
     });
+
+  const acquire: ZeropsDataRuntime["acquire"] = (descriptor) =>
+    acquireMany([descriptor]).pipe(Effect.flatMap(([taken]) => Effect.fromResult(taken!)));
+
+  /** The grant's account capability now, on its own clocks (`commandAdmissionError`). */
+  const accountCapability = Effect.suspend(() =>
+    grantCapabilities(grant.grant).check({ kind: "account" }),
+  );
 
   const prepareCommand = (
     intent: PlatformCommandIntent,
@@ -2769,6 +2890,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           current.access,
           commandTarget(intent),
           now,
+          yield* accountCapability,
         );
         if (admission !== null) return yield* Effect.fail(admission);
         receiptOrdinal += 1;
@@ -2812,6 +2934,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           current.access,
           commandTarget(command),
           now,
+          yield* accountCapability,
         );
         if (admission !== null) return yield* Effect.fail(admission);
         if ((yield* Ref.get(closed)) || current.closed) {
@@ -2993,18 +3116,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
-    nameProjectAgent: (project, name) =>
-      runCommand({ kind: "name-project-agent", project, name }).pipe(
+    updateProjectTags: (project, patch) =>
+      runCommand({ kind: "update-project-tags", project, patch }).pipe(
         Effect.flatMap(({ attempt, result }) =>
-          result.kind === "name-project-agent"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    updateProjectGroupTags: (project, next) =>
-      runCommand({ kind: "update-project-group-tags", project, next }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "update-project-group-tags"
+          result.kind === "update-project-tags"
             ? Effect.succeed({ attempt, value: result.value })
             : Effect.fail(missingCommandResult()),
         ),
@@ -3134,7 +3249,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>
     enqueue({ kind: "access-observation", observation, interest: null }).pipe(
       Effect.andThen(awaitIngress),
-      Effect.andThen(resources.reconcileAccess),
     );
 
   const grant = yield* makeGrantDriver({
@@ -3152,6 +3266,24 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       ),
   });
 
+  // The tab's network reaches the runtime through its grant's signals.
+  yield* grant.grant.changes.pipe(
+    Stream.map(({ machine }) => machine.signals.online),
+    Stream.changes,
+    Stream.runForEach((online) => (online ? network.open : network.close)),
+    forkOwned,
+  );
+
+  const listen: ManagedZeropsDataRuntime["listen"] = (bus) =>
+    Effect.flatMap(bus.subscribe, (subscription) =>
+      Stream.fromSubscription(subscription).pipe(
+        Stream.runForEach((invalidation) =>
+          invalidation.topic === "inventory" ? refresh(invalidation.organization) : Effect.void,
+        ),
+        Effect.forkScoped,
+      ),
+    ).pipe(Effect.asVoid);
+
   const shutdown: ZeropsDataRuntime["shutdown"] = (_reason) =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
@@ -3161,6 +3293,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // Fence publication and clear grants/model first; transport finalizers run afterward.
         yield* Ref.set(closed, true);
         yield* applyControl({ kind: "runtime-closed" });
+        yield* flushPublication;
         yield* ingress.shutdown;
         yield* resources.shutdown;
         logs.shutdown();
@@ -3182,6 +3315,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     logs,
     acquire,
     refresh,
+    acquireMany,
+    listen,
     shutdown,
     state: Ref.get(model),
     stateAtom: rootAtom,

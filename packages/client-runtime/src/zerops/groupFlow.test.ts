@@ -25,7 +25,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     url: undefined,
     checks: "none",
     checkWord: undefined,
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -360,7 +360,10 @@ describe("groupFlow", () => {
     },
     {
       case: "a change that cannot land is the Mate's to fix",
-      input: { ...SM_FIXTURE, pullRequests: [pull({ mergeable: false, checks: "failing" })] },
+      input: {
+        ...SM_FIXTURE,
+        pullRequests: [pull({ mergeability: "conflicting", checks: "failing" })],
+      },
       step: {
         kind: "unblock",
         text: "#1 checks failed",
@@ -372,7 +375,7 @@ describe("groupFlow", () => {
       case: "a merge the person can make outranks one that cannot land",
       input: {
         ...SM_FIXTURE,
-        pullRequests: [pull({ number: 2, mergeable: false, checks: "failing" }), pull()],
+        pullRequests: [pull({ number: 2, mergeability: "conflicting", checks: "failing" }), pull()],
       },
       step: {
         kind: "merge",

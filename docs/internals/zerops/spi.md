@@ -18,7 +18,7 @@ one owned file `packages/contracts/src/providerRuntimeSpi.ts`. Owned code never 
 directly: `apps/server/src/spi/ProviderRuntimeEventBus.ts` wraps it in a `Context.Service` tag
 exposing `events: Stream<SpiEvent>` (the raw union plus an enrichment) and `enrichmentFailures:
 Stream<SpiEnrichmentFailure>` (§5). Today only `apps/server/src/zerops/**` consumes the bus —
-`ZeropsLifecycle.ts:243` and `ZeropsTopology.ts:331` both do `yield* ProviderRuntimeEventBus`.
+`ZeropsLifecycle.ts:309` and `ZeropsAgentAuth.ts:927` both do `yield* ProviderRuntimeEventBus`.
 `apps/server/src/orchestration/**` does not yet (§9).
 
 Consumers never read `payload.data` (a driver's raw, per-provider item shape) — that is
@@ -45,11 +45,11 @@ SPI version it was built against" test only proves the field itself works).
 
 Verified by grepping `zerops/**` and `orchestration/**` for each event's `type` discriminant:
 
-- `item.started`/`item.updated`/`item.completed` — `ZeropsLifecycle.ts:180,208`, `ZeropsTopology.ts:305`, `orchestration/Layers/ProviderRuntimeIngestion.ts:792,827,855`.
-- `user-input.requested`/`user-input.resolved` — `orchestration/decider.ts:75,77,1395`, `orchestration/Layers/ProjectionPipeline.ts:147-182`, `.../ProviderRuntimeIngestion.ts:511,529,1714`.
-- `turn.started`/`turn.completed` (incl. the `state: "interrupted"` variant) — `orchestration/Layers/CheckpointReactor.ts:945,950,1012`, `.../ProviderRuntimeIngestion.ts:1531-1624,1846,1979`, `.../ProjectionPipeline.ts:1364,1408,1422`.
-- `runtime.error` — `.../ProviderRuntimeIngestion.ts:434,440,1886`.
-- `thread.state.changed` — `.../ProviderRuntimeIngestion.ts:750`.
+- `item.started`/`item.updated`/`item.completed` — `ZeropsLifecycle.ts:217,245`, `orchestration/Layers/ProviderRuntimeIngestion.ts:901,936,964`.
+- `user-input.requested`/`user-input.resolved` — `orchestration/decider.ts:81,83,1777`, `orchestration/Layers/ProjectionPipeline.ts:161-196`, `.../ProviderRuntimeIngestion.ts:610,629,2054`.
+- `turn.started`/`turn.completed` (incl. the `state: "interrupted"` variant) — `orchestration/Layers/CheckpointReactor.ts:1021,1058,1108`, `.../ProviderRuntimeIngestion.ts:1751-1872,2302,2443`, `.../ProjectionPipeline.ts:1536,1580,1594`.
+- `runtime.error` — `zeropsTurnAuthFailure.ts:37`, `orchestration/Layers/ProviderRuntimeIngestion.ts:533,539,2384`.
+- `thread.state.changed` — `.../ProviderRuntimeIngestion.ts:850`.
 
 ## 4. Delivery guarantee
 

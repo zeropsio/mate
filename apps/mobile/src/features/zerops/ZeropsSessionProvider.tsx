@@ -148,7 +148,11 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
   return (
     <ZeropsSessionContext value={value}>
       <ZeropsDataProvider
-        account={status === "signed-in" && user !== null ? { client, userId: user.id } : null}
+        account={
+          status === "signed-in" && user !== null
+            ? { client, userId: user.id, onUser: setUser }
+            : null
+        }
       >
         {children}
       </ZeropsDataProvider>

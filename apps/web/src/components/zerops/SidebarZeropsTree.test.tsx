@@ -9,6 +9,7 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -183,15 +184,70 @@ describe("SidebarZeropsTree", () => {
     expect(snippet).toContain("text-sidebar-muted-foreground/70");
   });
 
-  it('says nothing while the candidate list is on its first read, rather than "none"', () => {
-    expect(render([], { complete: false })).toBe("");
+  const READING: CandidatesNotice = {
+    region: "placeholder",
+    message: { text: "Reading your projects…", afterMs: 400, tone: "quiet" },
+    affordance: null,
+  };
+
+  it('an unread listing renders its placeholder, never nothing and never "none"', () => {
+    const html = render([], { complete: false, notice: READING });
+
+    expect(html).toContain("Reading your projects…");
+    expect(html).not.toContain("No environment has Mate yet");
     // Read and Mate-less: the empty state, as before.
     expect(render([CRM_STAGE], { complete: true })).toContain("sidebar-environments-empty");
   });
 
+  it("a failed listing names its cause once, with one Try again", () => {
+    const html = render([], {
+      complete: false,
+      notice: {
+        region: "message",
+        message: {
+          text: "Couldn't read your projects. Zerops didn't answer.",
+          afterMs: 0,
+          tone: "alert",
+        },
+        affordance: { kind: "retry", label: "Try again" },
+      },
+      onNoticeAct: () => {},
+    });
+
+    expect(html.match(/Zerops didn(?:&#x27;|')t answer\./g)).toHaveLength(1);
+    expect(html.match(/Try again/g)).toHaveLength(1);
+    expect(html).not.toContain("No environment has Mate yet");
+  });
+
   it('never says "No environment has Mate yet" while a project\'s presence is unknown', () => {
     // The project is listed, but whether a container runs in it is not read yet.
-    expect(render([CRM_STAGE], { complete: false })).toBe("");
+    const html = render([CRM_STAGE], {
+      complete: false,
+      notice: {
+        region: "value",
+        message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+        affordance: null,
+      },
+    });
+
+    expect(html).toContain("Still reading…");
+    expect(html).not.toContain("No environment has Mate yet");
+  });
+
+  it("a partial listing says Still reading… under the Mates it already holds", () => {
+    const html = render([CRM_DEV], {
+      complete: false,
+      notice: {
+        region: "value",
+        message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+        affordance: null,
+      },
+    });
+
+    expect(html).toContain('data-zerops-surface="sidebar-mate"');
+    expect(html.indexOf("Still reading…")).toBeGreaterThan(
+      html.indexOf('data-zerops-surface="sidebar-mate"'),
+    );
   });
 
   it("lights the open Mate's row the way the menu lights its open thread", () => {
@@ -383,7 +439,7 @@ const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPul
   url: `https://gitea.example/crm/appdev/pulls/${number}`,
   checks: "passing",
   checkWord: "Passing",
-  mergeable: true,
+  mergeability: "mergeable",
   merged: false,
   mergedAt: undefined,
   headSha: "abc",
@@ -453,7 +509,10 @@ describe("the project's flow under it", () => {
   });
 
   it("hands a change nobody here can fix back to the Mate that wrote it", () => {
-    const stale = flow({ pullRequests: [pull(4, { mergeable: false })], onAsk: () => {} });
+    const stale = flow({
+      pullRequests: [pull(4, { mergeability: "conflicting" })],
+      onAsk: () => {},
+    });
     const html = withFlow([CRM_DEV, CRM_STAGE], stale);
     // The words that name the problem are the way to hand it over: a rebase
     // happens in the Mate's checkout, not in this menu.
@@ -468,14 +527,19 @@ describe("the project's flow under it", () => {
     // Without a way to ask, the state stays a label rather than becoming a
     // verb that goes nowhere.
     expect(
-      withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [pull(4, { mergeable: false })] })),
+      withFlow(
+        [CRM_DEV, CRM_STAGE],
+        flow({ pullRequests: [pull(4, { mergeability: "conflicting" })] }),
+      ),
     ).not.toContain('data-zerops-primary-action="Ask"');
     // Checks still running are the one refusal with nothing to ask for.
     expect(
       withFlow(
         [CRM_DEV, CRM_STAGE],
         flow({
-          pullRequests: [pull(4, { mergeable: false, checks: "pending", checkWord: "Pending" })],
+          pullRequests: [
+            pull(4, { mergeability: "conflicting", checks: "pending", checkWord: "Pending" }),
+          ],
           onAsk: () => {},
         }),
       ),
@@ -485,7 +549,10 @@ describe("the project's flow under it", () => {
   it("offers Merge only where Gitea said the branch merges", () => {
     expect(withFlow([CRM_DEV, CRM_STAGE])).toContain('data-zerops-primary-action="Merge"');
     expect(
-      withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [pull(4, { mergeable: false })] })),
+      withFlow(
+        [CRM_DEV, CRM_STAGE],
+        flow({ pullRequests: [pull(4, { mergeability: "conflicting" })] }),
+      ),
     ).not.toContain('data-zerops-primary-action="Merge"');
   });
 
@@ -613,14 +680,14 @@ describe("the project's flow under it", () => {
   it("says why a pull request offers no Merge rather than leaving a dead end", () => {
     const running = withFlow(
       [CRM_DEV, CRM_STAGE],
-      flow({ pullRequests: [pull(4, { mergeable: false, checks: "pending" })] }),
+      flow({ pullRequests: [pull(4, { mergeability: "conflicting", checks: "pending" })] }),
     );
     expect(running).toContain('data-zerops-surface="sidebar-pull-request-blocked"');
     expect(running).toContain("checks running");
 
     const stale = withFlow(
       [CRM_DEV, CRM_STAGE],
-      flow({ pullRequests: [pull(4, { mergeable: false, checks: "passing" })] }),
+      flow({ pullRequests: [pull(4, { mergeability: "conflicting", checks: "passing" })] }),
     );
     expect(stale).toContain("needs a rebase");
 
@@ -629,7 +696,9 @@ describe("the project's flow under it", () => {
     const failed = withFlow(
       [CRM_DEV, CRM_STAGE],
       flow({
-        pullRequests: [pull(4, { mergeable: false, checks: "failing", checkWord: "Failing" })],
+        pullRequests: [
+          pull(4, { mergeability: "conflicting", checks: "failing", checkWord: "Failing" }),
+        ],
       }),
     );
     expect(failed).toContain('data-zerops-surface="sidebar-pull-request-blocked"');

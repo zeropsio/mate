@@ -12,6 +12,12 @@ import {
 import { explore } from "../testing/explore.ts";
 
 /**
+ * Every sequence to depth N is enumerated on the CPU alone: ~1-3 s locally, but CI runs the whole
+ * workspace's suites at once and has taken more than 30 s.
+ */
+const EXHAUSTIVE_TIMEOUT_MS = 120_000;
+
+/**
  * DESIGN §3.3 M1–M3, M5, M7 and §4.0's superseded attempts (§11.3 I1, I11) over every event
  * sequence a store can send, breadth first. The domains are bounded: at most two reads in flight,
  * one prerequisite, one value per ordinal, one withholding reason. Ordinals are allocated the way
@@ -260,7 +266,7 @@ describe("Known monotonicity (DESIGN §3.3 M1–M3, M5, M7) over enumerated even
   for (const scope of ["account", null] as const) {
     it(
       `holds for every sequence to depth ${DEPTH} (scope ${scope ?? "none"})`,
-      { timeout: 30_000 },
+      { timeout: EXHAUSTIVE_TIMEOUT_MS },
       () => {
         const root: ModelState = {
           cell: newCell(scope),

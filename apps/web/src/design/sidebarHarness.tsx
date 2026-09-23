@@ -244,7 +244,7 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
     url: "https://gitea.example/links/appdev/pulls/1",
     checks: "passing",
     checkWord: "Passing",
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
     headSha: "3f9c1b2",
@@ -257,7 +257,7 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
 
 /** A pull request whose branch has fallen behind `main` — Gitea refuses it. */
 const behindPull = (input: Partial<FlowPullRequest> & { number: number }) =>
-  pull({ mergeable: false, checks: "passing", checkWord: "Passing", ...input });
+  pull({ mergeability: "conflicting", checks: "passing", checkWord: "Passing", ...input });
 
 function environment(
   input: Partial<Omit<EnvironmentRow, "version" | "versionRepository">> & {
@@ -301,7 +301,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           mateProjectId: "links-enzo",
           checks: "pending",
           checkWord: "Checking",
-          mergeable: false,
+          mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
         }),
@@ -311,7 +311,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           mateProjectId: "links-theo",
           checks: "failing",
           checkWord: "Failing",
-          mergeable: false,
+          mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
         }),
@@ -362,7 +362,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           mateProjectId: "shop-mira",
           checks: "pending",
           checkWord: "Checking",
-          mergeable: false,
+          mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
         }),
@@ -377,7 +377,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           mateProjectId: "shop-mira",
           checks: "failing",
           checkWord: "Failing",
-          mergeable: false,
+          mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
         }),

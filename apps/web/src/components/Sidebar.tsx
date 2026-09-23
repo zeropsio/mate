@@ -201,12 +201,11 @@ import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./u
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
-import { rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
 import { useAskMate } from "../zerops/useAskMate";
-import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
-import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
+import { useNowMs } from "../zerops/useNowMs";
+import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
@@ -218,7 +217,11 @@ import {
   type EnvironmentRow,
   resolvePrimaryConversation,
 } from "@t3tools/client-runtime/zerops";
-import { candidatesComplete } from "@t3tools/client-runtime/zerops/projections";
+import {
+  candidatesNotice,
+  findCandidate,
+  heldCandidates,
+} from "@t3tools/client-runtime/zerops/projections";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -1715,6 +1718,15 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   );
 });
 
+/** How the menu's Mate tree names the listing it is drawn from. */
+const ZEROPS_SIDEBAR_SURFACE = {
+  subject: "your projects",
+  entity: "project",
+  source: "zerops",
+  checking: "Reading your projects…",
+  negative: null,
+} as const;
+
 export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
@@ -1733,18 +1745,24 @@ export default function Sidebar() {
     zeropsSession.activeOrganization === null
       ? false
       : canCreateProjectsInOrganization(zeropsSession.activeOrganization);
-  const { candidates: zeropsCandidates, listing: zeropsListing } = useZeropsCandidates();
-  // The roster says what every agent is doing, and the only thing that knows
-  // is the environment's own server. So every container that answers the
-  // health probe is registered on the user's behalf; from then on its socket
-  // and its thread status arrive like any other environment's.
-  const { health: zeropsHealth } = useZeropsCandidateHealth(zeropsCandidates);
+  const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
+  const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
+  const zeropsCandidates = zeropsHeld.rows;
+  // Each container's health, as the container store holds it — the tree's
+  // "some Mate in the group is up" part of *Add production*'s gate.
+  const { health: zeropsHealth } = useZeropsContainers();
+  // Until the listing may say "none", the tree says what it can instead. An
+  // account still to choose its organization is asked on the projects screen,
+  // and no listing is on its way to be waited on here.
+  const zeropsNowMs = useNowMs();
+  const zeropsNotice = useMemo(
+    () =>
+      zeropsSession.organizationStatus === "needs-selection"
+        ? null
+        : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs),
+    [zeropsListing, zeropsNowMs, zeropsSession.organizationStatus],
+  );
   const zeropsLinks = useEnvironmentLinks();
-  useZeropsAutoConnect({
-    candidates: zeropsCandidates,
-    health: zeropsHealth,
-    enabled: zeropsSignedIn,
-  });
   // Each project's flow — what its Mates have waiting, what its environments
   // run, whether there is something to release — read once for the account
   // (`ZeropsProjectFlowProvider`) and drawn under the project as a timeline.
@@ -2234,11 +2252,12 @@ export default function Sidebar() {
   const activeZeropsProjectId = useMemo(() => {
     const environmentId = routeThreadRef?.environmentId ?? routeDraftThread?.environmentId;
     if (environmentId === undefined) return null;
-    return (
-      zeropsCandidates.find((candidate) => candidate.environmentId === environmentId)?.project.id ??
-      null
+    const open = findCandidate(
+      zeropsListing,
+      (candidate) => candidate.environmentId === environmentId,
     );
-  }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsCandidates]);
+    return open.kind === "found" ? open.row.project.id : null;
+  }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsListing]);
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -3925,7 +3944,12 @@ export default function Sidebar() {
               health={zeropsHealth}
               mayCreate={zeropsMayCreate}
               className="mb-2"
-              complete={candidatesComplete(zeropsListing)}
+              complete={zeropsHeld.complete}
+              notice={zeropsNotice}
+              onNoticeAct={(affordance) => {
+                if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
+                else refreshZeropsCandidates();
+              }}
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}
@@ -3949,7 +3973,6 @@ export default function Sidebar() {
                   void router.navigate({ to: "/zerops" });
                   return;
                 }
-                rememberZeropsEnvironment(String(environmentId));
                 // One environment is one conversation: open *its* conversation,
                 // not whichever project anywhere was touched last — which is
                 // what landing on the index would pick.

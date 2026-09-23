@@ -293,7 +293,10 @@ describe("collectZeropsCalls — the lattice properties", () => {
     const [call] = collectZeropsCalls(activities, "t1");
     expect(call!.images).toEqual([{ mimeType: "image/jpeg", data: "abc123" }]);
 
-    const model = deriveZeropsThreadModel({ activities });
+    const model = deriveZeropsThreadModel({
+      activities,
+      nowMs: Date.parse("2026-09-23T00:00:00.000Z"),
+    });
     const browserEntry = model.entries.find(
       (e): e is Extract<(typeof model.entries)[number], { kind: "operation" }> =>
         e.kind === "operation" && e.operation.kind === "browser",

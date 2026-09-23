@@ -1,10 +1,9 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import {
   resolveMateVisibility,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, View } from "react-native";
@@ -14,17 +13,21 @@ import { AppText as Text, AppTextInput as TextInput } from "../../components/App
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { ZeropsMark } from "../../components/ZeropsMark";
 import { StatusDot } from "../../components/zerops";
-import { connectZeropsIdentity } from "../../connection/onboarding";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { uuidv4 } from "../../lib/uuid";
-import { useAtomCommand } from "../../state/use-atom-command";
 import { ConnectionSheetButton } from "../connection/ConnectionSheetButton";
 import { useSetHomeEnvironmentId } from "../home/home-list-options";
+import { candidatePickerBody, type MobileCandidate } from "./candidate-listing";
+import { connectMate } from "./connect";
 import { zeropsErrorMessage } from "./errors";
-import { exchangeZeropsContainerIdentity } from "./identity-exchange";
-import { zeropsCandidatePresentation } from "./presentation";
+import {
+  CANDIDATE_SECTION_LABELS,
+  CANDIDATE_SECTIONS,
+  zeropsCandidatePresentation,
+  type ZeropsCandidatePresentation,
+} from "./presentation";
 import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useZeropsData } from "./ZeropsDataProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 type ZeropsConnectSurfaceProps = {
@@ -32,19 +35,14 @@ type ZeropsConnectSurfaceProps = {
   readonly onOpenPairing: () => void;
 };
 
-const GROUP_ORDER = ["connected", "ready", "provisioning", "unavailable"] as const;
-
 function CandidateRow(props: {
-  readonly candidate: ZeropsCandidate;
+  readonly candidate: MobileCandidate;
+  readonly presentation: ZeropsCandidatePresentation;
   readonly busy: boolean;
   readonly disabled: boolean;
-  readonly visibility?: RoleMateVisibility | undefined;
   readonly onPress: () => void;
 }) {
-  const presentation = zeropsCandidatePresentation(
-    props.candidate.group,
-    props.visibility === undefined ? {} : { visibility: props.visibility },
-  );
+  const { presentation } = props;
   return (
     <View className="gap-3 rounded-[18px] bg-card px-4 py-4">
       <View className="flex-row items-start justify-between gap-4">
@@ -59,25 +57,21 @@ function CandidateRow(props: {
         <StatusDot
           label={presentation.label}
           tone={presentation.tone}
-          state={props.candidate.group === "provisioning" ? "pulsing" : "steady"}
+          state={presentation.pulsing ? "pulsing" : "steady"}
         />
       </View>
 
       {presentation.notice ? (
         <Text className="text-sm leading-normal text-foreground-muted">{presentation.notice}</Text>
-      ) : props.candidate.reason ? (
-        <Text className="text-sm leading-normal text-foreground-muted">
-          {props.candidate.reason}
-        </Text>
       ) : null}
 
       {presentation.action ? (
         <ConnectionSheetButton
           compact
           disabled={props.disabled}
-          icon={props.candidate.group === "connected" ? "arrow.right.circle" : "link"}
+          icon={presentation.section === "connected" ? "arrow.right.circle" : "link"}
           label={props.busy ? "Connecting..." : presentation.action}
-          tone={props.candidate.group === "ready" ? "primary" : "secondary"}
+          tone={presentation.section === "ready" ? "primary" : "secondary"}
           onPress={props.onPress}
         />
       ) : null}
@@ -241,28 +235,53 @@ function TotpSurface() {
   );
 }
 
+/**
+ * What the listing says in place of a "none" it may not say yet (§3.4): a placeholder while it is
+ * read, the cause and one retry when its read failed, "Still reading…" over a partial one.
+ */
+function ListingNotice(props: { readonly notice: CandidatesNotice; readonly onRetry: () => void }) {
+  const { message, affordance, region } = props.notice;
+  const retry =
+    affordance !== null &&
+    (affordance.kind === "retry" ||
+      affordance.kind === "retry-now" ||
+      affordance.kind === "renew-access")
+      ? affordance
+      : null;
+  return (
+    <View className="items-center gap-3 py-6">
+      {region === "placeholder" ? <ActivityIndicator size="large" /> : null}
+      <Text className="text-center text-sm leading-normal text-foreground-muted">
+        {message.text}
+      </Text>
+      {retry === null ? null : (
+        <ConnectionSheetButton
+          compact
+          icon="arrow.clockwise"
+          label={retry.label}
+          tone="secondary"
+          onPress={props.onRetry}
+        />
+      )}
+    </View>
+  );
+}
+
 function ProjectPickerSurface(props: { readonly onDone: (environmentId: EnvironmentId) => void }) {
-  const { client, user, signOut, newRecoveryToken, clearNewRecoveryToken } = useZeropsSession();
-  const { candidates, isLoading, error, refresh } = useZeropsCandidates();
-  const connect = useAtomCommand(connectZeropsIdentity, { reportFailure: false });
+  const { user, signOut, newRecoveryToken, clearNewRecoveryToken } = useZeropsSession();
+  const { environments } = useZeropsData();
+  const { listing, readAtMs, error, refresh } = useZeropsCandidates();
   const connectingRef = useRef(false);
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const isConnecting = connectingKey !== null;
   const visibleError = actionError ?? error;
-  const grouped = useMemo(
-    () =>
-      GROUP_ORDER.map((group) => ({
-        group,
-        candidates: candidates.filter((candidate) => candidate.group === group),
-      })).filter((section) => section.candidates.length > 0),
-    [candidates],
-  );
+  const body = useMemo(() => candidatePickerBody(listing, readAtMs), [listing, readAtMs]);
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). Undefined when nobody is signed in to judge by.
   const viewerOrganization = user?.clientUserList?.[0];
   const visibilityOf = useCallback(
-    (candidate: ZeropsCandidate): RoleMateVisibility | undefined => {
+    (candidate: MobileCandidate): RoleMateVisibility | undefined => {
       const organizationId = viewerOrganization?.clientId;
       if (viewerOrganization === undefined || organizationId === undefined) return undefined;
       return resolveMateVisibility({
@@ -277,48 +296,51 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
     },
     [viewerOrganization],
   );
+  const sections = useMemo(() => {
+    if (body.kind !== "rows") return [];
+    const presented = body.rows.map((candidate) => {
+      const visibility = visibilityOf(candidate);
+      return {
+        candidate,
+        // Worded at the moment the listing was read, like its notice.
+        presentation: zeropsCandidatePresentation(
+          candidate,
+          readAtMs,
+          visibility === undefined ? {} : { visibility },
+        ),
+      };
+    });
+    return CANDIDATE_SECTIONS.map((section) => ({
+      section,
+      rows: presented.filter((row) => row.presentation.section === section),
+    })).filter((section) => section.rows.length > 0);
+  }, [body, readAtMs, visibilityOf]);
 
+  // The row's verb: Open a connected Mate, else the account's Connect on its target (§4.4).
   const openCandidate = useCallback(
-    async (candidate: ZeropsCandidate) => {
+    async (candidate: MobileCandidate) => {
       if (connectingRef.current) return;
       if (candidate.group === "connected" && candidate.environmentId) {
         props.onDone(candidate.environmentId);
         return;
       }
-      if (visibilityOf(candidate) === "listed") return;
-      if (candidate.group !== "ready" || !candidate.containerOrigin) return;
+      if (visibilityOf(candidate) === "listed" || environments === null) return;
       connectingRef.current = true;
       setConnectingKey(candidate.key);
       setActionError(null);
       try {
-        // The token is minted in the org that owns the Mate's project.
-        const clientId = candidate.project.clientId;
-        const result = await exchangeZeropsContainerIdentity({
-          containerOrigin: candidate.containerOrigin,
-          throwaway:
-            client.session?.accessToken && clientId
-              ? {
-                  platform: zeropsThrowawayPlatform(client),
-                  clientId,
-                  projectId: candidate.project.id,
-                  nonce: uuidv4(),
-                }
-              : null,
-          connect,
-        });
-        if (result._tag === "Failure") {
+        const result = await connectMate(environments, candidate.key);
+        if (result._tag === "Failed") {
           setActionError(result.error);
           return;
         }
         props.onDone(result.environmentId);
-      } catch (cause) {
-        setActionError(zeropsErrorMessage(cause));
       } finally {
         connectingRef.current = false;
         setConnectingKey(null);
       }
     },
-    [client, connect, props, visibilityOf],
+    [environments, props, visibilityOf],
   );
 
   return (
@@ -385,12 +407,9 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
 
       {visibleError ? <ErrorBanner message={visibleError} /> : null}
 
-      {isLoading && candidates.length === 0 ? (
-        <View className="items-center gap-3 py-10">
-          <ActivityIndicator size="large" />
-          <Text className="text-sm text-foreground-muted">Loading your projects...</Text>
-        </View>
-      ) : grouped.length === 0 ? (
+      {body.kind === "notice" ? (
+        <ListingNotice notice={body} onRetry={refresh} />
+      ) : body.kind === "none" ? (
         visibleError ? null : (
           <View className="items-center gap-2 rounded-[20px] bg-card px-5 py-8">
             <Text className="font-t3-bold text-base text-foreground">No projects found</Text>
@@ -400,25 +419,26 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
           </View>
         )
       ) : (
-        grouped.map((section) => (
-          <View className="gap-2.5" key={section.group}>
-            <Text className="px-1 text-2xs font-t3-bold uppercase tracking-[0.8px] text-foreground-muted">
-              {zeropsCandidatePresentation(section.group).label}
-            </Text>
-            {section.candidates.map((candidate) => (
-              <CandidateRow
-                busy={connectingKey === candidate.key}
-                candidate={candidate}
-                disabled={isConnecting}
-                key={candidate.key}
-                onPress={() => void openCandidate(candidate)}
-                {...(visibilityOf(candidate) === undefined
-                  ? {}
-                  : { visibility: visibilityOf(candidate) })}
-              />
-            ))}
-          </View>
-        ))
+        <>
+          {sections.map(({ section, rows }) => (
+            <View className="gap-2.5" key={section}>
+              <Text className="px-1 text-2xs font-t3-bold uppercase tracking-[0.8px] text-foreground-muted">
+                {CANDIDATE_SECTION_LABELS[section]}
+              </Text>
+              {rows.map(({ candidate, presentation }) => (
+                <CandidateRow
+                  busy={connectingKey === candidate.key}
+                  candidate={candidate}
+                  disabled={isConnecting}
+                  key={candidate.key}
+                  presentation={presentation}
+                  onPress={() => void openCandidate(candidate)}
+                />
+              ))}
+            </View>
+          ))}
+          {body.notice === null ? null : <ListingNotice notice={body.notice} onRetry={refresh} />}
+        </>
       )}
     </View>
   );

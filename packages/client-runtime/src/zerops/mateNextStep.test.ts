@@ -18,7 +18,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     url: undefined,
     checks: "none",
     checkWord: undefined,
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -184,7 +184,17 @@ describe("mateNextStep", () => {
     { case: "another Mate's change", group: flow({ pullRequests: [pull()] }), mate: "p-juno" },
     {
       case: "its own change that does not merge",
-      group: flow({ pullRequests: [pull({ mergeable: false, checks: "failing" })] }),
+      group: flow({ pullRequests: [pull({ mergeability: "conflicting", checks: "failing" })] }),
+      mate: "p-wren",
+    },
+    {
+      case: "its own change Gitea is still checking",
+      group: flow({ pullRequests: [pull({ mergeability: "checking" })] }),
+      mate: "p-wren",
+    },
+    {
+      case: "its own landed change Gitea still calls mergeable",
+      group: flow({ pullRequests: [pull({ merged: true })] }),
       mate: "p-wren",
     },
     {

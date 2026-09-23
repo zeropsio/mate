@@ -1,39 +1,37 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { identity, project, service, stamp } from "../data/__fixtures__/index.ts";
+import { identity, project, service } from "../data/__fixtures__/index.ts";
 import type {
   CollectionRead,
-  FacetAdmission,
-  InterestState,
-  QueryCoverage,
+  ProcessRecord,
   ServiceDeployInfo,
   ServiceRecord,
 } from "../data/types.ts";
-import {
-  AccountEpoch,
-  DispatchOrdinal,
-  ReadStartOrdinal,
-  ReceiptOrdinal,
-  queryKeyOf,
-} from "../data/types.ts";
+import { ReceiptOrdinal } from "../data/types.ts";
+import { serviceRecordToZeropsService } from "../data/dto.ts";
 import type { EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
+import { projectTopology } from "../topology.ts";
 import {
+  buildNames,
   CHECKING_WHAT_RUNS,
   NOTHING_DEPLOYED,
-  stopDeployment,
+  stopServices,
   stopView,
   type Deployment,
+  type StopReads,
 } from "./deployment.ts";
+import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
+import {
+  deployed,
+  record,
+  servicesRead,
+  UNAVAILABLE_DEPLOYMENT,
+  UNRESOLVED_DEPLOYMENT,
+} from "./__fixtures__/services.ts";
 
 const NOW = 100_000;
 const SHA = "3f9c1b2000000000000000000000000000000000";
-
-const admission: FacetAdmission = {
-  lastNativeReceiptOrdinal: null,
-  lastAppliedAuthoritativeDispatchOrdinal: null,
-  hasAuthoritativeObservation: true,
-};
 
 const RUNNING: Deployment = {
   kind: "running",
@@ -102,6 +100,10 @@ const STATES: ReadonlyArray<{ readonly name: string; readonly shown: Shown<Deplo
     }),
   },
   { name: "known running", shown: known(RUNNING) },
+  {
+    name: "known deploying",
+    shown: known({ kind: "deploying", version: RUNNING.version, previous: null }),
+  },
 ];
 
 const row = (version: EnvironmentRow["version"], tone: EnvironmentRow["tone"]): EnvironmentRow => ({
@@ -166,10 +168,15 @@ describe("stopView", () => {
     expect(view.afterMs).toBe(0);
   });
 
-  it("runs the name the deploy half read, over the one the platform pushed", () => {
+  it("names what runs by the platform's answer, coloured by the deploy half's row of it", () => {
     const read = ROWS[2]!.row;
     const view = stopView({ deployment: known(RUNNING), row: read, nowMs: NOW });
-    expect(view).toMatchObject({ tone: "good", word: "Deployed", line: "3f9c1b2" });
+    expect(view).toMatchObject({
+      tone: "good",
+      word: "Deployed",
+      line: "v1.4.0",
+      version: RUNNING.version,
+    });
     expect(stopView({ deployment: known(RUNNING), row: undefined, nowMs: NOW })).toMatchObject({
       tone: "neutral",
       word: "Running",
@@ -178,9 +185,64 @@ describe("stopView", () => {
     });
   });
 
+  it("never names or colours a stop by a version the deploy half read that does not run there", () => {
+    // userData moved to a build that then failed; the service still runs RUNNING (A11, A14).
+    const failedBuild = "9d8e7f6000000000000000000000000000000000";
+    const read = row(
+      {
+        name: undefined,
+        commit: "9d8e7f6",
+        sha: failedBuild,
+        taggedBy: undefined,
+        label: "9d8e7f6",
+      },
+      "bad",
+    );
+    expect(stopView({ deployment: known(RUNNING), row: read, nowMs: NOW })).toMatchObject({
+      tone: "neutral",
+      word: "Running",
+      line: "v1.4.0",
+      version: RUNNING.version,
+    });
+  });
+
+  it("takes the deploy half's name for what runs where the platform's answer names none", () => {
+    const unnamed = known({ ...RUNNING, version: NO_VERSION });
+    expect(stopView({ deployment: unnamed, row: ROWS[2]!.row, nowMs: NOW })).toMatchObject({
+      tone: "good",
+      word: "Deployed",
+      line: "3f9c1b2",
+    });
+  });
+
   it("lets the platform's none win over a version the deploy half read earlier", () => {
     const view = stopView({ deployment: known({ kind: "none" }), row: ROWS[2]!.row, nowMs: NOW });
     expect(view).toMatchObject({ tone: "neutral", line: NOTHING_DEPLOYED, version: undefined });
+  });
+
+  it("says what a running build deploys, over what the deploy half read before it", () => {
+    const deploying = known({ kind: "deploying", version: RUNNING.version, previous: null });
+    for (const entry of ROWS) {
+      expect(
+        stopView({ deployment: deploying, row: entry.row, nowMs: NOW }),
+        entry.name,
+      ).toMatchObject({ tone: "pending", word: "Deploying", line: "v1.4.0", afterMs: 0 });
+    }
+    const unnamed = known({
+      kind: "deploying",
+      version: {
+        name: undefined,
+        commit: undefined,
+        sha: undefined,
+        taggedBy: undefined,
+        label: undefined,
+      },
+      previous: null,
+    });
+    expect(stopView({ deployment: unnamed, row: undefined, nowMs: NOW })).toMatchObject({
+      line: "Deploying",
+      version: undefined,
+    });
   });
 
   it("takes a version the deploy half read as running while the platform is still unread", () => {
@@ -193,130 +255,9 @@ describe("stopView", () => {
   });
 });
 
-function deployed(activeDeploy: ServiceDeployInfo | null): ServiceRecord["deployment"] {
-  return {
-    knowledge: "observed",
-    fields: { versionNumber: null, mode: null, activeDeploy },
-    unresolvedRequiredFields: [],
-    source: "direct-read",
-    stamp: stamp(4),
-    admission,
-  };
-}
-
-const UNRESOLVED_DEPLOYMENT: ServiceRecord["deployment"] = {
-  knowledge: "unresolved",
-  fields: {},
-  unresolvedRequiredFields: [],
-  admission,
-};
-
-const UNAVAILABLE_DEPLOYMENT: ServiceRecord["deployment"] = {
-  knowledge: "unavailable",
-  reason: "forbidden",
-  previousFields: {},
-  stamp: stamp(5),
-  fence: {
-    accountEpoch: AccountEpoch.make(1),
-    readStartOrdinal: ReadStartOrdinal.make(1),
-    dispatchOrdinal: DispatchOrdinal.make(1),
-    verifiedAccessDeadlineMs: 0,
-  },
-  admission,
-};
-
-function record(
-  id: string,
-  hostname: string,
-  deployment: ServiceRecord["deployment"],
-  options: { readonly isSystem?: boolean; readonly type?: string } = {},
-): ServiceRecord {
-  return {
-    ref: service(id),
-    identity: {
-      knowledge: "observed",
-      fields: {
-        hostname,
-        isSystem: options.isSystem ?? false,
-        type: { versionName: options.type ?? "nodejs@22", displayName: null, category: null },
-      },
-      unresolvedRequiredFields: [],
-      source: "direct-read",
-      stamp: stamp(1),
-      admission,
-    },
-    lifecycle: {
-      knowledge: "observed",
-      fields: { status: "ACTIVE", createdAt: null, updatedAt: null },
-      unresolvedRequiredFields: [],
-      source: "direct-read",
-      stamp: stamp(1),
-      admission,
-    },
-    routing: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
-    deployment,
-    scaling: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
-  };
-}
-
-const COMPLETE: QueryCoverage = {
-  kind: "exhausted-traversal",
-  traversedPages: 1,
-  observedTotal: null,
-  guarantee: "non-atomic",
-};
-
-function servicesRead(
-  records: ReadonlyArray<ServiceRecord | "unresolved">,
-  options: { readonly coverage?: QueryCoverage; readonly interest?: InterestState } = {},
-): CollectionRead<ServiceRecord> {
-  const coverage = options.coverage ?? COMPLETE;
-  const descriptor = {
-    kind: "services-of-project" as const,
-    project: project(),
-    schemaVersion: 1 as const,
-  };
-  const common = {
-    descriptor,
-    key: queryKeyOf(descriptor),
-    memberKeys: [],
-    unresolvedMemberKeys: [],
-    membershipOperations: new Map(),
-  };
-  return {
-    value: records.map((entry, index) =>
-      entry === "unresolved"
-        ? { knowledge: "unresolved", ref: service(`unresolved-${index}`) }
-        : { knowledge: "observed", record: entry },
-    ),
-    observation: {
-      required: [
-        options.interest ?? {
-          status: "observing",
-          identity: identity(),
-          guarantee: "source-order-unverified",
-          sinceReceiptOrdinal: ReceiptOrdinal.make(1),
-        },
-      ],
-      optional: [],
-      access: { status: "unverified" },
-    },
-    query:
-      coverage.kind === "none" || coverage.kind === "partial"
-        ? { ...common, status: "unresolved", coverage, lastAppliedReadStartOrdinal: null }
-        : {
-            ...common,
-            status: "observed",
-            coverage,
-            observedTotal: records.length,
-            source: "direct-read",
-            stamp: stamp(2),
-            lastAppliedReadStartOrdinal: ReadStartOrdinal.make(1),
-          },
-  };
-}
-
 const PUSHED: ServiceDeployInfo = {
+  id: "app-version",
+  status: "ACTIVE",
   source: "GIT",
   activatedAt: "2026-09-20T10:00:00Z",
   name: `${SHA} v1.4.0 ada`,
@@ -326,97 +267,37 @@ const PUSHED: ServiceDeployInfo = {
   repository: null,
 };
 
-describe("stopDeployment", () => {
-  const cases: ReadonlyArray<{
-    readonly name: string;
-    readonly read: CollectionRead<ServiceRecord> | undefined;
-    readonly expected: Shown<Deployment>["state"] | "none" | "running";
-  }> = [
-    { name: "nothing read for the project", read: undefined, expected: "unread" },
-    {
-      name: "the service list still being read",
-      read: servicesRead([], { coverage: { kind: "none" } }),
-      expected: "unread",
-    },
-    {
-      name: "a service whose deployment facet is unresolved",
-      read: servicesRead([record("s1", "app", UNRESOLVED_DEPLOYMENT)]),
-      expected: "unread",
-    },
-    {
-      name: "a service listed but not yet read",
-      read: servicesRead([record("s1", "app", deployed(null)), "unresolved"]),
-      expected: "unread",
-    },
-    {
-      name: "every service observed with no active deploy",
-      read: servicesRead([record("s1", "app", deployed(null))]),
-      expected: "none",
-    },
-    {
-      name: "a never-deployed runtime's NONE version",
-      read: servicesRead([
-        record("s1", "app", deployed({ ...PUSHED, source: "NONE", name: null })),
-      ]),
-      expected: "none",
-    },
-    {
-      name: "no services at all, completely listed",
-      read: servicesRead([]),
-      expected: "none",
-    },
-    {
-      name: "a running service beside one still unread",
-      read: servicesRead([record("s1", "app", deployed(PUSHED)), "unresolved"]),
-      expected: "running",
-    },
-    {
-      name: "the Mate's container and a system service are not what the stop runs",
-      read: servicesRead([
-        record("s1", "zcp", deployed(PUSHED), { type: "zcp@1" }),
-        record("s2", "core", deployed(PUSHED), { isSystem: true }),
-        record("s3", "app", deployed(null)),
-      ]),
-      expected: "none",
-    },
-    {
-      // The platform refused to say what the service runs: that is no answer, not a none.
-      name: "a service whose deployment the platform will not show",
-      read: servicesRead([record("s1", "app", UNAVAILABLE_DEPLOYMENT)]),
-      expected: "failed",
-    },
-    {
-      name: "a running service beside one whose deployment the platform will not show",
-      read: servicesRead([
-        record("s1", "app", deployed(PUSHED)),
-        record("s2", "api", UNAVAILABLE_DEPLOYMENT),
-      ]),
-      expected: "running",
-    },
-    {
-      name: "a partial listing never proves none",
-      read: servicesRead([record("s1", "app", deployed(null))], {
-        coverage: {
-          kind: "partial-window",
-          offset: 0,
-          limit: 1,
-          traversedPages: 1,
-          observedTotal: 2,
-        },
-      }),
-      expected: "unread",
-    },
-  ];
+/** What a native service frame states of the active version: its id, status and times. */
+const UNSTATED: ServiceDeployInfo = {
+  id: "app-version",
+  status: "ACTIVE",
+  source: null,
+  activatedAt: "2026-09-20T10:00:00Z",
+  name: null,
+  branch: null,
+  commit: null,
+  tag: null,
+  repository: null,
+};
 
-  it.each(cases)("$name", ({ read, expected }) => {
-    const deployment = stopDeployment(read, NOW);
-    const got = deployment.state === "known" ? deployment.value.kind : deployment.state;
-    expect(got === "reading" ? "unread" : got).toBe(expected);
-  });
+/** The one listed service's deployment, its processes read and none of them a build. */
+function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deployment> | undefined {
+  const stops = stopServices(
+    {
+      services: read,
+      processes: processesRead([]),
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  return stops.state === "known" ? stops.value[0]?.deployment : stops;
+}
 
+describe("a service's deployment", () => {
   it("carries what the platform pushed: when, and the version it names", () => {
-    const deployment = stopDeployment(servicesRead([record("s1", "app", deployed(PUSHED))]), NOW);
-    expect(deployment).toMatchObject({
+    expect(serviceDeployment(servicesRead([record("s1", "app", deployed(PUSHED))]))).toMatchObject({
       state: "known",
       coverage: "complete",
       freshness: { kind: "live" },
@@ -424,34 +305,80 @@ describe("stopDeployment", () => {
       value: {
         kind: "running",
         activatedAt: "2026-09-20T10:00:00Z",
-        version: { name: "v1.4.0", commit: "3f9c1b2", sha: SHA, taggedBy: "ada", label: "v1.4.0" },
+        version: {
+          name: "v1.4.0",
+          commit: "3f9c1b2",
+          sha: SHA,
+          taggedBy: "ada",
+          label: "v1.4.0",
+        },
       },
     });
   });
 
   it("names a deploy by its commit when the platform pushed no name", () => {
-    const deployment = stopDeployment(
-      servicesRead([record("s1", "app", deployed({ ...PUSHED, name: null, commit: SHA }))]),
-      NOW,
-    );
-    expect(deployment).toMatchObject({
+    expect(
+      serviceDeployment(
+        servicesRead([record("s1", "app", deployed({ ...PUSHED, name: null, commit: SHA }))]),
+      ),
+    ).toMatchObject({
       state: "known",
       value: { kind: "running", version: { commit: "3f9c1b2", sha: SHA, label: "3f9c1b2" } },
     });
   });
 
+  describe("reads each deploy as the topology does (A14)", () => {
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly deploy: ServiceDeployInfo;
+      readonly stop: "unread" | "none" | "running";
+      readonly topologySource: string | undefined;
+    }> = [
+      {
+        name: "a version with its source stated",
+        deploy: PUSHED,
+        stop: "running",
+        topologySource: "GIT",
+      },
+      {
+        name: "a never-deployed runtime's NONE version",
+        deploy: { ...PUSHED, source: "NONE" },
+        stop: "none",
+        topologySource: undefined,
+      },
+      {
+        name: "a version whose source nobody stated",
+        deploy: UNSTATED,
+        stop: "unread",
+        topologySource: undefined,
+      },
+    ];
+
+    it.each(cases)("$name", ({ deploy, stop, topologySource }) => {
+      const stated = record("s1", "app", deployed(deploy));
+      const deployment = serviceDeployment(servicesRead([stated]));
+      const topology = projectTopology(
+        { id: "project-1", name: "project", status: "ACTIVE" },
+        [serviceRecordToZeropsService(stated)!],
+        [],
+      );
+
+      expect(deployment?.state === "known" ? deployment.value.kind : deployment?.state).toBe(stop);
+      expect(topology.services[0]?.deploy?.source).toBe(topologySource);
+    });
+  });
+
   it("marks a value the paused or recovering source no longer vouches for", () => {
-    const paused = stopDeployment(
+    const paused = serviceDeployment(
       servicesRead([record("s1", "app", deployed(null))], {
         interest: { status: "paused", identity: identity(), reason: "background" },
       }),
-      NOW,
     );
     expect(paused).toMatchObject({
       state: "known",
       freshness: { kind: "paused", by: "background" },
     });
-    const recovering = stopDeployment(
+    const recovering = serviceDeployment(
       servicesRead([record("s1", "app", deployed(null))], {
         interest: {
           status: "recovering",
@@ -468,7 +395,6 @@ describe("stopDeployment", () => {
           },
         },
       }),
-      NOW,
     );
     expect(recovering).toMatchObject({
       state: "known",
@@ -477,7 +403,7 @@ describe("stopDeployment", () => {
   });
 
   it("fails what was never read when the source gave up", () => {
-    const deployment = stopDeployment(
+    const deployment = serviceDeployment(
       servicesRead([], {
         coverage: { kind: "none" },
         interest: {
@@ -489,8 +415,334 @@ describe("stopDeployment", () => {
           retryAtMs: NOW + 8_000,
         },
       }),
-      NOW,
     );
     expect(deployment).toMatchObject({ state: "failed", attempt: 3, retryAtMs: NOW + 8_000 });
+  });
+});
+
+describe("stopServices", () => {
+  const PROJECT = project("project-stage");
+  const listed = (
+    records: ReadonlyArray<ServiceRecord | "unresolved">,
+    options: Parameters<typeof servicesRead>[1] = {},
+  ) => servicesRead(records, { project: PROJECT, ...options });
+  const NO_PROCESSES = processesRead([], { project: PROJECT });
+  const build = (appVersion?: { readonly id: string; readonly name?: string }) =>
+    runningProcess("build", {
+      serviceIds: ["build-helper", "s1"],
+      project: PROJECT,
+      ...(appVersion === undefined ? {} : { appVersion }),
+    });
+
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly read: CollectionRead<ServiceRecord>;
+    readonly processes?: CollectionRead<ProcessRecord>;
+    readonly names?: ReadonlyMap<string, string>;
+    readonly refused?: StopReads["refused"];
+    readonly stated?: StopReads["stated"];
+    /** The list's state, else each listed service's hostname and deployment. */
+    readonly expected: string | ReadonlyArray<readonly [string, string]>;
+  }> = [
+    {
+      name: "a listing still being read",
+      read: listed([], { coverage: { kind: "none" } }),
+      expected: "unread",
+    },
+    {
+      name: "a listed service not yet identified holds the list",
+      read: listed([record("s1", "app", deployed(PUSHED)), "unresolved"]),
+      expected: "unread",
+    },
+    {
+      name: "each service answers for itself, by hostname",
+      read: listed([
+        record("s2", "web", UNRESOLVED_DEPLOYMENT),
+        record("s1", "app", deployed(PUSHED)),
+        record("s3", "worker", deployed(null)),
+        record("s4", "api", UNAVAILABLE_DEPLOYMENT),
+      ]),
+      expected: [
+        ["api", "failed"],
+        ["app", "running"],
+        ["web", "unread"],
+        ["worker", "none"],
+      ],
+    },
+    {
+      name: "a never-deployed runtime's NONE version runs nothing",
+      read: listed([record("s1", "app", deployed({ ...PUSHED, source: "NONE", name: null }))]),
+      expected: [["app", "none"]],
+    },
+    {
+      name: "a partial listing is no list",
+      read: listed([record("s1", "app", deployed(null))], {
+        coverage: {
+          kind: "partial-window",
+          offset: 0,
+          limit: 1,
+          traversedPages: 1,
+          observedTotal: 2,
+        },
+      }),
+      expected: "unread",
+    },
+    {
+      name: "the Mate's container and a system service are no stop",
+      read: listed([
+        record("s1", "zcp", deployed(PUSHED), { type: "zcp@1" }),
+        record("s2", "core", deployed(PUSHED), { isSystem: true }),
+      ]),
+      expected: [],
+    },
+    {
+      name: "nothing active proves none only once the processes are read",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead([], { coverage: { kind: "none" }, project: PROJECT }),
+      expected: [["app", "unread"]],
+    },
+    {
+      name: "a process read that failed fails the none it could not prove",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead([], {
+        coverage: { kind: "none" },
+        project: PROJECT,
+        interest: {
+          status: "failed",
+          identity: identity(),
+          reason: "read refused",
+          retryable: true,
+          attempts: 2,
+          retryAtMs: NOW + 4_000,
+        },
+      }),
+      expected: [["app", "failed"]],
+    },
+    {
+      name: "a refused process demand fails the none it could not prove",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead([], { coverage: { kind: "none" }, project: PROJECT }),
+      refused: { reason: "account-capacity", attempt: 1, retryAtMs: NOW + 2_000 },
+      expected: [["app", "failed"]],
+    },
+    {
+      name: "a process not yet read may be a build",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead(["unresolved"], { project: PROJECT }),
+      expected: [["app", "unread"]],
+    },
+    {
+      name: "a running build deploys over what runs",
+      read: listed([record("s1", "app", deployed(PUSHED))]),
+      processes: processesRead([build({ id: "next", name: SHA })], { project: PROJECT }),
+      expected: [["app", "deploying"]],
+    },
+    {
+      name: "a build not yet read far enough to name its version still deploys",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead([build()], { project: PROJECT }),
+      expected: [["app", "deploying"]],
+    },
+    {
+      name: "a build whose version is already active has deployed",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      processes: processesRead([build({ id: UNSTATED.id!, name: SHA })], { project: PROJECT }),
+      expected: [["app", "running"]],
+    },
+    {
+      name: "a version a build named runs by that name after the build ended",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      names: new Map([[UNSTATED.id!, SHA]]),
+      expected: [["app", "running"]],
+    },
+    {
+      name: "a version nobody named or sourced stays pending",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      expected: [["app", "unread"]],
+    },
+    {
+      name: "a version the service itself states runs",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      stated: new Map([
+        [
+          UNSTATED.id!,
+          {
+            state: "known",
+            value: { activeId: UNSTATED.id!, source: "GIT", name: SHA },
+            asOf: { ordinal: 5, atMs: 50 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          },
+        ],
+      ]),
+      expected: [["app", "running"]],
+    },
+    {
+      name: "a direct read that failed fails the version it could not state",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      stated: new Map([
+        [
+          UNSTATED.id!,
+          {
+            state: "failed",
+            failure: { kind: "transport", detail: "Zerops did not answer." },
+            atMs: NOW,
+            attempt: 1,
+            retryAtMs: NOW + 2_000,
+          },
+        ],
+      ]),
+      expected: [["app", "failed"]],
+    },
+  ];
+
+  it.each(cases)("$name", ({ read, processes, names, refused, stated, expected }) => {
+    const stops = stopServices(
+      {
+        services: read,
+        processes: processes ?? NO_PROCESSES,
+        names: names ?? new Map(),
+        refused: refused ?? null,
+        stated: stated ?? new Map(),
+      },
+      NOW,
+    );
+    if (typeof expected === "string") {
+      expect(stops.state).toBe(expected);
+      return;
+    }
+    expect(stops.state).toBe("known");
+    expect(
+      (stops.state === "known" ? stops.value : []).map(({ hostname, deployment }) => [
+        hostname,
+        deployment.state === "known" ? deployment.value.kind : deployment.state,
+      ]),
+    ).toEqual(expected);
+  });
+
+  describe("a running build keeps what ran when it started (DESIGN §4.7)", () => {
+    const previousCases: ReadonlyArray<{
+      readonly name: string;
+      readonly deploy: ServiceDeployInfo;
+      readonly names?: ReadonlyMap<string, string>;
+      readonly previous: unknown;
+    }> = [
+      {
+        name: "a version the platform named",
+        deploy: PUSHED,
+        previous: { kind: "running", version: { name: "v1.4.0", label: "v1.4.0" } },
+      },
+      {
+        name: "a version an earlier build named",
+        deploy: UNSTATED,
+        names: new Map([[UNSTATED.id!, SHA]]),
+        previous: { kind: "running", version: { sha: SHA, label: "3f9c1b2" } },
+      },
+      {
+        name: "a never-deployed runtime's NONE version",
+        deploy: { ...PUSHED, source: "NONE", name: null },
+        previous: { kind: "none" },
+      },
+      { name: "a version nobody named or sourced", deploy: UNSTATED, previous: null },
+    ];
+
+    it.each(previousCases)("$name", ({ deploy, names, previous }) => {
+      const stops = stopServices(
+        {
+          services: listed([record("s1", "app", deployed(deploy))]),
+          processes: processesRead([build({ id: "next", name: SHA })], { project: PROJECT }),
+          names: names ?? new Map(),
+          refused: null,
+          stated: new Map(),
+        },
+        NOW,
+      );
+      const deployment = stops.state === "known" ? stops.value[0]?.deployment : undefined;
+      expect(deployment).toMatchObject({ state: "known", value: { kind: "deploying" } });
+      if (previous === null) {
+        expect(deployment).toMatchObject({ value: { previous: null } });
+      } else {
+        expect(deployment).toMatchObject({ value: { previous } });
+      }
+    });
+  });
+
+  it("a build that ends without activating keeps what ran before it, by its name", () => {
+    // The build named `next`, the service still runs `app-version`, and the build is gone.
+    const stops = stopServices(
+      {
+        services: listed([record("s1", "app", deployed(UNSTATED))]),
+        processes: NO_PROCESSES,
+        names: new Map([
+          [UNSTATED.id!, "1a2b3c4000000000000000000000000000000000"],
+          ["next", SHA],
+        ]),
+        refused: null,
+        stated: new Map(),
+      },
+      NOW,
+    );
+    expect(stops.state === "known" ? stops.value[0]?.deployment : undefined).toMatchObject({
+      state: "known",
+      value: { kind: "running", version: { commit: "1a2b3c4" } },
+    });
+  });
+
+  it("names each service by its ref", () => {
+    const stops = stopServices(
+      {
+        services: listed([record("s1", "app", deployed(PUSHED), { project: PROJECT })]),
+        processes: NO_PROCESSES,
+        names: new Map(),
+        refused: null,
+        stated: new Map(),
+      },
+      NOW,
+    );
+    expect(stops.state === "known" ? stops.value[0]?.service : undefined).toEqual(
+      service("s1", PROJECT),
+    );
+  });
+
+  it("names a running version by its build over the name the platform pushed", () => {
+    const stops = stopServices(
+      {
+        services: listed([record("s1", "app", deployed(PUSHED))]),
+        processes: NO_PROCESSES,
+        names: new Map([[PUSHED.id!, SHA]]),
+        refused: null,
+        stated: new Map(),
+      },
+      NOW,
+    );
+    expect(stops.state === "known" ? stops.value[0]?.deployment : undefined).toMatchObject({
+      state: "known",
+      value: { kind: "running", version: { sha: SHA, label: "3f9c1b2" } },
+    });
+  });
+});
+
+describe("buildNames", () => {
+  const PROJECT = project("project-stage");
+  const builds = (...appVersions: ReadonlyArray<{ readonly id: string; readonly name?: string }>) =>
+    processesRead(
+      appVersions.map((appVersion, index) =>
+        runningProcess(`build-${index}`, { serviceIds: ["s1"], appVersion, project: PROJECT }),
+      ),
+      { project: PROJECT },
+    );
+
+  it("keeps what earlier builds named and adds what a running build names", () => {
+    const held = new Map([["v1", "first"]]);
+    expect([...buildNames(held, builds({ id: "v2", name: SHA }))]).toEqual([
+      ["v1", "first"],
+      ["v2", SHA],
+    ]);
+  });
+
+  it("is the same map while no build names anything new", () => {
+    const held = new Map([["v1", "first"]]);
+    expect(buildNames(held, builds({ id: "v1", name: "first" }))).toBe(held);
+    expect(buildNames(held, builds({ id: "v3" }))).toBe(held);
   });
 });

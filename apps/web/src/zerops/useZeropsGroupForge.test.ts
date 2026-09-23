@@ -1,5 +1,9 @@
 import type { GiteaClient, GiteaPullRequest } from "@t3tools/client-runtime/zerops";
 import { flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
+import {
+  createMergeabilityTracker,
+  type MergeabilityTracker,
+} from "@t3tools/client-runtime/zerops/forge";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -96,8 +100,11 @@ function forge(refusing: ReadonlySet<string> = new Set()) {
   return { client, calls, open };
 }
 
-async function readAll(client: GiteaClient): Promise<ZeropsGroupForgeState> {
-  const update = await readForge(client, "harbor", "group");
+async function readAll(
+  client: GiteaClient,
+  tracker: MergeabilityTracker = createMergeabilityTracker(),
+): Promise<ZeropsGroupForgeState> {
+  const update = await readForge(client, "harbor", "group", tracker);
   const state = update(undefined);
   if (state === undefined) throw new Error("the first read answered nothing");
   return state;
@@ -116,7 +123,7 @@ describe("readForge", () => {
       repository: "appdev",
       number: 4,
     });
-    const update = await readForge(client, "harbor", scope!);
+    const update = await readForge(client, "harbor", scope!, createMergeabilityTracker());
     expect(calls).toEqual(["pulls harbor/appdev open", "pulls harbor/appdev closed"]);
 
     const next = update(held);
@@ -126,12 +133,29 @@ describe("readForge", () => {
     expect(next?.released).toBe(held.released);
   });
 
+  it("a row's mergeability is its reads', never one false Gitea sends after a push", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.parse("2026-09-23T10:00:00Z"));
+      const { client, open } = forge();
+      open.set("appdev", [{ ...pull(4), mergeable: false, base: { ref: "main", sha: "b1" } }]);
+      const tracker = createMergeabilityTracker();
+      const first = await readAll(client, tracker);
+      expect(first.pullRequests.find((row) => row.number === 4)?.mergeability).toBe("checking");
+      vi.setSystemTime(Date.parse("2026-09-23T10:00:05Z"));
+      const second = await readAll(client, tracker);
+      expect(second.pullRequests.find((row) => row.number === 4)?.mergeability).toBe("conflicting");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a failed forge read keeps the last PR rows", async () => {
     const healthy = forge();
     const held = await readAll(healthy.client);
     const { client } = forge(new Set(["appdev"]));
 
-    const update = await readForge(client, "harbor", "group");
+    const update = await readForge(client, "harbor", "group", createMergeabilityTracker());
     const next = update(held);
     // appdev did not answer: its row stays; apidev answered and is read afresh.
     expect(next?.pullRequests.map((row) => [row.repository, row.number])).toEqual([
@@ -143,7 +167,7 @@ describe("readForge", () => {
 
   it("shows the repositories that answered, and holds only them, while another never has", async () => {
     const { client } = forge(new Set(["appdev"]));
-    const update = await readForge(client, "harbor", "group");
+    const update = await readForge(client, "harbor", "group", createMergeabilityTracker());
     const state = update(undefined);
     // appdev is not among what the answer read, so nothing says it has no pull requests.
     expect(state?.repositories).toEqual(["apidev"]);
@@ -152,7 +176,7 @@ describe("readForge", () => {
 
   it("shows the pull requests, and why the releases are missing, when the tags never answered", async () => {
     const { client } = forge(new Set(["group"]));
-    const update = await readForge(client, "harbor", "group");
+    const update = await readForge(client, "harbor", "group", createMergeabilityTracker());
     const state = update(undefined);
     expect(state?.pullRequests.map((row) => row.number)).toEqual([4, 7]);
     expect(state?.released).toEqual({ failure: "Gitea did not answer" });
@@ -160,11 +184,16 @@ describe("readForge", () => {
 
   it("keeps the releases it read, and says why, when the tags do not answer again", async () => {
     const held = await readAll(forge().client);
-    const update = await readForge(forge(new Set(["group"])).client, "harbor", "group");
+    const update = await readForge(
+      forge(new Set(["group"])).client,
+      "harbor",
+      "group",
+      createMergeabilityTracker(),
+    );
     const stale = update(held);
     expect(stale?.released).toEqual({ ...held.released, failure: "Gitea did not answer" });
     // The tags answering again is what takes the failure back.
-    const again = await readForge(forge().client, "harbor", "group");
+    const again = await readForge(forge().client, "harbor", "group", createMergeabilityTracker());
     expect(again(stale)?.released).toEqual(held.released);
   });
 
@@ -172,7 +201,7 @@ describe("readForge", () => {
     const { client, calls } = forge();
     const held = await readAll(client);
     calls.length = 0;
-    const update = await readForge(client, "harbor", { kind: "tags" });
+    const update = await readForge(client, "harbor", { kind: "tags" }, createMergeabilityTracker());
     expect(calls).toEqual(["tags harbor/group"]);
     expect(update(held)?.pullRequests).toBe(held.pullRequests);
   });

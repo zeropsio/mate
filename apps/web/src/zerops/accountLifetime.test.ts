@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
-  accountActionsAllowed,
   accountStorageKey,
   captureAccountLifetime,
   closeAccountLifetime,
@@ -8,7 +7,6 @@ import {
   onAccountLifetimeClose,
   onAccountLifetimeOpen,
   openAccountLifetime,
-  setAccountActionsAllowed,
 } from "./accountLifetime";
 
 afterEach(() => closeAccountLifetime());
@@ -69,28 +67,6 @@ describe("verified account lifetime", () => {
       removeBroken();
       removeNext();
       log.mockRestore();
-    }
-  });
-
-  // Evidence authorizes until its deadline on whichever clock reaches it first (DESIGN G5).
-  it.each([
-    ["the wall clock", { wallMs: 100, monoMs: 5_000 }],
-    ["the monotonic clock", { wallMs: 5_000, monoMs: 100 }],
-  ] as const)("closes account actions at the deadline on %s", (_clock, inMs) => {
-    vi.useFakeTimers({ toFake: ["Date", "performance"] });
-    try {
-      openAccountLifetime("user-a");
-      expect(accountActionsAllowed()).toBe(false);
-      setAccountActionsAllowed({
-        wallMs: Date.now() + inMs.wallMs,
-        monoMs: performance.now() + inMs.monoMs,
-      });
-      vi.advanceTimersByTime(99);
-      expect(accountActionsAllowed()).toBe(true);
-      vi.advanceTimersByTime(1);
-      expect(accountActionsAllowed()).toBe(false);
-    } finally {
-      vi.useRealTimers();
     }
   });
 });

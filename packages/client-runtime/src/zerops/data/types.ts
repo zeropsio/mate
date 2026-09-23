@@ -1,5 +1,6 @@
 import type * as Clock from "effect/Clock";
 import type * as Effect from "effect/Effect";
+import type * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
@@ -11,6 +12,8 @@ import type { ZeropsEnvironmentRole } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsToolKind } from "../tools.ts";
 import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
+import type { ProjectTagPatch } from "./tagPatch.ts";
+import type { ProjectTagWrite } from "./tagWriter.ts";
 
 /**
  * Stable platform identities. Adapters decode untrusted values with these
@@ -133,12 +136,29 @@ export type InterestKey = typeof InterestKey.Type;
 
 const scopedKey = (parts: ReadonlyArray<string>): string => JSON.stringify(parts);
 
-export const organizationKeyOf = (ref: OrganizationRef): OrganizationKey =>
+/**
+ * A ref's key, computed once per ref object. Refs are immutable, and every publication keys the
+ * account's refs again, so a key is serialized once rather than on every read.
+ */
+function keyedOnce<Ref extends object, Key>(keyOf: (ref: Ref) => Key): (ref: Ref) => Key {
+  const keys = new WeakMap<Ref, Key>();
+  return (ref) => {
+    let key = keys.get(ref);
+    if (key === undefined) {
+      key = keyOf(ref);
+      keys.set(ref, key);
+    }
+    return key;
+  };
+}
+
+export const organizationKeyOf = keyedOnce((ref: OrganizationRef): OrganizationKey =>
   OrganizationKey.make(
     scopedKey(["organization", ref.account.apiOrigin, ref.account.accountId, ref.organizationId]),
-  );
+  ),
+);
 
-export const projectKeyOf = (ref: ProjectRef): ProjectKey =>
+export const projectKeyOf = keyedOnce((ref: ProjectRef): ProjectKey =>
   ProjectKey.make(
     scopedKey([
       "project",
@@ -147,7 +167,8 @@ export const projectKeyOf = (ref: ProjectRef): ProjectKey =>
       ref.organization.organizationId,
       ref.projectId,
     ]),
-  );
+  ),
+);
 
 export const serviceKeyOf = (ref: ServiceRef): ServiceKey =>
   ServiceKey.make(
@@ -248,8 +269,18 @@ export interface ServiceTypeInfo {
   readonly category: string | null;
 }
 
+/**
+ * A service's active app version. `null` is "not stated by this observation":
+ * a native service frame carries only `{base, created, id, lastUpdate, os,
+ * status}` (measured 2026-09-23), so its source and name stay unknown while
+ * the deploy itself is known to exist.
+ */
 export interface ServiceDeployInfo {
-  readonly source: string;
+  /** The app version's id — what a build process's `appVersion.id` names. */
+  readonly id: string | null;
+  readonly status: string | null;
+  /** `CLI`, `GIT`, `GITHUB`, `GITLAB`, `GUI` or `NONE` (a runtime never deployed). */
+  readonly source: string | null;
   readonly activatedAt: string | null;
   readonly name: string | null;
   readonly branch: string | null;
@@ -1369,8 +1400,7 @@ export type PlatformCommandKind =
   | "restart-service"
   | "start-service"
   | "start-project"
-  | "name-project-agent"
-  | "update-project-group-tags"
+  | "update-project-tags"
   | "set-project-member-role"
   | "import-development-container"
   | "enable-zerops-mate"
@@ -1586,20 +1616,11 @@ export interface StartProjectCommandIntent {
   readonly project: ProjectRef;
 }
 
-export interface NameProjectAgentCommandIntent {
-  readonly kind: "name-project-agent";
+/** The one write of a project's `tagList`: a patch the TagWriter applies to a fresh read (B2). */
+export interface UpdateProjectTagsCommandIntent {
+  readonly kind: "update-project-tags";
   readonly project: ProjectRef;
-  readonly name: string;
-}
-
-export interface UpdateProjectGroupTagsCommandIntent {
-  readonly kind: "update-project-group-tags";
-  readonly project: ProjectRef;
-  readonly next: {
-    readonly groupId?: string;
-    readonly role?: ZeropsEnvironmentRole;
-    readonly label?: string;
-  };
+  readonly patch: ProjectTagPatch;
 }
 
 /** The five roles a project override may carry (`groupReach.ts`'s vocabulary). */
@@ -1755,8 +1776,7 @@ export type PlatformCommandIntent =
   | RestartServiceCommandIntent
   | StartServiceCommandIntent
   | StartProjectCommandIntent
-  | NameProjectAgentCommandIntent
-  | UpdateProjectGroupTagsCommandIntent
+  | UpdateProjectTagsCommandIntent
   | SetProjectMemberRoleCommandIntent
   | ImportDevelopmentContainerCommandIntent
   | EnableZeropsMateCommandIntent
@@ -1806,8 +1826,7 @@ export type PlatformCommandResult =
   | { readonly kind: "restart-service"; readonly value: void }
   | { readonly kind: "start-service"; readonly value: void }
   | { readonly kind: "start-project"; readonly value: void }
-  | { readonly kind: "name-project-agent"; readonly value: ZeropsProject }
-  | { readonly kind: "update-project-group-tags"; readonly value: ZeropsProject }
+  | { readonly kind: "update-project-tags"; readonly value: ProjectTagWrite }
   | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
@@ -2004,14 +2023,15 @@ export interface ZeropsDataCommands {
   readonly startProject: (
     project: ProjectRef,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly nameProjectAgent: (
+  /**
+   * Writes a project's tags (DESIGN §2.B B2): the patch is applied to a fresh read, serialized per
+   * project across this browser's tabs, and verified by reading back. A patch the list refuses is
+   * an answer, not a failure: nothing was written and `refused` says why.
+   */
+  readonly updateProjectTags: (
     project: ProjectRef,
-    name: string,
-  ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
-  readonly updateProjectGroupTags: (
-    project: ProjectRef,
-    next: UpdateProjectGroupTagsCommandIntent["next"],
-  ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
+    patch: ProjectTagPatch,
+  ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
   /**
    * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one
    * command that writes a project's `userRoles`.
@@ -2113,6 +2133,18 @@ export interface ZeropsDataRuntime {
   readonly acquire: (
     descriptor: RuntimeInterestDescriptor,
   ) => Effect.Effect<InterestLease, LeaseAdmissionError, Scope.Scope>;
+  /**
+   * Takes a lease for each descriptor in one admission pass: the account sees them in one
+   * publication, and their establishments start together after it. Each result is its
+   * descriptor's lease or the reason it was refused; a refusal takes nothing from the others.
+   */
+  readonly acquireMany: (
+    descriptors: ReadonlyArray<RuntimeInterestDescriptor>,
+  ) => Effect.Effect<
+    ReadonlyArray<Result.Result<InterestLease, LeaseAdmissionError>>,
+    never,
+    Scope.Scope
+  >;
   /**
    * Re-reads an organization's inventory. Every interest held on the
    * organization is re-established on a fresh receiver, so each baseline is

@@ -195,7 +195,7 @@ function AgentIdentity({
     <div className="flex items-center gap-3">
       <span
         aria-hidden="true"
-        className="flex size-11 items-center justify-center rounded-xl border border-border/70 bg-background shadow-xs"
+        className="flex size-11 items-center justify-center rounded-xl border border-border/70 bg-accent shadow-xs"
       >
         {agentId === "claude-code" ? (
           <ClaudeAI className="size-6" />

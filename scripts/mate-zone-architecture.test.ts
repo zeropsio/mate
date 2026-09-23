@@ -751,29 +751,31 @@ function collectOneWayViolations(
   });
 }
 
-// Rule 6, its construction half: the post-grant stage's modules are constructed by the account
-// runtime only, on the epoch's first grant. A call of a constructor anywhere else is reported;
-// its declaration is not. The exchange driver and the Gitea sessions are still built in the
-// web's React tree, each named below with its constructor, until 3.4 moves them.
+// Rule 6, its construction half: the account runtime's modules — its invalidation bus, which one
+// owner holds (§6.2), and the post-grant stage's, built on the epoch's first grant: the
+// registration records, the container store (with its probe store), the exchange driver, the Gitea
+// sessions, the forge store, the flow's command attempts and the deployment store — are
+// constructed by the account runtime only. A call of a constructor anywhere else is reported; its
+// declaration is not, nor a test's or a test fixture's.
 const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
-const POST_GRANT_CONSTRUCTORS: ReadonlyArray<string> = [
+const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeInvalidationBus",
   "connectCrossTabInvalidations",
+  "makeRegistrationRecords",
+  "makeContainerStore",
   "makeExchangeDriver",
   "makeGiteaSessions",
+  "makeForgeStore",
+  "makeFlowCommands",
+  "makeDeploymentStore",
 ];
-const POST_GRANT_BUILT_IN_REACT_UNTIL_3_4: ReadonlyMap<string, string> = new Map([
-  ["apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx", "makeExchangeDriver"],
-  ["apps/web/src/zerops/accountGiteaSessions.ts", "makeGiteaSessions"],
-  ["apps/web/src/zerops/accountInvalidations.ts", "makeInvalidationBus"],
-]);
 
 interface ConstructionViolation {
   readonly file: string;
   readonly reason: string;
 }
 
-function collectPostGrantConstructionViolations(
+function collectAccountRuntimeConstructionViolations(
   root: string,
 ): Effect.Effect<
   ReadonlyArray<ConstructionViolation>,
@@ -786,20 +788,21 @@ function collectPostGrantConstructionViolations(
     const violations: Array<ConstructionViolation> = [];
     for (const scanRoot of CELL_IMPORT_SCAN_ROOTS) {
       for (const file of yield* collectTsFiles(path.join(root, scanRoot))) {
-        if (isTestFile(file)) {
-          continue;
-        }
         const label = path.relative(root, file).split(path.sep).join("/");
-        if (label === ACCOUNT_RUNTIME_FILE) {
+        if (
+          isTestFile(file) ||
+          label.includes("/__fixtures__/") ||
+          label === ACCOUNT_RUNTIME_FILE
+        ) {
           continue;
         }
         const code = scanSourceLiterals(yield* fs.readFileString(file)).jsxSource;
-        for (const constructor of POST_GRANT_CONSTRUCTORS) {
+        for (const constructor of ACCOUNT_RUNTIME_CONSTRUCTORS) {
           const call = new RegExp(`(?<![\\w$])(?<!function\\s+)${constructor}\\s*\\(`, "u");
-          if (call.test(code) && POST_GRANT_BUILT_IN_REACT_UNTIL_3_4.get(label) !== constructor) {
+          if (call.test(code)) {
             violations.push({
               file: label,
-              reason: `constructs ${constructor}, a post-grant module, outside the account runtime`,
+              reason: `constructs ${constructor}, a module of the account runtime, outside it`,
             });
           }
         }
@@ -1092,7 +1095,10 @@ const FORBIDDEN_PROTECTED_MODULES = new Map<string, string>([
   ["apps/web/src/zerops/useAgentLogin.ts", "starts a server-side agent login"],
   ["apps/web/src/zerops/useAgentLoginCancel.ts", "cancels a server-side agent login"],
   ["apps/web/src/zerops/ZeropsSessionProvider.tsx", "mutates the Zerops platform session"],
-  ["apps/web/src/zerops/useZeropsProvisioning.ts", "creates a Zerops project"],
+  [
+    "apps/web/src/zerops/zeropsBirths.ts",
+    "writes a birth's registry, broker grant and deploy token, and closes its project off",
+  ],
   [
     "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
     "creates projects and restarts services",
@@ -2664,7 +2670,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     }),
   );
 
-  it.effect("rule 6 fixture: post-grant modules are constructed only by the account runtime", () =>
+  it.effect("rule 6 fixture: the account runtime's modules are constructed only by it", () =>
     Effect.gen(function* () {
       const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
       const fixtureRoot = yield* makeRepoFixture({
@@ -2679,41 +2685,69 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           "export function makeGiteaSessions(ports) { return ports; }\n",
         [`${zerops}/environments/exchangeDriver.test.ts`]: "makeExchangeDriver(ports);\n",
         [`${zerops}/flow/groupFlow.ts`]: "const bus = makeInvalidationBus (options);\n",
-        "apps/web/src/zerops/accountGiteaSessions.ts": "current = makeGiteaSessions(ports);\n",
-        "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx": [
+        "apps/web/src/zerops/accountForge.ts": "const store = makeForgeStore(ports);\n",
+        "apps/web/src/zerops/AccountShell.tsx": [
           "const driver = makeExchangeDriver(ports);",
           "const sessions = makeGiteaSessions(ports);",
           "",
         ].join("\n"),
+        "apps/web/src/zerops/zeropsContainers.ts": [
+          "const store = makeContainerStore({ clock, probe, readMateFlag, intents });",
+          "const records = makeRegistrationRecords(storage);",
+          "",
+        ].join("\n"),
         "apps/mobile/src/features/zerops/account.ts":
           "yield* connectCrossTabInvalidations({ bus });\n",
+        "apps/web/src/zerops/accountInvalidations.ts":
+          "const bus = yield* makeInvalidationBus({ signals, shown });\n",
+        "apps/web/src/zerops/__fixtures__/invalidationBus.ts":
+          "const bus = Effect.runSync(makeInvalidationBus({ signals, shown }));\n",
       });
 
-      const violations = yield* collectPostGrantConstructionViolations(fixtureRoot);
+      const violations = yield* collectAccountRuntimeConstructionViolations(fixtureRoot);
 
       assert.deepStrictEqual(violations, [
         {
           file: "apps/mobile/src/features/zerops/account.ts",
           reason:
-            "constructs connectCrossTabInvalidations, a post-grant module, outside the account runtime",
+            "constructs connectCrossTabInvalidations, a module of the account runtime, outside it",
         },
         {
-          file: "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx",
-          reason: "constructs makeGiteaSessions, a post-grant module, outside the account runtime",
+          file: "apps/web/src/zerops/accountForge.ts",
+          reason: "constructs makeForgeStore, a module of the account runtime, outside it",
+        },
+        {
+          file: "apps/web/src/zerops/accountInvalidations.ts",
+          reason: "constructs makeInvalidationBus, a module of the account runtime, outside it",
+        },
+        {
+          file: "apps/web/src/zerops/AccountShell.tsx",
+          reason: "constructs makeExchangeDriver, a module of the account runtime, outside it",
+        },
+        {
+          file: "apps/web/src/zerops/AccountShell.tsx",
+          reason: "constructs makeGiteaSessions, a module of the account runtime, outside it",
+        },
+        {
+          file: "apps/web/src/zerops/zeropsContainers.ts",
+          reason: "constructs makeContainerStore, a module of the account runtime, outside it",
+        },
+        {
+          file: "apps/web/src/zerops/zeropsContainers.ts",
+          reason: "constructs makeRegistrationRecords, a module of the account runtime, outside it",
         },
         {
           file: `${zerops}/flow/groupFlow.ts`,
-          reason:
-            "constructs makeInvalidationBus, a post-grant module, outside the account runtime",
+          reason: "constructs makeInvalidationBus, a module of the account runtime, outside it",
         },
       ]);
     }).pipe(Effect.scoped),
   );
 
-  it.effect("rule 6: post-grant modules are constructed only by the account runtime", () =>
+  it.effect("rule 6: the account runtime's modules are constructed only by it", () =>
     Effect.gen(function* () {
       const root = yield* repoRoot;
-      assert.deepStrictEqual(yield* collectPostGrantConstructionViolations(root), []);
+      assert.deepStrictEqual(yield* collectAccountRuntimeConstructionViolations(root), []);
     }),
   );
 

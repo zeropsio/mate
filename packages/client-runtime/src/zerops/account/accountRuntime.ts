@@ -2,21 +2,27 @@
  * The account runtime (DESIGN §1.1, §1.2, §5): the composition root of one account epoch.
  *
  * - **Pre-grant stage**, built when the session verified its principal: the data runtime the host
- *   built for the epoch, and its access grant, started here with the session's verifier.
+ *   built for the epoch, its access grant, started here with the session's verifier, and the
+ *   account's one invalidation bus (§6.2) with the account's `shown()`. The bus carries the
+ *   grant's own invalidations and the intents surfaces send; it stands before the first grant
+ *   because the grant and the data runtime subscribe to it and hear `access` and `inventory` from
+ *   the start — a person's "Try again" on a first round that failed is one. The account's
+ *   inventory demand stands here too (§5 L7): the runtime, not a view, holds its organizations'
+ *   and projects' inventories, from the first round's listing on (`inventoryDemand.ts`).
  * - **Post-grant stage**, built on the epoch's first `granted` and kept for the epoch — a later
- *   lapse never tears it down (G11): the invalidation bus with the account's `shown()`, carrying
- *   the grant's own invalidations. Nothing in it runs before the platform confirmed the
- *   account's organizations, projects and roles (AL-01, AL-04, MC-10).
+ *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
+ *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate environments —
+ *   the registration records, the container store with its probe store, and the exchange driver,
+ *   joined and fed by `environments.ts` — and the project flow's stores: the deployment store,
+ *   and on a host that gives the forge its ports the person's Gitea sessions, the forge store and
+ *   the flow's command attempts, fed by `flow.ts`.
  *
- * It owns the tab's signals as the account's machines hear them (§6.4): the page's visibility,
- * its network and its lifecycle become the grant's events and the bus's signals, with a visible
- * wake only after the tab was hidden for a while.
+ * It hands the tab's signals (§6.4, the PlatformSignals port) to the grant, the bus and the
+ * post-grant stage: the page's visibility, its network and the coalesced wake become the grant's
+ * events, the bus's signals and the stores' own.
  *
- * Modules of the post-grant stage are constructed here and nowhere else (§7.2 rule 6). The
- * environment store and exchange driver, and the Gitea sessions, are still constructed in the
- * web's React tree until 3.4 moves them.
+ * Modules of the post-grant stage are constructed here and nowhere else (§7.2 rule 6).
  */
-import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -27,9 +33,7 @@ import * as Stream from "effect/Stream";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
-import type { Instant } from "../data/access/grant.ts";
 import type { AccessVerifier } from "../data/access/verifier.ts";
-import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import { organizationKeyOf, projectKeyOf, type RuntimeInterestDescriptor } from "../data/types.ts";
 import {
@@ -38,53 +42,85 @@ import {
   type InvalidationBus,
   type InvalidationSignal,
 } from "../knowledge/invalidation.ts";
+import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
+import { makeContainerStore } from "../environments/containerStore.ts";
+import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
+import { makeRegistrationRecords } from "../environments/records.ts";
+import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentStore.ts";
+import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
+import { makeFlowCommands } from "../flow/flowCommands.ts";
+import { makeForgeStore } from "../forge/forgeStore.ts";
+import { makeGiteaSessions } from "../forge/giteaSession.ts";
+import {
+  deploymentStorePorts,
+  envelopeServices,
+  makeForgeWiring,
+  type AccountForge,
+  type AccountForgePorts,
+  type ForgeStage,
+} from "./flow.ts";
+import { holdInventoryDemand } from "./inventoryDemand.ts";
+import {
+  makeEnvironmentWiring,
+  type AccountEnvironmentPorts,
+  type AccountEnvironments,
+  type EnvironmentStage,
+} from "./environments.ts";
 
-/** A visible wake needs the tab hidden at least this long (§6.4). */
-const WAKE_AFTER_HIDDEN_MS = 30_000;
-/** Wakes are coalesced to at most one per this long (§6.4). */
-const WAKE_COALESCE_MS = 10_000;
-
-/** What the page tells the account: its visibility, its network, a return from the bfcache or a freeze. */
-export type PageSignal =
-  | { readonly type: "visibility"; readonly hidden: boolean }
-  | { readonly type: "resume" }
-  | { readonly type: "online" }
-  | { readonly type: "offline" };
-
-export interface PagePort {
-  readonly hidden: () => boolean;
-  readonly online: () => boolean;
-  /** Tells `hear` every signal from now on, until the returned function stops it. */
-  readonly listen: (hear: (signal: PageSignal) => void) => () => void;
-}
-
-/** Where the account's actions and project writes are admitted, until 2.2's `WriteAdmission`. */
-export interface WriteWindowPort {
-  /** Admits them for `forMs` from now. */
-  readonly open: (forMs: number) => void;
-  readonly close: () => void;
-}
+export type {
+  AccountEnvironmentPorts,
+  AccountEnvironments,
+  CatalogListener,
+  DoorCredential,
+  DoorRequest,
+  RegisteredEnvironment,
+} from "./environments.ts";
+export type { AccountForge, AccountForgePorts } from "./flow.ts";
+export {
+  evidenceProjectRefs,
+  heldEvidence,
+  inventoryProjectRefs,
+  pendingDenials,
+} from "./inventoryDemand.ts";
 
 export interface AccountRuntimePorts {
   /** The epoch's data runtime, which the host built for the verified principal. */
   readonly data: ManagedZeropsDataRuntime;
   readonly verifier: AccessVerifier;
-  readonly page: PagePort;
-  readonly writes: WriteWindowPort;
+  /** The tab, as every consumer of the account hears it. */
+  readonly signals: PlatformSignals;
   /** The registry the data runtime publishes to: what is shown is read from it. */
   readonly atomRegistry: AtomRegistry.AtomRegistry;
+  /** What the post-grant stage's Mate environments reach their sources through. */
+  readonly environments: AccountEnvironmentPorts;
+  /** What the person's Gitea is reached through; a host without Gitea surfaces gives none. */
+  readonly forge?: AccountForgePorts;
 }
 
-/** The stage built on the epoch's first grant. */
+/** The epoch's post-grant stage, as surfaces read it. */
 export interface PostGrantStage {
-  readonly invalidations: InvalidationBus;
+  readonly environments: AccountEnvironments;
+  /** What each stop's services run (D6). */
+  readonly deployments: DeploymentStore;
+  /** The person's Gitea; `null` on a host that gave the forge no ports. */
+  readonly forge: AccountForge | null;
+  /** The services a Mate's envelope names by hostname, as the account holds them (§6.1). */
+  readonly services: EnvelopeServices;
 }
 
 export interface AccountRuntime {
   readonly data: ManagedZeropsDataRuntime;
-  /** The post-grant stage: waits for the epoch's first grant, then the same stage for the epoch. */
+  /** The account's invalidation bus: every owner of pull-based facts hears it, every surface sends to it. */
+  readonly invalidations: InvalidationBus;
+  /**
+   * Waits for the epoch's first grant, and answers with the post-grant stage it started; an epoch
+   * that closes before its first grant interrupts it.
+   */
   readonly postGrant: Effect.Effect<PostGrantStage>;
-  /** Ends the epoch: the post-grant stage first, then the data runtime (§5 L9). */
+  /**
+   * Ends the epoch: the bus first, then the post-grant stage and the inventory demand, then the
+   * data runtime (§5 L9).
+   */
   readonly close: (
     reason: "logout" | "account-replaced" | "application-close",
   ) => Effect.Effect<void>;
@@ -102,16 +138,22 @@ const organizationOf = (descriptor: RuntimeInterestDescriptor) =>
 export const makeAccountRuntime = Effect.fnUntraced(function* (
   ports: AccountRuntimePorts,
 ): Effect.fn.Return<AccountRuntime> {
-  const { data, page } = ports;
-  const policy = DEFAULT_ZEROPS_GRANT_POLICY;
-  const clock = yield* Clock.Clock;
-  const now = (): Instant => ({
-    wall: clock.currentTimeMillisUnsafe(),
-    mono: Number(clock.monotonicTimeNanosUnsafe()) / 1_000_000,
-  });
+  const { data, signals } = ports;
   const epoch = yield* Scope.make();
+  /** The bus's own scope: it closes first, so nothing still coalescing reaches a subscriber. */
+  const busScope = yield* Scope.make();
+  /** The post-grant stage's scope: it closes before the data runtime shuts down. */
   const postGrantScope = yield* Scope.make();
+  /** The inventory demand's scope: its leases are released before the data runtime shuts down. */
+  const demandScope = yield* Scope.make();
   const postGrant = yield* Deferred.make<PostGrantStage>();
+  const services = yield* Effect.context<never>();
+  let stage: {
+    readonly environments: EnvironmentStage;
+    readonly forge: ForgeStage | null;
+    readonly deployments: DeploymentStore;
+  } | null = null;
+  let closed = false;
   const busSignals = yield* PubSub.unbounded<InvalidationSignal>();
 
   /** Whether a view holds demand on facts under this invalidation's key. */
@@ -135,112 +177,182 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
             descriptor.kind !== "organization-inventory" &&
             projectKeyOf(descriptor.project) === projectKeyOf(invalidation.project),
         );
+      case "forge-org":
+      case "forge-repo":
+      case "forge-pr":
+        return stage?.forge?.shows(invalidation) ?? false;
+      case "deployment":
+        return stage?.deployments.shows(invalidation.service) ?? false;
       default:
         // No store of this account shows the other topics yet.
         return false;
     }
   };
 
+  const invalidations = yield* makeInvalidationBus({
+    // The page as it is when the bus starts hearing it, then every change.
+    signals: Stream.concat(
+      Stream.suspend(() => Stream.make(signals.hidden() ? HIDDEN : VISIBLE)),
+      Stream.fromPubSub(busSignals),
+    ),
+    shown,
+  }).pipe(Scope.provide(busScope));
+
+  /** The post-grant stage: its stores built, joined, fed, and ended with its scope. */
   const buildPostGrant = Effect.gen(function* () {
-    const invalidations = yield* makeInvalidationBus({
-      // The page as it is when the bus starts hearing it, then every change.
-      signals: Stream.concat(
-        Stream.suspend(() => Stream.make(page.hidden() ? HIDDEN : VISIBLE)),
-        Stream.fromPubSub(busSignals),
+    const wiring = makeEnvironmentWiring({
+      ports: ports.environments,
+      data,
+      atomRegistry: ports.atomRegistry,
+      invalidations,
+      services,
+      hidden: signals.hidden(),
+    });
+    const built = wiring.start({
+      records: makeRegistrationRecords(ports.environments.records),
+      containers: makeContainerStore(wiring.containerPorts),
+      driver: makeExchangeDriver(wiring.driverPorts),
+    });
+    const deployments = makeDeploymentStore(
+      deploymentStorePorts(data, ports.atomRegistry, services),
+    );
+    const forge =
+      ports.forge === undefined
+        ? null
+        : (() => {
+            const forgeWiring = makeForgeWiring({
+              ports: ports.forge,
+              signals,
+              invalidations,
+              services,
+            });
+            const sessions = makeGiteaSessions(forgeWiring.sessionPorts);
+            return forgeWiring.start({
+              sessions,
+              store: makeForgeStore(forgeWiring.storePorts(sessions)),
+              commands: makeFlowCommands(forgeWiring.commandPorts(sessions)),
+            });
+          })();
+    // Finalizers run in reverse: the Gitea tokens are forgotten first, then the stores end.
+    yield* Scope.addFinalizer(postGrantScope, Effect.sync(built.dispose));
+    yield* Scope.addFinalizer(postGrantScope, Effect.sync(deployments.dispose));
+    if (forge !== null) yield* Scope.addFinalizer(postGrantScope, Effect.sync(forge.dispose));
+    // Each owner of pull-based facts reads again what an invalidation names (§6.2).
+    const subscription = yield* invalidations.subscribe.pipe(Scope.provide(postGrantScope));
+    yield* PubSub.take(subscription).pipe(
+      Effect.flatMap((invalidation) =>
+        Effect.sync(() => {
+          switch (invalidation.topic) {
+            case "container":
+              built.request(invalidation.target);
+              return;
+            case "deployment":
+              deployments.invalidate(invalidation);
+              return;
+            case "forge-org":
+            case "forge-repo":
+            case "forge-pr":
+              forge?.invalidate(invalidation);
+              return;
+            default:
+              return;
+          }
+        }),
       ),
-      shown,
-    }).pipe(Scope.provide(postGrantScope));
-    yield* data.access.invalidations.pipe(
-      Stream.runForEach(invalidations.invalidate),
+      Effect.forever,
       Effect.forkIn(postGrantScope),
     );
-    yield* Deferred.succeed(postGrant, { invalidations });
+    return { environments: built, forge, deployments };
   });
 
-  /** The admitted round the write window was last opened for. */
-  let openRound: number | null = null;
   const follow = (view: AccessGrantView): Effect.Effect<void> =>
     Effect.gen(function* () {
-      const phase = view.machine.phase;
-      if (phase.phase === "granted") {
-        if (!(yield* Deferred.isDone(postGrant))) yield* buildPostGrant;
-        const account = phase.evidence.account;
-        if (account.round === openRound) return;
-        openRound = account.round;
-        const at = now();
-        ports.writes.open(
-          Math.min(
-            account.startedAt.wall + policy.windowMs - at.wall,
-            account.startedAt.mono + policy.windowMs - at.mono,
-          ),
-        );
-      } else if (openRound !== null) {
-        openRound = null;
-        ports.writes.close();
+      if (closed) return;
+      if (stage === null) {
+        if (view.machine.phase.phase !== "granted") return;
+        stage = yield* buildPostGrant;
+        yield* Deferred.succeed(postGrant, {
+          environments: stage.environments.environments,
+          deployments: stage.deployments,
+          forge: stage.forge?.forge ?? null,
+          services: envelopeServices(data, ports.atomRegistry),
+        });
       }
+      stage.environments.grant(view);
     });
 
-  let hiddenAtMs: number | null = page.hidden() ? now().mono : null;
-  let lastWakeMs = Number.NEGATIVE_INFINITY;
-  const wake = Effect.suspend(() => {
-    const at = now().mono;
-    if (at - lastWakeMs < WAKE_COALESCE_MS) return Effect.void;
-    lastWakeMs = at;
-    const visible = hiddenAtMs === null;
-    return data.access
-      .signal({ type: "WAKE", visible })
-      .pipe(Effect.andThen(visible ? PubSub.publish(busSignals, VISIBLE_WAKE) : Effect.void));
-  });
-  const hear = (signal: PageSignal): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      switch (signal.type) {
-        case "visibility": {
-          yield* data.access.signal({ type: "VISIBILITY", hidden: signal.hidden });
-          if (signal.hidden) {
-            hiddenAtMs ??= now().mono;
-            yield* PubSub.publish(busSignals, HIDDEN);
-            return;
-          }
-          const away = hiddenAtMs === null ? 0 : now().mono - hiddenAtMs;
-          hiddenAtMs = null;
-          yield* PubSub.publish(busSignals, VISIBLE);
-          if (away >= WAKE_AFTER_HIDDEN_MS) yield* wake;
-          return;
-        }
-        case "resume":
-          return yield* wake;
-        case "online":
-          return yield* data.access.signal({ type: "ONLINE" });
-        case "offline":
-          return yield* data.access.signal({ type: "OFFLINE" });
-      }
-    });
+  const hear = (signal: PlatformSignal): Effect.Effect<void> =>
+    Effect.sync(() => {
+      stage?.environments.hear(signal);
+      stage?.forge?.hear(signal);
+    }).pipe(Effect.andThen(heardByAccount(signal)));
+
+  const heardByAccount = (signal: PlatformSignal): Effect.Effect<void> => {
+    switch (signal.type) {
+      case "visibility":
+        return data.access
+          .signal({ type: "VISIBILITY", hidden: signal.hidden })
+          .pipe(Effect.andThen(PubSub.publish(busSignals, signal.hidden ? HIDDEN : VISIBLE)));
+      case "network":
+        return data.access.signal({ type: signal.online ? "ONLINE" : "OFFLINE" });
+      case "wake":
+        return data.access
+          .signal({ type: "WAKE", visible: signal.visible })
+          .pipe(
+            Effect.andThen(signal.visible ? PubSub.publish(busSignals, VISIBLE_WAKE) : Effect.void),
+          );
+      case "restored":
+        // The account hears a restore through the visible wake that comes with it.
+        return Effect.void;
+    }
+  };
 
   yield* Effect.gen(function* () {
-    // The page is heard from the moment its state is read, one signal at a time.
-    const signals = yield* Queue.unbounded<PageSignal>();
-    const unlisten = page.listen((signal) => Queue.offerUnsafe(signals, signal));
+    // The tab is heard from the moment its state is read, one signal at a time.
+    const heard = yield* Queue.unbounded<PlatformSignal>();
+    const unlisten = signals.listen((signal) => Queue.offerUnsafe(heard, signal));
     yield* Scope.addFinalizer(epoch, Effect.sync(unlisten));
-    yield* Queue.take(signals).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
+    yield* data.access.invalidations.pipe(
+      Stream.runForEach(invalidations.invalidate),
+      Effect.forkIn(busScope),
+    );
+    yield* data.access.listen(invalidations).pipe(Scope.provide(busScope));
+    yield* data.listen(invalidations).pipe(Scope.provide(busScope));
+    yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
+      Scope.provide(demandScope),
+    );
+    yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
     // The views stream replays the latest, so it misses nothing the start publishes.
     yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));
     yield* data.access.start({
       verifier: ports.verifier,
-      hidden: page.hidden(),
-      online: page.online(),
+      hidden: signals.hidden(),
+      online: signals.online(),
     });
     // An epoch that cannot start leaves nothing of its own running; its host closes the data.
   }).pipe(
     Effect.onError(() =>
-      Scope.close(postGrantScope, Exit.void).pipe(Effect.andThen(Scope.close(epoch, Exit.void))),
+      Scope.close(busScope, Exit.void).pipe(
+        Effect.andThen(Scope.close(postGrantScope, Exit.void)),
+        Effect.andThen(Scope.close(demandScope, Exit.void)),
+        Effect.andThen(Scope.close(epoch, Exit.void)),
+      ),
     ),
   );
 
   return {
     data,
+    invalidations,
     postGrant: Deferred.await(postGrant),
     close: (reason) =>
-      Scope.close(postGrantScope, Exit.void).pipe(
+      Effect.sync(() => {
+        closed = true;
+      }).pipe(
+        // An epoch that closes before its first grant never builds its post-grant stage.
+        Effect.andThen(Deferred.interrupt(postGrant)),
+        Effect.andThen(Scope.close(busScope, Exit.void)),
+        Effect.andThen(Scope.close(postGrantScope, Exit.void)),
+        Effect.andThen(Scope.close(demandScope, Exit.void)),
         Effect.andThen(data.shutdown(reason)),
         Effect.andThen(Scope.close(epoch, Exit.void)),
       ),

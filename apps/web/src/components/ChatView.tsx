@@ -31,10 +31,7 @@ import {
   RuntimeMode,
   TerminalOpenInput,
 } from "@t3tools/contracts";
-import {
-  connectionStatusTitle,
-  type EnvironmentConnectionPresentation,
-} from "@t3tools/client-runtime/connection";
+import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
 import {
   changeRequestAutoSettles,
@@ -174,11 +171,14 @@ import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepBanner } from "./zerops/ZeropsNextStepBanner";
+import { zeropsMateAt } from "../zerops/mateIdentities";
+import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
+import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsChangeLandedEvents } from "../zerops/useZeropsChangeLandedEvents";
 import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
@@ -205,7 +205,6 @@ import {
   LockIcon,
   Minimize2Icon,
   PaperclipIcon,
-  WifiOffIcon,
 } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -308,7 +307,7 @@ import {
   resolveAgentAuthorizer,
   useLocalAgentSigners,
   useZeropsAgentSignerRecord,
-  useZeropsEnvironmentProjectId,
+  useZeropsEnvironmentProject,
 } from "~/zerops/useZeropsAgentSigner";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -343,6 +342,10 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import {
+  environmentConnectionBannerItem,
+  environmentRetryFailureToast,
+} from "./chat/EnvironmentConnectionBanner";
 import {
   hasAvailableCompactionProvider,
   hasDismissedResumeCompaction,
@@ -393,6 +396,7 @@ import {
   resolveBackgroundDraftWorkspaceOptions,
   isZeropsInstanceRunnable,
   resolveComposerInteractionMode,
+  resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   resolveZeropsOwnedAgentSendBlockReason,
@@ -548,7 +552,6 @@ const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
 
 type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;
-  readonly label: string;
   readonly connection: EnvironmentConnectionPresentation;
 };
 
@@ -1368,7 +1371,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   const { environments } = useEnvironments();
   const primaryEnvironment = usePrimaryEnvironment();
-  const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
+  const retryEnvironment = useAtomCommand(environmentCatalog.retryNow);
   const environmentById = useMemo(
     () => new Map(environments.map((environment) => [environment.environmentId, environment])),
     [environments],
@@ -1533,7 +1536,20 @@ export default function ChatView(props: ChatViewProps) {
   );
   const legendListRef = useRef<LegendListRef | null>(null);
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
-  const [composerOverlayHeight, setComposerOverlayHeight] = useState(0);
+  const [composerElementHeight, setComposerElementHeight] = useState(0);
+  // The banner stack (resume-with-less-context, the merge offer, …) floats
+  // from a zero-height anchor above the composer, so it never enlarges the
+  // composer overlay element's own measured box — it needs its own observer.
+  const [composerBannerStackElement, setComposerBannerStackElement] =
+    useState<HTMLDivElement | null>(null);
+  const [composerBannerStackHeight, setComposerBannerStackHeight] = useState(0);
+  const composerOverlayHeight = resolveComposerOverlayHeight({
+    composerHeight: composerElementHeight,
+    // Masked at read time rather than reset from the observer effect below:
+    // the stack unmounts (ref goes null) the instant the last banner is
+    // dismissed, before a resize would ever fire to report 0.
+    bannerStackHeight: composerBannerStackElement ? composerBannerStackHeight : 0,
+  });
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
@@ -1547,7 +1563,7 @@ export default function ChatView(props: ChatViewProps) {
     const updateHeight = () => {
       const nextHeight = Math.ceil(composerOverlayElement.getBoundingClientRect().height);
       if (nextHeight <= 0) return;
-      setComposerOverlayHeight((currentHeight) =>
+      setComposerElementHeight((currentHeight) =>
         currentHeight === nextHeight ? currentHeight : nextHeight,
       );
     };
@@ -1559,6 +1575,25 @@ export default function ChatView(props: ChatViewProps) {
     observer.observe(composerOverlayElement);
     return () => observer.disconnect();
   }, [composerOverlayElement]);
+
+  useLayoutEffect(() => {
+    if (!composerBannerStackElement) return;
+
+    const updateHeight = () => {
+      const nextHeight = Math.ceil(composerBannerStackElement.getBoundingClientRect().height);
+      if (nextHeight <= 0) return;
+      setComposerBannerStackHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      );
+    };
+
+    updateHeight();
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(composerBannerStackElement);
+    return () => observer.disconnect();
+  }, [composerBannerStackElement]);
 
   const terminalUiState = useTerminalUiStateStore((state) =>
     selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef),
@@ -2052,29 +2087,16 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeReconnectingEnvironmentId]);
   const activeEnvironmentUnavailableLabel = activeEnvironment?.label ?? null;
   const activeEnvironmentUnavailableState = useMemo<EnvironmentUnavailableState | null>(() => {
-    if (!activeEnvironmentUnavailable || !activeEnvironmentUnavailableLabel || !activeEnvironment) {
-      return null;
-    }
-
+    if (!activeEnvironmentUnavailable || !activeEnvironment) return null;
     return {
       environmentId: activeEnvironment.environmentId,
-      label: activeEnvironmentUnavailableLabel,
       connection: activeEnvironment.connection,
     };
-  }, [activeEnvironment, activeEnvironmentUnavailable, activeEnvironmentUnavailableLabel]);
+  }, [activeEnvironment, activeEnvironmentUnavailable]);
   const handleReconnectActiveEnvironment = useCallback(
     async (environmentId: EnvironmentId) => {
-      const result = await retryEnvironment(environmentId);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not reconnect environment",
-            description: error instanceof Error ? error.message : "Failed to reconnect.",
-          }),
-        );
-      }
+      const toast = environmentRetryFailureToast(await retryEnvironment(environmentId));
+      if (toast !== null) toastManager.add(stackedThreadToast({ type: "error", ...toast }));
     },
     [retryEnvironment],
   );
@@ -2246,6 +2268,9 @@ export default function ChatView(props: ChatViewProps) {
   const attachmentUploadsCapabilityKnown = attachmentEnvironmentConfig !== null;
   const supportsAttachmentUploads =
     attachmentEnvironmentConfig?.environment.capabilities.attachmentUploads === true;
+  // The banner names the Mate, never the environment's label: on a Mate that
+  // is the container's internal host.
+  const zeropsMates = useZeropsMateDirectory();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2255,44 +2280,22 @@ export default function ChatView(props: ChatViewProps) {
         unavailableConnection.phase === "reconnecting");
     const suppressUnavailableBanner = environmentReconnecting && !reconnectWarningGraceElapsed;
     if (activeEnvironmentUnavailableState && unavailableConnection && !suppressUnavailableBanner) {
-      items.push({
-        id: `environment-unavailable:${activeEnvironmentUnavailableState.environmentId}`,
-        variant: unavailableConnection.phase === "error" ? "error" : "warning",
-        icon: <WifiOffIcon />,
-        title: `${activeEnvironmentUnavailableState.label}: ${connectionStatusTitle(unavailableConnection)}`,
-        description:
-          unavailableConnection.error ??
-          "Reconnect this environment before sending messages or running actions.",
-        actions: (
-          <>
-            <Button
-              size="xs"
-              disabled={environmentReconnecting}
-              onClick={() =>
-                void handleReconnectActiveEnvironment(
-                  activeEnvironmentUnavailableState.environmentId,
-                )
-              }
-            >
-              {environmentReconnecting ? "Reconnecting..." : "Reconnect"}
-            </Button>
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => void navigate({ to: "/settings/connections" })}
-            >
-              Connections
-            </Button>
-          </>
-        ),
+      const { environmentId } = activeEnvironmentUnavailableState;
+      const mateAt = zeropsMateAt(zeropsMates, environmentId);
+      const banner = environmentConnectionBannerItem({
+        environmentId,
+        connection: unavailableConnection,
+        mateName: mateAt.kind === "mate" ? mateAt.mate.name : null,
+        onRetry: () => void handleReconnectActiveEnvironment(environmentId),
       });
+      if (banner !== null) items.push(banner);
     }
     return items;
   }, [
     activeEnvironmentUnavailableState,
     reconnectWarningGraceElapsed,
     handleReconnectActiveEnvironment,
-    navigate,
+    zeropsMates,
   ]);
   const providerInstanceEntries = useMemo(
     () =>
@@ -2315,9 +2318,9 @@ export default function ChatView(props: ChatViewProps) {
   // The record this client wrote itself counts until the snapshot carries it.
   const zeropsLocalSigners = useLocalAgentSigners();
   // The environment, not the thread: a draft has one before it has the other,
-  // and the header names the project either way. This is the writer half of
-  // the topology split (`useProjectTopology`) — the panel mounts the same
-  // ref-counted watcher, so opening it costs nothing extra. Hoisted here
+  // and the header names the project either way. This host demands the
+  // project's topology (`useProjectTopology`) — the panel demands the same
+  // ref-counted interest, so opening it costs nothing extra. Hoisted here
   // (rather than beside `zeropsChrome` below, which also reads it) so the
   // sign-in dialog's project-name chip is available from its very first call.
   const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
@@ -2406,14 +2409,16 @@ export default function ChatView(props: ChatViewProps) {
     [threadActivities],
   );
   const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
+  const nowMs = useNowMs();
   const zeropsThreadModel = useMemo(
     () =>
       deriveZeropsThreadModel({
         activities: threadActivities,
         lifecycle: activeZeropsLifecycle,
         runningTurnId: activeRunningTurnId,
+        nowMs,
       }),
-    [threadActivities, activeZeropsLifecycle, activeRunningTurnId],
+    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, nowMs],
   );
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),
@@ -3731,7 +3736,7 @@ export default function ChatView(props: ChatViewProps) {
   useZeropsAgentSignerRecord({
     environmentId: activeThreadEnvironmentId,
     snapshot: zeropsAgentAuth.snapshot,
-    projectId: useZeropsEnvironmentProjectId(activeThreadEnvironmentId),
+    project: useZeropsEnvironmentProject(activeThreadEnvironmentId),
   });
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
@@ -7860,10 +7865,18 @@ export default function ChatView(props: ChatViewProps) {
                           activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
-                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                      <ComposerBannerStack
+                        className="relative z-0"
+                        items={composerBannerItems}
+                        stackRef={setComposerBannerStackElement}
+                      />
                     </div>
                   ) : (
-                    <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                    <ComposerBannerStack
+                      className="relative z-0"
+                      items={composerBannerItems}
+                      stackRef={setComposerBannerStackElement}
+                    />
                   )}
                   {threadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={threadSyncPhase} />
@@ -7928,7 +7941,7 @@ export default function ChatView(props: ChatViewProps) {
                                 : undefined
                             }
                             externalDrawerAttached={externalComposerDrawerAttached}
-                            environmentUnavailable={activeEnvironmentUnavailableState}
+                            environmentUnavailable={activeEnvironmentUnavailable}
                             activePendingApproval={activePendingApproval}
                             pendingApprovals={pendingApprovals}
                             pendingUserInputs={pendingUserInputs}

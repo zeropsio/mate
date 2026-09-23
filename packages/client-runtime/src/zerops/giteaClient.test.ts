@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   base64Decode,
   base64Encode,
   createGiteaClient,
   GiteaApiError,
+  GITEA_REQUEST_DEADLINE_MS,
   type GiteaClient,
 } from "./giteaClient.ts";
 
@@ -151,6 +152,43 @@ describe("GiteaClient request shapes", () => {
     await expect(call(client)).resolves.toBeUndefined();
   });
 
+  it("a 404 on a contents read is not re-requested and aborted", async () => {
+    // A browser logs a cancelled body as its own aborted request of the same URL.
+    let cancelled = false;
+    let drained = false;
+    const signals: Array<AbortSignal | undefined> = [];
+    const client = createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      fetch: (_input, init) => {
+        signals.push(init?.signal ?? undefined);
+        const chunks = [new TextEncoder().encode('{"message":"Not found"}')];
+        const body = new ReadableStream<Uint8Array>({
+          pull: (controller) => {
+            const chunk = chunks.shift();
+            if (chunk === undefined) {
+              drained = true;
+              controller.close();
+            } else controller.enqueue(chunk);
+          },
+          cancel: () => {
+            cancelled = true;
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 404 }));
+      },
+    });
+
+    await expect(
+      client.readFile("acme", "group", "3 — Stage/import.yaml", "main"),
+    ).resolves.toBeUndefined();
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(cancelled).toBe(false);
+    expect(drained).toBe(true);
+  });
+
   it("throws Gitea's own status and message on anything else", async () => {
     const { client } = fake([{ status: 403, body: { message: "user does not have push access" } }]);
     const failure = await client.listBranches("acme", "group").catch((cause: unknown) => cause);
@@ -280,12 +318,14 @@ describe("GiteaClient request shapes", () => {
     expect(calls[0]?.body).toEqual({ tag_name: "v1.2.0", target: "abc", message: "api abc" });
   });
 
-  it("lists a repository's tags, message and all", async () => {
+  it("lists one page of a repository's tags, message and all", async () => {
     const { client, calls } = fake([
       { body: [{ name: "v1.2.0", message: "api abc", commit: { sha: "abc" } }] },
     ]);
     expect(await client.listTags("acme", "group")).toHaveLength(1);
-    expect(calls[0]?.url.slice(ORIGIN.length)).toBe("/api/v1/repos/acme/group/tags");
+    expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
+      "/api/v1/repos/acme/group/tags",
+    ]);
   });
 
   it("reads commit statuses, runs, jobs, a rerun and logs", async () => {
@@ -314,6 +354,154 @@ describe("GiteaClient request shapes", () => {
       "GET /api/v1/repos/acme/api/actions/runs/7/jobs",
       "POST /api/v1/repos/acme/api/actions/jobs/9/rerun",
       "GET /api/v1/repos/acme/api/actions/jobs/9/logs",
+    ]);
+  });
+});
+
+describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A Gitea that never answers; a request ends only when its signal does. */
+  function silent(signal?: AbortSignal): GiteaClient {
+    return createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      ...(signal === undefined ? {} : { signal }),
+      fetch: (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    });
+  }
+
+  it.each([
+    { what: "a read", read: (client: GiteaClient) => client.listTags("acme", "group") },
+    { what: "a job's log", read: (client: GiteaClient) => client.actionJobLogs("acme", "app", 7) },
+  ])("$what Gitea has not answered in 15 s ends as a timeout", async ({ read: send }) => {
+    vi.useFakeTimers();
+    const read = send(silent());
+    const outcome = read.then(
+      () => "answered",
+      (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
+    );
+    await vi.advanceTimersByTimeAsync(GITEA_REQUEST_DEADLINE_MS - 1);
+    let settled = false;
+    void outcome.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await outcome).toBe("TimeoutError");
+  });
+
+  it("a write has no deadline: a merge Gitea is slow to answer may still land", async () => {
+    vi.useFakeTimers();
+    const merge = silent().mergePullRequest("acme", "app", 4, { style: "squash" });
+    let settled = false;
+    void merge.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(GITEA_REQUEST_DEADLINE_MS * 4);
+    expect(settled).toBe(false);
+  });
+
+  /** A job's log whose chunks arrive `gapMs` apart, and that stops after `chunks` of them. */
+  function trickling(gapMs: number, chunks: number, close: boolean): GiteaClient {
+    return createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      fetch: async (_input, init) =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(stream) {
+              init?.signal?.addEventListener("abort", () => stream.error(init.signal?.reason));
+              for (let chunk = 1; chunk <= chunks; chunk += 1) {
+                // @effect-diagnostics-next-line globalTimers:off -- the log's body, late on vitest's fake clock.
+                setTimeout(() => {
+                  if (init?.signal?.aborted === true) return;
+                  stream.enqueue(new TextEncoder().encode(`step ${String(chunk)} done\n`));
+                  if (chunk === chunks && close) stream.close();
+                }, gapMs * chunk);
+              }
+            },
+          }),
+        ),
+    });
+  }
+
+  const outcomeOf = (logs: Promise<string>) =>
+    logs.then(
+      (text) => text,
+      (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
+    );
+
+  it("a job's log Gitea keeps sending may take longer than 15 s to arrive", async () => {
+    vi.useFakeTimers();
+    const gap = GITEA_REQUEST_DEADLINE_MS - 1_000;
+    const outcome = outcomeOf(trickling(gap, 4, true).actionJobLogs("acme", "app", 7));
+    await vi.advanceTimersByTimeAsync(gap * 4);
+    expect(await outcome).toBe("step 1 done\nstep 2 done\nstep 3 done\nstep 4 done\n");
+  });
+
+  it("a job's log that stops arriving for 15 s ends as a timeout", async () => {
+    vi.useFakeTimers();
+    const outcome = outcomeOf(trickling(1_000, 2, false).actionJobLogs("acme", "app", 7));
+    await vi.advanceTimersByTimeAsync(2_000 + GITEA_REQUEST_DEADLINE_MS);
+    expect(await outcome).toBe("TimeoutError");
+  });
+
+  it("the caller's signal still ends a request before its deadline", async () => {
+    const controller = new AbortController();
+    const read = silent(controller.signal).listTags("acme", "group");
+    controller.abort(new DOMException("The account closed.", "AbortError"));
+    await expect(read).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("GiteaClient pull request shas (DESIGN A7)", () => {
+  it("a pull request carries its head and base shas and the commit it merged as", async () => {
+    const { client } = fake([
+      {
+        body: {
+          number: 4,
+          title: "Add a due date",
+          state: "closed",
+          merged: true,
+          mergeable: null,
+          head: { ref: "mate/x", sha: "head-sha" },
+          base: { ref: "main", sha: "base-sha" },
+          merge_commit_sha: "merge-sha",
+        },
+      },
+    ]);
+    const pull = await client.getPullRequest("acme", "app", 4);
+    expect(pull?.head?.sha).toBe("head-sha");
+    expect(pull?.base?.sha).toBe("base-sha");
+    expect(pull?.merge_commit_sha).toBe("merge-sha");
+    expect(pull?.mergeable).toBeNull();
+  });
+
+  it("reads one page of pull requests as long as it is asked for", async () => {
+    const { client, calls } = fake([{ body: [] }]);
+    await client.listPullRequests("acme", "app", { state: "closed", limit: 20 });
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/app/pulls?state=closed&limit=20`);
+  });
+
+  it("lists every tag, page by page, until a page comes back short", async () => {
+    const full = Array.from({ length: 50 }, (_, index) => ({ name: `v0.0.${index}` }));
+    const { client, calls } = fake([{ body: full }, { body: [{ name: "v0.1.0" }] }]);
+    expect(await client.listAllTags("acme", "group")).toHaveLength(51);
+    expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
+      "/api/v1/repos/acme/group/tags?limit=50&page=1",
+      "/api/v1/repos/acme/group/tags?limit=50&page=2",
     ]);
   });
 });

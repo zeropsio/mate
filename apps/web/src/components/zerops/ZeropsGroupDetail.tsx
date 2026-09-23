@@ -53,6 +53,13 @@ import {
   type ZeropsGroup,
   type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
+import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
+import {
+  candidatesNotice,
+  findCandidate,
+  heldCandidates,
+  type CandidatesNotice,
+} from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -110,12 +117,12 @@ import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
+import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { findAccountGitea } from "~/zerops/giteaProject";
+import { useAccountGitea } from "~/zerops/giteaProject";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -134,15 +141,39 @@ const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
  * environment in it.
  */
 function useGroup(groupId: string): ZeropsGroup | undefined {
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
   return useMemo(
     // Order is irrelevant here — a lookup by groupId, not a listing.
     () =>
-      buildZeropsGroupTree(candidates, { order: "name" }).groups.find(
+      buildZeropsGroupTree(heldCandidates(listing).rows, { order: "name" }).groups.find(
         (entry) => entry.group.groupId === groupId,
       )?.group,
-    [candidates, groupId],
+    [groupId, listing],
   );
+}
+
+/**
+ * What a stop says in place of its content while the grant withholds its
+ * project (DESIGN §3.4), and the stops whose content may be read — what the
+ * attention panel is drawn from.
+ */
+function useWithheldStops(environments: ReadonlyArray<EnvironmentRow> | undefined): {
+  readonly withheldNotice: (projectId: string) => string | null;
+  readonly shown: ReadonlyArray<EnvironmentRow>;
+} {
+  const inventory = useZeropsInventory();
+  const withheldNotice = useCallback(
+    (projectId: string) => withheldProjectNotice(inventory, projectId),
+    [inventory],
+  );
+  const shown = useMemo(
+    () =>
+      environments === undefined
+        ? EMPTY_STOPS
+        : environments.filter((environment) => withheldNotice(environment.projectId) === null),
+    [environments, withheldNotice],
+  );
+  return { withheldNotice, shown };
 }
 
 /** What the group is called — never the raw group id. */
@@ -170,19 +201,17 @@ function useMateMenus(): {
   readonly trouble: string | null;
 } {
   const { activeOrganization, status } = useZeropsSession();
-  const { candidates } = useZeropsCandidates();
-  const inventory = useZeropsInventory();
-  const { serverVersions } = useZeropsCandidateHealth(candidates);
-  const giteaProjectId = useMemo(
-    () => findAccountGitea(inventory, activeOrganization?.id)?.projectId,
-    [activeOrganization?.id, inventory],
-  );
+  const { listing } = useZeropsCandidates();
+  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  const { serverVersions } = useZeropsContainers();
+  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const registry = useZeropsRegistry({ giteaProjectId, enabled: status === "signed-in" });
   const actions = useMateActions({ registry, serverVersions });
   const menuForMate = useCallback(
     (projectId: string) => {
-      const candidate = candidates.find((entry) => entry.project.id === projectId);
-      if (candidate === undefined) return null;
+      const found = findCandidate(listing, (entry) => entry.project.id === projectId);
+      if (found.kind !== "found") return null;
+      const candidate = found.row;
       const tags = readZeropsGroupTags(candidate.project.tagList);
       const menu = (extra: ReadonlyArray<ZeropsMenuAction>) => {
         const entries = actions.actionsFor(candidate, tags, extra);
@@ -207,7 +236,7 @@ function useMateMenus(): {
         </ZeropsMateUpdateControl>
       );
     },
-    [actions, candidates],
+    [actions, listing],
   );
   return { menuForMate, dialogs: actions.dialogs, trouble: actions.trouble };
 }
@@ -307,17 +336,36 @@ function useHistoryNames(groupName: string | undefined): HistoryNames {
   return useMemo(() => ({ mateNames, groupName }), [mateNames, groupName]);
 }
 
+/** How "Who is on it" names the listing it is drawn from, while that listing cannot say "none". */
+const GROUP_MATES_SURFACE = {
+  subject: "who is on this project",
+  entity: "project",
+  source: "zerops",
+  checking: "Checking who is on it…",
+  negative: null,
+} as const;
+
 /**
- * Every Mate on a project, as its page shows them.
+ * Every Mate on a project, as its page shows them, and what the section says
+ * in place of "no Mate" until the listing may say it (DESIGN §3.4): a
+ * placeholder while it is unread, its cause while its read failed, "Still
+ * reading…" over the Mates read of a listing known in part.
  *
  * Read from the same three places the menu reads: the group tree for who is in
  * the group, the activity feed for what each is on, and `mateTints` for the
  * colour its face wears — so a Mate is the same Mate on both surfaces.
  */
-function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
-  const { candidates } = useZeropsCandidates();
+function useGroupMates(groupId: string): {
+  readonly mates: ReadonlyArray<GroupMate>;
+  readonly notice: CandidatesNotice | null;
+  /** Reads the listing again: the notice's *Try again*. */
+  readonly refresh: () => void;
+} {
+  const { listing, refresh } = useZeropsCandidates();
   const activity = useZeropsAgentActivity();
-  return useMemo(() => {
+  const nowMs = useNowMs();
+  const mates = useMemo(() => {
+    const candidates = heldCandidates(listing).rows;
     const tints = assignCandidateMateTints(candidates);
     // Order is irrelevant here — a lookup by groupId, not a listing.
     const group = buildZeropsGroupTree(candidates, { order: "name" }).groups.find(
@@ -349,7 +397,12 @@ function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
               : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
         };
       });
-  }, [activity, candidates, groupId]);
+  }, [activity, groupId, listing]);
+  const notice = useMemo(
+    () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs),
+    [listing, nowMs],
+  );
+  return { mates, notice, refresh };
 }
 
 /**
@@ -364,14 +417,15 @@ function useStopRoutes(projectId: string): {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
 } {
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
   return useMemo(() => {
-    const candidate = candidates.find((entry) => entry.project.id === projectId);
+    const found = findCandidate(listing, (entry) => entry.project.id === projectId);
+    const candidate = found.kind === "found" ? found.row : undefined;
     return {
       routes: candidate?.routes ?? EMPTY_ROUTES,
       offers: candidate?.routeOffers ?? EMPTY_OFFERS,
     };
-  }, [candidates, projectId]);
+  }, [listing, projectId]);
 }
 
 const EMPTY_ROUTES: ReadonlyArray<ZeropsPublicRoute> = [];
@@ -379,20 +433,21 @@ const EMPTY_OFFERS: ReadonlyArray<ZeropsRouteOffer> = [];
 
 /** Opens a Mate's own conversation, as selecting its row in the menu does. */
 function useOpenMate(): (projectId: string) => void {
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
   const threads = useThreadShells();
   const navigate = useNavigate();
   return useCallback(
     (projectId: string) => {
-      const candidate = candidates.find((entry) => entry.project.id === projectId);
-      const environmentId = candidate?.environmentId;
+      const found = findCandidate(listing, (entry) => entry.project.id === projectId);
+      const environmentId = found.kind === "found" ? found.row.environmentId : undefined;
       const { primary } =
         environmentId === undefined
           ? { primary: undefined }
           : resolvePrimaryConversation(
               threads.filter((thread) => thread.environmentId === environmentId),
             );
-      // Not connected, or nothing started: the projects screen owns both.
+      // Not connected, nothing started, or not read yet: the projects screen
+      // owns connecting and starting, and says what it is still reading.
       if (environmentId === undefined || primary === undefined) {
         void navigate({ to: "/zerops" });
         return;
@@ -402,7 +457,7 @@ function useOpenMate(): (projectId: string) => void {
         params: buildThreadRouteParams(scopeThreadRef(environmentId, primary.id)),
       });
     },
-    [candidates, navigate, threads],
+    [listing, navigate, threads],
   );
 }
 
@@ -549,11 +604,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
   const names = useHistoryNames(groupName);
-  const mates = useGroupMates(groupId);
+  const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
   const openMate = useOpenMate();
-  const inventory = useZeropsInventory();
+  const { withheldNotice, shown } = useWithheldStops(environments);
   const attention = useProjectAttention(groupId, mates, {
-    environments,
+    environments: shown,
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
     notLive: waiting.total,
     canRelease: release.offered,
@@ -574,6 +629,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       groupId={groupId}
       attention={attention.items}
       mates={mates}
+      matesNotice={matesNotice}
+      onMatesNoticeAct={(affordance) => {
+        if (affordance.kind === "go-to-projects") openProjects();
+        else rereadMates();
+      }}
       name={groupName ?? flow.groupId}
       onAct={attention.onAct}
       names={names}
@@ -594,7 +654,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       readDetail={readDetail}
       repo={repo}
       waiting={waiting}
-      withheldNotice={(projectId) => withheldProjectNotice(inventory, projectId)}
+      withheldNotice={withheldNotice}
     />
   );
 }
@@ -612,6 +672,8 @@ export function ZeropsGroupPane({
   attention,
   groupId,
   mates,
+  matesNotice = null,
+  onMatesNoticeAct,
   onAct,
   name,
   names,
@@ -644,8 +706,15 @@ export function ZeropsGroupPane({
   /** What needs somebody, worst first — the page's opening answer. */
   readonly attention: ReadonlyArray<ProjectAttentionItem>;
   readonly onAct: (item: ProjectAttentionItem) => void;
-  /** Every Mate on this project, in the order the menu lists them. */
+  /** Every Mate on this project read so far, in the order the menu lists them. */
   readonly mates: ReadonlyArray<GroupMate>;
+  /**
+   * What "Who is on it" says until the listing may say "no Mate" (DESIGN §3.4);
+   * absent or `null` once it is complete.
+   */
+  readonly matesNotice?: CandidatesNotice | null;
+  /** Its affordance, pressed: read the listing again, or go to the projects. */
+  readonly onMatesNoticeAct?: ((affordance: KnownAffordance) => void) | undefined;
   readonly names: HistoryNames;
   readonly onAddMate: () => void;
   /** One Mate's own quiet actions, by its project id. */
@@ -657,13 +726,20 @@ export function ZeropsGroupPane({
   readonly onOpenMate: (projectId: string) => void;
   readonly waiting: ReleaseContentsSummary;
   /**
-   * What an environment's line says instead of its content while its access
-   * is withheld (DESIGN G12); `null` while it may be shown. Absent, every
-   * environment is shown.
+   * What a stop says in place of its content while the grant withholds its
+   * project (DESIGN §3.4); `null` while it may be shown. Absent, every stop is.
    */
   readonly withheldNotice?: (projectId: string) => string | null;
 }) {
-  const deployed = useMemo(() => deployedShas(environments), [environments]);
+  const deployed = useMemo(
+    () =>
+      deployedShas(
+        environments.filter(
+          (environment) => (withheldNotice?.(environment.projectId) ?? null) === null,
+        ),
+      ),
+    [environments, withheldNotice],
+  );
   return (
     <DetailShell
       // *Release* left the header when the panel below got a working one: a
@@ -689,11 +765,13 @@ export function ZeropsGroupPane({
 
       <Section title="Who is on it">
         {mates.length === 0 ? (
-          <Empty
-            action="Add a Mate"
-            onAction={onAddMate}
-            text="No Mate is working on this project yet."
-          />
+          matesNotice === null ? (
+            <Empty
+              action="Add a Mate"
+              onAction={onAddMate}
+              text="No Mate is working on this project yet."
+            />
+          ) : null
         ) : (
           <ul className="flex flex-col">
             {mates.map((mate) => (
@@ -701,11 +779,13 @@ export function ZeropsGroupPane({
                 key={mate.projectId}
                 mate={mate}
                 menu={menuForMate?.(mate.projectId)}
-                notice={withheldNotice?.(mate.projectId) ?? null}
                 onOpen={onOpenMate}
               />
             ))}
           </ul>
+        )}
+        {matesNotice === null ? null : (
+          <ListingNotice notice={matesNotice} onAct={onMatesNoticeAct} />
         )}
       </Section>
 
@@ -791,8 +871,13 @@ export function ZeropsStopDetailPage({
   const flow = flowValue?.flows.get(groupId);
   const environments = flow?.environments ?? [];
   const stop = environments.find((entry) => entry.projectId === projectId);
-  const repo = stop?.versionRepository;
-  const deployed = useMemo(() => deployedShas(environments), [environments]);
+  // A stop whose project the grant withholds draws nothing of it (DESIGN §3.4),
+  // nor marks what it runs in another stop's history, and reads nothing its
+  // repository and commit address.
+  const { withheldNotice, shown } = useWithheldStops(flow?.environments);
+  const withheld = withheldNotice(projectId);
+  const repo = withheld === null ? stop?.versionRepository : undefined;
+  const deployed = useMemo(() => deployedShas(shown), [shown]);
   const commits = useZeropsRepositoryCommits(
     flow === undefined || repo === undefined
       ? null
@@ -828,6 +913,13 @@ export function ZeropsStopDetailPage({
     return (
       <DetailShell crumbs={crumbs} title="Environment">
         <Note>This environment has not been read yet.</Note>
+      </DetailShell>
+    );
+  }
+  if (withheld !== null) {
+    return (
+      <DetailShell crumbs={crumbs} title={stop.tier}>
+        <Note>{withheld}</Note>
       </DetailShell>
     );
   }
@@ -1339,6 +1431,7 @@ const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
 const EMPTY_REMARKS: ReadonlyArray<ChangeRemark> = [];
 const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
 const EMPTY_PULLS: ReadonlyArray<FlowPullRequest> = [];
+const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 
 /**
  * Where a detail page sits, outermost first — a containment trail, not a way
@@ -1661,29 +1754,13 @@ export interface GroupMate {
 function MateLine({
   mate,
   menu,
-  notice,
   onOpen,
 }: {
   readonly mate: GroupMate;
   /** This Mate's own quiet actions — the same set the projects screen offers. */
   readonly menu?: React.ReactNode;
-  /** Said in place of what it is on while its access is withheld; its name stays. */
-  readonly notice: string | null;
   readonly onOpen: (projectId: string) => void;
 }) {
-  if (notice !== null) {
-    return (
-      <li className="flex min-w-0 items-center gap-3 px-2 py-2">
-        <MateFace size="md" state="idle" tint={mate.tint} />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
-            {mate.name}
-          </span>
-          <span className="truncate text-xs leading-4 text-muted-foreground">{notice}</span>
-        </span>
-      </li>
-    );
-  }
   return (
     // The row is a control and the menu is another: a button inside a button
     // is not a thing, so they sit side by side and the row keeps the hover.
@@ -1737,7 +1814,10 @@ function StopLine({
   readonly groupId: string;
   /** The project's name, so a stop under it does not repeat it. */
   readonly groupName: string | undefined;
-  /** Said in place of its version and state while its access is withheld; its name stays. */
+  /**
+   * Said in place of the stop while the grant withholds its project: its
+   * tier stays, and its name, what it runs and its page do not (DESIGN §3.4).
+   */
   readonly notice: string | null;
 }) {
   const navigate = useNavigate();
@@ -1752,9 +1832,7 @@ function StopLine({
   if (notice !== null) {
     return (
       <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {environmentNameUnderGroup(groupName, environment.name)}
-        </span>
+        <span className="shrink-0 text-sm font-medium text-foreground">{environment.tier}</span>
         <span className="truncate text-xs text-muted-foreground">{notice}</span>
       </li>
     );
@@ -1935,6 +2013,47 @@ function Fact({ term, children }: { readonly term: string; readonly children: Re
       <dt className="text-muted-foreground">{term}</dt>
       <dd className="min-w-0 text-foreground">{children}</dd>
     </>
+  );
+}
+
+/**
+ * What a section drawn from the listing says in place of a "none" it may not
+ * say yet: its message, after the delay that keeps a quick answer from
+ * flickering it, and its one affordance.
+ */
+function ListingNotice({
+  notice,
+  onAct,
+}: {
+  readonly notice: CandidatesNotice;
+  readonly onAct?: ((affordance: KnownAffordance) => void) | undefined;
+}) {
+  const { affordance, message } = notice;
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-3",
+        message.afterMs > 0 && "animate-zerops-appear",
+      )}
+      role={notice.region === "message" ? "alert" : "status"}
+      style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
+    >
+      <p
+        className={cn(
+          "text-sm",
+          message.tone === "alert"
+            ? "text-[var(--zerops-status-failed-text)]"
+            : "text-muted-foreground",
+        )}
+      >
+        {message.text}
+      </p>
+      {affordance === null || onAct === undefined ? null : (
+        <Button onClick={() => onAct(affordance)} size="sm" variant="outline">
+          {affordance.label}
+        </Button>
+      )}
+    </div>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   servicePortOrigin,
   zeropsClientsFromUser,
   type ZeropsProject,
+  type WriteAdmission,
   type ZeropsService,
 } from "./api.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
@@ -31,6 +32,36 @@ function jsonResponse(status: number, body: unknown): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+/** Admits writes once `open` is called, or refuses them with `refusal`. */
+const heldAdmission = (): {
+  readonly admission: WriteAdmission;
+  readonly asked: () => number;
+  readonly open: () => void;
+  readonly refuse: (refusal: unknown) => void;
+} => {
+  let asked = 0;
+  let settle: { readonly open: () => void; readonly refuse: (refusal: unknown) => void } | null =
+    null;
+  return {
+    admission: {
+      beforeProjectWrite: () => {
+        asked += 1;
+        return new Promise<void>((resolve, reject) => {
+          settle = { open: resolve, refuse: reject };
+        });
+      },
+    },
+    asked: () => asked,
+    open: () => settle?.open(),
+    refuse: (refusal) => settle?.refuse(refusal),
+  };
+};
+const refusal = {
+  _tag: "ZeropsCommandAdmissionError",
+  reason: "access-expired",
+  message: "Project access could not be verified.",
+};
 
 function recordingFetch(handler: (request: RecordedRequest) => Response | Promise<Response>): {
   readonly fetch: (input: string, init?: RequestInit) => Promise<Response>;
@@ -544,6 +575,28 @@ describe("ZeropsApiClient project reads", () => {
       `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/client/org-1/project?limit=500&statuses=ACTIVE`,
     );
     expect(stub.requests.every((request) => !request.url.includes("/search"))).toBe(true);
+  });
+
+  it("sends the caller's signal with the user read and every project listing read, the search fallback's too", async () => {
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const client = new ZeropsApiClient({
+      fetch: async (input, init) => {
+        signals.push(init?.signal);
+        if (input.endsWith("/user/info")) return jsonResponse(200, { id: "user-1" });
+        return input.includes("/client/org-dev/project")
+          ? jsonResponse(403, {
+              error: { code: "insufficientPermissions", message: "Insufficient permissions" },
+            })
+          : jsonResponse(200, { items: [], totalHits: 0 });
+      },
+    });
+    client.restoreSession(SESSION);
+    const { signal } = new AbortController();
+
+    await client.fetchUser(signal);
+    await client.listAccessibleClientProjects("org-dev", { signal });
+
+    expect(signals).toEqual([signal, signal, signal]);
   });
 
   it("falls back to the permission-filtered project search for a restricted membership", async () => {
@@ -1293,7 +1346,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(client.session).toEqual(SESSION);
   });
 
-  it("admits explicit POST reads while project writes are locked", async () => {
+  it("admits explicit POST reads while project writes are refused", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/web-socket/login"))
         return jsonResponse(200, { webSocketToken: "ws-token" });
@@ -1301,7 +1354,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(false);
+    client.admitWritesThrough({ beforeProjectWrite: () => Promise.reject(refusal) });
 
     await client.exchangeWebSocketToken();
 
@@ -1313,53 +1366,75 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
         signal: new AbortController().signal,
         background: false,
       }),
-    ).rejects.toMatchObject({ kind: "unexpected" });
+    ).rejects.toBe(refusal);
     expect(stub.requests).toHaveLength(1);
   });
 
-  it("rejects project writes after their absolute deadline without waiting for a timer", async () => {
-    const stub = recordingFetch(() => jsonResponse(204, {}));
-    let nowMs = 1_000;
-    const client = new ZeropsApiClient({ fetch: stub.fetch, now: () => nowMs });
+  it("sends a project write only once its admission lets it", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true, 2_000);
+    const held = heldAdmission();
+    client.admitWritesThrough(held.admission);
 
-    nowMs = 2_001;
-    await expect(client.restartService("service-1")).rejects.toMatchObject({
-      kind: "unexpected",
-    });
+    const restart = client.restartService("service-1");
+    await vi.waitFor(() => expect(held.asked()).toBe(1));
+    expect(stub.requests).toHaveLength(0);
+    held.open();
 
+    await expect(restart).resolves.toBeUndefined();
+    expect(stub.requests).toHaveLength(1);
+  });
+
+  it("hands a refused write's refusal to its caller as it came, with nothing sent", async () => {
+    const stub = recordingFetch(() => jsonResponse(204, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    const held = heldAdmission();
+    client.admitWritesThrough(held.admission);
+
+    const restart = client.restartService("service-1");
+    await vi.waitFor(() => expect(held.asked()).toBe(1));
+    held.refuse(refusal);
+
+    await expect(restart).rejects.toBe(refusal);
     expect(stub.requests).toHaveLength(0);
   });
 
-  it("names a refused write by its cause alone, leaving the way on to the surface", async () => {
-    const client = new ZeropsApiClient({
-      fetch: recordingFetch(() => jsonResponse(204, {})).fetch,
-    });
+  it("ends a write's wait for admission when its caller gives up, with nothing sent", async () => {
+    const stub = recordingFetch(() => jsonResponse(204, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(false);
+    const held = heldAdmission();
+    client.admitWritesThrough(held.admission);
+    const controller = new AbortController();
 
-    await expect(client.restartService("service-1")).rejects.toMatchObject({
-      message: "Project access could not be verified.",
-    });
+    const restart = client.restartService("service-1", controller.signal);
+    await vi.waitFor(() => expect(held.asked()).toBe(1));
+    controller.abort();
+
+    await expect(restart).rejects.toMatchObject({ name: "AbortError" });
+    held.open();
+    await Promise.resolve();
+    expect(stub.requests).toHaveLength(0);
   });
 
-  it("rechecks the absolute deadline before a write retry after token refresh", async () => {
-    let nowMs = 1_000;
+  it("asks the admission again before a write retry after token refresh", async () => {
+    let writes = 0;
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/auth/refresh")) {
         return jsonResponse(200, { ...SESSION, accessToken: "access-2" });
       }
-      nowMs = 2_001;
+      writes += 1;
       return jsonResponse(401, { error: { code: "unauthorized" } });
     });
-    const client = new ZeropsApiClient({ fetch: stub.fetch, now: () => nowMs });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true, 2_000);
-
-    await expect(client.restartService("service-1")).rejects.toMatchObject({
-      kind: "unexpected",
+    client.admitWritesThrough({
+      beforeProjectWrite: () => (writes === 0 ? Promise.resolve() : Promise.reject(refusal)),
     });
+
+    await expect(client.restartService("service-1")).rejects.toBe(refusal);
 
     expect(stub.requests.filter((request) => request.url.includes("/restart"))).toHaveLength(1);
     expect(stub.requests.filter((request) => request.url.endsWith("/auth/refresh"))).toHaveLength(
@@ -1382,7 +1457,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
     let checks = 0;
     const denied = {
       _tag: "ZeropsCommandAdmissionError",
@@ -1424,7 +1498,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
 
     await expect(client.createToolProject(TOOL_INPUT)).resolves.toMatchObject({
       project: { id: "project-1" },
@@ -1470,7 +1543,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
 
     await expect(client.createToolProject(TOOL_INPUT)).resolves.toMatchObject({
       project: { id: "project-1" },
@@ -1488,7 +1560,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     );
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
     const denied = {
       _tag: "ZeropsCommandAdmissionError",
       reason: "access-expired",
@@ -1544,7 +1615,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
 
     await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
 
@@ -1574,7 +1644,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
 
     const created = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
 
@@ -1587,7 +1656,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     const stub = recordingFetch(() => jsonResponse(200, { name: "Mate", status: "ACTIVE" }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
 
     await expect(
       client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
@@ -1626,7 +1694,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
       },
     });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
 
     const created = await client.createProjectWithZeropsMate(
       { clientId: "org-1", name: "Mate" },
@@ -1651,7 +1718,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
 
     const created = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
 
@@ -1667,7 +1733,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(true);
 
     await expect(
       client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
@@ -1690,7 +1755,7 @@ describe("ZeropsApiClient.deleteThrowaway", () => {
     },
   );
 
-  it("carries the minting token with the window closed, and its 401 never touches the session", async () => {
+  it("carries the minting token with project writes refused, and its 401 never touches the session", async () => {
     const stored: Array<ZeropsSession | null> = [];
     const stub = recordingFetch(() => jsonResponse(401, { error: { code: "unauthorized" } }));
     const client = new ZeropsApiClient({
@@ -1700,7 +1765,7 @@ describe("ZeropsApiClient.deleteThrowaway", () => {
       },
     });
     client.restoreSession(SESSION);
-    client.setWritesAllowed(false);
+    client.admitWritesThrough({ beforeProjectWrite: () => Promise.reject(refusal) });
 
     await expect(
       client.deleteThrowaway(
@@ -1988,48 +2053,36 @@ describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
   });
 });
 
-describe("ZeropsApiClient.recordProjectAgentSigner — who signed an agent in (D6)", () => {
+describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {
   const project = {
     id: "p1",
     name: "Fen",
     status: "ACTIVE",
     clientId: "org-1",
+    description: "A Mate",
     tagList: ["mate", "mate:signer:claude-code:old-user"],
+    publicIpV4Shared: true,
+    maxCreditLimit: 40,
+    userRoles: [{ clientUserId: "cu-jan", roleCode: "OWNER" }],
   };
 
-  it("replaces this agent's signer and keeps every other tag", async () => {
+  it("sends the list with the fields the platform would otherwise reset, and never userRoles", async () => {
     const stub = recordingFetch(() => jsonResponse(200, project));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.recordProjectAgentSigner({
-      projectId: "p1",
-      agentId: "claude-code",
-      userId: "jan",
-    });
+    await client.writeProjectTags(project, ["mate", "mate:signer:claude-code:jan"]);
 
-    const body = JSON.parse(stub.requests[1]?.body ?? "{}");
-    expect(body.tagList).toEqual(["mate", "mate:signer:claude-code:jan"]);
+    expect(stub.requests.map((request) => request.method)).toEqual(["PUT"]);
     // A tag write must never carry `userRoles`: the platform replaces what it
     // is sent, and a stale list would silently rewrite who may open the Mate.
-    expect(body.userRoles).toBeUndefined();
-  });
-
-  // Signing in again with the same account costs a read and nothing more.
-  it("writes nothing when the record already says the same thing", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, { ...project, tagList: ["mate", "mate:signer:claude-code:jan"] }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.recordProjectAgentSigner({
-      projectId: "p1",
-      agentId: "claude-code",
-      userId: "jan",
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
+      name: "Fen",
+      description: "A Mate",
+      tagList: ["mate", "mate:signer:claude-code:jan"],
+      publicIpV4Shared: true,
+      maxCreditLimit: 40,
     });
-
-    expect(stub.requests.map((request) => request.method)).toEqual(["GET"]);
   });
 });
 

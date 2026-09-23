@@ -7,6 +7,10 @@
  * its way somewhere renders as a banner over the mounted route.
  */
 import type { EnvironmentShellStatus } from "../../state/shell.ts";
+import type { Instant, ScopeAuthority } from "../data/access/grant.ts";
+import type { WithheldReason } from "../knowledge/known.ts";
+import { knownPresentation } from "../knowledge/presentation.ts";
+import type { EnvironmentMachine } from "./environmentMachine.ts";
 import {
   isTerminalReachability,
   reachabilityPhrase,
@@ -19,11 +23,11 @@ export type RouteContent = EnvironmentShellStatus;
 
 /** How far finding the route's environment has got while no Mate target is known for it. */
 export type RouteDiscovery =
-  /** A source that could still name the environment has not answered yet. */
+  /** A source that could still name the environment has neither answered nor failed yet. */
   | "pending"
-  /** Every source that could name the environment has answered, and none did. */
+  /** Every source that could name the environment has answered or failed, and none named it. */
   | "settled"
-  /** No organization is chosen, so nothing is looking for it yet (Amendment A5). */
+  /** Every source answered or failed without naming it, and no organization is chosen (A5). */
   | "no-organization";
 
 export type RouteTarget =
@@ -43,7 +47,7 @@ export type RouteGate =
     }
   /** RG2 while the environment is still being looked for (null), RG8 with its verdict. */
   | { readonly kind: "wait"; readonly reachability: Reachability | null }
-  /** A5: nothing looks for the environment until an organization is chosen. */
+  /** A5: nothing named the environment, and no organization is chosen yet. */
   | { readonly kind: "choose-organization" }
   /** RG3 when no project holds the environment (null), RG4–RG6 with the terminal verdict. */
   | { readonly kind: "unavailable"; readonly reachability: Reachability | null };
@@ -110,4 +114,74 @@ export function routeGatePhrase(
         ? { text: "This conversation isn't in your Zerops projects.", actions: ["go-to-projects"] }
         : reachabilityPhrase(gate.reachability, context);
   }
+}
+
+// ── C1b: the conversation without verified access ─────────────────────────────────────────────
+
+/**
+ * How long a conversation stays shown after its link dropped while its project's access is not
+ * verified (DESIGN §9 C1b). While the link is connected, the Mate's own membership watch is the
+ * authority; once it dropped, this bound replaces it.
+ */
+export const CONVERSATION_UNVERIFIED_BOUND_MS = 10 * 60_000;
+
+/** The route project's access as the grant last published it, or its loss confirmed (G6). */
+export type ConversationAccess = ScopeAuthority | { readonly kind: "lost" };
+
+export type ConversationView =
+  /** `until`: the instant the bound ends it, to be judged again then; null while nothing does. */
+  | { readonly kind: "shown"; readonly until: Instant | null }
+  /** Its content and drafts are hidden, mounted, until the access is verified again. */
+  | { readonly kind: "suppressed"; readonly reason: WithheldReason };
+
+/**
+ * Whether the route's conversation shows (DESIGN §9 C1b): always under verified access; without
+ * it, only while the target's link is connected or less than the bound after it dropped, on either
+ * clock. A link that never connected, or no target at all, vouches for nothing; a confirmed loss
+ * suppresses it at once.
+ */
+export function selectConversation(input: {
+  readonly access: ConversationAccess;
+  /** The route target's machine; undefined while no target names the route's environment. */
+  readonly machine: Pick<EnvironmentMachine, "link" | "linkLostAt"> | undefined;
+  readonly now: Instant;
+}): ConversationView {
+  const { access, machine, now } = input;
+  if (access.kind === "authorized") return { kind: "shown", until: null };
+  if (access.kind === "lost") return { kind: "suppressed", reason: "access-denied" };
+  if (machine?.link.phase === "connected") return { kind: "shown", until: null };
+  const lostAt = machine?.linkLostAt ?? null;
+  if (lostAt !== null) {
+    const until = {
+      wall: lostAt.wall + CONVERSATION_UNVERIFIED_BOUND_MS,
+      mono: lostAt.mono + CONVERSATION_UNVERIFIED_BOUND_MS,
+    };
+    if (now.wall < until.wall && now.mono < until.mono) return { kind: "shown", until };
+  }
+  return { kind: "suppressed", reason: access.reason };
+}
+
+const CONVERSATION_SURFACE = {
+  subject: "this conversation",
+  entity: "project",
+  source: "zerops",
+  checking: null,
+  negative: null,
+} as const;
+
+/**
+ * What a suppressed conversation says in its place: its cause only, as `knownPresentation` words a
+ * withheld project. A lapse says nothing here: the app's one banner names it.
+ */
+export function conversationPhrase(view: ConversationView): RouteGatePhrase {
+  if (view.kind === "shown") return SILENT;
+  const presentation = knownPresentation(
+    { state: "withheld", reason: view.reason, cause: null },
+    CONVERSATION_SURFACE,
+    { nowMs: 0, updateOffered: false },
+  );
+  return {
+    text: presentation.message?.text ?? null,
+    actions: presentation.affordance?.kind === "go-to-projects" ? ["go-to-projects"] : [],
+  };
 }

@@ -55,6 +55,11 @@ export function presentConnectionState(
   }
 }
 
+/**
+ * A connection's one-line status for a list: the phase alone. The failure's
+ * own detail names hosts, URLs and error classes; it stays on the
+ * presentation for diagnostics.
+ */
 export function connectionStatusText(connection: EnvironmentConnectionPresentation): string {
   switch (connection.phase) {
     case "available":
@@ -64,23 +69,66 @@ export function connectionStatusText(connection: EnvironmentConnectionPresentati
     case "connecting":
       return "Connecting...";
     case "reconnecting":
-      return connection.error
-        ? `Failed to connect. Reconnecting... Reason: ${connection.error}`
-        : "Reconnecting...";
+      return "Reconnecting...";
     case "connected":
       return "Connected";
     case "error":
-      return connection.error
-        ? `Connection failed. Reason: ${connection.error}`
-        : "Connection failed";
+      return "Connection failed";
   }
 }
 
-export function connectionStatusTitle(connection: EnvironmentConnectionPresentation): string {
-  if (connection.phase === "reconnecting" && connection.error) {
-    return "Failed to connect. Reconnecting...";
+export interface ConnectionBannerCopy {
+  readonly title: string;
+  readonly description: string | null;
+  /**
+   * The banner's one verb, which asks the supervisor to try now; the
+   * component renders it exactly once. Null where trying now does nothing:
+   * a connection nobody asked for stays where it is.
+   */
+  readonly action: string | null;
+}
+
+/**
+ * What a banner over a conversation says about its connection: the cause
+ * class alone — the network, the Mate not answering, the Mate refusing —
+ * named after the Mate. The failure's own detail names hosts, URLs and error
+ * classes; it stays on the presentation for diagnostics and never reaches
+ * this copy. Without a known Mate the copy names no one: the environment's
+ * label is a host name. A connected environment has no banner.
+ */
+export function connectionBannerCopy(
+  connection: EnvironmentConnectionPresentation,
+  mateName: string | null,
+): ConnectionBannerCopy | null {
+  const subject = mateName ?? "It";
+  const to = mateName === null ? "" : ` to ${mateName}`;
+  switch (connection.phase) {
+    case "connected":
+      return null;
+    case "available":
+      return { title: `Not connected${to}`, description: null, action: null };
+    case "offline":
+      return {
+        title: "You're offline",
+        description: `${subject} reconnects when your network is back.`,
+        action: "Try now",
+      };
+    case "connecting":
+      return { title: `Connecting${to}…`, description: null, action: "Try now" };
+    case "reconnecting":
+      return {
+        title: `Reconnecting${to}…`,
+        description:
+          connection.error === null ? null : `${subject} isn't answering. It may be restarting.`,
+        action: "Try now",
+      };
+    case "error":
+      return {
+        title: `Couldn't connect${to}`,
+        description: `${subject} refused the connection.`,
+        action: "Try again",
+      };
   }
-  return connectionStatusText({ ...connection, error: null });
 }
 
 export function presentEnvironmentConnection(

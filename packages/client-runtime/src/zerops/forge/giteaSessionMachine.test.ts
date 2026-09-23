@@ -132,15 +132,6 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       runs: ["acquire"],
     },
     {
-      row: "acquiring ─the mint waited out a closed account window─► waiting on identityMint",
-      steps: [
-        [DEMAND, 0],
-        [failed(1, { kind: "access-unverified" }), 0],
-      ] as ReadonlyArray<Step>,
-      phase: "waiting",
-      runs: ["acquire"],
-    },
-    {
       row: "acquiring ─Zerops 401 on the throwaway─► waiting on the Zerops session",
       steps: [
         [DEMAND, 0],
@@ -198,7 +189,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
   });
 
   describe("retry ladders", () => {
-    it("pending retries 5 s rising to 60 s, unavailable 10 s rising to 60 s", () => {
+    it("pending retries 5 s rising to 60 s", () => {
       const pending = play([
         [DEMAND, 0],
         [failed(1, SETTING_UP), 0],
@@ -207,34 +198,66 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
         [failed(2, SETTING_UP), 5 * S],
       ]);
       expect(scheduled(pending.effects)).toEqual([5 * S, 15 * S]);
-
-      let unavailable = play([
-        [DEMAND, 0],
-        [failed(1, BROKER_DOWN), 0],
-      ]);
-      let at = 0;
-      const delays: Array<number> = [];
-      for (let attempt = 2; attempt <= 7; attempt += 1) {
-        const phase = unavailable.machine.phase;
-        if (phase.kind !== "unavailable")
-          throw new Error(`expected unavailable, got ${phase.kind}`);
-        delays.push(phase.retryAt.mono - at);
-        at = phase.retryAt.mono;
-        unavailable = play(
-          [
-            [TICK, at],
-            [liveness(attempt, false), at],
-          ],
-          unavailable.machine,
-        );
-      }
-      expect(delays).toEqual([10 * S, 20 * S, 40 * S, 60 * S, 60 * S, 60 * S]);
     });
 
-    it("waits on identityMint on the common ladder and counts no failure", () => {
+    it.each([
+      {
+        name: "the broker does not answer its liveness check",
+        // The broker's origin gives no HTTP answer: the next rung, no mint.
+        again: (attempt: number): ReadonlyArray<GiteaSessionEvent> => [liveness(attempt, false)],
+      },
+      {
+        name: "the broker answers, the person-token call fails at the network",
+        // A 502 in front of the broker without CORS headers: the origin answers, the mint does not.
+        again: (attempt: number): ReadonlyArray<GiteaSessionEvent> => [
+          liveness(attempt, true),
+          failed(attempt, BROKER_DOWN),
+        ],
+      },
+    ])(
+      "repeated failures climb the ladder, never faster, never stop while demanded: $name",
+      ({ again }) => {
+        let run = play([
+          [DEMAND, 0],
+          [failed(1, BROKER_DOWN), 0],
+        ]);
+        let at = 0;
+        const delays: Array<number> = [];
+        for (let attempt = 2; attempt <= 10; attempt += 1) {
+          const phase = run.machine.phase;
+          if (phase.kind !== "unavailable")
+            throw new Error(`expected unavailable, got ${phase.kind}`);
+          const retryAt = phase.retryAt.mono;
+          delays.push(retryAt - at);
+          // Never faster: a tick before the rung comes due runs nothing.
+          expect(runs(play([[TICK, retryAt - 1]], run.machine).effects)).toEqual([]);
+          // Never stops: every rung checks the broker again.
+          const due = play([[TICK, retryAt]], run.machine);
+          expect(runs(due.last)).toEqual(["liveness"]);
+          at = retryAt;
+          run = play(
+            again(attempt).map((event): Step => [event, at]),
+            due.machine,
+          );
+        }
+        expect(delays).toEqual([
+          2 * S,
+          4 * S,
+          8 * S,
+          15 * S,
+          30 * S,
+          60 * S,
+          60 * S,
+          60 * S,
+          60 * S,
+        ]);
+      },
+    );
+
+    it("waits on the Zerops session on the common ladder and counts no failure", () => {
       const run = play([
         [DEMAND, 0],
-        [failed(1, { kind: "access-unverified" }), 0],
+        [failed(1, { kind: "zerops-session" }), 0],
       ]);
       expect(scheduled(run.effects)).toEqual([2 * S]);
       expect(run.machine.failures).toBe(0);
@@ -257,7 +280,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
         expect(runs(woken.last)).toEqual(["liveness"]);
         const again = play([[liveness(3, false), 11 * S]], woken.machine);
         // Back on the first rung.
-        expect(scheduled(again.last)).toEqual([21 * S]);
+        expect(scheduled(again.last)).toEqual([13 * S]);
       }
     });
 

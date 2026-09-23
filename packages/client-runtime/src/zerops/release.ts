@@ -54,6 +54,14 @@
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 
+/** The group repo, whose pull requests are recipe changes and whose tags are the releases. */
+export const GROUP_REPOSITORY = "group";
+
+/** The seven characters a person reads a commit by. */
+export function shortCommit(sha: string): string {
+  return sha.slice(0, 7);
+}
+
 /** One service's commit in a release. */
 export interface ReleaseEntry {
   readonly service: string;
@@ -351,4 +359,75 @@ export function releaseWord(verdict: ReleaseVerdict): string | undefined {
     case "unknown":
       return undefined;
   }
+}
+
+/** One release of the group, as the broker judged it. */
+export interface FlowRelease {
+  readonly tag: string;
+  readonly verdict: ReleaseVerdict;
+  /** Why the broker refused it, when it did. */
+  readonly detail: string | undefined;
+  /** `api 3f9c1b2 · web 77ab0e1` — what the tag lists, short. */
+  readonly line: string;
+}
+
+export interface FlowReleaseRow extends FlowRelease {
+  /** The word beside the dot — Approved, Refused, Checking; `undefined` before the broker spoke. */
+  readonly word: string | undefined;
+  /** Whether *Roll back to this* is offered. */
+  readonly rollBack: boolean;
+}
+
+/**
+ * A release's row, given its place in the newest-first list.
+ *
+ * The newest release is what production already runs, so rolling back to it
+ * would be a tag that changes nothing; a release the broker refused was never
+ * deployed, so there is nothing to go back to; one still being judged is not
+ * yet a state production was ever in.
+ */
+export function releaseRow(release: FlowRelease, index: number): FlowReleaseRow {
+  return {
+    ...release,
+    line:
+      release.verdict === "refused" && release.detail !== undefined ? release.detail : release.line,
+    word: releaseWord(release.verdict),
+    rollBack: index > 0 && release.verdict === "approved",
+  };
+}
+
+/**
+ * One service's read for *what would go live*: the commit production runs, and
+ * the commit `main` is at.
+ *
+ * A service production already runs is not read at all. A service production
+ * runs **nothing** of is read with no base: a first release has no `from` to
+ * compare against, and skipping it is what made a brand-new production answer
+ * "nothing is waiting" while the row went on offering *Release* (measured
+ * 2026-09-20).
+ */
+export interface ReleaseRead {
+  readonly service: string;
+  /** Where `main` is. */
+  readonly head: string;
+  /** What production runs, or `undefined` when it runs nothing yet. */
+  readonly from: string | undefined;
+}
+
+/**
+ * What to read so a release can say what it puts live, service by service.
+ *
+ * Pure: the reads themselves are the caller's (rule R1).
+ */
+export function planReleaseReads(
+  mainHeads: ReadonlyMap<string, string>,
+  running: ReadonlyMap<string, string>,
+): ReadonlyArray<ReleaseRead> {
+  const reads: Array<ReleaseRead> = [];
+  for (const [service, head] of mainHeads) {
+    const from = running.get(service);
+    if (from === head) continue;
+    reads.push({ service, head, from });
+  }
+  return reads;
 }

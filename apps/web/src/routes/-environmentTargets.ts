@@ -1,13 +1,21 @@
 /**
  * The route gate's input and every link into an environment (DESIGN §4.4, §4.8), read off the
- * exchange driver's machine per Mate target through `selectReachability`, the one verdict: a
- * route and the links into it agree on which environments are worth opening.
+ * account runtime's machine per Mate target through `selectReachability`, the one verdict: a
+ * route and the links into it agree on which environments are worth opening. An environment no
+ * machine names is looked up in the descriptor index. The route's environment is the runtime's
+ * too: it exchanges the route's target first, and sweeps the descriptors of every present Mate
+ * that has not answered while nothing names it.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { Instant } from "@t3tools/client-runtime/zerops/data";
 import {
   environmentLinkable,
-  selectReachability,
+  resolveEnvironment,
+  selectConversation,
+  type ConversationAccess,
+  type ConversationView,
+  type DescriptorIndex,
   type EnvironmentMachine,
   type RouteContent,
   type RouteTarget,
@@ -17,16 +25,17 @@ import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell"
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
-import { useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
-import { InventoryContext } from "../zerops/inventoryContext";
 import {
-  readRememberedEnvironments,
-  useEnvironmentIdentityVersion,
-} from "../zerops/rememberedEnvironments";
-import { useExchangeDriver } from "../zerops/useZeropsIdentityExchange";
+  useAccountEnvironments,
+  useDescriptorIndex,
+  useEnvironmentMachines,
+} from "../zerops/accountEnvironments";
+import { conversationAccess, InventoryContext } from "../zerops/inventoryContext";
+import { useRegistrationRecords } from "../zerops/registrationRecords";
 import { useZeropsSession, type ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
 const NO_SHELL = Atom.make<EnvironmentShellState>({
@@ -37,32 +46,11 @@ const NO_SHELL = Atom.make<EnvironmentShellState>({
 
 export type Machines = ReadonlyMap<TargetKey, EnvironmentMachine>;
 
-const holds = (machine: EnvironmentMachine, environmentId: EnvironmentId): boolean =>
-  machine.credential.kind === "held" && machine.credential.environmentId === environmentId;
-
-/**
- * The target whose machine names the environment: the one holding its credential, else one that
- * remembers it or knows the redeploy that replaced it.
- */
-export function environmentTarget(
-  machines: Machines,
-  environmentId: EnvironmentId,
-): { readonly key: TargetKey; readonly machine: EnvironmentMachine } | undefined {
-  const entries = [...machines];
-  const [key, machine] =
-    entries.find(([, entry]) => holds(entry, environmentId)) ??
-    entries.find(
-      ([, entry]) => entry.record === environmentId || entry.superseded.has(environmentId),
-    ) ??
-    [];
-  return key === undefined || machine === undefined ? undefined : { key, machine };
-}
-
 /**
  * A credential still on its way: not yet judged, exchanging, answered but not yet installed,
- * waiting for a slot or the grant, or on a presence not read yet. A target whose presence was
- * read and is not there, that waits on its container, or backs off has no end discovery could
- * wait for.
+ * waiting for a slot or the grant, or on a presence not read yet (unknown, or only remembered from
+ * its record, A16). A target whose presence was read and is not there, that waits on its
+ * container, or backs off has no end discovery could wait for.
  */
 function onItsWay(machine: EnvironmentMachine): boolean {
   const credential = machine.credential;
@@ -74,7 +62,8 @@ function onItsWay(machine: EnvironmentMachine): boolean {
       return (
         credential.on === "budget" ||
         credential.on === "access" ||
-        (credential.on === "presence" && machine.presence.kind === "unknown")
+        (credential.on === "presence" &&
+          (machine.presence.kind === "unknown" || machine.presence.kind === "remembered"))
       );
     case "held":
       return !credential.installed;
@@ -108,32 +97,35 @@ export function discoveryPending(
 
 export type RouteOrganization = "chosen" | "choosing" | "not-chosen";
 
-/** The gate's target for the route's environment. */
+/**
+ * The gate's target for the route's environment. Discovery reads every organization's Mates, so
+ * it runs whether an organization is chosen or not: the picker is offered only once it settled
+ * without naming the environment, never while it could still name it.
+ */
 export function routeTarget(input: {
   readonly machines: Machines;
+  readonly index: DescriptorIndex;
   readonly remembered: ReadonlyArray<TargetKey>;
   readonly environmentId: EnvironmentId;
-  /** The inventory is read, not loading or failing. */
+  /** The inventory is read under verified access, not loading or failing. */
   readonly inventoryKnown: boolean;
   readonly organization: RouteOrganization;
   readonly content: RouteContent;
 }): RouteTarget {
-  const found = environmentTarget(input.machines, input.environmentId);
+  const found = resolveEnvironment(input.machines, input.index, input.environmentId);
   if (found !== undefined) {
-    return {
-      kind: "resolved",
-      reachability: selectReachability(found.machine, input.environmentId),
-      content: input.content,
-    };
-  }
-  if (input.organization === "not-chosen") {
-    return { kind: "unresolved", discovery: "no-organization" };
+    return { kind: "resolved", reachability: found.reachability, content: input.content };
   }
   const discovering =
     input.organization === "choosing" ||
     !input.inventoryKnown ||
-    discoveryPending(input.machines, input.remembered);
-  return { kind: "unresolved", discovery: discovering ? "pending" : "settled" };
+    discoveryPending(input.machines, input.remembered) ||
+    input.index.unanswered.length > 0;
+  if (discovering) return { kind: "unresolved", discovery: "pending" };
+  return {
+    kind: "unresolved",
+    discovery: input.organization === "not-chosen" ? "no-organization" : "settled",
+  };
 }
 
 const ORGANIZATION: Record<ZeropsOrganizationStatus, RouteOrganization> = {
@@ -143,12 +135,6 @@ const ORGANIZATION: Record<ZeropsOrganizationStatus, RouteOrganization> = {
   loading: "choosing",
 };
 
-/** Every target's machine as the driver last published it. */
-function useMachines(): Machines {
-  const driver = useExchangeDriver();
-  return useSyncExternalStore(driver.subscribe, driver.machines);
-}
-
 export interface RouteGateInputs {
   /** Null on a route that targets no environment (RG1). */
   readonly target: RouteTarget | null;
@@ -157,31 +143,97 @@ export interface RouteGateInputs {
   readonly mateName: string;
 }
 
-/** What the route gate reads for the route's environment. */
+const AUTHORIZED: ConversationAccess = { kind: "authorized" };
+
+const tabNow = (): Instant => ({ wall: Date.now(), mono: performance.now() });
+
+/**
+ * `selectConversation` on the tab's clocks, judged again the moment its bound ends: a
+ * conversation shown on a dropped link is hidden then, whatever else renders.
+ */
+export function useConversationView(
+  access: ConversationAccess,
+  machine: Pick<EnvironmentMachine, "link" | "linkLostAt"> | undefined,
+): ConversationView {
+  const [, judgeAgain] = useReducer((count: number) => count + 1, 0);
+  const view = selectConversation({ access, machine, now: tabNow() });
+  const until = view.kind === "shown" ? view.until : null;
+  const untilWall = until?.wall ?? null;
+  const untilMono = until?.mono ?? null;
+  useEffect(() => {
+    if (untilWall === null || untilMono === null) return;
+    const now = tabNow();
+    const timer = setTimeout(
+      judgeAgain,
+      Math.max(0, Math.min(untilWall - now.wall, untilMono - now.mono)),
+    );
+    return () => clearTimeout(timer);
+  }, [untilWall, untilMono]);
+  return view;
+}
+
+/**
+ * What the route gate reads for the route's environment. The route is the account runtime's
+ * demand from here: its target is exchanged first.
+ */
 export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGateInputs {
-  const machines = useMachines();
+  const account = useAccountEnvironments();
+  const machines = useEnvironmentMachines();
+  const index = useDescriptorIndex();
   const { environments } = useEnvironments();
   const inventory = useContext(InventoryContext);
   const { organizationStatus } = useZeropsSession();
-  // Remembered records are read at call time; this re-renders when they change.
-  useEnvironmentIdentityVersion();
+  const records = useRegistrationRecords();
   const content = useAtomValue(
     environmentId === null ? NO_SHELL : environmentShell.stateValueAtom(environmentId),
   ).status;
+  const target =
+    environmentId === null
+      ? null
+      : routeTarget({
+          machines,
+          index,
+          remembered: records.map((record) => record.targetKey),
+          environmentId,
+          inventoryKnown:
+            inventory !== null &&
+            inventory.account.kind === "authorized" &&
+            !inventory.isLoading &&
+            inventory.error === null,
+          organization: ORGANIZATION[organizationStatus],
+          content,
+        });
+  useEffect(() => {
+    if (account === null) return;
+    account.setRoute(environmentId);
+    return () => account.setRoute(null);
+  }, [account, environmentId]);
   if (environmentId === null) return { target: null, projectId: null, mateName: "This Mate" };
   return {
-    target: routeTarget({
-      machines,
-      remembered: readRememberedEnvironments().map((record) => record.key),
-      environmentId,
-      inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
-      organization: ORGANIZATION[organizationStatus],
-      content,
-    }),
-    projectId: environmentTarget(machines, environmentId)?.key.split(":")[0] ?? null,
+    target,
+    projectId: resolveEnvironment(machines, index, environmentId)?.key.split(":")[0] ?? null,
     mateName:
       environments.find((entry) => entry.environmentId === environmentId)?.label ?? "This Mate",
   };
+}
+
+/**
+ * Whether the route's conversation — a thread's, or a draft's — shows under its project's access
+ * (DESIGN §9 C1b), for the environment it belongs to.
+ */
+export function useRouteConversation(environmentId: EnvironmentId | null): ConversationView {
+  const machines = useEnvironmentMachines();
+  const index = useDescriptorIndex();
+  const inventory = useContext(InventoryContext);
+  const found =
+    environmentId === null ? undefined : resolveEnvironment(machines, index, environmentId);
+  const projectId = found?.key.split(":")[0] ?? null;
+  return useConversationView(
+    inventory === null || projectId === null
+      ? AUTHORIZED
+      : conversationAccess(inventory, projectId),
+    found?.machine,
+  );
 }
 
 export interface EnvironmentLinks {
@@ -193,16 +245,15 @@ export interface EnvironmentLinks {
 
 /** The shared `environmentLinkable` rule for every producer of a link into an environment. */
 export function useEnvironmentLinks(): EnvironmentLinks {
-  const machines = useMachines();
+  const machines = useEnvironmentMachines();
+  const index = useDescriptorIndex();
   const { environments } = useEnvironments();
   const linkable = useCallback(
     (environmentId: EnvironmentId) => {
-      const found = environmentTarget(machines, environmentId);
-      return (
-        found !== undefined && environmentLinkable(selectReachability(found.machine, environmentId))
-      );
+      const found = resolveEnvironment(machines, index, environmentId);
+      return found !== undefined && environmentLinkable(found.reachability);
     },
-    [machines],
+    [index, machines],
   );
   const registered = useMemo(
     () => new Set(environments.map((entry) => entry.environmentId)),

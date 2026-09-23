@@ -150,7 +150,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     url: undefined,
     checks: "passing",
     checkWord: "Passing",
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
     headSha: sha("b21d904c"),
@@ -327,7 +327,10 @@ function Harness() {
           crumbs={CRUMBS}
           names={NAMES}
           onSetUp={() => {}}
-          pullRequests={[pull(), pull({ number: 6, title: "Bump the linter", mergeable: false })]}
+          pullRequests={[
+            pull(),
+            pull({ number: 6, title: "Bump the linter", mergeability: "conflicting" }),
+          ]}
           release={RELEASE_WAITING}
           readDetail={undefined}
           repo="appdev"

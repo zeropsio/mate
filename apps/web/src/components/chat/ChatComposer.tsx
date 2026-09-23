@@ -20,7 +20,6 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
-import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
@@ -147,7 +146,8 @@ import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
-import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
+import { resolveComposerMenuActiveItemId, useComposerMenuHighlight } from "./composerMenuHighlight";
+import { useSyncStateOnChange } from "./composerStateSync";
 import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
@@ -324,6 +324,9 @@ const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
 /** Stable empty read of the data mention catalog, so a project without one never re-renders on identity. */
 const EMPTY_DATA_MENTIONS: ReadonlyArray<DataMentionEntry> = [];
+/** Stable empty skills and commands while no provider is selected, so the menu items keep their identity. */
+const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
+const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
 
 const runtimeModeConfig: Record<
   RuntimeMode,
@@ -647,10 +650,8 @@ export interface ChatComposerProps {
   externalDrawerAttached: boolean;
   /** Picking /usage-limits from the menu is the action itself; the draft keeps nothing of it. */
   onUsageLimitsCommand?: (() => void) | undefined;
-  environmentUnavailable: {
-    readonly label: string;
-    readonly connection: EnvironmentConnectionPresentation;
-  } | null;
+  /** The composer's environment is not connected: nothing can be sent. */
+  environmentUnavailable: boolean;
 
   // Pending approvals / inputs
   activePendingApproval: PendingApproval | null;
@@ -1045,10 +1046,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
   const selectedProviderSkills = selectedProviderStatus
     ? resolveProviderSkillsForCwd(selectedProviderStatus, gitCwd)
-    : [];
+    : NO_PROVIDER_SKILLS;
   const selectedProviderSlashCommands = selectedProviderStatus
     ? resolveProviderSlashCommandsForCwd(selectedProviderStatus, gitCwd)
-    : [];
+    : NO_PROVIDER_SLASH_COMMANDS;
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });
@@ -1198,12 +1199,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger | null>(() =>
     detectComposerTrigger(prompt, prompt.length),
   );
-  const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
   // Active ArrowUp recall. Cleared on edit and on thread switch.
   const promptHistoryPositionRef = useRef<ComposerPromptHistoryPosition | null>(null);
-  const [composerHighlightedSearchKey, setComposerHighlightedSearchKey] = useState<string | null>(
-    null,
-  );
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
@@ -1432,6 +1429,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerMenuSearchKey = composerTrigger
     ? `${composerTrigger.kind}:${composerTrigger.query.trim().toLowerCase()}`
     : null;
+  const {
+    highlightedItemId: composerHighlightedItemId,
+    setHighlightedItemId: setComposerHighlightedItemId,
+    highlightedSearchKey: composerHighlightedSearchKey,
+    setHighlightedSearchKey: setComposerHighlightedSearchKey,
+  } = useComposerMenuHighlight({
+    menuOpen: composerMenuOpen,
+    items: composerMenuItems,
+    searchKey: composerMenuSearchKey,
+  });
   const activeComposerMenuItem = useMemo(() => {
     const activeItemId = resolveComposerMenuActiveItemId({
       items: composerMenuItems,
@@ -1565,7 +1572,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isConnecting ||
     noProviderAvailable ||
     projectSelectionRequired ||
-    environmentUnavailable !== null ||
+    environmentUnavailable ||
     !composerSendState.hasSendableContent;
   const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
@@ -1631,8 +1638,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   useEffect(() => {
     promptRef.current = prompt;
-    setComposerCursor((existing) => clampCollapsedComposerCursor(prompt, existing));
   }, [prompt, promptRef]);
+  useSyncStateOnChange(
+    composerCursor,
+    setComposerCursor,
+    clampCollapsedComposerCursor(prompt, composerCursor),
+    [prompt],
+  );
 
   useEffect(() => {
     if (composerSubmissionError === null) return;
@@ -1642,9 +1654,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   }, [composerSubmissionError, prompt]);
 
-  useEffect(() => {
-    setProviderInputSubmissionError(null);
-  }, [
+  useSyncStateOnChange(providerInputSubmissionError, setProviderInputSubmissionError, null, [
     composerReviewComments,
     composerTerminalContexts,
     prompt,
@@ -1660,35 +1670,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useEffect(() => {
     composerTerminalContextsRef.current = composerTerminalContexts;
   }, [composerTerminalContexts, composerTerminalContextsRef]);
-
-  // ------------------------------------------------------------------
-  // Composer menu highlight sync
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    if (!composerMenuOpen) {
-      setComposerHighlightedItemId(null);
-      setComposerHighlightedSearchKey(null);
-      return;
-    }
-    const nextActiveItemId = resolveComposerMenuActiveItemId({
-      items: composerMenuItems,
-      highlightedItemId: composerHighlightedItemId,
-      currentSearchKey: composerMenuSearchKey,
-      highlightedSearchKey: composerHighlightedSearchKey,
-    });
-    setComposerHighlightedItemId((existing) =>
-      existing === nextActiveItemId ? existing : nextActiveItemId,
-    );
-    setComposerHighlightedSearchKey((existing) =>
-      existing === composerMenuSearchKey ? existing : composerMenuSearchKey,
-    );
-  }, [
-    composerHighlightedItemId,
-    composerHighlightedSearchKey,
-    composerMenuItems,
-    composerMenuOpen,
-    composerMenuSearchKey,
-  ]);
 
   const lastSyncedPendingInputRef = useRef<{
     requestId: string | null;
@@ -2297,7 +2278,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isSendDisabled ||
       isConnecting ||
       noProviderAvailable ||
-      environmentUnavailable !== null ||
+      environmentUnavailable ||
       phase === "running"
     ) {
       return false;
@@ -2942,33 +2923,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       (visibleTasksProgress !== null &&
         visibleTaskSteps !== null &&
         visibleTasksProgress.totalSteps > 0));
-  useEffect(() => {
-    if (visibleTasksProgress === null || visibleTaskSteps === null) {
-      setIsTasksDrawerOpen(false);
-    }
-  }, [visibleTaskSteps, visibleTasksProgress]);
-
-  useEffect(() => {
-    if (hasBlockingComposerTopDrawer) {
-      setIsTasksDrawerOpen(false);
-    }
-  }, [hasBlockingComposerTopDrawer]);
-
-  useEffect(() => {
-    setIsTasksDrawerOpen(false);
-  }, [activeThreadId]);
+  useSyncStateOnChange(
+    isTasksDrawerOpen,
+    setIsTasksDrawerOpen,
+    isTasksDrawerOpen && visibleTasksProgress !== null && visibleTaskSteps !== null,
+    [visibleTaskSteps, visibleTasksProgress],
+  );
+  useSyncStateOnChange(
+    isTasksDrawerOpen,
+    setIsTasksDrawerOpen,
+    isTasksDrawerOpen && !hasBlockingComposerTopDrawer,
+    [hasBlockingComposerTopDrawer],
+  );
+  useSyncStateOnChange(isTasksDrawerOpen, setIsTasksDrawerOpen, false, [activeThreadId]);
 
   // Close the stash menu whenever the trigger-driven command menu opens so
   // the two popovers never stack in the same layer, and when the user
   // resumes typing (the menu is a transient picker, not a panel).
-  useEffect(() => {
-    if (composerMenuOpen) {
-      setIsStashMenuOpen(false);
-    }
-  }, [composerMenuOpen]);
-  useEffect(() => {
-    setIsStashMenuOpen(false);
-  }, [prompt]);
+  useSyncStateOnChange(isStashMenuOpen, setIsStashMenuOpen, isStashMenuOpen && !composerMenuOpen, [
+    composerMenuOpen,
+  ]);
+  useSyncStateOnChange(isStashMenuOpen, setIsStashMenuOpen, false, [prompt]);
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
@@ -3497,9 +3472,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         sendDisabledReason={sendDisabledReason}
                         isConnecting={isConnecting}
                         isEnvironmentUnavailable={
-                          environmentUnavailable !== null ||
-                          noProviderAvailable ||
-                          projectSelectionRequired
+                          environmentUnavailable || noProviderAvailable || projectSelectionRequired
                         }
                         isPreparingWorktree={false}
                         hasSendableContent={false}
@@ -3841,9 +3814,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         sendDisabledReason={sendDisabledReason}
                         isConnecting={isConnecting}
                         isEnvironmentUnavailable={
-                          environmentUnavailable !== null ||
-                          noProviderAvailable ||
-                          projectSelectionRequired
+                          environmentUnavailable || noProviderAvailable || projectSelectionRequired
                         }
                         isPreparingWorktree={false}
                         hasSendableContent={false}
@@ -3991,9 +3962,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       sendDisabledReason={sendDisabledReason}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={
-                        environmentUnavailable !== null ||
-                        noProviderAvailable ||
-                        projectSelectionRequired
+                        environmentUnavailable || noProviderAvailable || projectSelectionRequired
                       }
                       isPreparingWorktree={isPreparingWorktree}
                       hasSendableContent={composerSendState.hasSendableContent}

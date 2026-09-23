@@ -8,7 +8,7 @@
         "apps/web/src/zerops/ZeropsSessionProvider.tsx",
         "apps/web/src/zerops/ZeropsDataProvider.tsx",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-        "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx",
+        "packages/client-runtime/src/zerops/account/accountRuntime.ts",
         "apps/mobile/src/features/zerops/ZeropsDataProvider.tsx",
         "packages/client-runtime/src/zerops/data/runtime.ts"
       ],
@@ -860,7 +860,7 @@
         "packages/client-runtime/src/zerops/registrationHandoff.test.ts",
         "packages/client-runtime/src/zerops/containerHealth.test.ts",
         "apps/web/src/zerops/turnstile.test.ts",
-        "apps/web/src/zerops/upgradeRestart.test.ts",
+        "apps/web/src/zerops/useZeropsUpgradeRestart.test.ts",
         "apps/web/src/zerops/ZeropsInventoryProvider.test.ts",
         "apps/web/src/zerops/useProjectTopology.test.ts",
         "packages/client-runtime/src/zerops/data/inventory.test.ts",
@@ -935,7 +935,7 @@
         },
         {
           "kind": "inline",
-          "value": "Provisioning panel pool-exhausted Create a project"
+          "value": "Zerops projects page after a registration that claimed no project"
         }
       ],
       "clients": {
@@ -1002,7 +1002,7 @@
         "packages/client-runtime/src/zerops/newProject.test.ts",
         "packages/client-runtime/src/zerops/data/commands.test.ts",
         "packages/client-runtime/src/zerops/data/runtime.test.ts",
-        "apps/web/src/zerops/upgradeRestart.test.ts",
+        "apps/web/src/zerops/useZeropsUpgradeRestart.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts"
       ],
       "captures": []
@@ -1084,7 +1084,7 @@
       "connectionModeNote": "The Zerops door composes the opening prompt only on explicit onboarding. Account restoration never sends a prompt.",
       "contracts": [
         "local-storage:zerops-mate.first-prompt.v1",
-        "local-storage:zerops-mate.zerops-environments.v1"
+        "local-storage:zerops-mate.registration-records.v1"
       ],
       "reverseStates": [
         {

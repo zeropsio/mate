@@ -41,13 +41,8 @@
 
 import { CHECKING_WHAT_RUNS, type Deployment } from "./flow/deployment.ts";
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
-import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
-import {
-  shortCommit,
-  type DeployedVersion,
-  type EnvironmentRow,
-  type MissingEnvironmentRow,
-} from "./groupRows.ts";
+import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
+import type { DeployedVersion, EnvironmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   PROJECT_ALL_CLEAR,
@@ -61,7 +56,7 @@ import {
   type FlowPullRequest,
 } from "./projectFlow.ts";
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
-import type { ReleaseGate } from "./release.ts";
+import { shortCommit, type ReleaseGate } from "./release.ts";
 
 /** One Mate of the project, as the flow's first column shows it. */
 export interface GroupFlowMate {
@@ -331,7 +326,7 @@ function nextStepOf(
   const failed = first("deploy-failed");
   if (failed !== undefined) return fromAttention("fix-deploy", failed);
 
-  const mergeable = pullRequests.find((entry) => entry.pull.mergeable)?.pull;
+  const mergeable = pullRequests.find((entry) => entry.pull.mergeability === "mergeable")?.pull;
   if (mergeable !== undefined)
     return {
       kind: "merge",

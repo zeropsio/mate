@@ -25,6 +25,7 @@ import {
   SshEnvironmentGateway,
 } from "@t3tools/client-runtime/platform";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
+import { makePlatformSignals, type PageEvent } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   AuthStandardClientScopes,
   EnvironmentId,
@@ -44,7 +45,7 @@ import { FetchHttpClient } from "effect/unstable/http";
 import type { AuthGateState } from "../environments/primary/auth";
 import {
   canReuseCachedPlatformRegistration,
-  connectionWakeupForDocumentEvent,
+  connectionWakeupForSignal,
   primaryPlatformRegistrationStream,
   primaryRegistrationToRetainAfterTopologyRead,
   readPrimaryPlatformAuthGate,
@@ -377,38 +378,111 @@ describe("primary topology cache", () => {
   });
 });
 
-describe("connection wakeups", () => {
-  it("treats a bfcache restore as a reconnect, not an ordinary activation", () => {
-    // A tab restored from the back/forward cache comes back with a socket the
-    // browser already killed, so the lease must be replaced without waiting out
-    // a backoff rung — that is exactly `application-active-reconnect`.
-    expect(connectionWakeupForDocumentEvent({ type: "pageshow", persisted: true })).toBe(
-      "application-active-reconnect",
-    );
+/** The connection wakeups a tab's raw events raise, each at the monotonic time it happened. */
+function wakeupsFor(steps: ReadonlyArray<readonly [atMs: number, event: PageEvent]>) {
+  let nowMs = 0;
+  let hidden = false;
+  const hearers = new Set<(event: PageEvent) => void>();
+  const signals = makePlatformSignals({
+    hidden: () => hidden,
+    online: () => true,
+    now: () => ({ wall: nowMs, mono: nowMs }),
+    listen: (hear) => {
+      hearers.add(hear);
+      return () => hearers.delete(hear);
+    },
+  });
+  const wakeups: Array<string> = [];
+  const unlisten = signals.listen((signal) => {
+    const wakeup = connectionWakeupForSignal(signal);
+    if (wakeup !== null) wakeups.push(wakeup);
+  });
+  for (const [atMs, event] of steps) {
+    nowMs = atMs;
+    if (event.type === "visibility") hidden = event.hidden;
+    for (const hear of hearers) hear(event);
+  }
+  unlisten();
+  return wakeups;
+}
+
+describe("connection wakeups: the account's visible wake (DESIGN §6.4)", () => {
+  it("an iframe focus round trip triggers no resubscribe", () => {
+    expect(
+      wakeupsFor([
+        [0, { type: "blur" }],
+        [4_000, { type: "focus" }],
+      ]),
+    ).toEqual([]);
   });
 
-  it("ignores a pageshow that is not a bfcache restore", () => {
-    // A cold load connects on its own; a second wakeup would only churn.
-    expect(connectionWakeupForDocumentEvent({ type: "pageshow", persisted: false })).toBeNull();
+  it("a short tab switch triggers no resubscribe", () => {
+    expect(
+      wakeupsFor([
+        [0, { type: "visibility", hidden: true }],
+        [5_000, { type: "visibility", hidden: false }],
+      ]),
+    ).toEqual([]);
   });
 
-  it("wakes on window focus, which an app switch fires when visibility does not", () => {
+  it("wakes on focus back from another application after 30 s", () => {
     // Switching back from ANOTHER APPLICATION leaves document.visibilityState
-    // "visible" throughout, so visibilitychange never fires and nothing probed
-    // the transport. focus is the only signal that case produces.
-    expect(connectionWakeupForDocumentEvent({ type: "focus" })).toBe("application-active");
+    // "visible" throughout, so focus is the only signal that case produces.
+    expect(
+      wakeupsFor([
+        [0, { type: "blur" }],
+        [30_000, { type: "focus" }],
+      ]),
+    ).toEqual(["application-active"]);
   });
 
-  it("wakes when the document becomes visible and stays quiet when it hides", () => {
-    expect(
-      connectionWakeupForDocumentEvent({ type: "visibilitychange", visibilityState: "visible" }),
-    ).toBe("application-active");
-    expect(
-      connectionWakeupForDocumentEvent({ type: "visibilitychange", visibilityState: "hidden" }),
-    ).toBeNull();
+  // A tab restored from the back/forward cache comes back with a socket the
+  // browser already killed, so the lease must be replaced without waiting out
+  // a backoff rung — that is exactly `application-active-reconnect`. The
+  // browser raises the restore amid `resume` and `visibilitychange`, in either
+  // order, within a single wake's coalescing window.
+  const HIDE = [0, { type: "visibility", hidden: true }] as const;
+  const AWAY = 60_000;
+  it.each([
+    [
+      "a restore of a visible page",
+      [[0, { type: "pageshow", persisted: true }]],
+      ["application-active-reconnect"],
+    ],
+    ["a first page load", [[0, { type: "pageshow", persisted: false }]], []],
+    [
+      "hidden → resume → pageshow → visible",
+      [
+        HIDE,
+        [AWAY, { type: "resume" }],
+        [AWAY + 5, { type: "pageshow", persisted: true }],
+        [AWAY + 10, { type: "visibility", hidden: false }],
+      ],
+      ["application-active-reconnect"],
+    ],
+    [
+      "hidden → visible → pageshow",
+      [
+        HIDE,
+        [AWAY, { type: "visibility", hidden: false }],
+        [AWAY + 5, { type: "pageshow", persisted: true }],
+      ],
+      ["application-active", "application-active-reconnect"],
+    ],
+    [
+      "hidden 10 s → pageshow → visible",
+      [
+        HIDE,
+        [10_000, { type: "pageshow", persisted: true }],
+        [10_005, { type: "visibility", hidden: false }],
+      ],
+      ["application-active-reconnect"],
+    ],
+  ] as const)("a bfcache restore replaces the lease: %s", (_case, steps, expected) => {
+    expect(wakeupsFor(steps)).toEqual(expected);
   });
 
-  it("ignores events it does not model", () => {
-    expect(connectionWakeupForDocumentEvent({ type: "pagehide" })).toBeNull();
+  it("a hidden wake leaves the connection alone", () => {
+    expect(connectionWakeupForSignal({ type: "wake", visible: false, cause: "resume" })).toBeNull();
   });
 });

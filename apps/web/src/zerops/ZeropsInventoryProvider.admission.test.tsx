@@ -52,17 +52,24 @@ afterEach(async () => {
 });
 
 describe("ZeropsInventoryProvider first admission", () => {
-  it("mounts the product only once the first grant is complete", async () => {
+  it("mounts the product on the first grant, while the push half still establishes (D2)", async () => {
     const harness = signedInHarness();
+    const round = harness.rest.hold("GET /project/p1");
     const establishing = harness.datastream.holdRegistrations();
     const { mounting, accessAtMount } = mountProduct(harness);
     const tab: MountedTab = await mounting;
 
     expect(tab.session().status).toBe("signed-in");
+    expect(round.waiting()).toBe(1);
+    expect(tab.text()).not.toContain(CHILD);
+
+    await tab.run(() => round.release());
+
     expect(harness.rest.requests().map(({ route }) => route)).toEqual(
       expect.arrayContaining(["GET /user/info", "GET /client/org-1/project", "GET /project/p1"]),
     );
-    expect(tab.text()).not.toContain(CHILD);
+    expect(tab.text()).toContain(CHILD);
+    expect(accessAtMount).toEqual(["verified"]);
 
     establishing.release();
     await settle();
@@ -96,5 +103,32 @@ describe("ZeropsInventoryProvider first admission", () => {
     expect(tab.text()).toContain(CHILD);
     expect(tab.text()).not.toContain("Could not load your Zerops projects.");
     expect(accessAtMount).toEqual(["verified"]);
+  });
+});
+
+describe("ZeropsInventoryProvider publication", () => {
+  it("publishes the account's inventory into its registry, where the candidate listing derives from it", async () => {
+    const harness = signedInHarness();
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      page: async () => {
+        const { AccountProduct } = await import("./__fixtures__/accountProduct");
+        const { useAtomValue } = await import("@effect/atom-react");
+        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
+        const { candidateRowsAtom } = await import("../state/zerops");
+        function Rows() {
+          const rows = useAtomValue(candidateRowsAtom);
+          const names = heldCandidates(rows).rows.map((row) => row.project.name);
+          return `rows ${rows.state}: ${names.join(", ")}`;
+        }
+        return (
+          <AccountProduct datastream={harness.datastream}>
+            <Rows />
+          </AccountProduct>
+        );
+      },
+    });
+    await settle();
+
+    expect(tab.text()).toContain("rows known: One");
   });
 });

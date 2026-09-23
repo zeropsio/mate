@@ -50,13 +50,12 @@ describe("central Zerops data bindings", () => {
       "../components/zerops/ZeropsNewProjectWizard.tsx",
       "../components/zerops/ZeropsProjectsPage.tsx",
       "./useZeropsGroupReach.ts",
-      "./useZeropsProvisioning.ts",
+      "./zeropsBirths.ts",
       "./useZeropsUpgradeRestart.ts",
     ];
     const legacyMethods = [
       "restartService",
-      "nameProjectAgent",
-      "updateProjectGroupTags",
+      "writeProjectTags",
       "importDevelopmentContainer",
       "enableZeropsMate",
       "enableSubdomainAccess",
@@ -76,8 +75,8 @@ describe("central Zerops data bindings", () => {
   });
 
   it("binds per-project views to projection families instead of the account root atom", () => {
-    const topology = source("./useProjectTopology.ts");
-    expect(topology).toContain("runtime.reads.topology(project)");
+    const topology = source("../state/zerops.ts");
+    expect(topology).toContain("runtime.reads.topology(");
     expect(topology).not.toContain("runtime.stateAtom");
 
     const activity = source("./activity/useProjectActivity.ts");
@@ -92,9 +91,9 @@ describe("central Zerops data bindings", () => {
     expect(inventory).toContain("runtime.reads.servicesOf(");
     expect(inventory).not.toContain("runtime.stateAtom");
 
-    const candidates = source("./useZeropsCandidates.ts");
-    expect(candidates).toContain("runtime.reads.projectsOf(");
-    expect(candidates).toContain("runtime.reads.servicesOf(");
+    // The candidates are the account runtime's listing, which reads the same two families.
+    const candidates = source("../state/zerops.ts");
+    expect(candidates).toContain("candidateListingsAtom(runtime)");
     expect(candidates).not.toContain("runtime.stateAtom");
     expect(candidates).not.toContain("useZeropsDataState");
   });
@@ -199,9 +198,9 @@ describe("central Zerops data bindings", () => {
     registry.dispose();
   });
 
-  it("passes the absolute verification deadline into direct-write admission", () => {
+  it("admits direct writes through the epoch's own grant", () => {
     expect(source("./ZeropsDataProvider.tsx")).toContain(
-      "client.setWritesAllowed(true, performance.timeOrigin + performance.now() + forMs)",
+      "client.admitWritesThrough(writeAdmissionOf(grantCapabilities(created.access)))",
     );
   });
 

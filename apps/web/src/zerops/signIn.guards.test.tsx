@@ -163,20 +163,34 @@ function productHarness() {
   return harness;
 }
 
-/** `AppRoot` in a tab of `harness`, opened at the deep link, with its router. */
-async function appTab(harness: ReturnType<typeof makeAccountHarness>) {
+/**
+ * `AppRoot` in a tab of `harness`, opened at the deep link, with its router.
+ * `beside` loads what the route tree's root renders beside the session probe,
+ * from the tab's own module graph.
+ */
+async function appTab(
+  harness: ReturnType<typeof makeAccountHarness>,
+  beside: (() => Promise<ComponentType>) | null = null,
+) {
   let router!: AppRouter;
   const tab = await mountTab(harness, harness.browser.openTab(), {
     path: DEEP_LINK,
     app: async (Probe) => {
       seams.Probe = Probe;
       vi.doMock("./ZeropsDataProvider", seams.dataProvider);
-      const [{ AppRoot }, { productRouter }, { createElement }] = await Promise.all([
-        import("../AppRoot"),
-        import("./__fixtures__/productRoutes"),
-        import("react"),
-      ]);
-      router = productRouter(DEEP_LINK, Probe);
+      const [{ AppRoot }, { productRouter }, { createElement, Fragment }, Beside] =
+        await Promise.all([
+          import("../AppRoot"),
+          import("./__fixtures__/productRoutes"),
+          import("react"),
+          beside?.() ?? null,
+        ]);
+      router = productRouter(
+        DEEP_LINK,
+        Beside === null
+          ? Probe
+          : () => createElement(Fragment, null, createElement(Probe), createElement(Beside)),
+      );
       return createElement(AppRoot, { router });
     },
   });
@@ -234,5 +248,76 @@ describe("a sign-in in another tab", () => {
     expect(b.tab.accountId()).toBe("user-1");
     expect(b.tab.navigations()).toEqual([]);
     expect(b.tab.tab.reloads).toBe(0);
+  });
+});
+
+describe("cold sign-in", () => {
+  it("mounts the router on the first grant while services are unknown: the sidebar shows its placeholder, never none, and nothing exchanges before the grant", async () => {
+    const harness = productHarness();
+    // A Mate this browser remembers: the post-grant stage restores it.
+    harness.browser.openTab().localStorage.setItem(
+      "mate:account:user-1:zerops-mate.registration-records.v1",
+      JSON.stringify([
+        {
+          targetKey: "p1:zcp",
+          environmentId: "environment-1",
+          origin: "https://zcp-1-8080.prg1.zerops.app",
+          projectRef: { projectId: "p1", orgId: "org-1" },
+          name: "One",
+        },
+      ]),
+    );
+    const round = harness.rest.hold("GET /project/p1");
+    const establishing = harness.datastream.holdRegistrations();
+    const accessAtMount: string[] = [];
+    let environments!: typeof import("./accountEnvironments");
+    const { tab } = await appTab(harness, async () => {
+      const [{ ProductChild, SidebarListing }, { createElement, Fragment }] = await Promise.all([
+        import("./__fixtures__/accountProduct"),
+        import("react"),
+      ]);
+      environments = await import("./accountEnvironments");
+      const onMount = (access: string) => accessAtMount.push(access);
+      return () =>
+        createElement(
+          Fragment,
+          null,
+          createElement(ProductChild, { label: "", onMount }),
+          createElement(SidebarListing),
+        );
+    });
+    const mints = () =>
+      harness.rest
+        .requests()
+        .filter(({ route }) => route === "POST /client/org-1/integration-token");
+
+    await tab.run(() => tab.session().signIn("person@example.test", "secret"));
+
+    // The first round's project read is out: no grant, no route, and no
+    // post-grant stage to exchange for the remembered Mate.
+    expect(round.waiting()).toBe(1);
+    expect(tab.text()).toContain("Checking your Zerops projects…");
+    expect(tab.text()).not.toContain("Project p1");
+    expect(environments.currentAccountEnvironments()).toBeNull();
+    expect(mints()).toEqual([]);
+
+    await tab.run(() => round.release());
+    await settle();
+
+    // Granted while the push half still establishes: the route is on screen,
+    // and the menu says it is reading rather than that there is nothing.
+    expect(accessAtMount).toEqual(["verified"]);
+    expect(environments.currentAccountEnvironments()?.machines().has("p1:zcp")).toBe(true);
+    expect(tab.text()).toContain("Project p1");
+    expect(tab.text()).toContain("Reading your projects…");
+    expect(tab.text()).not.toMatch(/No projects|No environment has Mate yet/);
+
+    establishing.release();
+    await settle();
+
+    // The push half's answers reach the mounted product: nothing mounts again.
+    expect(tab.text()).toContain("Project p1");
+    expect(tab.text()).not.toMatch(/No projects|No environment has Mate yet/);
+    expect(accessAtMount).toEqual(["verified"]);
   });
 });

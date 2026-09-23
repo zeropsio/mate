@@ -29,12 +29,9 @@ import {
   shouldComposeFirstPrompt,
 } from "@t3tools/client-runtime/zerops/firstPrompt";
 
-import { creationHandoffFor } from "./creationHandoffStorage";
-import {
-  connectionOriginFor,
-  readFirstPromptMarkers,
-  rememberFirstPromptComposed,
-} from "./firstPromptStorage";
+import { readFirstPromptMarkers, rememberFirstPromptComposed } from "./firstPromptStorage";
+import { readRegistrationRecords } from "./registrationRecords";
+import { creationJobFor } from "./zeropsBirths";
 
 export function composeZeropsFirstPrompt(input: {
   readonly environmentId: string;
@@ -42,18 +39,24 @@ export function composeZeropsFirstPrompt(input: {
   readonly target: DraftId | ScopedThreadRef;
 }): boolean {
   // An environment somebody created has a reason to exist, and the creation
-  // wrote it down (`creationHandoff.ts`). `useZeropsCreationJob` is the only
-  // writer of the composer for as long as that hand-off stands — composing
+  // wrote it down (`creationHandoff.ts`; its birth keeps it, `zeropsBirths.ts`).
+  // `useZeropsCreationJob` is the only writer of the composer for as long as
+  // that hand-off stands — composing
   // here too raced it (R5): if the job ran first it forgot the hand-off
   // before this read it, so this then overwrote the job's real prompt with
   // the generic onboarding line.
-  if (creationHandoffFor(input.environmentId) !== undefined) return false;
+  if (creationJobFor(input.environmentId) !== undefined) return false;
 
   if (
     !shouldComposeFirstPrompt({
       environmentId: input.environmentId,
       alreadyComposed: readFirstPromptMarkers(),
-      connectedVia: connectionOriginFor(input.environmentId),
+      // Only a Zerops door exchange writes a record.
+      connectedVia: readRegistrationRecords().some(
+        (record) => record.environmentId === input.environmentId,
+      )
+        ? "zerops-identity"
+        : "pairing",
     })
   ) {
     return false;

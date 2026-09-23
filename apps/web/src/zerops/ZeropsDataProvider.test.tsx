@@ -2,18 +2,10 @@ import * as Effect from "effect/Effect";
 import { act, Children, isValidElement, StrictMode, useContext, useEffect } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  accountActionsAllowed,
-  closeAccountLifetime,
-  openAccountLifetime,
-} from "./accountLifetime";
+import { closeAccountLifetime } from "./accountLifetime";
 import { makeFakeRuntimeFactory } from "./__fixtures__/dataRuntimeFactory";
 import { ZeropsDataContext } from "./zeropsDataContext";
-import {
-  browserWriteWindow,
-  ZeropsDataProvider,
-  ZeropsDataStartupFailure,
-} from "./ZeropsDataProvider";
+import { ZeropsDataProvider, ZeropsDataStartupFailure } from "./ZeropsDataProvider";
 
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
@@ -104,7 +96,7 @@ function installTestDom(): void {
 
 function sessionFor(userId: string) {
   return {
-    client: { baseUrl: "https://api.example.test" },
+    client: { baseUrl: "https://api.example.test", admitWritesThrough: vi.fn() },
     signOut: vi.fn(async () => undefined),
     status: "signed-in" as const,
     user: { id: userId },
@@ -116,33 +108,6 @@ async function flushEffects(): Promise<void> {
     await Promise.resolve();
   });
 }
-
-describe("browserWriteWindow", () => {
-  it("opens nothing for an account whose lifetime closed, and never closes a newer account's writes", () => {
-    const client = { setWritesAllowed: vi.fn() };
-    try {
-      openAccountLifetime("account-a");
-      const replaced = browserWriteWindow(client);
-      openAccountLifetime("account-b");
-      const current = browserWriteWindow(client);
-
-      replaced.open(60_000);
-      expect(accountActionsAllowed()).toBe(false);
-      expect(client.setWritesAllowed).not.toHaveBeenCalled();
-
-      current.open(60_000);
-      replaced.close();
-      expect(accountActionsAllowed()).toBe(true);
-      expect(client.setWritesAllowed).toHaveBeenLastCalledWith(true, expect.any(Number));
-
-      current.close();
-      expect(accountActionsAllowed()).toBe(false);
-      expect(client.setWritesAllowed).toHaveBeenLastCalledWith(false);
-    } finally {
-      closeAccountLifetime();
-    }
-  });
-});
 
 describe("ZeropsDataStartupFailure", () => {
   it("offers finite recovery when account runtime creation fails", () => {
@@ -370,6 +335,45 @@ describe("ZeropsDataProvider ownership (M8)", () => {
         await Promise.resolve();
       });
       expect(handles[1]?.shutdownReasons).toEqual([]);
+    } finally {
+      await act(() => root.unmount());
+      closeAccountLifetime();
+    }
+  });
+
+  it("admits the client's project writes through the grant of the runtime that stood, never one cancelled before it did", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { factory, handles } = makeFakeRuntimeFactory({ resolveMode: "manual" });
+    const current = sessionFor("account-1");
+    session.current = current;
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+          </StrictMode>,
+        );
+      });
+      await flushEffects();
+      expect(handles).toHaveLength(2);
+
+      // The attempt StrictMode cancelled stands up late: it admits nothing.
+      await act(async () => {
+        handles[0]?.resolve?.();
+        await Promise.resolve();
+      });
+      expect(current.client.admitWritesThrough).not.toHaveBeenCalled();
+
+      await act(async () => {
+        handles[1]?.resolve?.();
+        await Promise.resolve();
+      });
+      expect(current.client.admitWritesThrough).toHaveBeenCalledOnce();
+      expect(current.client.admitWritesThrough).toHaveBeenCalledWith({
+        beforeProjectWrite: expect.any(Function),
+      });
     } finally {
       await act(() => root.unmount());
       closeAccountLifetime();

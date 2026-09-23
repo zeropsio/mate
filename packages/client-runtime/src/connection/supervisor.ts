@@ -45,7 +45,8 @@ type SupervisorSignal =
   | { readonly _tag: "DisconnectRequested" }
   | { readonly _tag: "RetryRequested" }
   | { readonly _tag: "NetworkChanged"; readonly network: NetworkStatus }
-  | { readonly _tag: "Wakeup"; readonly reason: ConnectionWakeups.ConnectionWakeup };
+  | { readonly _tag: "Wakeup"; readonly reason: ConnectionWakeups.ConnectionWakeup }
+  | { readonly _tag: "StreamDefect"; readonly session: RpcSession.RpcSession };
 
 interface PendingRetryTrace {
   readonly previousAttempt: Tracer.Span;
@@ -234,6 +235,8 @@ export class EnvironmentSupervisor extends Context.Service<
     readonly connect: Effect.Effect<void>;
     readonly disconnect: Effect.Effect<void>;
     readonly retryNow: Effect.Effect<void>;
+    /** A durable subscription on `session` died of a defect; a session already replaced is ignored. */
+    readonly reportStreamDefect: (session: RpcSession.RpcSession) => Effect.Effect<void>;
   }
 >()("@t3tools/client-runtime/connection/supervisor/EnvironmentSupervisor") {}
 
@@ -438,6 +441,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           }
           break;
         case "ConnectRequested":
+        case "StreamDefect":
           break;
         case "Wakeup":
           if (next.reason === "application-active-reconnect") {
@@ -452,6 +456,18 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
   });
 
+  /**
+   * A durable subscription on this lease died of a defect: the lease is no longer trusted, and
+   * the supervisor reconnects on its backoff ladder, showing reconnecting meanwhile.
+   */
+  const streamDefect = () =>
+    Effect.fail(
+      new ConnectionTransientError({
+        reason: "transport",
+        detail: `${target.label} sent data this client could not read.`,
+      }),
+    );
+
   const monitorConnectedLease = Effect.fnUntraced(function* (
     lease: ConnectionDriver.EnvironmentConnectionLease,
   ) {
@@ -461,6 +477,9 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         case "DisconnectRequested":
         case "RetryRequested":
           return false;
+        case "StreamDefect":
+          if (next.session === lease.session) return yield* streamDefect();
+          break;
         case "NetworkChanged":
           if (next.network === "offline") {
             return false;
@@ -519,6 +538,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
                   if (probeEvent.signal.network === "offline") {
                     yield* Fiber.interrupt(probe);
                     return false;
+                  }
+                  break;
+                case "StreamDefect":
+                  if (probeEvent.signal.session === lease.session) {
+                    yield* Fiber.interrupt(probe);
+                    return yield* streamDefect();
                   }
                   break;
                 case "Wakeup":
@@ -852,17 +877,23 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
             case "RetryRequested":
             case "NetworkChanged":
               return false;
+            case "StreamDefect":
+              // A defect of a lease already gone.
+              break;
           }
         }
       }),
     );
   });
 
-  const waitForSignal = Queue.take(signals).pipe(
-    Effect.map(
-      (next) => next._tag === "Wakeup" && ConnectionWakeups.isApplicationActiveWakeup(next.reason),
-    ),
-  );
+  const waitForSignal = Effect.gen(function* () {
+    for (;;) {
+      const next = yield* Queue.take(signals);
+      // A defect of a lease already gone asks for nothing.
+      if (next._tag === "StreamDefect") continue;
+      return next._tag === "Wakeup" && ConnectionWakeups.isApplicationActiveWakeup(next.reason);
+    }
+  });
 
   const run = Effect.fnUntraced(function* () {
     let failureCount = 0;
@@ -1024,6 +1055,11 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     Effect.withSpan("EnvironmentSupervisor.retryNow"),
   );
 
+  const reportStreamDefect = (defective: RpcSession.RpcSession) =>
+    signal({ _tag: "StreamDefect", session: defective }).pipe(
+      Effect.withSpan("EnvironmentSupervisor.reportStreamDefect"),
+    );
+
   yield* Effect.addFinalizer(() => Queue.shutdown(signals).pipe(Effect.andThen(clearLease)));
 
   return EnvironmentSupervisor.of({
@@ -1034,5 +1070,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     connect,
     disconnect,
     retryNow,
+    reportStreamDefect,
   });
 });

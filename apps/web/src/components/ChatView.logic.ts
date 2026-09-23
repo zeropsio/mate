@@ -789,6 +789,21 @@ export function shouldShowBranchMismatchBanner(input: {
   return input.composerHasContent || input.wasShownForCurrentMismatch;
 }
 
+// The composer's floating banner stack (resume-with-less-context, the merge
+// offer, …) renders from a zero-height anchor and is absolutely positioned
+// above the composer, so it never enlarges the composer overlay element's own
+// measured box — a ResizeObserver on that element alone under-reports the
+// overlay's true footprint whenever a banner is showing. Both the timeline's
+// bottom content inset and the "scroll to end" pill's offset must reserve the
+// combined height, or the list scrolls text in behind/beside the banner and
+// the pill lands mid-banner instead of above the whole stack.
+export function resolveComposerOverlayHeight(input: {
+  composerHeight: number;
+  bannerStackHeight: number;
+}): number {
+  return input.composerHeight + input.bannerStackHeight;
+}
+
 // Session-scoped (module-level so it survives ChatView remounts, e.g. route
 // changes). Durable cross-device dismissal is planned as a server-side ack.
 const sessionDismissedBranchMismatchKeys = new Set<string>();

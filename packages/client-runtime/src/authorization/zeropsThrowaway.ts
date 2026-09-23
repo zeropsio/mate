@@ -90,7 +90,7 @@ export interface ZeropsThrowawayPlatform {
   /**
    * `POST /client/{org}/integration-token` — `NO_ACCESS`, no `projects`, no
    * flags, this name. The implementation is `ZeropsApiClient.mintThrowaway`,
-   * which waits for a closed account window rather than refusing.
+   * an `account-write` that closed project writes never hold up.
    */
   readonly mint: (input: {
     readonly clientId: string;

@@ -30,6 +30,7 @@
 import { acquireGiteaPersonToken, MateCredentialError } from "../../authorization/giteaBroker.ts";
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
 import { ZeropsApiError } from "../api.ts";
+import { forge, type Capability } from "../data/access/capabilities.ts";
 import type { Instant } from "../data/access/grant.ts";
 import { createGiteaClient, GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import {
@@ -82,6 +83,11 @@ export interface GiteaSessions {
   readonly demand: (input: GiteaSessionDemand) => () => void;
   /** What surfaces show; the same object until something they show changes. */
   readonly view: (giteaOrigin: string) => GiteaSessionView;
+  /**
+   * Whether a forge command on that Gitea may run now (§4.3 `forge(origin)`), read at the instant
+   * it is asked: a view change is the moment to ask again.
+   */
+  readonly capability: (giteaOrigin: string) => Capability;
   /** Tells the listener whenever any session's view changes. */
   readonly subscribe: (listener: () => void) => () => void;
   /**
@@ -89,9 +95,13 @@ export interface GiteaSessions {
    * a 401 — also while what was read still stands without one, and while a reacquire runs on after
    * a request's 401 went unrecovered. `onUnauthorized` is told each time one of its requests ends
    * in Gitea's 401 that no token recovered: whatever that request's reader made of it is not an
-   * answer.
+   * answer. `signal` ends the client's requests, each of which also ends by its own deadline.
    */
-  readonly clientFor: (giteaOrigin: string, onUnauthorized?: () => void) => GiteaClient | null;
+  readonly clientFor: (
+    giteaOrigin: string,
+    onUnauthorized?: () => void,
+    signal?: AbortSignal,
+  ) => GiteaClient | null;
   /** §6.4's visible wake: waits for Gitea or the broker are tried again now. */
   readonly wake: () => void;
   /** The tab is visible again after a short hide: what came due while it was hidden runs now. */
@@ -126,7 +136,6 @@ export function classifyAcquireFailure(cause: unknown): GiteaAcquireFailure {
     return { kind: "refused", reason: cause.message };
   }
   if (cause instanceof ZeropsApiError) {
-    if (cause.kind === "access-unverified") return { kind: "access-unverified" };
     if (cause.kind === "expired-session" || cause.status === 401) return { kind: "zerops-session" };
     if (cause.kind === "network" || cause.kind === "server" || cause.kind === "uncertain") {
       return { kind: "unreachable", source: "zerops" };
@@ -387,13 +396,17 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
       };
     },
     view: (giteaOrigin) => entries.get(normalize(giteaOrigin))?.view ?? GITEA_SIGNED_OUT,
+    capability: (giteaOrigin) => {
+      if (closing.signal.aborted) return forge("closed");
+      return forge(entries.get(normalize(giteaOrigin))?.machine.phase.kind ?? "idle");
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
-    clientFor: (giteaOrigin, onUnauthorized = () => undefined) => {
+    clientFor: (giteaOrigin, onUnauthorized = () => undefined, signal) => {
       const origin = normalize(giteaOrigin);
       const entry = entries.get(origin);
       if (entry === undefined || !giteaSessionReadable(entry.machine)) return null;
@@ -402,6 +415,7 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
         // Replaced per request by the token `fetchAsPerson` waited for.
         token: () => giteaSessionToken(entry.machine) ?? "",
         fetch: fetchAsPerson(origin, onUnauthorized),
+        signal,
       });
     },
     wake: () => toEvery({ type: "WAKE" }),

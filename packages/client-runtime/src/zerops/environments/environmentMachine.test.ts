@@ -561,3 +561,139 @@ describe("environment machine (DESIGN §4.4)", () => {
     });
   });
 });
+
+// DESIGN §9 C1b bounds a conversation shown without verified access by the moment its link dropped.
+describe("the link's drop (C1b)", () => {
+  it("a link that stops being connected is stamped with the moment it dropped", () => {
+    const live = connected();
+    expect(live.linkLostAt).toBeNull();
+
+    const dropped = drive(live, [{ type: "LINK", link: { phase: "backoff", retryAtMs: null } }]);
+    const lostAt = { wall: dropped.nowMs, mono: dropped.nowMs };
+    expect(dropped.machine.linkLostAt).toEqual(lostAt);
+
+    // Still down, whatever it says next: the drop keeps its first moment.
+    const reconnecting = drive(dropped.machine, [
+      { type: "LINK", link: { phase: "connecting" } },
+      { type: "LINK", link: { phase: "offline" } },
+    ]);
+    expect(reconnecting.machine.linkLostAt).toEqual(lostAt);
+
+    const back = drive(reconnecting.machine, [{ type: "LINK", link: { phase: "connected" } }]);
+    expect(back.machine.linkLostAt).toBeNull();
+  });
+
+  it("a link that never connected has no drop", () => {
+    const never = drive(initialEnvironment({ record: ENV_A }), [
+      { type: "LINK", link: { phase: "connecting" } },
+      { type: "LINK", link: { phase: "backoff", retryAtMs: null } },
+    ]);
+    expect(never.machine.linkLostAt).toBeNull();
+  });
+});
+
+// DESIGN A16: a target a record names is probed at the recorded origin before its project's
+// services are read, and exchanged there only when that Mate is the one the record names.
+describe("a remembered target (A16)", () => {
+  const REMEMBERED = { kind: "remembered", origin: ORIGIN } as const;
+
+  /** A remembered, wanted target, after the descriptor probe it starts has been sent. */
+  const probing = (): Run =>
+    drive(initialEnvironment({ record: ENV_A }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "PRESENCE", presence: REMEMBERED },
+    ]);
+
+  const probeOf = (run: Run): Extract<EnvironmentEffect, { kind: "run" }> => {
+    const read = run.effects.find(
+      (effect): effect is Extract<EnvironmentEffect, { kind: "run" }> =>
+        effect.kind === "run" && effect.op.kind === "read-descriptor",
+    );
+    if (read === undefined) throw new Error("no descriptor probe");
+    return read;
+  };
+
+  it("a remembered target whose descriptor names another environment waits for presence", () => {
+    const started = probing();
+    const read = drive(
+      started.machine,
+      [
+        {
+          type: "DESCRIPTOR_READ",
+          attempt: probeOf(started).attempt,
+          result: { ok: true, descriptor: descriptor({ environmentId: ENV_B }) },
+        },
+      ],
+      started.nowMs,
+    );
+
+    expect(read.effects.some((effect) => effect.kind === "run")).toBe(false);
+    expect(read.machine.credential).toEqual({ kind: "waiting", on: "presence", reconnect: false });
+    // Only the services read moves it: time and wakes do not.
+    const waited = drive(read.machine, [{ type: "TICK" }, { type: "WAKE", visible: true }]);
+    expect(waited.machine.credential.kind).toBe("waiting");
+    const listed = drive(waited.machine, [
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    expect(listed.effects).toContainEqual(
+      expect.objectContaining({
+        kind: "run",
+        op: { kind: "exchange", origin: ORIGIN, expected: ENV_A },
+      }),
+    );
+  });
+
+  it("a probe at an origin the presence moved from is dropped at once, and the Mate is exchanged where it is listed", () => {
+    const moved = "https://zcp-2-abc.prg1.zerops.app";
+    const started = probing();
+    const listed = drive(
+      started.machine,
+      [{ type: "PRESENCE", presence: { kind: "present", origin: moved } }],
+      started.nowMs,
+    );
+
+    // The move is judged in its own step: nothing waits for the recorded origin's answer.
+    expect(listed.effects).toContainEqual(
+      expect.objectContaining({
+        kind: "run",
+        op: { kind: "exchange", origin: moved, expected: ENV_A },
+      }),
+    );
+
+    const read = drive(
+      listed.machine,
+      [
+        {
+          type: "DESCRIPTOR_READ",
+          attempt: probeOf(started).attempt,
+          result: { ok: true, descriptor: descriptor({ environmentId: ENV_A }) },
+        },
+      ],
+      listed.nowMs,
+    );
+
+    // The server at the recorded origin says nothing of the Mate listed elsewhere.
+    expect(read.machine.descriptor).toBeNull();
+    expect(read.machine.identityAnswered).toBe(false);
+    expect(read.machine.credential).toEqual(listed.machine.credential);
+    expect(read.effects).toContainEqual({
+      kind: "log",
+      diagnostic: { kind: "stale-result", attempt: probeOf(started).attempt },
+    });
+  });
+
+  it("a probe whose Mate is no longer remembered anywhere is dropped at once, and waits for presence", () => {
+    const started = probing();
+    const unknown = drive(
+      started.machine,
+      [{ type: "PRESENCE", presence: { kind: "unknown" } }],
+      started.nowMs,
+    );
+
+    expect(unknown.machine.credential).toEqual({
+      kind: "waiting",
+      on: "presence",
+      reconnect: false,
+    });
+  });
+});

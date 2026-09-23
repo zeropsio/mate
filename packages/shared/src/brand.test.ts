@@ -168,11 +168,11 @@ describe("Zerops brand tokens", () => {
     expect(withheld).toEqual(["off.light", "off.dark"]);
   });
 
-  it("pins the exact ok dark surface and its 7.030395873026908 AA contrast", () => {
+  it("pins the exact ok dark surface and its 8.154783240726806 AA contrast", () => {
     const tone = SERVICE_STATUS_TONES.ok.dark;
     expect(tone.text).toBe("#56d364");
-    expect(tone.surface).toBe("#1d3323");
-    expect(contrastRatio(tone.text, tone.surface)).toBeCloseTo(7.030395873026908, 12);
+    expect(tone.surface).toBe("#19261d");
+    expect(contrastRatio(tone.text, tone.surface)).toBeCloseTo(8.154783240726806, 12);
     expect(contrastRatio(tone.text, tone.surface)).toBeGreaterThanOrEqual(4.5);
   });
 
@@ -189,7 +189,7 @@ describe("Zerops brand tokens", () => {
     expect(CHIP_TINTS["access-green"].light.surface).toBe("rgba(76,175,80,.15)");
     expect(CHIP_TINTS["region-purple"].light.surface).toBe("rgba(156,39,176,.15)");
     expect(CHIP_TINTS["info-chip"].light.surface).toBe("rgba(255,255,255,.9)");
-    expect(MINT_PANEL).toEqual({ light: "#e8f7ec", dark: "#1d3323" });
+    expect(MINT_PANEL).toEqual({ light: "#e8f7ec", dark: "#19261d" });
   });
 
   it("pins the five service statuses for both appearances", () => {

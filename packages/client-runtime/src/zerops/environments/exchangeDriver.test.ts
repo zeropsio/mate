@@ -363,6 +363,67 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges.map((request) => request.key).slice(3)).toEqual([keyOf(mates[2]!)]);
   });
 
+  it("the route's exchange takes a slot while three restores are pending", async () => {
+    const records = ["a", "b", "c"].map((id) => mate(id));
+    const route = mate("route");
+    const { driver, exchanges, start } = rig([...records, route], { hold: true });
+    const routeTarget = (container: ContainerVerdict) => ({
+      key: keyOf(route),
+      presence: { kind: "present", origin: route.origin } as const,
+      container,
+      record: route.descriptor().environmentId,
+    });
+    // The route's Mate is still coming up while every remembered one could start.
+    const started = start({ records: [...records, route], route });
+    driver.setTargets([routeTarget({ level: "booting", overdue: false })]);
+    await started;
+    expect(exchanges.map((request) => request.key)).toEqual(
+      records.slice(0, EXCHANGE_CONCURRENCY - 1).map(keyOf),
+    );
+
+    // Its container comes up with every restore still out: the slot kept for it is free.
+    driver.setTargets([routeTarget({ level: "ready" })]);
+    await flush();
+    expect(exchanges.map((request) => request.key)).toEqual([
+      ...records.slice(0, EXCHANGE_CONCURRENCY - 1).map(keyOf),
+      keyOf(route),
+    ]);
+  });
+
+  it("a remembered target's descriptor probe counts against the minute's mints (A16)", async () => {
+    const spent = Array.from({ length: DOOR_MINTS_PER_MINUTE - 1 }, (_, index) =>
+      mate(`s${index}`),
+    );
+    const remembered = [mate("r1"), mate("r2")];
+    const { driver, exchanges } = rig([...spent, ...remembered]);
+    driver.setAccount(GRANTED);
+    driver.setVisible(true);
+    driver.setTargets([
+      ...spent.map((listed) => ({
+        key: keyOf(listed),
+        presence: { kind: "present", origin: listed.origin } as const,
+        container: { level: "ready" } as const,
+        record: null,
+      })),
+      ...remembered.map((listed) => ({
+        key: keyOf(listed),
+        presence: { kind: "remembered", origin: listed.origin } as const,
+        container: { level: "unknown" } as const,
+        record: listed.descriptor().environmentId,
+      })),
+    ]);
+    driver.setDemand("auto-connect", spent.map(keyOf));
+    await flush();
+    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE - 1);
+
+    // Both are looked for where their records kept them: one mint is left for the two.
+    driver.setDemand("record", remembered.map(keyOf));
+    await flush();
+
+    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE);
+    expect(exchanges.at(-1)?.key).toBe(keyOf(remembered[0]!));
+  });
+
   it("a revoked session re-exchanges with backoff, repeatedly", async () => {
     const shop = mate("shop");
     const { driver, clock, exchanges, installs, logs, start, reach } = rig([shop]);
@@ -448,6 +509,53 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges.every((request) => request.reason === "auto-connect")).toBe(true);
   });
 
+  it("a route target whose container turns ready exchanges within the minute its records spent", async () => {
+    const records = Array.from({ length: 11 }, (_, index) => mate(`r${index}`));
+    const route = mate("route");
+    const { driver, clock, exchanges, start } = rig([...records, route]);
+    const restarting: ContainerVerdict = { level: "restarting", by: "you", overdue: false };
+    const routeTarget = (container: ContainerVerdict) => ({
+      key: keyOf(route),
+      presence: { kind: "present", origin: route.origin } as const,
+      container,
+      record: route.descriptor().environmentId,
+    });
+    // The reload finds our restart under way: the route's container is not ready yet.
+    const started = start({ records: [...records, route], route });
+    driver.setTargets([routeTarget(restarting)]);
+    await started;
+    expect(exchanges.some((request) => request.key === keyOf(route))).toBe(false);
+
+    await clock.advance(5_000);
+    driver.setTargets([routeTarget({ level: "ready" })]);
+    await flush();
+    expect(driver.machine(keyOf(route))?.credential).toMatchObject({ kind: "held" });
+    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE);
+  });
+
+  it("records held back by the route target's mint start once the minute's mints age out", async () => {
+    const records = Array.from({ length: 11 }, (_, index) => mate(`r${index}`));
+    const route = mate("route");
+    const { driver, clock, exchanges, start } = rig([...records, route]);
+    const started = start({ records: [...records, route], route });
+    driver.setTargets([
+      {
+        key: keyOf(route),
+        presence: { kind: "present", origin: route.origin },
+        container: { level: "restarting", by: "you", overdue: false },
+        record: route.descriptor().environmentId,
+      },
+    ]);
+    await started;
+    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE - 1);
+
+    await clock.advance(60_000);
+    expect(exchanges.map((request) => request.key).slice(DOOR_MINTS_PER_MINUTE - 1)).toEqual([
+      keyOf(records[9]!),
+      keyOf(records[10]!),
+    ]);
+  });
+
   it("a container turning ready kicks a link in backoff", async () => {
     const shop = mate("shop");
     const { driver, retriedLinks, start } = rig([shop]);
@@ -531,6 +639,33 @@ describe("exchange driver (DESIGN §4.4)", () => {
       _tag: "NotConnected",
       reachability: { kind: "refused-role" },
     });
+  });
+
+  it("connect on a key no target names answers NotConnected(resolving) and exchanges once setTargets names it present", async () => {
+    const shop = mate("shop");
+    const { driver, exchanges, installs, reach } = rig([shop]);
+    driver.setAccount(GRANTED);
+    driver.setVisible(true);
+    await flush();
+
+    await expect(driver.connect(keyOf(shop), "user")).resolves.toMatchObject({
+      _tag: "NotConnected",
+      reachability: { kind: "resolving" },
+    });
+    expect(exchanges).toEqual([]);
+
+    driver.setTargets([
+      {
+        key: keyOf(shop),
+        presence: { kind: "present", origin: shop.origin },
+        container: { level: "ready" },
+        record: null,
+      },
+    ]);
+    await flush();
+    expect(exchanges).toHaveLength(1);
+    expect(installs).toHaveLength(1);
+    expect(reach(shop)).toEqual({ kind: "ready", notice: null });
   });
 
   describe("a credential this tab could not install backs off, and the user's Connect says why", () => {

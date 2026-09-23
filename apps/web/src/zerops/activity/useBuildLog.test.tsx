@@ -234,6 +234,8 @@ function inventory(project: ProjectRef | null = PROJECT): Inventory {
     error: null,
     projectRefs: project === null ? new Map() : new Map([[project.projectId, project]]),
     authority: new Map(),
+    account: { kind: "authorized" },
+    lost: new Set(),
   };
 }
 
@@ -247,6 +249,7 @@ function runtime(logs: FakeLogs, epoch = 1): ManagedZeropsDataRuntime {
 function context(value: ManagedZeropsDataRuntime): ZeropsDataContextValue {
   return {
     runtime: value,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => organization,
     projectRef: () => PROJECT,
   };

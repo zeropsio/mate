@@ -26,22 +26,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "LogicalExpression",
-    "fingerprint": "candidate?.routeOffers ?? EMPTY_OFFERS",
-    "owner": "state-model 1.3",
-    "reason": "unread candidate routes read as none; selectCandidates gives web candidates with presence unknown",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "candidate?.routes ?? EMPTY_ROUTES",
-    "owner": "state-model 1.3",
-    "reason": "unread candidate routes read as none; selectCandidates gives web candidates with presence unknown",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
     "fingerprint": "flow?.environments ?? []",
     "owner": "state-model 4.5",
     "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
@@ -202,7 +186,7 @@
   {
     "path": "apps/web/src/zerops/useZeropsGroupEnvironmentReconcile.ts",
     "kind": "CallExpression",
-    "fingerprint": "addGroupEnvironment({ client, gitea, clientId, giteaProjectId, registry: registry.current, groupId: entry.groupId, slug: registryGroupSlug(registry.current, entry.groupId), environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
+    "fingerprint": "addGroupEnvironment({ client, writeTags: projectTagsWrite(data.current, clientId), gitea, clientId, giteaProjectId, groupId: entry.groupId, environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
     "owner": "state-model 4.7",
     "reason": "a failed repair reads as no outcome and the entry is given back for the next pass; the reconciler becomes an account worker with typed attempts",
     "expires": "never"
@@ -269,14 +253,6 @@
     "fingerprint": "lifecycle?.state === \"known\" ? lifecycle.value.envelope : undefined",
     "owner": "karel",
     "reason": "an unknown lifecycle has no envelope, as a known one may not: the session has no phase and the strip says nothing, never a phase or a none",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/projections/candidates.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "listing.state === \"known\" ? listing.value : NO_MEMBERS",
-    "owner": "state-model 3.10",
-    "reason": "an unread candidate listing holds no member, which the sidebar, projects page, group detail, Gitea page, Mate actions (taken bot names), ask-Mate and change-landed events read as no candidates; removed by 3.10 (A8)",
     "expires": "never"
   }
 ]

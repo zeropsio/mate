@@ -39,12 +39,10 @@ import {
   pullRequestBlocked,
   type GitCheckTone,
 } from "./gitTab.ts";
+import type { MergeabilityKind } from "./forge/mergeState.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
-import { releaseWord, type ReleaseVerdict } from "./release.ts";
-
-/** The group repo, whose pull requests are recipe changes and whose tags are the releases. */
-export const GROUP_REPOSITORY = "group";
+import { GROUP_REPOSITORY } from "./release.ts";
 
 export type FlowPullRequestKind = "code" | "recipe";
 
@@ -62,8 +60,11 @@ export interface FlowPullRequest {
   readonly checks: GitCheckTone;
   /** The one word beside the checks' dot; `undefined` where no check ran. */
   readonly checkWord: string | undefined;
-  /** Gitea's answer, never the app's: Merge is offered only where it said yes. */
-  readonly mergeable: boolean;
+  /**
+   * Gitea's answers over the reads so far (`forge/mergeState.ts`), never the
+   * app's: Merge is offered only where it is `mergeable`.
+   */
+  readonly mergeability: MergeabilityKind;
   /**
    * Whether it has already landed.
    *
@@ -91,6 +92,8 @@ export function flowPullRequest(input: {
   readonly pull: GiteaPullRequest;
   /** Every commit status on the pull request's head. */
   readonly checks: ReadonlyArray<GiteaCommitStatus>;
+  /** How it merges over the reads of it so far (`forge/mergeState.ts`). */
+  readonly mergeability: MergeabilityKind;
 }): FlowPullRequest {
   const { pull, repository } = input;
   const kind: FlowPullRequestKind = repository === GROUP_REPOSITORY ? "recipe" : "code";
@@ -113,7 +116,7 @@ export function flowPullRequest(input: {
     url: pull.html_url,
     checks: tone,
     checkWord: checkWord(tone),
-    mergeable: pull.mergeable === true,
+    mergeability: input.mergeability,
     merged: pull.merged === true,
     mergedAt: pull.merged_at,
     headSha: pull.head?.sha,
@@ -314,41 +317,6 @@ export function pullRequestsFolded(count: number): boolean {
   return count > PULL_REQUESTS_SHOWN;
 }
 
-/** One release of the group, as the broker judged it (`release.ts`). */
-export interface FlowRelease {
-  readonly tag: string;
-  readonly verdict: ReleaseVerdict;
-  /** Why the broker refused it, when it did. */
-  readonly detail: string | undefined;
-  /** `api 3f9c1b2 · web 77ab0e1` — what the tag lists, short. */
-  readonly line: string;
-}
-
-export interface FlowReleaseRow extends FlowRelease {
-  /** The word beside the dot — Approved, Refused, Checking; `undefined` before the broker spoke. */
-  readonly word: string | undefined;
-  /** Whether *Roll back to this* is offered. */
-  readonly rollBack: boolean;
-}
-
-/**
- * A release's row, given its place in the newest-first list.
- *
- * The newest release is what production already runs, so rolling back to it
- * would be a tag that changes nothing; a release the broker refused was never
- * deployed, so there is nothing to go back to; one still being judged is not
- * yet a state production was ever in.
- */
-export function releaseRow(release: FlowRelease, index: number): FlowReleaseRow {
-  return {
-    ...release,
-    line:
-      release.verdict === "refused" && release.detail !== undefined ? release.detail : release.line,
-    word: releaseWord(release.verdict),
-    rollBack: index > 0 && release.verdict === "approved",
-  };
-}
-
 /**
  * Who wrote a change, as a person reads it.
  *
@@ -414,7 +382,7 @@ export interface ChangeState {
  */
 export function changeState(pull: {
   readonly number: number;
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly checks: GitCheckTone;
 }): ChangeState | undefined {
   const blocked = pullRequestBlocked(pull);
@@ -466,7 +434,7 @@ export function mergeConsequence(pull: {
  */
 export function pullRequestMergeLine(pull: {
   readonly number: number;
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly checks: GitCheckTone;
   readonly baseBranch: string;
 }): string {
@@ -474,6 +442,7 @@ export function pullRequestMergeLine(pull: {
   if (blocked === null) return `Cleanly, into ${pull.baseBranch}`;
   if (blocked.kind === "checks-running") return "Once the checks have finished";
   if (blocked.kind === "checks-failed") return "Not while the checks are failing";
+  if (blocked.kind === "checking") return "Still checking whether it can";
   return `Not until it is rebased on ${pull.baseBranch}`;
 }
 
@@ -521,42 +490,6 @@ export function releaseContentsSummary(
     more: Math.max(0, subjects.length - limit),
     total,
   };
-}
-
-/**
- * One service's read for *what would go live*: the commit production runs, and
- * the commit `main` is at.
- *
- * A service production already runs is not read at all. A service production
- * runs **nothing** of is read with no base: a first release has no `from` to
- * compare against, and skipping it is what made a brand-new production answer
- * "nothing is waiting" while the row went on offering *Release* (measured
- * 2026-09-20).
- */
-export interface ReleaseRead {
-  readonly service: string;
-  /** Where `main` is. */
-  readonly head: string;
-  /** What production runs, or `undefined` when it runs nothing yet. */
-  readonly from: string | undefined;
-}
-
-/**
- * What to read so a release can say what it puts live, service by service.
- *
- * Pure: the reads themselves are the caller's (rule R1).
- */
-export function planReleaseReads(
-  mainHeads: ReadonlyMap<string, string>,
-  running: ReadonlyMap<string, string>,
-): ReadonlyArray<ReleaseRead> {
-  const reads: Array<ReleaseRead> = [];
-  for (const [service, head] of mainHeads) {
-    const from = running.get(service);
-    if (from === head) continue;
-    reads.push({ service, head, from });
-  }
-  return reads;
 }
 
 /**

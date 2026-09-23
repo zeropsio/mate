@@ -11,6 +11,8 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
+import { mateDiagnostics } from "../../diagnostics.ts";
+import { INVALIDATION_COALESCE_MS, makeInvalidationBus } from "../../knowledge/invalidation.ts";
 import { makeDeadlineClock, type DeadlineClock } from "../../testing/deadlineClock.ts";
 import { organization, project, scope, verifiedAccess } from "../__fixtures__/index.ts";
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../policy.ts";
@@ -262,6 +264,8 @@ const tab = Effect.fnUntraced(function* (
       ),
   };
 });
+
+type Tab = Effect.Success<ReturnType<typeof tab>>;
 
 /** A tab whose first round answered, `roundMs` after it started. */
 const grantedTab = Effect.fnUntraced(function* (platform: Platform) {
@@ -735,20 +739,160 @@ describe("the access grant inside the data runtime", () => {
       ),
   );
 
-  it.effect("a person's retry joins a round in flight and starts one after a failure", () =>
+  it.effect(
+    "a person's retry on the bus joins a round in flight and starts one after a failure",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform: Platform = { ...healthy(), roundFailure: serverDown };
+          const opened = yield* tab(platform);
+          const bus = yield* makeInvalidationBus({ signals: Stream.never, shown: () => true });
+          yield* opened.runtime.access.listen(bus);
+          /** A person's "Try again", heard once the bus's coalescing window closes. */
+          const retry = bus
+            .invalidate({ topic: "access", change: "renew-now" })
+            .pipe(
+              Effect.provideService(Clock.Clock, opened.clock),
+              Effect.andThen(opened.pass(INVALIDATION_COALESCE_MS)),
+            );
+          yield* retry;
+          expect(opened.platform.rounds).toHaveLength(1);
+
+          yield* opened.pass(SECOND);
+          platform.roundFailure = null;
+          yield* retry;
+          expect(opened.platform.rounds).toHaveLength(2);
+
+          // Nothing else on the bus is a retry.
+          yield* opened.pass(4 * SECOND);
+          expect(opened.phase()).toBe("granted");
+          yield* bus
+            .invalidate({ topic: "access", change: "lapsed" })
+            .pipe(Effect.provideService(Clock.Clock, opened.clock));
+          yield* bus
+            .invalidate({ topic: "inventory", organization })
+            .pipe(Effect.provideService(Clock.Clock, opened.clock));
+          yield* opened.pass(INVALIDATION_COALESCE_MS);
+          expect(opened.platform.rounds).toHaveLength(2);
+        }),
+      ),
+  );
+
+  it.effect.each([
+    ["a fresh lapse", 1500, false, [0, 3 * SECOND, 9 * SECOND]],
+    ["a lapse on its 60 s cadence", 3 * MINUTE, false, [0, 3 * SECOND, 9 * SECOND]],
+    ["a lapse on its 60 s cadence, the round answering", 3 * MINUTE, true, [0]],
+  ] as const)(
+    "a user retry in a lapse starts one round, and no second round before the first rung of the ladder after it fails: %s",
+    ([, lapsedMs, answers, startsAfterRetry]) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform = healthy();
+          const opened = yield* grantedTab(platform);
+          platform.roundFailure = serverDown;
+          yield* opened.freeze(30 * MINUTE);
+          yield* opened.pass(lapsedMs);
+          expect(opened.phase()).toBe("lapsed");
+          const before = opened.platform.rounds.length;
+          const bus = yield* makeInvalidationBus({ signals: Stream.never, shown: () => true });
+          yield* opened.runtime.access.listen(bus);
+          if (answers) platform.roundFailure = null;
+
+          yield* bus
+            .invalidate({ topic: "access", change: "renew-now" })
+            .pipe(Effect.provideService(Clock.Clock, opened.clock));
+          yield* opened.pass(INVALIDATION_COALESCE_MS);
+          const retried = opened.platform.rounds.slice(before);
+          expect(retried).toHaveLength(1);
+          const clicked = retried[0]!.startedAtMono;
+          yield* opened.pass(10 * SECOND - INVALIDATION_COALESCE_MS);
+
+          // Each round fails 1 s after it starts; the ladder waits 2 s, then 5 s.
+          expect(
+            opened.platform.rounds
+              .slice(before)
+              .map(({ startedAtMono }) => startedAtMono - clicked),
+          ).toEqual(startsAfterRetry);
+          expect(opened.phase()).toBe(answers ? "granted" : "lapsed");
+        }),
+      ),
+  );
+
+  it.effect.each([
+    ["the epoch's first", healthy(), () => Effect.void, ["first"]],
+    [
+      "a renewal due",
+      healthy(),
+      (opened: Tab) => opened.pass(12 * MINUTE + 2 * SECOND),
+      ["first", "scheduled"],
+    ],
+    [
+      "a retry on the ladder",
+      { ...healthy(), roundFailure: serverDown },
+      (opened: Tab) => opened.pass(3 * SECOND),
+      ["first", "scheduled"],
+    ],
+    [
+      "a person's retry",
+      { ...healthy(), roundFailure: serverDown },
+      (opened: Tab) =>
+        Effect.gen(function* () {
+          yield* opened.pass(1500);
+          const bus = yield* makeInvalidationBus({ signals: Stream.never, shown: () => true });
+          yield* opened.runtime.access.listen(bus);
+          yield* bus
+            .invalidate({ topic: "access", change: "renew-now" })
+            .pipe(Effect.provideService(Clock.Clock, opened.clock));
+          yield* opened.pass(INVALIDATION_COALESCE_MS);
+        }),
+      ["first", "user-retry"],
+    ],
+    [
+      "the network back",
+      { ...healthy(), roundFailure: serverDown },
+      (opened: Tab) =>
+        opened
+          .pass(1500)
+          .pipe(
+            Effect.andThen(opened.runtime.access.signal({ type: "ONLINE" })),
+            Effect.andThen(settle),
+          ),
+      ["first", "wake-online"],
+    ],
+    [
+      "a visible wake",
+      { ...healthy(), roundFailure: serverDown },
+      (opened: Tab) =>
+        opened
+          .pass(1500)
+          .pipe(
+            Effect.andThen(opened.runtime.access.signal({ type: "WAKE", visible: true })),
+            Effect.andThen(settle),
+          ),
+      ["first", "wake-visible"],
+    ],
+  ] as const)("the diagnostics record the round's cause: %s", ([, platform, act, causes]) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const platform: Platform = { ...healthy(), roundFailure: serverDown };
-        const opened = yield* tab(platform);
-        yield* opened.runtime.access.signal({ type: "USER_RETRY" });
-        yield* settle;
-        expect(opened.platform.rounds).toHaveLength(1);
+        mateDiagnostics.enable();
+        mateDiagnostics.clear();
+        const opened = yield* tab({ ...platform, rounds: [], reads: [], interrupted: [] });
 
-        yield* opened.pass(SECOND);
-        platform.roundFailure = null;
-        yield* opened.runtime.access.signal({ type: "USER_RETRY" });
-        yield* settle;
-        expect(opened.platform.rounds).toHaveLength(2);
+        yield* act(opened);
+
+        expect(
+          mateDiagnostics
+            .snapshot()
+            .flatMap((entry) =>
+              entry.kind === "access-round-cause"
+                ? [{ round: entry.round, cause: entry.cause }]
+                : [],
+            ),
+        ).toEqual(
+          opened.platform.rounds.map(({ round }, index) => ({ round, cause: causes[index] })),
+        );
+        expect(opened.platform.rounds).toHaveLength(causes.length);
+        expect(mateDiagnostics.snapshot().map(({ kind }) => kind)).not.toContain("access-timer");
       }),
     ),
   );

@@ -20,6 +20,7 @@ const deployState = (): ZeropsGroupDeployState => ({
   releaseContents: [],
 });
 
+const NOTHING_WITHHELD: ReadonlyMap<string, string> = new Map();
 const NO_FAILURES = { deploys: new Map<string, string>(), forge: new Map<string, string>() };
 
 const forgeState = (): ZeropsGroupForgeState => ({
@@ -38,6 +39,7 @@ describe("joinProjectFlows", () => {
       deploys: new Map([["g1", g1Deploys]]),
       forges: new Map([["g1", g1Forge]]),
       mayRelease: true,
+      withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
     const after = joinProjectFlows({
@@ -48,6 +50,7 @@ describe("joinProjectFlows", () => {
       ]),
       forges: new Map([["g1", g1Forge]]),
       mayRelease: true,
+      withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
     expect(after.get("g2")).toBeDefined();
@@ -61,6 +64,7 @@ describe("joinProjectFlows", () => {
       deploys,
       forges: new Map(),
       mayRelease: true,
+      withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
     expect(halfJoined.get("g1")?.release.gate).toEqual({
@@ -72,6 +76,7 @@ describe("joinProjectFlows", () => {
       deploys,
       forges: new Map([["g1", forgeState()]]),
       mayRelease: true,
+      withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
     expect(joined.get("g1")?.release.gate).toEqual({ allowed: true });
@@ -83,6 +88,7 @@ describe("joinProjectFlows", () => {
       deploys: new Map(),
       forges: new Map([["g1", forgeState()]]),
       mayRelease: true,
+      withheld: NOTHING_WITHHELD,
       failures: { ...NO_FAILURES, deploys: new Map([["g1", "Gitea did not answer"]]) },
     });
     expect(failing.get("g1")?.release.gate).toEqual({
@@ -94,6 +100,7 @@ describe("joinProjectFlows", () => {
       deploys: new Map([["g1", deployState()]]),
       forges: new Map([["g1", { ...forgeState(), released: { failure: "Gitea did not answer" } }]]),
       mayRelease: true,
+      withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
     expect(tagsNeverRead.get("g1")?.release.gate).toEqual({
@@ -119,6 +126,7 @@ describe("joinProjectFlows", () => {
         ],
       ]),
       mayRelease: true,
+      withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
     expect(tagsStale.get("g1")?.release.gate).toEqual({
@@ -126,5 +134,60 @@ describe("joinProjectFlows", () => {
       reason: "Can't check what can be released: Gitea did not answer.",
     });
     expect(tagsStale.get("g1")?.releases.map((release) => release.tag)).toEqual(["v0.1.0"]);
+  });
+
+  // DESIGN §3.4: a production the grant withholds shows nothing it runs, so nothing measured
+  // against what it runs either — neither what a release would carry nor the offer to make one.
+  const RUNNING = "1".repeat(40);
+  const MERGED = "2".repeat(40);
+  const CHECKING = "Checking your access to this project…";
+  it.each([
+    ["a production shown", NOTHING_WITHHELD, { allowed: true }, ["Fix the cart"]],
+    [
+      "a production the grant withholds",
+      new Map([["prod-1", CHECKING]]),
+      { allowed: false, reason: CHECKING },
+      [],
+    ],
+    [
+      "a stage the grant withholds",
+      new Map([["stage-1", CHECKING]]),
+      { allowed: true },
+      ["Fix the cart"],
+    ],
+  ] as const)("releases against %s", (_case, withheld, gate, carried) => {
+    const stop = (projectId: string, tier: "production" | "stage") => ({
+      projectId,
+      name: `harbor ${tier}`,
+      tier,
+      sources: "release" as const,
+      environment: tier,
+      services: [{ hostname: "app", appVersionName: RUNNING }],
+    });
+    const flows = joinProjectFlows({
+      groups: GROUPS,
+      deploys: new Map([
+        [
+          "g1",
+          {
+            ...deployState(),
+            environments: [stop("stage-1", "stage"), stop("prod-1", "production")],
+            mainHeads: new Map([["app", MERGED]]),
+            releaseContents: [
+              { service: "app", commits: [{ sha: MERGED, subject: "Fix the cart" }] },
+            ],
+          },
+        ],
+      ]),
+      forges: new Map([["g1", forgeState()]]),
+      mayRelease: true,
+      withheld,
+      failures: NO_FAILURES,
+    });
+    const release = flows.get("g1")?.release;
+    expect(release?.gate).toEqual(gate);
+    expect(
+      release?.contents.flatMap(({ commits }) => commits.map(({ subject }) => subject)),
+    ).toEqual(carried);
   });
 });

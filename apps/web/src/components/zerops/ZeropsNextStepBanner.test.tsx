@@ -18,7 +18,7 @@ const PULL: FlowPullRequest = {
   url: undefined,
   checks: "none",
   checkWord: undefined,
-  mergeable: true,
+  mergeability: "mergeable",
   merged: false,
   mergedAt: undefined,
   headSha: "abc",

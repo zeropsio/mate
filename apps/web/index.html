@@ -288,7 +288,7 @@
               ? "system"
               : storedFollowSystem === "false"
                 ? preferenceMode
-                : theme === "system"
+                : theme === "system" || themeId === "zerops"
                   ? "system"
                   : preferenceMode;
           // A valid mix half for the wanted appearance takes over: it decides

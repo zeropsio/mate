@@ -1,4 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentShellStatus } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { DraftId } from "./composerDraftStore";
 
@@ -20,23 +21,26 @@ type DraftThreadRouteState = {
 
 export type ThreadRouteRenderState = "loading" | "ready" | "missing";
 
+/**
+ * The thread gate (DESIGN §4.8): the thread is missing only when its environment's shell is
+ * `live` and lacks it, or when the server deleted its detail. A shell that is empty, cached or
+ * still synchronizing proves nothing absent, so the route waits on its environment's
+ * reachability, which the route gate above it shows.
+ */
 export function resolveThreadRouteRenderState(input: {
-  bootstrapComplete: boolean;
+  shell: EnvironmentShellStatus;
   serverThreadShellExists: boolean;
   serverThreadDetailExists: boolean;
   serverThreadDetailDeleted: boolean;
   draftThreadExists: boolean;
 }): ThreadRouteRenderState {
-  if (!input.bootstrapComplete) {
-    return "loading";
-  }
   if (input.serverThreadDetailExists || input.draftThreadExists) {
     return "ready";
   }
   if (input.serverThreadDetailDeleted) {
     return "missing";
   }
-  return input.serverThreadShellExists ? "loading" : "missing";
+  return input.shell === "live" && !input.serverThreadShellExists ? "missing" : "loading";
 }
 
 export function buildThreadRouteParams(ref: ScopedThreadRef): {

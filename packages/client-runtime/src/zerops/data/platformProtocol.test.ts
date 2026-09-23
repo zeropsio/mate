@@ -751,9 +751,9 @@ describe("Zerops platform protocol decoding", () => {
 
   it("turns a validated Project mutation response into command-linked facets", () => {
     const command: PlatformCommand = {
-      kind: "name-project-agent",
+      kind: "update-project-tags",
       project,
-      name: "Ada",
+      patch: { kind: "agent-name", name: "Ada" },
       attemptId: ZeropsCommandAttemptId.make("name-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),
@@ -780,9 +780,9 @@ describe("Zerops platform protocol decoding", () => {
 
   it("rejects a Project mutation response for another project", () => {
     const command: PlatformCommand = {
-      kind: "update-project-group-tags",
+      kind: "update-project-tags",
       project,
-      next: {},
+      patch: { kind: "group-membership", next: {} },
       attemptId: ZeropsCommandAttemptId.make("tags-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),
@@ -1018,5 +1018,178 @@ describe("Zerops platform protocol decoding", () => {
     expect(historyResult.issues).toEqual([
       expect.objectContaining({ kind: "malformed-row", rowIndex: 0 }),
     ]);
+  });
+});
+
+describe("the datastream's deploy frames", () => {
+  const updates = (entity: "service" | "process"): RegistrationRequest => ({
+    identity: interest,
+    subscriptionName: ZeropsWireSubscriptionName.make(`${entity}-update`),
+    descriptor: { kind: "entity-updates", entity, organization },
+    baselineTicket: null,
+  });
+  const decodeUpdate = (entity: "service" | "process", row: Record<string, unknown>) => {
+    const request = updates(entity);
+    const decoded = decodeNativeFrame(
+      JSON.stringify({
+        type: "search",
+        subscriptionName: request.subscriptionName,
+        data: { update: [row] },
+      }),
+      new Map([[request.subscriptionName, request]]),
+    );
+    if (decoded.kind !== "observations") throw new Error("expected observations");
+    return decoded.observations;
+  };
+
+  it("a pushed service frame without source keeps the active deploy known", () => {
+    // The measured shape: a native service frame's activeAppVersion is
+    // {base, created, id, lastUpdate, os, status} — no source, no name.
+    const observations = decodeUpdate("service", {
+      id: "service",
+      projectId: "project",
+      name: "app",
+      status: "ACTIVE",
+      activeAppVersion: {
+        base: "alpine/nodejs@22",
+        created: "2026-09-23T13:59:24Z",
+        id: "app-version",
+        lastUpdate: "2026-09-23T14:01:27Z",
+        os: null,
+        status: "ACTIVE",
+      },
+    });
+
+    expect(observations).toContainEqual(
+      expect.objectContaining({
+        kind: "service-deployment-observed",
+        observation: expect.objectContaining({
+          fields: {
+            activeDeploy: {
+              id: "app-version",
+              status: "ACTIVE",
+              source: null,
+              activatedAt: "2026-09-23T14:01:27Z",
+              name: null,
+              branch: null,
+              commit: null,
+              tag: null,
+              repository: null,
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it("a build process frame names its appVersion's sha", () => {
+    const sha = "ec3d2cb9ea02144b23300dd8cd16ae02bbcb321c";
+    const observations = decodeUpdate("process", {
+      id: "process",
+      projectId: "project",
+      actionName: "stack.build",
+      status: "RUNNING",
+      created: "2026-09-23T14:01:39Z",
+      serviceStackId: "service",
+      appVersion: {
+        id: "app-version",
+        name: sha,
+        source: "CLI",
+        status: "BUILDING",
+        activationDate: null,
+        build: {
+          serviceStackId: "build-service",
+          pipelineStart: "2026-09-23T14:01:40.174564611Z",
+          pipelineFinish: null,
+          pipelineFailed: null,
+          startDate: null,
+          endDate: null,
+        },
+        prepareCustomRuntime: null,
+      },
+    });
+
+    expect(observations).toContainEqual(
+      expect.objectContaining({
+        kind: "process-pipeline-observed",
+        observation: expect.objectContaining({
+          fields: {
+            appVersion: expect.objectContaining({
+              id: "app-version",
+              name: sha,
+              status: "BUILDING",
+            }),
+          },
+        }),
+      }),
+    );
+  });
+});
+
+describe("a service read's active version name (A14)", () => {
+  const SHA = "ec3d2cb9ea02144b23300dd8cd16ae02bbcb321c";
+  const directService: ReadTicket = {
+    kind: "direct",
+    requestId: ZeropsRequestId.make("service-read"),
+    owner: { kind: "interest", identity: interest },
+    target: {
+      kind: "service",
+      ref: { kind: "service", project, serviceId: ZeropsServiceId.make("service") },
+    },
+    receiptOrdinalAtStart: ReceiptOrdinal.make(0),
+    readStartOrdinal: ReadStartOrdinal.make(1),
+    dispatchOrdinal: DispatchOrdinal.make(1),
+    startedAtMs: 0,
+  };
+  const userData = (appVersionId: string) => [
+    { key: "appVersionId", content: appVersionId },
+    { key: "appVersionName", content: `${SHA} v1.4.0 ada` },
+    { key: "hostname", content: "app" },
+  ];
+
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly userData: ReadonlyArray<{ readonly key: string; readonly content: string }> | null;
+    readonly expected: string | null;
+  }> = [
+    {
+      name: "names it from userData while userData's version is the active one",
+      userData: userData("app-version"),
+      expected: `${SHA} v1.4.0 ada`,
+    },
+    {
+      // A build that started names the version it builds, ~63 s before it is active.
+      name: "leaves it unstated while userData names a version still building",
+      userData: userData("app-version-building"),
+      expected: null,
+    },
+    { name: "leaves it unstated without userData", userData: null, expected: null },
+  ];
+
+  it.each(cases)("$name", ({ userData, expected }) => {
+    const decoded = decodeEntityDirectResponse(directService, {
+      id: "service",
+      projectId: "project",
+      name: "app",
+      status: "ACTIVE",
+      activeAppVersion: {
+        id: "app-version",
+        status: "ACTIVE",
+        source: "CLI",
+        created: "2026-09-23T13:59:24Z",
+        lastUpdate: "2026-09-23T14:01:27Z",
+      },
+      ...(userData === null ? {} : { userData }),
+    });
+
+    expect(decoded.issues).toEqual([]);
+    expect(decoded.observations).toContainEqual(
+      expect.objectContaining({
+        kind: "service-deployment-observed",
+        observation: expect.objectContaining({
+          fields: { activeDeploy: expect.objectContaining({ id: "app-version", name: expected }) },
+        }),
+      }),
+    );
   });
 });

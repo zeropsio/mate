@@ -256,6 +256,9 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         onExpectedFailure: (cause) => setStreamError(Cause.squash(cause)),
         retryExpectedFailureAfter: "250 millis",
         resubscribe: foregroundResubscriptions,
+        // A defect leaves the shell live no longer: the connection reconnects and the shell
+        // resumes on its next session.
+        reconnectOnDefect: true,
       },
     ).pipe(Stream.runForEachArray(applyItems)),
   );

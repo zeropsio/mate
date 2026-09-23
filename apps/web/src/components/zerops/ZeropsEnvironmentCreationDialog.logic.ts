@@ -6,6 +6,7 @@ import {
   ZEROPS_BOT_NAME_MAX_LENGTH,
   type EnvironmentRecipeChoice,
 } from "@t3tools/client-runtime/zerops";
+import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 
 export interface RecipeOption {
   readonly id: string;
@@ -75,10 +76,14 @@ export interface CreationFormErrors {
   readonly recipe?: string;
 }
 
-/** The one rule for an agent's name: present, short, and new on the account. */
+/**
+ * The one rule for an agent's name: present, short, and new on the account. A name read as taken
+ * is refused at once; one missing from a listing not read in full may still be taken, so it waits
+ * for the rest (M5) instead of passing as free. Keeping a Mate's own name needs no listing.
+ */
 export function validateBotName(
   raw: string,
-  takenBotNames: ReadonlyArray<string>,
+  taken: TakenBotNames,
   options: { readonly current?: string } = {},
 ): string | undefined {
   const bot = raw.replace(/\s+/g, " ").trim();
@@ -88,16 +93,17 @@ export function validateBotName(
   }
   const isCurrent =
     options.current !== undefined && options.current.toLowerCase() === bot.toLowerCase();
-  if (!isCurrent && takenBotNames.some((taken) => taken.toLowerCase() === bot.toLowerCase())) {
+  if (isCurrent) return undefined;
+  if (taken.names.some((name) => name.toLowerCase() === bot.toLowerCase())) {
     return `${bot} is already an agent on this account.`;
   }
-  return undefined;
+  return taken.complete ? undefined : "Checking which names are taken…";
 }
 
 export function validateCreationForm(
   form: CreationForm,
   context: {
-    readonly takenBotNames: ReadonlyArray<string>;
+    readonly takenBotNames: TakenBotNames;
     readonly options: ReadonlyArray<RecipeOption>;
   },
 ): CreationFormErrors {

@@ -1,3 +1,5 @@
+import { commandAdmissionOf } from "./access/capabilities.ts";
+import type { GrantCapability } from "./access/grant.ts";
 import type {
   AccessState,
   AccountRef,
@@ -28,8 +30,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "enable-zerops-mate":
     case "enable-subdomain-access":
       return intent.service;
-    case "name-project-agent":
-    case "update-project-group-tags":
+    case "update-project-tags":
     case "set-project-member-role":
     case "import-development-container":
     case "import-services":
@@ -60,12 +61,20 @@ function admissionError(
  * Checks the grant used immediately before a platform write. Call this again
  * between writes in a multi-step command; admission at enqueue time is not a
  * durable authorization decision.
+ *
+ * `accountCapability` is the access grant's account capability asked at the same moment.
+ * The runtime's access holds the grant's evidence as last published; between
+ * the grant's timer ticks only the grant's own clocks see that evidence run out
+ * or the wall clock go back, so a verified access it has lapsed or closed is
+ * refused as the capability refuses it. Whether the account was verified at all
+ * stays the runtime access's to say.
  */
 export function commandAdmissionError(
   scope: AccountScope,
   access: AccessState,
   target: CommandTarget,
   nowMs: number,
+  accountCapability: GrantCapability,
 ): CommandAdmissionError | null {
   const project = projectOf(target);
   const account = target.kind === "organization" ? target.account : project!.organization.account;
@@ -89,6 +98,9 @@ export function commandAdmissionError(
         access.deadlineMs <= nowMs
       ) {
         return admissionError("access-expired", "Platform write access is no longer current.");
+      }
+      if (!accountCapability.allowed && accountCapability.reason !== "access-unverified") {
+        return commandAdmissionOf(accountCapability);
       }
       const projectDenied =
         project !== null &&

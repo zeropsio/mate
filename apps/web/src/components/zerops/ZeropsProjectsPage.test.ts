@@ -1,4 +1,5 @@
 import { EnvironmentId } from "@t3tools/contracts";
+import type { RandomBytes } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   ZeropsAccountId,
@@ -28,13 +29,14 @@ import {
   readContainerAgain,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
+  setUpMateBotName,
   showsZeropsBirthLine,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
+import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
-import { isAccessNotYetVerified } from "~/zerops/useZeropsProvisioning";
-import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
+import { exchangeZeropsContainerIdentity } from "@t3tools/client-runtime/zerops/identityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
@@ -85,8 +87,7 @@ describe("same-origin Zerops identity bootstrap", () => {
 
   it("routes project and service writes through typed runtime commands", () => {
     for (const method of [
-      "nameProjectAgent",
-      "updateProjectGroupTags",
+      "writeProjectTags",
       "importDevelopmentContainer",
       "enableZeropsMate",
       "enableSubdomainAccess",
@@ -308,14 +309,11 @@ describe("same-origin Zerops identity bootstrap", () => {
       .fn()
       .mockResolvedValue(AsyncResult.failure(Cause.fail(new Error("Session token expired."))));
 
-    const result = await exchangeZeropsContainerIdentity({
-      containerOrigin: APP_ORIGIN,
-      reason: "user",
-      appOrigin: APP_ORIGIN,
-      basePath: "/mate/",
-      throwaway: TEST_THROWAWAY,
-      connect,
-    });
+    const result = await exchangeZeropsContainerIdentity(
+      { throwaway: TEST_THROWAWAY, connect },
+      APP_ORIGIN,
+      { reason: "user", servedApp: { origin: APP_ORIGIN, basePath: "/mate/" } },
+    );
 
     expect(connect).toHaveBeenCalledWith({
       httpBaseUrl: `${APP_ORIGIN}/mate`,
@@ -331,13 +329,9 @@ describe("same-origin Zerops identity bootstrap", () => {
   it("does not attempt an exchange without the Zerops account token", async () => {
     const connect = vi.fn();
 
-    const result = await exchangeZeropsContainerIdentity({
-      containerOrigin: APP_ORIGIN,
+    const result = await exchangeZeropsContainerIdentity({ throwaway: null, connect }, APP_ORIGIN, {
       reason: "user",
-      appOrigin: APP_ORIGIN,
-      basePath: "/mate/",
-      throwaway: null,
-      connect,
+      servedApp: { origin: APP_ORIGIN, basePath: "/mate/" },
     });
 
     expect(connect).not.toHaveBeenCalled();
@@ -352,14 +346,11 @@ describe("same-origin Zerops identity bootstrap", () => {
     const environmentId = EnvironmentId.make("environment-1");
     const connect = vi.fn().mockResolvedValue(AsyncResult.success(environmentId));
 
-    const result = await exchangeZeropsContainerIdentity({
-      containerOrigin: APP_ORIGIN,
-      reason: "user",
-      appOrigin: APP_ORIGIN,
-      basePath: "/mate/",
-      throwaway: TEST_THROWAWAY,
-      connect,
-    });
+    const result = await exchangeZeropsContainerIdentity(
+      { throwaway: TEST_THROWAWAY, connect },
+      APP_ORIGIN,
+      { reason: "user", servedApp: { origin: APP_ORIGIN, basePath: "/mate/" } },
+    );
 
     expect(result).toEqual({ _tag: "Success", environmentId });
   });
@@ -382,67 +373,42 @@ describe("nextZeropsBirthRetryDelayMs", () => {
 // flashed on every click with a clock from the project's creation.
 describe("showsZeropsBirthLine", () => {
   it.each([
-    { name: "a Mate this browser is creating", pending: ["p1"], expected: true },
-    { name: "a Mate that exists, being opened", pending: [], expected: false },
-    { name: "another project's creation", pending: ["p2"], expected: false },
-  ])("$name: $expected", ({ pending, expected }) => {
-    expect(
-      showsZeropsBirthLine({ projectId: "p1", pendingCreationProjectIds: new Set(pending) }),
-    ).toBe(expected);
+    { name: "a Mate being born", births: ["p1"], expected: true },
+    { name: "a Mate that exists, being opened", births: [], expected: false },
+    { name: "another project's birth", births: ["p2"], expected: false },
+  ])("$name: $expected", ({ births, expected }) => {
+    expect(showsZeropsBirthLine({ projectId: "p1", birthProjectIds: new Set(births) })).toBe(
+      expected,
+    );
   });
 });
 
 describe("isZeropsBirthConnectTarget", () => {
   const ORIGIN = "https://zcp-demo-8080.prg1.zerops.app";
-
-  it("is the birth's own connect: the provisioning wait's own origin, with a hand-off still pending", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: ORIGIN,
-        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
-        pendingCreationProjectIds: new Set(["proj-1"]),
-      }),
-    ).toBe(true);
-  });
-
-  it("is not a birth when nothing is waited on", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: ORIGIN,
-        waited: null,
-        pendingCreationProjectIds: new Set(["proj-1"]),
-      }),
-    ).toBe(false);
-  });
-
-  it("is not a birth for a different origin than the one being waited on", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: "https://another-container.example",
-        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
-        pendingCreationProjectIds: new Set(["proj-1"]),
-      }),
-    ).toBe(false);
-  });
-
-  it("is not a birth when the waited project has no pending creation hand-off — Enable/Start on an existing candidate", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: ORIGIN,
-        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
-        pendingCreationProjectIds: new Set(),
-      }),
-    ).toBe(false);
-  });
-
-  it("is not a birth when the wait carries no project id", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: ORIGIN,
-        waited: { containerOrigin: ORIGIN, projectId: null },
-        pendingCreationProjectIds: new Set(["proj-1"]),
-      }),
-    ).toBe(false);
+  it.each([
+    {
+      name: "the container a birth found is the birth's own connect",
+      births: [{ origin: ORIGIN }],
+      expected: true,
+    },
+    {
+      name: "the same origin written differently is the same container",
+      births: [{ origin: `${ORIGIN}/` }],
+      expected: true,
+    },
+    { name: "no birth — Open or Enable on a Mate that exists", births: [], expected: false },
+    {
+      name: "a birth of another container",
+      births: [{ origin: "https://another-container.example" }],
+      expected: false,
+    },
+    {
+      name: "a birth that has not found its container yet",
+      births: [{ origin: null }],
+      expected: false,
+    },
+  ])("$name", ({ births, expected }) => {
+    expect(isZeropsBirthConnectTarget({ containerOrigin: ORIGIN, births })).toBe(expected);
   });
 });
 
@@ -462,6 +428,7 @@ async function heardFrom(run: () => unknown): Promise<ReadonlyArray<Invalidation
     .spyOn(process.hrtime, "bigint")
     .mockImplementation(() => BigInt(Math.round(performance.now() * 1_000_000)));
   openAccountLifetime("account");
+  const bus = bindTestInvalidationBus();
   const heard: Array<Invalidation> = [];
   const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
   try {
@@ -470,6 +437,7 @@ async function heardFrom(run: () => unknown): Promise<ReadonlyArray<Invalidation
     return heard;
   } finally {
     stop();
+    bus.close();
     closeAccountLifetime();
     hrtime.mockRestore();
     vi.useRealTimers();
@@ -544,6 +512,45 @@ describe("removeFailedZeropsProject", () => {
     expect(outcome).toEqual({ ok: false, error: "A process is running." });
     expect(calls).toEqual([]);
     expect(heard).toEqual([]);
+  });
+});
+
+describe("setUpMateBotName", () => {
+  /** Always the pool's first name, so a generated one is predictable. */
+  const firstName: RandomBytes = (bytes) => bytes.fill(0);
+
+  it.each<{
+    readonly name: string;
+    readonly existing: string | undefined;
+    readonly taken: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
+    readonly named: "kept" | "fresh" | "wait";
+  }>([
+    {
+      name: "a partial listing never hands out a fresh name as free",
+      existing: undefined,
+      taken: { names: [], complete: false },
+      named: "wait",
+    },
+    {
+      name: "a Mate that has a name keeps it while the rest are read",
+      existing: "Fen",
+      taken: { names: [], complete: false },
+      named: "kept",
+    },
+    {
+      name: "a complete listing hands out a fresh name nobody goes by",
+      existing: undefined,
+      taken: { names: ["Fen"], complete: true },
+      named: "fresh",
+    },
+  ])("$name", ({ existing, taken, named }) => {
+    const name = setUpMateBotName(existing, taken, firstName);
+    if (named === "wait") expect(name).toBeUndefined();
+    else if (named === "kept") expect(name).toBe(existing);
+    else {
+      expect(name).toBeDefined();
+      expect(taken.names).not.toContain(name);
+    }
   });
 });
 
@@ -839,25 +846,12 @@ describe("a project's next step on the projects page", () => {
 
 describe("opening a Mate from the projects page", () => {
   it.each([
-    { name: "a connected Mate opens", withheld: false, busy: false, action: "open", opens: true },
-    {
-      name: "a Mate coming up is still",
-      withheld: false,
-      busy: false,
-      action: "pending",
-      opens: false,
-    },
-    {
-      name: "a Mate whose verb runs is still",
-      withheld: false,
-      busy: true,
-      action: "open",
-      opens: false,
-    },
-    { name: "a withheld Mate is still", withheld: true, busy: false, action: "open", opens: false },
-  ] as const)("$name", ({ withheld, busy, action, opens }) => {
+    { name: "a connected Mate opens", busy: false, action: "open", opens: true },
+    { name: "a Mate coming up is still", busy: false, action: "pending", opens: false },
+    { name: "a Mate whose verb runs is still", busy: true, action: "open", opens: false },
+  ] as const)("$name", ({ busy, action, opens }) => {
     const open = vi.fn();
-    const opener = mateOpener({ withheld, busy, action, open });
+    const opener = mateOpener({ busy, action, open });
     expect(opener !== undefined).toBe(opens);
     opener?.();
     expect(open).toHaveBeenCalledTimes(opens ? 1 : 0);
@@ -923,25 +917,5 @@ describe("a group's one line about itself", () => {
 
   it("keeps a background repair's failure off the page's error line", () => {
     expect(projectsPageSource).not.toContain("setToolError(`${entry.displayName}");
-  });
-});
-
-describe("isAccessNotYetVerified", () => {
-  it("tells a round in flight from an answer", () => {
-    // Only the first is worth waiting out. A denial is the account's answer,
-    // and an expiry needs a new verification, not another go at the same one.
-    expect(
-      isAccessNotYetVerified({
-        _tag: "ZeropsCommandAdmissionError",
-        reason: "access-unverified",
-        message: "Platform write access is not verified.",
-      }),
-    ).toBe(true);
-    for (const reason of ["access-denied", "access-expired"]) {
-      expect(isAccessNotYetVerified({ _tag: "ZeropsCommandAdmissionError", reason })).toBe(false);
-    }
-    for (const cause of [null, undefined, "access-unverified", new Error("access-unverified")]) {
-      expect(isAccessNotYetVerified(cause)).toBe(false);
-    }
   });
 });

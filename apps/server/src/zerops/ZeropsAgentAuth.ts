@@ -20,7 +20,8 @@
  * the Mate's own key, replacing the old `zcp agent mark-oauth <agent-id>`
  * spawn). An OAuth or token flag appearing in the zembed env store triggers
  * the same targeted check (to keep `providerAuth` current) without ever
- * writing the flag itself.
+ * writing the flag itself, and so does a turn that failed because its agent
+ * is not signed in (`zeropsTurnAuthFailure.ts`, read off the SPI event bus).
  *
  * ## How it verifies (S7 follow-up F1)
  *
@@ -75,6 +76,7 @@ import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -82,6 +84,7 @@ import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import { ZeropsAgentFlag, type ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
+import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
 import {
   spawnAgentAuthProbe,
   verifyAgentAuth,
@@ -328,6 +331,15 @@ export interface ZeropsAgentAuthOptions {
    * disables provenance entirely — every snapshot then omits `authorizedBy`.
    */
   readonly readSigners?: Effect.Effect<Readonly<Partial<Record<ZeropsAgentId, string>>>>;
+  /**
+   * The agents whose turn just failed because they are not signed in
+   * (`zeropsTurnAuthFailure.ts` over the provider runtime event bus at
+   * {@link layer}). Each one re-asks that agent's own CLI at once, never
+   * flag-write-eligible: a failed turn is not a credential event, and the
+   * project's flag still decides — the re-probe only refines it. Absent,
+   * a turn's failure is not heard here.
+   */
+  readonly turnAuthFailures?: Stream.Stream<ZeropsAgentId>;
   /** Defaults to {@link UNKNOWN_AUTH_RECHECK_INTERVAL}; shortened by tests. */
   readonly unknownAuthRecheckInterval?: Duration.Duration;
   /** Defaults to {@link MARK_SIGNED_IN_FAILURE_RECHECK_INTERVAL}; shortened by tests. */
@@ -436,6 +448,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       homeDir,
       envStorePath,
       readSigners,
+      turnAuthFailures,
       watch,
       unknownAuthRecheckInterval = UNKNOWN_AUTH_RECHECK_INTERVAL,
       markSignedInFailureRecheckInterval = MARK_SIGNED_IN_FAILURE_RECHECK_INTERVAL,
@@ -814,6 +827,19 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       );
     }
 
+    // A turn refused for want of a login is the agent's own answer arriving
+    // before any check asked for it: re-ask now, so the card stops saying
+    // "Authorized" over a login that no longer works.
+    if (turnAuthFailures !== undefined) {
+      yield* turnAuthFailures.pipe(
+        Stream.runForEach((agentId) => requestProviderCheck(agentId, { fromCredential: false })),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("zerops agent auth: turn auth failures stopped", { cause }),
+        ),
+        Effect.forkScoped,
+      );
+    }
+
     // A credential whose check could not answer is asked again, until it
     // does — see UNKNOWN_AUTH_RECHECK_INTERVAL.
     yield* Effect.gen(function* () {
@@ -898,6 +924,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const projectSigners = yield* ZeropsProjectSignersModule.ZeropsProjectSigners;
     const providerInstances = yield* ProviderInstances;
+    const bus = yield* ProviderRuntimeEventBus;
     const spawnProbe = spawnAgentAuthProbe(processRunner, config.cwd);
 
     return yield* make({
@@ -907,6 +934,10 @@ export const layer = Layer.effect(
       homeDir: NodeOS.homedir(),
       envStorePath: ZEMBED_ENV_FILE,
       readSigners: projectSigners.signers,
+      turnAuthFailures: bus.events.pipe(
+        Stream.map(turnAuthFailureAgent),
+        Stream.filter((agentId) => agentId !== undefined),
+      ),
       isZeropsEnvironment: isZeropsEnvironment(config),
       watch: watchWithFallback,
     });

@@ -14,9 +14,17 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ZeropsService } from "../api.ts";
 import { deriveZeropsCandidates, isZcpService, type ZeropsCandidate } from "../candidates.ts";
+import { readZeropsGroupTags } from "../groups.ts";
 import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
 import type { ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
-import type { Known } from "../knowledge/known.ts";
+import type { Known, Shown } from "../knowledge/known.ts";
+import {
+  knownPresentation,
+  type KnownAffordance,
+  type KnownMessage,
+  type KnownPresentation,
+  type KnownSurface,
+} from "../knowledge/presentation.ts";
 
 /** Whether the inventory has read what decides this row's container. */
 export type CandidatePresence = "known" | "unknown";
@@ -44,6 +52,28 @@ function readServices(
   return complete || decoded.some(isZcpService) ? decoded : null;
 }
 
+const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<CandidateRow> =>
+  candidates.map((candidate) => ({ ...candidate, presence: "known" }));
+
+/**
+ * One project's candidates; null while its name or status is not read yet. Only an active
+ * project's services are read (`servicesOf`): any other status decides its one row alone.
+ */
+export function projectCandidates(
+  record: ProjectRecord,
+  servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
+): ReadonlyArray<CandidateRow> | null {
+  const project = projectRecordToZeropsProject(record);
+  if (project === null) return null;
+  if (project.status !== "ACTIVE")
+    return known(deriveZeropsCandidates(project, [], NO_CONNECTIONS));
+  const services = readServices(servicesOf(record.ref));
+  if (services === null) {
+    return [{ key: project.id, project, group: "unavailable", presence: "unknown" }];
+  }
+  return known(deriveZeropsCandidates(project, services, NO_CONNECTIONS));
+}
+
 /**
  * Every candidate the organization's projects hold. The listing is as known as the projects are:
  * unread, reading or failed projects give no rows at all, never an empty list. A project whose
@@ -54,35 +84,33 @@ export function selectCandidates(
   servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
 ): Known<ReadonlyArray<CandidateRow>> {
   if (projects.state !== "known") return projects;
-  const rows: CandidateRow[] = [];
-  let complete = projects.coverage === "complete";
-  for (const record of projects.value) {
-    const project = projectRecordToZeropsProject(record);
-    if (project === null) {
-      complete = false;
-      continue;
-    }
-    if (project.status !== "ACTIVE") {
-      for (const candidate of deriveZeropsCandidates(project, [], NO_CONNECTIONS))
-        rows.push({ ...candidate, presence: "known" });
-      continue;
-    }
-    const services = readServices(servicesOf(record.ref));
-    if (services === null) {
-      rows.push({ key: project.id, project, group: "unavailable", presence: "unknown" });
-      continue;
-    }
-    for (const candidate of deriveZeropsCandidates(project, services, NO_CONNECTIONS))
-      rows.push({ ...candidate, presence: "known" });
-  }
-  return { ...projects, value: rows, coverage: complete ? "complete" : "partial" };
+  return candidateListing(
+    projects,
+    projects.value.map((record) => projectCandidates(record, servicesOf)),
+  );
+}
+
+/**
+ * The listing of known projects out of each project's rows, in the projects' order; a project
+ * with no rows yet (`null`) leaves it partial.
+ */
+export function candidateListing(
+  projects: Extract<Known<ReadonlyArray<ProjectRecord>>, { readonly state: "known" }>,
+  rowsOfEach: ReadonlyArray<ReadonlyArray<CandidateRow> | null>,
+): Extract<Known<ReadonlyArray<CandidateRow>>, { readonly state: "known" }> {
+  const complete = projects.coverage === "complete" && rowsOfEach.every((rows) => rows !== null);
+  return {
+    ...projects,
+    value: rowsOfEach.flatMap((rows) => rows ?? []),
+    coverage: complete ? "complete" : "partial",
+  };
 }
 
 /**
  * Whether a surface may say "none" of anything the rows lack — no project, no Mate (M5): the
  * listing is known and complete, and the inventory has read every row's presence.
  */
-export function candidatesComplete(listing: Known<ReadonlyArray<CandidateRow>>): boolean {
+export function candidatesComplete(listing: Shown<ReadonlyArray<CandidateRow>>): boolean {
   return (
     listing.state === "known" &&
     listing.coverage === "complete" &&
@@ -107,26 +135,139 @@ export function admittedOnly<T>(
 
 /**
  * A listing's rows as a surface presents them, as known as the listing is: a listing that holds no
- * rows (unread, being read, failed, gone) passes through as it is, never as an empty one.
+ * rows (unread, being read, failed, gone, withheld) passes through as it is, never as an empty one.
  */
 export function presentCandidates<Row, Presented>(
   listing: Known<ReadonlyArray<Row>>,
   present: (row: Row) => Presented,
-): Known<ReadonlyArray<Presented>> {
+): Known<ReadonlyArray<Presented>>;
+export function presentCandidates<Row, Presented>(
+  listing: Shown<ReadonlyArray<Row>>,
+  present: (row: Row) => Presented,
+): Shown<ReadonlyArray<Presented>>;
+export function presentCandidates<Row, Presented>(
+  listing: Shown<ReadonlyArray<Row>>,
+  present: (row: Row) => Presented,
+): Shown<ReadonlyArray<Presented>> {
   if (listing.state !== "known") return listing;
   return { ...listing, value: listing.value.map(present) };
 }
 
-const NO_MEMBERS: ReadonlyArray<never> = [];
+/**
+ * The rows a surface draws of a listing, with the one licence to read a "none" off them. `rows`
+ * are every row of a complete listing, the ones read of a partial one, and none while the listing
+ * holds no rows at all (unread, being read, failed, gone, withheld); only `complete` (`candidatesComplete`)
+ * says they are all the rows there are.
+ */
+export interface HeldCandidates<Row> {
+  readonly rows: ReadonlyArray<Row>;
+  readonly complete: boolean;
+}
+
+export function heldCandidates<Row extends CandidateRow>(
+  listing: Shown<ReadonlyArray<Row>>,
+): HeldCandidates<Row> {
+  switch (listing.state) {
+    case "known":
+      return { rows: listing.value, complete: candidatesComplete(listing) };
+    default:
+      return { rows: [], complete: false };
+  }
+}
+
+/** What a region drawn from the listing says in place of a "none" it may not say yet (§3.4). */
+export interface CandidatesNotice {
+  readonly region: KnownPresentation["region"];
+  readonly message: KnownMessage;
+  readonly affordance: KnownAffordance | null;
+}
 
 /**
- * The rows a listing holds, for a surface that looks a candidate up or draws the rows read so far:
- * every row of a complete listing, the ones read of a partial one, and none while it holds no rows
- * at all. Nothing negative may be read off it — `candidatesComplete` says when these are all the
- * rows there are.
+ * The region's notice until the listing is complete (`candidatesComplete`): a placeholder while
+ * it is unread or being read, the cause and one affordance when its read failed, and "Still
+ * reading…" over the rows read of a listing known only in part — a presence unread included,
+ * since a row whose container is not read yet may still be the one the region lacks. Copy, delay
+ * and affordance are `knownPresentation`'s; a complete listing has nothing to say here, nor has
+ * one a lapse withholds, whose words are the app's one banner (§3.4).
  */
-export function candidateMembers<Row>(listing: Known<ReadonlyArray<Row>>): ReadonlyArray<Row> {
-  return listing.state === "known" ? listing.value : NO_MEMBERS;
+export function candidatesNotice<Row extends CandidateRow>(
+  listing: Shown<ReadonlyArray<Row>>,
+  surface: KnownSurface<ReadonlyArray<Row>>,
+  nowMs: number,
+): CandidatesNotice | null {
+  if (candidatesComplete(listing)) return null;
+  const presentation = knownPresentation(
+    listing.state === "known" ? { ...listing, coverage: "partial" } : listing,
+    surface,
+    { nowMs, updateOffered: false },
+  );
+  return presentation.message === null
+    ? null
+    : {
+        region: presentation.region,
+        message: presentation.message,
+        affordance: presentation.affordance,
+      };
+}
+
+/**
+ * One candidate looked up in a listing. `absent` is earned (M5): the listing is complete and every
+ * row's presence is read. `pending` is a listing that has not answered yet (unread or being read);
+ * `unknown` one that holds what it will until something changes (failed, gone, withheld, partial,
+ * or a presence unread), so its lack of the row says nothing either.
+ */
+export type CandidateLookup<Row> =
+  | { readonly kind: "found"; readonly row: Row }
+  | { readonly kind: "absent" }
+  | { readonly kind: "pending" }
+  | { readonly kind: "unknown" };
+
+const ABSENT: CandidateLookup<never> = { kind: "absent" };
+const PENDING: CandidateLookup<never> = { kind: "pending" };
+const UNKNOWN: CandidateLookup<never> = { kind: "unknown" };
+
+export function findCandidate<Row extends CandidateRow>(
+  listing: Shown<ReadonlyArray<Row>>,
+  matches: (row: Row) => boolean,
+): CandidateLookup<Row> {
+  switch (listing.state) {
+    case "unread":
+    case "reading":
+      return PENDING;
+    case "known": {
+      const row = listing.value.find(matches);
+      if (row !== undefined) return { kind: "found", row };
+      return candidatesComplete(listing) ? ABSENT : UNKNOWN;
+    }
+    default:
+      return UNKNOWN;
+  }
+}
+
+/**
+ * The names the organization's Mates already go by (`mate:bot:`), read off the listing's projects.
+ * A name lives on the project, so a row whose presence is unread still names its bot; `complete`
+ * is the listing being known and complete, the one licence to call a name free. Until then a name
+ * found here is taken and one missing may still be.
+ */
+export interface TakenBotNames {
+  readonly names: ReadonlyArray<string>;
+  readonly complete: boolean;
+}
+
+export function takenBotNames(listing: Shown<ReadonlyArray<ZeropsCandidate>>): TakenBotNames {
+  switch (listing.state) {
+    case "known":
+      return {
+        names: listing.value.flatMap((row) => {
+          const bot = readZeropsGroupTags(row.project.tagList).bot;
+          return bot === undefined ? [] : [bot];
+        }),
+        complete: listing.coverage === "complete",
+      };
+    default:
+      return { names: [], complete: false };
+  }
 }
 
 /**
@@ -134,7 +275,7 @@ export function candidateMembers<Row>(listing: Known<ReadonlyArray<Row>>): Reado
  * complete, and none of its rows is one `isProject` counts (a tool, say, is not).
  */
 export function listsNoProject<Row>(
-  listing: Known<ReadonlyArray<Row>>,
+  listing: Shown<ReadonlyArray<Row>>,
   isProject: (row: Row) => boolean,
 ): boolean {
   return (

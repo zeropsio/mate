@@ -17,6 +17,7 @@ import {
   type GiteaCommitStatus,
 } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { mergeabilityAfter, mergeReadOf } from "@t3tools/client-runtime/zerops/forge";
 import { useEffect, useState } from "react";
 
 import { giteaClientFor } from "./accountGiteaSessions";
@@ -63,6 +64,7 @@ export function useZeropsLandedChange(
           setState({ kind: "idle" });
           return;
         }
+        const readAt = Date.now();
         const pull = await client.getPullRequest(owner, repository, number);
         if (cancelled) return;
         if (pull === undefined) {
@@ -83,7 +85,13 @@ export function useZeropsLandedChange(
           }
         }
         if (cancelled) return;
-        setState({ kind: "read", pull: flowPullRequest({ repository, pull, checks }) });
+        // One read, so a "no" is Gitea still checking, never a conflict: the
+        // flow, which reads again, is what carries an open change's verdict.
+        const { mergeability } = mergeabilityAfter(null, mergeReadOf(pull, readAt));
+        setState({
+          kind: "read",
+          pull: flowPullRequest({ repository, pull, checks, mergeability: mergeability.kind }),
+        });
       } catch (cause) {
         if (!cancelled) setState({ kind: "failed", reason: zeropsErrorMessage(cause) });
       }

@@ -73,7 +73,8 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { stopView, type Deployment, type StopView } from "@t3tools/client-runtime/zerops/flow";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
@@ -94,6 +95,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { readCollapsedStops, writeCollapsedStops } from "~/zerops/collapsedStops";
 import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace, StatusDot } from "./primitives";
@@ -263,7 +265,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly mayCreate?: boolean | undefined;
   /**
-   * Each container's health by candidate key (`useZeropsCandidateHealth`),
+   * Each container's health by candidate key (`useZeropsContainers`),
    * for the gate's "some Mate in the group is up" part (`groupAddsOffered`).
    * Absent, no Mate that is only ready counts as up.
    */
@@ -271,10 +273,20 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly className?: string;
   /**
    * The listing is known and complete, and every row's presence is read
-   * (`candidatesComplete`). Until then the tree says nothing rather than
+   * (`candidatesComplete`). Until then the tree says its notice rather than
    * "none". A re-read is not that — the list already read stays up.
    */
   readonly complete: boolean;
+  /**
+   * What the tree says while the listing may not say "none" yet
+   * (`candidatesNotice`, DESIGN §3.4) — in place of the empty state when it has
+   * nothing to draw, under the rows when it holds some: a placeholder while it
+   * is unread, the read's cause when it failed, "Still reading…" while a
+   * project's presence is unread. Absent or `null`, it says nothing.
+   */
+  readonly notice?: CandidatesNotice | null;
+  /** The notice's one affordance, pressed. */
+  readonly onNoticeAct?: ((affordance: KnownAffordance) => void) | undefined;
   /** Opens the group's own page, in place of the thread. */
   readonly onOpenGroup?: ((groupId: string) => void) | undefined;
 }
@@ -291,6 +303,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   mayCreate = false,
   health = NO_HEALTH,
   complete,
+  notice = null,
+  onNoticeAct,
   className,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
@@ -308,6 +322,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // for the same project.
   const deployments = useZeropsProjectFlowOptional()?.deployments;
 
+  // Nothing to draw, and the listing may not say "none" yet: its notice, at
+  // the menu's own left edge, never an empty state it has not earned.
+  if (emptyReason !== undefined && !complete) {
+    if (notice === null) return null;
+    return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
+  }
+
   // No project at all: nothing to list and nothing to say — the header's
   // "+ New project" is the one affordance, and the projects screen already
   // makes the invitation. A second "New project" here would be the same verb
@@ -317,11 +338,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   }
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
-  // edge, where every other row starts, and the way to the projects screen.
-  // Only once the list is complete: unread is not none, and a line that shows
-  // for the first second of every reload sends the whole menu jumping.
+  // edge, where every other row starts, and the way to the projects screen —
+  // once the list is complete, above.
   if (emptyReason !== undefined) {
-    if (!complete) return null;
     return (
       <div
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
@@ -565,7 +584,56 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           )}
         </section>
       ) : null}
+
+      {/* Rows already held, and the listing not all read: they may not be all
+          the Mates there are, so the notice stays under them (§3.4). */}
+      {notice === null ? null : <ListingNotice notice={notice} onAct={onNoticeAct} />}
     </nav>
+  );
+}
+
+/** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */
+function ListingNotice({
+  notice,
+  onAct,
+  className,
+}: {
+  readonly notice: CandidatesNotice;
+  readonly onAct: ((affordance: KnownAffordance) => void) | undefined;
+  readonly className?: string | undefined;
+}) {
+  const { affordance, message } = notice;
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-start gap-1.5 px-2.5 py-2",
+        message.afterMs > 0 && "animate-zerops-appear",
+        className,
+      )}
+      data-zerops-surface="sidebar-environments-notice"
+      role={notice.region === "message" ? "alert" : "status"}
+      style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
+    >
+      <span
+        className={cn(
+          "text-xs",
+          message.tone === "alert"
+            ? "text-[var(--zerops-status-failed-text)]"
+            : "text-sidebar-muted-foreground",
+        )}
+      >
+        {message.text}
+      </span>
+      {affordance === null || onAct === undefined ? null : (
+        <button
+          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          onClick={() => onAct(affordance)}
+          type="button"
+        >
+          {affordance.label}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1039,7 +1107,7 @@ function PullRequestRow({
           checks beside it; where Gitea refuses, the reason is written out —
           a red dot alone was the row saying nothing at exactly the moment it
           had something to say (seen in the harness, 2026-09-19). */}
-      {pull.mergeable ? (
+      {pull.mergeability === "mergeable" ? (
         <>
           {tone === undefined || pull.checkWord === undefined ? null : (
             <Tooltip>
@@ -1080,37 +1148,6 @@ function PullRequestRow({
  * It asks first, in the shape *Release* and *Merge* ask in, and the confirm
  * quotes the exact words that will be sent — because *Send* sends them.
  */
-/** Where the folded projects are remembered, per browser. */
-const COLLAPSED_STOPS_KEY = "zerops.sidebar.collapsedStops";
-
-/**
- * The projects whose stops were folded away last time.
- *
- * Storage can throw outright (a private window, blocked site data) and can
- * hold anything at all, so a bad read is an empty set rather than a crash on
- * boot — the menu unfolded is the safe wrong answer.
- */
-function readCollapsedStops(): ReadonlySet<string> {
-  try {
-    const raw = globalThis.localStorage?.getItem(COLLAPSED_STOPS_KEY);
-    if (raw === null || raw === undefined) return new Set();
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((entry): entry is string => typeof entry === "string"));
-  } catch {
-    return new Set();
-  }
-}
-
-function writeCollapsedStops(collapsed: ReadonlySet<string>): void {
-  try {
-    globalThis.localStorage?.setItem(COLLAPSED_STOPS_KEY, JSON.stringify([...collapsed]));
-  } catch {
-    // A menu that cannot remember its folds still works; one that throws on a
-    // fold does not.
-  }
-}
-
 function AskVerb({
   pull,
   word,

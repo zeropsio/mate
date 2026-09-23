@@ -3,18 +3,18 @@ import { RegistryContext } from "@effect/atom-react";
 import {
   makeAccountRuntime,
   type AccountRuntime,
-  type PagePort,
-  type WriteWindowPort,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   AccountEpoch,
   DEFAULT_ZEROPS_GRANT_POLICY,
+  grantCapabilities,
   makeBuildLogTransport,
   makeRestAccessVerifier,
   makeZeropsApiOrigin,
   makeZeropsDataAdapter,
   makeZeropsDataRuntime,
   makeZeropsResourceRestAdapter,
+  writeAdmissionOf,
   ZeropsAccountId,
   ZeropsOrganizationId,
   ZeropsProjectId,
@@ -24,22 +24,25 @@ import {
   type PlatformWatchSocket,
 } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
+import type { PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
-import * as Stream from "effect/Stream";
 import { type AtomRegistry } from "effect/unstable/reactivity";
 import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
-import {
-  captureAccountLifetime,
-  currentAccountEpoch,
-  onAccountLifetimeClose,
-  setAccountActionsAllowed,
-} from "./accountLifetime";
+import { bindAccountEnvironments, useAccountEnvironments } from "./accountEnvironments";
+import { bindAccountFlow, webForgePorts } from "./accountForge";
+import { bindAccountInvalidations } from "./accountInvalidations";
+import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
+import { browserPlatformSignals, signalsVisibility } from "./browserSignals";
 import { makeBrowserDataScheduler } from "./dataScheduler";
+import { webEnvironmentPorts } from "./environmentPorts";
+import { tabClock } from "./tabClock";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { bindBirthInputs } from "./zeropsBirths";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 export function connectZeropsDataSocket(url: string): PlatformWatchSocket {
@@ -59,83 +62,6 @@ export function connectZeropsDataSocket(url: string): PlatformWatchSocket {
   return wrapper;
 }
 
-function browserVisibility() {
-  return {
-    current: Effect.sync(() => (document.visibilityState === "hidden" ? "hidden" : "visible")),
-    changes: Stream.fromEventListener(document, "visibilitychange").pipe(
-      Stream.map(() => (document.visibilityState === "hidden" ? "hidden" : "visible")),
-    ),
-  } as const;
-}
-
-/**
- * The page as the account runtime hears it (DESIGN §6.4): the document's
- * visibility, a return from the back-forward cache or a freeze, and the
- * network. Bound to this document and window, whichever tab later holds the
- * globals.
- */
-export function browserPage(document: Document, window: Window): PagePort {
-  return {
-    hidden: () => document.visibilityState === "hidden",
-    online: () => typeof navigator === "undefined" || navigator.onLine !== false,
-    listen: (hear) => {
-      const onVisibility = () =>
-        hear({ type: "visibility", hidden: document.visibilityState === "hidden" });
-      const onResume = () => hear({ type: "resume" });
-      const onPageShow = (event: Event) => {
-        if ((event as PageTransitionEvent).persisted) hear({ type: "resume" });
-      };
-      const onOnline = () => hear({ type: "online" });
-      const onOffline = () => hear({ type: "offline" });
-      document.addEventListener("visibilitychange", onVisibility);
-      document.addEventListener("resume", onResume);
-      window.addEventListener("pageshow", onPageShow);
-      window.addEventListener("online", onOnline);
-      window.addEventListener("offline", onOffline);
-      return () => {
-        document.removeEventListener("visibilitychange", onVisibility);
-        document.removeEventListener("resume", onResume);
-        window.removeEventListener("pageshow", onPageShow);
-        window.removeEventListener("online", onOnline);
-        window.removeEventListener("offline", onOffline);
-      };
-    },
-  };
-}
-
-/** The write window that last opened each client's writes. */
-const clientWriteOwners = new WeakMap<Pick<ZeropsApiClient, "setWritesAllowed">, WriteWindowPort>();
-
-/**
- * Account actions and the api's project writes, open for as long as the
- * grant's evidence authorizes them (G4, G5): the account's deadline on both of
- * this renderer's clocks, the api's on its own `timeOrigin + performance.now()`.
- *
- * Bound to the account lifetime it is made in: once that lifetime closed it
- * opens nothing, and it closes only what it opened itself, never a newer
- * account's window.
- */
-export function browserWriteWindow(
-  client: Pick<ZeropsApiClient, "setWritesAllowed">,
-): WriteWindowPort {
-  const alive = captureAccountLifetime();
-  const window: WriteWindowPort = {
-    open: (forMs) => {
-      if (!alive()) return;
-      setAccountActionsAllowed({ wallMs: Date.now() + forMs, monoMs: performance.now() + forMs });
-      client.setWritesAllowed(true, performance.timeOrigin + performance.now() + forMs);
-      clientWriteOwners.set(client, window);
-    },
-    close: () => {
-      if (alive()) setAccountActionsAllowed(null);
-      if (clientWriteOwners.get(client) !== window) return;
-      clientWriteOwners.delete(client);
-      client.setWritesAllowed(false);
-    },
-  };
-  return window;
-}
-
 /**
  * Builds one platform-data runtime for one account. The default is the real
  * browser adapter stack; a test may substitute a fake one (the only clean
@@ -152,6 +78,8 @@ export type MakeZeropsDataRuntime = (input: {
   readonly client: ZeropsApiClient;
   readonly registry: AtomRegistry.AtomRegistry;
   readonly scheduler: Scheduler.Scheduler;
+  /** The account's tab signals: the runtime pauses its push half while the tab is hidden. */
+  readonly signals: PlatformSignals;
   readonly signal: AbortSignal;
 }) => Promise<ManagedZeropsDataRuntime>;
 
@@ -160,8 +88,11 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
   client,
   registry,
   scheduler,
+  signals,
   signal,
 }) => {
+  // A browser without Web Locks has its tag writes serialized within the page only.
+  const locks: LockManager | undefined = globalThis.navigator?.locks;
   const adapter = makeZeropsDataAdapter({
     client,
     makeSocket: connectZeropsDataSocket,
@@ -169,6 +100,7 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
       setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
       clearTimer: (handle) => window.clearTimeout(handle as number),
     },
+    ...(locks === undefined ? {} : { locks }),
   });
   const logTimers = {
     setTimer: (callback: () => void, delayMs: number) => window.setTimeout(callback, delayMs),
@@ -189,8 +121,11 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
       logTimers,
       atomRegistry: registry,
       makeOpaqueId: () => crypto.randomUUID(),
-      visibility: browserVisibility(),
-    }).pipe(Effect.provideService(Scheduler.Scheduler, scheduler)),
+      visibility: signalsVisibility(signals),
+    }).pipe(
+      Effect.provideService(Scheduler.Scheduler, scheduler),
+      Effect.provideService(Clock.Clock, tabClock),
+    ),
     { signal },
   );
 };
@@ -217,10 +152,32 @@ export function ZeropsDataStartupFailure({
   );
 }
 
+/** The account's organization and project refs, keyed off the data runtime's account. */
+function accountRefs(
+  runtime: ManagedZeropsDataRuntime,
+): Pick<ZeropsDataContextValue, "organizationRef" | "projectRef"> {
+  const organizationRef = (organizationId: string) => ({
+    kind: "organization" as const,
+    account: runtime.scope.account,
+    organizationId: ZeropsOrganizationId.make(organizationId),
+  });
+  return {
+    organizationRef,
+    projectRef: (organizationId, projectId) => ({
+      kind: "project",
+      organization: organizationRef(organizationId),
+      projectId: ZeropsProjectId.make(projectId),
+    }),
+  };
+}
+
 /**
  * Owns exactly one account runtime for one verified account lifetime: the
- * platform-data runtime `makeRuntime` builds, and its access grant verified
- * through the session's client.
+ * platform-data runtime `makeRuntime` builds, its access grant verified
+ * through the session's client, its invalidation bus bound for the web's
+ * surfaces, and — once the epoch's first grant built it — its post-grant
+ * stage: the Mate environments, the project flow's Gitea sessions, forge and
+ * deployments, and the births beside them.
  */
 export function ZeropsDataProvider({
   children,
@@ -230,13 +187,17 @@ export function ZeropsDataProvider({
   /** Test-only seam: substitutes the real adapter/runtime construction. */
   readonly makeRuntime?: MakeZeropsDataRuntime;
 }) {
-  const { client, signOut, status, updateVerifiedMemberships, user } = useZeropsSession();
+  const { activeOrganization, client, signOut, status, updateVerifiedMemberships, user } =
+    useZeropsSession();
   const verifiedMemberships = useEffectEvent((verified: ZeropsUser) =>
     updateVerifiedMemberships(verified),
   );
   const registry = useContext(RegistryContext);
   const accountId = status === "signed-in" ? (user?.id ?? null) : null;
-  const [runtime, setRuntime] = useState<ManagedZeropsDataRuntime | null>(null);
+  const [opened, setOpened] = useState<{
+    readonly runtime: ManagedZeropsDataRuntime;
+    readonly signals: PlatformSignals;
+  } | null>(null);
   const [startupFailure, setStartupFailure] = useState<{
     readonly accountId: string;
     readonly message: string;
@@ -248,6 +209,9 @@ export function ZeropsDataProvider({
     let cancelled = false;
     let current: ManagedZeropsDataRuntime | null = null;
     let removeLifetimeClose: () => void = () => undefined;
+    let unbindInvalidations: () => void = () => undefined;
+    let unbindEnvironments: () => void = () => undefined;
+    let unbindFlow: () => void = () => undefined;
     setStartupFailure(null);
     const scope = {
       account: {
@@ -258,7 +222,7 @@ export function ZeropsDataProvider({
     };
     const taskScheduler = makeBrowserDataScheduler();
     const abort = new AbortController();
-    const page = browserPage(document, window);
+    const signals = browserPlatformSignals(document, window);
     /** The account runtime being built on the data runtime, once there is one. */
     let account: Promise<AccountRuntime> | null = null;
     let shutdownPromise: Promise<void> | null = null;
@@ -277,6 +241,7 @@ export function ZeropsDataProvider({
       client,
       registry,
       scheduler: taskScheduler.scheduler,
+      signals,
       signal: abort.signal,
     }).then(
       (created) => {
@@ -285,6 +250,8 @@ export function ZeropsDataProvider({
           void shutdown(created, "account-replaced");
           return;
         }
+        // Project writes are this epoch's from now on; once it closed, its grant refuses them.
+        client.admitWritesThrough(writeAdmissionOf(grantCapabilities(created.access)));
         account = Effect.runPromise(
           makeAccountRuntime({
             data: created,
@@ -294,19 +261,40 @@ export function ZeropsDataProvider({
               concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
               onUser: (verified) => verifiedMemberships(verified),
             }),
-            page,
-            writes: browserWriteWindow(client),
+            signals,
             atomRegistry: registry,
+            environments: webEnvironmentPorts({ client, registry }),
+            forge: webForgePorts,
           }),
         );
         void account.then(
-          () => {
+          (built) => {
             // A cleanup before the account runtime stood closes it through `shutdown`.
             if (cancelled) return;
             removeLifetimeClose = onAccountLifetimeClose(() => {
               void shutdown(created, "logout");
             });
-            setRuntime(created);
+            // Surfaces send their intents to this account's bus from the first mount.
+            unbindInvalidations = bindAccountInvalidations(built.invalidations);
+            setOpened({ runtime: created, signals });
+            // The post-grant stage stands on the epoch's first grant: surfaces read its Mate
+            // environments and its project flow — the Gitea sessions, the forge, the deployments —
+            // from then on, and the account's births start beside them.
+            void Effect.runPromise(built.postGrant).then(
+              (stage) => {
+                if (cancelled) return;
+                unbindEnvironments = bindAccountEnvironments(stage.environments);
+                unbindFlow = bindAccountFlow(stage);
+                bindBirthInputs({
+                  client,
+                  runtime: created,
+                  ...accountRefs(created),
+                  atoms: registry,
+                });
+              },
+              // An epoch that closed before its first grant never had a post-grant stage.
+              () => undefined,
+            );
           },
           (cause: unknown) => {
             void shutdown(created, "account-replaced");
@@ -327,28 +315,26 @@ export function ZeropsDataProvider({
       cancelled = true;
       abort.abort();
       removeLifetimeClose();
-      setRuntime(null);
+      unbindInvalidations();
+      unbindEnvironments();
+      unbindFlow();
+      setOpened(null);
       if (current !== null) void shutdown(current, "account-replaced");
     };
   }, [accountId, client, makeRuntime, registry, startupAttempt]);
 
   const value = useMemo<ZeropsDataContextValue | null>(() => {
-    if (runtime === null || runtime.scope.account.accountId !== accountId) return null;
-    const organizationRef = (organizationId: string) => ({
-      kind: "organization" as const,
-      account: runtime.scope.account,
-      organizationId: ZeropsOrganizationId.make(organizationId),
-    });
-    return {
-      runtime,
-      organizationRef,
-      projectRef: (organizationId, projectId) => ({
-        kind: "project",
-        organization: organizationRef(organizationId),
-        projectId: ZeropsProjectId.make(projectId),
-      }),
-    };
-  }, [accountId, runtime]);
+    if (opened === null || opened.runtime.scope.account.accountId !== accountId) return null;
+    const { runtime, signals } = opened;
+    return { runtime, signals, ...accountRefs(runtime) };
+  }, [accountId, opened]);
+
+  // Auto-connect wants the ready Mates of the organization this tab has open (D13).
+  const environments = useAccountEnvironments();
+  const activeOrganizationId = activeOrganization?.id ?? null;
+  useEffect(() => {
+    environments?.setActiveOrganization(activeOrganizationId);
+  }, [activeOrganizationId, environments]);
 
   const startupError = startupFailure?.accountId === accountId ? startupFailure.message : null;
   if (value === null)

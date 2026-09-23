@@ -13,7 +13,8 @@
  * - At most `EXCHANGE_CONCURRENCY` exchanges run at once and at most `DOOR_MINTS_PER_MINUTE`
  *   start in any minute of this tab (I12). Slots go in priority order — the route's target,
  *   the user's Connect, remembered targets, auto-connect — to a target the slot would start;
- *   every other wanted target waits `on: budget`.
+ *   every other wanted target waits `on: budget`. One slot and the minute's last mint are kept
+ *   for a route target that may still need them.
  * - An exchange whose attempt ends without it (its deadline, a retirement) is aborted.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -122,9 +123,8 @@ export interface ExchangeDriverPorts<C> {
   /** The inventory re-reads this target's presence. */
   readonly refreshPresence: (key: TargetKey) => void;
   /**
-   * `catalog.remove`; drafts keep their keys (AL-13). The door's logout and the record's
-   * deletion wait for an absence a direct read confirmed (C19, 3.9): until then a target found
-   * gone may come back, and its record restores it.
+   * `catalog.remove`; drafts keep their keys (AL-13). The record and the door's session stay: a
+   * target found gone that the inventory names again is restored by its record.
    */
   readonly retire: (key: TargetKey, environmentId: EnvironmentId | null) => void;
   readonly log?: (key: TargetKey, diagnostic: EnvironmentDiagnostic) => void;
@@ -185,6 +185,8 @@ interface Entry {
 
 /** The demands in priority order (§4.4): the user's Connect ranks after the route's target. */
 const PRIORITY: ReadonlyArray<DemandReason | "user"> = ["route", "user", "record", "auto-connect"];
+
+const ROUTE_RANK = PRIORITY.indexOf("route");
 
 const EXCHANGE_REASON: Record<DemandReason, IdentityExchangeReason> = {
   route: "restore",
@@ -449,24 +451,43 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   };
 
   /**
+   * A route target that may still need an exchange — waiting on its container, say — keeps one
+   * exchange slot and the minute's last mint: the other targets never spend them first (§4.4
+   * "route target first").
+   */
+  const routePending = (): boolean =>
+    [...demands.get("route")!].some((key) => {
+      const kind = entries.get(key)?.machine.credential.kind;
+      return kind === "none" || kind === "waiting" || kind === "backoff";
+    });
+
+  /** An exchange still reading a remembered Mate's descriptor: its mint is still to come (A16). */
+  const probing = (machine: EnvironmentMachine): boolean =>
+    machine.credential.kind === "exchanging" &&
+    machine.probing?.attempt === machine.credential.attempt;
+
+  /**
    * Hands the free slots, in priority order, to the targets a slot would start, and takes the
    * budget back from every other one — so a slot is never held by a target that waits on
-   * something else, and nothing starts past the concurrency or the minute's mints.
+   * something else, and nothing starts past the concurrency or the minute's mints, counting the
+   * mint each descriptor probe in flight may still spend.
    */
   const allocate = (): void => {
     const now = clock.now();
     while (minted.length > 0 && now.mono - minted[0]! >= MINT_WINDOW_MS) minted.shift();
     const ordered = [...entries.keys()].sort((left, right) => rank(left) - rank(right));
-    let starved = false;
+    let mintBound = false;
     for (const key of ordered) {
       const entry = entries.get(key)!;
-      const exchanging = [...entries.values()].filter(
-        (other) => other.machine.credential.kind === "exchanging",
-      ).length;
+      const running = [...entries.values()].map((other) => other.machine);
+      const exchanging = running.filter((other) => other.credential.kind === "exchanging").length;
+      const owed = running.filter(probing).length;
+      const reserved = rank(key) > ROUTE_RANK && routePending() ? 1 : 0;
+      const mints = DOOR_MINTS_PER_MINUTE - reserved;
       let budget = false;
       if (entry.machine.credential.kind === "exchanging") {
         budget = entry.machine.guards.budget;
-      } else if (exchanging < EXCHANGE_CONCURRENCY && minted.length < DOOR_MINTS_PER_MINUTE) {
+      } else if (exchanging < EXCHANGE_CONCURRENCY - reserved && minted.length + owed < mints) {
         const trial = transitionEnvironment(
           entry.machine,
           { type: "GUARDS", guards: guardsFor(key, true) },
@@ -477,12 +498,14 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       const guards = guardsFor(key, budget);
       if (!sameJson(guards, entry.machine.guards)) step(key, { type: "GUARDS", guards });
       const credential = entry.machine.credential;
-      if (credential.kind === "waiting" && credential.on === "budget") starved = true;
+      if (credential.kind === "waiting" && credential.on === "budget" && minted.length >= mints) {
+        mintBound = true;
+      }
     }
     cancelMintTimer?.();
     cancelMintTimer = null;
     // A target held back by the minute's mints gets its slot back when the oldest one ages out.
-    if (starved && minted.length >= DOOR_MINTS_PER_MINUTE) {
+    if (mintBound) {
       cancelMintTimer = clock.setTimer(minted[0]! + MINT_WINDOW_MS - now.mono, () =>
         enqueue(() => undefined),
       );
@@ -563,7 +586,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
         for (const target of targets) {
           let entry = entryFor(target.key, target.record);
           // Retirement absorbs every event. A target found gone that the inventory names again
-          // is a new target: its absence was never confirmed by a direct read (C19, 3.9).
+          // is a new target.
           if (
             entry.machine.credential.kind === "retired" &&
             entry.machine.presence.kind === "gone" &&

@@ -37,6 +37,12 @@ export type NoOriginReason = "subdomain-off" | "no-port" | "no-subdomain";
 export type Presence =
   | { readonly kind: "unknown" }
   | { readonly kind: "present"; readonly origin: string }
+  /**
+   * A registration record names the target and its project's services are not read yet this
+   * epoch (A16): its Mate is looked for at the origin the record kept, and exchanged there only
+   * while that Mate's descriptor names the record's environment.
+   */
+  | { readonly kind: "remembered"; readonly origin: string }
   | { readonly kind: "transitioning"; readonly status: ServiceTransition }
   | { readonly kind: "inactive"; readonly status: string }
   | { readonly kind: "no-origin"; readonly reason: NoOriginReason }
@@ -98,8 +104,6 @@ export type ExchangeCause =
   | { readonly kind: "descriptor-unreachable" }
   /** The door's `503 zerops_identity_unavailable` (D11). */
   | { readonly kind: "identity-unavailable" }
-  /** The mint still waited on project access after its 30 s wait. */
-  | { readonly kind: "access-unverified" }
   /** The descriptor reports `zerops.identity = "failed"`: the Mate could not check who you are. */
   | { readonly kind: "identity-failed" }
   /** The Mate kept refusing freshly exchanged credentials. */
@@ -218,6 +222,11 @@ export interface EnvironmentMachine {
   readonly presence: Presence;
   readonly credential: Credential;
   readonly link: Link;
+  /**
+   * When the link last stopped being connected; null while it is connected, or before it first
+   * was. DESIGN §9 C1b bounds a conversation shown without verified access by it.
+   */
+  readonly linkLostAt: Instant | null;
   readonly container: ContainerVerdict;
   readonly guards: EnvironmentGuards;
   /** The registration record's environment (C1); null when nothing is remembered here. */
@@ -252,6 +261,12 @@ export interface EnvironmentMachine {
     readonly sinceMs: number | null;
   };
   readonly nextAttempt: number;
+  /**
+   * The attempt that began by reading a remembered Mate's descriptor (A16), and the origin it
+   * reads: an exchanging credential on this attempt is still waiting for that read. Null before
+   * the first.
+   */
+  readonly probing: { readonly attempt: number; readonly origin: string } | null;
   /** When the interpreter's one timer fires; null when nothing waits on time. */
   readonly timer: Instant | null;
 }
@@ -360,6 +375,7 @@ export const initialEnvironment = (input: {
   presence: { kind: "unknown" },
   credential: { kind: "none", reconnect: false },
   link: { phase: "idle" },
+  linkLostAt: null,
   container: { level: "unknown" },
   guards: IDLE_GUARDS,
   record: input.record,
@@ -373,6 +389,7 @@ export const initialEnvironment = (input: {
   identityAnswered: false,
   identityFailures: NO_IDENTITY_FAILURES,
   nextAttempt: 1,
+  probing: null,
   timer: null,
 });
 
@@ -392,18 +409,30 @@ const containerHolds = (machine: EnvironmentMachine): boolean =>
   machine.container.level !== "ready" &&
   machine.container.level !== "unknown";
 
+/** Where the Mate is reached: the origin the inventory lists, or the one its record kept. */
+const originOf = (presence: Presence): string | null =>
+  presence.kind === "present" || presence.kind === "remembered" ? presence.origin : null;
+
+/** A remembered Mate whose descriptor names another environment than its record's (A16). */
+const rememberedElsewhere = (machine: EnvironmentMachine): boolean =>
+  machine.presence.kind === "remembered" &&
+  machine.descriptor !== null &&
+  machine.descriptor.environmentId !== machine.record;
+
 type Verdict =
   | { readonly kind: "idle" }
   | { readonly kind: "wait"; readonly on: WaitingOn }
   | { readonly kind: "refuse"; readonly reason: RefusalReason }
-  | { readonly kind: "go"; readonly origin: string };
+  /** `probe`: the descriptor is read first, and the exchange runs only if it names the record. */
+  | { readonly kind: "go"; readonly origin: string; readonly probe: boolean };
 
 /** WANT ∧ CAN, in the order §4.4 lists CAN's conjuncts. */
 const gate = (machine: EnvironmentMachine): Verdict => {
   const guards = machine.guards;
   if (!guards.want) return { kind: "idle" };
   if (!guards.postGrant) return { kind: "wait", on: "access" };
-  if (machine.presence.kind !== "present") return { kind: "wait", on: "presence" };
+  const origin = originOf(machine.presence);
+  if (origin === null || rememberedElsewhere(machine)) return { kind: "wait", on: "presence" };
   if (containerHolds(machine)) return { kind: "wait", on: "container" };
   if (guards.zeropsFailing && !machine.identityAnswered) return { kind: "wait", on: "zerops" };
   if (!guards.visible && !guards.routeTarget) return { kind: "wait", on: "visible" };
@@ -413,7 +442,7 @@ const gate = (machine: EnvironmentMachine): Verdict => {
       : { kind: "refuse", reason: { kind: "access", reason: guards.identityMint.reason } };
   }
   if (!guards.budget) return { kind: "wait", on: "budget" };
-  return { kind: "go", origin: machine.presence.origin };
+  return { kind: "go", origin, probe: machine.presence.kind === "remembered" };
 };
 
 type Effects = Array<EnvironmentEffect>;
@@ -447,11 +476,14 @@ const evaluate = (
       out.push({
         kind: "run",
         attempt,
-        op: { kind: "exchange", origin: verdict.origin, expected: machine.record },
+        op: verdict.probe
+          ? { kind: "read-descriptor", origin: verdict.origin }
+          : { kind: "exchange", origin: verdict.origin, expected: machine.record },
       });
       return {
         ...machine,
         nextAttempt: attempt + 1,
+        probing: verdict.probe ? { attempt, origin: verdict.origin } : machine.probing,
         credential: {
           kind: "exchanging",
           attempt,
@@ -593,6 +625,37 @@ const supersede = (
   return next;
 };
 
+/**
+ * A remembered Mate's descriptor probe answered (A16); a presence that moves off the probed origin
+ * drops the probe before it answers. The exchange runs, inside the same attempt's deadline, when
+ * the guards still admit it: the Mate at the recorded origin is the one the record names, or the
+ * inventory listed the target there meanwhile. Otherwise the guards judge it again, and a Mate
+ * that serves another environment waits for its project's services.
+ */
+const probed = (
+  machine: EnvironmentMachine,
+  credential: Extract<Credential, { readonly kind: "exchanging" }>,
+  result: Extract<EnvironmentEvent, { readonly type: "DESCRIPTOR_READ" }>["result"],
+  ctx: EnvironmentContext,
+  out: Effects,
+): EnvironmentMachine => {
+  if (!result.ok) {
+    return backoff(machine, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
+  }
+  const next = ingestDescriptor(machine, result.descriptor, ctx);
+  const verdict = gate(next);
+  if (verdict.kind !== "go") {
+    return { ...next, credential: { kind: "none", reconnect: credential.reconnect } };
+  }
+  const attempt = next.nextAttempt;
+  out.push({
+    kind: "run",
+    attempt,
+    op: { kind: "exchange", origin: verdict.origin, expected: next.record },
+  });
+  return { ...next, nextAttempt: attempt + 1, credential: { ...credential, attempt } };
+};
+
 // ── Link ──────────────────────────────────────────────────────────────────────────────────────
 
 const onBlocked = (
@@ -656,12 +719,13 @@ const judgeDescriptorBlock = (
   if (block === "unsupported" && machine.descriptor !== null) {
     return refuse(machine, { kind: "version" }, out);
   }
-  if (machine.presence.kind !== "present") return machine;
+  const origin = originOf(machine.presence);
+  if (origin === null) return machine;
   const attempt = machine.nextAttempt;
   out.push({
     kind: "run",
     attempt,
-    op: { kind: "read-descriptor", origin: machine.presence.origin },
+    op: { kind: "read-descriptor", origin },
   });
   return {
     ...machine,
@@ -689,6 +753,7 @@ const onLink = (
     const next: EnvironmentMachine = {
       ...machine,
       link: { phase: "connected", since: ctx.now },
+      linkLostAt: null,
       credential,
       permissionRetried: false,
       configurationBlocks: 0,
@@ -698,7 +763,12 @@ const onLink = (
       ? { ...next, failures: 0, ladder: INITIAL_BACKOFF }
       : next;
   }
-  const next: EnvironmentMachine = { ...machine, link: phase, credential };
+  const next: EnvironmentMachine = {
+    ...machine,
+    link: phase,
+    linkLostAt: machine.link.phase === "connected" ? ctx.now : machine.linkLostAt,
+    credential,
+  };
   return phase.phase === "blocked" ? onBlocked(next, phase.reason, ctx, out) : next;
 };
 
@@ -761,7 +831,20 @@ const apply = (
       if (event.presence.kind === "gone") {
         return retire({ ...machine, presence: event.presence }, event.presence.evidence, out);
       }
-      return inputChanged({ ...machine, presence: event.presence }, "input-change");
+      const next: EnvironmentMachine = { ...machine, presence: event.presence };
+      // A probe of the origin the presence moved from says nothing of the Mate: its answer is not
+      // waited for, and the guards judge the new presence now.
+      if (
+        credential.kind === "exchanging" &&
+        machine.probing?.attempt === credential.attempt &&
+        originOf(event.presence) !== machine.probing.origin
+      ) {
+        return inputChanged(
+          { ...next, credential: { kind: "none", reconnect: credential.reconnect } },
+          "input-change",
+        );
+      }
+      return inputChanged(next, "input-change");
     }
     case "CONTAINER": {
       if (sameJson(machine.container, event.container)) return machine;
@@ -786,6 +869,13 @@ const apply = (
       return moved ? inputChanged(next, "input-change") : next;
     }
     case "DESCRIPTOR_READ": {
+      if (
+        credential.kind === "exchanging" &&
+        credential.attempt === event.attempt &&
+        machine.probing?.attempt === event.attempt
+      ) {
+        return probed(machine, credential, event.result, ctx, out);
+      }
       if (credential.kind !== "held" || credential.rereading?.attempt !== event.attempt) {
         return stale(machine, event.attempt, out);
       }

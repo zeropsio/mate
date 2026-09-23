@@ -35,8 +35,9 @@
  * "targets the container" only ever requires the container's id to be one of
  * the ids listed, extra ids or not.
  *
- * `hardening`'s own evidence (`provisioningPhase`) is absent whenever this tab's wait slot is not on the project — a second
- * tab, or a reload before the resume seeds one. Without a fallback, that
+ * `hardening`'s own evidence (`provisioningPhase`) is absent whenever this tab
+ * does not drive the project's birth — another tab holds its lock, or its
+ * driver has not read the project yet. Without a fallback, that
  * leaves both `hardening` and `mate` sitting on `waiting` once `public-access`
  * is done and before health answers: no step reads as active at all. So with
  * `provisioningPhase` null and `public-access` done, `hardening` reads
@@ -86,7 +87,7 @@ export interface BirthFacts {
   readonly processes: ReadonlyArray<BirthProcessFact>;
   /** The container's health probe; undefined = not probed/answered yet. */
   readonly health: ZeropsContainerHealth | undefined;
-  /** The provisioning wait's phase, when this client's wait slot is on this project; null otherwise. */
+  /** The birth's wait phase, when this tab drives the project's birth; null otherwise. */
   readonly provisioningPhase: ProvisioningPhase | null;
   /** The hardening's failure message, when provisioning reported one. */
   readonly hardenError?: string | undefined;
@@ -374,10 +375,10 @@ function deriveHardeningStep(facts: BirthFacts, publicAccessDone: boolean): Step
   // `awaiting-settled` starts as soon as the container exists — its build
   // may not have begun — so it is this step only once public access is done;
   // before that the container and public-access steps carry the birth. The
-  // same holds with no wait slot on this tab (a second tab, or a reload
-  // before the resume seeds one): once public access is done the platform is
-  // already into hardening, so absent evidence still reads as active rather
-  // than leaving neither hardening nor mate showing anything.
+  // same holds when this tab does not drive the birth (another tab does, or
+  // its driver has not read the project yet): once public access is done the
+  // platform is already into hardening, so absent evidence still reads as
+  // active rather than leaving neither hardening nor mate showing anything.
   if ((phase === null || phase === "awaiting-settled") && publicAccessDone) {
     return { state: "active", detail: "Closing the project off" };
   }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 
 import { ZeropsApiError, type ZeropsProject, type ZeropsUser } from "../../api.ts";
 import { account, organization, project as projectRef } from "../__fixtures__/index.ts";
@@ -179,6 +180,35 @@ describe("the REST access verifier's round (DESIGN G1)", () => {
           },
         });
         expect(events).toEqual([]);
+      }),
+  );
+
+  it.effect.each(["fetchUser", "listAccessibleClientProjects"] as const)(
+    "an abandoned round aborts its HTTP reads: %s",
+    (held) =>
+      Effect.gen(function* () {
+        const signals: Array<AbortSignal | undefined> = [];
+        const reading = Promise.withResolvers<void>();
+        /** A read that answers only when its round lets it go. */
+        const hang = (signal: AbortSignal | undefined) => {
+          signals.push(signal);
+          reading.resolve();
+          return new Promise<never>(() => undefined);
+        };
+        const { verifier } = verifierOver(
+          held === "fetchUser"
+            ? { fetchUser: (signal) => hang(signal) }
+            : { listAccessibleClientProjects: (_id, options) => hang(options?.signal) },
+        );
+        const round = yield* Effect.forkChild(
+          verifier.verifyRound({ round: 7, carried: [], report: () => Effect.void }),
+        );
+        yield* Effect.promise(() => reading.promise);
+
+        yield* Fiber.interrupt(round);
+
+        expect(signals).toHaveLength(1);
+        expect(signals[0]?.aborted).toBe(true);
       }),
   );
 

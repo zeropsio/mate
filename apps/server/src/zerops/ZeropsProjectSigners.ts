@@ -192,6 +192,18 @@ export class ZeropsProjectSigners extends Context.Service<
   {
     /** Who signed each agent in, from a read no older than {@link SIGNERS_CACHE_TTL}. */
     readonly signers: Effect.Effect<ProjectSigners>;
+    /**
+     * {@link turnRefusal} for this session on `agentId`. A refusal that rests
+     * on the signer record and came from the cache — or from what was last
+     * known after a failed read — reads the tags once more and answers from
+     * that read: a sign-in written inside the cache's lifetime is not refused
+     * on the record from before it.
+     */
+    readonly turnRefusal: (input: {
+      readonly agentId: ZeropsAgentId;
+      readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
+      readonly subject: string | undefined;
+    }) => Effect.Effect<TurnRefusal | undefined>;
     /** Runs one leave check now and answers how many agents it signed out. */
     readonly checkLeaversNow: Effect.Effect<number>;
   }
@@ -318,33 +330,53 @@ export const make = Effect.gen(function* () {
       Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
     );
 
+  /**
+   * The tags read now, cached on success. A read that failed keeps whatever
+   * was last known rather than inventing an empty record: forgetting a signer
+   * would lock the person who signed in out of their own agent.
+   */
+  const readThrough = (environment: ZeropsEnvironment) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const read = yield* withHttp(readProjectSigners({ environment }));
+      if (read === undefined) {
+        return { value: (yield* Ref.get(cache))?.value ?? {}, fresh: false };
+      }
+      yield* Ref.set(cache, { at: now, value: read });
+      return { value: read, fresh: true };
+    });
+
+  /** The signers, and whether they come from a read made for this call. */
+  const cachedOrRead = (environment: ZeropsEnvironment) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const held = yield* Ref.get(cache);
+      if (held !== null && now - held.at < Duration.toMillis(SIGNERS_CACHE_TTL)) {
+        return { value: held.value, fresh: false };
+      }
+      return yield* readThrough(environment);
+    });
+
   const signers: ZeropsProjectSigners["Service"]["signers"] =
     environment === undefined
       ? Effect.succeed({})
-      : Effect.gen(function* () {
-          const now = yield* Clock.currentTimeMillis;
-          const held = yield* Ref.get(cache);
-          if (held !== null && now - held.at < Duration.toMillis(SIGNERS_CACHE_TTL)) {
-            return held.value;
-          }
-          const read = yield* withHttp(readProjectSigners({ environment }));
-          // A read that failed keeps whatever was last known rather than
-          // inventing an empty record: forgetting a signer would lock the
-          // person who signed in out of their own agent.
-          if (read === undefined) return held?.value ?? {};
-          yield* Ref.set(cache, { at: now, value: read });
-          return read;
-        });
+      : cachedOrRead(environment).pipe(Effect.map((read) => read.value));
+
+  const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({ agentId, agent, subject }) =>
+    Effect.gen(function* () {
+      if (environment === undefined) return turnRefusal({ agent, signer: undefined, subject });
+      const held = yield* cachedOrRead(environment);
+      const refusal = turnRefusal({ agent, signer: held.value[agentId], subject });
+      if (refusal === undefined || refusal.kind === "not-signed-in" || held.fresh) return refusal;
+      const reread = yield* readThrough(environment);
+      return turnRefusal({ agent, signer: reread.value[agentId], subject });
+    });
 
   const checkLeaversNow: ZeropsProjectSigners["Service"]["checkLeaversNow"] =
     environment === undefined
       ? Effect.succeed(0)
       : Effect.gen(function* () {
-          const read = yield* withHttp(readProjectSigners({ environment }));
-          if (read !== undefined) {
-            yield* Ref.set(cache, { at: yield* Clock.currentTimeMillis, value: read });
-          }
-          const current = read ?? (yield* Ref.get(cache))?.value ?? {};
+          const current = (yield* readThrough(environment)).value;
           if (Object.keys(current).length === 0) return 0;
           const activeMemberIds = yield* withHttp(readActiveMemberIds({ environment }));
           const departed = planAgentSignOut({ signers: current, activeMemberIds });
@@ -370,7 +402,7 @@ export const make = Effect.gen(function* () {
     );
   }
 
-  return ZeropsProjectSigners.of({ signers, checkLeaversNow });
+  return ZeropsProjectSigners.of({ signers, turnRefusal: gateTurn, checkLeaversNow });
 });
 
 export const layer = Layer.effect(ZeropsProjectSigners, make);

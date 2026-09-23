@@ -18,7 +18,7 @@ import {
   isZcpService,
   zeropsRegionFromPublicZone,
 } from "./containerAddress.ts";
-import { mateSignerTagIsCurrent, withMateProjectRole, withMateSignerTag } from "./mateAccess.ts";
+import { withMateProjectRole } from "./mateAccess.ts";
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
 import { parseZeropsRegistry, projectTagWriteBody, type ZeropsRegistry } from "./groupRegistry.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
@@ -170,14 +170,14 @@ export interface ZeropsProject {
    * and `GET /project/{id}` — return it.
    */
   readonly tagList?: ReadonlyArray<string>;
-  /** Round-tripped by `updateProjectGroupTags`, which must not blank it. */
+  /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
   /**
-   * Round-tripped by the registry write (`writeGroupRegistry`). `PUT
+   * Round-tripped by every tag write (`writeProjectTags`). `PUT
    * /project/{id}` replaces the record, so a tag write that omitted these two
    * would quietly take a shared IPv4 away or reset somebody's credit limit —
-   * on the Gitea project, which is the one project the whole account depends
-   * on.
+   * on any project, the Gitea project the whole account depends on among
+   * them.
    */
   readonly publicIpV4Shared?: boolean;
   readonly maxCreditLimit?: number | null;
@@ -362,6 +362,12 @@ export interface ZeropsService {
   readonly currentAutoscaling?: ZeropsAutoscaling | null;
 }
 
+/** What `GET /service-stack/{id}` says a service runs (`readServiceDeploys`). */
+export interface ZeropsServiceDeploys {
+  readonly activeAppVersion?: ZeropsAppVersion | null;
+  readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string }>;
+}
+
 /** A tool project the reconcile has to have by now (`createToolProject`). */
 function requireToolProject(project: ZeropsProject | undefined): ZeropsProject {
   if (project === undefined) {
@@ -423,8 +429,6 @@ export interface ZeropsLoginResponse {
  */
 export type ZeropsApiErrorKind =
   | "network"
-  /** The account window stayed closed for the whole wait; worth trying again. */
-  | "access-unverified"
   | "uncertain"
   | "expired-session"
   | "forbidden"
@@ -598,8 +602,6 @@ async function apiErrorFromResponse(response: Response): Promise<ZeropsApiError>
 export interface ZeropsApiClientOptions {
   readonly baseUrl?: string;
   readonly fetch?: FetchImplementation;
-  /** Epoch milliseconds; injectable so absolute write admission is deterministic. */
-  readonly now?: () => number;
   /** Fired whenever the held session changes — persist it, or clear on null. */
   readonly onSessionChange?: (session: ZeropsSession | null) => Promise<void> | void;
   /**
@@ -624,6 +626,16 @@ export interface ZeropsDataHttpRequest {
   readonly beforeWrite?: () => Promise<void>;
   /** Background data failures are scoped and never sign the account out. */
   readonly background: boolean;
+}
+
+/**
+ * Where the client asks, just before it sends each project write, whether
+ * project writes are admitted now (DESIGN §4.3). It may wait for them to be;
+ * what it rejects with reaches the write's caller as it came, never as a
+ * write that failed or may have happened, because nothing was sent.
+ */
+export interface WriteAdmission {
+  readonly beforeProjectWrite: () => Promise<void>;
 }
 
 interface RequestOptions {
@@ -670,15 +682,6 @@ function grantsNothing(mint: {
   return mint.roleCode === "NO_ACCESS" && mint.projects?.length === 0;
 }
 
-function isProjectWriteAdmissionError(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "_tag" in cause &&
-    cause._tag === "ZeropsCommandAdmissionError"
-  );
-}
-
 /**
  * Whether the platform refused a project variable because the key is already
  * there. Its words are the only marker: the code is the generic
@@ -710,6 +713,8 @@ function waitForPromiseOrAbort<T>(
 export interface ListProjectsOptions {
   readonly statuses?: ReadonlyArray<string>;
   readonly limit?: number;
+  /** Stops every page read of the listing. */
+  readonly signal?: AbortSignal;
 }
 
 /** Offset pagination is shared by the direct list and permission-filtered
@@ -758,20 +763,17 @@ async function readProjectPages<T extends { readonly id: string }>(
  * so the caller never has to think about the Authorization header.
  */
 export class ZeropsApiClient {
-  #writesAllowedUntilMs = Number.POSITIVE_INFINITY;
+  /** Asked before every project write; none admits every write. */
+  #writeAdmission: WriteAdmission | null = null;
   /**
-   * Installs the verified account write window. The request path checks this
-   * absolute deadline itself, so browser timer throttling cannot extend it.
+   * Admits this client's project writes through `admission` from now on: the
+   * account epoch's own, which refuses them once that epoch closed.
    */
-  setWritesAllowed(
-    allowed: boolean,
-    deadlineMs: number = allowed ? Number.POSITIVE_INFINITY : 0,
-  ): void {
-    this.#writesAllowedUntilMs = allowed ? deadlineMs : 0;
+  admitWritesThrough(admission: WriteAdmission): void {
+    this.#writeAdmission = admission;
   }
   readonly #baseUrl: string;
   readonly #fetch: FetchImplementation;
-  readonly #now: () => number;
   readonly #onSessionChange: (session: ZeropsSession | null) => Promise<void> | void;
   readonly #renewSession: NonNullable<ZeropsApiClientOptions["renewSession"]>;
   #session: ZeropsSession | null = null;
@@ -786,7 +788,6 @@ export class ZeropsApiClient {
     // against Window, so storing the bare function and calling it as
     // `this.#fetch(...)` throws "Illegal invocation".
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-    this.#now = options.now ?? (() => performance.timeOrigin + performance.now());
     this.#onSessionChange = options.onSessionChange ?? (() => undefined);
     this.#renewSession = options.renewSession ?? ((_stale, refresh) => refresh());
   }
@@ -987,8 +988,8 @@ export class ZeropsApiClient {
     }
   }
 
-  fetchUser(): Promise<ZeropsUser> {
-    return this.#request<ZeropsUser>("/user/info");
+  fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
+    return this.#request<ZeropsUser>("/user/info", { signal: signal ?? null });
   }
 
   /**
@@ -1013,7 +1014,7 @@ export class ZeropsApiClient {
         // cut short read as the end of the account rather than as a failure.
         readonly total?: number;
         readonly totalCount?: number;
-      }>(`/client/${clientId}/project?${query.toString()}`);
+      }>(`/client/${clientId}/project?${query.toString()}`, { signal: options.signal ?? null });
       return { items: response.list, total: response.total ?? response.totalCount };
     });
   }
@@ -1045,6 +1046,7 @@ export class ZeropsApiClient {
         "/project/search",
         {
           method: "POST",
+          signal: options.signal ?? null,
           body: JSON.stringify({
             limit,
             ...(offset ? { offset } : {}),
@@ -1061,87 +1063,34 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Moves a project into a group, out of one, or changes what it is for.
+   * `PUT /project/{id}` with `tagList` — the one call that writes a project's
+   * tags, and only the TagWriter makes it (`data/tagWriter.ts`), with a list
+   * it just applied a patch to.
    *
-   * Read-modify-write because `PUT /project/{id}` replaces `tagList` wholesale
-   * — a blind write would delete whatever the user tagged the project with
-   * themselves. `withZeropsGroupTags` is what preserves them.
-   *
-   * This is also the path that makes an existing project adoptable and lets a
-   * production environment be paired retroactively, which the create-time tag
-   * alone cannot do.
+   * `project` is the read that list came from: the platform replaces the
+   * record, so the fields the write must not change are round-tripped from it
+   * (`projectTagWriteBody`), and `userRoles` is never sent.
    */
-  async updateProjectGroupTags(
-    projectId: string,
-    next: {
-      readonly groupId?: string;
-      readonly role?: ZeropsEnvironmentRole;
-      /** The group's display name, mirrored into `mate:name:` (`groups.ts`). */
-      readonly label?: string;
-    },
+  async writeProjectTags(
+    project: ZeropsProject,
+    tagList: ReadonlyArray<string>,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.fetchProject(projectId, signal);
-    this.#assertGeneration(generation);
     return this.#request<ZeropsProject>(
-      `/project/${projectId}`,
+      `/project/${project.id}`,
       {
         method: "PUT",
         signal: signal ?? null,
-        body: JSON.stringify({
-          name: project.name,
-          description: project.description ?? "",
-          tagList: withZeropsGroupTags(project.tagList, next),
-        }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /**
-   * Records who signed an agent in, as a tag on the Mate's own project (D6).
-   *
-   * Written **as the person**, which is the whole point: a Mate's own key is
-   * `BASIC_USER` on its project and cannot write tags, so neither the
-   * container nor its agent can forge whose login this is. The server reads it
-   * with its own key and refuses a turn started by anybody else.
-   *
-   * Read-modify-write, like every other tag write here — `PUT /project/{id}`
-   * replaces `tagList` wholesale, and a blind write would delete the group
-   * membership and whatever the person tagged the project with themselves. A
-   * list that already names this signer is left alone, so signing in again
-   * costs a read and nothing more.
-   */
-  async recordProjectAgentSigner(
-    input: {
-      readonly projectId: string;
-      readonly agentId: string;
-      readonly userId: string;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.fetchProject(input.projectId, signal);
-    if (mateSignerTagIsCurrent(project.tagList, input.agentId, input.userId)) return project;
-    this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(
-      `/project/${input.projectId}`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          name: project.name,
-          description: project.description ?? "",
-          tagList: withMateSignerTag(project.tagList, input.agentId, input.userId),
-        }),
+        body: JSON.stringify(
+          projectTagWriteBody({
+            name: project.name,
+            description: project.description,
+            tagList,
+            publicIpV4Shared: project.publicIpV4Shared,
+            maxCreditLimit: project.maxCreditLimit,
+          }),
+        ),
       },
       {
         operationKind: "project-write",
@@ -1160,50 +1109,6 @@ export class ZeropsApiClient {
   async readGroupRegistry(giteaProjectId: string, signal?: AbortSignal): Promise<ZeropsRegistry> {
     const project = await this.fetchProject(giteaProjectId, signal);
     return parseZeropsRegistry(project.tagList);
-  }
-
-  /**
-   * Writes the registry back, as the person — an org owner or admin, because
-   * the platform refuses a project write from anybody else.
-   *
-   * Read-modify-write against a tag list the **caller** produced, not against
-   * whatever is on the project now: the caller parsed the registry, decided,
-   * and formatted it back with every tag it did not own carried through
-   * (`groupRegistry.ts`). Re-reading here and merging again would silently
-   * resolve a concurrent write instead of letting the next read see it.
-   *
-   * `userRoles` is not sent. `PUT /project/{id}` replaces what it is given,
-   * and the Gitea project is exactly where a mistake there would be worst.
-   */
-  async writeGroupRegistry(
-    input: { readonly giteaProjectId: string; readonly tagList: ReadonlyArray<string> },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.fetchProject(input.giteaProjectId, signal);
-    this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(
-      `/project/${input.giteaProjectId}`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify(
-          projectTagWriteBody({
-            name: project.name,
-            description: project.description,
-            tagList: input.tagList,
-            publicIpV4Shared: project.publicIpV4Shared,
-            maxCreditLimit: project.maxCreditLimit,
-          }),
-        ),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
   }
 
   /**
@@ -1246,44 +1151,6 @@ export class ZeropsApiClient {
           description: project.description ?? "",
           tagList: project.tagList ?? [],
           userRoles: withMateProjectRole(project.userRoles, input.clientUserId, input.roleCode),
-        }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /**
-   * `PUT /project/{id}` with the agent's name in `mate:bot:` and every other
-   * tag kept — the write replaces the list wholesale, so this is a
-   * read-modify-write like `updateProjectGroupTags`, and it goes through
-   * `withZeropsBotTag` rather than a membership write, which would clear the
-   * group (`groups.ts`). Naming an agent declares the Mate: a non-blank name
-   * also writes the `mate` marker, so "Set up Mate" is one write and a
-   * rename heals a project the marker never reached.
-   */
-  async nameProjectAgent(
-    projectId: string,
-    name: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.fetchProject(projectId, signal);
-    const named = withZeropsBotTag(project.tagList, name);
-    this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(
-      `/project/${projectId}`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          name: project.name,
-          description: project.description ?? "",
-          tagList: name.trim().length === 0 ? named : withZeropsMateTag(named),
         }),
       },
       {
@@ -2739,28 +2606,22 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `GET /service-stack/{id}` — the name of the version a service is running.
+   * `GET /service-stack/{id}` — what a service runs: its active version, and
+   * its user data.
    *
-   * The name is the one place the commit survives: the app-version API never
-   * returns a `name` at all, and the string the broker sent comes back only as
-   * `userData[].appVersionName` on the service, for the active version
-   * (measured 2026-09-16). So "what is deployed" is read from here and from
-   * nowhere else — never from a branch head, which says what *should* be
-   * running (guide 4.5).
-   *
-   * `undefined` for a service that has never been deployed, which is the
-   * normal state of an environment created a minute ago.
+   * The user data is the one place a deploy's name survives: the app-version
+   * API never returns a `name` at all, and the string the broker sent comes
+   * back only as `userData[].appVersionName`, beside `appVersionId` (measured
+   * 2026-09-16). That pair names the newest deploy STARTED, which switches
+   * when a build starts, before its version activates (A11); what it names
+   * runs only while its id is the active version's (A14,
+   * `data/resourceRestAdapter.ts`). Never a branch head, which says what
+   * *should* be running (guide 4.5).
    */
-  async readDeployedVersionName(
-    serviceId: string,
-    signal?: AbortSignal,
-  ): Promise<string | undefined> {
-    const body = await this.#request<{
-      readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string }>;
-    }>(`/service-stack/${serviceId}`, { signal: signal ?? null });
-    const entry = (body.userData ?? []).find((item) => item.key === "appVersionName");
-    const name = entry?.content?.trim();
-    return name === undefined || name.length === 0 ? undefined : name;
+  async readServiceDeploys(serviceId: string, signal?: AbortSignal): Promise<ZeropsServiceDeploys> {
+    return this.#request<ZeropsServiceDeploys>(`/service-stack/${serviceId}`, {
+      signal: signal ?? null,
+    });
   }
 
   /**
@@ -2971,15 +2832,22 @@ export class ZeropsApiClient {
     const retryAfterRefresh = options.retryAfterRefresh ?? true;
     const clearSessionOnUnauthorized = options.clearSessionOnUnauthorized ?? true;
 
+    /** A refusal before anything was sent reaches the caller as it came. */
+    let refusedBeforeSending = false;
     const run = async () => {
       if (mutatesProject) {
-        await options.beforeProjectWrite?.();
+        try {
+          if (this.#writeAdmission !== null) {
+            await waitForPromiseOrAbort(this.#writeAdmission.beforeProjectWrite(), init.signal);
+          }
+          await options.beforeProjectWrite?.();
+        } catch (cause) {
+          refusedBeforeSending = true;
+          throw cause;
+        }
         // An admission can wait, and whoever holds the session once it
         // resolves is not necessarily who asked for the write.
         this.#assertGeneration(generation);
-      }
-      if (mutatesProject && this.#now() >= this.#writesAllowedUntilMs) {
-        throw new ZeropsApiError("Project access could not be verified.", "unexpected");
       }
       const session = this.#session;
       if (authenticated && session) options.sentWith?.(session.accessToken);
@@ -3012,8 +2880,7 @@ export class ZeropsApiClient {
         if (response.status === 401 && clearSessionOnUnauthorized) await this.#setSession(null);
       }
     } catch (cause) {
-      if (cause instanceof ZeropsApiError) throw cause;
-      if (isProjectWriteAdmissionError(cause)) throw cause;
+      if (cause instanceof ZeropsApiError || refusedBeforeSending) throw cause;
       if (mayHaveWritten)
         throw new ZeropsApiError(
           "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.",

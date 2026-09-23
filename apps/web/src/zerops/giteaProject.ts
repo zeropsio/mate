@@ -14,8 +14,9 @@ import {
   readZeropsToolKind,
   type ZeropsGiteaState,
 } from "@t3tools/client-runtime/zerops";
+import { useContext, useMemo } from "react";
 
-import type { Inventory } from "./inventoryContext";
+import { HeldInventoryContext, type Inventory } from "./inventoryContext";
 
 export interface AccountGitea {
   readonly state: ZeropsGiteaState;
@@ -31,7 +32,7 @@ export interface AccountGitea {
  * Scoped to one org when asked: an account with two memberships has two
  * Gitea projects, and the registry a group goes into is the active org's.
  */
-export function findAccountGitea(
+function findAccountGitea(
   inventory: Pick<Inventory, "projects" | "services"> | null | undefined,
   clientId?: string | undefined,
 ): AccountGitea | undefined {
@@ -47,4 +48,30 @@ export function findAccountGitea(
     };
   }
   return undefined;
+}
+
+/**
+ * The account's Gitea in the org, from the inventory as held: a grant that withholds the Gitea
+ * project must not end the wiring that rests on it — its session, the registry, registration
+ * (DESIGN law 5, M7). What it finds drives wiring; nothing renders its project from it.
+ */
+export function useAccountGitea(clientId: string | undefined): AccountGitea | undefined {
+  const held = useContext(HeldInventoryContext);
+  return useMemo(() => findAccountGitea(held, clientId), [clientId, held]);
+}
+
+/**
+ * Whether the account holds a Gitea project in the org, its services read or not, withheld or
+ * not: *Add Gitea* is offered only while it holds none.
+ */
+export function useAccountHoldsGitea(clientId: string | undefined): boolean {
+  const held = useContext(HeldInventoryContext);
+  return (
+    held !== null &&
+    held.projects.some(
+      (project) =>
+        readZeropsToolKind(project.tagList) === "gitea" &&
+        (clientId === undefined || project.clientId === clientId),
+    )
+  );
 }

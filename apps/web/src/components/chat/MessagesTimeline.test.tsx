@@ -1446,9 +1446,12 @@ describe("MessagesTimeline", () => {
       error: null,
       projectRefs: new Map(),
       authority: new Map(),
+      account: { kind: "authorized" },
+      lost: new Set(),
     };
     const zeropsData: ZeropsDataContextValue = {
       runtime: {} as ManagedZeropsDataRuntime,
+      signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
       organizationRef: () => {
         throw new Error("not used");
       },
@@ -1476,7 +1479,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("data-zerops-card");
     expect(markup).toContain('data-zerops-card-kind="deploy"');
-    expect(markup).toContain("Deploy · kanbandev");
+    expect(markup).toContain("Deploying kanbandev.");
     expect(markup).toContain("kanbandev is live.");
   });
 

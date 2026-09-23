@@ -15,6 +15,11 @@ import {
 import { AppState, type AppStateStatus } from "react-native";
 
 import {
+  makeAccountRuntime,
+  type AccountEnvironments,
+  type AccountRuntime,
+} from "@t3tools/client-runtime/zerops/account/runtime";
+import {
   AccountEpoch,
   makeZeropsApiOrigin,
   makeZeropsDataAdapter,
@@ -25,13 +30,17 @@ import {
   type ManagedZeropsDataRuntime,
   type ZeropsVisibility,
 } from "@t3tools/client-runtime/zerops/data";
-import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
+import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
 import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/data";
+
+import { mobileAccountPorts, type MobileAccountPorts } from "./environment-ports";
 
 export interface MobileZeropsDataAccount {
   readonly client: ZeropsApiClient;
   /** This is the verified Zerops principal ID, never an access token. */
   readonly userId: string;
+  /** Told each user the account's grant rounds read, so the session's memberships stay current. */
+  readonly onUser: (user: ZeropsUser) => void;
 }
 
 export interface ZeropsDataBinding {
@@ -42,6 +51,11 @@ export interface ZeropsDataBinding {
 
 export interface ZeropsDataValue {
   readonly binding: ZeropsDataBinding | null;
+  /**
+   * The account runtime's Mate environments (DESIGN §7.5): null until the epoch's first grant built
+   * its post-grant stage, and again once the account closed.
+   */
+  readonly environments: AccountEnvironments | null;
   readonly error: Error | null;
 }
 
@@ -50,6 +64,13 @@ type RuntimeFactory = (input: {
   readonly client: ZeropsApiClient;
   readonly registry: AtomRegistry.AtomRegistry;
 }) => Promise<ManagedZeropsDataRuntime>;
+
+/** What the account runtime reaches the platform and the device through, besides its data. */
+type AccountPortsFactory = (input: {
+  readonly account: AccountScope;
+  readonly client: ZeropsApiClient;
+  readonly onUser: (user: ZeropsUser) => void;
+}) => Promise<MobileAccountPorts>;
 
 const ZeropsDataContext = createContext<ZeropsDataValue | null>(null);
 
@@ -106,31 +127,43 @@ const createRuntime: RuntimeFactory = ({ account, client, registry }) =>
     }),
   );
 
-async function closeBinding(binding: ZeropsDataBinding, reason: "logout" | "account-replaced") {
+/** The account closes: its runtime ends its stages and then the data runtime (§5 L9). */
+async function closeAccount(
+  account: AccountRuntime,
+  registry: AtomRegistry.AtomRegistry,
+  reason: "logout" | "account-replaced",
+) {
   try {
     // Runtime shutdown marks the scope closed before it interrupts transport or
     // releases atoms, so late callbacks cannot publish into a later account.
-    await Effect.runPromise(binding.runtime.shutdown(reason));
+    await Effect.runPromise(account.close(reason));
   } finally {
-    binding.registry.dispose();
+    registry.dispose();
   }
 }
 
+const CLOSED: ZeropsDataValue = { binding: null, environments: null, error: null };
+
 /**
- * Owns the mobile binding for one verified Zerops account. An inactive account
- * intentionally creates no adapter, transport, atom registry, or platform data.
+ * Owns the account runtime of one verified Zerops account (DESIGN §7.5): the platform-data runtime
+ * `runtimeFactory` builds, its access grant verified through the session's client, and — once
+ * the epoch's first grant built it — its post-grant stage, the Mate environments. An inactive
+ * account intentionally creates no adapter, transport, atom registry, or platform data.
  */
 export function ZeropsDataProvider({
   account,
   children,
   runtimeFactory = createRuntime,
+  accountPorts = mobileAccountPorts,
 }: {
   readonly account: MobileZeropsDataAccount | null;
   readonly children: ReactNode;
   /** Test seam; product callers use the frozen shared adapter/runtime factory. */
   readonly runtimeFactory?: RuntimeFactory;
+  /** Test seam; product callers reach the device and the platform through the native ports. */
+  readonly accountPorts?: AccountPortsFactory;
 }) {
-  const [value, setValue] = useState<ZeropsDataValue>({ binding: null, error: null });
+  const [value, setValue] = useState<ZeropsDataValue>(CLOSED);
   const lifecycle = useRef(Promise.resolve());
   const epoch = useRef(0);
   const accountKey = account === null ? null : `${account.client.baseUrl}\u0000${account.userId}`;
@@ -146,25 +179,35 @@ export function ZeropsDataProvider({
 
   useEffect(() => {
     let active = true;
+    let runtime: ManagedZeropsDataRuntime | null = null;
+    let opened: AccountRuntime | null = null;
     let binding: ZeropsDataBinding | null = null;
     let disposed = false;
     let reason: "logout" | "account-replaced" = "account-replaced";
     const registry = account === null ? null : AtomRegistry.make();
 
     if (account === null || registry === null) {
-      setValue({ binding: null, error: null });
+      setValue(CLOSED);
       return () => undefined;
     }
 
     // Disposal can be reached from three independent races (cleanup ran
     // before the runtime resolved, cleanup ran right after it resolved, or
     // startup itself failed) — guard so the registry and runtime are only
-    // ever torn down once.
+    // ever torn down once. An account runtime that stands closes the data
+    // runtime itself; one that never stood leaves only the data runtime.
     const disposeOnce = async () => {
       if (disposed) return;
       disposed = true;
-      if (binding !== null) await closeBinding(binding, reason);
-      else registry.dispose();
+      if (opened !== null) {
+        await closeAccount(opened, registry, reason);
+        return;
+      }
+      try {
+        if (runtime !== null) await Effect.runPromise(runtime.shutdown(reason));
+      } finally {
+        registry.dispose();
+      }
     };
 
     const scope: AccountScope = {
@@ -178,23 +221,39 @@ export function ZeropsDataProvider({
     const creation = previous
       .catch(() => undefined)
       .then(async () => {
-        if (!active) {
-          await disposeOnce();
-          return;
-        }
-        const runtime = await runtimeFactory({ account: scope, client: account.client, registry });
-        binding = { account: scope, runtime, registry };
-        if (!active) {
-          await disposeOnce();
-          return;
-        }
-        setValue({ binding, error: null });
+        if (!active) return disposeOnce();
+        runtime = await runtimeFactory({ account: scope, client: account.client, registry });
+        if (!active) return disposeOnce();
+        const ports = await accountPorts({
+          account: scope,
+          client: account.client,
+          onUser: account.onUser,
+        });
+        if (!active) return disposeOnce();
+        opened = await Effect.runPromise(
+          makeAccountRuntime({ ...ports, data: runtime, atomRegistry: registry }),
+        );
+        if (!active) return disposeOnce();
+        const current: ZeropsDataBinding = { account: scope, runtime, registry };
+        binding = current;
+        setValue({ binding: current, environments: null, error: null });
+        // The post-grant stage stands on the epoch's first grant: rows read its Mate
+        // environments from then on.
+        void Effect.runPromise(opened.postGrant).then(
+          ({ environments }) => {
+            if (!active) return;
+            setValue((shown) => (shown.binding === current ? { ...shown, environments } : shown));
+          },
+          // An epoch that closed before its first grant never had a post-grant stage.
+          () => undefined,
+        );
       })
       .catch(async (cause: unknown) => {
         await disposeOnce();
         if (active) {
           setValue({
             binding: null,
+            environments: null,
             error: cause instanceof Error ? cause : new Error("Could not start Zerops data."),
           });
         }
@@ -204,14 +263,12 @@ export function ZeropsDataProvider({
     return () => {
       active = false;
       reason = nextAccountIsNull.current ? "logout" : "account-replaced";
-      setValue((current) =>
-        current.binding === binding ? { binding: null, error: null } : current,
-      );
+      setValue((current) => (current.binding === binding ? CLOSED : current));
       // Serialize replacement after the prior runtime has fenced itself. React
       // runs this cleanup before the next account effect starts.
       lifecycle.current = creation.then(() => disposeOnce());
     };
-  }, [accountKey, client, runtimeFactory]);
+  }, [accountKey, accountPorts, client, runtimeFactory]);
 
   const context = useMemo(() => value, [value]);
   return <ZeropsDataContext value={context}>{children}</ZeropsDataContext>;

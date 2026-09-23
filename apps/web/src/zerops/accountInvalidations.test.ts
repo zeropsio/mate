@@ -1,6 +1,7 @@
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { bindTestInvalidationBus, type BoundTestBus } from "./__fixtures__/invalidationBus";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 
@@ -11,6 +12,13 @@ function listen() {
   const heard: Array<Invalidation> = [];
   stops.push(onZeropsInvalidation((invalidation) => heard.push(invalidation)));
   return heard;
+}
+
+/** An account's bus, bound as the host binds its runtime's. */
+function bind(): BoundTestBus {
+  const bound = bindTestInvalidationBus();
+  stops.push(bound.close);
+  return bound;
 }
 
 /**
@@ -30,57 +38,32 @@ afterEach(() => {
   closeAccountLifetime();
   vi.useRealTimers();
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
 });
 
-describe("the account's invalidation bus on the web (DESIGN §6.2)", () => {
-  it("reaches every listener once per key, when the key's 250 ms window closes", async () => {
+describe("the web's binding to the account's invalidation bus (DESIGN §6.2)", () => {
+  it("carries a surface's intent into the bound bus, and the bus's invalidations to every listener", async () => {
     fakeClocks();
     openAccountLifetime("account");
+    const bus = bind();
     const first = listen();
     const second = listen();
 
     invalidateZerops(container("p1:s1"));
     invalidateZerops(container("p1:s1"));
-    invalidateZerops(container("p2:s2"));
+    bus.invalidate({ topic: "access", change: "lapsed" });
     await vi.advanceTimersByTimeAsync(249);
     expect(first).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(first).toEqual([container("p1:s1"), container("p2:s2")]);
+    expect(first).toEqual([container("p1:s1"), { topic: "access", change: "lapsed" }]);
     expect(second).toEqual(first);
-  });
-
-  it("holds what a tab hidden for a minute hears until the tab is shown again", async () => {
-    fakeClocks();
-    const tab = new EventTarget() as EventTarget & { visibilityState: DocumentVisibilityState };
-    tab.visibilityState = "visible";
-    vi.stubGlobal("document", tab);
-    const turn = (visibilityState: DocumentVisibilityState) => {
-      tab.visibilityState = visibilityState;
-      tab.dispatchEvent(new Event("visibilitychange"));
-    };
-    openAccountLifetime("account");
-    const heard = listen();
-    invalidateZerops(container("p1:s1"));
-    await vi.advanceTimersByTimeAsync(250);
-    expect(heard).toEqual([container("p1:s1")]);
-
-    turn("hidden");
-    await vi.advanceTimersByTimeAsync(60_000);
-    invalidateZerops(container("p2:s2"));
-    await vi.advanceTimersByTimeAsync(10 * 60_000);
-    expect(heard).toEqual([container("p1:s1")]);
-
-    turn("visible");
-    await vi.advanceTimersByTimeAsync(0);
-    expect(heard).toEqual([container("p1:s1"), container("p2:s2")]);
   });
 
   it("keeps delivering to every listener after one of them throws", async () => {
     fakeClocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     openAccountLifetime("account");
+    bind();
     stops.push(
       onZeropsInvalidation(() => {
         throw new Error("a broken listener");
@@ -94,34 +77,38 @@ describe("the account's invalidation bus on the web (DESIGN §6.2)", () => {
     expect(heard).toEqual([container("p1:s1"), container("p2:s2")]);
   });
 
-  it("drops a request still coalescing when the account closes", async () => {
+  it("unbinds when the account closes: a request still coalescing reaches nobody", async () => {
     fakeClocks();
     openAccountLifetime("account-a");
+    bind();
     const heard = listen();
     invalidateZerops(container("p1:s1"));
     closeAccountLifetime();
-    openAccountLifetime("account-b");
     await vi.advanceTimersByTimeAsync(250);
     expect(heard).toEqual([]);
 
-    invalidateZerops(container("p1:s1"));
-    await vi.advanceTimersByTimeAsync(250);
-    expect(heard).toEqual([container("p1:s1")]);
-  });
-
-  it("drops a request sent while no account is open, and opens no bus for the next one", async () => {
-    fakeClocks();
-    const heard = listen();
-    openAccountLifetime("account-a");
-    closeAccountLifetime();
     // A write that answers after sign-out still reports what it changed.
     invalidateZerops(container("p1:s1"));
     await vi.advanceTimersByTimeAsync(250);
     expect(heard).toEqual([]);
 
     openAccountLifetime("account-b");
-    closeAccountLifetime();
+    bind();
+    invalidateZerops(container("p1:s1"));
     await vi.advanceTimersByTimeAsync(250);
-    expect(heard).toEqual([]);
+    expect(heard).toEqual([container("p1:s1")]);
+  });
+
+  it("an unbind of a replaced bus leaves the newer one bound", async () => {
+    fakeClocks();
+    openAccountLifetime("account");
+    const older = bindTestInvalidationBus();
+    bind();
+    const heard = listen();
+    older.close();
+
+    invalidateZerops(container("p1:s1"));
+    await vi.advanceTimersByTimeAsync(250);
+    expect(heard).toEqual([container("p1:s1")]);
   });
 });

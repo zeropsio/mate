@@ -8,6 +8,7 @@
 import {
   initialGrant,
   type AccessGrantView,
+  type AccessState,
   type AccountScope,
   type ManagedZeropsDataRuntime,
 } from "@t3tools/client-runtime/zerops/data";
@@ -57,11 +58,14 @@ export function makeFakeRuntimeFactory(
       access: {
         start: () => options.startGrant ?? Effect.void,
         signal: () => Effect.void,
+        listen: () => Effect.void,
         view: Atom.make(view),
         changes: Stream.make(view),
         invalidations: Stream.empty,
         mounted: Effect.void,
       },
+      reads: { access: Atom.make<AccessState>({ status: "unverified" }) },
+      listen: () => Effect.void,
       shutdown: (reason: ShutdownReason) => Effect.sync(() => shutdownReasons.push(reason)),
     } as unknown as ManagedZeropsDataRuntime;
     const handle: FakeRuntimeHandle = {

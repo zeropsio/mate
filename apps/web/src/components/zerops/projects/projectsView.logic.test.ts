@@ -39,7 +39,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     url: undefined,
     checks: "none",
     checkWord: undefined,
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
     headSha: "abc",

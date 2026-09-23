@@ -47,9 +47,12 @@ vi.mock("../../rightPanelStore", () => ({
 
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
 
+/** The clock at the hand-built calls' own moment, no project known — a triggered build is still running. */
+const CONTEXT = { nowMs: Date.parse("2026-09-01T00:00:00.000Z"), projectId: undefined };
+
 /** Every `ZeropsOperation` (card kind) a real captured thread's activities fold into. */
 function operationsFor(thread: ZeropsShowcaseThread): ReadonlyArray<ZeropsOperation> {
-  return deriveZeropsThreadModel({ activities: thread.activities })
+  return deriveZeropsThreadModel({ activities: thread.activities, nowMs: CONTEXT.nowMs })
     .entries.filter(
       (entry): entry is Extract<typeof entry, { kind: "operation" }> => entry.kind === "operation",
     )
@@ -81,7 +84,7 @@ function zeropsCall(overrides: {
 
 /** One call folds into exactly one operation — the reducer's output for a single-call fixture. */
 function operationFor(call: ZeropsCall): ZeropsOperation {
-  return reduceZeropsOperations([call]).operations[0]!;
+  return reduceZeropsOperations([call], CONTEXT).operations[0]!;
 }
 
 describe("ZeropsOperationCard — fixture operations", () => {
@@ -201,6 +204,34 @@ describe("ZeropsOperationCard — running, with an observed region", () => {
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={done} />);
 
     expect(html).toContain("1m 12s");
+  });
+});
+
+describe("ZeropsOperationCard — a triggered build past its cap", () => {
+  it("reads attention, not busy, and links the project in Zerops", () => {
+    const [uncertain] = reduceZeropsOperations(
+      [
+        zeropsCall({
+          id: "e3",
+          startedAt: "2026-09-01T00:00:00.000Z",
+          turnId: "t1",
+          toolName: "zerops_deploy",
+          input: { targetService: "weatherdash" },
+          status: "completed",
+          settledAt: "2026-09-01T00:00:05.000Z",
+          resultText: JSON.stringify({ status: "BUILD_TRIGGERED", targetService: "weatherdash" }),
+        }),
+      ],
+      { nowMs: Date.parse("2026-09-01T00:10:05.000Z"), projectId: "proj-1" },
+    ).operations;
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={uncertain!} />);
+
+    expect(uncertain!.phase).toBe("uncertain");
+    expect(html).toContain('data-zerops-card-tone="attention"');
+    expect(html).toContain("Unconfirmed");
+    expect(html).toContain("No result from the build. Check it in Zerops.");
+    expect(html).toContain('href="https://app.zerops.io/project/proj-1"');
+    expect(html).toContain("Open in Zerops");
   });
 });
 
@@ -405,11 +436,14 @@ describe("ZeropsOperationCard — attempt count (R8)", () => {
         status: "failed",
         resultText: JSON.stringify({ code: "API_ERROR", error: "zerops.yml not found" }),
       });
-    const { operations } = reduceZeropsOperations([
-      failedDeploy("r1", "2026-09-01T00:00:00.000Z"),
-      failedDeploy("r2", "2026-09-01T00:01:00.000Z"),
-      failedDeploy("r3", "2026-09-01T00:02:00.000Z"),
-    ]);
+    const { operations } = reduceZeropsOperations(
+      [
+        failedDeploy("r1", "2026-09-01T00:00:00.000Z"),
+        failedDeploy("r2", "2026-09-01T00:01:00.000Z"),
+        failedDeploy("r3", "2026-09-01T00:02:00.000Z"),
+      ],
+      CONTEXT,
+    );
     const folded = operations[0]!;
     expect(folded.attempts).toBe(3);
 
@@ -511,8 +545,8 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
   });
 });
 
-describe("ZeropsOperationCard — the duration renders outside the uppercase status label", () => {
-  it("keeps the running elapsed clock out of the StatusDot's own MicroLabel, in a separate tabular-nums span", () => {
+describe("ZeropsOperationCard — the duration renders outside the status word", () => {
+  it("keeps the running elapsed clock out of the StatusDot's word, in a separate tabular-nums span", () => {
     const running = operationFor(
       zeropsCall({
         id: "dur-running",
@@ -538,7 +572,7 @@ describe("ZeropsOperationCard — the duration renders outside the uppercase sta
     expect(durationSpan![1]).toContain("0:42");
   });
 
-  it("renders the settled duration in normal case, tabular-nums, separate from the uppercase status word", () => {
+  it("renders the settled duration in the body font, normal case, tabular-nums, separate from the status word", () => {
     const operation = operationFor(
       zeropsCall({
         id: "dur-settled",
@@ -561,6 +595,8 @@ describe("ZeropsOperationCard — the duration renders outside the uppercase sta
     const durationSpanTag = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>/)?.[0];
     expect(durationSpanTag).toBeDefined();
     expect(durationSpanTag).toContain("tabular-nums");
+    // The mono face set "1 s" with a full-width gap between number and unit.
+    expect(durationSpanTag).not.toContain("font-mono");
     expect(durationSpanTag).not.toContain("uppercase");
     const durationText = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
     expect(durationText).toContain("1m 12s");
@@ -621,5 +657,55 @@ describe("ZeropsOperationCard - the deploy duration renders identically live and
     expect(reloadedHtml).toContain("1m 16s");
     expect(liveHtml).not.toContain("0 s");
     expect(reloadedHtml).not.toContain("0 s");
+  });
+});
+
+describe("ZeropsOperationCard — one quiet surface", () => {
+  const weatherdash = operationsFor(weatherdashFirstDeploy);
+  const refused = operationsFor(verifyAndRefusedDeploy);
+  const cases = [
+    { name: "deploy, done", operation: weatherdash.find((o) => o.kind === "deploy")! },
+    { name: "verify, done", operation: weatherdash.find((o) => o.kind === "verify")! },
+    {
+      name: "deploy, failed",
+      operation: refused.find((o) => o.kind === "deploy" && o.phase === "failed")!,
+    },
+  ];
+
+  it.each(cases)("$name: no tinted band, no kicker label, no inner rules", ({ operation }) => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+
+    expect(header).not.toBe("");
+    expect(header).not.toMatch(/zerops-status-[a-z]+-surface/);
+    // The voice line already names the operation; the kicker stays only as
+    // the steps' accessible name.
+    expect(header).not.toContain('data-zerops-primitive="micro-label"');
+    expect(header).not.toContain("uppercase");
+    expect(html).not.toContain("border-t");
+  });
+
+  it.each(cases)("$name: the status reads as a word beside the voice line", ({ operation }) => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const status = html.match(/<span aria-label="Result status"[\s\S]*?<\/span><\/span>/)?.[0];
+
+    expect(status).toContain(`>${operation.statusWord}</span>`);
+    expect(status).not.toContain('data-zerops-primitive="micro-label"');
+  });
+
+  it("gives only a failed card a failed edge", () => {
+    const failed = cases[2]!.operation;
+    const done = cases[0]!.operation;
+    expect(renderToStaticMarkup(<ZeropsOperationCard operation={failed} />)).toContain(
+      "border-[var(--zerops-status-failed)]/35",
+    );
+    expect(renderToStaticMarkup(<ZeropsOperationCard operation={done} />)).not.toContain(
+      "border-[var(--zerops-status-failed)]",
+    );
+  });
+
+  it("sets its steps in the compact density", () => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={cases[1]!.operation} />);
+    expect(html).toContain('data-zerops-process-density="compact"');
   });
 });

@@ -6,7 +6,7 @@
  * `mate-session-model-2026-09-05.md` §2.3 R4-R9 and
  * `C-client-domain.md` §1.5.
  *
- * Pure and deterministic: same calls in, same operations out.
+ * Pure and deterministic: same calls and context in, same operations out.
  */
 import { attemptWord } from "../operations/phrases.ts";
 import {
@@ -37,7 +37,13 @@ import { buildDevServerFields } from "./builders/devServer.ts";
 import { buildErrorFields } from "./builders/errorKind.ts";
 import { buildImportFields, readImport } from "./builders/importCard.ts";
 import { buildMountFields } from "./builders/mount.ts";
-import { type BuiltCardFields, decodeCall, phaseFor, readInputString } from "./builders/shared.ts";
+import {
+  type BuiltCardFields,
+  decodeCall,
+  type OperationBuildContext,
+  phaseFor,
+  readInputString,
+} from "./builders/shared.ts";
 import { buildSimpleFields } from "./builders/simple.ts";
 import { buildSubdomainFields } from "./builders/subdomain.ts";
 import { buildVerifyFields } from "./builders/verify.ts";
@@ -135,7 +141,7 @@ function foldStandalone(
 const BUILDER_BY_KIND: Readonly<
   Record<
     Exclude<ZeropsOperationKind, "bootstrap" | "delete" | "scale" | "manage" | "env">,
-    (call: ZeropsCall) => BuiltCardFields
+    (call: ZeropsCall, context: OperationBuildContext) => BuiltCardFields
   >
 > = {
   deploy: buildDeployFields,
@@ -151,17 +157,22 @@ const BUILDER_BY_KIND: Readonly<
 function buildFieldsFor(
   kind: Exclude<ZeropsOperationKind, "bootstrap">,
   call: ZeropsCall,
+  context: OperationBuildContext,
 ): BuiltCardFields {
   if (kind === "delete" || kind === "scale" || kind === "manage" || kind === "env") {
     return buildSimpleFields(kind, call);
   }
-  return BUILDER_BY_KIND[kind](call);
+  return BUILDER_BY_KIND[kind](call, context);
 }
 
-function buildStandaloneOperation(group: StandaloneGroup, attempts: number): ZeropsOperation {
+function buildStandaloneOperation(
+  group: StandaloneGroup,
+  attempts: number,
+  context: OperationBuildContext,
+): ZeropsOperation {
   const founder = group.calls[0]!;
   const latest = group.calls[group.calls.length - 1]!;
-  const fields = buildFieldsFor(group.kind, latest);
+  const fields = buildFieldsFor(group.kind, latest, context);
   const phase = fields.phaseOverride ?? phaseFor(latest.status);
   const attemptWordText = attemptWord(attempts);
   return {
@@ -366,6 +377,7 @@ export interface ZeropsOperationsReduction {
 /** `reduceZeropsOperations` in anchor order — one object per thing done to the project. */
 export function reduceZeropsOperations(
   calls: ReadonlyArray<ZeropsCall>,
+  context: OperationBuildContext,
 ): ZeropsOperationsReduction {
   const ordered = [...calls].sort((a, b) => compareAnchors(anchorOf(a), anchorOf(b)));
 
@@ -437,7 +449,11 @@ export function reduceZeropsOperations(
     ...bootstrapState.groups.map(buildBootstrapOperation),
     ...standaloneGroups.map((group) => {
       const latest = group.calls[group.calls.length - 1]!;
-      return buildStandaloneOperation(group, attemptByCallId.get(latest.id) ?? group.calls.length);
+      return buildStandaloneOperation(
+        group,
+        attemptByCallId.get(latest.id) ?? group.calls.length,
+        context,
+      );
     }),
   ].sort((a, b) => compareAnchors(a, b));
 

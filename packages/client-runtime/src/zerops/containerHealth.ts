@@ -40,9 +40,11 @@
  * and a restart is the action that helps in either case.
  */
 
-import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
+import { EnvironmentId, type ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 import { zeropsMateBaseUrl } from "./candidates.ts";
+import type { DescriptorFacts } from "./environments/environmentMachine.ts";
+import type { ProbeReading } from "./environments/probeStore.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -64,10 +66,13 @@ type Reading =
   /** No answer at all — a dead container, or a cross-origin refusal. */
   | { readonly kind: "blocked" };
 
-async function read(url: string, fetchImpl: FetchLike): Promise<Reading> {
+async function read(url: string, fetchImpl: FetchLike, signal?: AbortSignal): Promise<Reading> {
   let response: Response;
   try {
-    response = await fetchImpl(url, { redirect: "manual" });
+    response = await fetchImpl(
+      url,
+      signal === undefined ? { redirect: "manual" } : { redirect: "manual", signal },
+    );
   } catch {
     return { kind: "blocked" };
   }
@@ -142,7 +147,14 @@ export async function probeZeropsContainerHealth(
   }
 
   const health = await read(`${zeropsMateBaseUrl(base)}/healthz`, fetchImpl);
+  return concludeWithoutDescriptor(descriptor, health);
+}
 
+/** What the two reads say about a container whose descriptor did not answer as Mate's. */
+function concludeWithoutDescriptor(
+  descriptor: Reading,
+  health: Reading,
+): Exclude<ZeropsContainerHealth, "ready" | "stalled"> {
   // A server error anywhere means the container is on its way up, so it can
   // never be read as an old container needing a restart — that would restart
   // something that is already starting.
@@ -169,4 +181,67 @@ export async function probeZeropsContainerHealth(
   // something that is neither route, which is again a container not serving
   // Zerops Mate.
   return descriptor.kind === "blocked" ? "unreachable" : "predates-mate";
+}
+
+/** The descriptor facts the environment machine reasons on (C6), off the raw document. */
+function descriptorFactsOf(body: Record<string, unknown>): DescriptorFacts | null {
+  if (typeof body.environmentId !== "string" || typeof body.serverVersion !== "string") {
+    return null;
+  }
+  const zerops =
+    body.zerops !== null && typeof body.zerops === "object"
+      ? (body.zerops as Record<string, unknown>)
+      : {};
+  const identity = zerops.identity;
+  return {
+    environmentId: EnvironmentId.make(body.environmentId),
+    serverVersion: body.serverVersion,
+    update: parseDescriptorUpdate(body.update) ?? null,
+    // Absent on a server too old to report it: never asked, which is not "could not check".
+    identity: identity === "ok" || identity === "failed" ? identity : "unknown",
+    identityCheckedAt:
+      typeof zerops.identityCheckedAt === "string" ? zerops.identityCheckedAt : null,
+  };
+}
+
+/** The Zerops project the descriptor states (`zerops.projectId`); null outside Zerops mode. */
+function projectIdOf(body: Record<string, unknown>): string | null {
+  const zerops = body.zerops;
+  if (zerops === null || typeof zerops !== "object") return null;
+  const projectId = (zerops as Record<string, unknown>).projectId;
+  return typeof projectId === "string" && projectId !== "" ? projectId : null;
+}
+
+const initAtOf = (health: Reading): string | null =>
+  health.kind === "json" && typeof health.body.initAt === "string" ? health.body.initAt : null;
+
+/**
+ * One probe of the probe store (C6): the descriptor and `/healthz`, both read, so a container
+ * that re-initialized shows a new `initAt` even while its descriptor answers.
+ */
+export async function readZeropsContainer(
+  origin: string,
+  fetchImpl: FetchLike,
+  signal: AbortSignal,
+): Promise<ProbeReading> {
+  const base = zeropsMateBaseUrl(origin.replace(/\/+$/, ""));
+  const [descriptor, health] = await Promise.all([
+    read(`${base}/.well-known/t3/environment`, fetchImpl, signal),
+    read(`${base}/healthz`, fetchImpl, signal),
+  ]);
+  if (descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)) {
+    const facts = descriptorFactsOf(descriptor.body);
+    if (facts !== null) {
+      return {
+        kind: "ready",
+        descriptor: facts,
+        projectId: projectIdOf(descriptor.body),
+        initAt: initAtOf(health),
+      };
+    }
+  }
+  const concluded = concludeWithoutDescriptor(descriptor, health);
+  return concluded === "initializing"
+    ? { kind: "initializing", initAt: initAtOf(health) }
+    : { kind: concluded };
 }

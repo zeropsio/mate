@@ -57,6 +57,40 @@ describe("makeZeropsAtomSelectionStore", () => {
     unmountSource();
     registry.dispose();
   });
+
+  // After a grant the data runtime lands every project's reads one microtask after another in
+  // one task; the inventory hears each through this store, and React commits each it hears.
+  it("tells its subscriber once per task, with the last value, however many of its atoms changed", async () => {
+    const registry = AtomRegistry.make();
+    const sources = Array.from({ length: 12 }, () => Atom.make(0));
+    const unmounts = sources.map((source) => registry.mount(source));
+    const store = makeZeropsAtomSelectionStore(
+      registry,
+      sources.map((source, index) => [`project-${index}`, source] as const),
+    );
+    let notifications = 0;
+    const unsubscribe = store.subscribe(() => {
+      notifications += 1;
+    });
+    notifications = 0;
+
+    for (let round = 1; round <= 4; round += 1) {
+      for (const source of sources) {
+        registry.set(source, round);
+        await Promise.resolve();
+      }
+    }
+    // The next task tells it; a timer's task may come first.
+    await vi.waitFor(() => expect(notifications).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(notifications).toBe(1);
+    expect([...store.getSnapshot().values()]).toEqual(sources.map(() => 4));
+
+    unsubscribe();
+    for (const unmount of unmounts) unmount();
+    registry.dispose();
+  });
 });
 
 describe("runZeropsCommand", () => {
@@ -171,6 +205,7 @@ function locationsContext(broker: LocationsBroker) {
   } as unknown as ManagedZeropsDataRuntime;
   return {
     runtime,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => organization,
     projectRef: () => {
       throw new Error("not used");

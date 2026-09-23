@@ -4,10 +4,10 @@
  * belongs to, keyed by the environment the conversation runs in.
  *
  * Read off the candidate list — the one source for names, tags and colours
- * (`hasMate`, `botDisplayName`, `assignCandidateMateTints`) — and published by
- * `useZeropsCandidates` next to the environment names, so the chat header, an
- * empty conversation and a draft's headline never load anything themselves
- * and can never disagree with the left menu about who a Mate is.
+ * (`hasMate`, `botDisplayName`, `assignCandidateMateTints`) — by the derived
+ * `zeropsMatesAtom` (`useZeropsMates.ts`), so the chat header, an empty
+ * conversation and a draft's headline never load anything themselves and can
+ * never disagree with the left menu about who a Mate is.
  *
  * Who lives where is known from the project's tags and the container's
  * origin, not from its socket: `registeredOrigins` maps every registered
@@ -20,14 +20,17 @@ import {
   hasMate,
   readZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
-import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 
+import type { ZeropsEnvironmentEntry } from "../state/zerops";
+import { rowEnvironment } from "./environmentOrigins";
+
 export interface ZeropsMateIdentity {
-  /** The exact container behind this environment; older cached identities may not know it. */
+  /** The exact container behind this environment; absent for a row that names no service. */
   readonly serviceId?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
@@ -38,8 +41,8 @@ export interface ZeropsMateIdentity {
   /**
    * Whether the Mate's container is connected right now. A Mate is known from
    * its project's tags and its container's origin — seconds before its socket
-   * is up, and from the last reload's cache on the first frame — so a surface
-   * that draws its face must ask this rather than assume it is awake.
+   * is up — so a surface that draws its face must ask this rather than assume
+   * it is awake.
    */
   readonly connected: boolean;
 }
@@ -53,8 +56,7 @@ export function zeropsMateIdentities(
   const tints = assignCandidateMateTints(candidates);
   const mates = new Map<EnvironmentId, ZeropsMateIdentity>();
   for (const candidate of candidates) {
-    const environmentId =
-      candidate.environmentId ?? registeredEnvironment(candidate, registeredOrigins);
+    const environmentId = rowEnvironment(candidate, registeredOrigins);
     if (environmentId === undefined || mates.has(environmentId) || !hasMate(candidate)) continue;
     const tags = readZeropsGroupTags(candidate.project.tagList);
     mates.set(environmentId, {
@@ -76,25 +78,10 @@ export type ZeropsMateAt =
   | { readonly kind: "unknown" };
 
 /**
- * Who lives in each environment, as far as the candidate list has been read
- * (DESIGN M4, M5): an answer per environment a read row reaches, and whether
- * nobody lives anywhere else.
+ * Who lives in each environment, as far as it is known (DESIGN M4, M5): its Mate, or null where
+ * nobody does. An environment it leaves out is not known yet.
  */
-export interface ZeropsMateDirectory {
-  /** Each environment a read row reaches: its Mate, or null where the row holds none. */
-  readonly decided: ReadonlyMap<EnvironmentId, ZeropsMateIdentity | null>;
-  /**
-   * Every environment `decided` leaves out holds nobody; otherwise it is not
-   * known yet. The word is the last one given — a list read in full, or the
-   * reload cache of one — and a list read in part since keeps it: an
-   * environment that list has not reached reads nobody on that older word
-   * until a list is read in full again. Signing out takes the word back.
-   */
-  readonly complete: boolean;
-}
-
-/** A directory before any list has been read: nobody's whereabouts are known. */
-export const MATES_UNREAD: ZeropsMateDirectory = { decided: new Map(), complete: false };
+export type ZeropsMateDirectory = ReadonlyMap<EnvironmentId, ZeropsMateIdentity | null>;
 
 const NOBODY: ZeropsMateAt = { kind: "nobody" };
 const UNKNOWN: ZeropsMateAt = { kind: "unknown" };
@@ -103,31 +90,29 @@ export function zeropsMateAt(
   directory: ZeropsMateDirectory,
   environmentId: EnvironmentId,
 ): ZeropsMateAt {
-  const mate = directory.decided.get(environmentId);
-  if (mate !== undefined) return mate === null ? NOBODY : { kind: "mate", mate };
-  return directory.complete ? NOBODY : UNKNOWN;
+  const mate = directory.get(environmentId);
+  if (mate === undefined) return UNKNOWN;
+  return mate === null ? NOBODY : { kind: "mate", mate };
 }
 
 /**
  * The directory with every environment whose own server says it runs outside
  * Zerops (its descriptor carries no `zerops`) decided: no Mate lives there,
- * whether or not the candidate list has been read. Only a Zerops environment,
- * or one whose server has not answered yet, waits on the list.
+ * whether or not the candidate list has been read. A Zerops environment, or
+ * one whose server has not answered yet, waits on a list that reaches it.
  */
 export function withEnvironmentsOutsideZerops(
   directory: ZeropsMateDirectory,
-  servers: ReadonlyMap<EnvironmentId, { readonly environment: { readonly zerops?: unknown } }>,
+  environments: ReadonlyArray<Pick<ZeropsEnvironmentEntry, "environmentId" | "zeropsProjectId">>,
 ): ZeropsMateDirectory {
-  if (directory.complete) return directory;
-  const outside = [...servers].flatMap(([environmentId, server]) =>
-    server.environment.zerops === undefined && !directory.decided.has(environmentId)
-      ? [environmentId]
-      : [],
+  const outside = environments.filter(
+    ({ environmentId, zeropsProjectId }) =>
+      zeropsProjectId === null && !directory.has(environmentId),
   );
   if (outside.length === 0) return directory;
-  const decided = new Map(directory.decided);
-  for (const environmentId of outside) decided.set(environmentId, null);
-  return { decided, complete: false };
+  const decided = new Map(directory);
+  for (const { environmentId } of outside) decided.set(environmentId, null);
+  return decided;
 }
 
 /**
@@ -144,31 +129,11 @@ export function zeropsMateDecisions(
   );
   for (const row of rows) {
     if (row.presence !== "known") continue;
-    const environmentId = row.environmentId ?? registeredEnvironment(row, registeredOrigins);
+    const environmentId = rowEnvironment(row, registeredOrigins);
     if (environmentId !== undefined && !decided.has(environmentId))
       decided.set(environmentId, null);
   }
   return decided;
-}
-
-/** The Mates a directory knows of, as the reload cache keeps them. */
-export function zeropsMatesOf(
-  directory: ZeropsMateDirectory,
-): ReadonlyMap<EnvironmentId, ZeropsMateIdentity> {
-  const mates = new Map<EnvironmentId, ZeropsMateIdentity>();
-  for (const [environmentId, mate] of directory.decided) {
-    if (mate !== null) mates.set(environmentId, mate);
-  }
-  return mates;
-}
-
-function registeredEnvironment(
-  candidate: ZeropsCandidate,
-  registeredOrigins: ReadonlyMap<string, EnvironmentId>,
-): EnvironmentId | undefined {
-  const origin = candidate.containerOrigin;
-  if (origin === undefined) return undefined;
-  return registeredOrigins.get(normalizeOrigin(origin) ?? origin);
 }
 
 /** The question an empty conversation asks: "What should Fen do on Acme Docs?" */

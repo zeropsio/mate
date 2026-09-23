@@ -292,9 +292,9 @@ export function mateSignerTag(agentId: string, userId: string): string {
  * The project's tag list with this agent's signer replaced.
  *
  * Every other tag survives, this agent's previous signer does not, and a list
- * that already says the right thing comes back **identical** — the caller
- * skips the write, so signing in again with the same account costs a read and
- * nothing else.
+ * that already says the right thing comes back with the same tags — the
+ * TagWriter finds nothing to write, so signing in again with the same account
+ * costs a read and nothing else.
  */
 export function withMateSignerTag(
   tagList: ReadonlyArray<string> | undefined,
@@ -306,18 +306,6 @@ export function withMateSignerTag(
     (tag) => !tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:${agentId}:`),
   );
   return [...kept, wanted];
-}
-
-/** Whether the list already records exactly this signer for this agent. */
-export function mateSignerTagIsCurrent(
-  tagList: ReadonlyArray<string> | undefined,
-  agentId: string,
-  userId: string,
-): boolean {
-  const current = (tagList ?? []).filter((tag) =>
-    tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:${agentId}:`),
-  );
-  return current.length === 1 && current[0] === mateSignerTag(agentId, userId);
 }
 
 /**

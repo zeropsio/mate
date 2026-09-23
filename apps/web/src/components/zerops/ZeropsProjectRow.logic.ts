@@ -10,7 +10,7 @@
  */
 
 import {
-  connectionStatusText,
+  connectionBannerCopy,
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import {
@@ -24,6 +24,7 @@ import {
   type ReleaseVerdict,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
   mateOnlyOwnerOpensIt,
@@ -162,6 +163,9 @@ const RUNNING_PROCESS_DETAIL: Readonly<
 export const COMING_UP_LINE = "Coming up. A few minutes.";
 export const ALMOST_THERE_LINE = "Almost there.";
 
+/** Service statuses the inventory files under provisioning that restart a container it has. */
+const RESTARTING_SERVICE_STATUSES: ReadonlySet<string> = new Set(["RESTARTING", "UPGRADING"]);
+
 /**
  * The line under a project the platform failed to create, with the
  * platform's own words when it gave any worth repeating. Its empty internal
@@ -228,12 +232,6 @@ export function groupAddsOffered(
 function isConnectionInFlight(candidate: ZeropsRowCandidate): boolean {
   const phase = candidate.connection?.phase;
   return phase === "available" || phase === "connecting" || phase === "reconnecting";
-}
-
-function connectionDetail(candidate: ZeropsRowCandidate): string | undefined {
-  const connection = candidate.connection;
-  if (connection === undefined || connection.phase === "connected") return undefined;
-  return connection.phase === "available" ? "Connecting..." : connectionStatusText(connection);
 }
 
 export function isZeropsToolCandidate(candidate: ZeropsCandidate): boolean {
@@ -303,6 +301,13 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     return { status: { label: "Connected", tone: "ok" } };
   }
   if (candidate.group === "provisioning") {
+    if (RESTARTING_SERVICE_STATUSES.has(candidate.service?.status ?? "")) {
+      return {
+        status: { label: "Restarting", pulse: true, tone: "busy" },
+        // The container already exists; "Coming up" would say it is being made.
+        detail: RESTARTING_PHRASE,
+      };
+    }
     return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };
   }
   if (candidate.group === "unavailable") {
@@ -365,23 +370,23 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
 
-  // Ready: what the socket, then the probe, have to say.
+  // Ready: what the socket, then the probe, have to say. A failed socket
+  // names its cause (`connectionBannerCopy`), never the failure's own words,
+  // which carry the container's host and URL.
   const connection = candidate.connection;
-  if (connection?.error) {
+  const failed =
+    connection !== undefined &&
+    (connection.phase === "error" ||
+      (connection.phase === "reconnecting" && connection.error !== null));
+  if (failed) {
+    const cause = connectionBannerCopy(connection, null)?.description ?? null;
     return {
-      detail: connectionDetail(candidate) ?? connection.error,
-      detailIsError: true,
       status:
         connection.phase === "error"
           ? { label: "Connection failed", tone: "failed" }
           : { label: "Reconnecting", tone: "attention" },
-    };
-  }
-  if (connection?.phase === "error") {
-    return {
-      detail: connectionDetail(candidate) ?? "Connection failed",
+      ...(cause === null ? {} : { detail: cause }),
       detailIsError: true,
-      status: { label: "Connection failed", tone: "failed" },
     };
   }
   if (isConnectionInFlight(candidate)) {

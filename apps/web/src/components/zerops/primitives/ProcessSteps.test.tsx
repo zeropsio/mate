@@ -157,3 +157,35 @@ describe("ProcessSteps — redundant step state words", () => {
     expect(html).toContain(">Pending review<");
   });
 });
+
+describe("ProcessSteps — compact density", () => {
+  it.each(STATES)(
+    "sets a %s step as a bare glyph with its state inline, not a ringed row",
+    (state, tone, stateLabel, iconIntent) => {
+      const html = renderToStaticMarkup(
+        <ProcessSteps
+          density="compact"
+          steps={[{ id: state, label: "Deploy", state, stateLabel }]}
+        />,
+      );
+
+      expect(html).toContain(`data-zerops-process-state="${state}"`);
+      expect(html).toContain(`data-zerops-process-tone="${tone}"`);
+      expect(html).toContain(`data-zerops-process-icon="${iconIntent}"`);
+      expect(html).toContain('data-zerops-process-density="compact"');
+      expect(html).not.toContain("border-[length:var(--zerops-process-step-border-width)]");
+      expect(html).not.toContain("grid-cols-[var(--zerops-process-step-column)_1fr]");
+      // The state is read in the same line as the label, in the running hand.
+      expect(html).not.toContain('data-zerops-primitive="micro-label"');
+      expect(html).toContain(`>${stateLabel}</span>`);
+    },
+  );
+
+  it("keeps the ringed default for process timelines", () => {
+    const html = renderToStaticMarkup(
+      <ProcessSteps steps={[{ id: "d", label: "Deploy", state: "done", stateLabel: "Done" }]} />,
+    );
+    expect(html).toContain('data-zerops-process-density="default"');
+    expect(html).toContain("border-[length:var(--zerops-process-step-border-width)]");
+  });
+});

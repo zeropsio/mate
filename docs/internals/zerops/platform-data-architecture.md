@@ -29,7 +29,11 @@ REST supplies initial state, missing details and recovery. Native stream payload
 supply ordinary live changes. The architecture has no general query-result cache,
 stale-while-revalidate layer or TTL-based freshness contract. In-memory projection
 state is necessary for rendering; retention does not make old observations current.
-A disconnected model is explicitly unsynchronized.
+A disconnected model is explicitly unsynchronized. A platform value whose push source
+is paused reaches a view as `known` with `paused` freshness and renders as paused,
+never as current ([the knowledge type](client-state-model.md#the-knowledge-type)).
+A value shown while it is read again, and an "as of" time, belong only to pull-only
+sources (the resource broker, Gitea) and to a T3 stream that resubscribes.
 
 Compose the system in one account-scoped **`ZeropsDataRuntime`** inside
 `packages/client-runtime`: a composition root and public domain facade with small
@@ -65,8 +69,10 @@ The runtime now owns these paths:
   watcher maps or polling loops.
 - Configuration, export and token reads in an access-aware resource broker. Each
   acquire and retry checks the current account epoch, scope and absolute access
-  deadline. Revocation or deadline expiry releases leases, aborts work and erases
-  retained values.
+  deadline. Revocation or deadline expiry withholds the affected resources: their
+  values are erased and their work aborted, while their demand stays, and the next
+  grant covering the scope reads them again. A value nothing demands any more is
+  kept for ten minutes (`RESOURCE_IDLE_RETENTION_MS`), then its entry ends.
 - Build-log page/follow sessions in one bounded registry. Signed grants remain in
   the transport adapter; releasing the final lease aborts grant, page and follow
   work and removes the retained session.
@@ -89,15 +95,19 @@ session have no parallel fallback owner.
 
 Mate server connections have a separate lifetime from the platform receiver: each
 registered environment owns its authenticated socket and initial shell snapshot.
-The web client restores each remembered project/service target once per address
-and explicit refresh, claiming the attempt before starting asynchronous work.
-Inventory updates do not repeat failed or pending identity exchanges. Existing
-registrations are reused, and a newly published catalog entry is retained while
-its verified target identity is being recorded; routes still wait for that identity.
-The sidebar and project picker share container health probes, including in-flight
-work, for the account's current explicit refresh cycle. Account closure clears
-those probes. These web connection/probe rules also apply to the retained desktop
-wrapper; the mobile source has its own connection entry flow.
+One [environment machine](client-state-model.md#mate-environment-one-per-target-key)
+per Mate target, in the account runtime's post-grant stage, decides when an identity
+exchange runs: restore, auto-connect and repair are the same driver, single flight per
+origin, retried on the shared backoff policy and bounded by the tab's exchange budget.
+Existing registrations are reused, and a newly published catalog entry is retained
+while its verified target identity is being recorded; routes still wait for that
+identity. Container health comes from one probe store, one fact per origin, that every
+surface shares: it reads an origin on the cadence its container's level asks for while
+the container comes up, restarts or updates, and once more on a push, a connect failure
+or a wake; a tab hidden for a minute probes nothing. Account closure ends the machines
+and the probes. These web connection and probe rules also
+apply to the retained desktop wrapper; mobile lists Mates through the same candidate
+selectors and container store and keeps its own connection entry flow.
 
 ## Why this fits Mate and legacy
 
@@ -247,8 +257,11 @@ Future mechanism changes should not require screens to reinterpret a service.
 
 Start with explicit domain modules and named selectors. Avoid a generic query
 language, dynamic plugin registry, universal change bus or configurable merge
-framework. New panels compose existing data; new domains add a source policy and
-reducer. The central runtime composes them rather than containing their logic.
+framework. The one invalidation bus is a closed, typed union of revalidation requests
+that carries no data; only owners of pull-based facts subscribe, and platform records
+never travel on it ([data flow and invalidation](client-state-model.md#data-flow-and-invalidation)).
+New panels compose existing data; new domains add a source policy and reducer. The
+central runtime composes them rather than containing their logic.
 
 ## Extension rules
 

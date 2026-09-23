@@ -43,9 +43,8 @@ import {
   type MateNextStep,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useCallback, useMemo } from "react";
 
 import {
   groupFlowInputOf,
@@ -57,7 +56,7 @@ import {
   type ZeropsProjectFlow,
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
-import { browserZeropsStorage } from "./storage";
+import { useRegistrationRecord } from "./registrationRecords";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -140,24 +139,7 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
   const flow = useZeropsProjectFlowOptional();
   const inventory = useZeropsInventory();
   const session = useZeropsSessionOptional();
-  const environmentId = threadRef?.environmentId;
-  const [projectId, setProjectId] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (environmentId === undefined) {
-      setProjectId(undefined);
-      return;
-    }
-    let cancelled = false;
-    void lookupEnvironmentProjectRef(browserZeropsStorage, environmentId as EnvironmentId).then(
-      (ref) => {
-        if (!cancelled) setProjectId(ref?.projectId);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId]);
+  const projectId = useRegistrationRecord(threadRef?.environmentId)?.projectRef?.projectId;
 
   const project = inventory.projects.find((entry) => entry.id === projectId);
   const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;

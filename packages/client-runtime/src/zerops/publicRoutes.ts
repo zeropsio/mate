@@ -1,8 +1,8 @@
 /**
  * An environment's public face: every URL the platform serves for it.
  *
- * Read off the same service list the picker already fetches
- * (`candidateLoading.ts`), so a production environment with no Mate — the one
+ * Read off the same service list the candidate listing is made of
+ * (`projections/candidates.ts`), so a production environment with no Mate — the one
  * whose routes matter most — has them without a container to ask. A route is
  * one subdomain-enabled HTTP(S) port of one service, and `servicePortOrigin`
  * (api.ts) stays the single place the platform's hostname rule lives.

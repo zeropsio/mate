@@ -1,7 +1,6 @@
 import { act, useEffect } from "react";
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/unstable/reactivity";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Stream from "effect/Stream";
@@ -12,6 +11,7 @@ import { expect, it } from "@effect/vitest";
 import {
   ZeropsApiError,
   zeropsClientsFromUser,
+  type WriteAdmission,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -35,7 +35,6 @@ import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { CREATION_REFRESH_MS, useCreationInventoryRefresh } from "./creationRefresh";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
 import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
@@ -243,7 +242,7 @@ const mountInventory = Effect.fn(function* (
       return project;
     }),
     baseUrl: "https://api.example.test",
-    setWritesAllowed: vi.fn(),
+    admitWritesThrough: vi.fn<(admission: WriteAdmission) => void>(),
   };
   // Signed in: the session opened the account's lifetime; its intents belong to it.
   openAccountLifetime(user.id);
@@ -252,10 +251,14 @@ const mountInventory = Effect.fn(function* (
     status: "signed-in",
     user,
     organizations: zeropsClientsFromUser(user),
+    activeOrganization: null,
+    organizationStatus: "needs-selection",
     updateVerifiedMemberships: vi.fn(),
     signOut: vi.fn(),
   };
   const events = yield* Queue.unbounded<ReceiverEvent>();
+  /** Every organization the runtime opened a receiver for, the mount's own first. */
+  const receivers: Array<OrganizationRef> = [];
   const registrations = new Map<RegistrationRequest["subscriptionName"], RegistrationRequest>();
   let delivered = yield* Deferred.make<void>();
   let nextId = 0;
@@ -265,15 +268,18 @@ const mountInventory = Effect.fn(function* (
     makeOpaqueId: () => `mounted-${++nextId}`,
     adapter: {
       openReceiver: (_scope, organization, identity) =>
-        Effect.succeed({
-          identity,
-          organization,
-          delivery: "hot-single-consumer-buffered-before-open-resolves",
-          events: Stream.fromQueue(events).pipe(
-            Stream.tap((event) =>
-              event.kind === "pong" ? Deferred.succeed(delivered, undefined) : Effect.void,
+        Effect.sync(() => {
+          receivers.push(organization);
+          return {
+            identity,
+            organization,
+            delivery: "hot-single-consumer-buffered-before-open-resolves" as const,
+            events: Stream.fromQueue(events).pipe(
+              Stream.tap((event) =>
+                event.kind === "pong" ? Deferred.succeed(delivered, undefined) : Effect.void,
+              ),
             ),
-          ),
+          };
         }),
       register: (_handle, request) =>
         Effect.gen(function* () {
@@ -313,8 +319,6 @@ const mountInventory = Effect.fn(function* (
   });
   /** Every grant the runtime took, as its access state published it. */
   const grants: VerifiedAccessGrant[] = [];
-  /** Every organization the provider asked the runtime to re-read. */
-  const refreshed: Array<OrganizationRef> = [];
   let admitted = signal();
   const stopRecording = registry.subscribe(actual.stateAtom, ({ access }) => {
     if (access.status === "verified" && access !== grants.at(-1)) {
@@ -323,14 +327,7 @@ const mountInventory = Effect.fn(function* (
     }
   });
   // The runtime the account's data provider builds for the signed-in account.
-  const makeRuntime = () =>
-    Promise.resolve({
-      ...actual,
-      refresh: (organization: OrganizationRef) =>
-        Effect.sync(() => refreshed.push(organization)).pipe(
-          Effect.andThen(actual.refresh(organization)),
-        ),
-    });
+  const makeRuntime = () => Promise.resolve(actual);
   let inventory: Inventory | null = null;
   let inventoryPublications = 0;
   let grantsWhenChildMounted: number | null = null;
@@ -395,7 +392,8 @@ const mountInventory = Effect.fn(function* (
     indexed,
     failing,
     grants,
-    refreshed,
+    /** Every organization re-read on a fresh receiver since the mount's own opened. */
+    refreshed: () => receivers.slice(1),
     organization,
     projectRef,
     inventory: () => inventory,
@@ -506,7 +504,7 @@ it.live("the renewal never calls runtime.refresh", () =>
       yield* renewal.establish();
       yield* harness.advance(60_000);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(2);
-      expect(harness.refreshed).toEqual([]);
+      expect(harness.refreshed()).toEqual([]);
     }),
   ),
 );
@@ -518,35 +516,8 @@ it.live("an inventory intent re-reads its organization and verifies nothing", ()
       invalidateZerops({ topic: "inventory", organization: harness.organization });
       invalidateZerops({ topic: "inventory", organization: harness.organization });
       yield* harness.advance(250);
-      expect(harness.refreshed).toEqual([harness.organization]);
+      expect(harness.refreshed()).toEqual([harness.organization]);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
-    }),
-  ),
-);
-
-it.live("creation triggers no verification rounds", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory();
-      const heard: Array<Invalidation> = [];
-      const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
-      yield* Effect.addFinalizer(() => Effect.sync(stop));
-      // A creation on its way, with its clock running, for longer than a birth takes.
-      function CreationClock() {
-        useCreationInventoryRefresh(harness.organization);
-        return null;
-      }
-      const { createRoot } = yield* Effect.promise(() => import("react-dom/client"));
-      const clock = createRoot(document.createElement("div"));
-      yield* Effect.promise(async () => act(async () => clock.render(<CreationClock />)));
-      yield* harness.advance(10 * 60_000 + 250);
-      yield* Effect.promise(async () => act(async () => clock.unmount()));
-
-      const ticks = (10 * 60_000) / CREATION_REFRESH_MS;
-      expect(heard.every(({ topic }) => topic === "inventory")).toBe(true);
-      expect(harness.refreshed).toEqual(Array.from({ length: ticks }, () => harness.organization));
-      expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
-      expect(harness.grants).toHaveLength(1);
     }),
   ),
 );
@@ -593,7 +564,8 @@ it.live("a renewal withholds a deleted project until a second read confirms it i
       ).toEqual({ kind: "withheld", reason: "access-denied", cause: null });
       expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
       yield* renewal.establish();
-      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept", "revoked"]);
+      // Its content is withheld at the inventory's read meanwhile (DESIGN §3.1).
+      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
       expect(harness.inventory()?.isLoading).toBe(false);
       expect(harness.inventory()?.error).toBeNull();
 
@@ -621,7 +593,7 @@ it.live("a round back from a lapse withholds a denied project and restores the o
       // Every renewal fails until the evidence runs out 15 min after the first round.
       yield* harness.advance(15 * 60_000 + 1_000);
       expect((yield* harness.runtime.state).access.status).toBe("expired");
-      expect(harness.container.textContent).toContain("Could not load your Zerops projects.");
+      expect(harness.container.textContent).toContain("Zerops isn't answering.");
 
       harness.client.fetchUser.mockImplementation(readUser);
       harness.client.fetchProject.mockImplementation(async (id: string) => {
@@ -644,7 +616,7 @@ it.live("a round back from a lapse withholds a denied project and restores the o
 
       // The account is granted again; the project that answered 403 is not (T-L20).
       expect((yield* harness.runtime.state).access.status).toBe("verified");
-      expect(harness.container.textContent).not.toContain("Could not load");
+      expect(harness.container.textContent).not.toContain("Zerops isn't answering.");
       expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
       expect(authority("kept")).toEqual({ kind: "authorized" });
       expect(authority("revoked")).toEqual({
@@ -739,21 +711,31 @@ it.live("a project its own retry verifies joins the runtime's grant before the n
   ),
 );
 
-it.live("closes the api's writes at the evidence deadline on the api's own clock", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory();
-      // The system clock was set apart from the api's `timeOrigin + performance.now()`.
-      expect(yield* Clock.currentTimeMillis).not.toBe(performance.timeOrigin + performance.now());
-      const [allowed, deadlineMs] = harness.client.setWritesAllowed.mock.lastCall!;
-      const onApiClock = performance.timeOrigin + performance.now() + 15 * 60_000;
-      expect(allowed).toBe(true);
-      // Short of it by no more than the real milliseconds the round took on the runtime's
-      // monotonic clock, which a test's faked timers do not move.
-      expect(deadlineMs).toBeLessThanOrEqual(onApiClock);
-      expect(deadlineMs).toBeGreaterThan(onApiClock - 1_000);
-    }),
-  ),
+it.live(
+  "admits the api's writes through the epoch's own grant, and refuses them once it closed",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* mountInventory();
+        const [admission] = harness.client.admitWritesThrough.mock.lastCall!;
+
+        yield* Effect.promise(() => admission.beforeProjectWrite());
+        yield* harness.unmount();
+
+        expect(
+          yield* Effect.promise(() =>
+            admission.beforeProjectWrite().then(
+              () => null,
+              (cause: unknown) => cause,
+            ),
+          ),
+        ).toEqual({
+          _tag: "ZeropsCommandAdmissionError",
+          reason: "runtime-closed",
+          message: "This Zerops sign-in has ended.",
+        });
+      }),
+    ),
 );
 
 it.live("a round cut off by sign-out is recorded as dropped", () =>
@@ -823,23 +805,23 @@ it.live(
     ),
 );
 
-it.live("a first mount whose data never arrives offers a way off 20 s after its grant (G10)", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      // Granted, while the push half never gets its registrations answered.
-      const harness = yield* mountInventory(["kept"], { holdRegistrations: true });
-      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
-      yield* harness.advance(19_000);
-      expect(harness.grantsWhenChildMounted()).toBeNull();
-      expect(harness.container.textContent).not.toContain("Try again");
+it.live(
+  "a first mount whose data never arrives mounts on its grant and waits on nothing (D2)",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // Granted, while the push half never gets its registrations answered.
+        const harness = yield* mountInventory(["kept"], { holdRegistrations: true });
+        expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+        expect(harness.grantsWhenChildMounted()).toBe(1);
+        expect(harness.inventory()?.isLoading).toBe(true);
 
-      yield* harness.advance(1_000);
+        yield* harness.advance(20_000);
 
-      expect(harness.container.textContent).toContain("Still checking your Zerops projects.");
-      expect(harness.container.textContent).toContain("Try again");
-      expect(harness.container.textContent).toContain("Sign out");
-    }),
-  ),
+        expect(harness.container.textContent).not.toContain("Still checking your Zerops projects.");
+        expect(harness.container.textContent).not.toContain("Try again");
+      }),
+    ),
 );
 
 it.live("Try again asks the grant to renew now and re-reads no inventory", () =>
@@ -854,7 +836,7 @@ it.live("Try again asks the grant to renew now and re-reads no inventory", () =>
       yield* Effect.promise(async () => act(async () => press(retry!)));
       yield* harness.advance(250);
       expect(heard).toEqual([{ topic: "access", change: "renew-now" }]);
-      expect(harness.refreshed).toEqual([]);
+      expect(harness.refreshed()).toEqual([]);
       // A retry during the round joins it (G7).
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
     }),
@@ -885,7 +867,7 @@ it.live("Try again re-reads an organization whose data stalled and starts no rou
       yield* Effect.promise(async () => act(async () => press(retry!)));
       yield* harness.advance(250);
       expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
-      expect(harness.refreshed).toEqual([harness.organization, harness.organization]);
+      expect(harness.refreshed()).toEqual([harness.organization, harness.organization]);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
     }),
   ),

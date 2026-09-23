@@ -7,6 +7,7 @@ import {
   ZeropsApiClient,
   ZeropsApiError,
   type FetchImplementation,
+  type WriteAdmission,
   type ZeropsUser,
 } from "./api.ts";
 import { mateDiagnostics } from "./diagnostics.ts";
@@ -188,7 +189,15 @@ describe("zeropsThrowawayPlatform's diagnostics", () => {
   });
 });
 
-const ACCESS_WINDOW_MS = 15 * 60 * 1000;
+/** An epoch's admission while its project writes are closed. */
+const writesClosed: WriteAdmission = {
+  beforeProjectWrite: () =>
+    Promise.reject({
+      _tag: "ZeropsCommandAdmissionError",
+      reason: "access-expired",
+      message: "Project access could not be verified.",
+    }),
+};
 
 function member(id: string, roleCode: string): ZeropsUser {
   return {
@@ -206,10 +215,7 @@ function browserFetch(fetch: FetchImplementation): FetchImplementation {
       : fetch(input, init);
 }
 
-/**
- * One tab signed in to the account harness's Zerops, its access window open
- * as the inventory provider opens it after a grant.
- */
+/** One tab signed in to the account harness's Zerops, its project writes admitted. */
 function signedInTab(roleCode = "OWNER") {
   const rest = makeFakeZeropsRest();
   rest.addUser({ user: member("user-1", roleCode), password: "one" });
@@ -217,14 +223,12 @@ function signedInTab(roleCode = "OWNER") {
   const sessionChanges: Array<ZeropsSession | null> = [];
   const client = new ZeropsApiClient({
     fetch: browserFetch(rest.fetch),
-    now: () => Date.now(),
     onSessionChange: (session) => {
       sessionChanges.push(session);
     },
   });
   const session = rest.issueSession("user-1");
   client.restoreSession(session);
-  client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
   const mints = () => rest.requests().filter(({ route }) => route.startsWith("POST /client/"));
   // Budgets of its own, so one case's mints never wait on another's.
   const budgets = makeThrowawayMintBudgets(() => Date.now());
@@ -313,7 +317,7 @@ describe("throwaway hygiene", () => {
       it(`${row.mint} ${row.minted ? "mints" : "is refused"}`, async () => {
         vi.useFakeTimers();
         const tab = signedInTab();
-        tab.client.setWritesAllowed(false);
+        tab.client.admitWritesThrough(writesClosed);
 
         let outcome: unknown = "pending";
         void row.run(tab).then(
@@ -331,8 +335,8 @@ describe("throwaway hygiene", () => {
           expect(tab.mints()).toHaveLength(1);
         } else {
           expect(outcome).toMatchObject({
-            kind: "unexpected",
-            message: "Project access could not be verified.",
+            _tag: "ZeropsCommandAdmissionError",
+            reason: "access-expired",
           });
           expect(tab.mints()).toEqual([]);
         }
@@ -352,10 +356,9 @@ describe("throwaway hygiene", () => {
         if (init?.method === "POST") throw new TypeError("Failed to fetch");
         return response;
       },
-      now: () => Date.now(),
     });
     client.restoreSession(tab.session);
-    client.setWritesAllowed(false);
+    client.admitWritesThrough(writesClosed);
 
     const failure = await zeropsThrowawayPlatform(client, undefined, makeThrowawayMintBudgets())
       .mint({ clientId: "org-1", name: "mate-door:p1:n1" })
