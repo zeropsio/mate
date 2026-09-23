@@ -203,9 +203,10 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly complete: boolean;
   /**
-   * What the tree says while it has nothing to draw and the listing may not
-   * say "none" yet (`candidatesNotice`, DESIGN §3.4): a placeholder while it is
-   * unread, the read's cause when it failed, "Still reading…" while a
+   * What the tree says while the listing may not say "none" yet
+   * (`candidatesNotice`, DESIGN §3.4) — in place of the empty state when it has
+   * nothing to draw, under the rows when it holds some: a placeholder while it
+   * is unread, the read's cause when it failed, "Still reading…" while a
    * project's presence is unread. Absent or `null`, it says nothing.
    */
   readonly notice?: CandidatesNotice | null;
@@ -244,39 +245,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // the menu's own left edge, never an empty state it has not earned.
   if (emptyReason !== undefined && !complete) {
     if (notice === null) return null;
-    const { affordance, message } = notice;
-    return (
-      <div
-        className={cn(
-          "flex flex-col items-start gap-1.5 px-2.5 py-2",
-          message.afterMs > 0 && "animate-zerops-appear",
-          className,
-        )}
-        data-zerops-surface="sidebar-environments-notice"
-        role={notice.region === "message" ? "alert" : "status"}
-        style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
-      >
-        <span
-          className={cn(
-            "text-xs",
-            message.tone === "alert"
-              ? "text-[var(--zerops-status-failed-text)]"
-              : "text-sidebar-muted-foreground",
-          )}
-        >
-          {message.text}
-        </span>
-        {affordance === null || onNoticeAct === undefined ? null : (
-          <button
-            className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            onClick={() => onNoticeAct(affordance)}
-            type="button"
-          >
-            {affordance.label}
-          </button>
-        )}
-      </div>
-    );
+    return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
   }
 
   // No project at all: nothing to list and nothing to say — the header's
@@ -491,7 +460,56 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           )}
         </section>
       ) : null}
+
+      {/* Rows already held, and the listing not all read: they may not be all
+          the Mates there are, so the notice stays under them (§3.4). */}
+      {notice === null ? null : <ListingNotice notice={notice} onAct={onNoticeAct} />}
     </nav>
+  );
+}
+
+/** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */
+function ListingNotice({
+  notice,
+  onAct,
+  className,
+}: {
+  readonly notice: CandidatesNotice;
+  readonly onAct: ((affordance: KnownAffordance) => void) | undefined;
+  readonly className?: string | undefined;
+}) {
+  const { affordance, message } = notice;
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-start gap-1.5 px-2.5 py-2",
+        message.afterMs > 0 && "animate-zerops-appear",
+        className,
+      )}
+      data-zerops-surface="sidebar-environments-notice"
+      role={notice.region === "message" ? "alert" : "status"}
+      style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
+    >
+      <span
+        className={cn(
+          "text-xs",
+          message.tone === "alert"
+            ? "text-[var(--zerops-status-failed-text)]"
+            : "text-sidebar-muted-foreground",
+        )}
+      >
+        {message.text}
+      </span>
+      {affordance === null || onAct === undefined ? null : (
+        <button
+          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          onClick={() => onAct(affordance)}
+          type="button"
+        >
+          {affordance.label}
+        </button>
+      )}
+    </div>
   );
 }
 

@@ -209,6 +209,22 @@ describe("SidebarZeropsTree", () => {
     expect(html).not.toContain("No environment has Mate yet");
   });
 
+  it("a partial listing says Still reading… under the Mates it already holds", () => {
+    const html = render([CRM_DEV], {
+      complete: false,
+      notice: {
+        region: "value",
+        message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+        affordance: null,
+      },
+    });
+
+    expect(html).toContain('data-zerops-surface="sidebar-mate"');
+    expect(html.indexOf("Still reading…")).toBeGreaterThan(
+      html.indexOf('data-zerops-surface="sidebar-mate"'),
+    );
+  });
+
   it("lights the open Mate's row the way the menu lights its open thread", () => {
     const html = render([CRM_DEV], { activeProjectId: "crm-dev" });
     expect(html).toContain('aria-current="true"');
