@@ -29,7 +29,7 @@ import {
   stopLine,
   type FlowCell,
 } from "./projectsView.logic";
-import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
+import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
 
 /** `line`: a row's cell, no surface. `box`: a Projects step cell. */
 export type Density = "line" | "box";
@@ -491,9 +491,9 @@ export function mergesHere(flow: GroupFlow, pull: FlowPullRequest): boolean {
 export function verbFor<T>(
   entry: ProjectsFlowGroup<T>,
   cell: FlowCell,
-  renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode,
+  renderNextStep: ZeropsProjectsFlowProps<T>["renderNextStep"],
 ): ReactNode {
-  return nextStepCell(entry.flow) === cell ? renderNextStep(entry) : null;
+  return nextStepCell(entry.flow) === cell ? renderNextStep(entry, "cell") : null;
 }
 
 export function GroupName<T>({

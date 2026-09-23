@@ -73,19 +73,26 @@ const WIDE_STRIP_COLUMNS = {
 } as const;
 
 /**
- * The Overview's first thing: what waits on somebody, across every group. A
- * step is a place to go, not a second copy of its verb — the row below
- * carries the verb, and a step jumps to it.
+ * The Overview's first thing: what waits on somebody, across every group, each
+ * with its verb at the item's end — the row's own verb, so pressing either does
+ * the same thing. The words jump to the group's row. A step with no verb to
+ * press is not on the strip: it would be a thing to read that asks for nothing
+ * (the owner, 2026-09-24: "why is it there when I can't click it?").
  */
 export function NextStepsStrip<T>({
   entries,
   pending,
+  renderNextStep,
 }: {
   readonly entries: ReadonlyArray<ProjectsFlowGroup<T>>;
   /** A group's read is out: what waits is not known yet, so the strip holds its place. */
   readonly pending: boolean;
+  readonly renderNextStep: ZeropsProjectsFlowProps<T>["renderNextStep"];
 }) {
-  if (entries.length === 0 && !pending) return null;
+  const steps = entries
+    .map((entry) => ({ entry, verb: renderNextStep(entry, "strip") }))
+    .filter(({ verb }) => drawn(verb));
+  if (steps.length === 0 && !pending) return null;
   return (
     <FlatCard className="px-3 py-2">
       <section
@@ -95,14 +102,14 @@ export function NextStepsStrip<T>({
       >
         <h2 className="text-sm font-semibold text-foreground">
           Next steps
-          {entries.length === 0 ? null : (
+          {steps.length === 0 ? null : (
             <>
               {" "}
-              <span className="font-normal text-muted-foreground">{entries.length}</span>
+              <span className="font-normal text-muted-foreground">{steps.length}</span>
             </>
           )}
         </h2>
-        {entries.length === 0 ? (
+        {steps.length === 0 ? (
           <ul aria-busy="true" className="grid grid-cols-1 gap-1 @2xl/flow:grid-cols-2">
             {["first", "second"].map((key) => (
               <li
@@ -120,14 +127,17 @@ export function NextStepsStrip<T>({
           <ul
             className={cn(
               "grid grid-cols-1 gap-1",
-              entries.length > 1 && "@2xl/flow:grid-cols-2",
-              WIDE_STRIP_COLUMNS[stripColumns(entries.length)],
+              steps.length > 1 && "@2xl/flow:grid-cols-2",
+              WIDE_STRIP_COLUMNS[stripColumns(steps.length)],
             )}
           >
-            {entries.map((entry) => (
-              <li className="min-w-0" key={entry.group.groupId}>
+            {steps.map(({ entry, verb }) => (
+              <li
+                className="flex h-8 min-w-0 items-center gap-2 rounded-md pe-1 hover:bg-accent"
+                key={entry.group.groupId}
+              >
                 <button
-                  className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md ps-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-zerops-next-step={entry.flow.nextStep.kind}
                   onClick={() => {
                     jumpToRow(entry.group.groupId);
@@ -152,6 +162,7 @@ export function NextStepsStrip<T>({
                     {entry.flow.nextStep.text}
                   </span>
                 </button>
+                <span className="flex shrink-0">{verb}</span>
               </li>
             ))}
           </ul>

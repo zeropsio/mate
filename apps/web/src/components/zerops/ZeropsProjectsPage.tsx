@@ -171,7 +171,11 @@ import {
   environmentRoleTag,
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
-import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
+import {
+  ZeropsProjectsFlow,
+  type NextStepPlacement,
+  type ProjectsFlowGroup,
+} from "./projects/ZeropsProjectsFlow";
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
@@ -2796,6 +2800,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    */
   const renderNextStep = (
     entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
+    placement: NextStepPlacement,
   ): React.ReactNode => {
     const { group, flow } = entry;
     const step = flow.nextStep;
@@ -2814,10 +2819,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     );
     switch (target.kind) {
       case "release":
-        // The version is the cell's line 2 (`v0.1.0 ready`); the
-        // verb beside it is the one word, so the line stays readable.
+        // In its cell the version is line 2 (`v0.1.0 ready`) and the verb
+        // beside it is the one word, so the line stays readable; the strip has
+        // no such line, so there the verb names the version itself.
         return (
-          <ZeropsReleaseVerb groupId={group.groupId} label={flowVerbLabel("release", false)} />
+          <ZeropsReleaseVerb
+            groupId={group.groupId}
+            label={placement === "strip" ? step.verb : flowVerbLabel("release", false)}
+          />
         );
       case "add-production": {
         // Whose production is — the person's to add, not the Mate's — is the

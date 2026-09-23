@@ -805,10 +805,11 @@ describe("a project's next step on the projects page", () => {
     expect(projectsPageSource).not.toContain("ZeropsGroupAnswer");
   });
 
-  it("releases through the same confirm the project's own page asks, named Release beside the version its cell states", () => {
+  it("releases through the same confirm the project's own page asks, named Release beside the version its cell states and Release vX on the strip", () => {
     expect(projectsPageSource).toContain(
-      '<ZeropsReleaseVerb groupId={group.groupId} label={flowVerbLabel("release", false)} />',
+      'label={placement === "strip" ? step.verb : flowVerbLabel("release", false)}',
     );
+    expect(projectsPageSource).toContain("<ZeropsReleaseVerb");
     expect(groupDetailSource).toContain("export function ZeropsReleaseVerb(");
   });
 

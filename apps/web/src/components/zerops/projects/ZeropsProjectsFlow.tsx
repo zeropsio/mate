@@ -66,6 +66,9 @@ export interface ProjectsFlowGroup<T> {
   readonly placeholder: boolean;
 }
 
+/** Where a next step's verb is drawn: in its row's cell, or on the "Next steps" strip. */
+export type NextStepPlacement = "cell" | "strip";
+
 export interface ZeropsProjectsFlowProps<T> {
   readonly view: "overview" | "projects";
   /** In the page's order. */
@@ -104,8 +107,12 @@ export interface ZeropsProjectsFlowProps<T> {
     pull: FlowPullRequest,
     options: { readonly withMerge: boolean; readonly compact: boolean },
   ) => ReactNode;
-  /** The verb of a group's next step (`flow.nextStep`); nothing for `none`. */
-  readonly renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode;
+  /**
+   * The verb of a group's next step (`flow.nextStep`); nothing for `none`.
+   * `placement` is where it stands: its cell, beside the fact it acts on, or
+   * the "Next steps" strip, which has no cell to state a version beside it.
+   */
+  readonly renderNextStep: (entry: ProjectsFlowGroup<T>, placement: NextStepPlacement) => ReactNode;
   /**
    * *Release*, drawn in the production cell whenever one is offered — even
    * where the ranked next step is something else, such as the production's
@@ -198,6 +205,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
           <NextStepsStrip
             entries={folded.nextSteps}
             pending={groups.some((entry) => entry.awaiting)}
+            renderNextStep={props.renderNextStep}
           />
           <Overview active={folded.active} props={props} />
           <OnlyAMate entries={folded.early} props={props} />

@@ -25,7 +25,7 @@ import { ENVIRONMENT_ROW_GRID_CLASS } from "../ZeropsEnvironmentRow";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
 describe("the Overview", () => {
-  it("lists the next steps across groups without their verbs, and a step jumps to its row", () => {
+  it("lists the next steps across groups, and a step's words jump to its row", () => {
     const html = render({ groups: [MERGING, FRESH] });
     const strip = html.slice(
       html.indexOf('data-zerops-surface="next-steps"'),
@@ -34,8 +34,7 @@ describe("the Overview", () => {
     expect(strip).toContain("Next steps");
     expect(strip).toContain(">sm-fixture<");
     expect(strip).toContain(">Pull request #1 waits for your merge<");
-    // The row carries the verb; the strip is where to go, not a second copy.
-    expect(strip).not.toContain("data-test-verb");
+    expect(strip).toContain('data-test-verb="merge"');
     // A first task is not a step waiting on anybody: its group is a tile.
     expect(strip).not.toContain("first task");
 
@@ -59,6 +58,68 @@ describe("the Overview", () => {
       /data-zerops-next-step-slot="true"><button data-test-verb="merge"/u,
     );
     vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["Merge", MERGING],
+    ["Release v0.1.0", RELEASING],
+    [
+      "+ Add production",
+      entry([WREN], {
+        mainHasCode: true,
+        productionAddable: true,
+        missing: [{ tier: "production" }],
+      }),
+    ],
+  ])("carries the step's verb %s on each strip item, the row's own verb", (_verb, group) => {
+    const act_ = vi.fn();
+    const renderNextStep = (value: typeof group, placement: "cell" | "strip") => (
+      <button
+        data-test-placement={placement}
+        data-test-verb={value.flow.nextStep.kind}
+        onClick={() => act_(value.group.groupId, value.flow.nextStep.kind)}
+        type="button"
+      >
+        {value.flow.nextStep.verb}
+      </button>
+    );
+    const tree = mount(
+      <ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={[group]} renderNextStep={renderNextStep} />,
+    );
+    const strip = tree.root.findByProps({ "data-zerops-surface": "next-steps" });
+    const [inStrip] = strip.findAll((node) => node.props["data-test-verb"] !== undefined);
+    const [inRow] = tree.root
+      .findByProps({ "data-zerops-surface": "flow-rows" })
+      .findAll((node) => node.props["data-test-verb"] !== undefined);
+    expect(inStrip?.props["data-test-placement"]).toBe("strip");
+    expect(inRow?.props["data-test-placement"]).toBe("cell");
+    act(() => inStrip?.props.onClick());
+    act(() => inRow?.props.onClick());
+    const step = group.flow.nextStep.kind;
+    expect(act_.mock.calls).toEqual([
+      [group.group.groupId, step],
+      [group.group.groupId, step],
+    ]);
+    // The verb sits at the item's end, after the words that jump to the row.
+    const item = strip.find((node) => node.type === "li");
+    expect(item.children.at(-1)).toMatchObject({ props: { className: "flex shrink-0" } });
+  });
+
+  it("leaves a step with no verb to press out of the strip", () => {
+    const html = render({
+      groups: [MERGING, RELEASING],
+      renderNextStep: (value, placement) =>
+        placement === "strip" && value.flow.nextStep.kind === "release" ? null : (
+          <button data-test-verb={value.flow.nextStep.kind} type="button" />
+        ),
+    });
+    const strip = section(html, 'data-zerops-surface="next-steps"');
+    expect(strip).toContain('data-zerops-next-step="merge"');
+    expect(strip).not.toContain('data-zerops-next-step="release"');
+    expect(strip).toMatch(/Next steps <span[^>]*>1<\/span>/u);
+    expect(render({ groups: [MERGING], renderNextStep: () => null })).not.toContain(
+      'data-zerops-surface="next-steps"',
+    );
   });
 
   it.each([
