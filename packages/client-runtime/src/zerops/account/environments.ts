@@ -30,7 +30,6 @@ import { identityMint } from "../data/access/capabilities.ts";
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
 import { knownProjectsOf, knownServicesOf } from "../data/known.ts";
-import { settledValue } from "../data/resourceSelectors.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   ZeropsOrganizationId,
@@ -55,6 +54,7 @@ import {
   resolveEnvironment,
   type DescriptorIndex,
 } from "../environments/descriptorIndex.ts";
+import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import type {
   DescriptorFacts,
   EnvironmentMachine,
@@ -294,23 +294,16 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   // ── The container store's ports ────────────────────────────────────────────────────────────
 
-  /** `ZCP_MATE_ENABLED` for a target's service, read in the account's scope. */
+  /** `ZCP_MATE_ENABLED` for a target's service, read with the account's services. */
   const readMateFlag = async (key: TargetKey): Promise<MateFlag> => {
     const [projectId, serviceId] = key.split(":");
     const project = projectId === undefined ? undefined : projectRefOf(projectId);
     if (project === undefined || serviceId === undefined) return "unknown";
-    const shown = await Effect.runPromiseWith(options.services)(
-      Effect.scoped(
-        data.resources
-          .acquire({
-            kind: "service-mate-flag",
-            account: data.scope,
-            service: { kind: "service", project, serviceId: ZeropsServiceId.make(serviceId) },
-          })
-          .pipe(Effect.flatMap((lease) => lease.awaitSettled)),
-      ),
+    return readServiceMateFlag(
+      data.resources,
+      { kind: "service", project, serviceId: ZeropsServiceId.make(serviceId) },
+      options.services,
     );
-    return settledValue(shown)?.value.enabled ?? "unknown";
   };
 
   const containerPorts: ContainerStorePorts = {
