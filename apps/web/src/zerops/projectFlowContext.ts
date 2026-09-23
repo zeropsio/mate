@@ -62,9 +62,15 @@ export interface ZeropsProjectFlow {
 
 export interface ZeropsProjectFlowValue {
   readonly giteaOrigin: string | undefined;
-  /** Whether this tab holds a Gitea session; without one nothing below is read. */
+  /**
+   * Whether this tab holds a Gitea session, or is replacing one after a 401; without one nothing
+   * below is read.
+   */
   readonly signedIn: boolean;
-  /** Why the sign-in was refused, when it was; a Gitea still setting up is not a refusal. */
+  /**
+   * Why there is no session: a refusal at once, a Gitea or broker that does not answer only after
+   * two failed tries.
+   */
   readonly signInTrouble: string | null;
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
   /**

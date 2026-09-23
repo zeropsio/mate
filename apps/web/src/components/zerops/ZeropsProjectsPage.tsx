@@ -131,7 +131,7 @@ import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { registerMateInGroup } from "~/zerops/brokerGrant";
 import { findAccountGitea } from "~/zerops/giteaProject";
-import { giteaClientFor } from "~/zerops/giteaSession";
+import { giteaClientFor } from "~/zerops/accountGiteaSessions";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";

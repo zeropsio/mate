@@ -17,7 +17,7 @@ import type { GiteaActionJob } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 /** How far back the run listing looks for the commit's build. */
 export const DEPLOY_RUN_SEARCH = 50;

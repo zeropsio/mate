@@ -15,7 +15,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useMemo, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 /** How often the overview is read again while the page is open. */
 export const GITEA_OVERVIEW_REFRESH_MS = 60_000;

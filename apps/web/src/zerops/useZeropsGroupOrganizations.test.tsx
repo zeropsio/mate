@@ -8,7 +8,7 @@ const gitea = vi.hoisted(() => ({
   asked: [] as string[],
 }));
 
-vi.mock("./giteaSession", () => ({
+vi.mock("./accountGiteaSessions", () => ({
   giteaClientFor: () => ({
     getOrganization: (slug: string) => {
       const answer = gitea.answers[Math.min(gitea.asked.length, gitea.answers.length - 1)];

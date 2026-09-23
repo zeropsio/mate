@@ -9,7 +9,7 @@ import type { GiteaCommitDetail } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 export type ZeropsCommitDetailResult =
   | { readonly kind: "read"; readonly detail: GiteaCommitDetail }

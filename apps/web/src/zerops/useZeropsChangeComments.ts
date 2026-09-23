@@ -15,7 +15,7 @@ import type { GiteaIssueComment } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 export type ZeropsChangeCommentsState =
   | { readonly kind: "no-gitea" }

@@ -20,7 +20,7 @@
 
 import { useEffect, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 const EMPTY: ReadonlyMap<string, boolean> = new Map();
 

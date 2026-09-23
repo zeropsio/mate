@@ -23,7 +23,7 @@ import type {
 import { useEffect, useRef } from "react";
 
 import { addGroupEnvironment, type AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 import { registryGroupSlug } from "./useZeropsRegistry";
 
 export function useZeropsGroupEnvironmentReconcile(input: {

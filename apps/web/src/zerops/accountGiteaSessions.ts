@@ -1,0 +1,147 @@
+/**
+ * The account's Gitea sessions in this tab: one `GiteaSessions` per account epoch
+ * (`@t3tools/client-runtime/zerops/forge`, DESIGN §4.6), made when the account opens and closed
+ * when it closes (`accountLifetime.ts`). A second person on this tab never reads Gitea with the
+ * first person's token, and an answer that belonged to the first lands nowhere.
+ *
+ * Signed in to Mate is signed in to Gitea (D21): `useGiteaSession` wants the account's Gitea
+ * signed in for as long as the surface that calls it is mounted — the flow provider, for the
+ * whole account — and every other reader takes a client from {@link giteaClientFor}.
+ *
+ * This module is the sessions' browser half: fetch, the clocks, timers and the tab's visibility.
+ * It registers with the account lifetime when it loads, which is before any account opens: the
+ * app imports it statically through `ZeropsProjectFlowProvider`.
+ */
+import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
+import type { GiteaClient } from "@t3tools/client-runtime/zerops";
+import {
+  GITEA_SIGNED_OUT,
+  makeGiteaSessions,
+  type GiteaSessions,
+  type GiteaSessionsPorts,
+} from "@t3tools/client-runtime/zerops/forge";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
+
+import { randomUUID } from "../lib/utils";
+import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./accountLifetime";
+
+/** A tab hidden at least this long wakes its waits when it is shown again (DESIGN §6.4). */
+const VISIBLE_WAKE_AFTER_HIDDEN_MS = 30_000;
+
+const tabVisible = (): boolean =>
+  typeof document === "undefined" || document.visibilityState === "visible";
+
+const browserPorts: GiteaSessionsPorts = {
+  fetch: (input, init) => globalThis.fetch(input, init),
+  now: () => ({ wall: Date.now(), mono: performance.now() }),
+  visible: tabVisible,
+  random: Math.random,
+  nonce: randomUUID,
+  setTimer: (delayMs, fire) => {
+    const timer = setTimeout(fire, delayMs);
+    return () => clearTimeout(timer);
+  },
+};
+
+let current: GiteaSessions | null = null;
+const listeners = new Set<() => void>();
+
+function changed(): void {
+  for (const listener of listeners) listener();
+}
+
+onAccountLifetimeOpen(() => {
+  current = makeGiteaSessions(browserPorts);
+  current.subscribe(changed);
+  changed();
+});
+
+onAccountLifetimeClose(() => {
+  const closing = current;
+  current = null;
+  closing?.close();
+  changed();
+});
+
+if (typeof document !== "undefined") {
+  let hiddenSinceMs: number | null = null;
+  document.addEventListener("visibilitychange", () => {
+    if (!tabVisible()) {
+      hiddenSinceMs = performance.now();
+      return;
+    }
+    const hiddenForMs = hiddenSinceMs === null ? 0 : performance.now() - hiddenSinceMs;
+    hiddenSinceMs = null;
+    if (hiddenForMs >= VISIBLE_WAKE_AFTER_HIDDEN_MS) current?.wake();
+    else current?.resume();
+  });
+  window.addEventListener("online", () => current?.online());
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** The open account's Gitea sessions, or `null` while no account is open. */
+export function accountGiteaSessions(): GiteaSessions | null {
+  return current;
+}
+
+/**
+ * Wants the account's Gitea signed in while the calling surface is mounted, and says how that
+ * stands: `signedIn` holds through a 401's reacquire, `trouble` names a refusal at once and a
+ * Gitea or broker that does not answer after two failed tries. `retry` is the person's "Try now".
+ */
+export function useGiteaSession(input: {
+  readonly giteaOrigin: string | undefined;
+  readonly brokerOrigin: string | undefined;
+  /** The org that owns the Gitea — where the throwaway is minted. */
+  readonly clientId: string | undefined;
+  readonly platform: ZeropsThrowawayPlatform | undefined;
+}): { readonly signedIn: boolean; readonly trouble: string | null; readonly retry: () => void } {
+  const { brokerOrigin, clientId, giteaOrigin, platform } = input;
+  const sessions = useSyncExternalStore(subscribe, accountGiteaSessions, () => null);
+  const view = useSyncExternalStore(
+    subscribe,
+    () =>
+      sessions === null || giteaOrigin === undefined
+        ? GITEA_SIGNED_OUT
+        : sessions.view(giteaOrigin),
+    () => GITEA_SIGNED_OUT,
+  );
+
+  useEffect(() => {
+    if (
+      sessions === null ||
+      giteaOrigin === undefined ||
+      brokerOrigin === undefined ||
+      clientId === undefined ||
+      platform === undefined
+    ) {
+      return;
+    }
+    return sessions.demand({ giteaOrigin, brokerOrigin, clientId, platform });
+  }, [sessions, giteaOrigin, brokerOrigin, clientId, platform]);
+
+  const retry = useCallback(() => {
+    if (sessions !== null && giteaOrigin !== undefined) sessions.retry(giteaOrigin);
+  }, [sessions, giteaOrigin]);
+
+  return { signedIn: view.signedIn, trouble: view.trouble, retry };
+}
+
+/**
+ * A client that acts as the person on that Gitea, or `null` while the account holds no session
+ * there. Each request carries the token held when it is sent.
+ */
+export function giteaClientFor(giteaOrigin: string): GiteaClient | null {
+  return current?.clientFor(giteaOrigin) ?? null;
+}
+
+/** The person's login on that Gitea, `u-…`, while signed in. */
+export function giteaSessionLogin(giteaOrigin: string): string | undefined {
+  return current?.view(giteaOrigin).login;
+}

@@ -19,7 +19,7 @@ import {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useEffect, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 export type ZeropsLandedChangeState =
   | { readonly kind: "idle" }

@@ -79,7 +79,7 @@ import {
   useZeropsLandedChange,
   type ZeropsLandedChangeState,
 } from "~/zerops/useZeropsLandedChange";
-import { giteaSessionLogin } from "~/zerops/giteaSession";
+import { giteaSessionLogin } from "~/zerops/accountGiteaSessions";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";

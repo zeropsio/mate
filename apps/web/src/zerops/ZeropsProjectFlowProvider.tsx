@@ -48,8 +48,8 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { findAccountGitea } from "./giteaProject";
+import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
 import { useNowMs } from "./useNowMs";
-import { giteaClientFor, useGiteaSession } from "./giteaSession";
 import {
   ZeropsProjectFlowContext,
   type ZeropsProjectFlow,

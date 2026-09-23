@@ -26,7 +26,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 export type GroupRecipeTier = Extract<EnvironmentRecipeChoice, { kind: "tier" }>;
 

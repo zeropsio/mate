@@ -22,7 +22,7 @@
 import type { GiteaClient, GitForgeState } from "@t3tools/client-runtime/zerops";
 import { useEffect, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 /** How often the forge side is re-read while the tab is open. */
 export const GIT_FORGE_REFRESH_MS = 60_000;

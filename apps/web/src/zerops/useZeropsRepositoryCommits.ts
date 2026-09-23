@@ -17,7 +17,7 @@ import {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useEffect, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 /** How far back a history goes before it stops being one. */
 export const HISTORY_COMMITS = 30;

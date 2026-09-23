@@ -39,7 +39,7 @@ import {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import { giteaClientFor } from "./accountGiteaSessions";
 
 /** How often the forge is read again while the app is open. */
 export const GROUP_FORGE_REFRESH_MS = 60_000;
