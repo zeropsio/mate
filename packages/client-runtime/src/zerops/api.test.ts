@@ -1355,6 +1355,18 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(stub.requests).toHaveLength(0);
   });
 
+  it("names a refused write by its cause alone, leaving the way on to the surface", async () => {
+    const client = new ZeropsApiClient({
+      fetch: recordingFetch(() => jsonResponse(204, {})).fetch,
+    });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(false);
+
+    await expect(client.restartService("service-1")).rejects.toMatchObject({
+      message: "Project access could not be verified.",
+    });
+  });
+
   it("rechecks the absolute deadline before a write retry after token refresh", async () => {
     let nowMs = 1_000;
     const stub = recordingFetch((request) => {

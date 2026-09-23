@@ -3050,10 +3050,7 @@ export class ZeropsApiClient {
         this.#assertGeneration(generation);
       }
       if (mutatesProject && this.#now() >= this.#writesAllowedUntilMs) {
-        throw new ZeropsApiError(
-          "Project access could not be verified. Refresh your projects before making changes.",
-          "unexpected",
-        );
+        throw new ZeropsApiError("Project access could not be verified.", "unexpected");
       }
       const session = this.#session;
       if (authenticated && session) options.sentWith?.(session.accessToken);
