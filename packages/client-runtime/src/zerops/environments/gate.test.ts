@@ -240,10 +240,11 @@ const CREDENTIALS: ReadonlyArray<Credential> = [
   { kind: "refused", reason: { kind: "role" } },
   { kind: "refused", reason: { kind: "version" } },
   { kind: "refused", reason: { kind: "access", reason: "epoch-closed" } },
-  { kind: "held", environmentId: ENV_A, staleBlock: false, rereading: null },
+  { kind: "held", environmentId: ENV_A, installed: true, staleBlock: false, rereading: null },
   {
     kind: "held",
     environmentId: ENV_A,
+    installed: true,
     staleBlock: false,
     rereading: { attempt: 2, deadline: at(8_000), block: "configuration" },
   },

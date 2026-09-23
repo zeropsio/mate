@@ -130,7 +130,10 @@ function linkOf(registration: InterimRegistration | null): LinkPhase {
   }
 }
 
-/** Region K: a registration holds a credential; otherwise an exchange is running or none is. */
+/**
+ * Region K: a registration holds a credential the registry took; otherwise an exchange is running
+ * or none is.
+ */
 function credentialOf(
   input: InterimTargetInput,
   candidate: ZeropsCandidate | undefined,
@@ -139,6 +142,7 @@ function credentialOf(
     return {
       kind: "held",
       environmentId: input.environmentId,
+      installed: true,
       staleBlock: false,
       rereading: null,
     };

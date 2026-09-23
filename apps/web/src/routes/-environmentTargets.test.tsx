@@ -73,6 +73,7 @@ const inventory = (status: string | null): Inventory => ({
   isLoading: false,
   error: null,
   projectRefs: new Map(),
+  authority: new Map(),
 });
 
 let container: TestNode;
