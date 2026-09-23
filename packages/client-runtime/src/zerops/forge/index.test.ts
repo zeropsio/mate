@@ -14,4 +14,9 @@ describe("@t3tools/client-runtime/zerops/forge", () => {
       trouble: null,
     });
   });
+
+  it("exports the one MergeState derivation", () => {
+    expect(typeof forge.mergeabilityAfter).toBe("function");
+    expect(typeof forge.mergeStateOf).toBe("function");
+  });
 });
