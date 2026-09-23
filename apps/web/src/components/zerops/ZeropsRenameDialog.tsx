@@ -43,7 +43,7 @@ export function ZeropsRenameForm({
 
   return (
     <form
-      className="flex flex-col gap-5"
+      className="flex min-h-0 flex-col"
       data-zerops-surface="rename-form"
       onSubmit={(event) => {
         event.preventDefault();
@@ -52,28 +52,30 @@ export function ZeropsRenameForm({
         onSubmit(value.replace(/\s+/g, " ").trim());
       }}
     >
-      <DialogHeader className="px-0 pt-0">
+      <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         {description === undefined ? null : <DialogDescription>{description}</DialogDescription>}
       </DialogHeader>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-value`}>{label}</Label>
-        <Input
-          aria-invalid={submitted && error !== undefined ? true : undefined}
-          autoFocus
-          id={`${id}-value`}
-          onChange={(event) => {
-            setValue(event.target.value);
-          }}
-          value={value}
-        />
-        {submitted && error !== undefined ? (
-          <p className="text-xs text-[var(--zerops-status-failed-text)]" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </div>
-      <DialogFooter className="px-0 pb-0">
+      <DialogPanel>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-value`}>{label}</Label>
+          <Input
+            aria-invalid={submitted && error !== undefined ? true : undefined}
+            autoFocus
+            id={`${id}-value`}
+            onChange={(event) => {
+              setValue(event.target.value);
+            }}
+            value={value}
+          />
+          {submitted && error !== undefined ? (
+            <p className="text-xs text-[var(--zerops-status-failed-text)]" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </DialogPanel>
+      <DialogFooter>
         <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
@@ -94,9 +96,7 @@ export function ZeropsRenameDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup className="max-w-md">
-        <DialogPanel>
-          <ZeropsRenameForm {...form} />
-        </DialogPanel>
+        <ZeropsRenameForm {...form} />
       </DialogPopup>
     </Dialog>
   );

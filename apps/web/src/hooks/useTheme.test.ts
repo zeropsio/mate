@@ -37,6 +37,33 @@ describe("theme failure handling", () => {
     expect(readThemePreference()).toBe("zerops");
   });
 
+  it.each([
+    { name: "nothing stored follows the OS", stored: {}, mode: "system" },
+    {
+      name: "the stored default palette without a mode follows the OS",
+      stored: { "t3code:theme": "zerops" },
+      mode: "system",
+    },
+    {
+      name: "another stored palette without a mode keeps its own appearance",
+      stored: { "t3code:theme": "t3-chat" },
+      mode: "light",
+    },
+    {
+      name: "a stored mode wins over the missing palette",
+      stored: { "t3code:theme-appearance-mode": "dark" },
+      mode: "dark",
+    },
+  ])("resolves the appearance mode when $name", async ({ stored, mode }) => {
+    const localStorage = createStorage();
+    for (const [key, value] of Object.entries(stored)) localStorage.setItem(key, value);
+    vi.stubGlobal("window", { localStorage });
+
+    const { readAppearanceModePreference, readThemePreference } = await import("./useTheme");
+
+    expect(readAppearanceModePreference(readThemePreference())).toBe(mode);
+  });
+
   it("preserves exact storage causes and operation context", async () => {
     const readCause = new Error("storage read blocked");
     const writeCause = new Error("storage quota exceeded");

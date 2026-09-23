@@ -56,7 +56,7 @@ export function ZeropsMoveToGroupForm({
 
   return (
     <form
-      className="flex flex-col gap-5"
+      className="flex min-h-0 flex-col"
       data-zerops-surface="move-to-group-form"
       onSubmit={(event) => {
         event.preventDefault();
@@ -65,76 +65,80 @@ export function ZeropsMoveToGroupForm({
         if (membership !== undefined) onSubmit(membership);
       }}
     >
-      <DialogHeader className="px-0 pt-0">
+      <DialogHeader>
         <DialogTitle>Move {projectName}</DialogTitle>
         <DialogDescription>
           A group is what you call the application; its environments are the projects in it.
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-2">
-        <span className="text-sm">Group</span>
-        <RadioGroup
-          aria-label="Group"
-          className="gap-2"
-          onValueChange={(value) => {
-            setTarget(String(value));
-          }}
-          value={target}
-        >
-          {groups.map((group) => (
-            <Choice key={group.id} selected={target === group.id} value={group.id}>
-              {group.name}
-            </Choice>
-          ))}
-          <Choice selected={target === "new"} value="new">
-            New group
-          </Choice>
-          <Choice selected={target === "none"} value="none">
-            No group
-          </Choice>
-        </RadioGroup>
-        {target === "new" ? (
-          <div className="space-y-1.5 pt-1">
-            <Label htmlFor={`${id}-group`}>Group name</Label>
-            <Input
-              aria-invalid={showErrors && errors.newGroupName !== undefined ? true : undefined}
-              autoFocus
-              id={`${id}-group`}
-              onChange={(event) => {
-                setNewGroupName(event.target.value);
-              }}
-              value={newGroupName}
-            />
-            {showErrors && errors.newGroupName !== undefined ? (
-              <FieldError>{errors.newGroupName}</FieldError>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      {target === "none" ? null : (
+      <DialogPanel className="flex flex-col gap-5">
         <div className="space-y-2">
-          <span className="text-sm">Role</span>
+          <span className="text-sm">Group</span>
           <RadioGroup
-            aria-label="Role"
-            className="flex-row flex-wrap gap-2"
+            aria-label="Group"
+            className="gap-2"
             onValueChange={(value) => {
-              setRole(value as ZeropsEnvironmentRole);
+              setTarget(String(value));
             }}
-            value={role}
+            value={target}
           >
-            {ROLES.map((entry) => (
-              <Choice compact key={entry} selected={role === entry} value={entry}>
-                {environmentRoleLabel(entry) ?? entry}
+            {groups.map((group) => (
+              <Choice key={group.id} selected={target === group.id} value={group.id}>
+                {group.name}
               </Choice>
             ))}
+            <Choice selected={target === "new"} value="new">
+              New group
+            </Choice>
+            <Choice selected={target === "none"} value="none">
+              No group
+            </Choice>
           </RadioGroup>
-          {showErrors && errors.role !== undefined ? <FieldError>{errors.role}</FieldError> : null}
+          {target === "new" ? (
+            <div className="space-y-1.5 pt-1">
+              <Label htmlFor={`${id}-group`}>Group name</Label>
+              <Input
+                aria-invalid={showErrors && errors.newGroupName !== undefined ? true : undefined}
+                autoFocus
+                id={`${id}-group`}
+                onChange={(event) => {
+                  setNewGroupName(event.target.value);
+                }}
+                value={newGroupName}
+              />
+              {showErrors && errors.newGroupName !== undefined ? (
+                <FieldError>{errors.newGroupName}</FieldError>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-      )}
 
-      <DialogFooter className="px-0 pb-0">
+        {target === "none" ? null : (
+          <div className="space-y-2">
+            <span className="text-sm">Role</span>
+            <RadioGroup
+              aria-label="Role"
+              className="flex-row flex-wrap gap-2"
+              onValueChange={(value) => {
+                setRole(value as ZeropsEnvironmentRole);
+              }}
+              value={role}
+            >
+              {ROLES.map((entry) => (
+                <Choice compact key={entry} selected={role === entry} value={entry}>
+                  {environmentRoleLabel(entry) ?? entry}
+                </Choice>
+              ))}
+            </RadioGroup>
+            {showErrors && errors.role !== undefined ? (
+              <FieldError>{errors.role}</FieldError>
+            ) : null}
+          </div>
+        )}
+      </DialogPanel>
+
+      <DialogFooter>
         <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
@@ -188,9 +192,7 @@ export function ZeropsMoveToGroupDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup className="max-w-md">
-        <DialogPanel>
-          <ZeropsMoveToGroupForm {...form} />
-        </DialogPanel>
+        <ZeropsMoveToGroupForm {...form} />
       </DialogPopup>
     </Dialog>
   );

@@ -24,7 +24,6 @@ import { ZeropsMark } from "../ZeropsMark";
 import {
   FlatCard,
   formatStepDuration,
-  MicroLabel,
   ProcessSteps,
   StatusDot,
   type ProcessStep,
@@ -39,14 +38,6 @@ export interface ObservedRegion {
   /** The build log region, when the caller has one. */
   readonly log?: ReactNode;
 }
-
-const HEADER_TONE_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "bg-[var(--zerops-status-ok-surface)]",
-  busy: "bg-[var(--zerops-status-busy-surface)]",
-  attention: "bg-[var(--zerops-status-attention-surface)]",
-  failed: "bg-[var(--zerops-status-failed-surface)]",
-  off: "bg-[var(--zerops-status-off-surface)]",
-};
 
 /** running -> busy, done -> ok, failed -> failed; uncertain, or a done operation with any failed step -> attention. */
 function operationTone(operation: ZeropsOperation): ServiceStatusToneId {
@@ -104,7 +95,7 @@ function UrlChip({ label, url }: { readonly label: string; readonly url: string 
   return (
     <ServiceBrowserLink
       aria-label={`Open ${url}`}
-      className="inline-flex items-center gap-1.5 rounded-md bg-background/90 px-2 py-1 font-medium text-info-foreground text-xs hover:underline"
+      className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2 py-1 font-medium text-info-foreground text-xs hover:underline"
       data-zerops-chip-kind="url"
       href={url}
       rel="noreferrer"
@@ -202,7 +193,7 @@ function BrowserBody({
   const visibleSteps = visibleBrowserSteps(operation);
 
   return (
-    <div className="space-y-2 px-3 py-3 text-xs leading-relaxed" data-zerops-browser-body>
+    <div className="space-y-2 px-3 pt-1 pb-2.5 text-xs leading-relaxed" data-zerops-browser-body>
       {image !== undefined ? (
         <BrowserViewport
           image={image}
@@ -222,15 +213,19 @@ function BrowserBody({
         </p>
       ) : null}
       {summary?.failedStep !== undefined ? (
-        <ProcessSteps aria-label="Failed step" steps={[summary.failedStep]} />
+        <ProcessSteps aria-label="Failed step" density="compact" steps={[summary.failedStep]} />
       ) : null}
       {visibleSteps.length > 0 ? (
         <details data-zerops-browser-steps-expander>
-          <summary className="cursor-pointer select-none text-[11px] text-muted-foreground uppercase tracking-wide">
+          <summary className="cursor-pointer select-none text-muted-foreground text-xs">
             Show steps
           </summary>
           <div className="mt-2">
-            <ProcessSteps aria-label={`${operation.kicker} steps`} steps={visibleSteps} />
+            <ProcessSteps
+              aria-label={`${operation.kicker} steps`}
+              density="compact"
+              steps={visibleSteps}
+            />
           </div>
         </details>
       ) : null}
@@ -305,40 +300,35 @@ export function ZeropsOperationCard(props: {
 
   return (
     <FlatCard
-      className="overflow-hidden"
+      className={cn(
+        "overflow-hidden",
+        tone === "failed" && "border-[var(--zerops-status-failed)]/35",
+      )}
       data-zerops-card
       data-zerops-card-kind={operation.kind}
       data-zerops-card-tone={tone}
       data-zerops-operation-key={operation.key}
     >
-      <header className={cn(HEADER_TONE_CLASS[tone], "px-3 py-2.5")}>
-        <div className="flex items-center justify-between gap-3">
-          <MicroLabel>{operation.kicker}</MicroLabel>
-          <span
-            aria-label="Result status"
-            className="flex shrink-0 items-center gap-1.5"
-            role="status"
-          >
-            <StatusDot label={operation.statusWord} pulse={tone === "busy"} tone={tone} />
-            {operation.attemptWord !== undefined ? (
-              <span className="text-[11px] text-muted-foreground" data-zerops-operation-attempt>
-                {operation.attemptWord}
-              </span>
-            ) : null}
-            {durationText !== undefined ? (
-              <span
-                className="font-mono text-[11px] text-muted-foreground tabular-nums"
-                data-zerops-operation-duration
-              >
-                · {durationText}
-              </span>
-            ) : null}
-          </span>
-        </div>
-        <div className="mt-1 flex items-center gap-1.5 font-medium text-foreground text-sm">
+      <header className="flex items-center justify-between gap-3 px-3 pt-2.5 pb-1.5">
+        <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground text-sm">
           <ZeropsMark className="size-3.5 shrink-0" />
           <span data-zerops-voice-source={operation.voiceSource}>{operation.voice}</span>
         </div>
+        <span
+          aria-label="Result status"
+          className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs"
+          role="status"
+        >
+          <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
+          {operation.attemptWord !== undefined ? (
+            <span data-zerops-operation-attempt>· {operation.attemptWord}</span>
+          ) : null}
+          {durationText !== undefined ? (
+            <span className="tabular-nums" data-zerops-operation-duration>
+              · {durationText}
+            </span>
+          ) : null}
+        </span>
       </header>
 
       {hasBody ? (
@@ -351,9 +341,13 @@ export function ZeropsOperationCard(props: {
             operation={operation}
           />
         ) : (
-          <div className="space-y-3 px-3 py-3 text-xs leading-relaxed">
+          <div className="space-y-2 px-3 pt-1 pb-2.5 text-xs leading-relaxed">
             {stepsForBody.length > 0 ? (
-              <ProcessSteps aria-label={`${operation.kicker} progress`} steps={stepsForBody} />
+              <ProcessSteps
+                aria-label={`${operation.kicker} progress`}
+                density="compact"
+                steps={stepsForBody}
+              />
             ) : null}
             {observed?.log ?? null}
             {observed !== undefined ? (
@@ -366,9 +360,9 @@ export function ZeropsOperationCard(props: {
       ) : null}
 
       {hasFooter ? (
-        <div className="space-y-2 border-[var(--zerops-flat-card-border)] border-t px-3 py-2.5 text-xs">
+        <div className="space-y-2 px-3 pt-0.5 pb-2.5 text-xs">
           {operation.closing !== undefined ? (
-            <p className="font-medium text-foreground text-sm" data-zerops-card-outcome="true">
+            <p className="text-[13px] text-muted-foreground" data-zerops-card-outcome="true">
               {operation.closing}
             </p>
           ) : null}
@@ -381,9 +375,7 @@ export function ZeropsOperationCard(props: {
           ) : null}
           {operation.detail !== undefined ? (
             <details className="text-muted-foreground">
-              <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide">
-                Details
-              </summary>
+              <summary className="cursor-pointer select-none text-xs">Details</summary>
               <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/60 p-2 text-[11px]">
                 {operation.detail}
               </pre>

@@ -1,29 +1,33 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
+import { Dialog } from "../ui/dialog";
 import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
 
 function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[0]> = {}) {
+  // The title and the way out are Base UI's, and both need the root's context.
   return renderToStaticMarkup(
-    <ZeropsEnvironmentCreationForm
-      defaultBotName="Otto"
-      defaultName="Acme Docs - stage"
-      defaultWithAgent
-      groupName="Acme Docs"
-      onCancel={() => {}}
-      onCreate={() => {}}
-      role="stage"
-      takenBotNames={{ names: ["Fen"], complete: true }}
-      tier={{
-        kind: "tier",
-        tier: "stage",
-        yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
-        sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
-      }}
-      tierLoading={false}
-      tierServices={["app", "db"]}
-      {...props}
-    />,
+    <Dialog open onOpenChange={() => {}}>
+      <ZeropsEnvironmentCreationForm
+        defaultBotName="Otto"
+        defaultName="Acme Docs - stage"
+        defaultWithAgent
+        groupName="Acme Docs"
+        onCancel={() => {}}
+        onCreate={() => {}}
+        role="stage"
+        takenBotNames={{ names: ["Fen"], complete: true }}
+        tier={{
+          kind: "tier",
+          tier: "stage",
+          yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
+          sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
+        }}
+        tierLoading={false}
+        tierServices={["app", "db"]}
+        {...props}
+      />
+    </Dialog>,
   );
 }
 

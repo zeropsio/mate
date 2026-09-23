@@ -43,12 +43,11 @@ export function assignableMemberLabel(member: AssignableMember): string {
   return mateMemberName(member) ?? member.id;
 }
 
-export function ZeropsAssignMateDialog({
+export function ZeropsAssignMateForm({
   projectName,
   members,
   currentOwnerId,
   onCancel,
-  onOpenChange,
   onSubmit,
 }: {
   readonly projectName: string;
@@ -56,60 +55,70 @@ export function ZeropsAssignMateDialog({
   /** Whoever the project already names as its owner, pre-selected. */
   readonly currentOwnerId?: string | undefined;
   readonly onCancel: () => void;
-  readonly onOpenChange: (open: boolean) => void;
   readonly onSubmit: (clientUserId: string) => void;
 }) {
   const id = useId();
   const [selected, setSelected] = useState(currentOwnerId ?? members[0]?.id ?? "");
 
   return (
+    <form
+      className="flex min-h-0 flex-col"
+      data-zerops-surface="assign-mate"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (selected.length === 0) return;
+        onSubmit(selected);
+      }}
+    >
+      <DialogHeader>
+        <DialogTitle>Hand {projectName} over</DialogTitle>
+        <DialogDescription>
+          Whoever you pick owns this Mate: they open it, rename it and move it. Everyone else in the
+          organization keeps seeing it in the list.
+        </DialogDescription>
+      </DialogHeader>
+      <DialogPanel>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-member`}>Owner</Label>
+          <select
+            autoFocus
+            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+            id={`${id}-member`}
+            onChange={(event) => {
+              setSelected(event.target.value);
+            }}
+            value={selected}
+          >
+            {members.map((member) => (
+              <option key={member.id} value={member.id}>
+                {assignableMemberLabel(member)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </DialogPanel>
+      <DialogFooter>
+        <Button onClick={onCancel} type="button" variant="ghost">
+          Cancel
+        </Button>
+        <Button disabled={selected.length === 0} type="submit">
+          Hand it over
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+export function ZeropsAssignMateDialog({
+  onOpenChange,
+  ...form
+}: Parameters<typeof ZeropsAssignMateForm>[0] & {
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  return (
     <Dialog open onOpenChange={onOpenChange}>
       <DialogPopup>
-        <DialogPanel>
-          <form
-            className="flex flex-col gap-5"
-            data-zerops-surface="assign-mate"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (selected.length === 0) return;
-              onSubmit(selected);
-            }}
-          >
-            <DialogHeader className="px-0 pt-0">
-              <DialogTitle>Hand {projectName} over</DialogTitle>
-              <DialogDescription>
-                Whoever you pick owns this Mate: they open it, rename it and move it. Everyone else
-                in the organization keeps seeing it in the list.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-member`}>Owner</Label>
-              <select
-                autoFocus
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                id={`${id}-member`}
-                onChange={(event) => {
-                  setSelected(event.target.value);
-                }}
-                value={selected}
-              >
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {assignableMemberLabel(member)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <DialogFooter className="px-0 pb-0">
-              <Button onClick={onCancel} type="button" variant="ghost">
-                Cancel
-              </Button>
-              <Button disabled={selected.length === 0} type="submit">
-                Hand it over
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogPanel>
+        <ZeropsAssignMateForm {...form} />
       </DialogPopup>
     </Dialog>
   );

@@ -400,6 +400,7 @@ import {
   resolveBackgroundDraftWorkspaceOptions,
   isZeropsInstanceRunnable,
   resolveComposerInteractionMode,
+  resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   resolveZeropsOwnedAgentSendBlockReason,
@@ -1539,7 +1540,20 @@ export default function ChatView(props: ChatViewProps) {
   );
   const legendListRef = useRef<LegendListRef | null>(null);
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
-  const [composerOverlayHeight, setComposerOverlayHeight] = useState(0);
+  const [composerElementHeight, setComposerElementHeight] = useState(0);
+  // The banner stack (resume-with-less-context, the merge offer, …) floats
+  // from a zero-height anchor above the composer, so it never enlarges the
+  // composer overlay element's own measured box — it needs its own observer.
+  const [composerBannerStackElement, setComposerBannerStackElement] =
+    useState<HTMLDivElement | null>(null);
+  const [composerBannerStackHeight, setComposerBannerStackHeight] = useState(0);
+  const composerOverlayHeight = resolveComposerOverlayHeight({
+    composerHeight: composerElementHeight,
+    // Masked at read time rather than reset from the observer effect below:
+    // the stack unmounts (ref goes null) the instant the last banner is
+    // dismissed, before a resize would ever fire to report 0.
+    bannerStackHeight: composerBannerStackElement ? composerBannerStackHeight : 0,
+  });
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
@@ -1553,7 +1567,7 @@ export default function ChatView(props: ChatViewProps) {
     const updateHeight = () => {
       const nextHeight = Math.ceil(composerOverlayElement.getBoundingClientRect().height);
       if (nextHeight <= 0) return;
-      setComposerOverlayHeight((currentHeight) =>
+      setComposerElementHeight((currentHeight) =>
         currentHeight === nextHeight ? currentHeight : nextHeight,
       );
     };
@@ -1565,6 +1579,25 @@ export default function ChatView(props: ChatViewProps) {
     observer.observe(composerOverlayElement);
     return () => observer.disconnect();
   }, [composerOverlayElement]);
+
+  useLayoutEffect(() => {
+    if (!composerBannerStackElement) return;
+
+    const updateHeight = () => {
+      const nextHeight = Math.ceil(composerBannerStackElement.getBoundingClientRect().height);
+      if (nextHeight <= 0) return;
+      setComposerBannerStackHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      );
+    };
+
+    updateHeight();
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(composerBannerStackElement);
+    return () => observer.disconnect();
+  }, [composerBannerStackElement]);
 
   const terminalUiState = useTerminalUiStateStore((state) =>
     selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef),
@@ -7854,10 +7887,18 @@ export default function ChatView(props: ChatViewProps) {
                           activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
-                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                      <ComposerBannerStack
+                        className="relative z-0"
+                        items={composerBannerItems}
+                        stackRef={setComposerBannerStackElement}
+                      />
                     </div>
                   ) : (
-                    <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                    <ComposerBannerStack
+                      className="relative z-0"
+                      items={composerBannerItems}
+                      stackRef={setComposerBannerStackElement}
+                    />
                   )}
                   {threadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={threadSyncPhase} />

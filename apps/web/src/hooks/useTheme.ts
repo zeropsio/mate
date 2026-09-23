@@ -125,7 +125,9 @@ function readStoredFollowSystem(theme: Theme): boolean {
     // Fall back to the legacy theme value when the separate preference is unavailable.
   }
 
-  return theme === "system";
+  // The default palette has both halves and follows the OS until told
+  // otherwise — a first visit on a dark OS is dark, as the boot splash is.
+  return theme === "system" || theme === DEFAULT_THEME_SNAPSHOT.theme;
 }
 
 function isThemePreferenceMode(value: string | null): value is ThemePreferenceMode {
