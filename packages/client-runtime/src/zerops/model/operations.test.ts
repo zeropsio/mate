@@ -8,8 +8,15 @@ import {
   verifyAndRefusedDeploy,
   weatherdashFirstDeploy,
 } from "../operations/__fixtures__/index.ts";
+import type { OperationBuildContext } from "./builders/shared.ts";
 import { collectZeropsCalls } from "./calls.ts";
 import { reduceZeropsOperations } from "./operations.ts";
+
+/** The clock at the synthetic calls' own moment, no project known — a triggered build is still running. */
+const CONTEXT: OperationBuildContext = {
+  nowMs: Date.parse("2026-09-01T00:00:00.000Z"),
+  projectId: undefined,
+};
 
 // ---- a hand-built call, as one activity row (RAW, R1-R4 fold degenerately
 // to one row for these synthetic cases) ----
@@ -53,7 +60,7 @@ function activityFor(entry: EntrySpec): OrchestrationThreadActivity {
 function reduceFrom(entries: ReadonlyArray<EntrySpec>, runningTurnId: string | null = "t1") {
   const activities = entries.map(activityFor);
   const calls = collectZeropsCalls(activities, runningTurnId);
-  return reduceZeropsOperations(calls);
+  return reduceZeropsOperations(calls, CONTEXT);
 }
 
 function planResult(overrides: Record<string, unknown>): string {
@@ -656,7 +663,7 @@ describe("reduceZeropsOperations — declined and stopped are their own phase, n
       }),
     ];
     const calls = collectZeropsCalls(activities, "t2"); // t2 is running now, not t1
-    const { operations } = reduceZeropsOperations(calls);
+    const { operations } = reduceZeropsOperations(calls, CONTEXT);
     expect(operations[0]!.phase).toBe("interrupted");
     expect(operations[0]!.statusWord).toBe("Interrupted");
     expect(operations[0]!.closing).toBe("The agent did not report a result.");
@@ -812,7 +819,7 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
 // turn is irrelevant since every real call is already settled.
 function reduceFrom2(thread: { activities: ReadonlyArray<OrchestrationThreadActivity> }) {
   const calls = collectZeropsCalls(thread.activities, null);
-  return reduceZeropsOperations(calls);
+  return reduceZeropsOperations(calls, CONTEXT);
 }
 
 describe("a verify whose checks failed", () => {

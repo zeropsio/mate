@@ -75,7 +75,9 @@ export type ZeropsOperationKind =
  * `declined` and `stopped` are their own outcomes, never folded into `done`
  * (the bug §2.6 fixes with one `phaseFor`). `interrupted` and `reset` never
  * come from `phaseFor` alone — `interrupted` mirrors an orphaned call's own
- * status, `reset` is a bootstrap session's own closure (§2.3 R7).
+ * status, `reset` is a bootstrap session's own closure (§2.3 R7). `uncertain`
+ * is a deploy whose triggered build reported nothing by its cap
+ * (`builders/deploy.ts`): nothing in the thread will settle it any more.
  */
 export type ZeropsOperationPhase =
   | "running"
@@ -84,7 +86,8 @@ export type ZeropsOperationPhase =
   | "declined"
   | "stopped"
   | "interrupted"
-  | "reset";
+  | "reset"
+  | "uncertain";
 
 export type ZeropsOperationStepState = "queued" | "running" | "done" | "failed";
 

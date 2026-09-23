@@ -1,6 +1,6 @@
 /**
- * `deriveZeropsThreadModel` — the one function. Pure, clockless, memoisable
- * on `(activities, lifecycle, runningTurnId)` reference identity. Web and
+ * `deriveZeropsThreadModel` — the one function. Pure, memoisable on
+ * `(activities, lifecycle, runningTurnId, nowMs)`; the clock is an input. Web and
  * mobile both call this instead of hand-rolling their own activity → card
  * derivation. See
  * `mate-session-model-2026-09-05-designs/C-client-domain.md` §1.2.
@@ -28,8 +28,10 @@ export interface ZeropsThreadModelInput {
    * phase nobody read.
    */
   readonly lifecycle?: Known<ZeropsLifecycle> | undefined;
-  /** The thread's running turn, or null when idle — the only "clock" the model has. */
+  /** The thread's running turn, or null when idle. */
   readonly runningTurnId?: string | null | undefined;
+  /** The caller's clock — a triggered build turns uncertain past its cap against it. */
+  readonly nowMs: number;
 }
 
 export interface ZeropsThreadModel {
@@ -48,7 +50,12 @@ export function deriveZeropsThreadModel(input: ZeropsThreadModelInput): ZeropsTh
   const runningTurnId = input.runningTurnId ?? null;
   const calls = collectZeropsCalls(input.activities, runningTurnId);
   const zeropsActivityIds = new Set<string>(calls.flatMap((call) => [...call.rowIds]));
-  const { operations, genericCalls } = reduceZeropsOperations(calls);
+  const lifecycle = input.lifecycle;
+  const envelope = lifecycle?.state === "known" ? lifecycle.value.envelope : undefined;
+  const { operations, genericCalls } = reduceZeropsOperations(calls, {
+    nowMs: input.nowMs,
+    projectId: envelope?.project.id,
+  });
 
   const entries: ZeropsTimelineEntry[] = [
     ...operations.map((operation): ZeropsTimelineEntry => ({
@@ -67,11 +74,7 @@ export function deriveZeropsThreadModel(input: ZeropsThreadModelInput): ZeropsTh
     })),
   ].sort(compareAnchors);
 
-  const lifecycle = input.lifecycle;
-  const session = composeSession(
-    lifecycle?.state === "known" ? lifecycle.value.envelope : undefined,
-    operations,
-  );
+  const session = composeSession(envelope, operations);
 
   let running: ZeropsOperation | undefined;
   for (const operation of operations) {

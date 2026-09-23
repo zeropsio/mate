@@ -48,13 +48,16 @@ const HEADER_TONE_CLASS: Record<ServiceStatusToneId, string> = {
   off: "bg-[var(--zerops-status-off-surface)]",
 };
 
-/** running -> busy, done -> ok, failed -> failed; a done operation with any failed step -> attention. */
+/** running -> busy, done -> ok, failed -> failed; uncertain, or a done operation with any failed step -> attention. */
 function operationTone(operation: ZeropsOperation): ServiceStatusToneId {
   if (operation.phase === "running") {
     return "busy";
   }
   if (operation.phase === "failed") {
     return "failed";
+  }
+  if (operation.phase === "uncertain") {
+    return "attention";
   }
   return operation.steps.some((step) => step.state === "failed") ? "attention" : "ok";
 }

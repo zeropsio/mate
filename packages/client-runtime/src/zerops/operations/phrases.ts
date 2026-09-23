@@ -91,13 +91,19 @@ const PAST_PARTICIPLE: Readonly<Record<string, string>> = {
   env: "Updated",
 };
 
+/** The label of a link to the project on the Zerops dashboard. */
+export const OPEN_IN_ZEROPS = "Open in Zerops";
+
 /**
  * The status word for a kind × phase — the free-text word next to the status
  * dot. Never a raw platform enum.
  */
 /** Kind-independent words for the outcomes no per-kind claim ever applies to. */
 export function settledPhaseWord(
-  phase: Extract<ZeropsOperationPhase, "declined" | "stopped" | "interrupted" | "reset">,
+  phase: Extract<
+    ZeropsOperationPhase,
+    "declined" | "stopped" | "interrupted" | "reset" | "uncertain"
+  >,
 ): string {
   switch (phase) {
     case "declined":
@@ -108,6 +114,8 @@ export function settledPhaseWord(
       return "Interrupted";
     case "reset":
       return "Reset";
+    case "uncertain":
+      return "Unconfirmed";
   }
 }
 
@@ -116,7 +124,13 @@ export function operationStatusWord(
   phase: ZeropsOperationPhase,
   context: OperationStatusWordContext = {},
 ): string {
-  if (phase === "declined" || phase === "stopped" || phase === "interrupted" || phase === "reset") {
+  if (
+    phase === "declined" ||
+    phase === "stopped" ||
+    phase === "interrupted" ||
+    phase === "reset" ||
+    phase === "uncertain"
+  ) {
     return settledPhaseWord(phase);
   }
   if (phase === "running") {
@@ -207,6 +221,7 @@ export function neutralStatusWord(phase: ZeropsOperationPhase): string {
     case "stopped":
     case "interrupted":
     case "reset":
+    case "uncertain":
       return settledPhaseWord(phase);
   }
 }
@@ -365,6 +380,10 @@ export function operationClosing(
   }
   if (phase === "reset") {
     return "Reset.";
+  }
+  if (phase === "uncertain") {
+    // Only a deploy's triggered build reaches it (`builders/deploy.ts`).
+    return "No result from the build. Check it in Zerops.";
   }
   if (phase === "failed") {
     switch (kind) {

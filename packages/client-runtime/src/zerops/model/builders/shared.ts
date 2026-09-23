@@ -29,6 +29,22 @@ import type {
 } from "../types.ts";
 
 /**
+ * How long after a deploy call returned BUILD_TRIGGERED its card stays running.
+ * zcp's own build poll gives up after the same 10 minutes and keeps
+ * BUILD_TRIGGERED (`internal/ops/progress.go` `defaultPollConfig`,
+ * `internal/tools/deploy_poll.go`), so past it nothing in the thread will
+ * settle the card.
+ */
+export const DEPLOY_BUILD_CAP_MS = 10 * 60 * 1000;
+
+/** What a builder reads besides its call: the derivation's clock and the thread's project. */
+export interface OperationBuildContext {
+  readonly nowMs: number;
+  /** The thread's Zerops project, from the known lifecycle envelope; undefined while none is known. */
+  readonly projectId: string | undefined;
+}
+
+/**
  * What a per-kind builder returns: everything about a `ZeropsOperation` that
  * depends on the tool's own shape. `operations.ts` fills in the rest (key,
  * kind, phase, anchor, callIds, attempts) — the same fields for every kind.
@@ -52,8 +68,9 @@ export interface BuiltCardFields {
   readonly browserSummary?: ZeropsOperationBrowserSummary;
   /**
    * Overrides `phaseFor(call.status)`, where the call's own status is not what
-   * happened: `deploy`'s BUILD_TRIGGERED is still running, and a `verify` whose
-   * checks failed is failed however cleanly the tool returned.
+   * happened: `deploy`'s BUILD_TRIGGERED is still running (uncertain past its
+   * cap), and a `verify` whose checks failed is failed however cleanly the
+   * tool returned.
    */
   readonly phaseOverride?: ZeropsOperationPhase;
 }

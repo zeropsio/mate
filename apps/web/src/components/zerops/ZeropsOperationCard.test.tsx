@@ -47,9 +47,12 @@ vi.mock("../../rightPanelStore", () => ({
 
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
 
+/** The clock at the hand-built calls' own moment, no project known — a triggered build is still running. */
+const CONTEXT = { nowMs: Date.parse("2026-09-01T00:00:00.000Z"), projectId: undefined };
+
 /** Every `ZeropsOperation` (card kind) a real captured thread's activities fold into. */
 function operationsFor(thread: ZeropsShowcaseThread): ReadonlyArray<ZeropsOperation> {
-  return deriveZeropsThreadModel({ activities: thread.activities })
+  return deriveZeropsThreadModel({ activities: thread.activities, nowMs: CONTEXT.nowMs })
     .entries.filter(
       (entry): entry is Extract<typeof entry, { kind: "operation" }> => entry.kind === "operation",
     )
@@ -81,7 +84,7 @@ function zeropsCall(overrides: {
 
 /** One call folds into exactly one operation — the reducer's output for a single-call fixture. */
 function operationFor(call: ZeropsCall): ZeropsOperation {
-  return reduceZeropsOperations([call]).operations[0]!;
+  return reduceZeropsOperations([call], CONTEXT).operations[0]!;
 }
 
 describe("ZeropsOperationCard — fixture operations", () => {
@@ -201,6 +204,34 @@ describe("ZeropsOperationCard — running, with an observed region", () => {
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={done} />);
 
     expect(html).toContain("1m 12s");
+  });
+});
+
+describe("ZeropsOperationCard — a triggered build past its cap", () => {
+  it("reads attention, not busy, and links the project in Zerops", () => {
+    const [uncertain] = reduceZeropsOperations(
+      [
+        zeropsCall({
+          id: "e3",
+          startedAt: "2026-09-01T00:00:00.000Z",
+          turnId: "t1",
+          toolName: "zerops_deploy",
+          input: { targetService: "weatherdash" },
+          status: "completed",
+          settledAt: "2026-09-01T00:00:05.000Z",
+          resultText: JSON.stringify({ status: "BUILD_TRIGGERED", targetService: "weatherdash" }),
+        }),
+      ],
+      { nowMs: Date.parse("2026-09-01T00:10:05.000Z"), projectId: "proj-1" },
+    ).operations;
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={uncertain!} />);
+
+    expect(uncertain!.phase).toBe("uncertain");
+    expect(html).toContain('data-zerops-card-tone="attention"');
+    expect(html).toContain("Unconfirmed");
+    expect(html).toContain("No result from the build. Check it in Zerops.");
+    expect(html).toContain('href="https://app.zerops.io/project/proj-1"');
+    expect(html).toContain("Open in Zerops");
   });
 });
 
@@ -405,11 +436,14 @@ describe("ZeropsOperationCard — attempt count (R8)", () => {
         status: "failed",
         resultText: JSON.stringify({ code: "API_ERROR", error: "zerops.yml not found" }),
       });
-    const { operations } = reduceZeropsOperations([
-      failedDeploy("r1", "2026-09-01T00:00:00.000Z"),
-      failedDeploy("r2", "2026-09-01T00:01:00.000Z"),
-      failedDeploy("r3", "2026-09-01T00:02:00.000Z"),
-    ]);
+    const { operations } = reduceZeropsOperations(
+      [
+        failedDeploy("r1", "2026-09-01T00:00:00.000Z"),
+        failedDeploy("r2", "2026-09-01T00:01:00.000Z"),
+        failedDeploy("r3", "2026-09-01T00:02:00.000Z"),
+      ],
+      CONTEXT,
+    );
     const folded = operations[0]!;
     expect(folded.attempts).toBe(3);
 

@@ -178,6 +178,7 @@ import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
+import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsChangeLandedEvents } from "../zerops/useZeropsChangeLandedEvents";
 import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
@@ -2379,14 +2380,16 @@ export default function ChatView(props: ChatViewProps) {
     [threadActivities],
   );
   const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
+  const nowMs = useNowMs();
   const zeropsThreadModel = useMemo(
     () =>
       deriveZeropsThreadModel({
         activities: threadActivities,
         lifecycle: activeZeropsLifecycle,
         runningTurnId: activeRunningTurnId,
+        nowMs,
       }),
-    [threadActivities, activeZeropsLifecycle, activeRunningTurnId],
+    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, nowMs],
   );
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),
