@@ -135,6 +135,29 @@ describe("ZeropsMateCard", () => {
     expect(button).toMatch(/^<button class="[^"]*flex-none/u);
   });
 
+  it.each([
+    ["with a Preview", "https://app.example/"],
+    ["without one", undefined],
+  ] as const)("carries a row's time right after its name, %s", (_name, preview) => {
+    const html = card({ layout: "row", onSelect: () => {}, preview, time: "4h ago" });
+    const at = html.indexOf('data-zerops-surface="mate-time"');
+    const time = html.slice(html.lastIndexOf("<span", at), at);
+    expect(time).not.toContain("ms-auto");
+  });
+
+  it("lets a row's line 2 run the row's width: its menu sits on the name's line", () => {
+    const html = card({
+      layout: "row",
+      line: <span>vyvor dashboard s pocasim</span>,
+      menu: <span data-test="menu" />,
+      onSelect: () => {},
+    });
+    const menu = html.indexOf('data-test="menu"');
+    expect(menu).toBeGreaterThan(html.indexOf(">Fen<"));
+    expect(menu).toBeLessThan(html.indexOf('data-zerops-surface="mate-line"'));
+    expect(html.slice(0, html.indexOf(">"))).not.toContain("w-full");
+  });
+
   it("draws no Preview as a card, and none in a row without one", () => {
     expect(card({ preview: "https://app.example/" })).not.toContain("mate-preview");
     expect(card({ layout: "row" })).not.toContain("mate-preview");

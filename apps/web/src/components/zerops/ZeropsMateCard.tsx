@@ -145,7 +145,7 @@ const CARD_SURFACE_CLASS =
  * reserved height.
  */
 const ROW_SURFACE_CLASS =
-  "relative -mx-1.5 flex w-full min-w-0 items-center gap-2.5 rounded-md px-1.5 py-1";
+  "relative -mx-1.5 flex min-w-0 items-center gap-2.5 rounded-md px-1.5 py-1";
 
 const LAYOUT = {
   card: {
@@ -162,10 +162,11 @@ const LAYOUT = {
     opens: "hover:bg-accent/60",
     hit: "after:rounded-md",
     // A row sits in a narrow step: the name never gives way, and its time and
-    // Preview wrap under it rather than cut it to an initial.
+    // Preview follow it — wrapping under it rather than cutting it to an
+    // initial — with or without a Preview, at every width.
     lineOne: "flex-wrap gap-y-0",
     name: "max-w-full flex-none",
-    time: "ms-auto",
+    time: "",
   },
 } as const;
 
@@ -285,6 +286,8 @@ export function ZeropsMateCard({
             </span>
           )}
           {layout === "row" && preview !== undefined ? <PreviewLink url={preview} /> : null}
+          {/* A row's menu ends the name's line, so the line under it runs the row's width. */}
+          {layout === "row" ? <CardMenu className="-my-1 ms-auto" menu={menu} /> : null}
         </div>
         {line === undefined || line === null ? null : (
           <div
@@ -316,11 +319,22 @@ export function ZeropsMateCard({
           {action}
         </span>
       )}
-      {menu === undefined || menu === null ? null : (
-        <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-          {menu}
-        </span>
-      )}
+      {layout === "card" ? <CardMenu menu={menu} /> : null}
     </div>
+  );
+}
+
+/** The menu, shown on hover or focus — always where there is no hover. */
+function CardMenu({ menu, className }: { readonly menu: ReactNode; readonly className?: string }) {
+  if (menu === undefined || menu === null) return null;
+  return (
+    <span
+      className={cn(
+        "relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+        className,
+      )}
+    >
+      {menu}
+    </span>
   );
 }
