@@ -7,6 +7,7 @@ import { AsyncResult } from "effect/unstable/reactivity";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
 import { ZeropsApiError } from "./api.ts";
+import { mateDiagnostics } from "./diagnostics.ts";
 import { exchangeZeropsContainerIdentity, type ZeropsDoorThrowaway } from "./identityExchange.ts";
 
 const CONTAINER_ORIGIN = "https://zcp-demo-8080.prg1.zerops.app";
@@ -304,5 +305,59 @@ describe("exchangeZeropsContainerIdentity", () => {
       upgradeRequired: true,
       serverVersion: "0.2.9",
     });
+  });
+});
+
+describe("the exchange's diagnostics", () => {
+  it("records each exchange's outcome and failure code, never the throwaway's value", async () => {
+    mateDiagnostics.enable();
+    mateDiagnostics.clear();
+    const { platform } = recordingPlatform();
+    await exchangeZeropsContainerIdentity(
+      {
+        throwaway: throwaway(platform),
+        connect: async () => AsyncResult.success("environment-1" as EnvironmentId),
+      },
+      CONTAINER_ORIGIN,
+    );
+    await exchangeZeropsContainerIdentity(
+      {
+        throwaway: throwaway(platform),
+        connect: async () =>
+          AsyncResult.failure(
+            Cause.fail(new ConnectionBlockedError({ reason: "authentication", detail: "no" })),
+          ),
+      },
+      CONTAINER_ORIGIN,
+    );
+    await exchangeZeropsContainerIdentity(
+      { throwaway: null, connect: async () => AsyncResult.success("e" as EnvironmentId) },
+      CONTAINER_ORIGIN,
+    );
+
+    const ends = mateDiagnostics
+      .snapshot()
+      .filter((entry) => entry.kind === "identity-exchange" && entry.phase === "end")
+      .map(({ t: _t, durationMs: _durationMs, ...event }) => event);
+    expect(ends).toEqual([
+      { kind: "identity-exchange", phase: "end", origin: CONTAINER_ORIGIN, outcome: "success" },
+      {
+        kind: "identity-exchange",
+        phase: "end",
+        origin: CONTAINER_ORIGIN,
+        outcome: "failure",
+        retryable: false,
+        code: "ConnectionBlockedError:authentication",
+      },
+      {
+        kind: "identity-exchange",
+        phase: "end",
+        origin: CONTAINER_ORIGIN,
+        outcome: "failure",
+        retryable: false,
+        code: "signed-out",
+      },
+    ]);
+    expect(JSON.stringify(mateDiagnostics.snapshot())).not.toContain(MINTED);
   });
 });

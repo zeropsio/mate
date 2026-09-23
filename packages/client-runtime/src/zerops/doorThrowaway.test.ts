@@ -2,10 +2,13 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
+import { ZeropsApiError, type ZeropsApiClient } from "./api.ts";
+import { mateDiagnostics } from "./diagnostics.ts";
 import {
   connectThroughThrowaway,
   planThrowawaySweep,
   THROWAWAY_SWEEP_AGE_MS,
+  zeropsThrowawayPlatform,
 } from "./doorThrowaway.ts";
 
 const NOW = Date.parse("2026-09-16T10:00:00.000Z");
@@ -112,5 +115,63 @@ describe("connectThroughThrowaway", () => {
     ).rejects.toThrow("the network went away");
 
     expect(calls).toEqual(["mint mate-door:p1:n1", "remove token-1"]);
+  });
+});
+
+describe("zeropsThrowawayPlatform's diagnostics", () => {
+  it("tells door and Gitea mints apart and pairs each delete with its mint", async () => {
+    const client = {
+      mintIntegrationToken: async (input: { readonly name: string }) =>
+        input.name.startsWith("gitea-signin:")
+          ? { id: "gitea-token", token: "a-value" }
+          : { id: "door-token", token: "a-value" },
+      deleteIntegrationToken: async (input: { readonly tokenId: string }) => {
+        if (input.tokenId === "gitea-token") throw new ZeropsApiError("gone", "not-found", 404);
+      },
+    } as unknown as ZeropsApiClient;
+    const throwaways = zeropsThrowawayPlatform(client);
+    mateDiagnostics.enable();
+    mateDiagnostics.clear();
+
+    const door = await throwaways.mint({ clientId: "org", name: "mate-door:p1:n1" });
+    await throwaways.remove({ clientId: "org", tokenId: door.id });
+    const gitea = await throwaways.mint({ clientId: "org", name: "gitea-signin:git.example:n2" });
+    await expect(throwaways.remove({ clientId: "org", tokenId: gitea.id })).rejects.toThrow("gone");
+
+    expect(mateDiagnostics.snapshot().map(({ t: _t, ...event }) => event)).toEqual([
+      {
+        kind: "throwaway",
+        action: "mint",
+        purpose: "door",
+        clientId: "org",
+        outcome: "ok",
+        tokenId: "door-token",
+      },
+      {
+        kind: "throwaway",
+        action: "delete",
+        clientId: "org",
+        tokenId: "door-token",
+        outcome: "ok",
+      },
+      {
+        kind: "throwaway",
+        action: "mint",
+        purpose: "gitea",
+        clientId: "org",
+        outcome: "ok",
+        tokenId: "gitea-token",
+      },
+      {
+        kind: "throwaway",
+        action: "delete",
+        clientId: "org",
+        tokenId: "gitea-token",
+        outcome: "failed",
+        code: "ZeropsApiError:not-found",
+        status: 404,
+      },
+    ]);
+    expect(JSON.stringify(mateDiagnostics.snapshot())).not.toContain("a-value");
   });
 });

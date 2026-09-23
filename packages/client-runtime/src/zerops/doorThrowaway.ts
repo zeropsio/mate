@@ -34,12 +34,14 @@
  */
 
 import {
+  GITEA_THROWAWAY_PREFIX,
   doorThrowawayName,
   isThrowawayName,
   withThrowaway,
   type ZeropsThrowawayPlatform,
 } from "../authorization/zeropsThrowaway.ts";
 import type { ZeropsApiClient } from "./api.ts";
+import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
 
 /** Nothing older than this is still anybody's live throwaway. */
 export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
@@ -57,13 +59,54 @@ export function zeropsThrowawayPlatform(
   signal?: AbortSignal,
 ): ZeropsThrowawayPlatform {
   return {
-    mint: (input) =>
-      client.mintIntegrationToken(
-        { clientId: input.clientId, name: input.name, roleCode: "NO_ACCESS", projects: [] },
-        signal,
-      ),
-    remove: (input) =>
-      client.deleteIntegrationToken({ clientId: input.clientId, tokenId: input.tokenId }, signal),
+    mint: (input) => {
+      const diagnostic = {
+        kind: "throwaway",
+        action: "mint",
+        purpose: input.name.startsWith(`${GITEA_THROWAWAY_PREFIX}:`) ? "gitea" : "door",
+        clientId: input.clientId,
+      } as const;
+      return client
+        .mintIntegrationToken(
+          { clientId: input.clientId, name: input.name, roleCode: "NO_ACCESS", projects: [] },
+          signal,
+        )
+        .then(
+          (minted) => {
+            mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: minted.id });
+            return minted;
+          },
+          (cause: unknown) => {
+            mateDiagnostics.record({
+              ...diagnostic,
+              outcome: "failed",
+              ...diagnosticFailure(cause),
+            });
+            throw cause;
+          },
+        );
+    },
+    remove: (input) => {
+      const diagnostic = {
+        kind: "throwaway",
+        action: "delete",
+        clientId: input.clientId,
+        tokenId: input.tokenId,
+      } as const;
+      return client
+        .deleteIntegrationToken({ clientId: input.clientId, tokenId: input.tokenId }, signal)
+        .then(
+          () => mateDiagnostics.record({ ...diagnostic, outcome: "ok" }),
+          (cause: unknown) => {
+            mateDiagnostics.record({
+              ...diagnostic,
+              outcome: "failed",
+              ...diagnosticFailure(cause),
+            });
+            throw cause;
+          },
+        );
+    },
   };
 }
 

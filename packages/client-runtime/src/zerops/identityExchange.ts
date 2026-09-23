@@ -18,6 +18,7 @@ import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.t
 import { squashAtomCommandFailure, type AtomCommandResult } from "../state/runtime.ts";
 import { ZeropsApiError } from "./api.ts";
 import { zeropsMateBaseUrl } from "./candidates.ts";
+import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
 import { connectThroughThrowaway } from "./doorThrowaway.ts";
 import { zeropsErrorMessage } from "./errors.ts";
 
@@ -100,8 +101,10 @@ export async function exchangeZeropsContainerIdentity<E>(
     };
   } = {},
 ): Promise<ZeropsIdentityExchangeResult> {
+  const span = mateDiagnostics.span("identity-exchange", { origin: containerOrigin });
   const throwaway = deps.throwaway;
   if (!throwaway) {
+    span.end({ outcome: "failure", retryable: false, code: "signed-out" });
     return {
       _tag: "Failure",
       error: "Sign in to Zerops again to connect this container.",
@@ -125,19 +128,23 @@ export async function exchangeZeropsContainerIdentity<E>(
     // nothing to report about it. Only an "uncertain" mint (the write's own
     // outcome was never learned) is worth trying again; every other kind is
     // the platform's settled word.
+    const retryable = cause instanceof ZeropsApiError && cause.kind === "uncertain";
+    span.end({ outcome: "failure", retryable, ...diagnosticFailure(cause) });
     return {
       _tag: "Failure",
       error: `Could not connect to this container. ${zeropsErrorMessage(cause)}`,
-      retryable: cause instanceof ZeropsApiError && cause.kind === "uncertain",
+      retryable,
     };
   }
   if (result._tag === "Failure") {
     const failure = squashAtomCommandFailure(result);
     const reason = zeropsErrorMessage(failure);
+    const retryable = isRetryableIdentityFailure(failure);
+    span.end({ outcome: "failure", retryable, ...diagnosticFailure(failure) });
     return {
       _tag: "Failure",
       error: `Could not connect to this container. ${reason}`,
-      retryable: isRetryableIdentityFailure(failure),
+      retryable,
       ...(isConnectionBlockedError(failure) && failure.reason === "unsupported"
         ? {
             upgradeRequired: true,
@@ -146,5 +153,6 @@ export async function exchangeZeropsContainerIdentity<E>(
         : {}),
     };
   }
+  span.end({ outcome: "success" });
   return { _tag: "Success", environmentId: result.value };
 }
