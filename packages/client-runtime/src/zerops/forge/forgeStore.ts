@@ -391,14 +391,18 @@ async function readFact(client: GiteaClient, fact: ForgeFact): Promise<Outcome> 
       };
     }
     case "branch-pulls": {
-      // Gitea has no "pull requests by head branch" filter worth trusting across versions.
+      // Gitea has no "pull requests by head branch" filter worth trusting across versions. A
+      // fork's branch of the same name is another branch; Gitea matches names ignoring case.
       const pulls = await client.listPullRequests(fact.owner, fact.repo, {
         state: "all",
         limit: FORGE_BRANCH_PULLS_PAGE,
       });
+      const own = `${fact.owner}/${fact.repo}`.toLowerCase();
       return {
         kind: "value",
-        value: pulls.filter((pull) => pull.head?.ref === fact.branch),
+        value: pulls.filter(
+          ({ head }) => head?.ref === fact.branch && head.repo?.full_name?.toLowerCase() === own,
+        ),
         coverage: pulls.length < FORGE_BRANCH_PULLS_PAGE ? "complete" : "partial",
       };
     }

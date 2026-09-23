@@ -231,7 +231,12 @@ export interface GiteaPullRequest {
    */
   readonly mergeable?: boolean | null | undefined;
   readonly merged?: boolean | undefined;
-  readonly head?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
+  readonly head?: {
+    readonly ref?: string | undefined;
+    readonly sha?: string | undefined;
+    /** The repository the branch lives in: a fork's for one opened from a fork; `null` once deleted. */
+    readonly repo?: { readonly full_name?: string | undefined } | null | undefined;
+  };
   readonly base?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
   readonly user?: { readonly login?: string | undefined } | undefined;
   readonly updated_at?: string | undefined;

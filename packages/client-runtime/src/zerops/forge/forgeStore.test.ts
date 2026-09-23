@@ -190,6 +190,9 @@ const pull = (number: number, over: Partial<GiteaPullRequest> = {}): GiteaPullRe
   ...over,
 });
 
+/** Where a branch of `shop/app` itself lives. */
+const APP = { full_name: "shop/app" };
+
 const openPulls = (owner: string, repoName: string): ForgeFact => ({
   kind: "open-pulls",
   origin: ORIGIN,
@@ -699,9 +702,9 @@ describe("forge store facts the flow's surfaces read (DESIGN §2.D D3)", () => {
     store.demand(fact);
     await clock.advance(0);
     await pending("pulls shop/app all").answer([
-      pull(5, { head: { ref: "mate/bob", sha: "h5" } }),
-      pull(4, { head: { ref: "mate/ada", sha: "h4" }, mergeable: false }),
-      pull(3, { head: { ref: "mate/ada", sha: "h3" }, state: "closed", merged: true }),
+      pull(5, { head: { ref: "mate/bob", sha: "h5", repo: APP } }),
+      pull(4, { head: { ref: "mate/ada", sha: "h4", repo: APP }, mergeable: false }),
+      pull(3, { head: { ref: "mate/ada", sha: "h3", repo: APP }, state: "closed", merged: true }),
     ]);
     expect(store.read(fact)).toMatchObject({ state: "known", value: [4, 3], coverage: "complete" });
     expect(mergeability(store.mergeState(pullKey(4)))).toBe("checking");
@@ -709,10 +712,37 @@ describe("forge store facts the flow's surfaces read (DESIGN §2.D D3)", () => {
 
     // The pull request the demanded list names is rechecked while it is checking.
     await clock.advance(2_000);
-    await pending("pull shop/app#4").answer(pull(4, { head: { ref: "mate/ada", sha: "h4" } }));
+    await pending("pull shop/app#4").answer(
+      pull(4, { head: { ref: "mate/ada", sha: "h4", repo: APP } }),
+    );
     expect(mergeability(store.mergeState(pullKey(4)))).toBe("mergeable");
     await clock.advance(FORGE_LIST_BACKSTOP_MS);
     expect(sent("pulls shop/app all")).toHaveLength(2);
+  });
+
+  it("a head branch's pull requests are this repository's own, never a fork's branch of the same name", async () => {
+    const { clock, store, pending } = rig();
+    const fact: ForgeFact = {
+      kind: "branch-pulls",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      branch: "main",
+    };
+    store.demand(fact);
+    await clock.advance(0);
+    const from = (fullName: string | null) => ({
+      ref: "main",
+      sha: "h",
+      repo: fullName === null ? null : { full_name: fullName },
+    });
+    await pending("pulls shop/app all").answer([
+      pull(7, { head: from("mallory/app") }),
+      pull(6, { head: from("Shop/App") }),
+      // A fork deleted since: nothing names where its branch lived.
+      pull(5, { head: from(null) }),
+    ]);
+    expect(store.read(fact)).toMatchObject({ state: "known", value: [6] });
   });
 
   it("the person's repositories and the pull request search are unread until read, known after, each on its own", async () => {
