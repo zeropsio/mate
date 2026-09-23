@@ -76,13 +76,6 @@ export function connectionStatusText(connection: EnvironmentConnectionPresentati
   }
 }
 
-export function connectionStatusTitle(connection: EnvironmentConnectionPresentation): string {
-  if (connection.phase === "reconnecting" && connection.error) {
-    return "Failed to connect. Reconnecting...";
-  }
-  return connectionStatusText({ ...connection, error: null });
-}
-
 export interface ConnectionBannerCopy {
   readonly title: string;
   readonly description: string | null;

@@ -13,7 +13,6 @@ import {
   connectionBannerCopy,
   connectionCatalogDisplayUrl,
   connectionStatusText,
-  connectionStatusTitle,
   presentEnvironmentConnection,
   presentConnectionState,
 } from "./presentation.ts";
@@ -129,7 +128,6 @@ describe("connection presentation", () => {
     expect(connectionStatusText(connection)).toBe(
       "Failed to connect. Reconnecting... Reason: Relay request timed out.",
     );
-    expect(connectionStatusTitle(connection)).toBe("Failed to connect. Reconnecting...");
   });
 
   it("presents the supervisor's offline state without consulting shell state", () => {

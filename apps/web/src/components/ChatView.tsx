@@ -31,10 +31,7 @@ import {
   RuntimeMode,
   TerminalOpenInput,
 } from "@t3tools/contracts";
-import {
-  connectionStatusTitle,
-  type EnvironmentConnectionPresentation,
-} from "@t3tools/client-runtime/connection";
+import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
 import {
   changeRequestAutoSettles,
@@ -174,6 +171,8 @@ import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsMateReview } from "../zerops/useZeropsMateReview";
+import { zeropsMateAt } from "../zerops/mateIdentities";
+import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -205,7 +204,6 @@ import {
   LockIcon,
   Minimize2Icon,
   PaperclipIcon,
-  WifiOffIcon,
 } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -347,6 +345,7 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import { environmentConnectionBannerItem } from "./chat/EnvironmentConnectionBanner";
 import {
   hasAvailableCompactionProvider,
   hasDismissedResumeCompaction,
@@ -2250,6 +2249,9 @@ export default function ChatView(props: ChatViewProps) {
   const attachmentUploadsCapabilityKnown = attachmentEnvironmentConfig !== null;
   const supportsAttachmentUploads =
     attachmentEnvironmentConfig?.environment.capabilities.attachmentUploads === true;
+  // The banner names the Mate, never the environment's label: on a Mate that
+  // is the container's internal host.
+  const zeropsMates = useZeropsMateDirectory();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2259,44 +2261,22 @@ export default function ChatView(props: ChatViewProps) {
         unavailableConnection.phase === "reconnecting");
     const suppressUnavailableBanner = environmentReconnecting && !reconnectWarningGraceElapsed;
     if (activeEnvironmentUnavailableState && unavailableConnection && !suppressUnavailableBanner) {
-      items.push({
-        id: `environment-unavailable:${activeEnvironmentUnavailableState.environmentId}`,
-        variant: unavailableConnection.phase === "error" ? "error" : "warning",
-        icon: <WifiOffIcon />,
-        title: `${activeEnvironmentUnavailableState.label}: ${connectionStatusTitle(unavailableConnection)}`,
-        description:
-          unavailableConnection.error ??
-          "Reconnect this environment before sending messages or running actions.",
-        actions: (
-          <>
-            <Button
-              size="xs"
-              disabled={environmentReconnecting}
-              onClick={() =>
-                void handleReconnectActiveEnvironment(
-                  activeEnvironmentUnavailableState.environmentId,
-                )
-              }
-            >
-              {environmentReconnecting ? "Reconnecting..." : "Reconnect"}
-            </Button>
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => void navigate({ to: "/settings/connections" })}
-            >
-              Connections
-            </Button>
-          </>
-        ),
+      const { environmentId } = activeEnvironmentUnavailableState;
+      const mateAt = zeropsMateAt(zeropsMates, environmentId);
+      const banner = environmentConnectionBannerItem({
+        environmentId,
+        connection: unavailableConnection,
+        mateName: mateAt.kind === "mate" ? mateAt.mate.name : null,
+        onRetry: () => void handleReconnectActiveEnvironment(environmentId),
       });
+      if (banner !== null) items.push(banner);
     }
     return items;
   }, [
     activeEnvironmentUnavailableState,
     reconnectWarningGraceElapsed,
     handleReconnectActiveEnvironment,
-    navigate,
+    zeropsMates,
   ]);
   const providerInstanceEntries = useMemo(
     () =>
