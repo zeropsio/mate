@@ -137,6 +137,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
           .pipe(
             Effect.andThen(signal.visible ? PubSub.publish(busSignals, VISIBLE_WAKE) : Effect.void),
           );
+      case "restored":
+        // The account hears a restore through the visible wake that comes with it.
+        return Effect.void;
     }
   };
 

@@ -73,10 +73,18 @@ const connectivityLayer = Connectivity.layer({
  * tab switch is not.
  */
 export function connectionWakeupForSignal(signal: PlatformSignal): Wakeups.ConnectionWakeup | null {
-  if (signal.type !== "wake" || !signal.visible) return null;
-  // A back/forward cache restore comes back with a socket the browser already
-  // killed: replace the lease instead of probing it.
-  return signal.cause === "pageshow" ? "application-active-reconnect" : "application-active";
+  switch (signal.type) {
+    case "restored":
+      // A back/forward cache restore comes back with a socket the browser
+      // already killed: replace the lease instead of probing it.
+      return "application-active-reconnect";
+    case "wake":
+      // The restore's own wake follows its `restored`, which already replaced the lease.
+      return signal.visible && signal.cause !== "pageshow" ? "application-active" : null;
+    case "visibility":
+    case "network":
+      return null;
+  }
 }
 
 /** The tab's signals for the connection layer, made when a connection first listens. */

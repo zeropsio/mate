@@ -10,6 +10,9 @@
  *   one.
  * - **Hidden wake**, at most one per 10 s: `resume` or a sleep while hidden. It only re-evaluates
  *   deadlines; retries wait for the next visible wake.
+ * - **Restored**, never coalesced: a return from the back-forward cache, which the browser raises
+ *   amid `resume` and `visibilitychange` within one wake's window. It says every socket the page
+ *   held is gone, whether or not its wake survived coalescing.
  * - **Sleep** is the two clocks drifting more than 5 s apart between two ticks, or two ticks more
  *   than 5 min apart. A throttled hidden tab ticks about once a minute, on both clocks alike, so
  *   throttling alone never looks like a sleep.
@@ -42,6 +45,8 @@ export type WakeCause = "shown" | "focus" | "pageshow" | "resume" | "online" | "
 export type PlatformSignal =
   | { readonly type: "visibility"; readonly hidden: boolean }
   | { readonly type: "network"; readonly online: boolean }
+  /** The page came back from the back-forward cache: every socket it held is gone. */
+  | { readonly type: "restored" }
   /**
    * The coalesced wake. A visible one fires pending retries now and resets every backoff; a hidden
    * one only re-evaluates deadlines.
@@ -116,19 +121,23 @@ export interface WakeStep {
   readonly signals: ReadonlyArray<PlatformSignal>;
 }
 
-/** Adds a wake of the page's kind to `signals`, unless one of that kind came within 10 s. */
+/**
+ * Adds a wake to `signals`, unless one of its kind came within 10 s. It is visible when the page
+ * is, or when `shown` says the page is being shown before it reports itself visible.
+ */
 function withWake(
   state: WakeState,
   signals: ReadonlyArray<PlatformSignal>,
   cause: WakeCause,
   now: SignalClocks,
+  shown = !state.hidden,
 ): WakeStep {
-  const kind = state.hidden ? "hidden" : "visible";
+  const kind = shown ? "visible" : "hidden";
   const last = state.lastWake[kind];
   if (last !== null && elapsed(last, now) < WAKE_COALESCE_MS) return { state, signals };
   return {
     state: { ...state, lastWake: { ...state.lastWake, [kind]: now } },
-    signals: [...signals, { type: "wake", visible: !state.hidden, cause }],
+    signals: [...signals, { type: "wake", visible: shown, cause }],
   };
 }
 
@@ -164,7 +173,10 @@ export function wakeStep(state: WakeState, event: PageEvent, now: SignalClocks):
         : unchanged(focused);
     }
     case "pageshow":
-      return event.persisted ? withWake(state, [], "pageshow", now) : unchanged(state);
+      // A restore shows the page, even while it still reports itself hidden.
+      return event.persisted
+        ? withWake(state, [{ type: "restored" }], "pageshow", now, true)
+        : unchanged(state);
     case "resume":
       return withWake(state, [], "resume", now);
     case "online": {

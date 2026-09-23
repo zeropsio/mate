@@ -381,9 +381,10 @@ describe("primary topology cache", () => {
 /** The connection wakeups a tab's raw events raise, each at the monotonic time it happened. */
 function wakeupsFor(steps: ReadonlyArray<readonly [atMs: number, event: PageEvent]>) {
   let nowMs = 0;
+  let hidden = false;
   const hearers = new Set<(event: PageEvent) => void>();
   const signals = makePlatformSignals({
-    hidden: () => false,
+    hidden: () => hidden,
     online: () => true,
     now: () => ({ wall: nowMs, mono: nowMs }),
     listen: (hear) => {
@@ -398,6 +399,7 @@ function wakeupsFor(steps: ReadonlyArray<readonly [atMs: number, event: PageEven
   });
   for (const [atMs, event] of steps) {
     nowMs = atMs;
+    if (event.type === "visibility") hidden = event.hidden;
     for (const hear of hearers) hear(event);
   }
   unlisten();
@@ -434,14 +436,50 @@ describe("connection wakeups: the account's visible wake (DESIGN §6.4)", () => 
     ).toEqual(["application-active"]);
   });
 
-  it("treats a bfcache restore as a reconnect, not an ordinary activation", () => {
-    // A tab restored from the back/forward cache comes back with a socket the
-    // browser already killed, so the lease must be replaced without waiting out
-    // a backoff rung — that is exactly `application-active-reconnect`.
-    expect(wakeupsFor([[0, { type: "pageshow", persisted: true }]])).toEqual([
-      "application-active-reconnect",
-    ]);
-    expect(wakeupsFor([[0, { type: "pageshow", persisted: false }]])).toEqual([]);
+  // A tab restored from the back/forward cache comes back with a socket the
+  // browser already killed, so the lease must be replaced without waiting out
+  // a backoff rung — that is exactly `application-active-reconnect`. The
+  // browser raises the restore amid `resume` and `visibilitychange`, in either
+  // order, within a single wake's coalescing window.
+  const HIDE = [0, { type: "visibility", hidden: true }] as const;
+  const AWAY = 60_000;
+  it.each([
+    [
+      "a restore of a visible page",
+      [[0, { type: "pageshow", persisted: true }]],
+      ["application-active-reconnect"],
+    ],
+    ["a first page load", [[0, { type: "pageshow", persisted: false }]], []],
+    [
+      "hidden → resume → pageshow → visible",
+      [
+        HIDE,
+        [AWAY, { type: "resume" }],
+        [AWAY + 5, { type: "pageshow", persisted: true }],
+        [AWAY + 10, { type: "visibility", hidden: false }],
+      ],
+      ["application-active-reconnect"],
+    ],
+    [
+      "hidden → visible → pageshow",
+      [
+        HIDE,
+        [AWAY, { type: "visibility", hidden: false }],
+        [AWAY + 5, { type: "pageshow", persisted: true }],
+      ],
+      ["application-active", "application-active-reconnect"],
+    ],
+    [
+      "hidden 10 s → pageshow → visible",
+      [
+        HIDE,
+        [10_000, { type: "pageshow", persisted: true }],
+        [10_005, { type: "visibility", hidden: false }],
+      ],
+      ["application-active-reconnect"],
+    ],
+  ] as const)("a bfcache restore replaces the lease: %s", (_case, steps, expected) => {
+    expect(wakeupsFor(steps)).toEqual(expected);
   });
 
   it("a hidden wake leaves the connection alone", () => {

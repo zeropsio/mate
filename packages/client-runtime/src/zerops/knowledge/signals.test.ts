@@ -136,7 +136,13 @@ describe("the wake definition (DESIGN §6.4)", () => {
       "a back-forward cache return",
       { type: "pageshow", persisted: true },
       false,
-      [{ type: "wake", visible: true, cause: "pageshow" }],
+      [{ type: "restored" }, { type: "wake", visible: true, cause: "pageshow" }],
+    ],
+    [
+      "a back-forward cache return before the page reports it shown",
+      { type: "pageshow", persisted: true },
+      true,
+      [{ type: "restored" }, { type: "wake", visible: true, cause: "pageshow" }],
     ],
     ["a first page load", { type: "pageshow", persisted: false }, false, []],
     [
@@ -167,6 +173,23 @@ describe("the wake definition (DESIGN §6.4)", () => {
         [15 * SECOND, { type: "resume" }],
       ]).map(([atMs]) => atMs),
     ).toEqual([0, 10 * SECOND]);
+  });
+
+  it.each([
+    ["resume", { type: "resume" }],
+    ["shown", { type: "visibility", hidden: false }],
+  ] as const)("a restore within 10 s of a wake by %s still says restored", (_case, first) => {
+    expect(
+      heard(
+        [
+          [MINUTE, first],
+          [MINUTE + 5, { type: "pageshow", persisted: true }],
+        ],
+        { hidden: true },
+      )
+        .map(([, signal]) => signal)
+        .filter((signal) => signal.type === "restored"),
+    ).toEqual([{ type: "restored" }]);
   });
 
   it("a hidden wake never holds back the visible wake after it", () => {
