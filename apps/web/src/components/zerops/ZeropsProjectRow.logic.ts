@@ -23,6 +23,7 @@ import {
   type ReleaseVerdict,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
   mateOnlyOwnerOpensIt,
@@ -161,13 +162,6 @@ const RUNNING_PROCESS_DETAIL: Readonly<
 export const COMING_UP_LINE = "Coming up. A few minutes.";
 export const ALMOST_THERE_LINE = "Almost there.";
 
-/**
- * The line under a Mate whose container the platform restarts, ours or
- * anyone's, so it names no one. The container already exists; "Coming up"
- * would say it is being made.
- */
-const RESTARTING_LINE = "This Mate is restarting.";
-
 /** Service statuses the inventory files under provisioning that restart a container it has. */
 const RESTARTING_SERVICE_STATUSES: ReadonlySet<string> = new Set(["RESTARTING", "UPGRADING"]);
 
@@ -295,7 +289,8 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     if (RESTARTING_SERVICE_STATUSES.has(candidate.service?.status ?? "")) {
       return {
         status: { label: "Restarting", pulse: true, tone: "busy" },
-        detail: RESTARTING_LINE,
+        // The container already exists; "Coming up" would say it is being made.
+        detail: RESTARTING_PHRASE,
       };
     }
     return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };

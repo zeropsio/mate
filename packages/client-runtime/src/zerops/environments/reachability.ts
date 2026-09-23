@@ -229,13 +229,19 @@ const CONNECTING: Record<ConnectingOn, string> = {
   exchange: "Connecting…",
 };
 
+/**
+ * A restart that names no one: the one announced, and the projects row's line for any restart
+ * the platform runs, ours or anyone's.
+ */
+export const RESTARTING_PHRASE = "This Mate is restarting.";
+
 const RESTARTING_BY: Record<
   Extract<ContainerVerdict, { readonly level: "restarting" }>["by"],
   string
 > = {
   platform: "Zerops is restarting this Mate.",
   you: "Restarting this Mate.",
-  announced: "This Mate is restarting.",
+  announced: RESTARTING_PHRASE,
 };
 
 const noticePhrase = (notice: ContainerNotice): string =>
