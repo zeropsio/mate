@@ -19,9 +19,9 @@ export type RouteContent = EnvironmentShellStatus;
 
 /** How far finding the route's environment has got while no Mate target is known for it. */
 export type RouteDiscovery =
-  /** A source that could still name the environment has not answered yet. */
+  /** A source that could still name the environment has neither answered nor failed yet. */
   | "pending"
-  /** Every source that could name the environment has answered, and none did. */
+  /** Every source that could name the environment has answered or failed, and none named it. */
   | "settled"
   /** No organization is chosen, so nothing is looking for it yet (Amendment A5). */
   | "no-organization";

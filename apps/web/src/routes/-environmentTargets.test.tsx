@@ -563,7 +563,18 @@ describe("useRouteGateInputs", () => {
       gate: { kind: "wait", reachability: null },
     },
     {
-      name: "a present Mate's descriptor has not answered",
+      name: "a present Mate's descriptor has not been read",
+      machines: other({
+        kind: "backoff",
+        retryAt: { wall: 5_000, mono: 5_000 },
+        last: { kind: "network" },
+        reconnect: false,
+      }),
+      records: [{ targetKey: OTHER, environmentId: ENV_B }],
+      gate: { kind: "wait", reachability: null },
+    },
+    {
+      name: "the only present Mate's descriptor read failed (a network or CORS failure)",
       machines: other({
         kind: "backoff",
         retryAt: { wall: 5_000, mono: 5_000 },
@@ -572,7 +583,7 @@ describe("useRouteGateInputs", () => {
       }),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
       readings: new Map([[OTHER, { kind: "unreachable" }]]),
-      gate: { kind: "wait", reachability: null },
+      gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "every exchange has settled and every present descriptor named another",
@@ -643,7 +654,10 @@ function descriptorRig(
   mates: ReadonlyArray<ReturnType<typeof mate>>,
   records: ReadonlyMap<string, EnvironmentId> = new Map(),
 ) {
-  const pending = new Map<string, (reading: ProbeReading) => void>();
+  const pending = new Map<
+    string,
+    { readonly resolve: (reading: ProbeReading) => void; readonly reject: (cause: Error) => void }
+  >();
   const probed: Array<string> = [];
   const retired: Array<string> = [];
   const clock = {
@@ -655,9 +669,9 @@ function descriptorRig(
   const containers: ContainerStore = makeContainerStore({
     clock,
     probe: (origin) =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
         probed.push(origin);
-        pending.set(origin, resolve);
+        pending.set(origin, { resolve, reject });
       }),
     readMateFlag: async () => "unknown",
     intents: {
@@ -707,10 +721,18 @@ function descriptorRig(
     retired,
     /** Answers the probe in flight for this origin. */
     answer: async (origin: string, reading: ProbeReading) => {
-      const resolve = pending.get(origin);
-      if (resolve === undefined) throw new Error(`No probe of ${origin} is in flight.`);
+      const probe = pending.get(origin);
+      if (probe === undefined) throw new Error(`No probe of ${origin} is in flight.`);
       pending.delete(origin);
-      resolve(reading);
+      probe.resolve(reading);
+      await settle();
+    },
+    /** Fails the probe in flight for this origin the way a dead origin's CORS refusal does. */
+    fail: async (origin: string) => {
+      const probe = pending.get(origin);
+      if (probe === undefined) throw new Error(`No probe of ${origin} is in flight.`);
+      pending.delete(origin);
+      probe.reject(new TypeError("Failed to fetch"));
       await settle();
     },
   };
@@ -799,6 +821,32 @@ describe("the descriptor index", () => {
       Array.from({ length: 4 }, () => "project-9"),
     );
     expect(seen.map(({ gate }) => gate)).not.toContain("unavailable");
+    rig.driver.dispose();
+    rig.containers.dispose();
+  });
+
+  it("a made-up envId reaches RG3 once every present candidate answered or failed", async () => {
+    const mates = [mate(1), mate(2), mate(3)];
+    const rig = descriptorRig(mates);
+    shell.driver = rig.driver;
+    shell.containers = rig.containers;
+    await settle();
+    const made = EnvironmentId.make("env-made-up");
+    const routed = routeTo(made);
+    const gates: Array<RouteGate["kind"]> = [selectRouteGate(routed.read().target).kind];
+
+    await rig.answer(mates[0]!.origin, answering(ENV_B, mates[0]!.projectId));
+    gates.push(selectRouteGate(routed.read().target).kind);
+    // Two dead origins: their descriptor reads fail on CORS and never answer as Mate.
+    await rig.fail(mates[1]!.origin);
+    gates.push(selectRouteGate(routed.read().target).kind);
+    await rig.fail(mates[2]!.origin);
+
+    expect(gates).toEqual(["wait", "wait", "wait"]);
+    expect(selectRouteGate(routed.read().target)).toEqual({
+      kind: "unavailable",
+      reachability: null,
+    });
     rig.driver.dispose();
     rig.containers.dispose();
   });

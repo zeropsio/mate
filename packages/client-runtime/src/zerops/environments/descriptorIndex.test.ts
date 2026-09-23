@@ -102,16 +102,16 @@ describe("indexDescriptors", () => {
       index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [] },
     },
     {
-      name: "a Mate still coming up has not answered",
+      name: "a Mate still coming up failed to answer: settled for the sweep, read again",
       machine: present(KEY),
       container: read({ kind: "initializing", initAt: null }),
-      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [KEY] },
     },
     {
-      name: "an unreachable origin has not answered",
+      name: "an unreachable origin (a network or CORS failure) failed: settled for the sweep, read again",
       machine: present(KEY),
       container: read({ kind: "unreachable" }),
-      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [KEY] },
     },
     {
       name: "a target that is not present is neither indexed nor waited for",

@@ -15,10 +15,12 @@
  * - A descriptor serves an environment only for the target whose project it states
  *   (`zerops.projectId`): an origin answering for another project's Mate, or for no project, has
  *   answered and serves nothing here.
- * - A present target's descriptor has answered once its origin was read as Mate (`ready`) or as
- *   serving no Mate at all (`predates-mate`). Unread, still coming up or unreachable, it has not,
- *   and an environment nothing names stays undecided until it has: "not in your projects" is
- *   earned only when every present target answered with another environment.
+ * - A present target's descriptor has answered once its origin was read: as Mate (`ready`), as
+ *   serving no Mate at all (`predates-mate`), or as failed — still coming up, or unreachable, a
+ *   network or CORS failure included. A failed read names no environment, and the sweep reads it
+ *   again. An environment nothing names stays undecided while any present target is unread: "not
+ *   in your projects" is earned once every present target answered with another environment or
+ *   failed.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -32,12 +34,12 @@ export interface DescriptorIndex {
   readonly serving: ReadonlyMap<EnvironmentId, TargetKey>;
   /** Each present target whose descriptor answered as Mate, to the environment it reports. */
   readonly reported: ReadonlyMap<TargetKey, EnvironmentId>;
-  /** Present targets whose descriptor has not answered: unread, coming up, or unreachable. */
-  readonly unanswered: ReadonlyArray<TargetKey>;
   /**
-   * The unanswered targets already read once, coming up or unreachable: the ones a sweep reads
-   * again. An unread one is on its way — the container store reads every target it lists.
+   * Present targets whose descriptor has not been read yet: each is on its way — the container
+   * store reads every target it lists.
    */
+  readonly unanswered: ReadonlyArray<TargetKey>;
+  /** Present targets whose read failed, coming up or unreachable: the ones a sweep reads again. */
   readonly failed: ReadonlyArray<TargetKey>;
 }
 
@@ -63,8 +65,7 @@ export function indexDescriptors(
       continue;
     }
     if (reading?.kind === "predates-mate") continue;
-    unanswered.push(key);
-    if (reading !== undefined) failed.push(key);
+    (reading === undefined ? unanswered : failed).push(key);
   }
   return { serving, reported, unanswered, failed };
 }
