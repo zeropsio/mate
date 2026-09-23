@@ -74,7 +74,7 @@ import {
   useZeropsData,
   zeropsKnowledgeArraysEqual,
 } from "./zeropsDataContext";
-import { HeldInventoryContext, projectAuthority } from "./inventoryContext";
+import { HeldInventoryContext, projectAuthority, withheldProjectNotice } from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -131,6 +131,8 @@ export function joinProjectFlows(input: {
   readonly deploys: ZeropsGroupDeploys;
   readonly forges: ZeropsGroupForges;
   readonly mayRelease: boolean;
+  /** Why the grant withholds a project, by project id, for each project it withholds alone. */
+  readonly withheld: ReadonlyMap<string, string>;
   readonly failures: FlowFailures;
 }): ReadonlyMap<string, ZeropsProjectFlow> {
   const flows = new Map<string, ZeropsProjectFlow>();
@@ -152,16 +154,23 @@ export function joinProjectFlows(input: {
       deploys: input.failures.deploys.get(group.groupId),
       forge: input.failures.forge.get(group.groupId),
     };
+    const withheld = new Map(
+      (deployed?.environments ?? []).flatMap(({ projectId }) => {
+        const notice = input.withheld.get(projectId);
+        return notice === undefined ? [] : [[projectId, notice] as const];
+      }),
+    );
     const key = JSON.stringify([
       group.groupId,
       group.slug,
       input.mayRelease,
       failures.deploys ?? null,
       failures.forge ?? null,
+      [...withheld],
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
-      flow = projectFlow(group, { deployed, forge, failures }, input.mayRelease);
+      flow = projectFlow(group, { deployed, forge, failures }, input.mayRelease, withheld);
       byGroup.set(key, flow);
     }
     flows.set(group.groupId, flow);
@@ -183,6 +192,8 @@ function projectFlow(
     readonly failures: { readonly deploys: string | undefined; readonly forge: string | undefined };
   },
   mayRelease: boolean,
+  /** Why the grant withholds each of the group's projects it withholds alone. */
+  withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
   const { deployed, forge, failures } = halves;
   const environmentInputs = deployed?.environments ?? [];
@@ -190,7 +201,14 @@ function projectFlow(
   // Releases that did not answer say why, like a forge read that failed
   // outright: tags kept from an earlier read are not what a release checks.
   const forgeFailure = failures.forge ?? forge?.released.failure;
-  const sides = releaseDeploys(environmentInputs);
+  // A production the grant withholds shows nothing it runs (DESIGN §3.4), so
+  // nothing is measured against it: no release is offered, and none listed.
+  const withheldProduction = environmentInputs.find(
+    (entry) => entry.tier === "production" && withheld.has(entry.projectId),
+  );
+  const productionWithheld =
+    withheldProduction === undefined ? undefined : withheld.get(withheldProduction.projectId);
+  const sides = releaseDeploys(environmentInputs.filter((entry) => !withheld.has(entry.projectId)));
   // What a release lists is what is merged (D28), whether or not the group
   // has a stage: a stage is a place that runs `main` too, not a gate the
   // tag waits behind, and one mid-deploy must not change what Release
@@ -214,11 +232,14 @@ function projectFlow(
     releases: (released?.releases ?? []).map((release, index) => releaseRow(release, index)),
     release: {
       ...offer,
-      gate: flowReleaseGate(offer.gate, {
-        deploys: half(deployed !== undefined, failures.deploys),
-        forge: half(released !== undefined, forgeFailure),
-      }),
-      contents: deployed?.releaseContents ?? [],
+      gate:
+        productionWithheld === undefined
+          ? flowReleaseGate(offer.gate, {
+              deploys: half(deployed !== undefined, failures.deploys),
+              forge: half(released !== undefined, forgeFailure),
+            })
+          : { allowed: false, reason: productionWithheld },
+      contents: productionWithheld === undefined ? (deployed?.releaseContents ?? []) : [],
     },
   };
 }
@@ -364,6 +385,21 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
    */
   const mayRelease = organization?.roleCode === "ADMIN" || organization?.roleCode === "OWNER";
 
+  /**
+   * Why the grant withholds each project it withholds alone; a lapse withholds every flow below
+   * instead (DESIGN §3.4).
+   */
+  const withheld = useMemo(
+    () =>
+      new Map(
+        [...inventory.projectRefs.values()].flatMap(({ projectId }) => {
+          const notice = withheldProjectNotice(inventory, projectId);
+          return notice === null ? [] : [[projectId, notice] as const];
+        }),
+      ),
+    [inventory],
+  );
+
   const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
     () =>
       enabled
@@ -372,10 +408,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             deploys,
             forges,
             mayRelease,
+            withheld,
             failures: { deploys: deployFailures, forge: forgeFailures },
           })
         : EMPTY_FLOWS,
-    [deployFailures, deploys, enabled, forgeFailures, forges, groups, mayRelease],
+    [deployFailures, deploys, enabled, forgeFailures, forges, groups, mayRelease, withheld],
   );
 
   // Time to the first pull request row, per group, for diagnostics.
