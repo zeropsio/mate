@@ -331,8 +331,8 @@
     "path": "packages/client-runtime/src/zerops/projections/candidates.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "listing.state === \"known\" ? listing.value : NO_MEMBERS",
-    "owner": "state-model 1.3b follow-up",
-    "reason": "an unread candidate listing holds no member; the sidebar, projects page, group detail, Gitea page, Mate actions, ask-Mate and change-landed events take the Known listing and render its unread state",
+    "owner": "state-model 3.7",
+    "reason": "an unread candidate listing holds no member, and useZeropsCandidates hands that to the sidebar, projects page, group detail, Gitea page, Mate actions (taken bot names), ask-Mate and change-landed events, which read it as no candidates; 3.7 rebuilds useZeropsCandidates over the shared selectCandidates and reachability (DESIGN §7.4) and these consumers with it",
     "expires": "never"
   }
 ]
