@@ -101,6 +101,7 @@ import { MateFace, StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import {
+  creatableRoles,
   environmentRoleTag,
   environmentRoleTagIsRedundant,
   groupNameIsPlaceholder,
@@ -207,13 +208,6 @@ export interface SidebarProjectFlow {
   /** The commit `main` is at, from the same read; `undefined` unread. */
   readonly mainHead?: string | undefined;
   /**
-   * Whether this person may add a production to this project now
-   * (`creatableRoles`, the project's adds offered, the account may create).
-   * Defaults to `false` until a caller wires it, so *Add production* is never
-   * offered on a guess.
-   */
-  readonly productionAddable?: boolean | undefined;
-  /**
    * What a release would carry, per production service. Rendered as the
    * verb's hover: "Release" names the mechanism, and the tasks name the
    * thing — the one reading a person needs who has never merged a branch.
@@ -291,6 +285,13 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * shape and simply carries no pull request, no dot and no verb.
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
+  /**
+   * Whether this person may create a project at all — one half of whether
+   * *Add production* is offered here (`creatableRoles` is the other, and this
+   * tree already holds the `ZeropsGroup` it needs). Defaults to `false`, so
+   * the verb is never offered on a guess.
+   */
+  readonly canCreateProjects?: boolean | undefined;
   readonly className?: string;
   /**
    * The listing is known and complete, and every row's presence is read
@@ -311,6 +312,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   activeProjectId,
   getActivity,
   getFlow,
+  canCreateProjects = false,
   complete,
   className,
 }: SidebarZeropsTreeProps<T>) {
@@ -406,6 +408,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     renderHeader: (nextStep: GroupNextStep | undefined) => ReactNode,
     flow: SidebarProjectFlow | undefined,
     groupName: string | undefined,
+    // `undefined` for the ungrouped section, which has no production to add.
+    group: ZeropsGroup | undefined,
   ) => {
     const mateEntries = entries.filter(({ item }) => hasMate(item));
     if (mateEntries.length === 0) return null;
@@ -433,7 +437,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             },
             mainHasCode: flow.mainHasCode,
             mainHead: flow.mainHead,
-            productionAddable: flow.productionAddable ?? false,
+            // The same gate the page offers *Add production* behind, minus
+            // the "some Mate is up" half `groupAddsOffered` also checks: this
+            // tree holds no health map, and it is moot in practice, since a
+            // code change merging here — `main.hasCode` — already took a Mate
+            // being up (`useZeropsMateNextStep.ts` makes the same call).
+            productionAddable:
+              canCreateProjects && group !== undefined && creatableRoles(group).includes("prod"),
           });
     // Code only — a recipe change is the group's document, left to the
     // projects page, and is never one more thing a Mate's row here answers
@@ -564,6 +574,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             ),
             getFlow?.(group.groupId),
             groupNameIsPlaceholder(group) ? undefined : group.name,
+            group,
           )}
         </section>
       ))}
@@ -579,6 +590,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               ) : null,
             undefined,
             // Nothing groups these, so nothing above a row repeats its name.
+            undefined,
             undefined,
           )}
         </section>

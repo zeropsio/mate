@@ -487,6 +487,52 @@ describe("the project's flow under it", () => {
     expect(withFlow([CRM_DEV])).not.toContain('data-zerops-surface="sidebar-environment-missing"');
   });
 
+  it("agrees with the page: a merged change offers Add production here too", () => {
+    const missing = [
+      {
+        kind: "missing-environment" as const,
+        tier: "production" as const,
+        name: "Production",
+        line: "not set up yet",
+      },
+    ];
+    // The Mate has been spoken to, so an empty flow asks for no first task —
+    // isolating *Add production* as the only thing that could put a dot on
+    // the heading.
+    const activity: ZeropsAgentActivity = {
+      threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Something already asked",
+      at: new Date().toISOString(),
+      snippet: undefined,
+    };
+    const getActivity = () => activity;
+    const withMergedCode = flow({ pullRequests: [], merged: [pull(4, { merged: true })], missing });
+    // Neither half alone is enough: without `merged` this tree never sees
+    // main's code, and without `canCreateProjects` it never offers what it
+    // cannot check the person may create — the page's own gate, wired here
+    // too rather than only there.
+    expect(
+      render([CRM_DEV], {
+        canCreateProjects: true,
+        getActivity,
+        getFlow: () => flow({ pullRequests: [], missing }),
+      }),
+    ).not.toContain("main has code, no production yet");
+    expect(render([CRM_DEV], { getActivity, getFlow: () => withMergedCode })).not.toContain(
+      "main has code, no production yet",
+    );
+    const html = render([CRM_DEV], {
+      canCreateProjects: true,
+      getActivity,
+      getFlow: () => withMergedCode,
+    });
+    expect(html).toContain('data-zerops-surface="sidebar-project-next-step"');
+    expect(html).toContain("main has code, no production yet");
+  });
+
   it("says what Release would put in front of people, in the words they asked for", () => {
     const html = withFlow(
       [CRM_DEV, CRM_STAGE, CRM_PROD],

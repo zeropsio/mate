@@ -1723,8 +1723,12 @@ export default function Sidebar() {
   // container's presence, not a live session, so a sleeping container changes
   // a dot rather than rearranging the menu (`mateEnvironments.ts`). Everything
   // else about the account is the projects screen's job.
-  const { status: zeropsStatus } = useZeropsSession();
-  const zeropsSignedIn = zeropsStatus === "signed-in";
+  const zeropsSession = useZeropsSession();
+  const zeropsSignedIn = zeropsSession.status === "signed-in";
+  // The one gate the tree cannot check on its own — it holds no session — for
+  // whether *Add production* is offered (`useZeropsMateNextStep.ts` makes the
+  // same call).
+  const canCreateProjects = zeropsSession.activeOrganization?.canCreateProjects ?? false;
   const { candidates: zeropsCandidates, listing: zeropsListing } = useZeropsCandidates();
   // The roster says what every agent is doing, and the only thing that knows
   // is the environment's own server. So every container that answers the
@@ -1747,6 +1751,12 @@ export default function Sidebar() {
       if (zeropsProjectFlow === null || flow === undefined) return undefined;
       return {
         pullRequests: flow.pullRequests,
+        // The pull requests that have landed on `main`: without it `groupFlow`
+        // never sees a group's own merged code, so it read `main` as empty and
+        // *Add production* — `groupFlow.ts`'s own `add-production` case — could
+        // never be this tree's next step, disagreeing with the projects page
+        // for the same group.
+        merged: flow.merged,
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
         // What the verb's hover says it would put in front of people.
@@ -3908,6 +3918,7 @@ export default function Sidebar() {
             <SidebarZeropsTree
               activeProjectId={activeZeropsProjectId}
               candidates={zeropsCandidates}
+              canCreateProjects={canCreateProjects}
               className="mb-2"
               complete={candidatesComplete(zeropsListing)}
               onAddMate={requestAddMate}
