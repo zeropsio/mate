@@ -13,8 +13,8 @@
  * - At most `EXCHANGE_CONCURRENCY` exchanges run at once and at most `DOOR_MINTS_PER_MINUTE`
  *   start in any minute of this tab (I12). Slots go in priority order — the route's target,
  *   the user's Connect, remembered targets, auto-connect — to a target the slot would start;
- *   every other wanted target waits `on: budget`. The minute's last mint is kept for a route
- *   target that may still need one.
+ *   every other wanted target waits `on: budget`. One slot and the minute's last mint are kept
+ *   for a route target that may still need them.
  * - An exchange whose attempt ends without it (its deadline, a retirement) is aborted.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -451,8 +451,9 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   };
 
   /**
-   * A route target that may still need an exchange — waiting on its container, say — keeps the
-   * minute's last mint: the other targets never spend it first (§4.4 "route target first").
+   * A route target that may still need an exchange — waiting on its container, say — keeps one
+   * exchange slot and the minute's last mint: the other targets never spend them first (§4.4
+   * "route target first").
    */
   const routePending = (): boolean =>
     [...demands.get("route")!].some((key) => {
@@ -475,14 +476,12 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       const exchanging = [...entries.values()].filter(
         (other) => other.machine.credential.kind === "exchanging",
       ).length;
-      const mints =
-        rank(key) > ROUTE_RANK && routePending()
-          ? DOOR_MINTS_PER_MINUTE - 1
-          : DOOR_MINTS_PER_MINUTE;
+      const reserved = rank(key) > ROUTE_RANK && routePending() ? 1 : 0;
+      const mints = DOOR_MINTS_PER_MINUTE - reserved;
       let budget = false;
       if (entry.machine.credential.kind === "exchanging") {
         budget = entry.machine.guards.budget;
-      } else if (exchanging < EXCHANGE_CONCURRENCY && minted.length < mints) {
+      } else if (exchanging < EXCHANGE_CONCURRENCY - reserved && minted.length < mints) {
         const trial = transitionEnvironment(
           entry.machine,
           { type: "GUARDS", guards: guardsFor(key, true) },

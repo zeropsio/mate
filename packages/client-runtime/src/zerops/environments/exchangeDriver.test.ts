@@ -363,6 +363,33 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges.map((request) => request.key).slice(3)).toEqual([keyOf(mates[2]!)]);
   });
 
+  it("the route's exchange takes a slot while three restores are pending", async () => {
+    const records = ["a", "b", "c"].map((id) => mate(id));
+    const route = mate("route");
+    const { driver, exchanges, start } = rig([...records, route], { hold: true });
+    const routeTarget = (container: ContainerVerdict) => ({
+      key: keyOf(route),
+      presence: { kind: "present", origin: route.origin } as const,
+      container,
+      record: route.descriptor().environmentId,
+    });
+    // The route's Mate is still coming up while every remembered one could start.
+    const started = start({ records: [...records, route], route });
+    driver.setTargets([routeTarget({ level: "booting", overdue: false })]);
+    await started;
+    expect(exchanges.map((request) => request.key)).toEqual(
+      records.slice(0, EXCHANGE_CONCURRENCY - 1).map(keyOf),
+    );
+
+    // Its container comes up with every restore still out: the slot kept for it is free.
+    driver.setTargets([routeTarget({ level: "ready" })]);
+    await flush();
+    expect(exchanges.map((request) => request.key)).toEqual([
+      ...records.slice(0, EXCHANGE_CONCURRENCY - 1).map(keyOf),
+      keyOf(route),
+    ]);
+  });
+
   it("a revoked session re-exchanges with backoff, repeatedly", async () => {
     const shop = mate("shop");
     const { driver, clock, exchanges, installs, logs, start, reach } = rig([shop]);
