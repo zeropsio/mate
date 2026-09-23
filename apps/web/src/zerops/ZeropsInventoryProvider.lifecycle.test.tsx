@@ -29,7 +29,6 @@ import {
   type OrganizationRef,
   type ProjectRef,
   type VerifiedAccessGrant,
-  type ManagedZeropsDataRuntime,
 } from "@t3tools/client-runtime/zerops/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
@@ -37,7 +36,7 @@ import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { CREATION_REFRESH_MS, useCreationInventoryRefresh } from "./creationRefresh";
-import { ZeropsDataContext } from "./zeropsDataContext";
+import { ZeropsDataProvider } from "./ZeropsDataProvider";
 import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 
@@ -152,6 +151,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Real task turns: the runtime's fibers and React's renders run between them. */
+async function turns(count = 20): Promise<void> {
+  for (let turn = 0; turn < count; turn++) await new Promise((resolve) => setImmediate(resolve));
+}
+
 function signal() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => {
@@ -181,8 +185,6 @@ const mountInventory = Effect.fn(function* (
     readonly failing?: ReadonlyArray<string>;
     /** Projects the organization still lists whose own read answers `not-found`. */
     readonly gone?: ReadonlyArray<string>;
-    /** Memberships the first `fetchUser` answers with. */
-    readonly firstMemberships?: ReadonlyArray<never>;
   } = {},
 ) {
   vi.useFakeTimers({
@@ -221,7 +223,6 @@ const mountInventory = Effect.fn(function* (
     ],
   };
   let fetchGate: Promise<void> | null = null;
-  let firstMemberships = options.firstMemberships;
   let registrationGate: Deferred.Deferred<void> | null = null;
   const indexed = new Set(ids);
   const failing = new Set(options.failing);
@@ -229,10 +230,7 @@ const mountInventory = Effect.fn(function* (
   const client = {
     fetchUser: vi.fn(async () => {
       if (fetchGate !== null) await fetchGate;
-      if (firstMemberships === undefined) return user;
-      const first = { ...user, clientUserList: firstMemberships };
-      firstMemberships = undefined;
-      return first;
+      return user;
     }),
     listAccessibleClientProjects: vi.fn(async () =>
       [...projects.values()].filter(({ id }) => indexed.has(id)),
@@ -243,10 +241,13 @@ const mountInventory = Effect.fn(function* (
       if (project === undefined) throw new ZeropsApiError("Gone", "not-found");
       return project;
     }),
+    baseUrl: "https://api.example.test",
     setWritesAllowed: vi.fn(),
   };
   session.current = {
     client,
+    status: "signed-in",
+    user,
     organizations: zeropsClientsFromUser(user),
     updateVerifiedMemberships: vi.fn(),
     signOut: vi.fn(),
@@ -307,35 +308,36 @@ const mountInventory = Effect.fn(function* (
       closeReceiver: () => Effect.void,
     },
   });
+  /** Every grant the runtime took, as its access state published it. */
   const grants: VerifiedAccessGrant[] = [];
   /** Every organization the provider asked the runtime to re-read. */
   const refreshed: Array<OrganizationRef> = [];
   let admitted = signal();
-  const runtime: ManagedZeropsDataRuntime = {
-    ...actual,
-    refresh: (organization) =>
-      Effect.sync(() => refreshed.push(organization)).pipe(
-        Effect.andThen(actual.refresh(organization)),
-      ),
-    observeAccess: (observation) =>
-      actual.observeAccess(observation).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            if (observation.kind === "access-verified") {
-              grants.push(observation.grant);
-              admitted.resolve();
-            }
-          }),
+  const stopRecording = registry.subscribe(actual.stateAtom, ({ access }) => {
+    if (access.status === "verified" && access !== grants.at(-1)) {
+      grants.push(access);
+      admitted.resolve();
+    }
+  });
+  // The runtime the account's data provider builds for the signed-in account.
+  const makeRuntime = () =>
+    Promise.resolve({
+      ...actual,
+      refresh: (organization: OrganizationRef) =>
+        Effect.sync(() => refreshed.push(organization)).pipe(
+          Effect.andThen(actual.refresh(organization)),
         ),
-      ),
-  };
+    });
   let inventory: Inventory | null = null;
   let inventoryPublications = 0;
   let grantsWhenChildMounted: number | null = null;
+  /** The first mount opened the gate: the product's child is there. */
+  const mounted = signal();
   function Consumer() {
     const value = useZeropsInventory();
     useEffect(() => {
       grantsWhenChildMounted ??= grants.length;
+      mounted.resolve();
       inventory = value;
       inventoryPublications++;
     }, [value]);
@@ -353,16 +355,17 @@ const mountInventory = Effect.fn(function* (
     Effect.gen(function* () {
       yield* Effect.promise(async () => act(async () => root.unmount()));
       yield* actual.shutdown("application-close");
+      stopRecording();
       registry.dispose();
     }),
   );
   const tree = () => (
     <RegistryContext value={registry}>
-      <ZeropsDataContext value={{ runtime, organizationRef: () => organization, projectRef }}>
+      <ZeropsDataProvider makeRuntime={makeRuntime}>
         <ZeropsInventoryProvider>
           <Consumer />
         </ZeropsInventoryProvider>
-      </ZeropsDataContext>
+      </ZeropsDataProvider>
     </RegistryContext>
   );
   yield* Effect.promise(async () => act(async () => root.render(tree())));
@@ -372,10 +375,16 @@ const mountInventory = Effect.fn(function* (
     }),
   );
   if (options.holdFirstRound !== true)
-    yield* Effect.promise(async () => act(async () => admitted.promise));
+    yield* Effect.promise(async () =>
+      act(async () => {
+        await admitted.promise;
+        await mounted.promise;
+        await turns();
+      }),
+    );
   return {
     container,
-    runtime,
+    runtime: actual,
     client,
     user,
     projects,
@@ -393,13 +402,18 @@ const mountInventory = Effect.fn(function* (
         act(async () => {
           firstRound.resolve();
           await admitted.promise;
+          await turns();
         }),
       ),
-    /** Re-renders with a new session callback, which tears the provider's effect down and runs it again. */
+    /** Re-renders with a new session callback. */
     rerun: () => {
       session.current = { ...(session.current as object), updateVerifiedMemberships: vi.fn() };
       return Effect.promise(async () => act(async () => root.render(tree())));
     },
+    /** The session's membership callback the provider tree renders with now. */
+    updateVerifiedMemberships: () =>
+      (session.current as { readonly updateVerifiedMemberships: ReturnType<typeof vi.fn> })
+        .updateVerifiedMemberships,
     inventoryPublications: () => inventoryPublications,
     grantsWhenChildMounted: () => grantsWhenChildMounted,
     pushProject: (id: string, name: string) =>
@@ -424,11 +438,12 @@ const mountInventory = Effect.fn(function* (
           yield* actual.observeAccess({ kind: "access-verified", grant: grants.at(-1)! });
         }),
       ),
-    /** Moves both clocks, running every timer that comes due. */
+    /** Moves both clocks, running every timer that comes due and what each set off. */
     advance: (ms: number) =>
       Effect.promise(async () =>
         act(async () => {
           await vi.advanceTimersByTimeAsync(ms);
+          await turns();
         }),
       ),
     /**
@@ -449,6 +464,7 @@ const mountInventory = Effect.fn(function* (
             act(async () => {
               gate.resolve();
               await admitted.promise;
+              await turns();
             }),
           ),
         /** The held registrations answer; resolves once every interest observes again. */
@@ -725,10 +741,13 @@ it.live("closes the api's writes at the evidence deadline on the api's own clock
       const harness = yield* mountInventory();
       // The system clock was set apart from the api's `timeOrigin + performance.now()`.
       expect(yield* Clock.currentTimeMillis).not.toBe(performance.timeOrigin + performance.now());
-      expect(harness.client.setWritesAllowed).toHaveBeenLastCalledWith(
-        true,
-        performance.timeOrigin + performance.now() + 15 * 60_000,
-      );
+      const [allowed, deadlineMs] = harness.client.setWritesAllowed.mock.lastCall!;
+      const onApiClock = performance.timeOrigin + performance.now() + 15 * 60_000;
+      expect(allowed).toBe(true);
+      // Short of it by no more than the real milliseconds the round took on the runtime's
+      // monotonic clock, which a test's faked timers do not move.
+      expect(deadlineMs).toBeLessThanOrEqual(onApiClock);
+      expect(deadlineMs).toBeGreaterThan(onApiClock - 1_000);
     }),
   ),
 );
@@ -753,43 +772,39 @@ it.live("a round cut off by sign-out is recorded as dropped", () =>
   ),
 );
 
-it.live("a round of a torn-down effect run never reaches the next run's grant", () =>
+it.live("a new session callback neither restarts nor duplicates the grant's round", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      // Both runs start their own round 1; the torn-down run's reads no memberships.
-      const harness = yield* mountInventory(["kept"], {
-        holdFirstRound: true,
-        firstMemberships: [],
-      });
+      const harness = yield* mountInventory(["kept"], { holdFirstRound: true });
+      const first = harness.updateVerifiedMemberships();
       yield* harness.rerun();
-      expect(harness.client.fetchUser).toHaveBeenCalledTimes(2);
+      expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
+
       yield* harness.verifyFirstRound();
 
       expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+      // The round's user reaches the session through the callback it holds now.
+      expect(harness.updateVerifiedMemberships()).toHaveBeenCalledWith(harness.user);
+      expect(first).not.toHaveBeenCalled();
     }),
   ),
 );
 
-it.live("offers a way off the checking screen when the round never settles", () =>
+it.live("a first round that never settles fails at its own deadline, with a way off (G7)", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      // A round that rejects puts its reason on screen with a retry. One that
-      // simply never settles used to leave a spinner with no words — the
-      // label is `sr-only` — and no exit, because the renewal timer is armed
-      // only once a round has completed.
+      // A round that rejects puts its reason on screen with a retry; one whose
+      // user read simply never answers fails at the round's deadline, 30 s after
+      // it started, and says so the same way.
       const harness = yield* mountInventory(["kept"], { holdFirstRound: true });
-      yield* Effect.promise(async () =>
-        act(async () => {
-          await vi.advanceTimersByTimeAsync(0);
-        }),
-      );
+      yield* harness.advance(29_000);
       expect(harness.container.textContent).not.toContain("Try again");
-      yield* Effect.promise(async () =>
-        act(async () => {
-          await vi.advanceTimersByTimeAsync(20_000);
-        }),
+
+      yield* harness.advance(1_000);
+
+      expect(harness.container.textContent).toContain(
+        "Could not load your Zerops projects. Zerops didn't answer.",
       );
-      expect(harness.container.textContent).toContain("Still checking your Zerops projects.");
       expect(harness.container.textContent).toContain("Try again");
       expect(harness.container.textContent).toContain("Sign out");
     }),

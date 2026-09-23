@@ -1,28 +1,18 @@
-import type { ZeropsApiClient, ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import { useAtomValue } from "@effect/atom-react";
+import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
-  DEFAULT_ZEROPS_GRANT_POLICY,
-  grantRoundInFlight,
-  initialGrant,
   interestKeyOf,
-  makeRestAccessVerifier,
   organizationKeyOf,
-  projectKeyOf,
   projectRecordToZeropsProject,
   serviceRecordToZeropsService,
-  transitionGrant,
   type AccessState,
   type Evidence,
-  type GrantEffect,
-  type GrantEvent,
   type GrantMachine,
-  type Instant,
   type InterestState,
   type OrganizationRef,
-  type ProjectEffectiveAccess,
   type ProjectRef,
   type RuntimeInterestDescriptor,
   type ScopeAuthority,
-  type VerifiedAccessGrant,
   type ViewObservation,
 } from "@t3tools/client-runtime/zerops/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -34,7 +24,6 @@ import { APP_DISPLAY_NAME } from "../branding";
 import { PortalGate } from "../components/ui/portal-gate";
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { dismissContextMenu } from "../contextMenuFallback";
-import { setAccountActionsAllowed } from "./accountLifetime";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import {
   InventoryContext,
@@ -52,96 +41,6 @@ import {
 } from "./zeropsDataContext";
 
 export { useZeropsInventory } from "./inventoryContext";
-
-/**
- * How long the checking screen waits before it offers a way off itself.
- *
- * A verification round that rejects puts its reason on screen with a way to
- * retry; a request that simply never settles would leave a wordless spinner
- * until the round's own deadline. Nothing here cancels the round — it may
- * still land, and it wins if it does.
- */
-const WAIT_PATIENCE_MS = 20_000;
-/** A visible wake after the tab was hidden at least this long (DESIGN §6.4). */
-const WAKE_AFTER_HIDDEN_MS = 30_000;
-/** Wakes are coalesced to at most one per this long (DESIGN §6.4). */
-const WAKE_COALESCE_MS = 10_000;
-
-const now = (): Instant => ({ wall: Date.now(), mono: performance.now() });
-
-/** How long until the evidence's deadline, on whichever clock reaches it first. */
-function remainingMs(stamp: Instant): number {
-  const windowMs = DEFAULT_ZEROPS_GRANT_POLICY.windowMs;
-  const at = now();
-  return Math.min(stamp.wall + windowMs - at.wall, stamp.mono + windowMs - at.mono);
-}
-
-/** Writes and account actions stay open until the evidence's deadline on either clock (G4, G5). */
-function openWrites(client: Pick<ZeropsApiClient, "setWritesAllowed">, evidence: Evidence): void {
-  const stamp = evidence.account.startedAt;
-  const windowMs = DEFAULT_ZEROPS_GRANT_POLICY.windowMs;
-  setAccountActionsAllowed({ wallMs: stamp.wall + windowMs, monoMs: stamp.mono + windowMs });
-  // On the api's own clock, `performance.timeOrigin + performance.now()`.
-  client.setWritesAllowed(true, performance.timeOrigin + performance.now() + remainingMs(stamp));
-}
-
-/**
- * The data runtime's grant for held evidence: every project whose own evidence
- * is fresh, and those a command established that no evidence has named yet —
- * in an organization the evidence still holds. A project the evidence holds
- * unverified or denied is out of it, and so is one the last grant carried from
- * evidence that no longer names it.
- */
-function runtimeGrant(
-  runtime: ReturnType<typeof useZeropsData>["runtime"],
-  evidence: Evidence,
-  current: AccessState,
-  fromEvidence: ReadonlySet<string>,
-): VerifiedAccessGrant {
-  const named = (project: ProjectRef) =>
-    evidence.projects.has(project.projectId) ||
-    evidence.unverified.has(project.projectId) ||
-    evidence.closedProjects.has(project.projectId);
-  const organizations = new Set(
-    evidence.account.organizations.map(({ organization }) => organizationKeyOf(organization)),
-  );
-  const established =
-    current.status === "verified"
-      ? current.projects.filter(
-          ({ project }) =>
-            !named(project) &&
-            !fromEvidence.has(projectKeyOf(project)) &&
-            organizations.has(organizationKeyOf(project.organization)),
-        )
-      : [];
-  return {
-    account: runtime.scope.account,
-    accountEpoch: runtime.scope.epoch,
-    verifiedAtMs: evidence.account.startedAt.wall,
-    // On the runtime's clock, `Date.now()`.
-    deadlineMs: Date.now() + remainingMs(evidence.account.startedAt),
-    mutationsAllowed: true,
-    organizations: evidence.account.organizations,
-    projects: [...evidenceGrantProjects(evidence), ...established],
-  };
-}
-
-/** The projects a grant carries from the evidence itself. */
-const evidenceGrantProjects = (evidence: Evidence): ReadonlyArray<ProjectEffectiveAccess> =>
-  [...evidence.projects.values()]
-    .map(({ access }) => access)
-    .filter(({ role }) => role !== "NO_ACCESS");
-
-/** What of the evidence the runtime's grant is built from; a change is a new grant. */
-const grantKey = (evidence: Evidence): string =>
-  JSON.stringify([
-    evidence.account.round,
-    [...evidence.projects.values()].map(({ access }) => [
-      access.project.projectId,
-      access.role,
-      access.mutationsAllowed,
-    ]),
-  ]);
 
 /**
  * The projects admitted evidence names: verified ones, those whose latest
@@ -383,30 +282,16 @@ function AccessLapse({
 }
 
 /**
- * One account inventory consumes central state while the access grant renews
- * on its own: the grant reducer (DESIGN §4.2) holds the evidence, this
- * component runs its reads, timers and signals and hands its grants to the
- * data runtime.
+ * One account inventory, read from the data runtime: its projects and
+ * services, and the access grant the runtime interprets (DESIGN §4.2) — the
+ * evidence that names the projects, each project's authority, and the lapse.
  */
 export function ZeropsInventoryProvider({ children }: { readonly children: ReactNode }) {
-  const { client, organizations, updateVerifiedMemberships, signOut } = useZeropsSession();
+  const { organizations, signOut } = useZeropsSession();
   const { runtime, organizationRef } = useZeropsData();
-  const [grant, setGrant] = useState<GrantMachine>(() =>
-    initialGrant({ hidden: false, online: true }, now()),
-  );
-  /** Admitted evidence waiting for the first mount's data (the first-mount rule, G10). */
-  const [firstEvidence, setFirstEvidence] = useState<Evidence | null>(null);
-  const [admission, setAdmission] = useState<{ readonly round: number } | null>(null);
-  const ready = admission !== null;
-  const admitted = useRef(false);
-  const [readWindowExpired, setReadWindowExpired] = useState(false);
-  const [waitedTooLong, setWaitedTooLong] = useState(false);
-  /** Why the last round failed, in the platform's words. */
-  const [roundFailure, setRoundFailure] = useState<string | null>(null);
-  /** Hands the evidence held now to the data runtime; `null` when none is held then. */
-  const publishGrant = useRef<() => Promise<Evidence | null>>(async () => null);
-  /** Each project's authority, as the grant's withhold and restore effects last said (G12). */
-  const [authority, setAuthority] = useState<ReadonlyMap<string, ScopeAuthority>>(new Map());
+  const grant = useAtomValue(runtime.access.view);
+  /** The first mount happened; the product stays mounted from then on for the epoch. */
+  const [admitted, setAdmitted] = useState(false);
   const selectSnapshot = useMemo(makeInventorySnapshotSelector, []);
 
   const organizationDescriptors = useMemo(
@@ -418,256 +303,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     [organizationRef, organizations],
   );
 
-  useEffect(() => {
-    let alive = true;
-    let timer: number | undefined;
-    const policy = DEFAULT_ZEROPS_GRANT_POLICY;
-    const hidden = () => document.visibilityState === "hidden";
-    /** Rounds and project reads run until the effect's run ends; one cut off is dropped. */
-    const aborted = new AbortController();
-    const verifier = makeRestAccessVerifier({
-      client,
-      account: runtime.scope.account,
-      concurrency: policy.roundProjectConcurrency,
-      onUser: (user) => {
-        if (alive) updateVerifiedMemberships(user);
-      },
-    });
-    let machine = initialGrant(
-      {
-        hidden: hidden(),
-        online: typeof navigator === "undefined" || navigator.onLine !== false,
-      },
-      now(),
-    );
-
-    /** What reaches the runtime's access reaches it in the order it was sent. */
-    let accessQueue: Promise<unknown> = Promise.resolve();
-    const inOrder = <T,>(work: () => Promise<T>): Promise<T> => {
-      const done = accessQueue.then(work);
-      // One observation that did not land does not hold back the next.
-      accessQueue = done.catch(() => undefined);
-      return done;
-    };
-    /** The evidence the runtime's grant was last built from, by `grantKey`. */
-    let grantedKey: string | null = null;
-    /** The projects the last grant carried from evidence, by `projectKeyOf`. */
-    let fromEvidence: ReadonlySet<string> = new Set();
-    publishGrant.current = () => {
-      if (machine.phase.phase === "granted") grantedKey = grantKey(machine.phase.evidence);
-      return inOrder(async () => {
-        const phase = machine.phase;
-        if (!alive || phase.phase !== "granted") return null;
-        const { access } = await Effect.runPromise(runtime.state);
-        const grant = runtimeGrant(runtime, phase.evidence, access, fromEvidence);
-        await Effect.runPromise(runtime.observeAccess({ kind: "access-verified", grant }));
-        fromEvidence = new Set(
-          evidenceGrantProjects(phase.evidence).map(({ project }) => projectKeyOf(project)),
-        );
-        return phase.evidence;
-      });
-    };
-    /**
-     * A project's evidence that changes between rounds — it runs out, its own
-     * read verifies it, a denial closes it, its role is lowered — changes the
-     * runtime's grant at once, not with the next round (G2).
-     */
-    const syncGrant = () => {
-      const phase = machine.phase;
-      if (grantedKey === null || phase.phase !== "granted") return;
-      if (grantKey(phase.evidence) !== grantedKey) void publishGrant.current();
-    };
-
-    const runRound = (round: number, carried: ReadonlyArray<ProjectRef>, first: boolean) => {
-      setRoundFailure(null);
-      if (first) {
-        void Effect.runPromise(
-          runtime.observeAccess({
-            kind: "access-verification-started",
-            accountEpoch: runtime.scope.epoch,
-          }),
-        );
-      } else {
-        mateDiagnostics.record({ kind: "access-timer", timer: "renewal" });
-      }
-      void (async () => {
-        // Projects a command established since are the grant's too: read them.
-        const state = await Effect.runPromise(runtime.state);
-        const established = inventoryProjectRefs([], state.access);
-        const outcome = await Effect.runPromise(
-          Effect.result(
-            verifier.verifyRound({
-              round,
-              carried: [...carried, ...established],
-              report: (event) => Effect.sync(() => send(event)),
-            }),
-          ),
-          { signal: aborted.signal },
-        );
-        if (!alive || outcome._tag === "Success") return;
-        const { failure, message } = outcome.failure;
-        setRoundFailure(message);
-        send({ type: "ROUND_FAILED", round, failure });
-        if (first) {
-          void Effect.runPromise(
-            runtime.observeAccess({
-              kind: "access-verification-failed",
-              accountEpoch: runtime.scope.epoch,
-              failedAtMs: Date.now(),
-              retryable: true,
-              reason: message,
-            }),
-          );
+  // A person's "Try again" on access (DESIGN §6.2); a retry during a round joins it (G7).
+  useEffect(
+    () =>
+      onZeropsInvalidation((invalidation) => {
+        if (invalidation.topic === "access" && invalidation.change === "renew-now") {
+          void Effect.runPromise(runtime.access.signal({ type: "USER_RETRY" }));
         }
-      })().catch(() => undefined);
-    };
-
-    const readProject = (attempt: number, project: ProjectRef) => {
-      void Effect.runPromise(verifier.verifyProject(project), { signal: aborted.signal }).then(
-        (outcome) => send({ type: "PROJECT_RESULT", attempt, project, outcome }),
-        () => undefined,
-      );
-    };
-
-    const interpret = (effect: GrantEffect) => {
-      switch (effect.kind) {
-        case "run":
-          if (effect.op.kind === "verify-round") {
-            runRound(effect.attempt, effect.op.carried, machine.phase.phase === "verifying");
-          } else {
-            readProject(effect.attempt, effect.op.project);
-          }
-          return;
-        case "schedule": {
-          window.clearTimeout(timer);
-          const at = now();
-          const delay = Math.min(effect.at.wall - at.wall, effect.at.mono - at.mono);
-          timer = window.setTimeout(() => send({ type: "TICK" }), Math.max(0, delay));
-          return;
-        }
-        case "cancel":
-          window.clearTimeout(timer);
-          timer = undefined;
-          return;
-        case "observe":
-          switch (effect.observation.kind) {
-            case "access-verified": {
-              const evidence = effect.observation.evidence;
-              if (!admitted.current) {
-                setFirstEvidence(evidence);
-                return;
-              }
-              // A renewal: REST evidence alone, never the push half (G1).
-              void publishGrant.current().then((granted) => {
-                if (!alive || granted === null) return;
-                mateDiagnostics.record({ kind: "access-grant", round: granted.account.round });
-                openWrites(client, granted);
-                setReadWindowExpired(false);
-              });
-              return;
-            }
-            case "access-expired": {
-              const { expiredAtMs } = effect.observation;
-              mateDiagnostics.record({ kind: "access-timer", timer: "expiry" });
-              setAccountActionsAllowed(null);
-              client.setWritesAllowed(false);
-              setFirstEvidence(null);
-              if (admitted.current) setReadWindowExpired(true);
-              void inOrder(() =>
-                Effect.runPromise(
-                  runtime.observeAccess({
-                    kind: "access-expired",
-                    accountEpoch: runtime.scope.epoch,
-                    expiredAtMs,
-                  }),
-                ),
-              );
-              return;
-            }
-            case "project-gone":
-              // The confirmed denial is in the evidence, which no longer names the project.
-              return;
-          }
-          return;
-        case "withhold":
-        case "restore-authority": {
-          // A lapse is the account's: the overlay shows it until Phase 5 withholds per region.
-          if (effect.scope.kind === "account") return;
-          const key = inventoryProjectRefKey(effect.scope.project);
-          const authority: ScopeAuthority =
-            effect.kind === "restore-authority"
-              ? { kind: "authorized" }
-              : { kind: "withheld", reason: effect.reason, cause: effect.cause };
-          setAuthority((current) => new Map(current).set(key, authority));
-          return;
-        }
-        case "invalidate":
-          // No store subscribes to access invalidations yet (DESIGN §6.2).
-          return;
-        case "log":
-          return;
-      }
-    };
-
-    const send = (event: GrantEvent) => {
-      if (!alive) return;
-      const { state, effects } = transitionGrant(machine, event, { now: now(), policy });
-      machine = state;
-      setGrant(state);
-      for (const effect of effects) interpret(effect);
-      syncGrant();
-    };
-
-    let hiddenAt: number | null = hidden() ? performance.now() : null;
-    let lastWake = Number.NEGATIVE_INFINITY;
-    const wake = () => {
-      const at = performance.now();
-      if (at - lastWake < WAKE_COALESCE_MS) return;
-      lastWake = at;
-      send({ type: "WAKE", visible: !hidden() });
-    };
-    const onVisibility = () => {
-      send({ type: "VISIBILITY", hidden: hidden() });
-      if (hidden()) {
-        hiddenAt ??= performance.now();
-        return;
-      }
-      const away = hiddenAt === null ? 0 : performance.now() - hiddenAt;
-      hiddenAt = null;
-      if (away >= WAKE_AFTER_HIDDEN_MS) wake();
-    };
-    const onPageShow = (event: Event) => {
-      if ((event as PageTransitionEvent).persisted) wake();
-    };
-    const onOnline = () => send({ type: "ONLINE" });
-    const onOffline = () => send({ type: "OFFLINE" });
-    document.addEventListener("visibilitychange", onVisibility);
-    document.addEventListener("resume", wake);
-    window.addEventListener("pageshow", onPageShow);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-
-    // A person's "Try again" on access (DESIGN §6.2); a retry during a round joins it (G7).
-    const stopListening = onZeropsInvalidation((invalidation) => {
-      if (invalidation.topic === "access" && invalidation.change === "renew-now") {
-        send({ type: "USER_RETRY" });
-      }
-    });
-
-    send({ type: "START" });
-    return () => {
-      stopListening();
-      send({ type: "EPOCH_CLOSED" });
-      alive = false;
-      aborted.abort();
-      window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
-      document.removeEventListener("resume", wake);
-      window.removeEventListener("pageshow", onPageShow);
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
-  }, [client, runtime, updateVerifiedMemberships]);
+      }),
+    [runtime],
+  );
 
   // An inventory intent re-reads that organization on a fresh receiver while
   // the rows already read stay up (`runtime.refresh`). The leases are never
@@ -683,7 +328,18 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     [runtime],
   );
 
-  const evidence = heldEvidence(grant);
+  const evidence = heldEvidence(grant.machine);
+  /** Each project's authority, as the grant last published it (G12). */
+  const authority = useMemo(
+    () =>
+      new Map<string, ScopeAuthority>(
+        [...grant.machine.published.projects.values()].map(({ project, authority: scope }) => [
+          inventoryProjectRefKey(project),
+          scope,
+        ]),
+      ),
+    [grant.machine.published.projects],
+  );
   const accessReadEntries = useMemo(() => [["access", runtime.reads.access] as const], [runtime]);
   const access = useZeropsAtomSelections(accessReadEntries).get("access");
   const knownProjectRefs = useMemo(
@@ -892,58 +548,43 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     knownProjectRefs,
   ]);
 
+  const phase = grant.machine.phase;
   const error =
-    grant.phase.phase === "unverified-failed"
-      ? (roundFailure ?? "Zerops didn't answer.")
+    phase.phase === "unverified-failed"
+      ? (grant.failure ?? "Zerops didn't answer.")
       : projected.blockedOrganizations.length > 0
         ? "Some project access or services could not be verified."
         : null;
 
-  // The first mount waits for its data as well as its grant (G10); the grant
-  // reaches the runtime *before* the gate opens. `ready` is what mounts the
+  // The first mount waits for its data as well as its grant (G10), and the
+  // runtime holds the grant before the gate opens: `ready` is what mounts the
   // children, and the first thing some of them do is lease a resource — which
-  // the broker refuses, once and for good, until this grant has landed.
-  // Opening the gate first made `/zerops/new` fail its locations read on every
-  // cold load (measured 2026-09-20).
-  const granting = useRef<Evidence | null>(null);
+  // the broker refuses until the runtime holds a grant. Opening the gate first
+  // made `/zerops/new` fail its locations read on every cold load (measured
+  // 2026-09-20).
+  const firstRound =
+    phase.phase === "granted" && access?.status === "verified" && projected.established
+      ? phase.evidence.account.round
+      : null;
+  const ready = admitted || firstRound !== null;
   useEffect(() => {
-    if (firstEvidence === null || !projected.established) return;
-    if (granting.current === firstEvidence) return;
-    granting.current = firstEvidence;
-    // The gate stays shut and the screen keeps saying it is checking. The next
-    // admitted round tries again, rather than mounting children onto a runtime
-    // that never took the grant.
-    const stayShut = () => {
-      granting.current = null;
-    };
-    // The grant is built from the evidence held when it is handed over, which
-    // a project's own read may have changed since this evidence was admitted.
-    void publishGrant.current().then((granted) => {
-      if (granted === null) return stayShut();
-      mateDiagnostics.record({ kind: "access-grant", round: granted.account.round });
-      openWrites(client, granted);
-      admitted.current = true;
-      setFirstEvidence(null);
-      setAdmission({ round: granted.account.round });
-    }, stayShut);
-  }, [client, firstEvidence, projected.established]);
+    if (firstRound !== null) setAdmitted(true);
+  }, [firstRound]);
 
-  const round = grantRoundInFlight(grant)?.id ?? null;
-  // Every round starts the patience over, so a retry that is itself slow gets
-  // the same wait rather than the leftovers of the last one.
+  /** The round whose grant the mounted product runs on, as it reaches the gate. */
+  const grantedRound = ready && phase.phase === "granted" ? phase.evidence.account.round : null;
   useEffect(() => {
-    setWaitedTooLong(false);
-    if (ready) return;
-    const timeout = window.setTimeout(() => setWaitedTooLong(true), WAIT_PATIENCE_MS);
-    return () => window.clearTimeout(timeout);
-  }, [ready, round]);
+    if (grantedRound !== null)
+      mateDiagnostics.record({ kind: "access-grant", round: grantedRound });
+  }, [grantedRound]);
 
   /** What the overlay names while the grant is lapsed, and nothing otherwise. */
-  const lapseCause = readWindowExpired ? (error ?? "Project access verification expired.") : null;
+  const lapseCause =
+    ready && phase.phase === "lapsed" ? (error ?? "Project access verification expired.") : null;
   const visibleError = lapseCause ?? error;
   const retry = () => {
     const intents = retryInvalidations({
-      granted: grant.phase.phase === "granted",
+      granted: phase.phase === "granted",
       blockedOrganizations: projected.blockedOrganizations,
     });
     for (const intent of intents) invalidateZerops(intent);
@@ -979,16 +620,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           </div>
         ) : projected.pausedOnly ? (
           <ZeropsLandingWait label="Paused while this tab is in the background…" />
-        ) : waitedTooLong ? (
-          <div role="alert" className="p-8">
-            Still checking your Zerops projects.{" "}
-            <button type="button" onClick={retry}>
-              Try again
-            </button>{" "}
-            <button type="button" onClick={() => void signOut()}>
-              Sign out
-            </button>
-          </div>
         ) : (
           <ZeropsLandingWait label="Checking your Zerops projects…" />
         )

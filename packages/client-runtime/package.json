@@ -287,6 +287,10 @@
       "types": "./src/zerops/account/session.ts",
       "default": "./src/zerops/account/session.ts"
     },
+    "./zerops/account/runtime": {
+      "types": "./src/zerops/account/accountRuntime.ts",
+      "default": "./src/zerops/account/accountRuntime.ts"
+    },
     "./zerops/environments": {
       "types": "./src/zerops/environments/index.ts",
       "default": "./src/zerops/environments/index.ts"

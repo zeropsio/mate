@@ -5,8 +5,15 @@
  * only for consistency with the other fixtures in this directory — it does
  * not itself run `Effect.runSync`/`runPromise`.
  */
-import type { AccountScope, ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import {
+  initialGrant,
+  type AccessGrantView,
+  type AccountScope,
+  type ManagedZeropsDataRuntime,
+} from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
+import { Atom } from "effect/unstable/reactivity";
 
 import type { MakeZeropsDataRuntime } from "../ZeropsDataProvider";
 
@@ -34,8 +41,20 @@ export function makeFakeRuntimeFactory(
   const handles: FakeRuntimeHandle[] = [];
   const factory: MakeZeropsDataRuntime = ({ scope, signal }) => {
     const shutdownReasons: ShutdownReason[] = [];
+    // A grant that never verifies: these tests own the runtime's lifetime, not its access.
+    const view: AccessGrantView = {
+      machine: initialGrant({ hidden: false, online: true }, { wall: 0, mono: 0 }),
+      failure: null,
+    };
     const runtime = {
       scope,
+      access: {
+        start: () => Effect.void,
+        signal: () => Effect.void,
+        view: Atom.make(view),
+        changes: Stream.make(view),
+        invalidations: Stream.empty,
+      },
       shutdown: (reason: ShutdownReason) => Effect.sync(() => shutdownReasons.push(reason)),
     } as unknown as ManagedZeropsDataRuntime;
     const handle: FakeRuntimeHandle = {

@@ -751,6 +751,90 @@ function collectOneWayViolations(
   });
 }
 
+// Rule 6, its construction half: the post-grant stage's modules are constructed by the account
+// runtime only, on the epoch's first grant. A call of a constructor anywhere else is reported;
+// its declaration is not. The exchange driver and the Gitea sessions are still built in the
+// web's React tree, each named below with its constructor, until 3.4 moves them.
+const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
+const POST_GRANT_CONSTRUCTORS: ReadonlyArray<string> = [
+  "makeInvalidationBus",
+  "connectCrossTabInvalidations",
+  "makeExchangeDriver",
+  "makeGiteaSessions",
+];
+const POST_GRANT_BUILT_IN_REACT_UNTIL_3_4: ReadonlyMap<string, string> = new Map([
+  ["apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx", "makeExchangeDriver"],
+  ["apps/web/src/zerops/accountGiteaSessions.ts", "makeGiteaSessions"],
+  ["apps/web/src/zerops/accountInvalidations.ts", "makeInvalidationBus"],
+]);
+
+interface ConstructionViolation {
+  readonly file: string;
+  readonly reason: string;
+}
+
+function collectPostGrantConstructionViolations(
+  root: string,
+): Effect.Effect<
+  ReadonlyArray<ConstructionViolation>,
+  PlatformError,
+  FileSystem.FileSystem | Path.Path
+> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const violations: Array<ConstructionViolation> = [];
+    for (const scanRoot of CELL_IMPORT_SCAN_ROOTS) {
+      for (const file of yield* collectTsFiles(path.join(root, scanRoot))) {
+        if (isTestFile(file)) {
+          continue;
+        }
+        const label = path.relative(root, file).split(path.sep).join("/");
+        if (label === ACCOUNT_RUNTIME_FILE) {
+          continue;
+        }
+        const code = scanSourceLiterals(yield* fs.readFileString(file)).jsxSource;
+        for (const constructor of POST_GRANT_CONSTRUCTORS) {
+          const call = new RegExp(`(?<![\\w$])(?<!function\\s+)${constructor}\\s*\\(`, "u");
+          if (call.test(code) && POST_GRANT_BUILT_IN_REACT_UNTIL_3_4.get(label) !== constructor) {
+            violations.push({
+              file: label,
+              reason: `constructs ${constructor}, a post-grant module, outside the account runtime`,
+            });
+          }
+        }
+      }
+    }
+    return violations.sort(
+      (left, right) =>
+        left.file.localeCompare(right.file) || left.reason.localeCompare(right.reason),
+    );
+  });
+}
+
+// The web's inventory provider reads the grant the data runtime interprets (DESIGN §4.2,
+// D16(a)): it arms no timer, and runs neither the grant's machine nor its verification reads.
+const INVENTORY_PROVIDER_FILE = "apps/web/src/zerops/ZeropsInventoryProvider.tsx";
+const GRANT_INTERPRETER_USES: ReadonlyArray<ForbiddenUse> = [
+  ...TIMER_USES,
+  ...["transitionGrant", "initialGrant", "makeRestAccessVerifier"].map(globalUse),
+];
+
+function collectGrantInterpreterUses(
+  root: string,
+): Effect.Effect<ReadonlyArray<string>, PlatformError, FileSystem.FileSystem | Path.Path> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const code = scanSourceLiterals(
+      yield* fs.readFileString(path.join(root, INVENTORY_PROVIDER_FILE)),
+    ).jsxSource;
+    return GRANT_INTERPRETER_USES.filter(({ pattern }) => pattern.test(code)).map(
+      ({ name }) => `uses ${name}`,
+    );
+  });
+}
+
 // Rule 5: `Cell`, `newCell`, `advance` and `read` stay private to the stores
 // (docs/internals/zerops/client-state-model.md, "Module boundaries"). A store is
 // the knowledge kernel itself, the store kit, the data runtime (one store whose
@@ -2577,6 +2661,84 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     Effect.gen(function* () {
       const root = yield* repoRoot;
       assert.deepStrictEqual(yield* collectOneWayViolations(root), []);
+    }),
+  );
+
+  it.effect("rule 6 fixture: post-grant modules are constructed only by the account runtime", () =>
+    Effect.gen(function* () {
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      const fixtureRoot = yield* makeRepoFixture({
+        [ACCOUNT_RUNTIME_FILE]: "const bus = yield* makeInvalidationBus({ signals, shown });\n",
+        [`${zerops}/knowledge/invalidation.ts`]: [
+          "export const makeInvalidationBus = Effect.fnUntraced(function* (options) {});",
+          "// makeInvalidationBus({ signals }) in a comment",
+          'const label = "connectCrossTabInvalidations(";',
+          "",
+        ].join("\n"),
+        [`${zerops}/forge/giteaSession.ts`]:
+          "export function makeGiteaSessions(ports) { return ports; }\n",
+        [`${zerops}/environments/exchangeDriver.test.ts`]: "makeExchangeDriver(ports);\n",
+        [`${zerops}/flow/groupFlow.ts`]: "const bus = makeInvalidationBus (options);\n",
+        "apps/web/src/zerops/accountGiteaSessions.ts": "current = makeGiteaSessions(ports);\n",
+        "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx": [
+          "const driver = makeExchangeDriver(ports);",
+          "const sessions = makeGiteaSessions(ports);",
+          "",
+        ].join("\n"),
+        "apps/mobile/src/features/zerops/account.ts":
+          "yield* connectCrossTabInvalidations({ bus });\n",
+      });
+
+      const violations = yield* collectPostGrantConstructionViolations(fixtureRoot);
+
+      assert.deepStrictEqual(violations, [
+        {
+          file: "apps/mobile/src/features/zerops/account.ts",
+          reason:
+            "constructs connectCrossTabInvalidations, a post-grant module, outside the account runtime",
+        },
+        {
+          file: "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx",
+          reason: "constructs makeGiteaSessions, a post-grant module, outside the account runtime",
+        },
+        {
+          file: `${zerops}/flow/groupFlow.ts`,
+          reason:
+            "constructs makeInvalidationBus, a post-grant module, outside the account runtime",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 6: post-grant modules are constructed only by the account runtime", () =>
+    Effect.gen(function* () {
+      const root = yield* repoRoot;
+      assert.deepStrictEqual(yield* collectPostGrantConstructionViolations(root), []);
+    }),
+  );
+
+  it.effect("the inventory provider fixture: a timer or a grant interpreter is reported", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeRepoFixture({
+        [INVENTORY_PROVIDER_FILE]: [
+          '// setTimeout in a comment, and one in a string: "setInterval("',
+          "const { state } = transitionGrant(machine, event, ctx);",
+          'timer = window.setTimeout(() => send({ type: "TICK" }), delay);',
+          "",
+        ].join("\n"),
+      });
+
+      assert.deepStrictEqual(yield* collectGrantInterpreterUses(fixtureRoot), [
+        "uses setTimeout",
+        "uses transitionGrant",
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("the inventory provider starts no timer and interprets no grant", () =>
+    Effect.gen(function* () {
+      const root = yield* repoRoot;
+      assert.deepStrictEqual(yield* collectGrantInterpreterUses(root), []);
     }),
   );
 

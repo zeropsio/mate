@@ -168,14 +168,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "done.catch(() => undefined)",
-    "owner": "karel",
-    "reason": "keeps the access queue running after a failed observation; the caught value is the queue tail, never read as a fact",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
     "kind": "CallExpression",
     "fingerprint": "client.getBranch(slug, GROUP_REPOSITORY, \"main\").catch(() => undefined)",

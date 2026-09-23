@@ -40,9 +40,9 @@ import {
 } from "../knowledge/invalidation.ts";
 
 /** A visible wake needs the tab hidden at least this long (§6.4). */
-export const WAKE_AFTER_HIDDEN_MS = 30_000;
+const WAKE_AFTER_HIDDEN_MS = 30_000;
 /** Wakes are coalesced to at most one per this long (§6.4). */
-export const WAKE_COALESCE_MS = 10_000;
+const WAKE_COALESCE_MS = 10_000;
 
 /** What the page tells the account: its visibility, its network, a return from the bfcache or a freeze. */
 export type PageSignal =

@@ -7,10 +7,12 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { makeDeadlineClock, type DeadlineClock } from "../../testing/deadlineClock.ts";
-import { organization, project, scope } from "../__fixtures__/index.ts";
+import { organization, project, scope, verifiedAccess } from "../__fixtures__/index.ts";
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../policy.ts";
 import { makeZeropsDataRuntime } from "../runtime.ts";
 import type { AccessState, ProjectRef, ZeropsDataAdapter } from "../types.ts";
@@ -676,6 +678,41 @@ describe("the access grant inside the data runtime", () => {
         expect(opened.platform.rounds).toHaveLength(2);
       }),
     ),
+  );
+
+  it.effect(
+    "a foreground return past the deadline leaves the lapse to the grant: the runtime expires nothing itself",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const registry = AtomRegistry.make();
+          const changes = yield* Queue.unbounded<"visible" | "hidden">();
+          let visibility: "visible" | "hidden" = "visible";
+          const runtime = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: inertAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+            initialAccess: verifiedAccess(1, START_WALL_MS + MINUTE),
+            visibility: {
+              current: Effect.sync(() => visibility),
+              changes: Stream.fromQueue(changes),
+            },
+          }).pipe(Effect.provideService(Clock.Clock, clock));
+          yield* Effect.addFinalizer(() => runtime.shutdown("application-close"));
+          visibility = "hidden";
+          yield* Queue.offer(changes, "hidden");
+          yield* clock.advance(2 * MINUTE);
+          yield* settle;
+
+          visibility = "visible";
+          yield* Queue.offer(changes, "visible");
+          yield* settle;
+
+          expect((yield* runtime.state).access.status).toBe("verified");
+        }),
+      ),
   );
 
   it.effect("never starts the grant of a runtime that shut down first", () =>

@@ -2337,19 +2337,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     Effect.gen(function* () {
       if ((yield* Ref.get(closed)) || (yield* Ref.get(currentVisibility)) !== "visible") return;
       const state = yield* Ref.get(model);
-      const now = yield* Clock.currentTimeMillis;
-      if (state.access.status === "verified" && state.access.deadlineMs <= now) {
-        yield* enqueue({
-          kind: "access-observation",
-          observation: {
-            kind: "access-expired",
-            accountEpoch: options.scope.epoch,
-            expiredAtMs: now,
-          },
-          interest: null,
-        });
-        yield* awaitIngress;
-      }
       const paused = [...interests.values()].filter((runtimeInterest) => {
         if (runtimeInterest.leases.size === 0) return false;
         return state.interests.get(runtimeInterest.key)?.interest.status === "paused";
