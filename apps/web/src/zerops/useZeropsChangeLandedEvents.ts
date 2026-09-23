@@ -16,7 +16,7 @@ import {
   type ChangeLandedEvent,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
@@ -31,7 +31,7 @@ const NONE: ReadonlyArray<ChangeLandedEvent> = [];
  * one with another Mate's would say something false.
  */
 export function changeLandedEventsFor(
-  listing: Known<ReadonlyArray<CandidateRow>>,
+  listing: Shown<ReadonlyArray<CandidateRow>>,
   environmentId: string,
   flows: ReadonlyMap<string, { readonly merged: ReadonlyArray<FlowPullRequest> }>,
 ): ReadonlyArray<ChangeLandedEvent> {

@@ -17,6 +17,13 @@ const gitea = vi.hoisted(() => ({
   trouble: null as string | null,
 }));
 
+/** The account's authority as its inventory publishes it. */
+const access = vi.hoisted(() => ({
+  account: { kind: "authorized" } as
+    | { readonly kind: "authorized" }
+    | { readonly kind: "withheld"; readonly reason: "access-lapsed"; readonly cause: null },
+}));
+
 vi.mock("./accountGiteaSessions", () => ({
   useGiteaSession: () => ({ signedIn: true, readable: gitea.readable, trouble: gitea.trouble }),
   giteaClientFor: () => null,
@@ -29,7 +36,13 @@ vi.mock("./ZeropsSessionProvider", () => ({
   }),
 }));
 vi.mock("./ZeropsInventoryProvider", () => ({
-  useZeropsInventory: () => ({ projects: [], services: new Map(), projectRefs: new Map() }),
+  useZeropsInventory: () => ({
+    projects: [],
+    services: new Map(),
+    projectRefs: new Map(),
+    authority: new Map(),
+    account: access.account,
+  }),
 }));
 vi.mock("./zeropsDataContext", () => ({
   useZeropsData: () => ({ runtime: { reads: { servicesOf: () => null } } }),
@@ -143,7 +156,39 @@ describe("ZeropsProjectFlowProvider", () => {
     gitea.readable = false;
     gitea.origin = true;
     gitea.trouble = null;
+    access.account = { kind: "authorized" };
     vi.unstubAllGlobals();
+  });
+
+  // DESIGN §3.1, §4.2 G12: the registry's groups and what was read of them are platform content.
+  it("withholds the groups and their flows while the account's access lapses", async () => {
+    access.account = { kind: "withheld", reason: "access-lapsed", cause: null };
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect(seen.at(-1)?.flows.size).toBe(0);
+    expect(seen.at(-1)?.slugs.size).toBe(0);
+
+    access.account = { kind: "authorized" };
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect([...(seen.at(-1)?.flows.keys() ?? [])]).toEqual(["g1"]);
+    expect([...(seen.at(-1)?.slugs.keys() ?? [])]).toEqual(["g1"]);
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 
   it("a Gitea that stops answering keeps the flows and names the cause where the verbs are", async () => {

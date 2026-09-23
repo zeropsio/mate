@@ -1,17 +1,29 @@
 import {
   routeGatePhrase,
   selectRouteGate,
+  type ConversationView,
   type Reachability,
   type RouteContent,
 } from "@t3tools/client-runtime/zerops/environments";
-import { act, useEffect } from "react";
+import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { TestNode } from "../zerops/__fixtures__/testDom";
+import { gatedPortal } from "../components/ui/portal-gate";
+import { readableText, TestNode } from "../zerops/__fixtures__/testDom";
 import { RouteGateView } from "./-routeGate";
 
+// "Go to projects" is a router link; no router runs here.
+vi.mock("@tanstack/react-router", async (actual) => ({
+  ...(await actual<typeof import("@tanstack/react-router")>()),
+  Link: ({ children }: { readonly children?: ReactNode }) => children ?? null,
+}));
+
+/** A floating layer as the UI kit gates one; it renders in place here. */
+const FloatingLayer = gatedPortal(({ children }: { readonly children?: ReactNode }) => children);
+
 const READY: Reachability = { kind: "ready", notice: null };
+const SHOWN: ConversationView = { kind: "shown", until: null };
 const RESTARTING_UNDER_LINK: Reachability = {
   kind: "ready",
   notice: { level: "restarting", by: "platform", overdue: false },
@@ -22,9 +34,13 @@ const RESTARTING: Reachability = {
 };
 
 /** The gate `__root` renders for the route environment's verdict and content. */
-function gateFor(reachability: Reachability, content: RouteContent) {
+function gateFor(
+  reachability: Reachability,
+  content: RouteContent,
+  conversation: ConversationView = SHOWN,
+) {
   const gate = selectRouteGate({ kind: "resolved", reachability, content });
-  return { gate, phrase: routeGatePhrase(gate, { nowMs: 0, mateName: "shop" }) };
+  return { gate, phrase: routeGatePhrase(gate, { nowMs: 0, mateName: "shop" }), conversation };
 }
 
 let container: TestNode;
@@ -63,7 +79,7 @@ describe("RouteGateView", () => {
     const render = (view: ReturnType<typeof gateFor>) =>
       act(() =>
         root.render(
-          <RouteGateView gate={view.gate} phrase={view.phrase} projectId="project-1">
+          <RouteGateView {...view} projectId="project-1">
             <ChatView />
           </RouteGateView>,
         ),
@@ -122,5 +138,42 @@ describe("RouteGateView", () => {
     expect(container.textContent).toBe(
       "You can see this project in Zerops but can't operate its Mate.",
     );
+  });
+
+  // DESIGN §9 C1b: hidden, never unmounted, until the access vouches for it again.
+  it("a suppressed conversation keeps the ChatView instance and hides it, its floating layers and drafts included", () => {
+    const mounts: Array<number> = [];
+    function ChatView() {
+      useEffect(() => {
+        mounts.push(mounts.length + 1);
+      }, []);
+      return (
+        <>
+          conversation
+          <FloatingLayer>menu</FloatingLayer>
+        </>
+      );
+    }
+    const render = (conversation: ConversationView) =>
+      act(() =>
+        root.render(
+          <RouteGateView {...gateFor(RESTARTING_UNDER_LINK, "live", conversation)} projectId="p1">
+            <ChatView />
+          </RouteGateView>,
+        ),
+      );
+
+    render(SHOWN);
+    expect(readableText(container)).toContain("conversationmenu");
+    render({ kind: "suppressed", reason: "access-denied" });
+    const suppressed = readableText(container);
+    const suppressedText = container.textContent;
+    render(SHOWN);
+
+    expect(mounts).toEqual([1]);
+    expect(suppressed).toBe("Your access to this project changed.Go to projects");
+    expect(suppressedText).not.toContain("menu");
+    expect(readableText(container)).toContain("conversationmenu");
+    expect(container.textContent).toContain("conversationmenu");
   });
 });

@@ -9,6 +9,8 @@
  * the tab's own.
  */
 import { RegistryContext } from "@effect/atom-react";
+import type { Instant } from "@t3tools/client-runtime/zerops/data";
+import type { Link } from "@t3tools/client-runtime/zerops/environments";
 import {
   selectLocationChoice,
   type ZeropsResourceAdapter,
@@ -20,8 +22,10 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { SidebarZeropsTree } from "../../components/zerops/SidebarZeropsTree";
+import { useConversationView } from "../../routes/-environmentTargets";
+import { RouteGateView } from "../../routes/-routeGate";
 import { ZeropsDataProvider } from "../ZeropsDataProvider";
-import { useZeropsInventory, withheldProjectNotice } from "../inventoryContext";
+import { conversationAccess, useZeropsInventory, withheldProjectNotice } from "../inventoryContext";
 import { useNowMs } from "../useNowMs";
 import { useZeropsCandidates } from "../useZeropsCandidates";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
@@ -117,5 +121,37 @@ export function SidebarListing() {
     notice: candidatesNotice(listing, SIDEBAR_SURFACE, nowMs),
     onSelect: () => undefined,
     onBrowseProjects: () => undefined,
+  });
+}
+
+/** What the listing every sidebar and page region reads holds, as `listing: <state>`. */
+export function ListingState() {
+  return `listing: ${useZeropsCandidates().listing.state}`;
+}
+
+/**
+ * A Mate conversation of project `projectId` as the route renders it: its messages and its
+ * composer's draft under the route gate, over a link the test sets and the project's access as
+ * the inventory publishes it (DESIGN §9 C1b).
+ */
+export function Conversation({
+  projectId,
+  link,
+  linkLostAt,
+}: {
+  readonly projectId: string;
+  readonly link: Link;
+  readonly linkLostAt: Instant | null;
+}) {
+  const conversation = useConversationView(conversationAccess(useZeropsInventory(), projectId), {
+    link,
+    linkLostAt,
+  });
+  return createElement(RouteGateView, {
+    gate: { kind: "outlet", banner: null, composer: "enabled" },
+    phrase: { text: null, actions: [] },
+    projectId,
+    conversation,
+    children: "conversation: hello · draft: my words",
   });
 }

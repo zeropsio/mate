@@ -564,7 +564,8 @@ it.live("a renewal withholds a deleted project until a second read confirms it i
       ).toEqual({ kind: "withheld", reason: "access-denied", cause: null });
       expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
       yield* renewal.establish();
-      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept", "revoked"]);
+      // Its content is withheld at the inventory's read meanwhile (DESIGN §3.1).
+      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
       expect(harness.inventory()?.isLoading).toBe(false);
       expect(harness.inventory()?.error).toBeNull();
 

@@ -9,8 +9,6 @@ vi.mock("@tanstack/react-router", async (actual) => ({
   useNavigate: () => () => undefined,
 }));
 
-const CHECKING = "Checking your access to this project…";
-
 const environment = (projectId: string, name: string): EnvironmentRow =>
   ({
     projectId,
@@ -39,7 +37,6 @@ const mate = (projectId: string, name: string, subject: string) => ({
 });
 
 function render(
-  withheld: ReadonlySet<string>,
   who: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
     "mates" | "matesNotice" | "onMatesNoticeAct"
@@ -75,35 +72,23 @@ function render(
       }}
       repo={undefined}
       waiting={releaseContentsSummary([], 20)}
-      withheldNotice={(projectId) => (withheld.has(projectId) ? CHECKING : null)}
     />,
   );
 }
 
 describe("ZeropsGroupPane", () => {
-  // A project without fresh access evidence keeps its name and says why its
-  // content is not shown (DESIGN G12).
-  it("draws a withheld Mate and environment by name with the checking placeholder", () => {
-    const markup = render(new Set(["iris", "prod"]));
-
-    expect(markup).toContain("Iris");
-    expect(markup).not.toContain("Split the checkout");
-    expect(markup).toContain("Cache the link previews");
-    expect(markup).toContain("production");
-    expect(markup.match(new RegExp(CHECKING, "g"))).toHaveLength(2);
-  });
-
-  it("draws every line's content while nothing is withheld", () => {
-    const markup = render(new Set());
+  it("draws every line's content", () => {
+    const markup = render();
 
     expect(markup).toContain("Split the checkout");
-    expect(markup).not.toContain(CHECKING);
+    expect(markup).toContain("Cache the link previews");
+    expect(markup).toContain("production");
   });
 
   const NO_MATE = "No Mate is working on this project yet.";
 
   it("never says no Mate is on it while the listing is unread: a placeholder instead", () => {
-    const markup = render(new Set(), {
+    const markup = render({
       mates: [],
       matesNotice: {
         region: "placeholder",
@@ -118,7 +103,7 @@ describe("ZeropsGroupPane", () => {
   });
 
   it("names why the listing's read failed once, with one Try again, and no none", () => {
-    const markup = render(new Set(), {
+    const markup = render({
       mates: [],
       matesNotice: {
         region: "message",
@@ -138,6 +123,6 @@ describe("ZeropsGroupPane", () => {
   });
 
   it("says no Mate is on it only once the listing is complete", () => {
-    expect(render(new Set(), { mates: [], matesNotice: null })).toContain(NO_MATE);
+    expect(render({ mates: [], matesNotice: null })).toContain(NO_MATE);
   });
 });

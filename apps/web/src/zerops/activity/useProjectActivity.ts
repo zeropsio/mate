@@ -8,7 +8,7 @@ import {
 import { Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
 
-import { findInventoryProjectRef, useZeropsInventory } from "../inventoryContext";
+import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "../inventoryContext";
 import { useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
 
 export interface ProjectActivitySnapshot {
@@ -96,8 +96,13 @@ export function useProjectActivity(projectId: string | null): ProjectActivitySna
     [project, runtime],
   );
   const read = useAtomValue(activityAtom);
+  // Withheld at the read while the grant withholds the project (DESIGN §4.2 G12); its demand stays.
+  const withheld = projectId !== null && projectAuthority(inventory, projectId).kind === "withheld";
   return useMemo(
-    () => (read === null ? EMPTY_PROJECT_ACTIVITY_SNAPSHOT : projectActivitySnapshotFromRead(read)),
-    [read],
+    () =>
+      read === null || withheld
+        ? EMPTY_PROJECT_ACTIVITY_SNAPSHOT
+        : projectActivitySnapshotFromRead(read),
+    [read, withheld],
   );
 }

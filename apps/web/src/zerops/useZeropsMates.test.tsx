@@ -144,6 +144,7 @@ function publishAccount(registry: AtomRegistry.AtomRegistry) {
     services: new Map([[PROJECT.id, { status: "resolved" as const, services: [ZCP] }]]),
     projectRefs: new Map([[projectKeyOf(owner), owner]]),
     authority: new Map(),
+    account: { kind: "authorized" },
   });
 }
 

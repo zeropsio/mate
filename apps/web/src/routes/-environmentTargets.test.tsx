@@ -155,6 +155,8 @@ const inventory = (status: string | null): Inventory => ({
   error: null,
   projectRefs: new Map(),
   authority: new Map(),
+  account: { kind: "authorized" },
+  lost: new Set(),
 });
 
 let container: TestNode;
@@ -269,6 +271,7 @@ function RoutedOutlet({
       gate={gate}
       phrase={routeGatePhrase(gate, { nowMs, mateName: inputs.mateName })}
       projectId={inputs.projectId}
+      conversation={inputs.conversation}
     >
       {children}
     </RouteGateView>
@@ -373,6 +376,7 @@ const HELD = {
   rereading: null,
 } as const;
 const PRESENT = { kind: "present", origin: ORIGIN } as const;
+const LAPSED = { kind: "withheld", reason: "access-lapsed", cause: null } as const;
 
 /** A target machine remembered for `env-a`, present and with its container ready. */
 const machine = (overrides: Partial<EnvironmentMachine>): EnvironmentMachine => ({
@@ -649,6 +653,14 @@ describe("useRouteGateInputs", () => {
       readings: new Map([[OTHER, { kind: "predates-mate" }]]),
       gate: { kind: "unavailable", reachability: null },
     },
+    {
+      // Absence is earned under verified access only (M5): a lapse keeps looking.
+      name: "every descriptor named another, while the account's access lapses",
+      machines: other({ kind: "none", reconnect: false }),
+      readings: new Map([[OTHER, { kind: "predates-mate" }]]),
+      inventory: { ...inventory("ACTIVE"), account: LAPSED },
+      gate: { kind: "wait", reachability: null },
+    },
   ];
 
   it.each(DISCOVERY.map((row) => [row.name, row] as const))(
@@ -662,6 +674,49 @@ describe("useRouteGateInputs", () => {
       expect(await gateOnRoute(row.inventory ?? inventory("ACTIVE"))).toEqual(row.gate);
     },
   );
+
+  // DESIGN §9 C1b over the route's own target machine and its project's published access.
+  const DROPPED = { phase: "backoff", retryAtMs: null } as const;
+  it.each([
+    [
+      "verified access",
+      inventory("ACTIVE"),
+      machine({ credential: HELD, link: DROPPED }),
+      { kind: "shown", until: null },
+    ],
+    [
+      "a lapse over a connected link",
+      { ...inventory("ACTIVE"), account: LAPSED },
+      machine({ credential: HELD, link: { phase: "connected", since: { wall: 0, mono: 0 } } }),
+      { kind: "shown", until: null },
+    ],
+    [
+      "a lapse over a link that dropped more than 10 min ago",
+      { ...inventory("ACTIVE"), account: LAPSED },
+      machine({ credential: HELD, link: DROPPED, linkLostAt: { wall: 0, mono: 0 } }),
+      { kind: "suppressed", reason: "access-lapsed" },
+    ],
+    [
+      "a confirmed loss of its project",
+      { ...inventory("ACTIVE"), lost: new Set(["project-1"]) },
+      machine({ credential: HELD, link: { phase: "connected", since: { wall: 0, mono: 0 } } }),
+      { kind: "suppressed", reason: "access-denied" },
+    ],
+  ] as const)("the route's conversation under %s", (_name, value, target, conversation) => {
+    shell.driver = publishing(new Map([[KEY, target]]));
+    function Probe() {
+      return JSON.stringify(useRouteGateInputs(ENV_A).conversation);
+    }
+    act(() =>
+      root.render(
+        <InventoryContext value={value}>
+          <Probe />
+        </InventoryContext>,
+      ),
+    );
+
+    expect(JSON.parse(container.textContent)).toEqual(conversation);
+  });
 });
 
 // ── The descriptor index and its sweep (§4.8 resolveTarget) ──────────────────────────────────

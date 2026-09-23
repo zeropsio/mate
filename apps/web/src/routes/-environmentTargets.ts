@@ -8,9 +8,13 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { Instant } from "@t3tools/client-runtime/zerops/data";
 import {
   environmentLinkable,
   resolveEnvironment,
+  selectConversation,
+  type ConversationAccess,
+  type ConversationView,
   type DescriptorIndex,
   type EnvironmentMachine,
   type RouteContent,
@@ -21,7 +25,7 @@ import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell"
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
-import { useCallback, useContext, useEffect, useMemo } from "react";
+import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
@@ -30,7 +34,7 @@ import {
   useDescriptorIndex,
   useEnvironmentMachines,
 } from "../zerops/accountEnvironments";
-import { InventoryContext } from "../zerops/inventoryContext";
+import { conversationAccess, InventoryContext } from "../zerops/inventoryContext";
 import { useRegistrationRecords } from "../zerops/registrationRecords";
 import { useZeropsSession, type ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
@@ -102,7 +106,7 @@ export function routeTarget(input: {
   readonly index: DescriptorIndex;
   readonly remembered: ReadonlyArray<TargetKey>;
   readonly environmentId: EnvironmentId;
-  /** The inventory is read, not loading or failing. */
+  /** The inventory is read under verified access, not loading or failing. */
   readonly inventoryKnown: boolean;
   readonly organization: RouteOrganization;
   readonly content: RouteContent;
@@ -136,6 +140,37 @@ export interface RouteGateInputs {
   /** The route's Zerops project, when a target names the environment. */
   readonly projectId: string | null;
   readonly mateName: string;
+  /** Whether the route's conversation shows under its project's access (DESIGN §9 C1b). */
+  readonly conversation: ConversationView;
+}
+
+const AUTHORIZED: ConversationAccess = { kind: "authorized" };
+
+const tabNow = (): Instant => ({ wall: Date.now(), mono: performance.now() });
+
+/**
+ * `selectConversation` on the tab's clocks, judged again the moment its bound ends: a
+ * conversation shown on a dropped link is hidden then, whatever else renders.
+ */
+export function useConversationView(
+  access: ConversationAccess,
+  machine: Pick<EnvironmentMachine, "link" | "linkLostAt"> | undefined,
+): ConversationView {
+  const [, judgeAgain] = useReducer((count: number) => count + 1, 0);
+  const view = selectConversation({ access, machine, now: tabNow() });
+  const until = view.kind === "shown" ? view.until : null;
+  const untilWall = until?.wall ?? null;
+  const untilMono = until?.mono ?? null;
+  useEffect(() => {
+    if (untilWall === null || untilMono === null) return;
+    const now = tabNow();
+    const timer = setTimeout(
+      judgeAgain,
+      Math.max(0, Math.min(untilWall - now.wall, untilMono - now.mono)),
+    );
+    return () => clearTimeout(timer);
+  }, [untilWall, untilMono]);
+  return view;
 }
 
 /**
@@ -161,21 +196,37 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           index,
           remembered: records.map((record) => record.targetKey),
           environmentId,
-          inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
+          inventoryKnown:
+            inventory !== null &&
+            inventory.account.kind === "authorized" &&
+            !inventory.isLoading &&
+            inventory.error === null,
           organization: ORGANIZATION[organizationStatus],
           content,
         });
+  const found =
+    environmentId === null ? undefined : resolveEnvironment(machines, index, environmentId);
+  const projectId = found?.key.split(":")[0] ?? null;
+  const conversation = useConversationView(
+    inventory === null || projectId === null
+      ? AUTHORIZED
+      : conversationAccess(inventory, projectId),
+    found?.machine,
+  );
   useEffect(() => {
     if (account === null) return;
     account.setRoute(environmentId);
     return () => account.setRoute(null);
   }, [account, environmentId]);
-  if (environmentId === null) return { target: null, projectId: null, mateName: "This Mate" };
+  if (environmentId === null) {
+    return { target: null, projectId: null, mateName: "This Mate", conversation };
+  }
   return {
     target,
-    projectId: resolveEnvironment(machines, index, environmentId)?.key.split(":")[0] ?? null,
+    projectId,
     mateName:
       environments.find((entry) => entry.environmentId === environmentId)?.label ?? "This Mate",
+    conversation,
   };
 }
 

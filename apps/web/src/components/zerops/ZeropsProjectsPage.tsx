@@ -41,11 +41,11 @@ import {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   knownPresentation,
-  type Known,
   type KnownAffordance,
   type KnownMessage,
   type KnownPresentation,
   type KnownSurface,
+  type Shown,
 } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   heldCandidates,
@@ -79,7 +79,7 @@ import {
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
-import { withheldProjectNotice } from "~/zerops/inventoryContext";
+import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -341,7 +341,7 @@ export function showsZeropsBirthLine(input: {
  * A re-read is not that: the list already read answers while it runs.
  */
 export function hasNoZeropsProject(input: {
-  readonly listing: Known<ReadonlyArray<ZeropsCandidate>>;
+  readonly listing: Shown<ReadonlyArray<ZeropsCandidate>>;
   /**
    * A birth of this account (`zeropsBirths.ts`). The wizard navigates here the
    * moment the project exists, before the inventory lists it — painting the
@@ -390,10 +390,11 @@ export interface ProjectsListingNotice {
  * What the page says about the projects it does not hold in full (DESIGN
  * §3.4): a placeholder while they are unread or being read, the cause when the
  * read failed, "Still reading…" over a partial list, and nothing over a
- * complete one. Copy, delay and affordance are `knownPresentation`'s.
+ * complete one, nor over one a lapse withholds, which the app's one banner
+ * names. Copy, delay and affordance are `knownPresentation`'s.
  */
 export function projectsListingNotice(
-  listing: Known<ReadonlyArray<ZeropsCandidate>>,
+  listing: Shown<ReadonlyArray<ZeropsCandidate>>,
   nowMs: number,
 ): ProjectsListingNotice | null {
   if (listing.state === "known" && listing.coverage === "complete") return null;
@@ -2272,6 +2273,13 @@ function ZeropsProjectsContent() {
           {pageError}
         </div>
       )}
+      {/* A project the grant withholds says why in place of its rows: its name,
+          tags and Mates are its content, so none of them is drawn (DESIGN §3.4). */}
+      {withheldProjectNotices(inventory).map(({ projectId, notice }) => (
+        <p className="text-xs text-muted-foreground" key={projectId} role="status">
+          {notice}
+        </p>
+      ))}
       <ZeropsGroupTree
         // A group is offered more once its first Mate is up — connected, or
         // its container answering ready — and not a minute before.
@@ -2292,21 +2300,6 @@ function ZeropsProjectsContent() {
           void createTool();
         }}
         renderEnvironment={(candidate: ZeropsCandidatePresentation, role) => {
-          // Without fresh access evidence the row keeps its name and says why
-          // its content is not shown (DESIGN G12).
-          const withheld = withheldProjectNotice(inventory, candidate.project.id);
-          if (withheld !== null) {
-            return (
-              <ZeropsEnvironmentRow
-                name={environmentNameUnderGroup(
-                  readZeropsGroupTags(candidate.project.tagList).label,
-                  candidate.project.name,
-                )}
-                summary={withheld}
-                tag={environmentRoleTag(role)}
-              />
-            );
-          }
           const input = rowInput(candidate, role);
           const presentation = deriveZeropsRowPresentation(input);
           const action = deriveZeropsRowAction(input);
@@ -2480,18 +2473,6 @@ function ZeropsProjectsContent() {
           />
         )}
         renderMate={(candidate: ZeropsCandidatePresentation, role) => {
-          const withheld = withheldProjectNotice(inventory, candidate.project.id);
-          if (withheld !== null) {
-            const tags = readZeropsGroupTags(candidate.project.tagList);
-            return (
-              <ZeropsMateCard
-                face="idle"
-                line={withheld}
-                name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
-                tint={tints.get(candidate.project.id) ?? "slate"}
-              />
-            );
-          }
           const input = rowInput(candidate, role);
           const presentation = deriveZeropsRowPresentation(input);
           const action = deriveZeropsRowAction(input);

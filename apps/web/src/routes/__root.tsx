@@ -158,7 +158,12 @@ function SignedInRootRouteView() {
   const appShell = (
     <CommandPalette>
       <AppSidebarLayout>
-        <RouteGateView gate={gate} phrase={gatePhrase} projectId={gateInputs.projectId}>
+        <RouteGateView
+          gate={gate}
+          phrase={gatePhrase}
+          projectId={gateInputs.projectId}
+          conversation={gateInputs.conversation}
+        >
           <Outlet />
         </RouteGateView>
       </AppSidebarLayout>

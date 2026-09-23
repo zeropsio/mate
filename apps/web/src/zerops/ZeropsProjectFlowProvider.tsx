@@ -45,7 +45,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { findAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
@@ -74,11 +74,13 @@ import {
   useZeropsData,
   zeropsKnowledgeArraysEqual,
 } from "./zeropsDataContext";
+import { HeldInventoryContext, projectAuthority } from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
 const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
+const EMPTY_SLUGS: ReadonlyMap<string, string> = new Map();
 /** What a verb says when it is pressed while the flows stand and no Gitea token is held. */
 const SIGNING_IN_AGAIN = "Signing in to Gitea again. Try it again in a moment.";
 
@@ -226,7 +228,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const inventory = useZeropsInventory();
   const organization = session.activeOrganization;
   const clientId = organization?.id;
-  const accountGitea = findAccountGitea(inventory, clientId);
+  // Held, not shown: a lapse withholds the Gitea project and must not end its session (law 5).
+  const accountGitea = findAccountGitea(useContext(HeldInventoryContext), clientId);
   const giteaOrigin = accountGitea?.state.url;
   const brokerOrigin = accountGitea?.state.brokerUrl;
   const signedInToMate = session.status === "signed-in";
@@ -303,12 +306,21 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   );
   const serviceReads = useZeropsAtomSelections<CollectionRead<ServiceRecord>>(serviceReadEntries);
   const nowMs = useNowMs();
+  // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12).
   const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(
     () =>
       new Map(
-        [...serviceReads].map(([projectId, read]) => [projectId, stopDeployment(read, nowMs)]),
+        [...serviceReads].map(([projectId, read]) => {
+          const authority = projectAuthority(inventory, projectId);
+          return [
+            projectId,
+            authority.kind === "withheld"
+              ? { state: "withheld", reason: authority.reason, cause: authority.cause }
+              : stopDeployment(read, nowMs),
+          ];
+        }),
       ),
-    [nowMs, serviceReads],
+    [inventory, nowMs, serviceReads],
   );
 
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -561,15 +573,18 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [actingClient, flows, run, tagAs],
   );
 
+  // While the account's access lapses, the groups the registry names and what was read of them
+  // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
+  const lapsed = inventory.account.kind === "withheld";
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
       giteaOrigin,
       signedIn,
       readable,
       signInTrouble,
-      flows,
+      flows: lapsed ? EMPTY_FLOWS : flows,
       deployments,
-      slugs,
+      slugs: lapsed ? EMPTY_SLUGS : slugs,
       mateNames,
       pending,
       // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
@@ -584,6 +599,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       deployments,
       flows,
       giteaOrigin,
+      lapsed,
       mateNames,
       mergePullRequest,
       pending,

@@ -30,7 +30,7 @@ import {
   giteaRepositoryLine,
   type GiteaOverviewOwner,
 } from "@t3tools/client-runtime/zerops";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
@@ -212,7 +212,7 @@ export function ZeropsGiteaOverview({
  * by its Gitea org, an address that is true, never by nothing.
  */
 export function giteaOwnerGroups(
-  listing: Known<ReadonlyArray<CandidateRow>>,
+  listing: Shown<ReadonlyArray<CandidateRow>>,
   slugs: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, { readonly groupId: string; readonly name: string }> {
   const byOwner = new Map<string, { readonly groupId: string; readonly name: string }>();

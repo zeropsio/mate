@@ -25,7 +25,7 @@ import {
   type UsageRead,
 } from "@t3tools/client-runtime/zerops/data";
 import type { RegistrationRecord } from "@t3tools/client-runtime/zerops/environments";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
   heldCandidates,
@@ -186,9 +186,12 @@ const UNREAD: Known<never> = { state: "unread", waitingFor: null };
  * The active organization's candidate rows (DESIGN §2.B B4) over the runtime's reads of its
  * projects and of each admitted project's services: unread until the account's product has
  * published a signed-in session with an organization chosen, its runtime and its inventory.
- * Only projects the inventory admits are read. Derived, so nothing it held outlives the account.
+ * Only projects the inventory admits are read, and withholding is applied here, at the read
+ * (§3.1, §4.2 G12): withheld whole while the account's access lapses, and without the rows of a
+ * project the grant withholds alone, which leaves the listing partial. Derived, so nothing it
+ * held outlives the account.
  */
-export const candidateRowsAtom = Atom.make((get): Known<ReadonlyArray<CandidateRow>> => {
+export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateRow>> => {
   const session = get(zeropsSessionAtom);
   const runtime = get(zeropsDataRuntimeAtom);
   const inventory = get(zeropsInventoryAtom);
@@ -202,11 +205,17 @@ export const candidateRowsAtom = Atom.make((get): Known<ReadonlyArray<CandidateR
   ) {
     return UNREAD;
   }
+  if (inventory.account.kind === "withheld") {
+    return { state: "withheld", reason: inventory.account.reason, cause: inventory.account.cause };
+  }
   const projectsRead = get(
     stampedRead(runtime.reads.projectsOf(session.activeOrganization), sameProjectsRead),
   );
-  const projects = admittedOnly(knownProjectsOf(projectsRead.read, projectsRead.atMs), (record) =>
-    inventory.projectRefs.has(projectKeyOf(record.ref)),
+  const projects = admittedOnly(
+    knownProjectsOf(projectsRead.read, projectsRead.atMs),
+    (record) =>
+      inventory.projectRefs.has(projectKeyOf(record.ref)) &&
+      inventory.authority.get(projectKeyOf(record.ref))?.kind !== "withheld",
   );
   return selectCandidates(projects, (ref) => {
     const servicesRead = get(stampedRead(runtime.reads.servicesOf(ref), sameServicesRead));
@@ -389,8 +398,18 @@ const topologyProjects = new Map<string, ProjectRef>();
 const projectTopologyFamily = Atom.family((key: string) =>
   Atom.make((get): ProjectTopologySnapshot => {
     const runtime = get(zeropsDataRuntimeAtom);
-    if (runtime === null) return EMPTY_PROJECT_TOPOLOGY_SNAPSHOT;
-    const topology = get(runtime.reads.topology(topologyProjects.get(key)!));
+    const inventory = get(zeropsInventoryAtom);
+    const project = topologyProjects.get(key)!;
+    // Withheld at the read while the grant withholds the project (§4.2 G12): nothing of it shows.
+    if (
+      runtime === null ||
+      inventory === null ||
+      inventory.account.kind === "withheld" ||
+      inventory.authority.get(key)?.kind === "withheld"
+    ) {
+      return EMPTY_PROJECT_TOPOLOGY_SNAPSHOT;
+    }
+    const topology = get(runtime.reads.topology(project));
     const services = topology.services.value.flatMap((knowledge): ReadonlyArray<ServiceRef> =>
       knowledge.knowledge === "observed" ? [knowledge.record.ref] : [],
     );

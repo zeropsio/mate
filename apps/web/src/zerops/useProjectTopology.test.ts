@@ -23,9 +23,11 @@ import {
   environmentProjectRef,
   projectTopologyAtom,
   zeropsDataRuntimeAtom,
+  zeropsInventoryAtom,
   type EnvironmentProjects,
   type ProjectTopologySnapshot,
 } from "../state/zerops";
+import type { InventoryProjection } from "./inventoryContext";
 import {
   desiredInterest,
   directTicket,
@@ -37,6 +39,18 @@ import {
 } from "./__fixtures__/platformData";
 
 const owner = project();
+
+/** The account's inventory as its product publishes it, the project's authority as given. */
+const inventoryWith = (
+  authority: InventoryProjection["account"],
+  account: InventoryProjection["account"] = { kind: "authorized" },
+): InventoryProjection => ({
+  projects: [],
+  services: new Map(),
+  projectRefs: new Map([[projectKeyOf(owner), owner]]),
+  authority: new Map([[projectKeyOf(owner), authority]]),
+  account,
+});
 
 /** A data runtime whose state the test pushes facets into, and the registry it lives in. */
 function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
@@ -69,6 +83,7 @@ function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
   registry.set(zeropsDataRuntimeAtom, {
     reads: { ...reads, ...overrides },
   } as unknown as ManagedZeropsDataRuntime);
+  registry.set(zeropsInventoryAtom, inventoryWith({ kind: "authorized" }));
   const pushProject = () =>
     push(
       decodeEntityDirectResponse(directTicket({ kind: "project", ref: owner }, id), {
@@ -159,6 +174,30 @@ describe("the derived topology", () => {
     runtime.registry.set(history, { ...empty } as unknown as HistoryReadView);
 
     expect(runtime.snapshots.length).toBe(before + 1);
+    runtime.close();
+  });
+
+  // DESIGN §4.2 G12: withheld at the read, per project and with a lapse, and back with authority.
+  it.each([
+    ["its project", inventoryWith({ kind: "withheld", reason: "access-unverified", cause: null })],
+    [
+      "the account",
+      inventoryWith(
+        { kind: "authorized" },
+        { kind: "withheld", reason: "access-lapsed", cause: null },
+      ),
+    ],
+  ])("shows nothing of a project while the grant withholds %s", (_scope, withheld) => {
+    const runtime = pushedRuntime();
+    runtime.pushProject();
+    runtime.pushServices([APP]);
+    expect(runtime.snapshots.at(-1)?.view?.project.name).toBe("acme-docs-dev");
+
+    runtime.registry.set(zeropsInventoryAtom, withheld);
+    expect(runtime.snapshots.at(-1)?.view).toBeUndefined();
+
+    runtime.registry.set(zeropsInventoryAtom, inventoryWith({ kind: "authorized" }));
+    expect(runtime.snapshots.at(-1)?.view?.project.name).toBe("acme-docs-dev");
     runtime.close();
   });
 });

@@ -234,6 +234,8 @@ function inventory(project: ProjectRef | null = PROJECT): Inventory {
     error: null,
     projectRefs: project === null ? new Map() : new Map([[project.projectId, project]]),
     authority: new Map(),
+    account: { kind: "authorized" },
+    lost: new Set(),
   };
 }
 

@@ -219,12 +219,12 @@ describe("ZeropsInventoryProvider renewal", () => {
   });
 
   // `online` is a wake (DESIGN §6.4): the lapse ends as soon as Zerops answers again.
-  it("lapsed + offline → online → a round starts at once and the overlay clears when it verifies", async () => {
+  it("lapsed + offline → online → a round starts at once and the lapse banner clears when it verifies", async () => {
     const { tab, pass, rounds } = await admittedProduct();
     tab.tab.signals.offline();
     await pass(16 * MINUTE_MS);
-    expect(tab.text()).toContain(CHILD);
-    expect(tab.readable()).not.toContain(CHILD);
+    expect(tab.readable()).toContain(CHILD);
+    expect(tab.readable()).toMatch(/Checking your Zerops access…|Zerops isn't answering\./);
     const before = rounds();
 
     tab.tab.signals.online();
@@ -240,7 +240,7 @@ describe("ZeropsInventoryProvider renewal", () => {
   // One cause-only sentence for the whole lapse, beside its two affordances (DESIGN §3.4, R-K3, A9).
   // Twenty simulated minutes of rounds and presses take longer than the unit project's 15 s.
   it(
-    "the overlay copy does not change while the lapse reason is unchanged",
+    "the lapse banner does not change while the lapse reason is unchanged",
     { timeout: 60_000 },
     async () => {
       const { harness, tab, pass, rounds } = await admittedProduct();
@@ -252,7 +252,7 @@ describe("ZeropsInventoryProvider renewal", () => {
       seen.push(tab.readable());
       // Back after 2 min hidden, the visible wake starts a round at once, and the organizations'
       // reads stall past their grace while the rounds keep failing: the inventory's own error
-      // appears beneath the overlay (gate CD).
+      // stays unsaid beside the lapse's one banner (gate CD, gate F).
       tab.tab.signals.hide();
       await pass(2 * MINUTE_MS);
       harness.datastream.holdRegistrations();
@@ -275,7 +275,7 @@ describe("ZeropsInventoryProvider renewal", () => {
       expect(rounds()).toBe(before + 1);
 
       expect(new Set(seen).size).toBe(1);
-      expect(seen[0]).not.toContain(CHILD);
+      expect(seen[0]).toContain(CHILD);
       expect(seen[0]).toContain("Zerops isn't answering.");
       expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now", "Sign out"]);
     },

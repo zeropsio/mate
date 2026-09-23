@@ -16,7 +16,7 @@ import {
   type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { presentCandidates, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { Atom } from "effect/unstable/reactivity";
 
@@ -103,11 +103,11 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
  * The active organization's candidates as knowledge (DESIGN §3): the rows
  * (`candidateRowsAtom`), each ready one joined with the environment connected
  * at its origin, and presented with its routes and services off the account's
- * inventory. Derived, with no writer: it reads the account's registry, which
- * starts over when the account closes.
+ * inventory; withheld as the rows are. Derived, with no writer: it reads the
+ * account's registry, which starts over when the account closes.
  */
 export const candidateListingAtom = Atom.make(
-  (get): Known<ReadonlyArray<ZeropsCandidatePresentation>> => {
+  (get): Shown<ReadonlyArray<ZeropsCandidatePresentation>> => {
     const rows = get(candidateRowsAtom);
     const inventory = get(zeropsInventoryAtom);
     const environments = get(zeropsEnvironmentsAtom);
@@ -148,7 +148,7 @@ export function useZeropsCandidates(): {
    * off a known, complete listing. A re-read keeps the list already read up
    * while the fresh baseline lands.
    */
-  readonly listing: Known<ReadonlyArray<ZeropsCandidatePresentation>>;
+  readonly listing: Shown<ReadonlyArray<ZeropsCandidatePresentation>>;
   /** A read is in flight: the header's spinner, never a reason to paint less. */
   readonly isLoading: boolean;
   readonly error: string | null;
