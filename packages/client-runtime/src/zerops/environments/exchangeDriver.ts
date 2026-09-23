@@ -123,9 +123,8 @@ export interface ExchangeDriverPorts<C> {
   /** The inventory re-reads this target's presence. */
   readonly refreshPresence: (key: TargetKey) => void;
   /**
-   * `catalog.remove`; drafts keep their keys (AL-13). The door's logout and the record's
-   * deletion wait for an absence a direct read confirmed (C19, 3.9): until then a target found
-   * gone may come back, and its record restores it.
+   * `catalog.remove`; drafts keep their keys (AL-13). The record and the door's session stay: a
+   * target found gone that the inventory names again is restored by its record.
    */
   readonly retire: (key: TargetKey, environmentId: EnvironmentId | null) => void;
   readonly log?: (key: TargetKey, diagnostic: EnvironmentDiagnostic) => void;
@@ -582,7 +581,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
         for (const target of targets) {
           let entry = entryFor(target.key, target.record);
           // Retirement absorbs every event. A target found gone that the inventory names again
-          // is a new target: its absence was never confirmed by a direct read (C19, 3.9).
+          // is a new target.
           if (
             entry.machine.credential.kind === "retired" &&
             entry.machine.presence.kind === "gone" &&

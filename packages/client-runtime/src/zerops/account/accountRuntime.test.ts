@@ -881,6 +881,7 @@ describe("the post-grant stage's Mate environments", () => {
   const openAccount = Effect.fnUntraced(function* (
     remembered: ReadonlyArray<RegistrationRecord>,
     mates: ReadonlyArray<Mate> = [A_MATE],
+    adapter: ZeropsDataAdapter = platformAdapter(mates),
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
@@ -890,7 +891,7 @@ describe("the post-grant stage's Mate environments", () => {
     const built = yield* Effect.gen(function* () {
       const data = yield* makeZeropsDataRuntime({
         scope: scope(),
-        adapter: platformAdapter(mates),
+        adapter,
         atomRegistry: registry,
         makeOpaqueId: (() => {
           let next = 0;
@@ -913,8 +914,9 @@ describe("the post-grant stage's Mate environments", () => {
   const granted = Effect.fnUntraced(function* (
     remembered: ReadonlyArray<RegistrationRecord>,
     mates: ReadonlyArray<Mate> = [A_MATE],
+    adapter: ZeropsDataAdapter = platformAdapter(mates),
   ) {
-    const opened = yield* openAccount(remembered, mates);
+    const opened = yield* openAccount(remembered, mates, adapter);
     yield* opened.grant.answer();
     yield* opened.clock.advance(SECOND);
     yield* settle;
@@ -1222,6 +1224,105 @@ describe("the post-grant stage's Mate environments", () => {
           yield* settle;
 
           expect(heard).toEqual([{ topic: "inventory", organization }]);
+        }),
+      ),
+  );
+
+  /**
+   * A platform whose projects' services are read directly once, as `first` lists them. Every
+   * later direct read of them waits for `release` and answers as `after` does, and so does every
+   * registration from then on.
+   */
+  const heldServicesReads = (first: ZeropsDataAdapter, after: ZeropsDataAdapter) => {
+    let reads = 0;
+    let released = false;
+    let release: () => void = () => undefined;
+    const opened = new Promise<void>((resolve) => {
+      release = () => {
+        released = true;
+        resolve();
+      };
+    });
+    const adapter: ZeropsDataAdapter = {
+      ...first,
+      register: (receiver, request, context) =>
+        (released ? after : first).register(receiver, request, context),
+      read: (ticket, context) =>
+        ticket.target.kind === "query" &&
+        (ticket.target.descriptor as EntityQueryDescriptor).kind === "services-of-project" &&
+        ++reads > 1
+          ? Effect.promise(() => opened).pipe(Effect.andThen(after.read(ticket, context)))
+          : (released ? after : first).read(ticket, context),
+    };
+    return { adapter, reads: () => reads, release };
+  };
+
+  it.effect("a deleted service loses its Mate only after a confirming read (§9 C19, MC-14)", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const ENV_DELETED = EnvironmentId.make("env-deleted");
+        const deleted: RegistrationRecord = {
+          ...REMEMBERED_A,
+          targetKey: `${A_MATE.projectId}:service-deleted`,
+          environmentId: ENV_DELETED,
+          origin: "https://zcp-deleted-8080.prg1.zerops.app",
+        };
+        const platform = heldServicesReads(platformAdapter([A_MATE]), platformAdapter([A_MATE]));
+        const { clock, rig, environments } = yield* granted([deleted], [A_MATE], platform.adapter);
+        yield* clock.advance(MINUTE);
+        yield* settle;
+
+        // The services were read without it: a direct read of them is asked for, and until it
+        // answers the Mate is kept, however long it takes.
+        expect(environments.machines().get(deleted.targetKey)?.presence.kind).not.toBe("gone");
+        expect(rig.removed).toEqual([]);
+        expect(platform.reads()).toBeGreaterThan(1);
+
+        platform.release();
+        yield* clock.advance(MINUTE);
+        yield* settle;
+
+        // The direct read lacks it too: the Mate leaves the catalog.
+        expect(environments.machines().get(deleted.targetKey)?.presence).toEqual({
+          kind: "gone",
+          evidence: "complete-scope-omits-verified",
+        });
+        expect(rig.removed).toEqual([ENV_DELETED]);
+        // The listed Mate beside it is untouched.
+        expect(environments.machines().get(MATE)?.presence.kind).toBe("present");
+      }),
+    ),
+  );
+
+  it.effect(
+    "a service one listing drops keeps its Mate when the direct read finds it (MC-14)",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform = heldServicesReads(
+            platformAdapter([{ ...A_MATE, service: { ...A_MATE.service, id: "service-other" } }]),
+            platformAdapter([A_MATE]),
+          );
+          const { clock, rig, environments } = yield* granted(
+            [REMEMBERED_A],
+            [A_MATE],
+            platform.adapter,
+          );
+          yield* clock.advance(MINUTE);
+          yield* settle;
+          // Listed without it: the Mate is kept while a direct read of the services is asked for.
+          expect(environments.machines().get(MATE)?.presence.kind).not.toBe("gone");
+          expect(platform.reads()).toBeGreaterThan(1);
+
+          platform.release();
+          yield* clock.advance(MINUTE);
+          yield* settle;
+
+          expect(environments.machines().get(MATE)?.presence).toEqual({
+            kind: "present",
+            origin: MATE_ORIGIN,
+          });
+          expect(rig.removed).toEqual([]);
         }),
       ),
   );

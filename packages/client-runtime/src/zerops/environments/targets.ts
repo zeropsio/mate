@@ -6,8 +6,11 @@
  *   transition, inactive, or without a public address.
  * - A row whose project's services are not read yet says nothing of any Mate in it: those
  *   targets' presence is `unknown`, whatever a record remembers of them.
- * - A target only a record names is `gone` once every listing is known and complete — its project
- *   is not listed, or its services were read without it — and holds its last value otherwise.
+ * - A target only a record names holds its last value until every listing is known and complete.
+ *   Then it is `gone` when its project is not listed. When its project's services were read
+ *   without it, it is `gone` only once a direct read of those services, finished after the
+ *   omission was seen, lacks it too (§9 C19): a service the listing drops for a moment keeps its
+ *   Mate.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -50,32 +53,87 @@ export interface ListedTarget {
 /** The Zerops project of a `projectId:serviceId` target. */
 export const targetProject = (key: TargetKey): string => key.split(":")[0] ?? key;
 
+/**
+ * A remembered target its project's services were read without (§9 C19): waiting for a direct
+ * read of those services past `past` (null: past the first one held), or confirmed by one.
+ */
+export type Absence =
+  | { readonly kind: "waiting"; readonly past: number | null }
+  | { readonly kind: "confirmed" };
+
+export interface ListedTargets {
+  readonly targets: ReadonlyArray<ListedTarget>;
+  /** Every absence now; the next evaluation takes it back. */
+  readonly absences: ReadonlyMap<TargetKey, Absence>;
+  /** The targets whose absence began a wait now: each asks for a direct read of its project. */
+  readonly confirm: ReadonlyArray<TargetKey>;
+}
+
+const GONE: Presence = { kind: "gone", evidence: "complete-scope-omits-verified" };
+
 /** Every target a listing row or a record names, with its presence (region P). */
 export function listTargets(input: {
   readonly listings: ReadonlyArray<Known<ReadonlyArray<CandidateRow>>>;
   readonly records: ReadonlyArray<RegistrationRecord>;
-}): ReadonlyArray<ListedTarget> {
+  /**
+   * The receipt ordinal of each project's latest complete direct read of its services, by
+   * project id; a project with none held is missing.
+   */
+  readonly directReads: ReadonlyMap<string, number>;
+  /** The absences the last evaluation answered. */
+  readonly absences: ReadonlyMap<TargetKey, Absence>;
+}): ListedTargets {
   const rows = input.listings.flatMap((listing) => heldCandidates(listing).rows);
   const settled = input.listings.every(
     (listing) => listing.state === "known" && listing.coverage === "complete",
   );
+  const listed = new Set(rows.map((row) => row.project.id));
   const unread = new Set(
     rows.filter((row) => row.presence === "unknown").map((row) => row.project.id),
   );
   const byKey = new Map(rows.map((row) => [row.key, row] as const));
   const recorded = new Map(input.records.map((record) => [record.targetKey, record] as const));
-  return [...new Set([...byKey.keys(), ...recorded.keys()])].map((key) => {
+  const absences = new Map<TargetKey, Absence>();
+  const confirm: TargetKey[] = [];
+  /** Region P for a target no row names. */
+  const unlisted = (key: TargetKey): Presence | null => {
+    const projectId = targetProject(key);
+    const held = input.absences.get(key);
+    // Services not read yet say nothing of a Mate in the project, unless a direct read already
+    // confirmed it gone; a listing that cannot say holds the absence as it was.
+    if (unread.has(projectId)) {
+      if (held?.kind !== "confirmed") return { kind: "unknown" };
+      absences.set(key, held);
+      return null;
+    }
+    if (!settled) {
+      if (held !== undefined) absences.set(key, held);
+      return null;
+    }
+    if (!listed.has(projectId)) return GONE;
+    const read = input.directReads.get(projectId) ?? null;
+    const next: Absence =
+      held === undefined
+        ? { kind: "waiting", past: read }
+        : held.kind === "confirmed"
+          ? held
+          : held.past === null
+            ? { kind: "waiting", past: read }
+            : read !== null && read > held.past
+              ? { kind: "confirmed" }
+              : held;
+    absences.set(key, next);
+    if (next.kind === "confirmed") return GONE;
+    if (held === undefined || (held.kind === "waiting" && held.past !== next.past))
+      confirm.push(key);
+    return null;
+  };
+  const targets = [...new Set([...byKey.keys(), ...recorded.keys()])].map((key) => {
     const row = byKey.get(key);
-    const presence: Presence | null =
-      row !== undefined
-        ? candidatePresence(row)
-        : unread.has(targetProject(key))
-          ? { kind: "unknown" }
-          : settled
-            ? { kind: "gone", evidence: "complete-scope-omits-verified" }
-            : null;
+    const presence = row !== undefined ? candidatePresence(row) : unlisted(key);
     return { key, presence, record: recorded.get(key)?.environmentId ?? null };
   });
+  return { targets, absences, confirm };
 }
 
 /** Each row as the container store's target: its origin and its platform statuses. */

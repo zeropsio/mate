@@ -5,11 +5,14 @@ import type { ZeropsProject } from "../api.ts";
 import type { Known } from "../knowledge/known.ts";
 import type { CandidateRow } from "../projections/candidates.ts";
 import type { RegistrationRecord } from "./records.ts";
-import { containerTargetsOf, listTargets, type ListedTarget } from "./targets.ts";
+import { containerTargetsOf, listTargets, type Absence, type ListedTarget } from "./targets.ts";
+import type { TargetKey } from "./exchangeDriver.ts";
 
 const ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 const ENV = EnvironmentId.make("environment-1");
 const KEY = "project-1:service-1";
+/** A service of the project the platform no longer lists. */
+const OLD = "project-1:old-service";
 
 const project = { id: "project-1", name: "shop", status: "ACTIVE" } as ZeropsProject;
 
@@ -54,8 +57,20 @@ interface Row {
   readonly name: string;
   readonly listings: ReadonlyArray<Known<ReadonlyArray<CandidateRow>>>;
   readonly records: ReadonlyArray<string>;
+  /** The receipt ordinal each project's services were last read at directly. */
+  readonly directReads?: ReadonlyArray<readonly [string, number]>;
+  /** The absences before this evaluation. */
+  readonly absences?: ReadonlyArray<readonly [TargetKey, Absence]>;
   readonly targets: ReadonlyArray<ListedTarget>;
+  /** The absences after it. */
+  readonly after?: ReadonlyArray<readonly [TargetKey, Absence]>;
+  /** The targets whose confirming read it asks for. */
+  readonly confirm?: ReadonlyArray<TargetKey>;
 }
+
+const GONE = { kind: "gone", evidence: "complete-scope-omits-verified" } as const;
+const waiting = (past: number | null): Absence => ({ kind: "waiting", past });
+const CONFIRMED: Absence = { kind: "confirmed" };
 
 const ROWS: ReadonlyArray<Row> = [
   {
@@ -118,23 +133,113 @@ const ROWS: ReadonlyArray<Row> = [
     ],
   },
   {
-    name: "the project's services read without the remembered one: gone",
+    name: "the project's services read without the remembered one: held, and a confirming read asked for",
     listings: [known([mateRow("ACTIVE")])],
-    records: ["project-1:old-service"],
+    records: [OLD],
+    directReads: [[project.id, 3]],
     targets: [
       { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
-      {
-        key: "project-1:old-service",
-        presence: { kind: "gone", evidence: "complete-scope-omits-verified" },
-        record: ENV,
-      },
+      { key: OLD, presence: null, record: ENV },
     ],
+    after: [[OLD, waiting(3)]],
+    confirm: [OLD],
+  },
+  {
+    name: "a direct read no newer than the omission holds it",
+    listings: [known([mateRow("ACTIVE")])],
+    records: [OLD],
+    directReads: [[project.id, 3]],
+    absences: [[OLD, waiting(3)]],
+    targets: [
+      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
+      { key: OLD, presence: null, record: ENV },
+    ],
+    after: [[OLD, waiting(3)]],
+  },
+  {
+    name: "a deleted service loses its Mate only after a confirming read",
+    listings: [known([mateRow("ACTIVE")])],
+    records: [OLD],
+    directReads: [[project.id, 4]],
+    absences: [[OLD, waiting(3)]],
+    targets: [
+      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
+      { key: OLD, presence: GONE, record: ENV },
+    ],
+    after: [[OLD, CONFIRMED]],
+  },
+  {
+    name: "an omission seen before any direct read waits past the first one, and asks again",
+    listings: [known([mateRow("ACTIVE")])],
+    records: [OLD],
+    directReads: [[project.id, 1]],
+    absences: [[OLD, waiting(null)]],
+    targets: [
+      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
+      { key: OLD, presence: null, record: ENV },
+    ],
+    after: [[OLD, waiting(1)]],
+    confirm: [OLD],
+  },
+  {
+    name: "a confirmed absence stays gone and asks for no read",
+    listings: [known([mateRow("ACTIVE")])],
+    records: [OLD],
+    directReads: [[project.id, 9]],
+    absences: [[OLD, CONFIRMED]],
+    targets: [
+      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
+      { key: OLD, presence: GONE, record: ENV },
+    ],
+    after: [[OLD, CONFIRMED]],
+  },
+  {
+    name: "services not read yet hold a confirmed absence",
+    listings: [known([unreadRow])],
+    records: [OLD],
+    absences: [[OLD, CONFIRMED]],
+    targets: [
+      { key: project.id, presence: { kind: "unknown" }, record: null },
+      { key: OLD, presence: null, record: ENV },
+    ],
+    after: [[OLD, CONFIRMED]],
+  },
+  {
+    name: "the service listed again ends its absence",
+    listings: [known([mateRow("ACTIVE")])],
+    records: [KEY],
+    directReads: [[project.id, 4]],
+    absences: [[KEY, CONFIRMED]],
+    targets: [{ key: KEY, presence: { kind: "present", origin: ORIGIN }, record: ENV }],
+  },
+  {
+    name: "a listing no longer settled holds the absence as it waits",
+    listings: [known([mateRow("ACTIVE")], "partial")],
+    records: [OLD],
+    directReads: [[project.id, 4]],
+    absences: [[OLD, waiting(3)]],
+    targets: [
+      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
+      { key: OLD, presence: null, record: ENV },
+    ],
+    after: [[OLD, waiting(3)]],
   },
 ];
 
-describe("listTargets: region P from the listings and the records (§4.4)", () => {
-  it.each(ROWS)("$name", ({ listings, records, targets }) => {
-    expect(listTargets({ listings, records: records.map(remembered) })).toEqual(targets);
+describe("listTargets: region P from the listings and the records (§4.4, §9 C19)", () => {
+  it.each(ROWS)("$name", (row) => {
+    expect(
+      listTargets({
+        listings: row.listings,
+        records: row.records.map(remembered),
+        directReads: new Map(row.directReads ?? []),
+        absences: new Map(row.absences ?? []),
+      }),
+    ).toEqual({
+      targets: row.targets,
+      absences: new Map(row.after ?? []),
+      confirm: row.confirm ?? [],
+    });
   });
 });
 

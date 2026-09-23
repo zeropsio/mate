@@ -4,9 +4,11 @@
  * exchange driver — and what surfaces read and ask of them.
  *
  * - Every target's presence comes from the account's listings, the data runtime's projects and
- *   services of every organization the grant names (B4), and from the records (C1). No React
- *   holds a fact here: the web and mobile hand over ports and send intents — the route, the
- *   active organization, a Connect.
+ *   services of every organization the grant names (B4), and from the records (C1). A remembered
+ *   Mate its project's services were read without has that organization's inventory read again,
+ *   and is gone only once that direct read lacks it too (§9 C19). No React holds a fact here: the
+ *   web and mobile hand over ports and send intents — the route, the active organization, a
+ *   Connect.
  * - The account's guards come from its grant, the tab from the account's signals, a container's
  *   re-read from the account's bus.
  * - Restore is the records' demand, auto-connect the active organization's ready Mates (D13), and
@@ -29,7 +31,7 @@ import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
 import type { Evidence, GrantMachine, Instant } from "../data/access/grant.ts";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
-import { knownProjectsOf, knownServicesOf } from "../data/known.ts";
+import { knownProjectsOf, knownServicesOf, servicesSourceOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   ZeropsOrganizationId,
@@ -76,7 +78,12 @@ import type {
   RegistrationRecord,
   RegistrationRecords,
 } from "../environments/records.ts";
-import { containerTargetsOf, listTargets, targetProject } from "../environments/targets.ts";
+import {
+  containerTargetsOf,
+  listTargets,
+  targetProject,
+  type Absence,
+} from "../environments/targets.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { Known } from "../knowledge/known.ts";
@@ -216,6 +223,11 @@ export interface EnvironmentWiringOptions {
 interface OrganizationListing {
   readonly organizationId: string;
   readonly listing: Known<ReadonlyArray<CandidateRow>>;
+  /**
+   * The receipt ordinal of each of its projects' latest complete direct read of their services:
+   * the one the interest that observes them crossed when it last established.
+   */
+  readonly directReads: ReadonlyMap<string, number>;
 }
 
 const heldEvidence = (machine: GrantMachine): Evidence | null =>
@@ -249,6 +261,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let closed = false;
   let listings: ReadonlyArray<OrganizationListing> = [];
   let rows: ReadonlyArray<CandidateRow> = [];
+  /** The remembered targets their projects' services were read without (§9 C19). */
+  let absences: ReadonlyMap<TargetKey, Absence> = new Map();
   let registered: ReadonlyArray<RegisteredEnvironment> = [];
   let route: EnvironmentId | null = null;
   let activeOrganization: string | null = null;
@@ -424,13 +438,25 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   // ── Feeding the stores ─────────────────────────────────────────────────────────────────────
 
-  /** Every target, its presence and its container, and the records' demand. */
+  /**
+   * Every target, its presence and its container, and the records' demand. An absence that
+   * begins a wait has its organization's inventory read again, which reads its project's services
+   * directly (§9 C19).
+   */
   const updateTargets = () => {
     if (stores === null || closed) return;
     const records = stores.records.list();
     stores.containers.setTargets(containerTargetsOf(rows));
+    const listed = listTargets({
+      listings: listings.map(({ listing }) => listing),
+      records,
+      directReads: new Map(listings.flatMap(({ directReads }) => [...directReads])),
+      absences,
+    });
+    absences = listed.absences;
+    for (const key of listed.confirm) driverPorts.refreshPresence(key);
     stores.driver.setTargets(
-      listTargets({ listings: listings.map(({ listing }) => listing), records }).map((target) => ({
+      listed.targets.map((target) => ({
         ...target,
         container: stores!.containers.verdict(target.key),
       })),
@@ -552,13 +578,26 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const listingsAtom = Atom.make((get): ReadonlyArray<OrganizationListing> => {
     const evidence = heldEvidence(get(data.access.view).machine);
     const nowMs = ports.clock.now().wall;
-    return (evidence?.account.organizations ?? []).map(({ organization }) => ({
-      organizationId: organization.organizationId,
-      listing: selectCandidates(
+    return (evidence?.account.organizations ?? []).map(({ organization }) => {
+      const directReads = new Map<string, number>();
+      const listing = selectCandidates(
         knownProjectsOf(get(data.reads.projectsOf(organization)), nowMs),
-        (ref) => knownServicesOf(get(data.reads.servicesOf(ref)), nowMs),
-      ),
-    }));
+        (ref) => {
+          const read = get(data.reads.servicesOf(ref));
+          const services = knownServicesOf(read, nowMs);
+          const source = servicesSourceOf(read);
+          if (
+            source?.status === "observing" &&
+            services.state === "known" &&
+            services.coverage === "complete"
+          ) {
+            directReads.set(ref.projectId, source.sinceReceiptOrdinal);
+          }
+          return services;
+        },
+      );
+      return { organizationId: organization.organizationId, listing, directReads };
+    });
   });
 
   // ── The index ──────────────────────────────────────────────────────────────────────────────
