@@ -8,9 +8,14 @@ import {
   admittedOnly,
   candidateMembers,
   candidatesComplete,
+  candidatesNotice,
+  findCandidate,
+  heldCandidates,
   listsNoProject,
   presentCandidates,
   selectCandidates,
+  takenBotNames,
+  type CandidateRow,
 } from "./candidates.ts";
 
 const admission: FacetAdmission = {
@@ -283,6 +288,186 @@ describe("candidateMembers", () => {
 
   it.each(notHeld)("holds no member of a listing that is $name", ({ listing }) => {
     expect(candidateMembers(listing)).toEqual([]);
+  });
+});
+
+const row = (
+  id: string,
+  presence: CandidateRow["presence"] = "known",
+  tagList: ReadonlyArray<string> = [],
+): CandidateRow => ({ ...candidate(id, tagList), presence });
+
+const notHeldRows = notHeld.map(({ name, listing }) => ({
+  name,
+  listing: listing as Known<ReadonlyArray<CandidateRow>>,
+}));
+
+describe("heldCandidates", () => {
+  it.each(notHeldRows)(
+    "holds no row of a listing that is $name, and never calls that complete",
+    ({ listing }) => {
+      expect(heldCandidates(listing)).toEqual({ rows: [], complete: false });
+    },
+  );
+
+  it.each<{
+    readonly name: string;
+    readonly listing: Known<ReadonlyArray<CandidateRow>>;
+    readonly complete: boolean;
+  }>([
+    { name: "complete, every presence read", listing: known([row("a")]), complete: true },
+    { name: "complete, a presence unread", listing: known([row("a", "unknown")]), complete: false },
+    { name: "partial", listing: known([row("a")], "partial"), complete: false },
+  ])("holds a known listing's rows; one that is $name is complete: $complete", (entry) => {
+    const held = heldCandidates(entry.listing);
+
+    expect(held.rows).toBe(entry.listing.state === "known" ? entry.listing.value : undefined);
+    expect(held.complete).toBe(entry.complete);
+  });
+});
+
+describe("findCandidate", () => {
+  const isA = (entry: CandidateRow) => entry.project.id === "a";
+
+  it.each<{
+    readonly name: string;
+    readonly listing: Known<ReadonlyArray<CandidateRow>>;
+    readonly lookup: object;
+  }>([
+    {
+      name: "a row it holds is found",
+      listing: known([row("a")], "partial"),
+      lookup: { kind: "found", row: row("a") },
+    },
+    {
+      name: "a complete listing without it proves it absent",
+      listing: known([row("b")]),
+      lookup: { kind: "absent" },
+    },
+    {
+      name: "a partial listing without it cannot say",
+      listing: known([row("b")], "partial"),
+      lookup: { kind: "unknown" },
+    },
+    {
+      name: "a listing with a presence unread cannot say",
+      listing: known([row("b", "unknown")]),
+      lookup: { kind: "unknown" },
+    },
+    ...notHeldRows.map(({ name, listing }) => ({
+      name: `a listing that is ${name} ${listing.state === "unread" || listing.state === "reading" ? "has not answered yet" : "cannot say"}`,
+      listing,
+      lookup: {
+        kind: listing.state === "unread" || listing.state === "reading" ? "pending" : "unknown",
+      },
+    })),
+  ])("$name", ({ listing, lookup }) => {
+    expect(findCandidate(listing, isA)).toEqual(lookup);
+  });
+});
+
+describe("takenBotNames", () => {
+  it.each<{
+    readonly name: string;
+    readonly listing: Known<ReadonlyArray<CandidateRow>>;
+    readonly taken: object;
+  }>([
+    {
+      name: "a complete listing names every Mate's bot, a presence unread included",
+      listing: known([
+        row("a", "known", ["mate:bot:Fen"]),
+        row("b", "unknown", ["mate:bot:Ada"]),
+        row("c"),
+      ]),
+      taken: { names: ["Fen", "Ada"], complete: true },
+    },
+    {
+      name: "a partial listing names the bots it read and is never all of them",
+      listing: known([row("a", "known", ["mate:bot:Fen"])], "partial"),
+      taken: { names: ["Fen"], complete: false },
+    },
+    ...notHeldRows.map(({ name, listing }) => ({
+      name: `a listing that is ${name} names none, and never as all of them`,
+      listing,
+      taken: { names: [], complete: false },
+    })),
+  ])("$name", ({ listing, taken }) => {
+    expect(takenBotNames(listing)).toEqual(taken);
+  });
+});
+
+describe("candidatesNotice", () => {
+  const surface = {
+    subject: "who is on this project",
+    entity: "project",
+    source: "zerops" as const,
+    checking: "Checking who is on it…",
+    negative: null,
+  };
+
+  it.each<{
+    readonly name: string;
+    readonly listing: Known<ReadonlyArray<CandidateRow>>;
+    readonly notice: object | null;
+  }>([
+    {
+      name: "unread: a placeholder that checks after a moment",
+      listing: { state: "unread", waitingFor: null },
+      notice: {
+        region: "placeholder",
+        message: { text: "Checking who is on it…", afterMs: 400, tone: "quiet" },
+        affordance: null,
+      },
+    },
+    {
+      name: "being read: the same placeholder",
+      listing: { state: "reading", sinceMs: 10, attempt: 1 },
+      notice: {
+        region: "placeholder",
+        message: { text: "Checking who is on it…", afterMs: 400, tone: "quiet" },
+        affordance: null,
+      },
+    },
+    {
+      name: "failed: its cause once, with one Try again",
+      listing: {
+        state: "failed",
+        failure: { kind: "transport", detail: "gateway" },
+        atMs: 10,
+        attempt: 1,
+        retryAtMs: null,
+      },
+      notice: {
+        region: "message",
+        message: {
+          text: "Couldn't read who is on this project. Zerops didn't answer.",
+          afterMs: 0,
+          tone: "alert",
+        },
+        affordance: { kind: "retry", label: "Try again" },
+      },
+    },
+    {
+      name: "partial: still reading over the rows read",
+      listing: known([row("a")], "partial"),
+      notice: {
+        region: "value",
+        message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+        affordance: null,
+      },
+    },
+    {
+      name: "complete with a presence unread: still reading",
+      listing: known([row("a", "unknown")]),
+      notice: {
+        region: "value",
+        message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+        affordance: null,
+      },
+    },
+    { name: "complete: nothing to say", listing: known([row("a")]), notice: null },
+  ])("$name", ({ listing, notice }) => {
+    expect(candidatesNotice(listing, surface, 0)).toEqual(notice);
   });
 });
 

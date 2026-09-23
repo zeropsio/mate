@@ -14,9 +14,17 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ZeropsService } from "../api.ts";
 import { deriveZeropsCandidates, isZcpService, type ZeropsCandidate } from "../candidates.ts";
+import { readZeropsGroupTags } from "../groups.ts";
 import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
 import type { ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
 import type { Known } from "../knowledge/known.ts";
+import {
+  knownPresentation,
+  type KnownAffordance,
+  type KnownMessage,
+  type KnownPresentation,
+  type KnownSurface,
+} from "../knowledge/presentation.ts";
 
 /** Whether the inventory has read what decides this row's container. */
 export type CandidatePresence = "known" | "unknown";
@@ -115,6 +123,122 @@ export function presentCandidates<Row, Presented>(
 ): Known<ReadonlyArray<Presented>> {
   if (listing.state !== "known") return listing;
   return { ...listing, value: listing.value.map(present) };
+}
+
+/**
+ * The rows a surface draws of a listing, with the one licence to read a "none" off them. `rows`
+ * are every row of a complete listing, the ones read of a partial one, and none while the listing
+ * holds no rows at all (unread, being read, failed, gone); only `complete` (`candidatesComplete`)
+ * says they are all the rows there are.
+ */
+export interface HeldCandidates<Row> {
+  readonly rows: ReadonlyArray<Row>;
+  readonly complete: boolean;
+}
+
+export function heldCandidates<Row extends CandidateRow>(
+  listing: Known<ReadonlyArray<Row>>,
+): HeldCandidates<Row> {
+  switch (listing.state) {
+    case "known":
+      return { rows: listing.value, complete: candidatesComplete(listing) };
+    default:
+      return { rows: [], complete: false };
+  }
+}
+
+/** What a region drawn from the listing says in place of a "none" it may not say yet (§3.4). */
+export interface CandidatesNotice {
+  readonly region: KnownPresentation["region"];
+  readonly message: KnownMessage;
+  readonly affordance: KnownAffordance | null;
+}
+
+/**
+ * The region's notice until the listing is complete (`candidatesComplete`): a placeholder while
+ * it is unread or being read, the cause and one affordance when its read failed, and "Still
+ * reading…" over the rows read of a listing known only in part — a presence unread included,
+ * since a row whose container is not read yet may still be the one the region lacks. Copy, delay
+ * and affordance are `knownPresentation`'s; a complete listing has nothing to say here.
+ */
+export function candidatesNotice<Row extends CandidateRow>(
+  listing: Known<ReadonlyArray<Row>>,
+  surface: KnownSurface<ReadonlyArray<Row>>,
+  nowMs: number,
+): CandidatesNotice | null {
+  if (candidatesComplete(listing)) return null;
+  const presentation = knownPresentation(
+    listing.state === "known" ? { ...listing, coverage: "partial" } : listing,
+    surface,
+    { nowMs, updateOffered: false },
+  );
+  return presentation.message === null
+    ? null
+    : {
+        region: presentation.region,
+        message: presentation.message,
+        affordance: presentation.affordance,
+      };
+}
+
+/**
+ * One candidate looked up in a listing. `absent` is earned (M5): the listing is complete and every
+ * row's presence is read. `pending` is a listing that has not answered yet (unread or being read);
+ * `unknown` one that holds what it will until something changes (failed, gone, partial, or a
+ * presence unread), so its lack of the row says nothing either.
+ */
+export type CandidateLookup<Row> =
+  | { readonly kind: "found"; readonly row: Row }
+  | { readonly kind: "absent" }
+  | { readonly kind: "pending" }
+  | { readonly kind: "unknown" };
+
+const ABSENT: CandidateLookup<never> = { kind: "absent" };
+const PENDING: CandidateLookup<never> = { kind: "pending" };
+const UNKNOWN: CandidateLookup<never> = { kind: "unknown" };
+
+export function findCandidate<Row extends CandidateRow>(
+  listing: Known<ReadonlyArray<Row>>,
+  matches: (row: Row) => boolean,
+): CandidateLookup<Row> {
+  switch (listing.state) {
+    case "unread":
+    case "reading":
+      return PENDING;
+    case "known": {
+      const row = listing.value.find(matches);
+      if (row !== undefined) return { kind: "found", row };
+      return candidatesComplete(listing) ? ABSENT : UNKNOWN;
+    }
+    default:
+      return UNKNOWN;
+  }
+}
+
+/**
+ * The names the organization's Mates already go by (`mate:bot:`), read off the listing's projects.
+ * A name lives on the project, so a row whose presence is unread still names its bot; `complete`
+ * is the listing being known and complete, the one licence to call a name free. Until then a name
+ * found here is taken and one missing may still be.
+ */
+export interface TakenBotNames {
+  readonly names: ReadonlyArray<string>;
+  readonly complete: boolean;
+}
+
+export function takenBotNames(listing: Known<ReadonlyArray<ZeropsCandidate>>): TakenBotNames {
+  switch (listing.state) {
+    case "known":
+      return {
+        names: listing.value.flatMap((row) => {
+          const bot = readZeropsGroupTags(row.project.tagList).bot;
+          return bot === undefined ? [] : [bot];
+        }),
+        complete: listing.coverage === "complete",
+      };
+    default:
+      return { names: [], complete: false };
+  }
 }
 
 const NO_MEMBERS: ReadonlyArray<never> = [];
