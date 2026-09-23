@@ -221,6 +221,113 @@ describe("ZeropsApiClient authentication", () => {
     expect(client.session?.accessToken).toBe("access-2");
   });
 
+  it("renews through the renewal hook and holds a session it hands back without storing it again", async () => {
+    const renewedElsewhere: ZeropsSession = { accessToken: "access-9", refreshToken: "refresh-9" };
+    const stub = recordingFetch((request) =>
+      request.authorization === "Bearer access-9"
+        ? jsonResponse(200, { id: "user-1", email: "a@b.c", clientUserList: [] })
+        : jsonResponse(401, { code: "notAuthorized" }),
+    );
+    const stale: ZeropsSession[] = [];
+    const stored: Array<ZeropsSession | null> = [];
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        stored.push(session);
+      },
+      renewSession: async (held) => {
+        stale.push(held);
+        return renewedElsewhere;
+      },
+    });
+    client.restoreSession(SESSION);
+
+    const user = await client.fetchUser();
+
+    expect(user.id).toBe("user-1");
+    expect(stale).toEqual([SESSION]);
+    expect(stub.requests.map(({ url }) => new URL(url).pathname)).toEqual([
+      "/api/rest/public/user/info",
+      "/api/rest/public/user/info",
+    ]);
+    expect(client.session).toBe(renewedElsewhere);
+    expect(stored).toEqual([]);
+  });
+
+  it("refreshes over the network only when the renewal hook runs the refresh it is given", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/auth/refresh"))
+        return jsonResponse(200, { accessToken: "access-2", refreshToken: "refresh-2" });
+      return request.authorization === "Bearer access-2"
+        ? jsonResponse(200, { id: "user-1", email: "a@b.c", clientUserList: [] })
+        : jsonResponse(401, { code: "notAuthorized" });
+    });
+    const inside: string[] = [];
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      renewSession: async (_held, refresh) => {
+        inside.push("enter");
+        const renewed = await refresh();
+        inside.push(`leave ${renewed.accessToken}`);
+        return renewed;
+      },
+    });
+    client.restoreSession(SESSION);
+
+    await client.fetchUser();
+
+    expect(inside).toEqual(["enter", "leave access-2"]);
+    expect(client.session?.accessToken).toBe("access-2");
+  });
+
+  it("keeps the held session and stores nothing when the renewal hook refuses", async () => {
+    const stub = recordingFetch(() => jsonResponse(401, { code: "notAuthorized" }));
+    const stored: Array<ZeropsSession | null> = [];
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        stored.push(session);
+      },
+      renewSession: async () => {
+        throw new ZeropsApiError("Another tab changed this session.", "expired-session", 401);
+      },
+    });
+    client.restoreSession(SESSION);
+
+    const error = await client.fetchUser().catch((cause: unknown) => cause);
+
+    expect((error as ZeropsApiError).kind).toBe("expired-session");
+    expect(client.session).toBe(SESSION);
+    expect(stored).toEqual([]);
+  });
+
+  it("adopts another tab's renewed session without ending a request in flight", async () => {
+    let answer!: (response: Response) => void;
+    const stub = recordingFetch(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const stored: Array<ZeropsSession | null> = [];
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        stored.push(session);
+      },
+    });
+    client.restoreSession(SESSION);
+    const inFlight = client.fetchUser();
+    await Promise.resolve();
+
+    client.adoptRenewedSession({ accessToken: "access-2", refreshToken: "refresh-2" });
+    answer(jsonResponse(200, { id: "user-1", email: "a@b.c", clientUserList: [] }));
+
+    expect((await inFlight).id).toBe("user-1");
+    expect(client.session?.accessToken).toBe("access-2");
+    expect(stored).toEqual([]);
+  });
+
   it("calls globalThis.fetch bound to globalThis so a brand-checked implementation works", async () => {
     const originalFetch = globalThis.fetch;
     let calledWithGlobalThis = false;

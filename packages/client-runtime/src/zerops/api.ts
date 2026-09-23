@@ -634,6 +634,17 @@ export interface ZeropsApiClientOptions {
   readonly now?: () => number;
   /** Fired whenever the held session changes — persist it, or clear on null. */
   readonly onSessionChange?: (session: ZeropsSession | null) => Promise<void> | void;
+  /**
+   * Runs every renewal of `stale`. It either runs `refresh` — the network
+   * refresh, which also stores its answer — or answers a session another tab
+   * already renewed for this login, which is held without being stored again.
+   * A refusal it throws leaves the held session and storage as they are.
+   * Without it, every renewal is a network refresh.
+   */
+  readonly renewSession?: (
+    stale: ZeropsSession,
+    refresh: () => Promise<ZeropsSession>,
+  ) => Promise<ZeropsSession>;
 }
 
 export interface ZeropsDataHttpRequest {
@@ -839,6 +850,7 @@ export class ZeropsApiClient {
   readonly #fetch: FetchImplementation;
   readonly #now: () => number;
   readonly #onSessionChange: (session: ZeropsSession | null) => Promise<void> | void;
+  readonly #renewSession: NonNullable<ZeropsApiClientOptions["renewSession"]>;
   #session: ZeropsSession | null = null;
   #generation = 0;
   #refreshPromise: Promise<ZeropsSession> | null = null;
@@ -853,6 +865,7 @@ export class ZeropsApiClient {
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#now = options.now ?? (() => performance.timeOrigin + performance.now());
     this.#onSessionChange = options.onSessionChange ?? (() => undefined);
+    this.#renewSession = options.renewSession ?? ((_stale, refresh) => refresh());
   }
 
   get session(): ZeropsSession | null {
@@ -892,6 +905,14 @@ export class ZeropsApiClient {
   /** Adopts a session read back from storage without re-notifying the owner. */
   restoreSession(session: ZeropsSession): void {
     this.#nextGeneration();
+    this.#session = session;
+  }
+
+  /**
+   * Holds a session another tab renewed for this same login. Requests in
+   * flight keep their generation, and nothing is stored: the other tab did.
+   */
+  adoptRenewedSession(session: ZeropsSession): void {
     this.#session = session;
   }
 
@@ -2951,7 +2972,7 @@ export class ZeropsApiClient {
     }
 
     this.#refreshClearOnFailure = clearOnFailure;
-    this.#refreshPromise = (async () => {
+    const refresh = async () => {
       const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
         method: "POST",
         headers: {
@@ -2984,6 +3005,12 @@ export class ZeropsApiClient {
       }
       await this.#setSession(session);
       return session;
+    };
+    this.#refreshPromise = (async () => {
+      const renewed = await this.#renewSession(current, refresh);
+      this.#assertGeneration(generation);
+      if (renewed !== this.#session) this.adoptRenewedSession(renewed);
+      return renewed;
     })().finally(() => {
       this.#refreshPromise = null;
       this.#refreshClearOnFailure = true;
