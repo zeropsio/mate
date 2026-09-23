@@ -29,9 +29,9 @@
  *   {@link FORGE_DECLARATIONS_BACKSTOP_MS}, a commit's statuses every
  *   {@link FORGE_PENDING_STATUS_MS} while one is pending, for at most
  *   {@link FORGE_PENDING_STATUS_LIMIT_MS}, and at the list backstop while CI has posted none; an
- *   org the broker has not made yet on the backoff ladder until it is. They run only while the key
- *   is demanded and the tab is visible. What commits named by their shas hold never changes, and
- *   no invalidation touches it.
+ *   org or a repository the broker has not made yet on the backoff ladder until it is. They run
+ *   only while the key is demanded and the tab is visible. What commits named by their shas hold
+ *   never changes, and no invalidation touches it.
  * - A failed read retries on the backoff ladder (`retryPolicy.ts`), keeping the value it had. A
  *   read whose Gitea 401 no token recovered is no answer: the key waits for the session to be
  *   readable again and reads then.
@@ -147,6 +147,15 @@ export type ForgeOrganization =
   | { readonly kind: "made"; readonly organization: GiteaOrganization }
   | { readonly kind: "pending" };
 
+/**
+ * A repository as Gitea answers for it: made, with what this person may do in it, or not made
+ * yet — the broker makes a group's repositories shortly after the group, a real and temporary
+ * state, never "missing".
+ */
+export type ForgeRepository =
+  | { readonly kind: "made"; readonly repository: GiteaRepository }
+  | { readonly kind: "pending" };
+
 /** A pull request as last read, and what its reads have shown about whether it merges. */
 export interface PullRequestFact {
   readonly pull: GiteaPullRequest;
@@ -177,7 +186,7 @@ interface ForgeValues {
   readonly compare: ReadonlyArray<GiteaCommit>;
   readonly commit: GiteaCommitDetail;
   /** The repository with what this person may do in it — never the mirrored role (guide 4.5). */
-  readonly repository: GiteaRepository;
+  readonly repository: ForgeRepository;
 }
 
 export type ForgeValue<F extends ForgeFact> = ForgeValues[F["kind"]];
@@ -302,6 +311,11 @@ function keyOf(fact: ForgeFact): string {
  */
 const statusesDone = (statuses: ReadonlyArray<GiteaCommitStatus>): boolean =>
   statuses.length > 0 && !statuses.some((status) => status.state === "pending");
+
+/** An org or a repository the broker has not made yet, which the ladder asks about again. */
+const notMadeYet = (fact: ForgeFact, value: unknown): boolean =>
+  (fact.kind === "organization" || fact.kind === "repository") &&
+  (value as ForgeOrganization | ForgeRepository).kind === "pending";
 
 const sameRepository = (fact: ForgeFact, repository: Repository): boolean =>
   "repo" in fact &&
@@ -454,10 +468,11 @@ async function readFact(client: GiteaClient, fact: ForgeFact): Promise<Outcome> 
         : { kind: "value", value: detail, coverage: "complete" };
     }
     case "repository": {
+      // As with the org, only a 404 is "not made yet".
       const repository = await client.getRepository(fact.owner, fact.repo);
-      return repository === undefined
-        ? { kind: "absent" }
-        : { kind: "value", value: repository, coverage: "complete" };
+      const value: ForgeRepository =
+        repository === undefined ? { kind: "pending" } : { kind: "made", repository };
+      return { kind: "value", value, coverage: "complete" };
     }
   }
 }
@@ -633,7 +648,6 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       case "branch":
       case "branch-pulls":
       case "commits":
-      case "repository":
       case "file":
         return mono + FORGE_LIST_BACKSTOP_MS;
       case "declarations":
@@ -641,9 +655,13 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       case "compare":
       case "commit":
         return null;
-      case "organization": {
-        // Made is final. Not made yet is asked about again on the ladder until it is.
-        if ((value as ForgeOrganization).kind === "made") return null;
+      case "organization":
+      case "repository": {
+        // Not made yet is asked about again on the ladder until it is. A made org is final; a
+        // made repository's permissions can change, so it is read at the list backstop.
+        if (!notMadeYet(entry.fact, value)) {
+          return entry.fact.kind === "organization" ? null : mono + FORGE_LIST_BACKSTOP_MS;
+        }
         const retry = scheduleRetry(entry.backoff, wall, ports.random);
         entry.backoff = retry.backoff;
         return mono + (retry.retryAtMs - wall);
@@ -773,10 +791,8 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       case "value":
         break;
     }
-    // An org not made yet climbs the ladder across its reads (`backstopAfter`).
-    if (fact.kind !== "organization" || (outcome.value as ForgeOrganization).kind === "made") {
-      entry.backoff = INITIAL_BACKOFF;
-    }
+    // An org or a repository not made yet climbs the ladder across its reads (`backstopAfter`).
+    if (!notMadeYet(fact, outcome.value)) entry.backoff = INITIAL_BACKOFF;
     if (fact.kind === "pull") {
       admitPull(entry, readOrdinal, at, outcome.value as GiteaPullRequest);
     } else {

@@ -648,7 +648,7 @@ describe("forge store facts the flow's surfaces read (DESIGN §2.D D3)", () => {
     expect(sent(`commits shop/app ${String(FORGE_COMMITS_READ)}`)).toHaveLength(2);
   });
 
-  it("a repository with the person's permissions is unread until read, known after, and gone when Gitea has none", async () => {
+  it("a repository with the person's permissions is unread until read, known after, and one the broker has not made yet is pending on the ladder until it is made", async () => {
     const { clock, store, sent, pending } = rig();
     const app: ForgeFact = { kind: "repository", origin: ORIGIN, owner: "shop", repo: "app" };
     const web: ForgeFact = { kind: "repository", origin: ORIGIN, owner: "shop", repo: "web" };
@@ -659,10 +659,31 @@ describe("forge store facts the flow's surfaces read (DESIGN §2.D D3)", () => {
     const permitted = { ...repo("app"), permissions: { admin: false, push: true, pull: true } };
     await pending("repository shop/app").answer(permitted);
     await pending("repository shop/web").answer(undefined);
-    expect(store.read(app)).toMatchObject({ state: "known", value: permitted });
-    expect(store.read(web)).toMatchObject({ state: "gone", evidence: "direct-not-found" });
+    expect(store.read(app)).toMatchObject({
+      state: "known",
+      value: { kind: "made", repository: permitted },
+    });
+    expect(store.read(web)).toMatchObject({ state: "known", value: { kind: "pending" } });
+
+    // A group seconds old: the broker makes its repositories shortly, so it is asked again at
+    // 2 s, then 4 s after that.
+    await clock.advance(1_999);
+    expect(sent("repository shop/web")).toHaveLength(1);
+    await clock.advance(1);
+    await pending("repository shop/web").answer(undefined);
+    await clock.advance(3_999);
+    expect(sent("repository shop/web")).toHaveLength(2);
+    await clock.advance(1);
+    await pending("repository shop/web").answer(repo("web"));
+    expect(store.read(web)).toMatchObject({
+      state: "known",
+      value: { kind: "made", repository: repo("web") },
+    });
+
+    // A made repository's permissions can change: it is read again at the list backstop.
     await clock.advance(FORGE_LIST_BACKSTOP_MS);
     expect(sent("repository shop/app")).toHaveLength(2);
+    expect(sent("repository shop/web")).toHaveLength(4);
   });
 
   it("a head branch's pull requests, whatever their state, are unread until read, known after, each with its MergeState", async () => {
