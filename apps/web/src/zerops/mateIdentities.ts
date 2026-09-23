@@ -78,12 +78,18 @@ export type ZeropsMateAt =
 /**
  * Who lives in each environment, as far as the candidate list has been read
  * (DESIGN M4, M5): an answer per environment a read row reaches, and whether
- * a list read in full has said that nobody lives anywhere else.
+ * nobody lives anywhere else.
  */
 export interface ZeropsMateDirectory {
   /** Each environment a read row reaches: its Mate, or null where the row holds none. */
   readonly decided: ReadonlyMap<EnvironmentId, ZeropsMateIdentity | null>;
-  /** Every environment `decided` leaves out holds nobody; otherwise it is not known yet. */
+  /**
+   * Every environment `decided` leaves out holds nobody; otherwise it is not
+   * known yet. The word is the last one given — a list read in full, the
+   * reload cache of one, or a session with no account — and a list read in
+   * part since keeps it: an environment that list has not reached reads
+   * nobody on that older word until a list is read in full again.
+   */
   readonly complete: boolean;
 }
 

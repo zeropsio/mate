@@ -235,8 +235,10 @@ const NOBODY_ANYWHERE: ZeropsMateDirectory = { decided: new Map(), complete: tru
  * and says nobody lives anywhere it found no Mate. One known in part adds the
  * names it has read and decides only the environments its read rows reach
  * (M4): a Mate there is added, one that no longer lives there is dropped, and
- * every other environment keeps its answer — unknown until a list has been
- * read in full, since it cannot say nobody lives where it has not read (M5).
+ * every other environment keeps its answer, since this list cannot say nobody
+ * lives where it has not read (M5). That answer is the last word given
+ * (`ZeropsMateDirectory.complete`): unknown before any, nobody after a list
+ * read in full, its cache, or a signed-out session.
  * A session still being checked publishes nothing either; one with no Zerops
  * account holds no environment and no Mate.
  */
