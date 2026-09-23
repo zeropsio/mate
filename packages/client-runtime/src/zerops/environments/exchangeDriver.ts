@@ -175,8 +175,8 @@ interface Entry {
   /** The ops in flight, by attempt. */
   readonly inFlight: Map<number, AbortController>;
   /**
-   * The exchange attempt whose accepted credential is being installed; a Connect answers after
-   * it. Null while no install is pending.
+   * The exchange attempt whose accepted credential is being installed: an older one's install
+   * answers too late to count. Null while no install is pending.
    */
   installing: number | null;
   /** The reason the user's last Connect gave; the target's exchanges carry it. */
@@ -406,9 +406,10 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
         // A newer accepted credential's install owns the entry now.
         if (entries.get(key) !== entry || entry.installing !== attempt) return;
         entry.installing = null;
-        if (!outcome.ok) {
-          step(key, { type: "INSTALL_FAILED", environmentId: answer.environmentId });
-        }
+        step(key, {
+          type: outcome.ok ? "INSTALLED" : "INSTALL_FAILED",
+          environmentId: answer.environmentId,
+        });
       });
     ports
       .install({ key, environmentId: answer.environmentId, credential: answer.credential })
@@ -479,12 +480,12 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
 
   // ── Publication ────────────────────────────────────────────────────────────────────────────
 
-  const outcomeOf = (entry: Entry): ConnectOutcome | null => {
-    if (entry.installing !== null) return null;
-    const machine = entry.machine;
+  const outcomeOf = (machine: EnvironmentMachine): ConnectOutcome | null => {
     const credential = machine.credential;
     switch (credential.kind) {
       case "held":
+        // A Connect answers once the registry took the credential.
+        if (!credential.installed) return null;
         return { _tag: "Connected", environmentId: credential.environmentId };
       case "none":
       case "exchanging":
@@ -511,7 +512,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     if (changed) published = new Map([...entries].map(([key, entry]) => [key, entry.machine]));
     for (const [key, resolvers] of connects) {
       const entry = entries.get(key);
-      const outcome = entry === undefined ? null : outcomeOf(entry);
+      const outcome = entry === undefined ? null : outcomeOf(entry.machine);
       if (outcome === null) continue;
       connects.delete(key);
       for (const resolve of resolvers) resolve(outcome);

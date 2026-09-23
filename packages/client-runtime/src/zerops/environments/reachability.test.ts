@@ -70,7 +70,13 @@ const machine = (overrides: Partial<EnvironmentMachine>): EnvironmentMachine => 
   ...overrides,
 });
 
-const HELD = { kind: "held", environmentId: ENV_A, staleBlock: false, rereading: null } as const;
+const HELD = {
+  kind: "held",
+  environmentId: ENV_A,
+  installed: true,
+  staleBlock: false,
+  rereading: null,
+} as const;
 const CONNECTED = { phase: "connected", since: at(NOW - 5_000) } as const;
 
 /**
@@ -105,7 +111,13 @@ const ROWS: ReadonlyArray<{
     row: 2,
     name: "the asked environment was replaced by a redeploy",
     machine: machine({
-      credential: { kind: "held", environmentId: ENV_B, staleBlock: false, rereading: null },
+      credential: {
+        kind: "held",
+        environmentId: ENV_B,
+        installed: true,
+        staleBlock: false,
+        rereading: null,
+      },
       link: CONNECTED,
       superseded: new Map([[ENV_A, ENV_B]]),
     }),
@@ -171,6 +183,7 @@ const ROWS: ReadonlyArray<{
       credential: {
         kind: "held",
         environmentId: ENV_A,
+        installed: true,
         staleBlock: false,
         rereading: { attempt: 3, deadline: at(NOW + 8_000), block: "configuration" },
       },

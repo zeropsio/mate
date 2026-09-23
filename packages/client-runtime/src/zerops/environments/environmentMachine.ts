@@ -156,6 +156,8 @@ export type Credential =
   | {
       readonly kind: "held";
       readonly environmentId: EnvironmentId;
+      /** The registry took it; until then the ladder it was exchanged on still counts. */
+      readonly installed: boolean;
       /**
        * The link's block was published for the credential this one replaced. Installing this one
        * retries the link (`rotateCredential`), so the next LINK event is the one judged.
@@ -280,6 +282,8 @@ export type EnvironmentEvent =
       readonly failure: ExchangeFailure;
       readonly descriptor: DescriptorFacts | null;
     }
+  /** The held credential is registered or rotated in. */
+  | { readonly type: "INSTALLED"; readonly environmentId: EnvironmentId }
   /** The held credential could not be installed: nothing was registered or rotated for it. */
   | { readonly type: "INSTALL_FAILED"; readonly environmentId: EnvironmentId }
   | { readonly type: "ROLE_CHANGED" }
@@ -825,11 +829,10 @@ const apply = (
           record !== null && record !== event.environmentId
             ? supersede(next.superseded, record, event.environmentId)
             : next.superseded,
-        failures: 0,
-        ladder: INITIAL_BACKOFF,
         credential: {
           kind: "held",
           environmentId: event.environmentId,
+          installed: false,
           staleBlock: machine.link.phase === "blocked",
           rereading: null,
         },
@@ -850,8 +853,26 @@ const apply = (
       }
       return refuse(next, event.failure.reason, out);
     }
+    case "INSTALLED":
+      if (
+        credential.kind !== "held" ||
+        credential.environmentId !== event.environmentId ||
+        credential.installed
+      ) {
+        return machine;
+      }
+      return {
+        ...machine,
+        failures: 0,
+        ladder: INITIAL_BACKOFF,
+        credential: { ...credential, installed: true },
+      };
     case "INSTALL_FAILED":
-      if (credential.kind !== "held" || credential.environmentId !== event.environmentId) {
+      if (
+        credential.kind !== "held" ||
+        credential.environmentId !== event.environmentId ||
+        credential.installed
+      ) {
         return machine;
       }
       // A link already published means an earlier credential was installed: this was a reconnect.

@@ -342,6 +342,79 @@ describe("environment machine (DESIGN §4.4)", () => {
     expect(retried.machine.credential.kind).toBe("exchanging");
   });
 
+  it("a credential that keeps failing to install climbs the ladder to the cap", () => {
+    let run = drive(initialEnvironment({ record: null }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    const retryDelays: Array<number> = [];
+    for (let failure = 1; failure <= 5; failure += 1) {
+      run = drive(
+        run.machine,
+        [
+          {
+            type: "EXCHANGE_SUCCEEDED",
+            attempt: lastExchange(run.machine),
+            environmentId: ENV_A,
+            descriptor: null,
+          },
+          { type: "INSTALL_FAILED", environmentId: ENV_A },
+        ],
+        run.nowMs,
+      );
+      const credential = run.machine.credential;
+      if (credential.kind !== "backoff") throw new Error("no backoff");
+      retryDelays.push(credential.retryAt.wall - run.nowMs);
+      run = drive(run.machine, [{ type: "TICK" }], run.nowMs);
+    }
+    expect(retryDelays).toEqual([2_000, 4_000, 8_000, 15_000, CAPPED_RETRY_MS]);
+  });
+
+  it("the ladder starts over once the registry took the credential", () => {
+    const started = drive(initialEnvironment({ record: null }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    const failed = drive(
+      started.machine,
+      [
+        {
+          type: "EXCHANGE_FAILED",
+          attempt: lastExchange(started.machine),
+          failure: { class: "retryable", cause: { kind: "network" } },
+          descriptor: null,
+        },
+        { type: "TICK" },
+      ],
+      started.nowMs,
+    );
+    const held = drive(
+      failed.machine,
+      [
+        {
+          type: "EXCHANGE_SUCCEEDED",
+          attempt: lastExchange(failed.machine),
+          environmentId: ENV_A,
+          descriptor: null,
+        },
+      ],
+      failed.nowMs,
+    ).machine;
+    expect(held).toMatchObject({ credential: { kind: "held", installed: false }, failures: 1 });
+
+    // An answer for a credential this machine no longer holds changes nothing.
+    expect(drive(held, [{ type: "INSTALLED", environmentId: ENV_B }]).machine).toBe(held);
+
+    const installed = drive(held, [{ type: "INSTALLED", environmentId: ENV_A }]).machine;
+    expect(installed).toMatchObject({
+      credential: { kind: "held", environmentId: ENV_A, installed: true },
+      failures: 0,
+      ladder: { rung: 0 },
+    });
+  });
+
   it("counts one auth rejection per rotated credential and backs off on the third within two minutes", () => {
     /** The link rejects the held credential; the re-exchange succeeds and installs a new one. */
     const rejectAndRotate = (machine: EnvironmentMachine, nowMs: number): Run => {

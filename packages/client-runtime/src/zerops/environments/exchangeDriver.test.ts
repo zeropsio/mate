@@ -522,6 +522,11 @@ describe("exchange driver (DESIGN §4.4)", () => {
       expect(exchanges).toHaveLength(2);
       expect(installs).toHaveLength(2);
       expect(reach(shop)).toEqual({ kind: "ready", notice: null });
+      // The registry took the second one: the ladder starts over.
+      expect(driver.machine(keyOf(shop))).toMatchObject({
+        credential: { kind: "held", installed: true },
+        failures: 0,
+      });
     });
   });
 
