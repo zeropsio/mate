@@ -228,18 +228,26 @@ describe("the account runtime", () => {
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           yield* settle;
-          // The first round fails: the next waits 2 s by the session backoff.
+          // Rounds fail up the session backoff until the next one waits 60 s.
+          for (const rung of [2, 4, 8, 15, 30]) {
+            yield* grant.answer({ kind: "server", status: 503 });
+            yield* clock.advance(rung * SECOND);
+            yield* settle;
+          }
           yield* grant.answer({ kind: "server", status: 503 });
-          expect(grant.rounds()).toBe(1);
+          expect(grant.rounds()).toBe(6);
 
           yield* page.emit({ type: "visibility", hidden: true });
           yield* page.emit({ type: "visibility", hidden: false });
-          expect(grant.rounds()).toBe(1);
+          expect(grant.rounds()).toBe(6);
 
           yield* page.emit({ type: "visibility", hidden: true });
-          yield* clock.machineSleep(31 * SECOND);
+          yield* clock.advance(31 * SECOND);
+          yield* settle;
+          expect(grant.rounds()).toBe(6);
+          // Back before the backoff's 60 s: the wake alone starts the round.
           yield* page.emit({ type: "visibility", hidden: false });
-          expect(grant.rounds()).toBe(2);
+          expect(grant.rounds()).toBe(7);
         }),
       ),
   );
