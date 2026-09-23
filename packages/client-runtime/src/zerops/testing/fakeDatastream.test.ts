@@ -4,6 +4,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 
 import {
+  account,
   directTicket,
   identity,
   organization,
@@ -11,19 +12,40 @@ import {
   queryRegistration,
   scope,
 } from "../data/__fixtures__/index.ts";
-import type { PlatformObservation, ReceiverHandle } from "../data/types.ts";
+import {
+  ZeropsAccountId,
+  type OrganizationRef,
+  type PlatformObservation,
+  type ReceiverHandle,
+} from "../data/types.ts";
 import { makeFakeDatastream } from "./fakeDatastream.ts";
 import { makeFakeZeropsRest } from "./fakeZeropsRest.ts";
 
 const context = { abortSignal: new AbortController().signal, deadlineMs: Number.MAX_SAFE_INTEGER };
 
+/** The data fixtures' account, a member of the fixtures' organization, and its projects. */
 function platform() {
   const rest = makeFakeZeropsRest();
-  rest.addProject({ id: "project-1", clientId: "org-1", name: "One", status: "ACTIVE" });
-  rest.addProject({ id: "project-2", clientId: "org-1", name: "Two", status: "ACTIVE" });
+  const clientId = organization.organizationId;
+  rest.addUser({
+    user: {
+      id: account.accountId,
+      email: "person@example.test",
+      clientUserList: [{ id: "cu-1", clientId, roleCode: "OWNER" }],
+    },
+    password: "secret",
+  });
+  rest.addProject({ id: "project-1", clientId, name: "One", status: "ACTIVE" });
+  rest.addProject({ id: "project-2", clientId, name: "Two", status: "ACTIVE" });
   rest.addProject({ id: "elsewhere", clientId: "org-2", name: "Other", status: "ACTIVE" });
   return rest;
 }
+
+/** The fixtures' organization as someone outside it addresses it. */
+const outsiders: OrganizationRef = {
+  ...organization,
+  account: { ...account, accountId: ZeropsAccountId.make("outsider") },
+};
 
 const projectIds = (observations: ReadonlyArray<PlatformObservation>) =>
   observations.flatMap((observation) =>
@@ -76,6 +98,31 @@ describe("FakeDatastream", () => {
         Exit.fail(expect.objectContaining({ _tag: "ZeropsDataAdapterError", kind: "not-found" })),
       );
     }),
+  );
+
+  it.effect("answers nothing of an organization to a person outside it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const datastream = makeFakeDatastream(platform());
+        const outsiderScope = { ...scope(), account: outsiders.account };
+
+        const opened = yield* Effect.exit(
+          datastream.adapter.openReceiver(outsiderScope, outsiders, identity().receiver, context),
+        );
+        const read = yield* Effect.exit(
+          datastream.adapter.read(
+            directTicket({ kind: "project", ref: { ...project(), organization: outsiders } }),
+            context,
+          ),
+        );
+
+        const forbidden = Exit.fail(
+          expect.objectContaining({ _tag: "ZeropsDataAdapterError", kind: "forbidden" }),
+        );
+        expect(opened).toEqual(forbidden);
+        expect(read).toEqual(forbidden);
+      }),
+    ),
   );
 
   it.effect("holds registrations until the test releases them", () =>

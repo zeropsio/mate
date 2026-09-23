@@ -60,6 +60,8 @@ export interface FakeZeropsRest {
   ) => void;
   readonly project: (projectId: string) => ZeropsProject | undefined;
   readonly projectsOf: (clientId: string) => ReadonlyArray<ZeropsProject>;
+  /** Whether the person belongs to the organization, the check every organization read makes. */
+  readonly memberOf: (userId: string, clientId: string) => boolean;
   /** Every integration token minted, in minting order, with the bearers that touched it. */
   readonly integrationTokens: () => ReadonlyArray<FakeIntegrationToken>;
   /** Minted and never deleted. */
@@ -318,6 +320,7 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     },
     project: (projectId) => projects.get(projectId),
     projectsOf,
+    memberOf,
     integrationTokens: () => [...integrationTokens],
     orphanTokens: () => integrationTokens.filter(({ deletedWith }) => deletedWith === null),
     failProject: (projectId, status) => {
