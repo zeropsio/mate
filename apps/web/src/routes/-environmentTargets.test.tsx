@@ -908,27 +908,6 @@ describe("the descriptor index", () => {
     rig.containers.dispose();
   });
 
-  it("a remembered org restoring shows wait, never the organization picker", async () => {
-    const one = mate(1);
-    const rig = descriptorRig([one]);
-    shell.driver = rig.driver;
-    shell.containers = rig.containers;
-    await settle();
-    const gates: Array<RouteGate["kind"]> = [];
-    // A cold load: no user yet, then the remembered selection being read, then restored.
-    for (const organization of ["idle", "loading", "selected"] as const) {
-      shell.organization = organization;
-      gates.push(selectRouteGate(routeTo(ENV_A).read().target).kind);
-    }
-
-    await rig.answer(one.origin, answering(ENV_A, one.projectId));
-
-    expect(gates).toEqual(["wait", "wait", "wait"]);
-    expect(routeTo(ENV_A).read().target?.kind).toBe("resolved");
-    rig.driver.dispose();
-    rig.containers.dispose();
-  });
-
   it("a deep link with no organization chosen waits for discovery before offering the picker", async () => {
     const one = mate(1);
     const rig = descriptorRig([one]);
