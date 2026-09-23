@@ -30,6 +30,8 @@ import {
   giteaRepositoryLine,
   type GiteaOverviewOwner,
 } from "@t3tools/client-runtime/zerops";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { heldCandidates, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { ExternalLinkIcon } from "lucide-react";
@@ -204,6 +206,25 @@ export function ZeropsGiteaOverview({
   }
 }
 
+/**
+ * `links` → `Links`: a Gitea org is a group's slug, never its name. Every owner the flow knows is
+ * kept whatever the listing has read; one whose project the listing has not named yet is called
+ * by its Gitea org, an address that is true, never by nothing.
+ */
+export function giteaOwnerGroups(
+  listing: Known<ReadonlyArray<CandidateRow>>,
+  slugs: ReadonlyMap<string, string>,
+): ReadonlyMap<string, { readonly groupId: string; readonly name: string }> {
+  const byOwner = new Map<string, { readonly groupId: string; readonly name: string }>();
+  // Order is irrelevant here — a lookup by groupId, not a listing.
+  const named = buildZeropsGroupTree(heldCandidates(listing).rows, { order: "name" }).groups;
+  for (const [groupId, slug] of slugs) {
+    const name = named.find((entry) => entry.group.groupId === groupId)?.group.name;
+    byOwner.set(slug, { groupId, name: name ?? slug });
+  }
+  return byOwner;
+}
+
 export function ZeropsGiteaPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
@@ -218,19 +239,9 @@ export function ZeropsGiteaPage() {
     mateName,
   });
   const navigate = useNavigate();
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
 
-  /** `links` → `Links`: a Gitea org is a group's slug, never its name. */
-  const groupOfOwner = useMemo(() => {
-    const byOwner = new Map<string, { readonly groupId: string; readonly name: string }>();
-    // Order is irrelevant here — a lookup by groupId, not a listing.
-    const named = buildZeropsGroupTree(candidates, { order: "name" }).groups;
-    for (const [groupId, slug] of flow.slugs) {
-      const name = named.find((entry) => entry.group.groupId === groupId)?.group.name;
-      byOwner.set(slug, { groupId, name: name ?? slug });
-    }
-    return byOwner;
-  }, [candidates, flow.slugs]);
+  const groupOfOwner = useMemo(() => giteaOwnerGroups(listing, flow.slugs), [flow.slugs, listing]);
 
   const ownerName = useCallback(
     (owner: string) => groupOfOwner.get(owner)?.name ?? owner,

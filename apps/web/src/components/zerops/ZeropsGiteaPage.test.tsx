@@ -1,8 +1,14 @@
 import type { GiteaOverviewOwner } from "@t3tools/client-runtime/zerops";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ZeropsGiteaOverview, type ZeropsGiteaOverviewState } from "./ZeropsGiteaPage";
+import {
+  giteaOwnerGroups,
+  ZeropsGiteaOverview,
+  type ZeropsGiteaOverviewState,
+} from "./ZeropsGiteaPage";
 
 const OWNERS: ReadonlyArray<GiteaOverviewOwner> = [
   {
@@ -105,5 +111,40 @@ describe("ZeropsGiteaOverview", () => {
     expect(html).toContain('data-zerops-surface="gitea-read-trouble"');
     expect(html).toContain("Gitea answered 500.");
     expect(html).toContain('data-zerops-gitea-repository="todo/appdev"');
+  });
+});
+
+describe("giteaOwnerGroups", () => {
+  const slugs = new Map([["group-1", "todo"]]);
+  const member: CandidateRow = {
+    key: "todo-dev",
+    project: {
+      id: "todo-dev",
+      name: "Todo dev",
+      status: "ACTIVE",
+      tagList: ["mate:g:group-1", "mate:role:dev", "mate:name:Todo"],
+    },
+    group: "unavailable",
+    presence: "known",
+  };
+
+  it("names an owner after its project once the listing has read it", () => {
+    const listing: Known<ReadonlyArray<CandidateRow>> = {
+      state: "known",
+      value: [member],
+      asOf: { ordinal: 1, atMs: 10 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+
+    expect(giteaOwnerGroups(listing, slugs)).toEqual(
+      new Map([["todo", { groupId: "group-1", name: "Todo" }]]),
+    );
+  });
+
+  it("keeps every owner while the listing is unread, named by its Gitea org, never dropped", () => {
+    expect(giteaOwnerGroups({ state: "unread", waitingFor: null }, slugs)).toEqual(
+      new Map([["todo", { groupId: "group-1", name: "todo" }]]),
+    );
   });
 });
