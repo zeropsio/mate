@@ -2800,7 +2800,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     );
     switch (target.kind) {
       case "release":
-        return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;
+        // The version is the cell's line 2 (`v0.1.0 ready · 1 change`); the
+        // verb beside it is the one word, so the line stays readable.
+        return (
+          <ZeropsReleaseVerb groupId={group.groupId} label={flowVerbLabel("release", false)} />
+        );
       case "add-production": {
         // Whose production is — the person's to add, not the Mate's — is the
         // verb's to say where it is pressed; its cell stays one line. Beside
