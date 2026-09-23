@@ -3,8 +3,10 @@
  * account runtime holds, read off its grant and the data runtime's own records.
  */
 import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { account, organization, project } from "../data/__fixtures__/index.ts";
+import { account, organization, project, scope } from "../data/__fixtures__/index.ts";
 import {
   initialGrant,
   transitionGrant,
@@ -13,15 +15,23 @@ import {
   type Instant,
   type ProjectOutcome,
 } from "../data/access/grant.ts";
+import type { AccessVerifier } from "../data/access/verifier.ts";
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
+import { makeZeropsDataRuntime } from "../data/runtime.ts";
 import {
   AccountEpoch,
   type AccessState,
   type ProjectEffectiveAccess,
   type ProjectRef,
   type RuntimeInterestDescriptor,
+  type ZeropsDataAdapter,
 } from "../data/types.ts";
-import { inventoryDemand, inventoryProjectRefs } from "./inventoryDemand.ts";
+import {
+  heldEvidence,
+  holdInventoryDemand,
+  inventoryDemand,
+  inventoryProjectRefs,
+} from "./inventoryDemand.ts";
 
 const MINUTE = 60_000;
 const T0: Instant = { wall: Date.UTC(2026, 8, 23, 10, 0, 0), mono: 10 * MINUTE };
@@ -176,4 +186,70 @@ describe("inventoryProjectRefs", () => {
 
     expect(inventoryProjectRefs([A], access)).toEqual([A, C]);
   });
+});
+
+describe("holdInventoryDemand", () => {
+  /** Lets every task already scheduled run, the scheduled publication among them. */
+  const settle = Effect.gen(function* () {
+    for (let turn = 0; turn < 20; turn++) {
+      yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+      yield* Effect.yieldNow;
+    }
+  });
+
+  /** Every socket login waits forever, so no establishment publishes anything of its own. */
+  const silentAdapter: ZeropsDataAdapter = {
+    openReceiver: () => Effect.never,
+    register: () => Effect.never,
+    read: () => Effect.never,
+    execute: () => Effect.never,
+    closeReceiver: () => Effect.void,
+  };
+
+  /** Each round lists the organization and `projects`, and verifies every one as owned. */
+  const verifying = (projects: ReadonlyArray<ProjectRef>): AccessVerifier => ({
+    verifyRound: ({ round, report }) =>
+      Effect.gen(function* () {
+        yield* report({ type: "ROUND_ACCOUNT", round, organizations, projects });
+        for (const ref of projects)
+          yield* report({ type: "ROUND_PROJECT", round, project: ref, outcome: owner(ref) });
+      }),
+    verifyProject: () => Effect.never,
+  });
+
+  it.effect("38 leases taken in one reconcile publish the root once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const projects = Array.from({ length: 38 }, (_, index) => project(`project-${index}`));
+        const registry = AtomRegistry.make();
+        let opaque = 0;
+        const data = yield* makeZeropsDataRuntime({
+          scope: scope(),
+          adapter: silentAdapter,
+          atomRegistry: registry,
+          makeOpaqueId: () => `opaque-${++opaque}`,
+        });
+        yield* Effect.addFinalizer(() =>
+          data
+            .shutdown("application-close")
+            .pipe(Effect.andThen(Effect.sync(() => registry.dispose()))),
+        );
+        yield* data.access.start({ verifier: verifying(projects), hidden: false, online: true });
+        yield* settle;
+        expect(heldEvidence(registry.get(data.access.view).machine)?.projects.size).toBe(38);
+
+        let published = 0;
+        const unsubscribe = registry.subscribe(data.stateAtom, () => {
+          published += 1;
+        });
+        yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+        yield* holdInventoryDemand({ data, atomRegistry: registry });
+        yield* settle;
+
+        const held = [...(yield* data.state).interests.values()].filter(({ leases }) => leases > 0);
+        expect(held).toHaveLength(39);
+        expect(published).toBe(1);
+      }),
+    ),
+  );
 });

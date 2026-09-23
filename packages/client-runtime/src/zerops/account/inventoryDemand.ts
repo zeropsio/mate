@@ -10,8 +10,8 @@
  *   once the data runtime holds it as anything but ACTIVE.
  */
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Queue from "effect/Queue";
+import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
@@ -22,6 +22,7 @@ import {
   projectKeyOf,
   type AccessState,
   type InterestKey,
+  type InterestLease,
   type ProjectRef,
   type RuntimeInterestDescriptor,
 } from "../data/types.ts";
@@ -119,6 +120,8 @@ export function inventoryDemand(
 /**
  * Holds the account's inventory demand on its data runtime until the scope closes: a lease for
  * each inventory `inventoryDemand` names, taken as it is named and released as it stops being.
+ * The inventories named together are leased together, so the account hears them in one
+ * publication.
  */
 export const holdInventoryDemand = (input: {
   readonly data: ManagedZeropsDataRuntime;
@@ -139,11 +142,11 @@ export const holdInventoryDemand = (input: {
       }),
     );
     const wanted = yield* Queue.sliding<ReadonlyArray<RuntimeInterestDescriptor>>(1);
-    /** Each lease held, by its interest's key, in a scope of its own. */
-    const held = new Map<InterestKey, Scope.Closeable>();
-    yield* Effect.addFinalizer(() =>
-      Effect.forEach(held.values(), (lease) => Scope.close(lease, Exit.void), { discard: true }),
-    );
+    /** Each lease held, by its interest's key. */
+    const held = new Map<InterestKey, InterestLease>();
+    // Closed after the reconcile below is interrupted, it releases whatever is still held.
+    const leases = yield* Scope.make();
+    yield* Effect.addFinalizer((exit) => Scope.close(leases, exit));
     const reconcile = (descriptors: ReadonlyArray<RuntimeInterestDescriptor>) =>
       Effect.gen(function* () {
         const next = new Map(
@@ -152,16 +155,17 @@ export const holdInventoryDemand = (input: {
         for (const [key, lease] of held) {
           if (next.has(key)) continue;
           held.delete(key);
-          yield* Scope.close(lease, Exit.void);
+          yield* lease.release;
         }
-        for (const [key, descriptor] of next) {
-          if (held.has(key)) continue;
-          const lease = yield* Scope.make();
-          const taken = yield* data.acquire(descriptor).pipe(Scope.provide(lease), Effect.exit);
-          // A lease the runtime refuses is asked for again when the demand next changes.
-          if (Exit.isSuccess(taken)) held.set(key, lease);
-          else yield* Scope.close(lease, Exit.void);
-        }
+        const missing = [...next].filter(([key]) => !held.has(key));
+        if (missing.length === 0) return;
+        const taken = yield* data
+          .acquireMany(missing.map(([, descriptor]) => descriptor))
+          .pipe(Scope.provide(leases));
+        // A lease the runtime refuses is asked for again when the demand next changes.
+        taken.forEach((result, index) => {
+          if (Result.isSuccess(result)) held.set(missing[index]![0], result.success);
+        });
       });
     yield* Queue.take(wanted).pipe(Effect.flatMap(reconcile), Effect.forever, Effect.forkScoped);
     const unsubscribe = atomRegistry.subscribe(demand, (next) => Queue.offerUnsafe(wanted, next), {

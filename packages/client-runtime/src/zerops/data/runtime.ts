@@ -2660,164 +2660,184 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }),
     );
 
-  const acquire: ZeropsDataRuntime["acquire"] = (descriptor) =>
+  /**
+   * Admits one lease under the lifecycle lock. An interest that needs establishing is added to
+   * `establishments`, which the caller starts once the whole pass is admitted.
+   */
+  const admitLease = (
+    descriptor: RuntimeInterestDescriptor,
+    leaseScope: Scope.Scope,
+    establishments: Array<RuntimeInterest>,
+  ): Effect.Effect<InterestLease, LeaseAdmissionError> =>
+    Effect.gen(function* () {
+      if (yield* Ref.get(closed)) {
+        return yield* Effect.fail(
+          leaseError("runtime-closed", "The Zerops account data runtime is closed."),
+        );
+      }
+      if (!accountRefsEqual(organizationOfInterest(descriptor).account, options.scope.account)) {
+        return yield* Effect.fail(
+          leaseError("account-mismatch", "The requested interest belongs to another account."),
+        );
+      }
+      const key = interestKeyOf(descriptor);
+      let runtimeInterest = interests.get(key);
+      if (runtimeInterest === undefined) {
+        if (interests.size >= policy.activeInterestsPerAccount) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account interest budget is full."),
+          );
+        }
+        const organization = organizationOfInterest(descriptor);
+        const organizationKey = organizationKeyOf(organization);
+        const plan = planZeropsInterest(descriptor);
+        const plannedQueryKeys = queryKeysOfPlan(plan);
+        const activeQueryKeys = new Set(
+          [...interests.values()].flatMap((interest) =>
+            interest.leases.size > 0
+              ? queryKeysOfPlan(planZeropsInterest(interest.descriptor))
+              : [],
+          ),
+        );
+        const additionalQueries = plannedQueryKeys.filter(
+          (queryKey) => !activeQueryKeys.has(queryKey),
+        ).length;
+        if (activeQueryKeys.size + additionalQueries > policy.activeQueriesPerAccount) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account active-query budget is full."),
+          );
+        }
+        const activeHistorySeries = [...interests.values()].filter(
+          (interest) =>
+            interest.leases.size > 0 && interest.descriptor.kind === "project-metric-history",
+        ).length;
+        if (
+          descriptor.kind === "project-metric-history" &&
+          activeHistorySeries >= policy.activeHistorySeriesPerAccount
+        ) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account history-series budget is full."),
+          );
+        }
+        const organizationInterestCount = [...interests.values()].filter(
+          (interest) =>
+            organizationKeyOf(organizationOfInterest(interest.descriptor)) === organizationKey,
+        ).length;
+        if (organizationInterestCount >= policy.desiredInterestsPerReceiver) {
+          return yield* Effect.fail(
+            leaseError("receiver-capacity", "The organization receiver interest budget is full."),
+          );
+        }
+        if (!receivers.has(organizationKey) && receivers.size >= policy.receiversPerAccount) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account receiver budget is full."),
+          );
+        }
+        const currentReceiver = receivers.get(organizationKey);
+        const plannedRegistrationKeys = new Set(
+          plan.registrations.map((registration) => registrationKeyOf(registration.descriptor)),
+        );
+        const additionalRegistrations = [...plannedRegistrationKeys].filter(
+          (key) => !currentReceiver?.registrations.has(key),
+        ).length;
+        const activeRegistrationDemand = [...receivers.values()].reduce(
+          (total, receiver) => total + receiver.registrations.size,
+          0,
+        );
+        if (
+          activeRegistrationDemand + additionalRegistrations >
+          policy.activeRegistrationsPerAccount
+        ) {
+          return yield* Effect.fail(
+            leaseError("account-capacity", "The account registration budget is full."),
+          );
+        }
+        const receiver = receiverFor(organization);
+        // Placeholder identity only: updateInterestIdentity below is the single source
+        // that mints the real epoch and identity before establishment starts.
+        const identity: InterestIdentity = {
+          receiver: receiver.identity,
+          interestEpoch: InterestEpoch.make(interestEpoch),
+          key,
+        };
+        runtimeInterest = {
+          descriptor,
+          key,
+          leases: new Set(),
+          // Metrics and history enrich what the inventory interests hold: their
+          // failures retry on their own and never replace the organization receiver.
+          required:
+            descriptor.kind !== "project-current-metrics" &&
+            descriptor.kind !== "project-process-history" &&
+            descriptor.kind !== "project-metric-history",
+          identity,
+          recoveryAttempts: 0,
+          readController: new AbortController(),
+        };
+        interests.set(key, runtimeInterest);
+      }
+      const leaseId = options.makeOpaqueId();
+      runtimeInterest.leases.add(leaseId);
+      leases.set(leaseId, runtimeInterest);
+      const existing = (yield* Ref.get(model)).interests.get(key);
+      if (existing === undefined) {
+        const desired = yield* updateInterestIdentity(
+          runtimeInterest,
+          receiverFor(organizationOfInterest(descriptor)),
+        );
+        yield* applyControl({ kind: "interest-upserted", interest: desired });
+        establishments.push(runtimeInterest);
+      } else {
+        yield* applyControl({
+          kind: "interest-upserted",
+          interest: { ...existing, leases: runtimeInterest.leases.size },
+        });
+        // A fresh lease is a fresh reason to retry a failed interest now, rather than
+        // waiting out whatever backoff window a prior lessee's failures left behind.
+        // Minting a new identity (as resumeFromBackground does) is required, not
+        // optional: without it the still-sleeping scheduleFailedRetry fiber from the
+        // earlier failure passes its own identity check at the old retryAtMs and
+        // fires a second, concurrent establishment for the same interest.
+        if (existing.interest.status === "failed") {
+          runtimeInterest.recoveryAttempts = 0;
+          const desired = yield* updateInterestIdentity(
+            runtimeInterest,
+            receiverFor(organizationOfInterest(descriptor)),
+          );
+          yield* applyControl({ kind: "interest-upserted", interest: desired });
+          establishments.push(runtimeInterest);
+        }
+      }
+      const release = releaseLease(leaseId);
+      yield* Scope.addFinalizer(leaseScope, release);
+      return {
+        leaseId: ZeropsLeaseId.make(leaseId),
+        interest: key,
+        release,
+      } satisfies InterestLease;
+    });
+
+  const acquireMany: ZeropsDataRuntime["acquireMany"] = (descriptors) =>
     Effect.gen(function* () {
       const leaseScope = yield* Scope.Scope;
       return yield* lifecycleLock.withPermit(
         Effect.gen(function* () {
-          if (yield* Ref.get(closed)) {
-            return yield* Effect.fail(
-              leaseError("runtime-closed", "The Zerops account data runtime is closed."),
-            );
-          }
-          if (
-            !accountRefsEqual(organizationOfInterest(descriptor).account, options.scope.account)
-          ) {
-            return yield* Effect.fail(
-              leaseError("account-mismatch", "The requested interest belongs to another account."),
-            );
-          }
-          const key = interestKeyOf(descriptor);
-          let runtimeInterest = interests.get(key);
-          if (runtimeInterest === undefined) {
-            if (interests.size >= policy.activeInterestsPerAccount) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account interest budget is full."),
-              );
-            }
-            const organization = organizationOfInterest(descriptor);
-            const organizationKey = organizationKeyOf(organization);
-            const plan = planZeropsInterest(descriptor);
-            const plannedQueryKeys = queryKeysOfPlan(plan);
-            const activeQueryKeys = new Set(
-              [...interests.values()].flatMap((interest) =>
-                interest.leases.size > 0
-                  ? queryKeysOfPlan(planZeropsInterest(interest.descriptor))
-                  : [],
-              ),
-            );
-            const additionalQueries = plannedQueryKeys.filter(
-              (queryKey) => !activeQueryKeys.has(queryKey),
-            ).length;
-            if (activeQueryKeys.size + additionalQueries > policy.activeQueriesPerAccount) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account active-query budget is full."),
-              );
-            }
-            const activeHistorySeries = [...interests.values()].filter(
-              (interest) =>
-                interest.leases.size > 0 && interest.descriptor.kind === "project-metric-history",
-            ).length;
-            if (
-              descriptor.kind === "project-metric-history" &&
-              activeHistorySeries >= policy.activeHistorySeriesPerAccount
-            ) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account history-series budget is full."),
-              );
-            }
-            const organizationInterestCount = [...interests.values()].filter(
-              (interest) =>
-                organizationKeyOf(organizationOfInterest(interest.descriptor)) === organizationKey,
-            ).length;
-            if (organizationInterestCount >= policy.desiredInterestsPerReceiver) {
-              return yield* Effect.fail(
-                leaseError(
-                  "receiver-capacity",
-                  "The organization receiver interest budget is full.",
-                ),
-              );
-            }
-            if (!receivers.has(organizationKey) && receivers.size >= policy.receiversPerAccount) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account receiver budget is full."),
-              );
-            }
-            const currentReceiver = receivers.get(organizationKey);
-            const plannedRegistrationKeys = new Set(
-              plan.registrations.map((registration) => registrationKeyOf(registration.descriptor)),
-            );
-            const additionalRegistrations = [...plannedRegistrationKeys].filter(
-              (key) => !currentReceiver?.registrations.has(key),
-            ).length;
-            const activeRegistrationDemand = [...receivers.values()].reduce(
-              (total, receiver) => total + receiver.registrations.size,
-              0,
-            );
-            if (
-              activeRegistrationDemand + additionalRegistrations >
-              policy.activeRegistrationsPerAccount
-            ) {
-              return yield* Effect.fail(
-                leaseError("account-capacity", "The account registration budget is full."),
-              );
-            }
-            const receiver = receiverFor(organization);
-            // Placeholder identity only: updateInterestIdentity below is the single source
-            // that mints the real epoch and identity before establishment starts.
-            const identity: InterestIdentity = {
-              receiver: receiver.identity,
-              interestEpoch: InterestEpoch.make(interestEpoch),
-              key,
-            };
-            runtimeInterest = {
-              descriptor,
-              key,
-              leases: new Set(),
-              // Metrics and history enrich what the inventory interests hold: their
-              // failures retry on their own and never replace the organization receiver.
-              required:
-                descriptor.kind !== "project-current-metrics" &&
-                descriptor.kind !== "project-process-history" &&
-                descriptor.kind !== "project-metric-history",
-              identity,
-              recoveryAttempts: 0,
-              readController: new AbortController(),
-            };
-            interests.set(key, runtimeInterest);
-          }
-          const leaseId = options.makeOpaqueId();
-          runtimeInterest.leases.add(leaseId);
-          leases.set(leaseId, runtimeInterest);
-          const existing = (yield* Ref.get(model)).interests.get(key);
-          if (existing === undefined) {
-            const desired = yield* updateInterestIdentity(
-              runtimeInterest,
-              receiverFor(organizationOfInterest(descriptor)),
-            );
-            yield* applyControl({ kind: "interest-upserted", interest: desired });
-            yield* establishInterest(runtimeInterest).pipe(forkOwned);
-          } else {
-            yield* applyControl({
-              kind: "interest-upserted",
-              interest: { ...existing, leases: runtimeInterest.leases.size },
-            });
-            // A fresh lease is a fresh reason to retry a failed interest now, rather than
-            // waiting out whatever backoff window a prior lessee's failures left behind.
-            // Minting a new identity (as resumeFromBackground does) is required, not
-            // optional: without it the still-sleeping scheduleFailedRetry fiber from the
-            // earlier failure passes its own identity check at the old retryAtMs and
-            // fires a second, concurrent establishment for the same interest.
-            if (existing.interest.status === "failed") {
-              runtimeInterest.recoveryAttempts = 0;
-              const desired = yield* updateInterestIdentity(
-                runtimeInterest,
-                receiverFor(organizationOfInterest(descriptor)),
-              );
-              yield* applyControl({ kind: "interest-upserted", interest: desired });
-              yield* establishInterest(runtimeInterest).pipe(forkOwned);
-            }
-          }
-          const release = releaseLease(leaseId);
-          yield* Scope.addFinalizer(leaseScope, release);
-          return {
-            leaseId: ZeropsLeaseId.make(leaseId),
-            interest: key,
-            release,
-          } satisfies InterestLease;
+          const establishments: Array<RuntimeInterest> = [];
+          const taken = yield* Effect.forEach(descriptors, (descriptor) =>
+            admitLease(descriptor, leaseScope, establishments).pipe(Effect.result),
+          );
+          yield* Effect.forEach(
+            establishments,
+            (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
+            { discard: true },
+          );
+          return taken;
         }),
       );
     });
+
+  const acquire: ZeropsDataRuntime["acquire"] = (descriptor) =>
+    acquireMany([descriptor]).pipe(Effect.flatMap(([taken]) => Effect.fromResult(taken!)));
 
   /** The grant's account capability now, on its own clocks (`commandAdmissionError`). */
   const accountCapability = Effect.suspend(() =>
@@ -3281,6 +3301,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     logs,
     acquire,
     refresh,
+    acquireMany,
     listen,
     shutdown,
     state: Ref.get(model),

@@ -1,5 +1,6 @@
 import type * as Clock from "effect/Clock";
 import type * as Effect from "effect/Effect";
+import type * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
@@ -2114,6 +2115,18 @@ export interface ZeropsDataRuntime {
   readonly acquire: (
     descriptor: RuntimeInterestDescriptor,
   ) => Effect.Effect<InterestLease, LeaseAdmissionError, Scope.Scope>;
+  /**
+   * Takes a lease for each descriptor in one admission pass: the account sees them in one
+   * publication, and their establishments start together after it. Each result is its
+   * descriptor's lease or the reason it was refused; a refusal takes nothing from the others.
+   */
+  readonly acquireMany: (
+    descriptors: ReadonlyArray<RuntimeInterestDescriptor>,
+  ) => Effect.Effect<
+    ReadonlyArray<Result.Result<InterestLease, LeaseAdmissionError>>,
+    never,
+    Scope.Scope
+  >;
   /**
    * Re-reads an organization's inventory. Every interest held on the
    * organization is re-established on a fresh receiver, so each baseline is

@@ -5,6 +5,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import * as Scheduler from "effect/Scheduler";
 import * as Schema from "effect/Schema";
@@ -4472,6 +4473,42 @@ describe("publication: one per task", () => {
         yield* nextTask;
 
         expect(published.map((state) => [...state.interests.keys()])).toEqual([[kept.interest]]);
+      }),
+    ),
+  );
+
+  it.effect("an establishment starts for every lease taken by acquireMany", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: harness.adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+        });
+        yield* Effect.addFinalizer(() =>
+          runtime
+            .shutdown("application-close")
+            .pipe(Effect.andThen(Effect.sync(() => registry.dispose()))),
+        );
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+          Queue.offerUnsafe(states, state);
+        });
+        yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+        const taken = yield* runtime.acquireMany(threeProjects);
+        const leases = taken.map((result) => Result.getOrThrow(result));
+        yield* waitForState(states, (state) =>
+          leases.every(
+            (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
+          ),
+        );
+
+        expect(new Set(leases.map((lease) => lease.interest)).size).toBe(threeProjects.length);
+        expect(harness.counts().opens).toBe(1);
       }),
     ),
   );
