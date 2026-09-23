@@ -198,7 +198,11 @@ scoped and retryable.
 
 The resource broker rechecks dynamic account, organization, project/service scope
 and absolute deadline on acquire and retry. Reconciliation or deadline expiry
-releases all affected leases, aborts source work and erases public retained values.
+withholds every affected resource: it erases the public retained values and aborts
+source work, and it keeps the demand, so the next grant covering the scope reads the
+resource again. When the last demand for a resource goes, a value it holds stays for
+the idle retention window (ten minutes) and anything else ends at once; at capacity
+the entry idle longest ends first.
 The build-log registry checks the same access window on reads, callbacks and retry;
 revocation or expiry cancels transport work, erases retained lines and notifies readers.
 Its last-lease rule spans grant acquisition, page load and follow transport.
@@ -275,7 +279,8 @@ source ownership, access policy, public state meaning or the command/observation
 boundary require architecture review before parallel implementation continues.
 
 New adapters must add total decoding and sanitized fixtures before their data can
-reach a reducer. New retained resources must prove final-lease cancellation,
-revocation/expiry erasure and late-completion fencing. New projections must prove
+reach a reducer. New retained resources must prove what the final release does (a
+log session closes at once; a broker value ends after its idle window), revocation/expiry
+erasure and late-completion fencing. New projections must prove
 that unrelated entity changes do not publish. New commands must cover rejection,
 uncertainty and any returned observation/process identity through the shared model.
