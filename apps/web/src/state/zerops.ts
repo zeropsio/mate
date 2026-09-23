@@ -4,32 +4,28 @@ import {
 } from "@t3tools/client-runtime/connection";
 import type { ZeropsService, ZeropsStatHistoryItem } from "@t3tools/client-runtime/zerops";
 import {
-  knownProjectsOf,
-  knownServicesOf,
   processRecordToActivityProcess,
   projectKeyOf,
   projectRecordToZeropsProject,
-  projectsSourceOf,
   serviceRecordToZeropsService,
-  servicesSourceOf,
-  type CollectionRead,
+  ZeropsProjectId,
   type HistoryReadView,
   type ManagedZeropsDataRuntime,
   type MetricWindow,
   type OrganizationRef,
-  type ProjectRecord,
   type ProjectRef,
   type ProjectTopologyRead,
-  type ServiceRecord,
   type ServiceRef,
   type UsageRead,
 } from "@t3tools/client-runtime/zerops/data";
-import type { RegistrationRecord } from "@t3tools/client-runtime/zerops/environments";
+import {
+  candidateListingsAtom,
+  type RegistrationRecord,
+} from "@t3tools/client-runtime/zerops/environments";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
   heldCandidates,
-  selectCandidates,
   type CandidateRow,
 } from "@t3tools/client-runtime/zerops/projections";
 import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
@@ -40,7 +36,6 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
-import { zeropsKnowledgeArraysEqual } from "../zerops/zeropsDataContext";
 import type {
   ZeropsOrganizationStatus,
   ZeropsSessionStatus,
@@ -117,79 +112,16 @@ export const zeropsEnvironmentsAtom = Atom.make((get): ReadonlyArray<ZeropsEnvir
   })),
 ).pipe(Atom.withLabel("zerops:environments"));
 
-function sameMembers<Record extends ProjectRecord | ServiceRecord>(
-  left: CollectionRead<Record>,
-  right: CollectionRead<Record>,
-): boolean {
-  return (
-    left.query === right.query &&
-    zeropsKnowledgeArraysEqual(left.value, right.value) &&
-    left.observation.access === right.observation.access
-  );
-}
-
-/**
- * Whether two reads of the organization's projects are the same knowledge:
- * the same query, members and access, and the same interest they are as
- * current as. That interest failing leaves the query as it was, and is a new
- * read; any other interest the account holds changing is not.
- */
-export function sameProjectsRead(
-  left: CollectionRead<ProjectRecord>,
-  right: CollectionRead<ProjectRecord>,
-): boolean {
-  return sameMembers(left, right) && projectsSourceOf(left) === projectsSourceOf(right);
-}
-
-/** Whether two reads of a project's services are the same knowledge, like `sameProjectsRead`. */
-export function sameServicesRead(
-  left: CollectionRead<ServiceRecord>,
-  right: CollectionRead<ServiceRecord>,
-): boolean {
-  return sameMembers(left, right) && servicesSourceOf(left) === servicesSourceOf(right);
-}
-
-/** A read, and the moment this client saw it change. */
-interface StampedRead<Read> {
-  readonly read: Read;
-  readonly atMs: number;
-}
-
-const stampedReads = new WeakMap<Atom.Atom<unknown>, Atom.Atom<StampedRead<unknown>>>();
-
-/**
- * Holds a read until it changes, stamped with the moment it did. The stamp is
- * what `known.ts` dates a read with no value yet by (when it failed, or began
- * to recover); taken here, it never ticks, so no clock re-derives the rows and
- * hands every consumer a new array of the same candidates. One per read.
- */
-function stampedRead<Read>(
-  source: Atom.Atom<Read>,
-  same: (left: Read, right: Read) => boolean,
-): Atom.Atom<StampedRead<Read>> {
-  const held = stampedReads.get(source);
-  if (held !== undefined) return held as Atom.Atom<StampedRead<Read>>;
-  let previous: StampedRead<Read> | undefined;
-  const stamped = Atom.make((get) => {
-    const read = get(source);
-    if (previous !== undefined && same(previous.read, read)) return previous;
-    previous = { read, atMs: Date.now() };
-    return previous;
-  });
-  stampedReads.set(source, stamped);
-  return stamped;
-}
-
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
 /**
- * The active organization's candidate rows (DESIGN §2.B B4) over the runtime's reads of its
- * projects and of each admitted project's services: unread until the account's product has
- * published a signed-in session with an organization chosen, its runtime and its inventory.
- * Only projects the inventory admits are read, and withholding is applied here, at the read
- * (§3.1, §4.2 G12): withheld whole while the account's access lapses, and without the rows of a
- * project the grant withholds alone, which leaves the listing partial. Derived, so nothing it
- * held outlives the account.
+ * The active organization's candidate rows (DESIGN §2.B B4): the account runtime's listing of it
+ * (`candidateListingsAtom`), unread until the account's product has published a signed-in
+ * session with an organization chosen, its runtime and its inventory. Only the rows of projects
+ * the inventory admits are shown, and withholding is applied here, at the read (§3.1, §4.2 G12):
+ * withheld whole while the account's access lapses, and without the rows of a project the grant
+ * withholds alone, which leaves the listing partial. A listing nothing is left out of is the
+ * account's own. Derived, so nothing it held outlives the account.
  */
 export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateRow>> => {
   const session = get(zeropsSessionAtom);
@@ -208,18 +140,18 @@ export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateR
   if (inventory.account.kind === "withheld") {
     return { state: "withheld", reason: inventory.account.reason, cause: inventory.account.cause };
   }
-  const projectsRead = get(
-    stampedRead(runtime.reads.projectsOf(session.activeOrganization), sameProjectsRead),
+  const organization = session.activeOrganization;
+  const listed = get(candidateListingsAtom(runtime)).find(
+    ({ organizationId }) => organizationId === organization.organizationId,
   );
-  const projects = admittedOnly(
-    knownProjectsOf(projectsRead.read, projectsRead.atMs),
-    (record) =>
-      inventory.projectRefs.has(projectKeyOf(record.ref)) &&
-      inventory.authority.get(projectKeyOf(record.ref))?.kind !== "withheld",
-  );
-  return selectCandidates(projects, (ref) => {
-    const servicesRead = get(stampedRead(runtime.reads.servicesOf(ref), sameServicesRead));
-    return knownServicesOf(servicesRead.read, servicesRead.atMs);
+  if (listed === undefined) return UNREAD;
+  return admittedOnly(listed.listing, (row) => {
+    const key = projectKeyOf({
+      kind: "project",
+      organization,
+      projectId: ZeropsProjectId.make(row.project.id),
+    });
+    return inventory.projectRefs.has(key) && inventory.authority.get(key)?.kind !== "withheld";
   });
 }).pipe(Atom.withLabel("zerops:candidate-rows"));
 

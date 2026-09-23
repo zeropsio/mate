@@ -6,25 +6,17 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  interestKeyOf,
-  makeInitialZeropsDataState,
   makeZeropsApiOrigin,
-  selectProjectsOf,
-  ReceiptOrdinal,
-  selectServicesOf,
   ZeropsAccountId,
   ZeropsOrganizationId,
-  type InterestState,
   type OrganizationRef,
 } from "@t3tools/client-runtime/zerops/data";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 
-import { identity, organization, project, scope } from "./__fixtures__/platformData";
 import { TestNode } from "./__fixtures__/testDom";
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "./accountInvalidations";
-import { sameProjectsRead, sameServicesRead } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   authenticatedZeropsOrigins,
@@ -120,59 +112,6 @@ describe("authenticatedZeropsOrigins", () => {
       group: "connected",
       environmentId,
     });
-  });
-});
-
-describe("a held read", () => {
-  const establishing = (key: InterestState["identity"]["key"]): InterestState => ({
-    status: "establishing",
-    identity: { ...identity(), key },
-    startedAtMs: 0,
-    deadlineMs: 60_000,
-    progress: {
-      requiredRegistrations: 1,
-      completedRegistrations: 0,
-      requiredReads: 1,
-      completedReads: 0,
-      crossedReceiptOrdinal: ReceiptOrdinal.make(0),
-    },
-  });
-  const failed = (from: InterestState): InterestState => ({
-    status: "failed",
-    identity: from.identity,
-    reason: "gateway",
-    retryable: true,
-    attempts: 1,
-    retryAtMs: 90_000,
-  });
-
-  it("changes when its projects' interest fails, though the query did not", () => {
-    const read = selectProjectsOf(makeInitialZeropsDataState(scope()), organization);
-    const feeder = establishing(interestKeyOf({ kind: "organization-inventory", organization }));
-    const before = { ...read, observation: { ...read.observation, required: [feeder] } };
-    const after = { ...read, observation: { ...read.observation, required: [failed(feeder)] } };
-
-    expect(sameProjectsRead(before, after)).toBe(false);
-  });
-
-  it("holds when only an interest that does not feed it changes", () => {
-    const read = selectProjectsOf(makeInitialZeropsDataState(scope()), organization);
-    const other = establishing(
-      interestKeyOf({ kind: "project-topology", project: project(), includeCurrentMetrics: false }),
-    );
-    const before = { ...read, observation: { ...read.observation, required: [other] } };
-    const after = { ...read, observation: { ...read.observation, required: [failed(other)] } };
-
-    expect(sameProjectsRead(before, after)).toBe(true);
-  });
-
-  it("changes when its services' interest fails, though the query did not", () => {
-    const read = selectServicesOf(makeInitialZeropsDataState(scope()), project());
-    const feeder = establishing(interestKeyOf({ kind: "project-inventory", project: project() }));
-    const before = { ...read, observation: { ...read.observation, required: [feeder] } };
-    const after = { ...read, observation: { ...read.observation, required: [failed(feeder)] } };
-
-    expect(sameServicesRead(before, after)).toBe(false);
   });
 });
 

@@ -91,9 +91,9 @@ describe("central Zerops data bindings", () => {
     expect(inventory).toContain("runtime.reads.servicesOf(");
     expect(inventory).not.toContain("runtime.stateAtom");
 
+    // The candidates are the account runtime's listing, which reads the same two families.
     const candidates = source("../state/zerops.ts");
-    expect(candidates).toContain("runtime.reads.projectsOf(");
-    expect(candidates).toContain("runtime.reads.servicesOf(");
+    expect(candidates).toContain("candidateListingsAtom(runtime)");
     expect(candidates).not.toContain("runtime.stateAtom");
     expect(candidates).not.toContain("useZeropsDataState");
   });

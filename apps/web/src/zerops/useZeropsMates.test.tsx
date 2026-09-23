@@ -78,7 +78,10 @@ function registered(input: {
   } as unknown as EnvironmentPresentation;
 }
 
-/** A runtime that has read the organization's one project and its zcp container. */
+/**
+ * A runtime that has read the organization's one project and its zcp container, under a grant
+ * that names the organization.
+ */
 function readRuntime(): ManagedZeropsDataRuntime {
   const id = identity();
   let state = reduceZeropsDataState(
@@ -126,8 +129,14 @@ function readRuntime(): ManagedZeropsDataRuntime {
       "direct-read",
     ),
   );
+  const granted = {
+    machine: {
+      phase: { phase: "granted", evidence: { account: { organizations: [{ organization }] } } },
+    },
+  };
   return {
     reads: createZeropsDataAtoms(Atom.make(state)).reads,
+    access: { view: Atom.make(granted) },
   } as unknown as ManagedZeropsDataRuntime;
 }
 
