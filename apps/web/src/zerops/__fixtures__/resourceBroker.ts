@@ -1,50 +1,33 @@
 /**
- * A fake `ZeropsResourceBroker.acquire` for a single resource kind, used to
- * test `useZeropsResource` consumers without a real runtime. Lives outside
- * `*.test.*` on purpose: it runs `Effect.runSync`/`Effect.runPromise`
- * directly, which `no-manual-effect-runtime-in-tests` forbids in test files.
+ * A fake `ZeropsResourceBroker.known` for a single resource kind, used to test
+ * `useKnown` consumers without a real runtime: one atom whose mount counts as
+ * one acquisition, and whose value the test publishes.
  */
-import * as Effect from "effect/Effect";
-import * as Queue from "effect/Queue";
-import * as Stream from "effect/Stream";
+import { Atom } from "effect/unstable/reactivity";
 
 import type {
-  OrganizationLocationsResourceRequest,
-  ZeropsResourceLease,
   ZeropsResourceRequest,
-  ZeropsResourceSnapshot,
   ZeropsResourceValue,
 } from "@t3tools/client-runtime/zerops/data";
-import type { ZeropsLocation } from "@t3tools/client-runtime/zerops";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 /** Generic fake resource broker for one resource kind (its value type is derived from `Request`). */
 export class FakeResourceBroker<Request extends ZeropsResourceRequest> {
   acquisitions = 0;
-  current: ZeropsResourceSnapshot<ZeropsResourceValue<Request>> = { status: "loading", attempt: 1 };
-  private readonly queue = Effect.runSync(
-    Queue.unbounded<ZeropsResourceSnapshot<ZeropsResourceValue<Request>>>(),
-  );
+  current: Shown<ZeropsResourceValue<Request>> = { state: "reading", sinceMs: 0, attempt: 1 };
+  private readonly listeners = new Set<(shown: Shown<ZeropsResourceValue<Request>>) => void>();
+  private readonly atom = Atom.make((get): Shown<ZeropsResourceValue<Request>> => {
+    this.acquisitions += 1;
+    const listener = (shown: Shown<ZeropsResourceValue<Request>>) => get.setSelf(shown);
+    this.listeners.add(listener);
+    get.addFinalizer(() => this.listeners.delete(listener));
+    return this.current;
+  });
 
-  publish(snapshot: ZeropsResourceSnapshot<ZeropsResourceValue<Request>>): Promise<void> {
-    this.current = snapshot;
-    return Effect.runPromise(Queue.offer(this.queue, snapshot)).then(() => undefined);
+  publish(shown: Shown<ZeropsResourceValue<Request>>): void {
+    this.current = shown;
+    for (const listener of this.listeners) listener(shown);
   }
 
-  acquire = (request: Request): Effect.Effect<ZeropsResourceLease<Request>> => {
-    this.acquisitions += 1;
-    return Effect.succeed({
-      key: request.kind as never,
-      request,
-      snapshot: Effect.sync(() => this.current),
-      changes: Stream.fromQueue(this.queue),
-      awaitSettled: Effect.sync(() => this.current) as never,
-      retry: Effect.succeed(false) as never,
-      release: Effect.void,
-    });
-  };
+  known = (_request: Request): Atom.Atom<Shown<ZeropsResourceValue<Request>>> => this.atom;
 }
-
-export type LocationsSnapshot = ZeropsResourceSnapshot<ReadonlyArray<ZeropsLocation>>;
-
-/** @deprecated Kept for existing callers; prefer `FakeResourceBroker` directly. */
-export class FakeLocationsBroker extends FakeResourceBroker<OrganizationLocationsResourceRequest> {}

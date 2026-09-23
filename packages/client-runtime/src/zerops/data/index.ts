@@ -8,6 +8,7 @@ export * from "./platformSocket.ts";
 export * from "./policy.ts";
 export * from "./projection.ts";
 export * from "./resourceRestAdapter.ts";
+export * from "./resourceSelectors.ts";
 export * from "./resources.ts";
 export * from "./restAdapter.ts";
 export * from "./logTransport.ts";

@@ -2,9 +2,10 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Ref from "effect/Ref";
+import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
+import { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsLocation } from "../api.ts";
 import {
@@ -115,6 +116,16 @@ const verifiedAccess = (
   projects: [{ project: project(scope), role: "OWNER", mutationsAllowed: true }],
 });
 
+const MINUTE_MS = 60_000;
+const PRAGUE: ZeropsLocation = { id: "prg1", name: "Prague", pingUrl: "https://ping.test" };
+
+const expiredAccess = (scope: AccountScope, deadlineMs: number): AccessState => ({
+  status: "expired",
+  accountEpoch: scope.epoch,
+  expiredAtMs: deadlineMs,
+  previous: verifiedAccess(scope, deadlineMs),
+});
+
 const transportFailure = (retryable = true): ZeropsResourceSourceError => ({
   _tag: "ZeropsResourceSourceError",
   kind: "transport",
@@ -148,6 +159,111 @@ describe("zeropsResourceKeyOf", () => {
 });
 
 describe("makeZeropsResourceBroker", () => {
+  it.effect("lapse → withheld → grant → re-read without remount", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let access: AccessState = verifiedAccess(scope, 15 * MINUTE_MS);
+      const gates: Array<Deferred.Deferred<void>> = [];
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => access,
+        adapter: unusedAdapter({
+          readOrganizationLocations: () =>
+            Effect.gen(function* () {
+              const gate = yield* Deferred.make<void>();
+              gates.push(gate);
+              yield* Deferred.await(gate);
+              return [PRAGUE];
+            }),
+        }),
+      });
+      const registry = AtomRegistry.make();
+      const atom = broker.known(locationsRequest(scope));
+      const unmount = registry.mount(atom);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(gates[0]!, undefined);
+      yield* Effect.yieldNow;
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: [PRAGUE] });
+
+      access = expiredAccess(scope, 15 * MINUTE_MS);
+      yield* broker.reconcileAccess;
+      expect(registry.get(atom)).toEqual({
+        state: "withheld",
+        reason: "access-lapsed",
+        cause: null,
+      });
+
+      // The next grant covers the scope: the same mounted atom reads again, and
+      // the erased value never comes back on its own.
+      access = verifiedAccess(scope, 30 * MINUTE_MS);
+      yield* broker.reconcileAccess;
+      yield* Effect.yieldNow;
+      expect(gates).toHaveLength(2);
+      expect(registry.get(atom)).toMatchObject({ state: "reading" });
+      yield* Deferred.succeed(gates[1]!, undefined);
+      yield* Effect.yieldNow;
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: [PRAGUE] });
+
+      unmount();
+      registry.dispose();
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a grant that stops covering one project withholds only that project's resources", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const both: AccessState = {
+        ...verifiedAccess(scope),
+        projects: [
+          { project: project(scope), role: "OWNER", mutationsAllowed: true },
+          { project: project(scope, "project-b"), role: "OWNER", mutationsAllowed: true },
+        ],
+      };
+      let access: AccessState = both;
+      let reads = 0;
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => access,
+        adapter: unusedAdapter({
+          readServiceAuthorizedAgents: () =>
+            Effect.sync(() => {
+              reads += 1;
+              return ["codex"] as const;
+            }),
+        }),
+      });
+      const registry = AtomRegistry.make();
+      const kept = broker.known(authorizedAgentsRequest(scope, "service-a", "project-a"));
+      const lost = broker.known(authorizedAgentsRequest(scope, "service-b", "project-b"));
+      const locations = broker.known(locationsRequest(scope));
+      const unmounts = [registry.mount(kept), registry.mount(lost), registry.mount(locations)];
+      yield* Effect.yieldNow;
+
+      access = verifiedAccess(scope);
+      yield* broker.reconcileAccess;
+
+      expect(registry.get(kept)).toMatchObject({ state: "known", value: ["codex"] });
+      expect(registry.get(locations)).toMatchObject({ state: "known" });
+      expect(registry.get(lost)).toEqual({
+        state: "withheld",
+        reason: "access-denied",
+        cause: null,
+      });
+      expect(reads).toBe(2);
+
+      access = both;
+      yield* broker.reconcileAccess;
+      yield* Effect.yieldNow;
+      expect(registry.get(lost)).toMatchObject({ state: "known", value: ["codex"] });
+      expect(reads).toBe(3);
+
+      for (const unmount of unmounts) unmount();
+      registry.dispose();
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("shares one in-flight read while each lease has an independent release fence", () =>
     Effect.gen(function* () {
       const scope = accountScope();
@@ -157,7 +273,7 @@ describe("makeZeropsResourceBroker", () => {
       let signal: AbortSignal | undefined;
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Effect.succeed(verifiedAccess(scope)),
+        access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
           readOrganizationLocations: (_request, context) =>
             Effect.sync(() => {
@@ -166,7 +282,7 @@ describe("makeZeropsResourceBroker", () => {
             }).pipe(
               Effect.andThen(Deferred.succeed(started, undefined)),
               Effect.andThen(Deferred.await(finish)),
-              Effect.as([{ id: "prg1", name: "Prague", pingUrl: "https://ping.test" }]),
+              Effect.as([PRAGUE]),
             ),
         }),
       });
@@ -178,21 +294,20 @@ describe("makeZeropsResourceBroker", () => {
       yield* Deferred.await(started);
 
       expect(calls).toBe(1);
-      expect(yield* first.snapshot).toEqual({ status: "loading", attempt: 1 });
+      expect(yield* first.snapshot).toMatchObject({ state: "reading", attempt: 1 });
       expect((yield* broker.diagnostics).leases).toBe(2);
       yield* first.release;
-      expect(yield* first.snapshot).toEqual({ status: "released" });
+      expect(yield* first.snapshot).toEqual({ state: "unread", waitingFor: null });
       expect(signal?.aborted).toBe(false);
       yield* Deferred.succeed(finish, undefined);
-      expect(yield* second.awaitSettled).toEqual({
-        status: "success",
-        attempt: 1,
-        value: [{ id: "prg1", name: "Prague", pingUrl: "https://ping.test" }],
+      expect(yield* second.awaitSettled).toMatchObject({
+        state: "known",
+        value: [PRAGUE],
+        coverage: "complete",
+        freshness: { kind: "settled" },
       });
       yield* Scope.close(firstScope, Exit.void);
       yield* Scope.close(secondScope, Exit.void);
-      expect(signal?.aborted).toBe(true);
-      expect((yield* broker.diagnostics).entries).toBe(0);
       yield* broker.shutdown;
     }),
   );
@@ -203,11 +318,11 @@ describe("makeZeropsResourceBroker", () => {
       const calls: Array<string> = [];
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Effect.succeed(verifiedAccess(scope)),
+        access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
           readOrganizationLocations: () => {
             calls.push("locations");
-            return Effect.succeed([{ id: "prg1", name: "Prague", pingUrl: "https://ping.test" }]);
+            return Effect.succeed([PRAGUE]);
           },
           readServiceAuthorizedAgents: () => {
             calls.push("agents");
@@ -238,9 +353,9 @@ describe("makeZeropsResourceBroker", () => {
 
       expect(calls.sort()).toEqual(["agents", "grants", "locations"]);
       const agents = yield* leases[1]!.snapshot;
-      expect(agents.status === "success" ? agents.value : null).toEqual(["codex"]);
+      expect(agents.state === "known" ? agents.value : null).toEqual(["codex"]);
       const grants = yield* leases[2]!.snapshot;
-      expect(grants.status === "success" ? grants.value : null).toEqual([
+      expect(grants.state === "known" ? grants.value : null).toEqual([
         {
           tokenId: "token-id",
           name: "zcp-project",
@@ -248,7 +363,7 @@ describe("makeZeropsResourceBroker", () => {
         },
       ]);
       const diagnostics = yield* broker.diagnostics;
-      expect(diagnostics).toMatchObject({ entries: 3, success: 3 });
+      expect(diagnostics).toMatchObject({ entries: 3, known: 3 });
       expect(diagnostics).not.toHaveProperty("value");
       expect(diagnostics).not.toHaveProperty("error");
       yield* broker.shutdown;
@@ -261,20 +376,18 @@ describe("makeZeropsResourceBroker", () => {
   it.effect("retains an adapter-owned value without normalizing its nested data", () =>
     Effect.gen(function* () {
       const scope = accountScope();
-      const value: ReadonlyArray<ZeropsLocation> = [
-        { id: "prg1", name: "Prague", pingUrl: "https://ping.test" },
-      ];
+      const value: ReadonlyArray<ZeropsLocation> = [PRAGUE];
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Effect.succeed(verifiedAccess(scope)),
+        access: () => verifiedAccess(scope),
         adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed(value) }),
       });
       const leaseScope = yield* Scope.make();
       const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
       const loaded = yield* lease.awaitSettled;
 
-      expect(loaded.status === "success" ? loaded.value : null).toBe(value);
-      expect(loaded.status === "success" ? loaded.value[0] : null).toBe(value[0]);
+      expect(loaded.state === "known" ? loaded.value : null).toBe(value);
+      expect(loaded.state === "known" ? loaded.value[0] : null).toBe(value[0]);
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }),
@@ -286,7 +399,7 @@ describe("makeZeropsResourceBroker", () => {
       let calls = 0;
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Effect.succeed(verifiedAccess(scope)),
+        access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
           readOrganizationLocations: () => {
             calls += 1;
@@ -304,104 +417,145 @@ describe("makeZeropsResourceBroker", () => {
           organization: organization(accountScope("account-b")),
         })
         .pipe(Scope.provide(leaseScope), Effect.result);
+      const registry = AtomRegistry.make();
+      const refused = broker.known(locationsRequest(accountScope("account-a", 2)));
+      const unmount = registry.mount(refused);
 
       expect(stale).toMatchObject({ _tag: "Failure", failure: { reason: "account-mismatch" } });
       expect(mismatched).toMatchObject({
         _tag: "Failure",
         failure: { reason: "account-mismatch" },
       });
+      expect(registry.get(refused)).toMatchObject({
+        state: "failed",
+        failure: { kind: "refused", code: "account-mismatch" },
+        retryAtMs: null,
+      });
       expect(calls).toBe(0);
+      unmount();
+      registry.dispose();
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }),
   );
 
-  it.effect("rejects resources outside current organization and project access", () =>
-    Effect.gen(function* () {
-      const scope = accountScope();
-      let calls = 0;
-      const broker = yield* makeZeropsResourceBroker({
-        scope,
-        access: Effect.succeed(verifiedAccess(scope)),
-        adapter: unusedAdapter({
-          readServiceAuthorizedAgents: () => {
-            calls += 1;
-            return Effect.succeed([]);
-          },
-        }),
-      });
-      const leaseScope = yield* Scope.make();
-      const denied = yield* broker
-        .acquire(authorizedAgentsRequest(scope, "service-a", "not-granted"))
-        .pipe(Scope.provide(leaseScope), Effect.result);
+  it.effect(
+    "withholds a resource outside the grant's organization or project without reading it",
+    () =>
+      Effect.gen(function* () {
+        const scope = accountScope();
+        let calls = 0;
+        const broker = yield* makeZeropsResourceBroker({
+          scope,
+          access: () => verifiedAccess(scope),
+          adapter: unusedAdapter({
+            readServiceAuthorizedAgents: () => {
+              calls += 1;
+              return Effect.succeed([]);
+            },
+          }),
+        });
+        const leaseScope = yield* Scope.make();
+        const denied = yield* broker
+          .acquire(authorizedAgentsRequest(scope, "service-a", "not-granted"))
+          .pipe(Scope.provide(leaseScope));
 
-      expect(denied).toMatchObject({
-        _tag: "Failure",
-        failure: { reason: "access-denied" },
-      });
-      expect(calls).toBe(0);
-      yield* Scope.close(leaseScope, Exit.void);
-      yield* broker.shutdown;
-    }),
+        expect(yield* denied.awaitSettled).toEqual({
+          state: "withheld",
+          reason: "access-denied",
+          cause: null,
+        });
+        expect(calls).toBe(0);
+        yield* Scope.close(leaseScope, Exit.void);
+        yield* broker.shutdown;
+      }),
   );
 
-  it.effect("erases active sensitive resources when access is revoked", () =>
+  it.effect(
+    "erases a held value and aborts its read when access is revoked, keeping the demand",
+    () =>
+      Effect.gen(function* () {
+        const scope = accountScope();
+        let access: AccessState = verifiedAccess(scope);
+        const signals: Array<AbortSignal> = [];
+        const broker = yield* makeZeropsResourceBroker({
+          scope,
+          access: () => access,
+          adapter: unusedAdapter({
+            readOrganizationLocations: (_request, context) => {
+              signals.push(context.abortSignal);
+              return signals.length === 1 ? Effect.succeed([PRAGUE]) : Effect.never;
+            },
+          }),
+        });
+        const leaseScope = yield* Scope.make();
+        const lease = yield* broker
+          .acquire(locationsRequest(scope))
+          .pipe(Scope.provide(leaseScope));
+        expect((yield* lease.awaitSettled).state).toBe("known");
+        expect(yield* lease.retry).toBe(false);
+
+        access = {
+          status: "denied",
+          accountEpoch: scope.epoch,
+          scope: { kind: "account", account: scope.account },
+          deniedAtMs: 1,
+          previous: verifiedAccess(scope),
+        };
+        yield* broker.reconcileAccess;
+
+        expect(yield* lease.snapshot).toEqual({
+          state: "withheld",
+          reason: "access-denied",
+          cause: null,
+        });
+        expect(yield* broker.diagnostics).toMatchObject({ entries: 1, leases: 1, withheld: 1 });
+
+        // A grant starts a read; a revocation while it runs aborts it.
+        access = verifiedAccess(scope);
+        yield* broker.reconcileAccess;
+        yield* Effect.yieldNow;
+        expect(yield* lease.snapshot).toMatchObject({ state: "reading" });
+        access = {
+          status: "denied",
+          accountEpoch: scope.epoch,
+          scope: { kind: "account", account: scope.account },
+          deniedAtMs: 2,
+          previous: verifiedAccess(scope),
+        };
+        yield* broker.reconcileAccess;
+        expect(signals.map((signal) => signal.aborted)).toEqual([false, true]);
+        expect((yield* lease.snapshot).state).toBe("withheld");
+        yield* Scope.close(leaseScope, Exit.void);
+        yield* broker.shutdown;
+      }),
+  );
+
+  it.effect("withholds retained resources at the absolute access deadline", () =>
     Effect.gen(function* () {
       const scope = accountScope();
-      const access = yield* Ref.make<AccessState>(verifiedAccess(scope));
-      let signal: AbortSignal | undefined;
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Ref.get(access),
+        access: () => verifiedAccess(scope, 10),
         adapter: unusedAdapter({
-          readOrganizationLocations: (_request, context) => {
-            signal = context.abortSignal;
-            return Effect.succeed([{ id: "prg1", name: "Prague", pingUrl: "https://ping.test" }]);
-          },
+          readOrganizationLocations: () => Effect.succeed([PRAGUE]),
         }),
       });
       const leaseScope = yield* Scope.make();
       const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
-      expect((yield* lease.awaitSettled).status).toBe("success");
-
-      yield* Ref.set(access, {
-        status: "denied",
-        accountEpoch: scope.epoch,
-        scope: { kind: "account", account: scope.account },
-        deniedAtMs: 1,
-        previous: verifiedAccess(scope),
-      });
-      yield* broker.reconcileAccess;
-
-      expect(yield* lease.snapshot).toEqual({ status: "released" });
-      expect(signal?.aborted).toBe(true);
-      expect(yield* broker.diagnostics).toMatchObject({ entries: 0 });
-      yield* Scope.close(leaseScope, Exit.void);
-      yield* broker.shutdown;
-    }),
-  );
-
-  it.effect("expires retained resources at the absolute access deadline", () =>
-    Effect.gen(function* () {
-      const scope = accountScope();
-      const broker = yield* makeZeropsResourceBroker({
-        scope,
-        access: Effect.succeed(verifiedAccess(scope, 10)),
-        adapter: unusedAdapter({
-          readOrganizationLocations: () =>
-            Effect.succeed([{ id: "prg1", name: "Prague", pingUrl: "https://ping.test" }]),
-        }),
-      });
-      const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
-      expect((yield* lease.awaitSettled).status).toBe("success");
+      expect((yield* lease.awaitSettled).state).toBe("known");
 
       yield* TestClock.adjust("10 millis");
       yield* Effect.yieldNow;
 
-      expect(yield* lease.snapshot).toEqual({ status: "released" });
-      expect(yield* broker.diagnostics).toMatchObject({ entries: 0 });
+      expect(yield* lease.snapshot).toEqual({
+        state: "withheld",
+        reason: "access-lapsed",
+        cause: null,
+      });
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 1, known: 0, withheld: 1 });
       yield* Scope.close(leaseScope, Exit.void);
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 0 });
       yield* broker.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
   );
@@ -414,7 +568,7 @@ describe("makeZeropsResourceBroker", () => {
       let signal: AbortSignal | undefined;
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Effect.succeed(verifiedAccess(scope)),
+        access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
           readServiceAuthorizedAgents: (_request, context) => {
             signal = context.abortSignal;
@@ -434,25 +588,25 @@ describe("makeZeropsResourceBroker", () => {
       expect(signal?.aborted).toBe(true);
       yield* Deferred.succeed(finish, undefined);
       yield* Effect.yieldNow;
-      expect(yield* lease.snapshot).toEqual({ status: "released" });
+      expect(yield* lease.snapshot).toEqual({ state: "unread", waitingFor: null });
       expect(yield* broker.diagnostics).toMatchObject({ entries: 0, leases: 0 });
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }),
   );
 
-  it.effect("publishes sanitized failure and shares one explicit retry", () =>
+  it.effect("publishes a sanitized failure and shares one explicit retry", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       let calls = 0;
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Effect.succeed(verifiedAccess(scope)),
+        access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
           readOrganizationLocations: () => {
             calls += 1;
             return calls === 1
-              ? Effect.fail({ ...transportFailure(), message: "signed-url=do-not-publish" })
+              ? Effect.fail({ ...transportFailure(false), message: "signed-url=do-not-publish" })
               : Effect.succeed([]);
           },
         }),
@@ -463,22 +617,19 @@ describe("makeZeropsResourceBroker", () => {
       const first = yield* broker.acquire(request).pipe(Scope.provide(firstScope));
       const second = yield* broker.acquire(request).pipe(Scope.provide(secondScope));
       const failed = yield* first.awaitSettled;
-      expect(failed).toEqual({
-        status: "failure",
+      expect(failed).toMatchObject({
+        state: "failed",
+        failure: { kind: "transport", detail: "Zerops did not answer." },
         attempt: 1,
-        failure: { _tag: "ZeropsResourceReadFailure", kind: "transport", retryable: true },
+        retryAtMs: null,
       });
-      expect(failed.status === "failure" && "message" in failed.failure).toBe(false);
+      expect(failed.state === "failed" && "message" in failed.failure).toBe(false);
 
       const retryResults = yield* Effect.all([first.retry, second.retry], {
         concurrency: "unbounded",
       });
       expect(retryResults.filter(Boolean)).toHaveLength(1);
-      expect(yield* second.awaitSettled).toEqual({
-        status: "success",
-        attempt: 2,
-        value: [],
-      });
+      expect(yield* second.awaitSettled).toMatchObject({ state: "known", value: [] });
       expect(calls).toBe(2);
       yield* Scope.close(firstScope, Exit.void);
       yield* Scope.close(secondScope, Exit.void);
@@ -491,7 +642,7 @@ describe("makeZeropsResourceBroker", () => {
       const scope = accountScope();
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Effect.succeed(verifiedAccess(scope)),
+        access: () => verifiedAccess(scope),
         maxEntries: 1,
         adapter: unusedAdapter(),
       });
@@ -514,20 +665,20 @@ describe("makeZeropsResourceBroker", () => {
       const replacement = yield* broker
         .acquire(authorizedAgentsRequest(scope))
         .pipe(Scope.provide(rejectedScope));
-      expect((yield* replacement.awaitSettled).status).toBe("success");
+      expect((yield* replacement.awaitSettled).state).toBe("known");
       yield* Scope.close(firstScope, Exit.void);
       yield* Scope.close(rejectedScope, Exit.void);
       yield* broker.shutdown;
     }),
   );
 
-  it.effect("aborts and erases retained values on idempotent release and shutdown", () =>
+  it.effect("erases every value and aborts every read on an idempotent shutdown", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       const signals: Array<AbortSignal> = [];
       const broker = yield* makeZeropsResourceBroker({
         scope,
-        access: Effect.succeed(verifiedAccess(scope)),
+        access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
           readOrganizationLocations: (_request, context) => {
             signals.push(context.abortSignal);
@@ -548,22 +699,19 @@ describe("makeZeropsResourceBroker", () => {
         .acquire(authorizedAgentsRequest(scope))
         .pipe(Scope.provide(cloneScope));
       const loaded = yield* recipe.awaitSettled;
-      expect(loaded.status === "success" ? loaded.value[0]?.name : undefined).toBe("erase-me");
-      yield* recipe.release;
-      yield* recipe.release;
-      expect("value" in (yield* recipe.snapshot)).toBe(false);
+      expect(loaded.state === "known" ? loaded.value[0]?.name : undefined).toBe("erase-me");
+      const cloneSettled = yield* Effect.forkChild(clone.awaitSettled);
+      yield* Effect.yieldNow;
 
       yield* broker.shutdown;
       yield* broker.shutdown;
-      expect(yield* clone.snapshot).toEqual({ status: "released" });
-      expect(signals.every((signal) => signal.aborted)).toBe(true);
-      expect(yield* broker.diagnostics).toMatchObject({
-        entries: 0,
-        leases: 0,
-        loading: 0,
-        success: 0,
-        failure: 0,
-      });
+      expect(yield* recipe.snapshot).toEqual({ state: "unread", waitingFor: null });
+      expect(yield* clone.snapshot).toEqual({ state: "unread", waitingFor: null });
+      expect(Exit.hasInterrupts(yield* Fiber.await(cloneSettled))).toBe(true);
+      expect(Exit.hasInterrupts(yield* Effect.exit(recipe.awaitSettled))).toBe(true);
+      // The finished read has nothing left to abort; the one in flight is aborted.
+      expect(signals.map((signal) => signal.aborted)).toEqual([false, true]);
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 0, leases: 0 });
       const afterCloseScope = yield* Scope.make();
       const afterClose = yield* broker
         .acquire(locationsRequest(scope))

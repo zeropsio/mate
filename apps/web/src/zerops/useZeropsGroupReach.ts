@@ -49,9 +49,10 @@
  * `lastKey` had not moved).
  */
 
-import type {
-  OrganizationIntegrationTokenGrantsResourceRequest,
-  ZeropsIntegrationTokenGrantMetadata,
+import {
+  selectTokenGrants,
+  type OrganizationIntegrationTokenGrantsResourceRequest,
+  type ZeropsIntegrationTokenGrantMetadata,
 } from "@t3tools/client-runtime/zerops/data";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -60,7 +61,7 @@ import {
   type ZeropsGroupReachGroup,
   type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
-import { runZeropsCommand, useZeropsData, useZeropsResource } from "./zeropsDataContext";
+import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
 
 /** Serialises a plan input so an unchanged account is not re-read. */
 function groupsKey(groups: ReadonlyArray<ZeropsGroupReachGroup>): string {
@@ -124,8 +125,10 @@ export function useZeropsGroupReach(input: {
         : null,
     [clientId, enabled, hasMate, organizationRef, runtime.scope],
   );
-  const grantsResource = useZeropsResource(request);
-  const grantMetadata = grantsResource.status === "success" ? grantsResource.value : null;
+  const grants = selectTokenGrants(
+    useKnown(request === null ? null : runtime.resources.known(request)),
+  );
+  const grantMetadata = grants.status === "known" ? grants.grants : null;
 
   const tokens = useMemo(
     () => (grantMetadata === null ? null : integrationTokensFromGrantMetadata(grantMetadata)),
@@ -136,7 +139,7 @@ export function useZeropsGroupReach(input: {
   useEffect(() => {
     // An account with no Mate has no token of ours to touch.
     if (!enabled || clientId === undefined || !hasMate) return;
-    if (grantsResource.status === "failure") {
+    if (grants.status === "failed") {
       lastKey.current = null;
       return;
     }
@@ -172,7 +175,7 @@ export function useZeropsGroupReach(input: {
     enabled,
     tokens,
     tokenSetKey,
-    grantsResource.status,
+    grants.status,
     groups,
     hasMate,
     key,

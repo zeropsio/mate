@@ -9,7 +9,10 @@
  * the tab's own.
  */
 import { RegistryContext } from "@effect/atom-react";
-import type { ZeropsResourceAdapter } from "@t3tools/client-runtime/zerops/data";
+import {
+  selectLocationChoice,
+  type ZeropsResourceAdapter,
+} from "@t3tools/client-runtime/zerops/data";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
@@ -18,7 +21,7 @@ import { createElement, useEffect, useMemo, useState, type ReactNode } from "rea
 import { ZeropsDataProvider } from "../ZeropsDataProvider";
 import { useZeropsInventory, withheldProjectNotice } from "../inventoryContext";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
-import { useZeropsData, useZeropsResource } from "../zeropsDataContext";
+import { useKnown, useZeropsData } from "../zeropsDataContext";
 import { harnessRuntime } from "./harnessRuntime";
 
 export function AccountProduct({
@@ -74,7 +77,7 @@ export function ProjectNames() {
   return `projects: ${names}`;
 }
 
-/** What the organization's locations lease holds, as `locations: <status>[ <names>]`. */
+/** What the organization's locations demand shows, as `locations: <state>[ <names>]`. */
 export function OrganizationLocations({ organizationId }: { readonly organizationId: string }) {
   const { runtime, organizationRef } = useZeropsData();
   const request = useMemo(
@@ -85,8 +88,7 @@ export function OrganizationLocations({ organizationId }: { readonly organizatio
     }),
     [organizationId, organizationRef, runtime.scope],
   );
-  const snapshot = useZeropsResource(request);
-  return snapshot.status === "success"
-    ? `locations: success ${snapshot.value.map(({ name }) => name).join(", ")}`
-    : `locations: ${snapshot.status}`;
+  const shown = useKnown(runtime.resources.known(request));
+  const names = selectLocationChoice(shown).locations.map(({ name }) => name);
+  return [`locations: ${shown.state}`, ...names].join(" ");
 }

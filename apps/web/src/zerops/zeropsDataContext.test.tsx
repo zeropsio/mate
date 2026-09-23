@@ -4,21 +4,23 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
+import type { ZeropsLocation } from "@t3tools/client-runtime/zerops";
 import {
   AccountEpoch,
   makeZeropsApiOrigin,
   ZeropsAccountId,
   ZeropsOrganizationId,
-  type AccessState,
   type ManagedZeropsDataRuntime,
   type OrganizationLocationsResourceRequest,
 } from "@t3tools/client-runtime/zerops/data";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
-import { FakeLocationsBroker } from "./__fixtures__/resourceBroker";
+import { FakeResourceBroker } from "./__fixtures__/resourceBroker";
 import {
   makeZeropsAtomSelectionStore,
   runZeropsCommand,
-  useZeropsResource,
+  useKnown,
+  useZeropsData,
   ZeropsDataContext,
 } from "./zeropsDataContext";
 
@@ -150,32 +152,23 @@ const organization = {
   organizationId: ZeropsOrganizationId.make("org-1"),
 };
 
-/** The runtime's access as a grant round `verifiedAtMs` published it. */
-function verified(verifiedAtMs: number): AccessState {
-  return {
-    status: "verified",
-    account,
-    accountEpoch: scope.epoch,
-    verifiedAtMs,
-    deadlineMs: verifiedAtMs + 15 * 60_000,
-    mutationsAllowed: true,
-    organizations: [],
-    projects: [],
-  };
-}
+const known = (value: ReadonlyArray<ZeropsLocation>): Shown<ReadonlyArray<ZeropsLocation>> => ({
+  state: "known",
+  value,
+  asOf: { ordinal: 1, atMs: 0 },
+  coverage: "complete",
+  freshness: { kind: "settled" },
+});
 
-function locationsRuntime(
-  broker: FakeLocationsBroker,
-  access: Atom.Atom<AccessState> = Atom.make(verified(0)),
-): ManagedZeropsDataRuntime {
-  return {
+const PRAGUE: ZeropsLocation = { id: "prg1", name: "Prague", pingUrl: "https://ping.test" };
+
+type LocationsBroker = FakeResourceBroker<OrganizationLocationsResourceRequest>;
+
+function locationsContext(broker: LocationsBroker) {
+  const runtime = {
     scope,
-    resources: { acquire: broker.acquire },
-    reads: { access },
+    resources: { known: broker.known },
   } as unknown as ManagedZeropsDataRuntime;
-}
-
-function locationsContext(runtime: ManagedZeropsDataRuntime) {
   return {
     runtime,
     organizationRef: () => organization,
@@ -185,86 +178,31 @@ function locationsContext(runtime: ManagedZeropsDataRuntime) {
   };
 }
 
-async function flushEffects(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-  });
-}
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("useZeropsResource", () => {
-  it("does not re-acquire the lease when an un-memoized request keeps the same key", async () => {
+describe("useKnown", () => {
+  // The broker withholds and erases at the deadline and reads again under the
+  // next grant; the mounted view follows it on the same demand (DESIGN §9 C4).
+  it("follows a withheld resource back to its value without a remount", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeLocationsBroker();
-    const runtime = locationsRuntime(broker);
-    const onResult = vi.fn();
-
-    function Probe() {
-      // Deliberately un-memoized: a fresh object identity every render.
-      const request: OrganizationLocationsResourceRequest = {
-        kind: "organization-locations",
-        account: scope,
-        organization,
-      };
-      const result = useZeropsResource(request);
-      useEffect(() => onResult(result), [result]);
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    try {
-      await act(() => {
-        root.render(
-          <ZeropsDataContext value={locationsContext(runtime)}>
-            <Probe />
-          </ZeropsDataContext>,
-        );
-      });
-      await flushEffects();
-      expect(broker.acquisitions).toBe(1);
-
-      // A second render with a new request identity but the same key must not re-lease.
-      await act(() => {
-        root.render(
-          <ZeropsDataContext value={locationsContext(runtime)}>
-            <Probe />
-          </ZeropsDataContext>,
-        );
-      });
-      await flushEffects();
-      expect(broker.acquisitions).toBe(1);
-
-      await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: [] });
-      });
-      expect(onResult.mock.calls.at(-1)?.[0]).toEqual({ status: "success", attempt: 1, value: [] });
-    } finally {
-      await act(() => root.unmount());
-    }
-  });
-
-  // The broker erases its values at the deadline and ends the lease; demand
-  // survives and re-reads under the next grant (DESIGN §9 C4).
-  it("a lease the broker erased re-admits on the next grant, and not before", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const broker = new FakeLocationsBroker();
-    const registry = AtomRegistry.make();
-    const access = Atom.make(verified(0));
-    const runtime = locationsRuntime(broker, access);
-    const onResult = vi.fn();
+    const broker = new FakeResourceBroker<OrganizationLocationsResourceRequest>();
     const request: OrganizationLocationsResourceRequest = {
       kind: "organization-locations",
       account: scope,
       organization,
     };
+    const onResult = vi.fn();
+    let mounts = 0;
 
     function Probe() {
-      const result = useZeropsResource(request);
+      const { runtime } = useZeropsData();
+      const result = useKnown(runtime.resources.known(request));
+      useEffect(() => {
+        mounts += 1;
+      }, []);
       useEffect(() => onResult(result), [result]);
       return null;
     }
@@ -274,47 +212,51 @@ describe("useZeropsResource", () => {
     try {
       await act(() => {
         root.render(
-          <RegistryContext value={registry}>
-            <ZeropsDataContext value={locationsContext(runtime)}>
+          <RegistryContext value={AtomRegistry.make()}>
+            <ZeropsDataContext value={locationsContext(broker)}>
               <Probe />
             </ZeropsDataContext>
           </RegistryContext>,
         );
       });
-      await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: [] });
-      });
-      expect(last()).toEqual({ status: "success", attempt: 1, value: [] });
+      expect(last()).toMatchObject({ state: "reading" });
+      await act(() => broker.publish(known([PRAGUE])));
+      expect(last()).toMatchObject({ state: "known", value: [PRAGUE] });
 
-      // The deadline: the broker erases the value while the old grant is still published.
-      await act(async () => {
-        await broker.publish({ status: "released" });
-      });
-      expect(last()).toEqual({ status: "released" });
-      await flushEffects();
+      await act(() => broker.publish({ state: "withheld", reason: "access-lapsed", cause: null }));
+      expect(last()).toEqual({ state: "withheld", reason: "access-lapsed", cause: null });
+
+      await act(() => broker.publish({ state: "reading", sinceMs: 1, attempt: 1 }));
+      await act(() => broker.publish(known([PRAGUE])));
+      expect(last()).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(mounts).toBe(1);
       expect(broker.acquisitions).toBe(1);
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
 
-      await act(async () =>
-        registry.set(access, {
-          status: "expired",
-          accountEpoch: scope.epoch,
-          expiredAtMs: 15 * 60_000,
-          previous: verified(0),
-        } as AccessState),
-      );
-      await flushEffects();
-      expect(broker.acquisitions).toBe(1);
+  it("demands nothing for no atom, and reads unread", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const onResult = vi.fn();
 
-      // The next grant admits the demand again, once.
-      broker.current = { status: "loading", attempt: 1 };
-      await act(async () => registry.set(access, verified(20 * 60_000)));
-      await flushEffects();
-      expect(broker.acquisitions).toBe(2);
-      await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: [] });
+    function Probe() {
+      const result = useKnown<ReadonlyArray<ZeropsLocation>>(null);
+      useEffect(() => onResult(result), [result]);
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => {
+        root.render(
+          <RegistryContext value={AtomRegistry.make()}>
+            <Probe />
+          </RegistryContext>,
+        );
       });
-      expect(last()).toEqual({ status: "success", attempt: 1, value: [] });
-      expect(broker.acquisitions).toBe(2);
+      expect(onResult.mock.calls.at(-1)?.[0]).toEqual({ state: "unread", waitingFor: null });
     } finally {
       await act(() => root.unmount());
     }

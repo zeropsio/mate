@@ -1,29 +1,16 @@
-import { RegistryContext } from "@effect/atom-react";
-import {
-  zeropsResourceKeyOf,
-  type AccessState,
-  type EntityKnowledge,
-  type ManagedZeropsDataRuntime,
-  type OrganizationRef,
-  type ProjectRef,
-  type RuntimeInterestDescriptor,
-  type ZeropsEntityRecord,
-  type ZeropsResourceAdmissionError,
-  type ZeropsResourceRequest,
-  type ZeropsResourceSnapshot,
-  type ZeropsResourceValue,
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import type {
+  EntityKnowledge,
+  ManagedZeropsDataRuntime,
+  OrganizationRef,
+  ProjectRef,
+  RuntimeInterestDescriptor,
+  ZeropsEntityRecord,
 } from "@t3tools/client-runtime/zerops/data";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
-import * as Stream from "effect/Stream";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 export interface ZeropsDataContextValue {
   readonly runtime: ManagedZeropsDataRuntime;
@@ -151,113 +138,13 @@ export function useZeropsDataInterest(descriptor: RuntimeInterestDescriptor | nu
   }, [runtime, identity]);
 }
 
-/** Why the broker refuses a lease until a grant covers it. */
-const ACCESS_REFUSALS: ReadonlySet<ZeropsResourceAdmissionError["reason"]> = new Set([
-  "access-unverified",
-  "access-expired",
-  "access-denied",
-]);
-
-/** Waits for a verified grant other than the access state `withheldUnder`. */
-function nextGrant(
-  registry: AtomRegistry.AtomRegistry,
-  access: Atom.Atom<AccessState>,
-  withheldUnder: AccessState,
-): Effect.Effect<void> {
-  return Effect.callback<void>((resume) => {
-    let settled = false;
-    const check = () => {
-      const state = registry.get(access);
-      if (settled || state.status !== "verified" || state === withheldUnder) return;
-      settled = true;
-      resume(Effect.void);
-    };
-    const release = registry.subscribe(access, check);
-    check();
-    return Effect.sync(release);
-  });
-}
+const NOT_DEMANDED = Atom.make<Shown<never>>({ state: "unread", waitingFor: null });
 
 /**
- * Holds one demand-scoped configuration resource lease for the mounted
- * consumer. The demand outlives its lease: when the broker erases the value
- * at the access deadline, or refuses it until a grant covers it, the lease is
- * taken again under the next grant the runtime publishes (DESIGN §9 C4).
+ * Reads one fact through withholding. A store's atom holds the demand for its
+ * fact while it is mounted, so a lapse and the next grant reach this view
+ * without a remount; `null` demands nothing and reads `unread`.
  */
-export function useZeropsResource<Request extends ZeropsResourceRequest>(
-  request: Request | null,
-): ZeropsResourceSnapshot<ZeropsResourceValue<Request>> {
-  const { runtime } = useZeropsData();
-  const registry = useContext(RegistryContext);
-  const key = request === null ? null : zeropsResourceKeyOf(request);
-  const [current, setCurrent] = useState<{
-    readonly key: string | null;
-    readonly snapshot: ZeropsResourceSnapshot<ZeropsResourceValue<Request>>;
-  }>({ key: null, snapshot: { status: "released" } });
-
-  useEffect(() => {
-    if (request === null || key === null) {
-      setCurrent({ key: null, snapshot: { status: "released" } });
-      return;
-    }
-    const controller = new AbortController();
-    const publish = (snapshot: ZeropsResourceSnapshot<ZeropsResourceValue<Request>>) =>
-      Effect.sync(() => {
-        if (!controller.signal.aborted) setCurrent({ key, snapshot });
-      });
-    /** One lease, until the broker erases it; a refusal for access ends it as well. */
-    const lease = Effect.scoped(
-      Effect.gen(function* () {
-        const held = yield* runtime.resources.acquire(request);
-        yield* publish(yield* held.snapshot);
-        yield* Stream.runForEach(
-          held.changes.pipe(Stream.takeUntil(({ status }) => status === "released")),
-          publish,
-        );
-      }),
-    ).pipe(
-      Effect.catchIf(
-        ({ reason }) => ACCESS_REFUSALS.has(reason),
-        () => publish({ status: "released" }),
-      ),
-    );
-    void Effect.runPromise(
-      Effect.forever(
-        lease.pipe(
-          Effect.andThen(
-            Effect.suspend(() =>
-              nextGrant(registry, runtime.reads.access, registry.get(runtime.reads.access)),
-            ),
-          ),
-        ),
-      ),
-      { signal: controller.signal },
-    ).catch((cause: unknown) => {
-      if (!controller.signal.aborted) {
-        console.error(`Zerops resource "${key}" could not be leased:`, cause);
-        setCurrent({
-          key,
-          snapshot: {
-            status: "failure",
-            attempt: 1,
-            failure: {
-              _tag: "ZeropsResourceReadFailure",
-              kind: "unexpected",
-              retryable: false,
-            },
-          },
-        });
-      }
-    });
-    return () => {
-      controller.abort();
-    };
-    // `request` is intentionally not a dep: every caller memoizes it so it
-    // changes exactly when `key` does. Depending on `runtime.resources` and
-    // `runtime.reads.access` (stable per runtime) instead avoids re-leasing on
-    // an un-memoized caller's per-render request identity.
-  }, [key, registry, runtime.reads.access, runtime.resources]);
-
-  if (current.key === key) return current.snapshot;
-  return key === null ? { status: "released" } : { status: "loading", attempt: 1 };
+export function useKnown<T>(atom: Atom.Atom<Shown<T>> | null): Shown<T> {
+  return useAtomValue(atom ?? NOT_DEMANDED);
 }

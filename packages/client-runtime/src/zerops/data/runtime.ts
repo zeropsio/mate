@@ -712,7 +712,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const resources = yield* makeZeropsResourceBroker({
     scope: options.scope,
     adapter: options.resourceAdapter ?? unavailableResourceAdapter,
-    access: Ref.get(model).pipe(Effect.map((state) => state.access)),
+    access: () => Ref.getUnsafe(model).access,
     maxEntries: policy.activeSharedReadsPerAccount,
   });
   const logTimers = options.logTimers ?? {

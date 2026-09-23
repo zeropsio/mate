@@ -136,18 +136,18 @@ describe("ZeropsInventoryProvider lapse", () => {
       resourceAdapter: source.adapter,
     });
     await pass(0);
-    expect(tab.text()).toContain("locations: success Prague");
+    expect(tab.text()).toContain("locations: known Prague");
     harness.rest.hang("GET /user/info");
 
     await pass(16 * MINUTE_MS);
 
     expect(mounts()).toBe(1);
-    expect(tab.text()).toContain("locations: released");
+    expect(tab.text()).toContain("locations: withheld");
     expect(tab.text()).not.toContain("Prague");
     expect(source.reads()).toBe(1);
   });
 
-  it("a resource erased by lapse re-acquires on the next grant", async () => {
+  it("a resource erased by lapse reads again on the next grant", async () => {
     const source = locationsSource();
     const { harness, tab, pass, mounts } = await admittedProduct({
       resourceAdapter: source.adapter,
@@ -155,14 +155,14 @@ describe("ZeropsInventoryProvider lapse", () => {
     await pass(0);
     const renewals = harness.rest.hang("GET /user/info");
     await pass(16 * MINUTE_MS);
-    expect(tab.text()).toContain("locations: released");
+    expect(tab.text()).toContain("locations: withheld");
 
     renewals();
     await pass(2 * MINUTE_MS);
 
     expect(mounts()).toBe(1);
     expect(source.reads()).toBe(2);
-    expect(tab.text()).toContain("locations: success Prague");
+    expect(tab.text()).toContain("locations: known Prague");
   });
 
   // T-L2, Phase 0: the product stays mounted beneath an opaque overlay.

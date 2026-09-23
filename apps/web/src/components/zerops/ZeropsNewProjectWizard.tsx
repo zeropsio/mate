@@ -1,4 +1,4 @@
-import { ZeropsApiError, type ZeropsLocation } from "@t3tools/client-runtime/zerops";
+import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 /**
  * `/zerops/new` — *Add project*: a group, and its first Mate (guide 4.1, 4.2).
  *
@@ -28,7 +28,10 @@ import { ZeropsApiError, type ZeropsLocation } from "@t3tools/client-runtime/zer
  */
 
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { OrganizationLocationsResourceRequest } from "@t3tools/client-runtime/zerops/data";
+import {
+  selectLocationChoice,
+  type OrganizationLocationsResourceRequest,
+} from "@t3tools/client-runtime/zerops/data";
 import { useContext, useEffect, useMemo, useState } from "react";
 
 import {
@@ -50,7 +53,7 @@ import { registerMateProject } from "~/zerops/brokerGrant";
 import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
 import { findAccountGitea } from "~/zerops/giteaProject";
 import { InventoryContext } from "~/zerops/inventoryContext";
-import { runZeropsCommand, useZeropsData, useZeropsResource } from "~/zerops/zeropsDataContext";
+import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -71,8 +74,6 @@ import { registryHoldsCreate, type RegistryReadState } from "./ZeropsNewProjectW
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 
 const CARD_CLASS = "rounded-[var(--zerops-card-radius)] border border-border/60 bg-card";
-
-const EMPTY_LOCATIONS: ReadonlyArray<ZeropsLocation> = [];
 
 /**
  * A single membership auto-resolves to `organizationStatus: "selected"`
@@ -313,25 +314,18 @@ function ZeropsNewProjectContent() {
         : null,
     [activeOrganization, canCreate, organizationRef, runtime.scope],
   );
-  const locationResource = useZeropsResource(locationRequest);
-  const locations =
-    locationResource.status === "success" ? locationResource.value : EMPTY_LOCATIONS;
+  const offered = selectLocationChoice(
+    useKnown(locationRequest === null ? null : runtime.resources.known(locationRequest)),
+  );
+  const locations = offered.locations;
   const locationKey = activeOrganization?.id ?? "";
   const locationId =
     locationChoice?.key === locationKey &&
     locations.some((location) => location.id === locationChoice.id)
       ? locationChoice.id
       : (locations[0]?.id ?? null);
-  const locationStatus =
-    !activeOrganization || !canCreate
-      ? "ready"
-      : locationResource.status === "success"
-        ? "ready"
-        : locationResource.status === "failure"
-          ? "failed"
-          : "loading";
-  const locationError =
-    locationResource.status === "failure" ? "Try again from the projects page." : null;
+  const locationStatus = !activeOrganization || !canCreate ? "ready" : offered.status;
+  const locationError = offered.status === "failed" ? "Try again from the projects page." : null;
 
   const giteaProjectId = gitea?.projectId;
   useEffect(() => {

@@ -1,19 +1,18 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
-import { Atom } from "effect/unstable/reactivity";
 
 import {
   AccountEpoch,
   makeZeropsApiOrigin,
   ZeropsAccountId,
   ZeropsOrganizationId,
-  type AccessState,
   type ManagedZeropsDataRuntime,
   type OrganizationIntegrationTokenGrantsResourceRequest,
   type ZeropsIntegrationTokenGrantMetadata,
 } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsGroupReachGroup } from "@t3tools/client-runtime/zerops";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { FakeResourceBroker } from "./__fixtures__/resourceBroker";
 import { integrationTokensFromGrantMetadata, useZeropsGroupReach } from "./useZeropsGroupReach";
@@ -109,16 +108,24 @@ const GROUP: ZeropsGroupReachGroup = {
   mateProjectIds: ["project-a"],
 };
 
-/** The runtime's access, which no test here moves. */
-const unverified = Atom.make<AccessState>({ status: "unverified" });
+/** The grants as the read with `ordinal` settled them. */
+const knownGrants = (
+  value: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>,
+  ordinal: number,
+): Shown<ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>> => ({
+  state: "known",
+  value,
+  asOf: { ordinal, atMs: 0 },
+  coverage: "complete",
+  freshness: { kind: "settled" },
+});
 
 type GrantsBroker = FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>;
 
 function contextFor(broker: GrantsBroker, setIntegrationTokenProjects: (input: unknown) => void) {
   const runtime = {
     scope,
-    resources: { acquire: broker.acquire },
-    reads: { access: unverified },
+    resources: { known: broker.known },
     commands: {
       setIntegrationTokenProjects: (input: unknown) => {
         setIntegrationTokenProjects(input);
@@ -192,7 +199,7 @@ describe("useZeropsGroupReach", () => {
       await flushEffects();
 
       await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: NARROW_GRANTS });
+        await broker.publish(knownGrants(NARROW_GRANTS, 1));
       });
       await flushEffects();
 
@@ -261,7 +268,7 @@ describe("useZeropsGroupReach", () => {
       await flushEffects();
 
       await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: settled });
+        await broker.publish(knownGrants(settled, 1));
       });
       await flushEffects();
     } finally {
@@ -298,7 +305,7 @@ describe("useZeropsGroupReach", () => {
 
       // No token for this Mate yet — nothing to plan.
       await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: [] });
+        await broker.publish(knownGrants([], 1));
       });
       await flushEffects();
       expect(writes).toEqual([]);
@@ -306,7 +313,7 @@ describe("useZeropsGroupReach", () => {
       // The token now exists, freshly minted with ADMIN — the group's shape
       // (`GROUP`) has not changed at all.
       await act(async () => {
-        await broker.publish({ status: "success", attempt: 2, value: NARROW_GRANTS });
+        await broker.publish(knownGrants(NARROW_GRANTS, 2));
       });
       await flushEffects();
 
@@ -355,7 +362,7 @@ describe("useZeropsGroupReach", () => {
       await flushEffects();
 
       await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: NARROW_GRANTS });
+        await broker.publish(knownGrants(NARROW_GRANTS, 1));
       });
       await flushEffects();
     } finally {
@@ -391,7 +398,7 @@ describe("useZeropsGroupReach", () => {
       await flushEffects();
 
       await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: NARROW_GRANTS });
+        await broker.publish(knownGrants(NARROW_GRANTS, 1));
       });
       await flushEffects();
 
@@ -441,7 +448,7 @@ describe("useZeropsGroupReach", () => {
       });
       await flushEffects();
       await act(async () => {
-        await broker.publish({ status: "success", attempt: 1, value: alreadyWide });
+        await broker.publish(knownGrants(alreadyWide, 1));
       });
       await flushEffects();
 
@@ -462,8 +469,7 @@ describe("useZeropsGroupReach", () => {
     });
     const runtime = {
       scope,
-      resources: { acquire: broker.acquire },
-      reads: { access: unverified },
+      resources: { known: broker.known },
       commands: {
         setIntegrationTokenProjects: (input: { readonly tokenId: string }) =>
           Effect.promise(async () => {
@@ -515,7 +521,7 @@ describe("useZeropsGroupReach", () => {
     });
     await flushEffects();
     await act(async () => {
-      await broker.publish({ status: "success", attempt: 1, value: grants });
+      await broker.publish(knownGrants(grants, 1));
     });
     await flushEffects();
     // The first write ("token-a") is in flight, blocked on `firstGate`.

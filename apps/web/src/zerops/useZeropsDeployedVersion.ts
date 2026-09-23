@@ -17,7 +17,7 @@ import type {
   ZeropsResourceRequest,
   ZeropsResourceValue,
 } from "@t3tools/client-runtime/zerops/data";
-import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
+import { settledValue, ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
 import { useCallback } from "react";
 
@@ -28,7 +28,8 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
  * A one-shot action demand owns its lease until the resource settles, or
  * until `signal` aborts — an unmount abandoning the flow releases the lease
  * immediately instead of holding it until the read finally settles. Rejects
- * when the read did not succeed.
+ * unless the read that settled it succeeded: a failure, a withholding, or a
+ * value whose revalidation failed.
  */
 export function readZeropsResource<Request extends ZeropsResourceRequest>(
   resources: ZeropsResourceBroker,
@@ -38,9 +39,10 @@ export function readZeropsResource<Request extends ZeropsResourceRequest>(
   return Effect.runPromise(
     Effect.scoped(resources.acquire(request).pipe(Effect.flatMap((lease) => lease.awaitSettled))),
     signal === undefined ? undefined : { signal },
-  ).then((snapshot) => {
-    if (snapshot.status === "success") return snapshot.value;
-    throw new Error(`The ${request.kind} read did not succeed (${snapshot.status}).`);
+  ).then((shown) => {
+    const answer = settledValue(shown);
+    if (answer !== null) return answer.value;
+    throw new Error(`The ${request.kind} read did not succeed (${shown.state}).`);
   });
 }
 

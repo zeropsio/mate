@@ -23,8 +23,8 @@ describe("ZeropsNewProjectWizard source", () => {
     expect(wizardSource).not.toContain("client.createProjectWithZeropsMate(");
   });
 
-  it("loads organization locations through the demand-scoped resource hook", () => {
-    expect(wizardSource).toContain("useZeropsResource(locationRequest)");
+  it("loads organization locations through the broker's demand-scoped atom", () => {
+    expect(wizardSource).toContain("runtime.resources.known(locationRequest)");
     expect(wizardSource).toContain('kind: "organization-locations"');
     expect(wizardSource).not.toContain(".listClientLocations(");
   });

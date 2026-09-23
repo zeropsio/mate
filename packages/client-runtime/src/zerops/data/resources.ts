@@ -3,16 +3,23 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as Option from "effect/Option";
+import type * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
-import * as Stream from "effect/Stream";
-import * as SubscriptionRef from "effect/SubscriptionRef";
+import { Atom } from "effect/unstable/reactivity";
 
 import type { ZeropsLocation } from "../api.ts";
 import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "../groupReach.ts";
+import {
+  advance,
+  newCell,
+  read,
+  type Cell,
+  type FailureReason,
+  type KnownEvent,
+  type Shown,
+  type WithheldReason,
+} from "../knowledge/known.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import type {
@@ -108,29 +115,8 @@ export interface ZeropsResourceSourceError {
   readonly retryable: boolean;
 }
 
-export interface ZeropsResourceReadFailure {
-  readonly _tag: "ZeropsResourceReadFailure";
-  readonly kind: ZeropsResourceSourceError["kind"] | "unexpected";
-  readonly retryable: boolean;
-}
-
-export type ZeropsResourceSnapshot<Value> =
-  | { readonly status: "loading"; readonly attempt: number }
-  | { readonly status: "success"; readonly attempt: number; readonly value: Value }
-  | {
-      readonly status: "failure";
-      readonly attempt: number;
-      readonly failure: ZeropsResourceReadFailure;
-    }
-  | { readonly status: "released" };
-
-export type ZeropsResourceSettledSnapshot<Value> = Exclude<
-  ZeropsResourceSnapshot<Value>,
-  { readonly status: "loading" }
->;
-
 export interface ZeropsResourceRequestContext {
-  /** Effect interruption and final release both abort this signal. */
+  /** Withholding, the final release and interruption all abort this signal. */
   readonly abortSignal: AbortSignal;
 }
 
@@ -165,25 +151,20 @@ export interface ZeropsResourceAdapter {
   >;
 }
 
+/** Why the broker takes no demand at all; access never refuses demand, it withholds (§9 C4). */
 export interface ZeropsResourceAdmissionError {
   readonly _tag: "ZeropsResourceAdmissionError";
-  readonly reason:
-    | "runtime-closed"
-    | "account-mismatch"
-    | "account-capacity"
-    | "lease-released"
-    | "access-unverified"
-    | "access-expired"
-    | "access-denied";
+  readonly reason: "runtime-closed" | "account-mismatch" | "account-capacity" | "lease-released";
 }
 
 export interface ZeropsResourceLease<Request extends ZeropsResourceRequest> {
   readonly key: ZeropsResourceKey;
   readonly request: Request;
-  readonly snapshot: Effect.Effect<ZeropsResourceSnapshot<ZeropsResourceValue<Request>>>;
-  readonly changes: Stream.Stream<ZeropsResourceSnapshot<ZeropsResourceValue<Request>>>;
-  readonly awaitSettled: Effect.Effect<ZeropsResourceSettledSnapshot<ZeropsResourceValue<Request>>>;
-  /** Starts one shared new attempt only when the current attempt failed. */
+  /** The resource read through withholding; a released lease shows nothing. */
+  readonly snapshot: Effect.Effect<Shown<ZeropsResourceValue<Request>>>;
+  /** The first state with no read in flight: known, failed, gone or withheld. */
+  readonly awaitSettled: Effect.Effect<Shown<ZeropsResourceValue<Request>>>;
+  /** Reads again now, once for every lease, when the last read failed. */
   readonly retry: Effect.Effect<boolean, ZeropsResourceAdmissionError>;
   /** Idempotent; the acquiring Scope invokes the same release path. */
   readonly release: Effect.Effect<void>;
@@ -192,20 +173,30 @@ export interface ZeropsResourceLease<Request extends ZeropsResourceRequest> {
 export interface ZeropsResourceDiagnostics {
   readonly entries: number;
   readonly leases: number;
-  readonly loading: number;
-  readonly success: number;
-  readonly failure: number;
+  readonly reading: number;
+  readonly known: number;
+  readonly failed: number;
+  readonly withheld: number;
   readonly byKind: Readonly<Record<ZeropsResourceKind, number>>;
 }
 
 export interface ZeropsResourceBroker {
   readonly scope: AccountScope;
+  /**
+   * One atom per key. Mounting it is the demand for the resource; its value is
+   * the resource read through withholding, so a lapse and the next grant reach
+   * the mounted view without a remount.
+   */
+  readonly known: <Request extends ZeropsResourceRequest>(
+    request: Request,
+  ) => Atom.Atom<Shown<ZeropsResourceValue<Request>>>;
+  /** The same demand, held by an Effect scope. */
   readonly acquire: <Request extends ZeropsResourceRequest>(
     request: Request,
   ) => Effect.Effect<ZeropsResourceLease<Request>, ZeropsResourceAdmissionError, Scope.Scope>;
   /** Counts and states only; resource values and adapter errors never enter diagnostics. */
   readonly diagnostics: Effect.Effect<ZeropsResourceDiagnostics>;
-  /** Rechecks every retained resource and erases entries no longer covered by access. */
+  /** Withholds and erases what the current access no longer covers; re-reads what it covers again. */
   readonly reconcileAccess: Effect.Effect<void>;
   /** Idempotent. Fences completion, aborts work and erases all retained values. */
   readonly shutdown: Effect.Effect<void>;
@@ -215,28 +206,59 @@ export interface ZeropsResourceBrokerOptions {
   readonly scope: AccountScope;
   readonly adapter: ZeropsResourceAdapter;
   /** Dynamic account access owned by the parent runtime. */
-  readonly access: Effect.Effect<AccessState>;
+  readonly access: () => AccessState;
   readonly maxEntries?: number;
 }
 
 type AnyResourceValue = ZeropsResourceValues[ZeropsResourceKind];
-type AnyResourceSnapshot = ZeropsResourceSnapshot<AnyResourceValue>;
+type AnyShown = Shown<AnyResourceValue>;
 
-interface LeaseState {
-  readonly key: ZeropsResourceKey;
-  readonly state: SubscriptionRef.SubscriptionRef<AnyResourceSnapshot>;
+/** One consumer's demand: told every change, and told once when the broker closes. */
+interface Demand {
+  readonly publish: (shown: AnyShown) => void;
+  readonly close: () => void;
+}
+
+interface ResourceRead {
+  readonly ordinal: number;
+  readonly controller: AbortController;
+  fiber: Fiber.Fiber<void> | null;
 }
 
 interface ResourceEntry {
   readonly key: ZeropsResourceKey;
   readonly request: ZeropsResourceRequest;
-  readonly subscribers: Map<string, SubscriptionRef.SubscriptionRef<AnyResourceSnapshot>>;
-  snapshot: AnyResourceSnapshot;
-  attempt: number;
-  generation: number;
-  controller: AbortController;
-  fiber: Fiber.Fiber<void> | null;
+  cell: Cell<AnyResourceValue>;
+  shown: AnyShown;
+  readonly demands: Map<number, Demand>;
+  inFlight: ResourceRead | null;
 }
+
+/** What an open demand answers to its holder. */
+interface OpenDemand {
+  readonly key: ZeropsResourceKey;
+  /** Neither released nor closed with the broker. */
+  readonly active: () => boolean;
+  readonly shown: () => AnyShown;
+  readonly retry: () => boolean | ZeropsResourceAdmissionError;
+  readonly release: () => void;
+}
+
+type Admission =
+  | { readonly kind: "admitted"; readonly deadlineMs: number }
+  | { readonly kind: "withheld"; readonly reason: WithheldReason };
+
+/** What a demand that holds nothing shows. */
+const NOT_DEMANDED: AnyShown = { state: "unread", waitingFor: null };
+/** What a demand shows once its account closed. */
+const ACCOUNT_CLOSED: AnyShown = { state: "unread", waitingFor: "zerops-session" };
+
+const REFUSAL_WORDS: Readonly<Record<ZeropsResourceAdmissionError["reason"], string>> = {
+  "runtime-closed": "This account is signed out.",
+  "account-mismatch": "This read belongs to another account.",
+  "account-capacity": "Too many resources are open at once.",
+  "lease-released": "This read is no longer held.",
+};
 
 const accountRefsEqual = (left: AccountRef, right: AccountRef): boolean =>
   left.apiOrigin === right.apiOrigin && left.accountId === right.accountId;
@@ -259,6 +281,19 @@ const organizationOf = (request: ZeropsResourceRequest): OrganizationRef => {
     case "service-deployed-version":
     case "service-mate-flag":
       return request.service.project.organization;
+  }
+};
+
+/** The access scope that withholds a resource: its project, or the account for an organization's. */
+const cellScopeOf = (request: ZeropsResourceRequest): Cell<AnyResourceValue>["scope"] => {
+  switch (request.kind) {
+    case "organization-locations":
+    case "organization-integration-token-grants":
+      return "account";
+    case "service-authorized-agents":
+    case "service-deployed-version":
+    case "service-mate-flag":
+      return request.service.project.projectId;
   }
 };
 
@@ -286,43 +321,64 @@ export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResou
   }
 }
 
-const sourceError = (cause: Cause.Cause<ZeropsResourceSourceError>): ZeropsResourceReadFailure => {
+/** The sanitized reason a read failed: the source's own message never leaves the adapter. */
+const failureOf = (
+  cause: Cause.Cause<ZeropsResourceSourceError>,
+): { readonly failure: FailureReason; readonly retryable: boolean } => {
   const found = Cause.findError(cause);
-  return Result.isSuccess(found)
-    ? {
-        _tag: "ZeropsResourceReadFailure",
-        kind: found.success.kind,
-        retryable: found.success.retryable,
-      }
-    : { _tag: "ZeropsResourceReadFailure", kind: "unexpected", retryable: false };
+  if (Result.isFailure(found)) {
+    return {
+      failure: { kind: "transport", detail: "The read ended unexpectedly." },
+      retryable: false,
+    };
+  }
+  const { kind, retryable } = found.success;
+  switch (kind) {
+    case "transport":
+      return { failure: { kind: "transport", detail: "Zerops did not answer." }, retryable };
+    case "unavailable":
+      return {
+        failure: { kind: "refused", code: "unavailable", words: "Zerops has no such resource." },
+        retryable,
+      };
+    case "permission":
+      return {
+        failure: { kind: "refused", code: "permission", words: "Zerops refused this read." },
+        retryable,
+      };
+    case "decode":
+      return {
+        failure: { kind: "malformed", detail: "Zerops answered in an unknown shape." },
+        retryable,
+      };
+  }
 };
 
 const admissionError = (
   reason: ZeropsResourceAdmissionError["reason"],
 ): ZeropsResourceAdmissionError => ({ _tag: "ZeropsResourceAdmissionError", reason });
 
+const requestInScope = (scope: AccountScope, request: ZeropsResourceRequest): boolean =>
+  accountScopesEqual(request.account, scope) &&
+  accountRefsEqual(organizationOf(request).account, scope.account);
+
 function resourceAdmission(
   scope: AccountScope,
   access: AccessState,
   request: ZeropsResourceRequest,
   nowMs: number,
-): { readonly deadlineMs: number } | ZeropsResourceAdmissionError {
-  if (
-    !accountScopesEqual(request.account, scope) ||
-    !accountRefsEqual(organizationOf(request).account, scope.account)
-  ) {
-    return admissionError("account-mismatch");
-  }
-  if (access.status === "denied") return admissionError("access-denied");
-  if (access.status === "expired") return admissionError("access-expired");
+): Admission {
+  const withheld = (reason: WithheldReason): Admission => ({ kind: "withheld", reason });
+  if (access.status === "denied") return withheld("access-denied");
+  if (access.status === "expired") return withheld("access-lapsed");
   const grant = usableGrant(access);
-  if (grant === null) return admissionError("access-unverified");
+  if (grant === null) return withheld("access-unverified");
   if (
     grant.accountEpoch !== scope.epoch ||
     !accountRefsEqual(grant.account, scope.account) ||
     grant.deadlineMs <= nowMs
   ) {
-    return admissionError("access-expired");
+    return withheld("access-lapsed");
   }
   const organization = organizationOf(request);
   if (
@@ -330,7 +386,7 @@ function resourceAdmission(
       (entry) => organizationKeyOf(entry.organization) === organizationKeyOf(organization),
     )
   ) {
-    return admissionError("access-denied");
+    return withheld("access-denied");
   }
   if (
     (request.kind === "service-authorized-agents" ||
@@ -338,9 +394,9 @@ function resourceAdmission(
       request.kind === "service-mate-flag") &&
     !projectRoleGrantsAccess(grant, request.service.project, "any-role")
   ) {
-    return admissionError("access-denied");
+    return withheld("access-denied");
   }
-  return { deadlineMs: grant.deadlineMs };
+  return { kind: "admitted", deadlineMs: grant.deadlineMs };
 }
 
 function readResource(
@@ -362,23 +418,34 @@ function readResource(
   }
 }
 
-const settled = <Value>(
-  state: SubscriptionRef.SubscriptionRef<ZeropsResourceSnapshot<Value>>,
-): Effect.Effect<ZeropsResourceSettledSnapshot<Value>> =>
-  SubscriptionRef.get(state).pipe(
-    Effect.flatMap((current) => {
-      if (current.status !== "loading") return Effect.succeed(current);
-      return SubscriptionRef.changes(state).pipe(
-        Stream.filter(
-          (snapshot): snapshot is ZeropsResourceSettledSnapshot<Value> =>
-            snapshot.status !== "loading",
-        ),
-        Stream.runHead,
-        Effect.map(Option.getOrThrow),
-      );
-    }),
-  );
+/** Nothing is in flight over it: a one-shot reader may act on it. */
+const isSettled = (shown: AnyShown): boolean => {
+  switch (shown.state) {
+    case "unread":
+    case "reading":
+      return false;
+    case "known":
+      return shown.freshness.kind !== "revalidating";
+    case "failed":
+    case "gone":
+    case "withheld":
+      return true;
+  }
+};
 
+const readFailed = (cell: Cell<AnyResourceValue>): boolean =>
+  cell.held.state === "failed" ||
+  (cell.held.state === "known" &&
+    cell.held.freshness.kind === "stale" &&
+    cell.held.freshness.reason.kind === "revalidation-failed");
+
+/**
+ * The account's broker for configuration resources (DESIGN §2.B B6/B7). Each
+ * key is one `Cell`: demand reads it, a lapse or a grant that no longer covers
+ * its scope withholds it with its value erased and its read aborted (law 5's
+ * one erasure), and the next grant covering the scope reads it again while the
+ * demand stays (§9 C4).
+ */
 export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(function* (
   options: ZeropsResourceBrokerOptions,
 ): Effect.fn.Return<ZeropsResourceBroker> {
@@ -387,279 +454,317 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     return yield* Effect.die(new RangeError("maxEntries must be a positive safe integer."));
   }
 
-  const lock = yield* Semaphore.make(1);
-  const runtimeScope = yield* Scope.make();
+  // Demand arrives synchronously from atoms and scopes; reads and timers run
+  // as fibers on the context the broker was built in.
+  const fork = Effect.runForkWith(yield* Effect.context<never>());
+  const clock = yield* Clock.Clock;
+  const now = () => clock.currentTimeMillisUnsafe();
   const entries = new Map<ZeropsResourceKey, ResourceEntry>();
-  const leases = new Map<string, LeaseState>();
-  let nextLeaseId = 0;
+  const atoms = new Map<ZeropsResourceKey, Atom.Atom<AnyShown>>();
+  let nextDemandId = 0;
+  let ordinal = 0;
   let closed = false;
-  let accessDeadlineMs = 0;
-  let accessGeneration = 0;
+  let deadline: { readonly atMs: number; fiber: Fiber.Fiber<void> | null } | null = null;
 
-  const publish = (entry: ResourceEntry, snapshot: AnyResourceSnapshot): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      entry.snapshot = snapshot;
-      yield* Effect.forEach(
-        entry.subscribers.values(),
-        (subscriber) => SubscriptionRef.set(subscriber, snapshot),
-        { discard: true },
-      );
-    });
+  const setCell = (entry: ResourceEntry, cell: Cell<AnyResourceValue>): void => {
+    const previous = entry.cell;
+    entry.cell = cell;
+    if (
+      cell.held === previous.held &&
+      cell.withheld?.reason === previous.withheld?.reason &&
+      cell.withheld?.cause === previous.withheld?.cause
+    ) {
+      return;
+    }
+    entry.shown = read(cell);
+    for (const demand of entry.demands.values()) demand.publish(entry.shown);
+  };
 
-  const commit = (
+  const apply = (entry: ResourceEntry, event: KnownEvent<AnyResourceValue>): void =>
+    setCell(entry, advance(entry.cell, event, now()));
+
+  const abortRead = (entry: ResourceEntry): void => {
+    const inFlight = entry.inFlight;
+    if (inFlight === null) return;
+    entry.inFlight = null;
+    inFlight.controller.abort();
+    inFlight.fiber?.interruptUnsafe();
+  };
+
+  const dispose = (entry: ResourceEntry): void => {
+    if (entries.get(entry.key) !== entry) return;
+    entries.delete(entry.key);
+    atoms.delete(entry.key);
+    abortRead(entry);
+  };
+
+  const completeRead = (
     entry: ResourceEntry,
-    generation: number,
-    snapshot: AnyResourceSnapshot,
-  ): Effect.Effect<void> =>
-    lock.withPermit(
-      Effect.gen(function* () {
-        if (closed || entries.get(entry.key) !== entry || entry.generation !== generation) return;
-        yield* publish(entry, snapshot);
-      }),
+    inFlight: ResourceRead,
+    atMs: number,
+    exit: Exit.Exit<AnyResourceValue, ZeropsResourceSourceError>,
+  ): void => {
+    if (closed || entries.get(entry.key) !== entry || entry.inFlight !== inFlight) return;
+    entry.inFlight = null;
+    if (Exit.isSuccess(exit)) {
+      apply(entry, {
+        kind: "read-succeeded",
+        ordinal: inFlight.ordinal,
+        value: exit.value,
+        coverage: "complete",
+        atMs,
+      });
+      return;
+    }
+    const { failure } = failureOf(exit.cause);
+    apply(entry, { kind: "read-failed", ordinal: inFlight.ordinal, failure, retryAtMs: null });
+  };
+
+  const startRead = (entry: ResourceEntry): void => {
+    const inFlight: ResourceRead = {
+      ordinal: ++ordinal,
+      controller: new AbortController(),
+      fiber: null,
+    };
+    const atMs = now();
+    entry.inFlight = inFlight;
+    apply(entry, { kind: "read-started", ordinal: inFlight.ordinal, atMs });
+    inFlight.fiber = fork(
+      readResource(options.adapter, entry.request, {
+        abortSignal: inFlight.controller.signal,
+      }).pipe(
+        Effect.exit,
+        Effect.flatMap((exit) => Effect.sync(() => completeRead(entry, inFlight, atMs, exit))),
+      ),
     );
+  };
 
-  const eraseEntry = (entry: ResourceEntry): Effect.Effect<Fiber.Fiber<void> | null> =>
-    Effect.gen(function* () {
-      if (entries.get(entry.key) !== entry) return null;
-      entries.delete(entry.key);
-      entry.generation += 1;
-      entry.snapshot = { status: "released" };
-      entry.controller.abort();
-      for (const [leaseId, subscriber] of entry.subscribers) {
-        leases.delete(leaseId);
-        yield* SubscriptionRef.set(subscriber, { status: "released" });
-      }
-      entry.subscribers.clear();
-      return entry.fiber;
-    });
+  /** Withholding erases: the value and its read go, the demand stays for the next grant. */
+  const withhold = (entry: ResourceEntry, reason: WithheldReason): void => {
+    if (entry.demands.size === 0) {
+      dispose(entry);
+      return;
+    }
+    if (
+      entry.cell.withheld?.reason === reason &&
+      entry.cell.held.state === "unread" &&
+      entry.inFlight === null
+    ) {
+      return;
+    }
+    abortRead(entry);
+    setCell(
+      entry,
+      advance(newCell(entry.cell.scope), { kind: "withhold", reason, cause: null }, now()),
+    );
+  };
 
-  const scheduleAccessDeadline = (deadlineMs: number): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      if (deadlineMs === accessDeadlineMs) return;
-      accessDeadlineMs = deadlineMs;
-      const generation = ++accessGeneration;
-      const now = yield* Clock.currentTimeMillis;
-      yield* Effect.gen(function* () {
-        yield* Effect.sleep(Duration.millis(Math.max(0, deadlineMs - now)));
-        const interrupted = yield* lock.withPermit(
-          Effect.gen(function* () {
-            if (closed || generation !== accessGeneration) return [];
-            accessDeadlineMs = 0;
-            const fibers: Array<Fiber.Fiber<void>> = [];
-            for (const entry of [...entries.values()]) {
-              const fiber = yield* eraseEntry(entry);
-              if (fiber !== null) fibers.push(fiber);
-            }
-            return fibers;
+  const reconcileAll = (): void => {
+    if (closed) return;
+    const access = options.access();
+    const nowMs = now();
+    for (const entry of entries.values()) reconcile(entry, access, nowMs);
+  };
+
+  const scheduleAccessDeadline = (deadlineMs: number): void => {
+    if (deadline?.atMs === deadlineMs) return;
+    deadline?.fiber?.interruptUnsafe();
+    const scheduled: { readonly atMs: number; fiber: Fiber.Fiber<void> | null } = {
+      atMs: deadlineMs,
+      fiber: null,
+    };
+    deadline = scheduled;
+    scheduled.fiber = fork(
+      Effect.sleep(Duration.millis(Math.max(0, deadlineMs - now()))).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            if (deadline === scheduled) deadline = null;
+            reconcileAll();
           }),
-        );
-        yield* Effect.forEach(interrupted, Fiber.interrupt, { discard: true });
-      }).pipe(Effect.forkIn(runtimeScope));
-    });
-
-  const startAttempt = (entry: ResourceEntry): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      entry.attempt += 1;
-      entry.generation += 1;
-      entry.controller = new AbortController();
-      const attempt = entry.attempt;
-      const generation = entry.generation;
-      yield* publish(entry, { status: "loading", attempt });
-      const work = Effect.matchCauseEffect(
-        readResource(options.adapter, entry.request, { abortSignal: entry.controller.signal }),
-        {
-          onFailure: (cause) =>
-            Cause.hasInterrupts(cause)
-              ? Effect.void
-              : commit(entry, generation, {
-                  status: "failure",
-                  attempt,
-                  failure: sourceError(cause),
-                }),
-          onSuccess: (value) => commit(entry, generation, { status: "success", attempt, value }),
-        },
-      );
-      entry.fiber = yield* work.pipe(Effect.forkIn(runtimeScope));
-    });
-
-  const releaseLease = (leaseId: string): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      const interrupted = yield* lock.withPermit(
-        Effect.gen(function* () {
-          const lease = leases.get(leaseId);
-          if (lease === undefined) return null;
-          leases.delete(leaseId);
-          const entry = entries.get(lease.key);
-          yield* SubscriptionRef.set(lease.state, { status: "released" });
-          if (entry === undefined) return null;
-          entry.subscribers.delete(leaseId);
-          if (entry.subscribers.size > 0) return null;
-          entries.delete(entry.key);
-          entry.generation += 1;
-          entry.snapshot = { status: "released" };
-          entry.controller.abort();
-          return entry.fiber;
-        }),
-      );
-      if (interrupted !== null) yield* Fiber.interrupt(interrupted);
-    });
-
-  const retryLease = (leaseId: string): Effect.Effect<boolean, ZeropsResourceAdmissionError> =>
-    lock.withPermit(
-      Effect.gen(function* () {
-        if (closed) return yield* Effect.fail(admissionError("runtime-closed"));
-        const lease = leases.get(leaseId);
-        if (lease === undefined) return yield* Effect.fail(admissionError("lease-released"));
-        const entry = entries.get(lease.key);
-        if (entry === undefined) return yield* Effect.fail(admissionError("lease-released"));
-        if (entry.snapshot.status !== "failure") return false;
-        const access = yield* options.access;
-        const now = yield* Clock.currentTimeMillis;
-        const admission = resourceAdmission(options.scope, access, entry.request, now);
-        if ("_tag" in admission) return yield* Effect.fail(admission);
-        yield* scheduleAccessDeadline(admission.deadlineMs);
-        yield* startAttempt(entry);
-        return true;
-      }),
+        ),
+      ),
     );
+  };
+
+  /** Brings one entry in line with the access: withheld, or admitted and read when it holds nothing. */
+  function reconcile(entry: ResourceEntry, access: AccessState, nowMs: number): void {
+    const admission = resourceAdmission(options.scope, access, entry.request, nowMs);
+    if (admission.kind === "withheld") {
+      withhold(entry, admission.reason);
+      return;
+    }
+    scheduleAccessDeadline(admission.deadlineMs);
+    if (entry.cell.withheld !== null) apply(entry, { kind: "restore-authority" });
+    if (entry.inFlight === null && entry.cell.held.state === "unread") startRead(entry);
+  }
+
+  const retry = (entry: ResourceEntry): boolean => {
+    if (!readFailed(entry.cell) || entry.inFlight !== null) return false;
+    const admission = resourceAdmission(options.scope, options.access(), entry.request, now());
+    if (admission.kind === "withheld") {
+      withhold(entry, admission.reason);
+      return false;
+    }
+    scheduleAccessDeadline(admission.deadlineMs);
+    startRead(entry);
+    return true;
+  };
+
+  const open = (
+    request: ZeropsResourceRequest,
+    demand: Demand,
+  ): OpenDemand | ZeropsResourceAdmissionError => {
+    if (closed) return admissionError("runtime-closed");
+    if (!requestInScope(options.scope, request)) return admissionError("account-mismatch");
+    const key = zeropsResourceKeyOf(request);
+    let entry = entries.get(key);
+    if (entry === undefined) {
+      if (entries.size >= maxEntries) return admissionError("account-capacity");
+      const cell = newCell<AnyResourceValue>(cellScopeOf(request));
+      entry = { key, request, cell, shown: read(cell), demands: new Map(), inFlight: null };
+      entries.set(key, entry);
+    }
+    const held = entry;
+    const id = ++nextDemandId;
+    held.demands.set(id, demand);
+    if (held.demands.size === 1) reconcile(held, options.access(), now());
+    const active = () => !closed && held.demands.has(id);
+    return {
+      key,
+      active,
+      shown: () => (active() ? held.shown : NOT_DEMANDED),
+      retry: () => {
+        if (closed) return admissionError("runtime-closed");
+        return active() ? retry(held) : admissionError("lease-released");
+      },
+      release: () => {
+        if (!held.demands.delete(id) || held.demands.size > 0) return;
+        dispose(held);
+      },
+    };
+  };
+
+  const known = <Request extends ZeropsResourceRequest>(
+    request: Request,
+  ): Atom.Atom<Shown<ZeropsResourceValue<Request>>> => {
+    const key = zeropsResourceKeyOf(request);
+    let atom = atoms.get(key);
+    if (atom === undefined) {
+      atom = Atom.make((get): AnyShown => {
+        let mounted = false;
+        const opened = open(request, {
+          publish: (shown) => {
+            if (mounted) get.setSelf(shown);
+          },
+          close: () => get.setSelf(ACCOUNT_CLOSED),
+        });
+        if ("_tag" in opened) {
+          return {
+            state: "failed",
+            failure: { kind: "refused", code: opened.reason, words: REFUSAL_WORDS[opened.reason] },
+            atMs: now(),
+            attempt: 0,
+            retryAtMs: null,
+          };
+        }
+        get.addFinalizer(opened.release);
+        mounted = true;
+        return opened.shown();
+      });
+      atoms.set(key, atom);
+    }
+    return atom as Atom.Atom<Shown<ZeropsResourceValue<Request>>>;
+  };
 
   const acquire: ZeropsResourceBroker["acquire"] = (request) =>
     Effect.gen(function* () {
       const leaseScope = yield* Scope.Scope;
-      return yield* lock.withPermit(
-        Effect.gen(function* () {
-          if (closed) return yield* Effect.fail(admissionError("runtime-closed"));
-          const access = yield* options.access;
-          const now = yield* Clock.currentTimeMillis;
-          const admission = resourceAdmission(options.scope, access, request, now);
-          if ("_tag" in admission) return yield* Effect.fail(admission);
-          yield* scheduleAccessDeadline(admission.deadlineMs);
-          const key = zeropsResourceKeyOf(request);
-          let entry = entries.get(key);
-          if (entry === undefined) {
-            if (entries.size >= maxEntries) {
-              return yield* Effect.fail(admissionError("account-capacity"));
-            }
-            entry = {
-              key,
-              request,
-              subscribers: new Map(),
-              snapshot: { status: "loading", attempt: 1 },
-              attempt: 0,
-              generation: 0,
-              controller: new AbortController(),
-              fiber: null,
-            };
-            entries.set(key, entry);
-          }
-          const leaseId = `resource-lease-${++nextLeaseId}`;
-          const state = yield* SubscriptionRef.make<AnyResourceSnapshot>(entry.snapshot);
-          entry.subscribers.set(leaseId, state);
-          leases.set(leaseId, { key, state });
-          if (entry.fiber === null) yield* startAttempt(entry);
-          const release = releaseLease(leaseId);
-          yield* Scope.addFinalizer(leaseScope, release);
-          const typedState = state as unknown as SubscriptionRef.SubscriptionRef<
-            ZeropsResourceSnapshot<ZeropsResourceValue<typeof request>>
-          >;
-          return {
-            key,
-            request,
-            snapshot: SubscriptionRef.get(typedState),
-            changes: SubscriptionRef.changes(typedState),
-            awaitSettled: settled(typedState),
-            retry: retryLease(leaseId),
-            release,
-          } satisfies ZeropsResourceLease<typeof request>;
+      const waiters = new Set<Demand>();
+      const opened = open(request, {
+        publish: (shown) => {
+          for (const waiter of waiters) waiter.publish(shown);
+        },
+        close: () => {
+          for (const waiter of waiters) waiter.close();
+        },
+      });
+      if ("_tag" in opened) return yield* Effect.fail(opened);
+      const release = Effect.sync(opened.release);
+      yield* Scope.addFinalizer(leaseScope, release);
+      type Value = Shown<ZeropsResourceValue<typeof request>>;
+      const shown = () => opened.shown() as Value;
+      return {
+        key: opened.key,
+        request,
+        snapshot: Effect.sync(shown),
+        awaitSettled: Effect.callback<Value>((resume) => {
+          const waiter: Demand = {
+            publish: (next) => {
+              if (!isSettled(next)) return;
+              waiters.delete(waiter);
+              resume(Effect.succeed(next as Value));
+            },
+            close: () => {
+              waiters.delete(waiter);
+              resume(Effect.interrupt);
+            },
+          };
+          if (!opened.active()) return void resume(Effect.interrupt);
+          waiters.add(waiter);
+          waiter.publish(shown());
+          return Effect.sync(() => waiters.delete(waiter));
         }),
-      );
+        retry: Effect.suspend(() => {
+          const retried = opened.retry();
+          return typeof retried === "boolean" ? Effect.succeed(retried) : Effect.fail(retried);
+        }),
+        release,
+      } satisfies ZeropsResourceLease<typeof request>;
     });
 
-  const reconcileAccess: Effect.Effect<void> = Effect.gen(function* () {
-    const access = yield* options.access;
-    const now = yield* Clock.currentTimeMillis;
-    const interrupted = yield* lock.withPermit(
-      Effect.gen(function* () {
-        if (closed) return [];
-        const fibers: Array<Fiber.Fiber<void>> = [];
-        let deadlineMs = 0;
-        for (const entry of [...entries.values()]) {
-          const admission = resourceAdmission(options.scope, access, entry.request, now);
-          if ("_tag" in admission) {
-            const fiber = yield* eraseEntry(entry);
-            if (fiber !== null) fibers.push(fiber);
-          } else {
-            deadlineMs = admission.deadlineMs;
-          }
-        }
-        if (deadlineMs > 0) yield* scheduleAccessDeadline(deadlineMs);
-        return fibers;
-      }),
-    );
-    yield* Effect.forEach(interrupted, Fiber.interrupt, { discard: true });
+  const diagnostics: Effect.Effect<ZeropsResourceDiagnostics> = Effect.sync(() => {
+    const byKind: Record<ZeropsResourceKind, number> = {
+      "organization-locations": 0,
+      "service-authorized-agents": 0,
+      "service-deployed-version": 0,
+      "service-mate-flag": 0,
+      "organization-integration-token-grants": 0,
+    };
+    const counts = { leases: 0, reading: 0, known: 0, failed: 0, withheld: 0 };
+    for (const entry of entries.values()) {
+      byKind[entry.request.kind] += 1;
+      counts.leases += entry.demands.size;
+      if (entry.shown.state === "reading") counts.reading += 1;
+      if (entry.shown.state === "known") counts.known += 1;
+      if (entry.shown.state === "failed") counts.failed += 1;
+      if (entry.shown.state === "withheld") counts.withheld += 1;
+    }
+    return { entries: entries.size, ...counts, byKind };
   });
 
-  const diagnostics: Effect.Effect<ZeropsResourceDiagnostics> = lock.withPermit(
-    Effect.sync(() => {
-      const byKind: Record<ZeropsResourceKind, number> = {
-        "organization-locations": 0,
-        "service-authorized-agents": 0,
-        "service-deployed-version": 0,
-        "service-mate-flag": 0,
-        "organization-integration-token-grants": 0,
-      };
-      let loading = 0;
-      let success = 0;
-      let failure = 0;
-      for (const entry of entries.values()) {
-        byKind[entry.request.kind] += 1;
-        if (entry.snapshot.status === "loading") loading += 1;
-        if (entry.snapshot.status === "success") success += 1;
-        if (entry.snapshot.status === "failure") failure += 1;
-      }
-      return {
-        entries: entries.size,
-        leases: leases.size,
-        loading,
-        success,
-        failure,
-        byKind,
-      };
-    }),
-  );
-
-  const shutdown = Effect.gen(function* () {
-    const closeScope = yield* lock.withPermit(
-      Effect.gen(function* () {
-        if (closed) return false;
-        closed = true;
-        accessGeneration += 1;
-        accessDeadlineMs = 0;
-        const current = [...entries.values()];
-        entries.clear();
-        leases.clear();
-        for (const entry of current) {
-          entry.generation += 1;
-          entry.snapshot = { status: "released" };
-          entry.controller.abort();
-          yield* Effect.forEach(
-            entry.subscribers.values(),
-            (subscriber) => SubscriptionRef.set(subscriber, { status: "released" }),
-            { discard: true },
-          );
-          entry.subscribers.clear();
-        }
-        return true;
-      }),
-    );
-    if (closeScope) yield* Scope.close(runtimeScope, Exit.void);
+  const shutdown = Effect.sync(() => {
+    if (closed) return;
+    closed = true;
+    deadline?.fiber?.interruptUnsafe();
+    deadline = null;
+    const current = [...entries.values()];
+    entries.clear();
+    atoms.clear();
+    for (const entry of current) {
+      abortRead(entry);
+      entry.cell = newCell(entry.cell.scope);
+      entry.shown = ACCOUNT_CLOSED;
+      for (const demand of entry.demands.values()) demand.close();
+      entry.demands.clear();
+    }
   });
 
   return {
     scope: options.scope,
+    known,
     acquire,
     diagnostics,
-    reconcileAccess,
+    reconcileAccess: Effect.sync(reconcileAll),
     shutdown,
   } satisfies ZeropsResourceBroker;
 });

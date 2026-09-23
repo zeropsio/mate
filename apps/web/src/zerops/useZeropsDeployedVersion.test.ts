@@ -13,7 +13,6 @@ describe("readZeropsResourceOnce", () => {
             key: "k" as never,
             request: {} as never,
             snapshot: undefined as never,
-            changes: undefined as never,
             // Never settles on its own; only interruption (abort) resolves the read.
             awaitSettled: Effect.never,
             retry: undefined as never,
@@ -38,21 +37,42 @@ describe("readZeropsResourceOnce", () => {
 });
 
 const FAILED = {
-  status: "failure",
+  state: "failed",
+  failure: { kind: "transport", detail: "Zerops did not answer." },
+  atMs: 0,
   attempt: 1,
-  failure: { kind: "transport", message: "the platform did not answer" },
+  retryAtMs: 2_000,
 } as const;
 
-/** A broker whose one lease settles on `snapshot`. */
-function settling(snapshot: unknown) {
+/** A read that settled on `value`, fresh or with its revalidation failed. */
+const known = (value: string | undefined, fresh = true) => ({
+  state: "known",
+  value,
+  asOf: { ordinal: 1, atMs: 0 },
+  coverage: "complete",
+  freshness: fresh
+    ? { kind: "settled" }
+    : {
+        kind: "stale",
+        reason: {
+          kind: "revalidation-failed",
+          failure: FAILED.failure,
+          attempt: 1,
+          retryAtMs: 2_000,
+        },
+        sinceMs: 1,
+      },
+});
+
+/** A broker whose one lease settles on `shown`. */
+function settling(shown: unknown) {
   return {
     acquire: () =>
       Effect.succeed({
         key: "k" as never,
         request: {} as never,
         snapshot: undefined as never,
-        changes: undefined as never,
-        awaitSettled: Effect.succeed(snapshot),
+        awaitSettled: Effect.succeed(shown),
         retry: undefined as never,
         release: Effect.void,
       }),
@@ -63,19 +83,20 @@ describe("readZeropsResource", () => {
   it("rejects a read that did not succeed, rather than answering nothing", async () => {
     await expect(readZeropsResource(settling(FAILED), {} as never)).rejects.toBeDefined();
     await expect(
-      readZeropsResource(settling({ status: "released" }), {} as never),
+      readZeropsResource(
+        settling({ state: "withheld", reason: "access-lapsed", cause: null }),
+        {} as never,
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      readZeropsResource(settling(known("v0", false)), {} as never),
     ).rejects.toBeDefined();
   });
 
   it("answers a read that succeeded, including a service with no version name", async () => {
+    await expect(readZeropsResource(settling(known("v1")), {} as never)).resolves.toBe("v1");
     await expect(
-      readZeropsResource(settling({ status: "success", attempt: 1, value: "v1" }), {} as never),
-    ).resolves.toBe("v1");
-    await expect(
-      readZeropsResource(
-        settling({ status: "success", attempt: 1, value: undefined }),
-        {} as never,
-      ),
+      readZeropsResource(settling(known(undefined)), {} as never),
     ).resolves.toBeUndefined();
   });
 });
