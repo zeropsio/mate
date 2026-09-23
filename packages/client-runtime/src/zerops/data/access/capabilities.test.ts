@@ -72,7 +72,7 @@ const inertAdapter: ZeropsDataAdapter = {
 const resourceAdapter: ZeropsResourceAdapter = {
   readOrganizationLocations: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed(["codex"]),
-  readServiceDeployedVersion: () => Effect.sync(() => undefined),
+  readServiceDeployedVersion: () => Effect.succeed({ activeId: null, source: null, name: null }),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
 };

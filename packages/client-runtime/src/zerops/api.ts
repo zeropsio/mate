@@ -362,6 +362,12 @@ export interface ZeropsService {
   readonly currentAutoscaling?: ZeropsAutoscaling | null;
 }
 
+/** What `GET /service-stack/{id}` says a service runs (`readServiceDeploys`). */
+export interface ZeropsServiceDeploys {
+  readonly activeAppVersion?: ZeropsAppVersion | null;
+  readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string }>;
+}
+
 /** A tool project the reconcile has to have by now (`createToolProject`). */
 function requireToolProject(project: ZeropsProject | undefined): ZeropsProject {
   if (project === undefined) {
@@ -2600,28 +2606,22 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `GET /service-stack/{id}` — the name of the version a service is running.
+   * `GET /service-stack/{id}` — what a service runs: its active version, and
+   * its user data.
    *
-   * The name is the one place the commit survives: the app-version API never
-   * returns a `name` at all, and the string the broker sent comes back only as
-   * `userData[].appVersionName` on the service, for the active version
-   * (measured 2026-09-16). So "what is deployed" is read from here and from
-   * nowhere else — never from a branch head, which says what *should* be
-   * running (guide 4.5).
-   *
-   * `undefined` for a service that has never been deployed, which is the
-   * normal state of an environment created a minute ago.
+   * The user data is the one place a deploy's name survives: the app-version
+   * API never returns a `name` at all, and the string the broker sent comes
+   * back only as `userData[].appVersionName`, beside `appVersionId` (measured
+   * 2026-09-16). That pair names the newest deploy STARTED, which switches
+   * when a build starts, before its version activates (A11); what it names
+   * runs only while its id is the active version's (A14,
+   * `data/resourceRestAdapter.ts`). Never a branch head, which says what
+   * *should* be running (guide 4.5).
    */
-  async readDeployedVersionName(
-    serviceId: string,
-    signal?: AbortSignal,
-  ): Promise<string | undefined> {
-    const body = await this.#request<{
-      readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string }>;
-    }>(`/service-stack/${serviceId}`, { signal: signal ?? null });
-    const entry = (body.userData ?? []).find((item) => item.key === "appVersionName");
-    const name = entry?.content?.trim();
-    return name === undefined || name.length === 0 ? undefined : name;
+  async readServiceDeploys(serviceId: string, signal?: AbortSignal): Promise<ZeropsServiceDeploys> {
+    return this.#request<ZeropsServiceDeploys>(`/service-stack/${serviceId}`, {
+      signal: signal ?? null,
+    });
   }
 
   /**

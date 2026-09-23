@@ -64,7 +64,8 @@ const flagReadThrough = (
       adapter: {
         readOrganizationLocations: () => Effect.succeed([]),
         readServiceAuthorizedAgents: () => Effect.succeed([]),
-        readServiceDeployedVersion: () => Effect.succeed(undefined),
+        readServiceDeployedVersion: () =>
+          Effect.succeed({ activeId: null, source: null, name: null }),
         readServiceMateFlag: read,
         readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
       },
