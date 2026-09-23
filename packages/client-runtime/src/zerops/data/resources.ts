@@ -487,6 +487,8 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   const idleRetentionMs = options.idleRetentionMs ?? RESOURCE_IDLE_RETENTION_MS;
   const entries = new Map<ZeropsResourceKey, ResourceEntry>();
   const atoms = new Map<ZeropsResourceKey, Atom.Atom<AnyShown>>();
+  /** Atoms refused for capacity: each asks again at its retryAt, or at once when the broker closes. */
+  const capacityWaits = new Set<() => void>();
   let nextDemandId = 0;
   let ordinal = 0;
   let closed = false;
@@ -785,6 +787,8 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     const key = zeropsResourceKeyOf(request);
     let atom = atoms.get(key);
     if (atom === undefined) {
+      // Consecutive refusals for capacity, which the atom outlives between evaluations.
+      let capacity = { backoff: INITIAL_BACKOFF, attempt: 0 };
       atom = Atom.make((get): AnyShown => {
         let mounted = false;
         const opened = open(request, {
@@ -795,18 +799,30 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
         });
         if ("_tag" in opened) {
           if (opened.reason !== "account-capacity") return ACCOUNT_CLOSED;
+          // Capacity is the broker's own limit: the atom asks again at its retryAt.
+          const atMs = now();
+          const scheduled = scheduleRetry(capacity.backoff, atMs, random);
+          capacity = { backoff: scheduled.backoff, attempt: capacity.attempt + 1 };
+          const askAgain = () => get.refreshSelf();
+          capacityWaits.add(askAgain);
+          const wake = fork(
+            Effect.sleep(Duration.millis(scheduled.retryAtMs - atMs)).pipe(
+              Effect.andThen(Effect.sync(askAgain)),
+            ),
+          );
+          get.addFinalizer(() => {
+            capacityWaits.delete(askAgain);
+            wake.interruptUnsafe();
+          });
           return {
             state: "failed",
-            failure: {
-              kind: "refused",
-              code: opened.reason,
-              words: "Too many resources are open at once.",
-            },
-            atMs: now(),
-            attempt: 0,
-            retryAtMs: null,
+            failure: { kind: "throttled", retryAfterMs: null },
+            atMs,
+            attempt: capacity.attempt,
+            retryAtMs: scheduled.retryAtMs,
           };
         }
+        capacity = { backoff: INITIAL_BACKOFF, attempt: 0 };
         get.addFinalizer(opened.release);
         mounted = true;
         return opened.shown();
@@ -903,6 +919,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
       for (const demand of entry.demands.values()) demand.close();
       entry.demands.clear();
     }
+    for (const askAgain of [...capacityWaits]) askAgain();
   });
 
   return {

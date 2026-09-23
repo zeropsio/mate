@@ -914,6 +914,68 @@ describe("makeZeropsResourceBroker", () => {
     }),
   );
 
+  it.effect("a resource refused for capacity reads again once capacity frees", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => verifiedAccess(scope),
+        maxEntries: 1,
+        random: () => 0.5,
+        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed([PRAGUE]) }),
+      });
+      const holderScope = yield* Scope.make();
+      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      const registry = AtomRegistry.make();
+      const atom = broker.known(locationsRequest(scope));
+      const unmount = registry.mount(atom);
+
+      expect(registry.get(atom)).toMatchObject({
+        state: "failed",
+        failure: { kind: "throttled", retryAfterMs: null },
+        attempt: 1,
+        retryAtMs: 2_000,
+      });
+      yield* TestClock.adjust("2 seconds");
+      yield* Effect.yieldNow;
+      expect(registry.get(atom)).toMatchObject({ attempt: 2, retryAtMs: 6_000 });
+
+      yield* Scope.close(holderScope, Exit.void);
+      yield* TestClock.adjust("4 seconds");
+      yield* Effect.yieldNow;
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: [PRAGUE] });
+
+      unmount();
+      registry.dispose();
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a resource waiting for capacity waits for the Zerops session after shutdown", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => verifiedAccess(scope),
+        maxEntries: 1,
+        adapter: unusedAdapter(),
+      });
+      const holderScope = yield* Scope.make();
+      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      const registry = AtomRegistry.make();
+      const atom = broker.known(locationsRequest(scope));
+      const unmount = registry.mount(atom);
+      expect(registry.get(atom)).toMatchObject({ state: "failed" });
+
+      yield* broker.shutdown;
+
+      expect(registry.get(atom)).toEqual({ state: "unread", waitingFor: "zerops-session" });
+      unmount();
+      registry.dispose();
+      yield* Scope.close(holderScope, Exit.void);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("a closed broker shows every resource waiting for the Zerops session", () =>
     Effect.gen(function* () {
       const scope = accountScope();
