@@ -126,6 +126,22 @@ const TOO_OLD = "This Mate is too old for this.";
 const sentence = (words: string): string => (/[.!?…]$/.test(words) ? words : `${words}.`);
 
 /**
+ * A source's own words without the sentences that name an affordance: the component renders
+ * the affordance once (R-K3), so "… Try again." from a source would double it.
+ */
+const causeOnly = (words: string): string =>
+  words
+    .split(/(?<=[.!?…])\s+/)
+    .map((part) => part.trim())
+    .filter(
+      (part) =>
+        part !== "" &&
+        !KNOWN_AFFORDANCE_LABELS.some((label) => part.toLowerCase().includes(label.toLowerCase())),
+    )
+    .map(sentence)
+    .join(" ");
+
+/**
  * The cause of a failure, as one sentence. `ongoing` describes a condition that is still being
  * retried ("isn't answering"); `past` one finished attempt ("didn't answer").
  */
@@ -142,8 +158,10 @@ function cause(source: KnowledgeSource, failure: FailureReason, tense: "past" | 
       return `${subject} is busy.`;
     case "unauthorized":
       return `Your sign-in to ${object} ended.`;
-    case "refused":
-      return failure.words.trim() === "" ? `${subject} said no.` : sentence(failure.words.trim());
+    case "refused": {
+      const words = causeOnly(failure.words);
+      return words === "" ? `${subject} said no.` : words;
+    }
     case "malformed":
       return `${subject} sent an answer that couldn't be read.`;
     case "unsupported":

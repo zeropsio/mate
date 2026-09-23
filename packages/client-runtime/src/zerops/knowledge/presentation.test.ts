@@ -107,6 +107,42 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     },
   },
   {
+    name: "failed(refused): the source's words without an affordance of their own (R-K3)",
+    shown: {
+      state: "failed",
+      failure: {
+        kind: "refused",
+        code: "incompleteInventory",
+        words: "Zerops returned an incomplete project inventory. Try again.",
+      },
+      atMs: 1_000,
+      attempt: 1,
+      retryAtMs: 104_000,
+    },
+    expected: {
+      message: {
+        text: "Couldn't read pull requests. Zerops returned an incomplete project inventory.",
+        afterMs: 0,
+        tone: "alert",
+      },
+      affordance: { kind: "retry", label: "Try again" },
+    },
+  },
+  {
+    name: "failed(refused) with nothing but an affordance in its words: the source said no",
+    shown: {
+      state: "failed",
+      failure: { kind: "refused", code: "busy", words: "Try now" },
+      atMs: 1_000,
+      attempt: 1,
+      retryAtMs: 104_000,
+    },
+    expected: {
+      message: { text: "Couldn't read pull requests. Gitea said no.", afterMs: 0, tone: "alert" },
+      affordance: { kind: "retry", label: "Try again" },
+    },
+  },
+  {
     name: "failed(unsupported) with an update offered: Update, no retry",
     shown: {
       state: "failed",
@@ -322,6 +358,12 @@ const FAILURES: ReadonlyArray<FailureReason> = [
   { kind: "server", status: 502 },
   { kind: "unauthorized" },
   { kind: "refused", code: "projectNotFound", words: "The project does not exist" },
+  {
+    kind: "refused",
+    code: "incompleteInventory",
+    words: "Zerops returned an incomplete project inventory. Try again.",
+  },
+  { kind: "refused", code: "busy", words: "Try now" },
   { kind: "malformed", detail: "unexpected token" },
   { kind: "unsupported", capability: "deploymentFeed" },
 ];
