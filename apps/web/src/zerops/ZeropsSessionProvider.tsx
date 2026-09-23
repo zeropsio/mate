@@ -113,20 +113,23 @@ function statusOf(state: ZeropsSessionState): ZeropsSessionStatus {
 
 /**
  * The owner record in the origin's shared `localStorage`, beside the session
- * key. Where storage is blocked, the tab adopts by principal alone.
+ * key. Where storage is blocked, even reaching `localStorage` throws, and the
+ * tab adopts by principal alone.
  */
-function ownerRecordIn(localStorage: Storage) {
+function ownerRecordIn(browser: Window) {
   return {
     read: (): ZeropsSessionOwner | null => {
       try {
-        return parseZeropsSessionOwner(localStorage.getItem(ZEROPS_SESSION_OWNER_STORAGE_KEY));
+        return parseZeropsSessionOwner(
+          browser.localStorage.getItem(ZEROPS_SESSION_OWNER_STORAGE_KEY),
+        );
       } catch {
         return null;
       }
     },
     write: (owner: ZeropsSessionOwner) => {
       try {
-        localStorage.setItem(ZEROPS_SESSION_OWNER_STORAGE_KEY, JSON.stringify(owner));
+        browser.localStorage.setItem(ZEROPS_SESSION_OWNER_STORAGE_KEY, JSON.stringify(owner));
       } catch {
         /* A storage policy can make this login memory-only. */
       }
@@ -135,15 +138,16 @@ function ownerRecordIn(localStorage: Storage) {
 }
 
 /**
- * The tab's Zerops client and the session machine over it. The browser's
- * storage, lock manager and timers are this tab's, taken once: the client and
- * the machine keep them for the page's lifetime.
+ * The tab's Zerops client and the session machine over it. The window, its
+ * lock manager and its timers are this tab's, taken once: the client and the
+ * machine keep them for the page's lifetime.
  */
 function makeSession(storage: ZeropsStorageAdapter) {
   // The recipe endpoint mock passes all other traffic to the platform.
   const fetch = globalThis.fetch.bind(globalThis);
   const browser = window;
-  const locks = browser.navigator.locks;
+  // Web Locks exist only in a secure context; without them each tab renews alone.
+  const locks: LockManager | undefined = browser.navigator.locks;
   let driver!: ZeropsSessionDriver;
   const client = new ZeropsApiClient({
     fetch,
@@ -172,13 +176,12 @@ function makeSession(storage: ZeropsStorageAdapter) {
     },
     probe: (session) => probeZeropsPrincipal({ fetch, baseUrl: client.baseUrl }, session),
     adopt: (session) => client.adoptRenewedSession(session),
-    forgetSession: () => {
-      void client.signOutLocally();
-    },
+    forgetSession: () => client.forgetSession(),
     openAccount: (user) => openAccountLifetime(user.id),
     closeAccount: closeAccountLifetime,
-    owner: ownerRecordIn(browser.localStorage),
-    withRefreshLock: (work) => locks.request(ZEROPS_REFRESH_LOCK, work),
+    owner: ownerRecordIn(browser),
+    withRefreshLock: (work) =>
+      locks === undefined ? Promise.resolve().then(work) : locks.request(ZEROPS_REFRESH_LOCK, work),
     nowMs: () => performance.now(),
     setTimer: (delayMs, fire) => {
       const timer = browser.setTimeout(fire, delayMs);

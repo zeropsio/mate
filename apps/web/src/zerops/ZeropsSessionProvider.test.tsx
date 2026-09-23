@@ -2,6 +2,7 @@ import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-run
 import {
   makeAccountHarness,
   type AccountHarnessOptions,
+  type HarnessTab,
 } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -216,6 +217,38 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(tab.session().status).toBe("signed-in");
     expect(harness.rest.refreshes()).toBe(1);
     expect(JSON.parse(storedSession(harness)!).accessToken).not.toBe(stale);
+  });
+
+  it("boots and renews its token in a browser without Web Locks", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const lockless = { ...harness.browser.openTab(), locks: undefined } as unknown as HarnessTab;
+    const tab = await mountTab(harness, lockless);
+    expect(tab.session().status).toBe("signed-in");
+    expect(tab.accountId()).toBe("user-1");
+    harness.rest.expireAccessToken(storedToken(harness));
+
+    await tab.run(() => tab.session().client.fetchUser());
+
+    expect(harness.rest.refreshes()).toBe(1);
+    expect(tab.session().status).toBe("signed-in");
+  });
+
+  it("mounts and signs in where the page may not touch localStorage", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const tab = await mountTab(harness, harness.browser.openTab());
+    await tab.run(() => {
+      Object.defineProperty(window, "localStorage", {
+        get: () => {
+          throw new DOMException("Access is denied for this document.", "SecurityError");
+        },
+      });
+      window.location.reload();
+    });
+    await settle();
+
+    expect(tab.tab.reloads).toBe(1);
+    expect(tab.session().status).toBe("signed-in");
+    expect(tab.accountId()).toBe("user-1");
   });
 
   it("signs out and clears a stored session the platform no longer honours", async () => {
@@ -483,6 +516,35 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     expect(b.accountId()).toBeNull();
     expect(b.session().client.session).toBeNull();
     expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
+  });
+
+  it("signs out without a reload when another tab clears the origin's storage", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const b = await recordingTab(harness);
+
+    harness.browser.openTab().localStorage.clear();
+    await settle();
+
+    expect(b.session().status).toBe("signed-out");
+    expect(b.accountId()).toBeNull();
+    expect(b.session().client.session).toBeNull();
+    expect(b.tab.reloads).toBe(0);
+  });
+
+  it("hears another tab's sign-out after its next sign-in was stored, and keeps that session", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const b = await recordingTab(harness);
+    const next = harness.rest.issueSession("user-2");
+    const other = harness.browser.openTab();
+
+    other.localStorage.removeItem(ZEROPS_SESSION_STORAGE_KEY);
+    other.localStorage.setItem(ZEROPS_SESSION_STORAGE_KEY, JSON.stringify(next));
+    await settle();
+
+    expect(storedToken(harness)).toBe(next.accessToken);
+    expect(b.session().user?.id).toBe("user-2");
+    expect(b.accountId()).toBe("user-2");
+    expect(b.tab.reloads).toBe(0);
   });
 
   it("renews once over the network when two tabs hit an expired token at once", async () => {
