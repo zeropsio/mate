@@ -264,14 +264,17 @@ export function accessLapseCopy(failure: GrantFailure | null): {
  * every reader (DESIGN §4.2 G9, §9 C1; per-region withholding replaces it in
  * Phase 5). Nothing platform-derived shows beside it meanwhile: the portal
  * gate closes every floating layer, the fallback context menu is dismissed,
- * and the document title names only the app.
+ * and the document title names only the app. Whatever it says, it offers the
+ * session's own Sign out, so a lapse that never ends is never a dead end (A9).
  */
 function AccessLapse({
   copy,
   onRetry,
+  onSignOut,
 }: {
   readonly copy: ReturnType<typeof accessLapseCopy>;
   readonly onRetry: () => void;
+  readonly onSignOut: () => void;
 }) {
   useEffect(() => {
     dismissContextMenu();
@@ -284,15 +287,17 @@ function AccessLapse({
   }, []);
   return (
     <div role="alert" className="fixed inset-0 z-[200] bg-background p-8">
-      {copy.sentence}
+      {copy.sentence}{" "}
       {copy.retry ? (
         <>
-          {" "}
           <button type="button" onClick={onRetry}>
             Try now
-          </button>
+          </button>{" "}
         </>
       ) : null}
+      <button type="button" onClick={onSignOut}>
+        Sign out
+      </button>
     </div>
   );
 }
@@ -648,7 +653,9 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               {children}
             </div>
           </PortalGate>
-          {lapse === null ? null : <AccessLapse copy={lapse} onRetry={retry} />}
+          {lapse === null ? null : (
+            <AccessLapse copy={lapse} onRetry={retry} onSignOut={() => void signOut()} />
+          )}
         </InventoryContext>
       )}
     </>

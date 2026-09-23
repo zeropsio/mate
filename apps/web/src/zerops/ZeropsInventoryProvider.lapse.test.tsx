@@ -1,4 +1,4 @@
-import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
+import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-runtime/zerops";
 import type { ZeropsResourceAdapter } from "@t3tools/client-runtime/zerops/data";
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { mountTab, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
+import { buttonsLabelled, press } from "./__fixtures__/testDom";
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
@@ -37,6 +38,9 @@ const person: ZeropsUser = {
   email: "person@example.test",
   clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
 };
+
+const storedSession = (harness: AccountHarness) =>
+  harness.browser.openTab().localStorage.getItem(ZEROPS_SESSION_STORAGE_KEY);
 
 /** The platform's locations, counting how often the broker reads them. */
 function locationsSource() {
@@ -212,5 +216,60 @@ describe("ZeropsInventoryProvider lapse", () => {
     await pass(2 * MINUTE_MS);
     expect(tab.readable()).toContain("dialog: One, Two");
     expect(tab.title()).toBe("One, Two · Zerops Mate");
+  });
+
+  // DESIGN A9: whatever the lapse says, the way out of the account is on it; "Try now" only
+  // beside a failure it names.
+  it.each([
+    [
+      "no cause yet",
+      "Checking your Zerops access…",
+      ["Sign out"],
+      async ({ harness, tab }: Awaited<ReturnType<typeof admittedProduct>>) => {
+        tab.tab.signals.freeze();
+        vi.setSystemTime(Date.now() + 39 * MINUTE_MS);
+        harness.rest.hold("GET /user/info");
+        tab.tab.signals.resume();
+        await tab.run(() => undefined);
+      },
+    ],
+    [
+      "Zerops not answering",
+      "Zerops isn't answering.",
+      ["Try now", "Sign out"],
+      async ({ harness, pass }: Awaited<ReturnType<typeof admittedProduct>>) => {
+        harness.rest.hang("GET /user/info");
+        await pass(16 * MINUTE_MS);
+      },
+    ],
+  ] as const)(
+    "every lapse overlay state offers Sign out: %s",
+    async (_state, sentence, controls, lapse) => {
+      const product = await admittedProduct();
+
+      await lapse(product);
+
+      expect(product.tab.readable()).toContain(sentence);
+      expect(product.tab.readable().match(/Try (again|now)|Sign out/g)).toEqual(controls);
+    },
+  );
+
+  it("Sign out from the overlay signs out", async () => {
+    const { harness, tab, pass } = await admittedProduct();
+    const token = JSON.parse(storedSession(harness)!).accessToken as string;
+    harness.rest.hang("GET /user/info");
+    await pass(16 * MINUTE_MS);
+    expect(tab.readable()).toContain("Zerops isn't answering.");
+
+    await tab.run(() => press(buttonsLabelled(tab.container(), "Sign out")[0]!));
+    await pass(0);
+
+    expect(tab.session().status).toBe("signed-out");
+    expect(tab.accountId()).toBeNull();
+    expect(storedSession(harness)).toBeNull();
+    expect(
+      harness.rest.requests().filter(({ route }) => route === "POST /auth/logout"),
+    ).toMatchObject([{ token }]);
+    expect(tab.text()).not.toMatch(/Zerops isn't answering|product mounted/);
   });
 });

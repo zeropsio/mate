@@ -236,7 +236,7 @@ describe("ZeropsInventoryProvider renewal", () => {
     expect(tab.text()).not.toMatch(/Try (again|now)/);
   });
 
-  // One cause-only sentence for the whole lapse, beside its one affordance (DESIGN §3.4, R-K3).
+  // One cause-only sentence for the whole lapse, beside its two affordances (DESIGN §3.4, R-K3, A9).
   // Twenty simulated minutes of rounds and presses take longer than the unit project's 15 s.
   it(
     "the overlay copy does not change while the lapse reason is unchanged",
@@ -276,7 +276,7 @@ describe("ZeropsInventoryProvider renewal", () => {
       expect(new Set(seen).size).toBe(1);
       expect(seen[0]).not.toContain(CHILD);
       expect(seen[0]).toContain("Zerops isn't answering.");
-      expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now"]);
+      expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now", "Sign out"]);
     },
   );
 
