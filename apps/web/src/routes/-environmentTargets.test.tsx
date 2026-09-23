@@ -34,7 +34,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import { TestNode } from "../zerops/__fixtures__/testDom";
-import { useEnvironmentLinks, useRouteGateInputs } from "./-environmentTargets";
+import {
+  useEnvironmentLinks,
+  useRouteConversation,
+  useRouteGateInputs,
+} from "./-environmentTargets";
 import { RouteGateView } from "./-routeGate";
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { InventoryContext, type Inventory } from "../zerops/inventoryContext";
@@ -271,7 +275,7 @@ function RoutedOutlet({
       gate={gate}
       phrase={routeGatePhrase(gate, { nowMs, mateName: inputs.mateName })}
       projectId={inputs.projectId}
-      conversation={inputs.conversation}
+      conversation={useRouteConversation(ENV_A)}
     >
       {children}
     </RouteGateView>
@@ -705,7 +709,7 @@ describe("useRouteGateInputs", () => {
   ] as const)("the route's conversation under %s", (_name, value, target, conversation) => {
     shell.driver = publishing(new Map([[KEY, target]]));
     function Probe() {
-      return JSON.stringify(useRouteGateInputs(ENV_A).conversation);
+      return JSON.stringify(useRouteConversation(ENV_A));
     }
     act(() =>
       root.render(

@@ -44,6 +44,7 @@ import {
   derivePhysicalProjectKeyFromPath,
   selectProjectGroupingSettings,
 } from "../logicalProject";
+import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useUiStateStore } from "../uiStateStore";
 import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
@@ -64,8 +65,8 @@ import {
 } from "../components/KeybindingsUpdateToast.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
 import { resolveZeropsAccountGate } from "./-accountGate";
-import { environmentIdFromPathname } from "./-environmentRoute";
-import { useRouteGateInputs } from "./-environmentTargets";
+import { draftIdFromPathname, environmentIdFromPathname } from "./-environmentRoute";
+import { useRouteConversation, useRouteGateInputs } from "./-environmentTargets";
 import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -123,6 +124,18 @@ function SignedInRootRouteView() {
       ? null
       : EnvironmentId.make(routeEnvironmentId),
   );
+  // A draft is its environment's conversation too, and C1b suppresses it with the thread's.
+  const draftId = draftIdFromPathname(pathname);
+  const draftEnvironmentId = useComposerDraftStore((store) =>
+    draftId === null ? null : (store.getDraftSession(DraftId.make(draftId))?.environmentId ?? null),
+  );
+  const conversation = useRouteConversation(
+    door.shell === "bare"
+      ? null
+      : routeEnvironmentId === null
+        ? draftEnvironmentId
+        : EnvironmentId.make(routeEnvironmentId),
+  );
   const gate = selectRouteGate(gateInputs.target);
   const nowMs = useNowMs();
   const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
@@ -162,7 +175,7 @@ function SignedInRootRouteView() {
           gate={gate}
           phrase={gatePhrase}
           projectId={gateInputs.projectId}
-          conversation={gateInputs.conversation}
+          conversation={conversation}
         >
           <Outlet />
         </RouteGateView>

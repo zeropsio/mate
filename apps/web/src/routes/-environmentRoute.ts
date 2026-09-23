@@ -13,3 +13,8 @@ export function environmentIdFromPathname(pathname: string): string | null {
   if (prefix === undefined || NON_ENVIRONMENT_PREFIXES.has(prefix)) return null;
   return prefix;
 }
+
+/** The draft a `/draft/{draftId}` pathname opens, or null for every other route. */
+export function draftIdFromPathname(pathname: string): string | null {
+  return /^\/draft\/([^/]+)\/?$/.exec(pathname)?.[1] ?? null;
+}

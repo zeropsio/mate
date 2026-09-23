@@ -140,8 +140,6 @@ export interface RouteGateInputs {
   /** The route's Zerops project, when a target names the environment. */
   readonly projectId: string | null;
   readonly mateName: string;
-  /** Whether the route's conversation shows under its project's access (DESIGN §9 C1b). */
-  readonly conversation: ConversationView;
 }
 
 const AUTHORIZED: ConversationAccess = { kind: "authorized" };
@@ -204,30 +202,37 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           organization: ORGANIZATION[organizationStatus],
           content,
         });
-  const found =
-    environmentId === null ? undefined : resolveEnvironment(machines, index, environmentId);
-  const projectId = found?.key.split(":")[0] ?? null;
-  const conversation = useConversationView(
-    inventory === null || projectId === null
-      ? AUTHORIZED
-      : conversationAccess(inventory, projectId),
-    found?.machine,
-  );
   useEffect(() => {
     if (account === null) return;
     account.setRoute(environmentId);
     return () => account.setRoute(null);
   }, [account, environmentId]);
-  if (environmentId === null) {
-    return { target: null, projectId: null, mateName: "This Mate", conversation };
-  }
+  if (environmentId === null) return { target: null, projectId: null, mateName: "This Mate" };
   return {
     target,
-    projectId,
+    projectId: resolveEnvironment(machines, index, environmentId)?.key.split(":")[0] ?? null,
     mateName:
       environments.find((entry) => entry.environmentId === environmentId)?.label ?? "This Mate",
-    conversation,
   };
+}
+
+/**
+ * Whether the route's conversation — a thread's, or a draft's — shows under its project's access
+ * (DESIGN §9 C1b), for the environment it belongs to.
+ */
+export function useRouteConversation(environmentId: EnvironmentId | null): ConversationView {
+  const machines = useEnvironmentMachines();
+  const index = useDescriptorIndex();
+  const inventory = useContext(InventoryContext);
+  const found =
+    environmentId === null ? undefined : resolveEnvironment(machines, index, environmentId);
+  const projectId = found?.key.split(":")[0] ?? null;
+  return useConversationView(
+    inventory === null || projectId === null
+      ? AUTHORIZED
+      : conversationAccess(inventory, projectId),
+    found?.machine,
+  );
 }
 
 export interface EnvironmentLinks {
