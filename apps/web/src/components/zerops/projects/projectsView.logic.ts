@@ -11,8 +11,12 @@
  */
 
 import {
+  botDisplayName,
   deployWord,
+  environmentNameUnderGroup,
+  hasMate,
   pairPreviewRoute,
+  readZeropsGroupTags,
   PRODUCTION_ADDED_HERE,
   releaseContentsSummary,
   type EnvironmentRow,
@@ -27,6 +31,8 @@ import {
   type MissingEnvironmentRow,
   type ReleaseGate,
   type ZeropsEnvironmentRole,
+  type ZeropsEnvironmentServices,
+  type ZeropsGroup,
   type ZeropsPublicRoute,
   type ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
@@ -38,6 +44,9 @@ import {
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { creatableRoles } from "../ZeropsGroupTree.logic";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 
 /** What a tool is called where there is no project to name yet — the add verb. */
@@ -418,6 +427,62 @@ export interface GroupMemberFacts {
   readonly hostnames: ReadonlyArray<string>;
 }
 
+/** A group member as the group tree carries it: a candidate, with what its container serves. */
+export type GroupMemberCandidate = ZeropsCandidate & {
+  readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
+  readonly services?: ZeropsEnvironmentServices;
+};
+
+/**
+ * A group's members as `groupFlowInputOf` reads them, from the group tree's
+ * environments — the projects page and the left menu hand it the same
+ * candidates, so they cannot disagree about who is in a group or what a
+ * Mate is doing. `activityOf` is the agent's activity (`agentActivity.ts`),
+ * read only while its container is connected.
+ */
+export function groupMemberFactsOf<T extends GroupMemberCandidate>(
+  environments: ReadonlyArray<{
+    readonly item: T;
+    readonly role: ZeropsEnvironmentRole | undefined;
+  }>,
+  activityOf: (item: T) => ZeropsAgentActivity | undefined,
+): ReadonlyArray<GroupMemberFacts> {
+  return environments.map(({ item, role }) => {
+    const tags = readZeropsGroupTags(item.project.tagList);
+    const connected = item.group === "connected" && item.environmentId !== undefined;
+    const activity = activityOf(item);
+    return {
+      projectId: item.project.id,
+      role,
+      name: environmentNameUnderGroup(tags.label, item.project.name),
+      mate: hasMate(item)
+        ? {
+            name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+            waiting: mateFaceFor(connected, activity) === "needs",
+            talked: connected && activity?.subject !== undefined,
+          }
+        : undefined,
+      routes: item.routes ?? [],
+      hostnames: item.services?.hostnames ?? [],
+    };
+  });
+}
+
+/**
+ * Whether *Add production* is offered for a group: the viewer may create a
+ * project (`canCreateProjectsInOrganization`), the group has no production
+ * yet (`creatableRoles`), and the group is offered more at all
+ * (`groupAddsOffered` — some Mate in it is up). Every surface that feeds
+ * `groupFlow` asks this one question.
+ */
+export function productionAddable(input: {
+  readonly group: ZeropsGroup;
+  readonly mayCreate: boolean;
+  readonly addsOffered: boolean;
+}): boolean {
+  return input.mayCreate && input.addsOffered && creatableRoles(input.group).includes("prod");
+}
+
 /** The part of a group's project flow `groupFlow` reads. */
 export interface GroupFlowReads {
   readonly environments: ReadonlyArray<EnvironmentRow>;
@@ -457,7 +522,8 @@ export function groupFlowInputOf(input: {
   readonly groupId: string;
   readonly members: ReadonlyArray<GroupMemberFacts>;
   readonly flow: GroupFlowReads | undefined;
-  readonly deployments: ReadonlyMap<string, Shown<Deployment>>;
+  /** `undefined` where the platform's pushed answer is not held at all: every stop unread. */
+  readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
   readonly productionAddable: boolean;
 }): GroupFlowInput {
   const { flow } = input;
@@ -488,7 +554,7 @@ export function groupFlowInputOf(input: {
           name: row?.name ?? member.name,
           tier,
           row,
-          deployment: input.deployments.get(member.projectId),
+          deployment: input.deployments?.get(member.projectId),
           route: member.routes[0]?.url,
         },
       ];

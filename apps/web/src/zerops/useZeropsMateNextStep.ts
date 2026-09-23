@@ -24,9 +24,9 @@
  *   `mateNextStep` reads `pullRequests` and `production`.
  * - `mainHasCode` stays unread, as on the page: a merged code change is the
  *   proof either way.
- * - `productionAddable` is the page's gate (`canCreateProjectsInOrganization`
- *   and `creatableRoles`) less `groupAddsOffered` ("some Mate in the group
- *   is up"), which needs the candidates' health probes.
+ * - `productionAddable` is the page's gate with `groupAddsOffered` ("some
+ *   Mate in the group is up") taken as met: it needs the candidates' health
+ *   probes, which this conversation does not run.
  *   It is moot here: *Add production* follows a merged code change, which
  *   took a Mate being up to begin with.
  */
@@ -47,9 +47,9 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { creatableRoles } from "../components/zerops/ZeropsGroupTree.logic";
 import {
   groupFlowInputOf,
+  productionAddable,
   type GroupMemberFacts,
 } from "../components/zerops/projects/projectsView.logic";
 import {
@@ -127,8 +127,11 @@ export function zeropsMateGroupFlow(input: {
       members,
       flow: input.projectFlow,
       deployments: input.deployments,
+      // The page's gate, with its "some Mate is up" part taken as met: see
+      // the module comment.
       productionAddable:
-        input.mayCreate && group !== undefined && creatableRoles(group.group).includes("prod"),
+        group !== undefined &&
+        productionAddable({ group: group.group, mayCreate: input.mayCreate, addsOffered: true }),
     }),
   );
 }

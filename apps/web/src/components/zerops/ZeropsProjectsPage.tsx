@@ -167,9 +167,11 @@ import {
 import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
   groupFlowInputOf,
+  groupMemberFactsOf,
   lastMergedCode,
   orderByNextStep,
   parseProjectsSearch,
+  productionAddable,
   TOOL_LABEL,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
@@ -182,8 +184,8 @@ import {
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   giteaToolLine,
+  groupAddsOffered,
   isZeropsToolCandidate,
-  mateIsUp,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
@@ -1604,16 +1606,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [candidates],
   );
 
-  // A group is offered more once its first Mate is up — connected, or its
-  // container answering ready — and not a minute before. Shared by the
-  // project's menu, its card's add verbs and whether production is offered.
-  const groupAddsOffered = useCallback(
+  // A group is offered more once its first Mate is up (`groupAddsOffered`).
+  // Shared by the project's menu, its card's add verbs and whether
+  // production is offered.
+  const addsOfferedFor = useCallback(
     (group: ZeropsGroup) =>
-      (
-        groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ?? []
-      ).some(
-        ({ item }) =>
-          hasMate(item) && mateIsUp({ candidate: item, health: candidateHealth.get(item.key) }),
+      groupAddsOffered(
+        groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ?? [],
+        candidateHealth,
       ),
     [candidateHealth, groupTree.groups],
   );
@@ -2651,7 +2651,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             setRowDialog({ kind: "rename-group", group });
           },
         },
-        ...(groupAddsOffered(group)
+        ...(addsOfferedFor(group)
           ? [
               {
                 id: "add-mate",
@@ -2833,27 +2833,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
-      const members = environments.map(({ item, role }) => {
-        const tags = readZeropsGroupTags(item.project.tagList);
-        const live =
-          item.group === "connected" && item.environmentId !== undefined
-            ? activity.get(item.environmentId)
-            : undefined;
-        return {
-          projectId: item.project.id,
-          role,
-          name: environmentNameUnderGroup(tags.label, item.project.name),
-          mate: hasMate(item)
-            ? {
-                name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-                waiting: mateFace(item) === "needs",
-                talked: live?.subject !== undefined,
-              }
-            : undefined,
-          routes: item.routes ?? [],
-          hostnames: item.services?.hostnames ?? [],
-        };
-      });
+      const members = groupMemberFactsOf(environments, (item) =>
+        item.environmentId === undefined ? undefined : activity.get(item.environmentId),
+      );
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
       const placeholder = groupNameIsPlaceholder(group);
@@ -2866,8 +2848,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             members,
             flow: reads,
             deployments: projectFlow.deployments,
-            productionAddable:
-              mayCreate && creatableRoles(group).includes("prod") && groupAddsOffered(group),
+            productionAddable: productionAddable({
+              group,
+              mayCreate,
+              addsOffered: addsOfferedFor(group),
+            }),
           }),
         ),
         read: reads !== undefined,
@@ -2940,7 +2925,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       <ZeropsProjectsFlow
         // A group is offered more once its first Mate is up — connected, or
         // its container answering ready — and not a minute before.
-        addsOffered={groupAddsOffered}
+        addsOffered={addsOfferedFor}
         creating={creationRunning}
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}

@@ -61,14 +61,13 @@ import {
   type FlowPullRequest,
   type GroupEnvironmentTier,
   type GroupFlow,
-  type GroupFlowMate,
-  type GroupFlowStopInput,
   type GroupNextStep,
   type GroupNextStepKind,
   type GroupRowTone,
   type ReleaseContentsSummary,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
+  type ZeropsEnvironmentServices,
   type ZeropsGroup,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
@@ -76,6 +75,7 @@ import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { stopView, type Deployment, type StopView } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
@@ -101,12 +101,18 @@ import { MateFace, StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import {
-  creatableRoles,
   environmentRoleTag,
   environmentRoleTagIsRedundant,
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
 import { COUNT_TONE_CLASS, ZeropsMateVerb } from "./ZeropsMateCard";
+import {
+  groupFlowInputOf,
+  groupMemberFactsOf,
+  productionAddable,
+  type GroupFlowReads,
+} from "./projects/projectsView.logic";
+import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
@@ -117,6 +123,7 @@ import { MenuGroup, MenuGroupLabel, MenuSeparator } from "../ui/menu";
 type RosterCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
+  readonly services?: ZeropsEnvironmentServices;
 };
 
 type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined };
@@ -129,39 +136,27 @@ function stopTierRank(tier: GroupEnvironmentTier | undefined): number {
   return tier === "production" ? 0 : tier === "stage" ? 1 : 2;
 }
 
-/** One Mate, as `groupFlow`'s own next step needs it. */
-function groupFlowMateFor<T extends RosterCandidate>(
-  item: T,
-  activity: ZeropsAgentActivity | undefined,
-): GroupFlowMate {
-  const tags = readZeropsGroupTags(item.project.tagList);
+/**
+ * One project's flow as `groupFlowInputOf` reads it — the projects page's
+ * own input — from what the menu holds. Only whether a release is offered
+ * reaches this menu, not the gate's reason; `groupFlow` decides on the
+ * former alone.
+ */
+function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
   return {
-    projectId: item.project.id,
-    name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-    // Not drawn by this tree today, and nothing `groupFlow` reads decides on it.
-    preview: undefined,
-    waiting: mateFaceFor(item.group === "connected", activity) === "needs",
-    talked: activity?.subject !== undefined,
+    environments: [...flow.environments.values()],
+    pullRequests: flow.pullRequests,
+    merged: flow.merged ?? [],
+    missing: flow.missing ?? [],
+    release: {
+      gate: flow.releaseOffered ? { allowed: true } : { allowed: false, reason: "" },
+      suggestion: flow.releaseTag ?? "",
+      contents: flow.releaseContents ?? [],
+    },
   };
 }
 
-/** One stop, as `groupFlow` needs it — `undefined` where the tag names neither tier. */
-function stopInputFor<T extends RosterCandidate>(
-  entry: Entry<T>,
-  flow: SidebarProjectFlow,
-  deployments: ReadonlyMap<string, Shown<Deployment>> | undefined,
-): GroupFlowStopInput | undefined {
-  const tier = environmentTierForRole(entry.role);
-  if (tier === undefined) return undefined;
-  return {
-    projectId: entry.item.project.id,
-    name: entry.item.project.name,
-    tier,
-    row: flow.environments.get(entry.item.project.id),
-    deployment: deployments?.get(entry.item.project.id),
-    route: entry.item.routes?.[0]?.url,
-  };
-}
+const NO_HEALTH: ReadonlyMap<string, ZeropsContainerHealth> = new Map();
 
 /** The tone a next-step dot wears — worst first, the same order `groupFlow` picks in. */
 function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
@@ -198,15 +193,6 @@ export interface SidebarProjectFlow {
    * proof that `main` has code.
    */
   readonly merged?: ReadonlyArray<FlowPullRequest> | undefined;
-  /**
-   * Whether any of the project's code repositories has a commit on `main`
-   * (`GET /repos/{org}/{repo}/branches/main`), read only for a project with a
-   * production today — `undefined` elsewhere, where `groupFlow` relies on
-   * `merged` instead.
-   */
-  readonly mainHasCode?: boolean | undefined;
-  /** The commit `main` is at, from the same read; `undefined` unread. */
-  readonly mainHead?: string | undefined;
   /**
    * What a release would carry, per production service. Rendered as the
    * verb's hover: "Release" names the mechanism, and the tasks name the
@@ -286,12 +272,18 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
   /**
-   * Whether this person may create a project at all — one half of whether
-   * *Add production* is offered here (`creatableRoles` is the other, and this
-   * tree already holds the `ZeropsGroup` it needs). Defaults to `false`, so
-   * the verb is never offered on a guess.
+   * Whether this person may create a project at all
+   * (`canCreateProjectsInOrganization`) — one part of whether *Add
+   * production* is offered here (`productionAddable`, the page's own gate).
+   * Defaults to `false`, so the verb is never offered on a guess.
    */
-  readonly canCreateProjects?: boolean | undefined;
+  readonly mayCreate?: boolean | undefined;
+  /**
+   * Each container's health by candidate key (`useZeropsCandidateHealth`),
+   * for the gate's "some Mate in the group is up" part (`groupAddsOffered`).
+   * Absent, no Mate that is only ready counts as up.
+   */
+  readonly health?: ReadonlyMap<string, ZeropsContainerHealth> | undefined;
   readonly className?: string;
   /**
    * The listing is known and complete, and every row's presence is read
@@ -312,7 +304,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   activeProjectId,
   getActivity,
   getFlow,
-  canCreateProjects = false,
+  mayCreate = false,
+  health = NO_HEALTH,
   complete,
   className,
 }: SidebarZeropsTreeProps<T>) {
@@ -414,37 +407,30 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const mateEntries = entries.filter(({ item }) => hasMate(item));
     if (mateEntries.length === 0) return null;
     const others = entries.filter(({ item }) => !hasMate(item));
-    // The one derivation the projects page draws from too (`groupFlow.ts`):
-    // read once here, so the pull requests this tree hangs under a Mate, the
-    // recipe changes it leaves out, and the heading's own next-step dot can
-    // never disagree with what the page says about the same project.
+    // The one derivation the projects page draws from too (`groupFlow.ts`),
+    // fed through the page's own input (`groupFlowInputOf`) and gate
+    // (`productionAddable`): read once here, so the pull requests this tree
+    // hangs under a Mate, the recipe changes it leaves out, and the heading's
+    // own next-step dot can never disagree with what the page says about the
+    // same project.
     const projectFlow: GroupFlow | undefined =
       flow === undefined
         ? undefined
-        : groupFlow({
-            groupId: id,
-            mates: mateEntries.map(({ item }) => groupFlowMateFor(item, getActivity?.(item))),
-            pullRequests: flow.pullRequests,
-            merged: flow.merged ?? [],
-            stops: others
-              .map((entry) => stopInputFor(entry, flow, deployments))
-              .filter((stop): stop is GroupFlowStopInput => stop !== undefined),
-            missing: flow.missing ?? [],
-            release: {
-              gate: flow.releaseOffered ? { allowed: true } : { allowed: false, reason: "" },
-              suggestion: flow.releaseTag ?? "",
-              waiting: releaseContentsSummary(flow.releaseContents ?? []).total,
-            },
-            mainHasCode: flow.mainHasCode,
-            mainHead: flow.mainHead,
-            // The same gate the page offers *Add production* behind, minus
-            // the "some Mate is up" half `groupAddsOffered` also checks: this
-            // tree holds no health map, and it is moot in practice, since a
-            // code change merging here — `main.hasCode` — already took a Mate
-            // being up (`useZeropsMateNextStep.ts` makes the same call).
-            productionAddable:
-              canCreateProjects && group !== undefined && creatableRoles(group).includes("prod"),
-          });
+        : groupFlow(
+            groupFlowInputOf({
+              groupId: id,
+              members: groupMemberFactsOf(entries, (item) => getActivity?.(item)),
+              flow: groupFlowReadsOf(flow),
+              deployments,
+              productionAddable:
+                group !== undefined &&
+                productionAddable({
+                  group,
+                  mayCreate,
+                  addsOffered: groupAddsOffered(entries, health),
+                }),
+            }),
+          );
     // Code only — a recipe change is the group's document, left to the
     // projects page, and is never one more thing a Mate's row here answers
     // for.

@@ -1,13 +1,28 @@
-import type { EnvironmentRow, FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  buildZeropsGroupTree,
+  groupFlow,
+  type EnvironmentRow,
+  type FlowPullRequest,
+  type GroupNextStepKind,
+  type MissingEnvironmentRow,
+} from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
+import {
+  groupFlowInputOf,
+  groupMemberFactsOf,
+  productionAddable,
+  type GroupFlowReads,
+} from "./projects/projectsView.logic";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
+import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 
 function candidate(
   id: string,
@@ -44,6 +59,15 @@ const CRM_PROD = candidate(
   false,
 );
 const LOOSE = candidate("loose", ["mate"]);
+/**
+ * Connected, so its activity is read — a Mate that is only ready has not been
+ * spoken to as far as anyone here knows, as on the projects page — and up.
+ */
+const CRM_DEV_CONNECTED = {
+  ...CRM_DEV,
+  group: "connected",
+  environmentId: "env-crm-dev" as ZeropsCandidate["environmentId"],
+} as ZeropsCandidate;
 
 /** A group whose environments are named the way Zerops names them: after it. */
 function named(id: string, name: string, tags: ReadonlyArray<string>, withContainer = true) {
@@ -348,52 +372,53 @@ describe("SidebarZeropsTree", () => {
   });
 });
 
-describe("the project's flow under it", () => {
-  const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPullRequest => ({
-    repository: "appdev",
-    number,
-    title: `Change ${number}`,
-    kind: "code",
-    mateProjectId: "crm-dev",
-    author: "mate-crm-dev",
-    url: `https://gitea.example/crm/appdev/pulls/${number}`,
-    checks: "passing",
-    checkWord: "Passing",
-    mergeable: true,
-    merged: false,
-    mergedAt: undefined,
-    headSha: "abc",
-    baseBranch: "main",
-    line: `appdev #${number}`,
-    updatedAt: `2026-09-17T1${number}:00:00Z`,
-    ...overrides,
-  });
-  const stageRow: EnvironmentRow = {
-    kind: "environment",
-    projectId: "crm-stage",
-    name: "stage",
-    tier: "stage",
-    source: "main",
+const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPullRequest => ({
+  repository: "appdev",
+  number,
+  title: `Change ${number}`,
+  kind: "code",
+  mateProjectId: "crm-dev",
+  author: "mate-crm-dev",
+  url: `https://gitea.example/crm/appdev/pulls/${number}`,
+  checks: "passing",
+  checkWord: "Passing",
+  mergeable: true,
+  merged: false,
+  mergedAt: undefined,
+  headSha: "abc",
+  baseBranch: "main",
+  line: `appdev #${number}`,
+  updatedAt: `2026-09-17T1${number}:00:00Z`,
+  ...overrides,
+});
+const stageRow: EnvironmentRow = {
+  kind: "environment",
+  projectId: "crm-stage",
+  name: "stage",
+  tier: "stage",
+  source: "main",
+  commit: "3f9c1b2",
+  version: {
+    name: undefined,
     commit: "3f9c1b2",
-    version: {
-      name: undefined,
-      commit: "3f9c1b2",
-      sha: "3f9c1b2000000000000000000000000000000000",
-      taggedBy: undefined,
-      label: "3f9c1b2",
-    },
-    versionRepository: "appdev",
-    line: "main · 3f9c1b2",
-    tone: "good",
-  };
-  const productionRow: EnvironmentRow = {
-    ...stageRow,
-    projectId: "crm-prod",
-    name: "production",
-    tier: "production",
-    source: "release",
-    tone: "neutral",
-  };
+    sha: "3f9c1b2000000000000000000000000000000000",
+    taggedBy: undefined,
+    label: "3f9c1b2",
+  },
+  versionRepository: "appdev",
+  line: "main · 3f9c1b2",
+  tone: "good",
+};
+const productionRow: EnvironmentRow = {
+  ...stageRow,
+  projectId: "crm-prod",
+  name: "production",
+  tier: "production",
+  source: "release",
+  tone: "neutral",
+};
+
+describe("the project's flow under it", () => {
   const flow = (overrides: Partial<SidebarProjectFlow> = {}): SidebarProjectFlow => ({
     pullRequests: [pull(4)],
     environments: new Map([
@@ -511,21 +536,21 @@ describe("the project's flow under it", () => {
     const getActivity = () => activity;
     const withMergedCode = flow({ pullRequests: [], merged: [pull(4, { merged: true })], missing });
     // Neither half alone is enough: without `merged` this tree never sees
-    // main's code, and without `canCreateProjects` it never offers what it
-    // cannot check the person may create — the page's own gate, wired here
-    // too rather than only there.
+    // main's code, and without `mayCreate` it never offers what it cannot
+    // check the person may create — the page's own gate, wired here too
+    // rather than only there.
     expect(
-      render([CRM_DEV], {
-        canCreateProjects: true,
+      render([CRM_DEV_CONNECTED], {
+        mayCreate: true,
         getActivity,
         getFlow: () => flow({ pullRequests: [], missing }),
       }),
     ).not.toContain("main has code, no production yet");
-    expect(render([CRM_DEV], { getActivity, getFlow: () => withMergedCode })).not.toContain(
-      "main has code, no production yet",
-    );
-    const html = render([CRM_DEV], {
-      canCreateProjects: true,
+    expect(
+      render([CRM_DEV_CONNECTED], { getActivity, getFlow: () => withMergedCode }),
+    ).not.toContain("main has code, no production yet");
+    const html = render([CRM_DEV_CONNECTED], {
+      mayCreate: true,
       getActivity,
       getFlow: () => withMergedCode,
     });
@@ -748,7 +773,7 @@ describe("the project's flow under it", () => {
         at: new Date().toISOString(),
         snippet: undefined,
       };
-      const html = render([CRM_DEV, CRM_STAGE, CRM_PROD], {
+      const html = render([CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD], {
         getActivity: () => talked,
         getFlow: () => flow({ pullRequests: [], releaseOffered: false }),
       });
@@ -923,5 +948,125 @@ describe("the Mate's card", () => {
     const html = render([connecting]);
     expect(html).toContain('data-mate-face-state="sleep"');
     expect(html).not.toContain(">Connecting<");
+  });
+});
+
+describe("the sidebar and the projects page read one group the same way", () => {
+  const PRODUCTION_MISSING: ReadonlyArray<MissingEnvironmentRow> = [
+    { kind: "missing-environment", tier: "production", name: "Production", line: "not set up yet" },
+  ];
+  const reads = (over: Partial<GroupFlowReads> = {}): GroupFlowReads => ({
+    environments: [],
+    pullRequests: [],
+    merged: [],
+    missing: [],
+    release: {
+      gate: { allowed: false, reason: "Nothing to release." },
+      suggestion: "",
+      contents: [],
+    },
+    ...over,
+  });
+  const UP = new Map<string, ZeropsContainerHealth>([[CRM_DEV.key, "ready"]]);
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly candidates: ReadonlyArray<ZeropsCandidate>;
+    readonly reads: GroupFlowReads;
+    readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
+    readonly mayCreate: boolean;
+    readonly expected: GroupNextStepKind;
+  }> = [
+    {
+      name: "a mergeable change asks for the merge",
+      candidates: [CRM_DEV],
+      reads: reads({ pullRequests: [pull(4)] }),
+      health: UP,
+      mayCreate: true,
+      expected: "merge",
+    },
+    {
+      name: "merged code with no production, a Mate up, offers Add production",
+      candidates: [CRM_DEV],
+      reads: reads({ merged: [pull(4, { merged: true })], missing: PRODUCTION_MISSING }),
+      health: UP,
+      mayCreate: true,
+      expected: "add-production",
+    },
+    {
+      name: "the same with no Mate up offers nothing yet",
+      candidates: [CRM_DEV],
+      reads: reads({ merged: [pull(4, { merged: true })], missing: PRODUCTION_MISSING }),
+      health: new Map(),
+      mayCreate: true,
+      expected: "none",
+    },
+    {
+      name: "the same for a viewer who may not create offers nothing",
+      candidates: [CRM_DEV],
+      reads: reads({ merged: [pull(4, { merged: true })], missing: PRODUCTION_MISSING }),
+      health: UP,
+      mayCreate: false,
+      expected: "none",
+    },
+    {
+      name: "a production the recipe does not declare is not added twice",
+      candidates: [CRM_DEV, CRM_PROD],
+      reads: reads({ merged: [pull(4, { merged: true })], missing: PRODUCTION_MISSING }),
+      health: UP,
+      mayCreate: true,
+      expected: "none",
+    },
+    {
+      name: "merged work not live on a production asks for the release",
+      candidates: [CRM_DEV, CRM_PROD],
+      reads: reads({
+        merged: [pull(4, { merged: true })],
+        environments: [productionRow],
+        release: {
+          gate: { allowed: true },
+          suggestion: "v0.2.0",
+          contents: [{ commits: [{ sha: "a".repeat(40), subject: "Add a field" }] }],
+        },
+      }),
+      health: UP,
+      mayCreate: true,
+      expected: "release",
+    },
+  ];
+
+  it.each(cases)("$name", ({ candidates, reads: groupReads, health, mayCreate, expected }) => {
+    const group = buildZeropsGroupTree(candidates, { order: "name" }).groups[0]!;
+    const page = groupFlow(
+      groupFlowInputOf({
+        groupId: group.group.groupId,
+        members: groupMemberFactsOf(group.environments, () => undefined),
+        flow: groupReads,
+        deployments: new Map(),
+        productionAddable: productionAddable({
+          group: group.group,
+          mayCreate,
+          addsOffered: groupAddsOffered(group.environments, health),
+        }),
+      }),
+    ).nextStep;
+    expect(page.kind).toBe(expected);
+
+    const sidebar: SidebarProjectFlow = {
+      pullRequests: groupReads.pullRequests,
+      merged: groupReads.merged,
+      environments: new Map(groupReads.environments.map((row) => [row.projectId, row])),
+      releaseOffered: groupReads.release.gate.allowed,
+      releaseContents: groupReads.release.contents,
+      missing: groupReads.missing,
+      releaseTag: groupReads.release.suggestion,
+      merging: () => false,
+      releasing: false,
+      onMerge: () => {},
+      onRelease: () => {},
+    };
+    const html = render(candidates, { getFlow: () => sidebar, health, mayCreate });
+    const dot = /data-zerops-surface="sidebar-project-next-step"[^>]*/u.exec(html)?.[0];
+    if (page.kind === "none") expect(dot).toBeUndefined();
+    else expect(dot).toContain(`aria-label="${page.text}"`);
   });
 });

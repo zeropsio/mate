@@ -14,6 +14,7 @@ import {
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import {
+  hasMate,
   isGenericPlatformError,
   readZeropsToolKind,
   type ZeropsEnvironmentRole,
@@ -207,6 +208,20 @@ export function mateIsUp(input: {
   return (
     input.candidate.group === "connected" ||
     (input.candidate.group === "ready" && input.health === "ready")
+  );
+}
+
+/**
+ * Whether a group is offered more — its menu, its card's add verbs and *Add
+ * production* — which it is once its first Mate is up, and not a minute
+ * before.
+ */
+export function groupAddsOffered(
+  environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>,
+  health: ReadonlyMap<string, ZeropsContainerHealth>,
+): boolean {
+  return environments.some(
+    ({ item }) => hasMate(item) && mateIsUp({ candidate: item, health: health.get(item.key) }),
   );
 }
 

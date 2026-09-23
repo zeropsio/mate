@@ -213,6 +213,7 @@ import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZero
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import {
+  canCreateProjectsInOrganization,
   flowVerbKey,
   type EnvironmentRow,
   resolvePrimaryConversation,
@@ -1725,10 +1726,13 @@ export default function Sidebar() {
   // else about the account is the projects screen's job.
   const zeropsSession = useZeropsSession();
   const zeropsSignedIn = zeropsSession.status === "signed-in";
-  // The one gate the tree cannot check on its own — it holds no session — for
-  // whether *Add production* is offered (`useZeropsMateNextStep.ts` makes the
-  // same call).
-  const canCreateProjects = zeropsSession.activeOrganization?.canCreateProjects ?? false;
+  // Whether this person may create a project — the part of *Add production*'s
+  // gate the tree cannot check on its own, since it holds no session; the
+  // projects page and a Mate's conversation ask the same question.
+  const zeropsMayCreate =
+    zeropsSession.activeOrganization === null
+      ? false
+      : canCreateProjectsInOrganization(zeropsSession.activeOrganization);
   const { candidates: zeropsCandidates, listing: zeropsListing } = useZeropsCandidates();
   // The roster says what every agent is doing, and the only thing that knows
   // is the environment's own server. So every container that answers the
@@ -3918,7 +3922,8 @@ export default function Sidebar() {
             <SidebarZeropsTree
               activeProjectId={activeZeropsProjectId}
               candidates={zeropsCandidates}
-              canCreateProjects={canCreateProjects}
+              health={zeropsHealth}
+              mayCreate={zeropsMayCreate}
               className="mb-2"
               complete={candidatesComplete(zeropsListing)}
               onAddMate={requestAddMate}
