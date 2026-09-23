@@ -572,7 +572,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       slugs,
       mateNames,
       pending,
-      trouble,
+      // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
+      trouble: (signedIn ? signInTrouble : null) ?? trouble,
       mergePullRequest,
       createPullRequest,
       release,

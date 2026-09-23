@@ -399,7 +399,7 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       expect(giteaSessionToken(back.machine)).toBe("t2");
     });
 
-    it("whose reacquire fails keeps the facts for two failed acquisitions, then names the cause", () => {
+    it("whose reacquire fails keeps the facts, and after two failed acquisitions names the cause beside them", () => {
       const first = play(
         [
           [{ type: "UNAUTHORIZED", token: "t1" }, 1 * MIN],
@@ -422,11 +422,12 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       const checking = play([[TICK, 1 * MIN + 10 * S]], first.machine);
       expect(giteaSessionView(checking.machine).signedIn).toBe(true);
 
+      // Stale with the cause: a 401 never blanks what was read (§4.6).
       const second = play([[liveness(3, false), 1 * MIN + 10 * S]], checking.machine);
       expect(giteaSessionView(second.machine)).toEqual({
-        signedIn: false,
+        signedIn: true,
         readable: false,
-        login: undefined,
+        login: "u-person",
         trouble: "Gitea isn't answering.",
       });
     });
@@ -468,7 +469,13 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
         signedIn().machine,
       );
       expect(third.machine.phase).toMatchObject({ kind: "refused", reason: KEEPS_REFUSING });
-      expect(giteaSessionView(third.machine).trouble).toBe(KEEPS_REFUSING);
+      // A refusal is not a wait: what was read with the refused sign-in no longer stands.
+      expect(giteaSessionView(third.machine)).toEqual({
+        signedIn: false,
+        readable: false,
+        login: undefined,
+        trouble: KEEPS_REFUSING,
+      });
       expect(runs(third.last)).toEqual([]);
 
       const spread = play(

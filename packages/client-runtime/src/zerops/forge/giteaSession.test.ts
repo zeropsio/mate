@@ -379,12 +379,12 @@ describe("the account's Gitea sessions", () => {
       expect(w.sessions.clientFor(HARNESS_GITEA_ORIGIN)).toBeNull();
       expect(w.throwaways.removed).toEqual(["throwaway-1", "throwaway-2"]);
 
-      // The next rung's mint is not answered either: the regions name the cause.
+      // The next rung's mint is not answered either: the facts still stand, the cause beside them.
       await w.time.advance(BROKER_DEADLINE_MS);
       expect(w.view()).toEqual({
-        signedIn: false,
+        signedIn: true,
         readable: false,
-        login: undefined,
+        login: "u-person",
         trouble: "Gitea isn't answering.",
       });
     });

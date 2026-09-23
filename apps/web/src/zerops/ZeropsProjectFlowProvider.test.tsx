@@ -8,12 +8,17 @@ const GITEA = "https://gitea.example.test";
 
 /**
  * The flows stand through a failed reacquire: signed in, and no token to act with until
- * `readable` turns. `origin` is whether the account has a Gitea at all.
+ * `readable` turns; `trouble` is the cause the session names. `origin` is whether the account has
+ * a Gitea at all.
  */
-const gitea = vi.hoisted(() => ({ readable: false, origin: true }));
+const gitea = vi.hoisted(() => ({
+  readable: false,
+  origin: true,
+  trouble: null as string | null,
+}));
 
 vi.mock("./accountGiteaSessions", () => ({
-  useGiteaSession: () => ({ signedIn: true, readable: gitea.readable, trouble: null }),
+  useGiteaSession: () => ({ signedIn: true, readable: gitea.readable, trouble: gitea.trouble }),
   giteaClientFor: () => null,
 }));
 vi.mock("./ZeropsSessionProvider", () => ({
@@ -43,7 +48,7 @@ vi.mock("./giteaProject", () => ({
       : undefined,
 }));
 vi.mock("./useZeropsRegistry", () => ({
-  useZeropsRegistry: () => ({ registry: { groups: [] } }),
+  useZeropsRegistry: () => ({ registry: { groups: [{ groupId: "g1", slug: "harbor" }] } }),
 }));
 vi.mock("./useZeropsDeployedVersion", () => ({
   useZeropsDeployedVersionReader: () => async () => undefined,
@@ -52,7 +57,21 @@ vi.mock("./useZeropsGroupDeploys", () => ({
   useZeropsGroupDeploys: () => ({ deploys: new Map(), failures: new Map(), invalidate: () => {} }),
 }));
 vi.mock("./useZeropsGroupForge", () => ({
-  useZeropsGroupForge: () => ({ forges: new Map(), failures: new Map(), invalidate: () => {} }),
+  useZeropsGroupForge: () => ({
+    forges: new Map([
+      [
+        "g1",
+        {
+          repositories: [],
+          pullRequests: [],
+          merged: [],
+          released: { releases: [], tags: [] },
+        },
+      ],
+    ]),
+    failures: new Map(),
+    invalidate: () => {},
+  }),
 }));
 
 class TestNode {
@@ -123,7 +142,31 @@ describe("ZeropsProjectFlowProvider", () => {
   afterEach(() => {
     gitea.readable = false;
     gitea.origin = true;
+    gitea.trouble = null;
     vi.unstubAllGlobals();
+  });
+
+  it("a Gitea that stops answering keeps the flows and names the cause where the verbs are", async () => {
+    gitea.trouble = "Gitea isn't answering.";
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect([...(seen.at(-1)?.flows.keys() ?? [])]).toEqual(["g1"]);
+    expect(seen.at(-1)?.trouble).toBe("Gitea isn't answering.");
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 
   it("a verb pressed while no Gitea token is held says why nothing happened", async () => {

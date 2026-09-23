@@ -102,10 +102,10 @@ function useGiteaView(giteaOrigin: string | undefined): GiteaSessionView {
 
 /**
  * Wants the account's Gitea signed in while the calling surface is mounted, and says how that
- * stands: `signedIn` says what was read still stands — through a 401's reacquire and the first
- * two failed tries after a token was held — `readable` says a request can go out now, and
+ * stands: `signedIn` says what was read still stands — through a 401's reacquire and every failed
+ * try after a token was held, until a refusal — `readable` says a request can go out now, and
  * `trouble` names a refusal at once and a Gitea or broker that does not answer after two failed
- * tries.
+ * tries, beside what stands.
  */
 export function useGiteaSession(input: {
   readonly giteaOrigin: string | undefined;

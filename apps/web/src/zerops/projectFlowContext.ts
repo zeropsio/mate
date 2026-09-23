@@ -64,7 +64,8 @@ export interface ZeropsProjectFlowValue {
   readonly giteaOrigin: string | undefined;
   /**
    * Whether what was read as the person stands: this tab holds a Gitea session, or is getting one
-   * back after holding it, through the first two failed tries. Without it the flows are empty.
+   * back after holding it — stale, with the cause in `trouble` after two failed tries. Without it
+   * the flows are empty.
    */
   readonly signedIn: boolean;
   /**
@@ -73,7 +74,7 @@ export interface ZeropsProjectFlowValue {
    */
   readonly readable: boolean;
   /**
-   * Why there is no session: a refusal at once, a Gitea or broker that does not answer only after
+   * Why no token is held: a refusal at once, a Gitea or broker that does not answer only after
    * two failed tries.
    */
   readonly signInTrouble: string | null;
@@ -89,7 +90,10 @@ export interface ZeropsProjectFlowValue {
   readonly mateNames: ReadonlyMap<string, string>;
   /** The verbs in flight, by `flowVerbKey`: a row shows its own running and takes no second click. */
   readonly pending: ReadonlySet<string>;
-  /** What the last verb's refusal said, until the next verb. */
+  /**
+   * While the flows stand with no token, why ({@link signInTrouble}); otherwise what the last
+   * verb's refusal said, until the next verb.
+   */
   readonly trouble: string | null;
   /** Merges it in Gitea as the person; Gitea's own permissions are the gate. */
   readonly mergePullRequest: (

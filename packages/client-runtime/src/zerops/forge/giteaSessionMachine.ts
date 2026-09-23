@@ -11,10 +11,10 @@
  *
  * "Gitea still setting up" and "the broker does not answer" are separate waits, each re-mint
  * preceded by a credential-less liveness check, so nothing is minted while the broker is down. A
- * Gitea 401 reacquires without dropping what was read, and what was read stands through the first
- * two failed acquisitions after a token was held; the third 401 in 10 minutes refuses. A refusal
- * is asked again every 5 minutes while the tab is visible. `expiresIn` is honoured, and the token
- * renewed only while a surface wants it.
+ * Gitea 401 reacquires without dropping what was read, and what was read stands, stale, while the
+ * session gets another token — the cause named beside it after two failed acquisitions; the third
+ * 401 in 10 minutes refuses. A refusal is asked again every 5 minutes while the tab is visible.
+ * `expiresIn` is honoured, and the token renewed only while a surface wants it.
  */
 import type { Instant } from "../data/access/grant.ts";
 import { RETRY_JITTER, RETRY_RUNGS_MS } from "../knowledge/retryPolicy.ts";
@@ -529,7 +529,8 @@ export function transitionGiteaSession(
 export interface GiteaSessionView {
   /**
    * What was read as the person stands: a token is held, or the session is getting another after
-   * holding one, for up to {@link FAILURES_BEFORE_CAUSE} failed acquisitions.
+   * holding one — stale, with `trouble` naming the cause after {@link FAILURES_BEFORE_CAUSE}
+   * failed acquisitions. Only a refusal, or going idle unwanted, ends it.
    */
   readonly signedIn: boolean;
   /**
@@ -539,7 +540,10 @@ export interface GiteaSessionView {
   readonly readable: boolean;
   /** The person's login on that Gitea, `u-…`, while signed in. */
   readonly login: string | undefined;
-  /** The cause, once the regions show it: a refusal at once, a wait after two failures. */
+  /**
+   * The cause, once the regions show it: a refusal at once, a wait after two failures — beside
+   * what was read while `signedIn` holds, in its place otherwise.
+   */
   readonly trouble: string | null;
 }
 
@@ -562,14 +566,17 @@ function retryingCause(machine: GiteaSessionMachine, retrying: GiteaRetrying): s
   return retrying.kind === "pending" ? RETRYING_CAUSE.pending : RETRYING_CAUSE[retrying.source];
 }
 
-/** No token held: the facts stand until a cause is named, if a token was held before. */
+/**
+ * No token held: what was read stands if a token was held before, with the cause beside it once
+ * one is named. A refusal forgets the last login, so what was read with it does not stand.
+ */
 function withoutToken(machine: GiteaSessionMachine, trouble: string | null): GiteaSessionView {
-  if (trouble === null && machine.lastLogin !== null && machine.failures < FAILURES_BEFORE_CAUSE) {
+  if (machine.lastLogin !== null) {
     return {
       signedIn: true,
       readable: giteaSessionReadable(machine),
       login: machine.lastLogin,
-      trouble: null,
+      trouble,
     };
   }
   return trouble === null ? GITEA_SIGNED_OUT : { ...GITEA_SIGNED_OUT, trouble };
