@@ -130,10 +130,10 @@ export function ZeropsMateVerb({
 }
 
 /**
- * The card's surface, shared with a tool's card: the one white card on the
- * page, whatever stands in it. The height fits a name, a line and a snippet
- * whether or not the socket has answered yet: a card that grows when the
- * conversation lands would push every card below it down the page.
+ * The card's surface: the one white card on the page. The height fits a
+ * name, a line and a snippet whether or not the socket has answered yet: a
+ * card that grows when the conversation lands would push every card below it
+ * down the page.
  */
 const CARD_SURFACE_CLASS =
   "relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-2.5 ps-3 pe-2";
@@ -264,48 +264,6 @@ export function ZeropsMateCard({
           {action}
         </span>
       )}
-      {menu === undefined || menu === null ? null : (
-        <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-          {menu}
-        </span>
-      )}
-    </div>
-  );
-}
-
-export interface ZeropsToolCardProps {
-  readonly name: string;
-  /**
-   * The tool's one line: where it is, once it is up, or how long until it
-   * is. Absent, the name sits alone.
-   */
-  readonly line?: ReactNode;
-  readonly menu?: ReactNode;
-  readonly className?: string;
-}
-
-/**
- * An account-level tool (Gitea) on the projects screen, in the Mate card's
- * treatment: the same surface, radius and padding, so the page has one card
- * and not a card beside a bare line. No face, because a tool is nobody, and
- * not a way in: what it offers is on its line (its address) and in its menu.
- */
-export function ZeropsToolCard({ name, line, menu, className }: ZeropsToolCardProps) {
-  return (
-    <div className={cn(CARD_SURFACE_CLASS, "group/card", className)} data-zerops-tool-card="true">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
-          {name}
-        </span>
-        {line === undefined || line === null ? null : (
-          <div
-            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
-            data-zerops-surface="tool-line"
-          >
-            {line}
-          </div>
-        )}
-      </div>
       {menu === undefined || menu === null ? null : (
         <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
           {menu}
