@@ -779,6 +779,46 @@ describe("the access grant inside the data runtime", () => {
   );
 
   it.effect.each([
+    ["a fresh lapse", 1500, false, [0, 3 * SECOND, 9 * SECOND]],
+    ["a lapse on its 60 s cadence", 3 * MINUTE, false, [0, 3 * SECOND, 9 * SECOND]],
+    ["a lapse on its 60 s cadence, the round answering", 3 * MINUTE, true, [0]],
+  ] as const)(
+    "a user retry in a lapse starts one round, and no second round before the first rung of the ladder after it fails: %s",
+    ([, lapsedMs, answers, startsAfterRetry]) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform = healthy();
+          const opened = yield* grantedTab(platform);
+          platform.roundFailure = serverDown;
+          yield* opened.freeze(30 * MINUTE);
+          yield* opened.pass(lapsedMs);
+          expect(opened.phase()).toBe("lapsed");
+          const before = opened.platform.rounds.length;
+          const bus = yield* makeInvalidationBus({ signals: Stream.never, shown: () => true });
+          yield* opened.runtime.access.listen(bus);
+          if (answers) platform.roundFailure = null;
+
+          yield* bus
+            .invalidate({ topic: "access", change: "renew-now" })
+            .pipe(Effect.provideService(Clock.Clock, opened.clock));
+          yield* opened.pass(INVALIDATION_COALESCE_MS);
+          const retried = opened.platform.rounds.slice(before);
+          expect(retried).toHaveLength(1);
+          const clicked = retried[0]!.startedAtMono;
+          yield* opened.pass(10 * SECOND - INVALIDATION_COALESCE_MS);
+
+          // Each round fails 1 s after it starts; the ladder waits 2 s, then 5 s.
+          expect(
+            opened.platform.rounds
+              .slice(before)
+              .map(({ startedAtMono }) => startedAtMono - clicked),
+          ).toEqual(startsAfterRetry);
+          expect(opened.phase()).toBe(answers ? "granted" : "lapsed");
+        }),
+      ),
+  );
+
+  it.effect.each([
     ["the epoch's first", healthy(), () => Effect.void, ["first"]],
     [
       "a renewal due",
