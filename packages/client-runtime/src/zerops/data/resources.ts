@@ -923,7 +923,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
       for (const demand of entry.demands.values()) demand.close();
       entry.demands.clear();
     }
-    for (const askAgain of [...capacityWaits]) askAgain();
+    for (const askAgain of capacityWaits) askAgain();
   });
 
   return {
