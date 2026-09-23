@@ -67,8 +67,12 @@ import {
 import { countDoorEnvironments, resolveDoor } from "./-door";
 import { resolveZeropsAccountGate } from "./-accountGate";
 import { environmentIdFromPathname } from "./-environmentRoute";
+import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { ZeropsIdentityRepair } from "~/zerops/ZeropsIdentityRepair";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+
+// At boot, before the first route renders: every emit point writes from then on.
+installMateDiagnostics();
 
 export const Route = createRootRoute({
   beforeLoad: () => ({ authGateState: { status: "hosted-static" } as AuthGateState }),
