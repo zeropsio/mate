@@ -79,7 +79,12 @@ const connectionLayer = Layer.mergeAll(
   catalogDiagnosticsLayer,
 ).pipe(Layer.provideMerge(providedClientConnectionLayer));
 
+/**
+ * The T3 connection runtime lives for the account, not for whichever views
+ * read it: a page with no conversation on it never disposes the catalog. The
+ * account's close disposes it with the atom registry (DESIGN §5 L4).
+ */
 export const connectionAtomRuntime: Atom.AtomRuntime<
   Layer.Success<ConnectionLayerSource>,
   Layer.Error<ConnectionLayerSource>
-> = Atom.runtime(connectionLayer);
+> = Atom.keepAlive(Atom.runtime(connectionLayer));
