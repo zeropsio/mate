@@ -493,7 +493,10 @@ const PURE_EFFECT_MODULES: ReadonlySet<string> = new Set([
 ]);
 
 // Shared modules that compute values, import nothing and run nothing.
-const PURE_SHARED_MODULES: ReadonlySet<string> = new Set(["@t3tools/shared/semver"]);
+const PURE_SHARED_MODULES: ReadonlySet<string> = new Set([
+  "@t3tools/shared/basePath",
+  "@t3tools/shared/semver",
+]);
 
 // A use no pure zone file may make, reported as `uses ${name}`.
 interface ForbiddenUse {

@@ -9,14 +9,13 @@
  * the decisions are testable without a network.
  */
 
-export { isZcpService } from "./api.ts";
+export { isZcpService } from "./containerAddress.ts";
+import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
   zeropsRegionFromPublicZone,
-  type ZeropsProject,
-  type ZeropsService,
-} from "./api.ts";
+} from "./containerAddress.ts";
 import { projectCreationOutcome, type ZeropsProjectCreation } from "./projectCreation.ts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { normalizeBasePath } from "@t3tools/shared/basePath";

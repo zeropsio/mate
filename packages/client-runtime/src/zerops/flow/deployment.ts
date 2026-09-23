@@ -17,7 +17,7 @@
  *
  * @module flow/deployment
  */
-import { isZcpService } from "../api.ts";
+import { isZcpService } from "../containerAddress.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
 import type {
   CollectionRead,

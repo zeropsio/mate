@@ -2,10 +2,7 @@ export {
   DEFAULT_ZEROPS_API_BASE,
   ZeropsApiClient,
   ZeropsApiError,
-  buildZeropsContainerUrl,
-  isZcpService,
   zeropsClientsFromUser,
-  zeropsRegionFromPublicZone,
   type ListProjectsOptions,
   type ZeropsApiClientOptions,
   type ZeropsApiErrorKind,
@@ -26,6 +23,12 @@ export {
   type ZeropsStatPair,
   type ZeropsUser,
 } from "./api.ts";
+
+export {
+  buildZeropsContainerUrl,
+  isZcpService,
+  zeropsRegionFromPublicZone,
+} from "./containerAddress.ts";
 
 export {
   canCreateProjectsInOrganization,
