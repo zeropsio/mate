@@ -6,7 +6,6 @@ import { project, service, stamp } from "../data/__fixtures__/index.ts";
 import type { ZeropsCandidate } from "../candidates.ts";
 import {
   admittedOnly,
-  candidateMembers,
   candidatesComplete,
   candidatesNotice,
   findCandidate,
@@ -276,18 +275,6 @@ describe("presentCandidates", () => {
 
   it.each(notHeld)("passes a listing that is $name through, never an empty one", ({ listing }) => {
     expect(presentCandidates(listing, (row) => row.key)).toBe(listing);
-  });
-});
-
-describe("candidateMembers", () => {
-  it("holds a known listing's rows, a partial one's included", () => {
-    const rows = [candidate("a")];
-
-    expect(candidateMembers(known(rows, "partial"))).toBe(rows);
-  });
-
-  it.each(notHeld)("holds no member of a listing that is $name", ({ listing }) => {
-    expect(candidateMembers(listing)).toEqual([]);
   });
 });
 

@@ -302,13 +302,5 @@
     "owner": "karel",
     "reason": "an unknown lifecycle has no envelope, as a known one may not: the session has no phase and the strip says nothing, never a phase or a none",
     "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/projections/candidates.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "listing.state === \"known\" ? listing.value : NO_MEMBERS",
-    "owner": "state-model 3.10",
-    "reason": "an unread candidate listing holds no member, which the sidebar, projects page, group detail, Gitea page, Mate actions (taken bot names), ask-Mate and change-landed events read as no candidates; removed by 3.10 (A8)",
-    "expires": "never"
   }
 ]

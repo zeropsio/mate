@@ -241,18 +241,6 @@ export function takenBotNames(listing: Known<ReadonlyArray<ZeropsCandidate>>): T
   }
 }
 
-const NO_MEMBERS: ReadonlyArray<never> = [];
-
-/**
- * The rows a listing holds, for a surface that looks a candidate up or draws the rows read so far:
- * every row of a complete listing, the ones read of a partial one, and none while it holds no rows
- * at all. Nothing negative may be read off it — `candidatesComplete` says when these are all the
- * rows there are.
- */
-export function candidateMembers<Row>(listing: Known<ReadonlyArray<Row>>): ReadonlyArray<Row> {
-  return listing.state === "known" ? listing.value : NO_MEMBERS;
-}
-
 /**
  * Whether a surface may say the organization holds no project (M5): the listing is known and
  * complete, and none of its rows is one `isProject` counts (a tool, say, is not).

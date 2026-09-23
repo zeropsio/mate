@@ -33,8 +33,8 @@ import {
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
-  candidateMembers,
   candidatesComplete,
+  heldCandidates,
   presentCandidates,
   selectCandidates,
   type CandidateRow,
@@ -257,7 +257,7 @@ export function candidatesPublication(input: {
 }): CandidatesPublication {
   if (input.status === "signed-out") return FORGET;
   if (input.status !== "signed-in" || input.listing.state !== "known") return HOLD;
-  const candidates = candidateMembers(input.listing);
+  const candidates = heldCandidates(input.listing).rows;
   const names = zeropsEnvironmentNames(candidates);
   const decided = zeropsMateDecisions(candidates, input.registeredOrigins);
   if (candidatesComplete(input.listing)) {
@@ -305,15 +305,12 @@ export function applyCandidatesPublication(publication: CandidatesPublication): 
 
 export function useZeropsCandidates(): {
   /**
-   * The rows the listing holds (`candidateMembers`): none while it is unread,
-   * being read or failed, so nothing negative may be read off them — `listing`
-   * says whether they are all there are.
-   */
-  readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
-  /**
-   * The active organization's candidates as knowledge (DESIGN §3): "no
-   * projects" is only ever read off a known, complete listing, and a re-read
-   * keeps the list already read up while the fresh baseline lands.
+   * The active organization's candidates as knowledge (DESIGN §3), and the
+   * only way they are handed out: a surface reads it through the
+   * `projections` selectors (`heldCandidates`, `findCandidate`,
+   * `takenBotNames`, `candidatesNotice`), so "no projects" is only ever read
+   * off a known, complete listing. A re-read keeps the list already read up
+   * while the fresh baseline lands.
    */
   readonly listing: Known<ReadonlyArray<ZeropsCandidatePresentation>>;
   /** A read is in flight: the header's spinner, never a reason to paint less. */
@@ -415,8 +412,6 @@ export function useZeropsCandidates(): {
     serviceReads,
     services,
   ]);
-  const candidates = candidateMembers(listing);
-
   useEffect(() => {
     applyCandidatesPublication(
       candidatesPublication({
@@ -434,5 +429,5 @@ export function useZeropsCandidates(): {
     invalidateZerops({ topic: "inventory", organization: activeOrganizationRef });
   }, [activeOrganizationRef]);
 
-  return { candidates, listing, isLoading, error, refresh };
+  return { listing, isLoading, error, refresh };
 }
