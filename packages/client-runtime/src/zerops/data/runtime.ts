@@ -4,6 +4,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Latch from "effect/Latch";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
@@ -523,6 +524,8 @@ interface RuntimeReceiver {
   readonly organization: OrganizationRef;
   readonly identity: ReceiverIdentity;
   handle: ReceiverHandle | null;
+  /** Why its last socket login failed, until its recovery cycle retries it. */
+  openFailure: AdapterError | null;
   readonly registrations: Map<string, RuntimeRegistration>;
   readonly registrationOwners: Map<string, RuntimeRegistration>;
   registrationAttempts: number;
@@ -756,6 +759,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const forkOwned = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(Effect.forkIn(runtimeScope), Effect.provideService(Scheduler.Scheduler, scheduler));
   const closed = yield* Ref.make(false);
+  /** Open while the tab is online: offline, no establishment starts, so no socket login is sent. */
+  const network = yield* Latch.make(true);
   const visibility =
     options.visibility ??
     ({ current: Effect.succeed("visible"), changes: Stream.never } satisfies ZeropsVisibility);
@@ -1152,6 +1157,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         receiverId: ZeropsReceiverId.make(options.makeOpaqueId()),
       },
       handle: null,
+      openFailure: null,
       registrations: new Map(),
       registrationOwners: new Map(),
       registrationAttempts: 0,
@@ -1534,10 +1540,19 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     receiverLock.withPermit(
       Effect.gen(function* () {
         if (receiver.handle !== null) return receiver.handle;
+        // A failed login is the attempt of every establishment that reaches the receiver until
+        // its recovery cycle retries on its backoff: one login per rung, never a burst.
+        if (receiver.openFailure !== null) return yield* Effect.fail(receiver.openFailure);
         const handle = yield* context(policy.establishmentDeadlineMs, (requestContext) =>
           options.adapter
             .openReceiver(options.scope, receiver.organization, receiver.identity, requestContext)
             .pipe(Scope.provide(runtimeScope)),
+        ).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              receiver.openFailure = error;
+            }),
+          ),
         );
         // A recovery/pause race may have replaced this receiver while the open call was
         // in flight. Nobody else can close a socket that never landed in `receivers`.
@@ -1680,7 +1695,27 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           ),
     );
 
+  /**
+   * Offline, an establishment waits for the network before it starts, so its deadline starts once
+   * the network is back (§4.0, §6.4). One whose interest was paused, given a new identity or
+   * released meanwhile is left to whatever did that.
+   */
   const establishInterest = (runtimeInterest: RuntimeInterest): Effect.Effect<void> =>
+    Effect.suspend(() => {
+      const waitedAs = runtimeInterest.identity;
+      return network.await.pipe(
+        Effect.andThen(Ref.get(model)),
+        Effect.flatMap((state) =>
+          runtimeInterest.identity === waitedAs &&
+          runtimeInterest.leases.size > 0 &&
+          state.interests.get(runtimeInterest.key)?.interest.status !== "paused"
+            ? establish(runtimeInterest)
+            : Effect.void,
+        ),
+      );
+    });
+
+  const establish = (runtimeInterest: RuntimeInterest): Effect.Effect<void> =>
     Effect.gen(function* () {
       if (yield* Ref.get(closed)) return;
       const organization = organizationOfInterest(runtimeInterest.descriptor);
@@ -2173,6 +2208,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             prepared = null;
             break;
           }
+          // The retries that came due log in once more, over the receiver they wait on.
+          if (retryable.length > 0) currentReplacement.openFailure = null;
           for (const interest of retryable) {
             yield* establishInterest(interest);
           }
@@ -3167,6 +3204,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         Effect.provideService(Scheduler.Scheduler, scheduler),
       ),
   });
+
+  // The tab's network reaches the runtime through its grant's signals.
+  yield* grant.grant.changes.pipe(
+    Stream.map(({ machine }) => machine.signals.online),
+    Stream.changes,
+    Stream.runForEach((online) => (online ? network.open : network.close)),
+    forkOwned,
+  );
 
   const listen: ManagedZeropsDataRuntime["listen"] = (bus) =>
     Effect.flatMap(bus.subscribe, (subscription) =>

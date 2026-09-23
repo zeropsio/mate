@@ -41,6 +41,7 @@ import {
   type ZeropsDataAdapter,
 } from "./types.ts";
 import type { ZeropsDataState } from "./state.ts";
+import type { AccessVerifier } from "./access/verifier.ts";
 
 const encodeTestFrame = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -265,6 +266,61 @@ const unresolvedProcessBaseline = (
     ticket: request.baselineTicket,
   } as PlatformObservation;
 };
+
+/** Three projects of one organization: three interests on one receiver. */
+const threeProjects: ReadonlyArray<RuntimeInterestDescriptor> = ["a", "b", "c"].map((id) => ({
+  kind: "project-topology",
+  project: project(`project-${id}`),
+  includeCurrentMetrics: false,
+}));
+
+/** A grant whose rounds never answer: it only carries the tab's network to the runtime. */
+const silentVerifier: AccessVerifier = {
+  verifyRound: () => Effect.never,
+  verifyProject: () => Effect.never,
+};
+
+/**
+ * Counts socket logins (`openReceiver`): the first `failFirst` fail as a login sent offline
+ * would; `closeSocket` closes the socket of the last one that succeeded.
+ */
+function socketLogins(options: { readonly failFirst?: number } = {}) {
+  let logins = 0;
+  let events: Queue.Queue<ReceiverEvent> | null = null;
+  const adapter: ZeropsDataAdapter = {
+    ...makeAdapterHarness().adapter,
+    openReceiver: (_scope, organization, identity) =>
+      Effect.gen(function* () {
+        logins += 1;
+        if (logins <= (options.failFirst ?? 0)) {
+          return yield* Effect.fail({
+            _tag: "ZeropsDataAdapterError",
+            kind: "socket-open",
+            message: "net::ERR_INTERNET_DISCONNECTED",
+            retryable: true,
+            accountRevocationEvidence: false,
+          } satisfies AdapterError);
+        }
+        const opened = yield* Queue.unbounded<ReceiverEvent>();
+        events = opened;
+        return {
+          identity,
+          organization,
+          delivery: "hot-single-consumer-buffered-before-open-resolves",
+          events: Stream.fromQueue(opened),
+        } satisfies ReceiverHandle;
+      }),
+  };
+  return {
+    adapter,
+    count: () => logins,
+    closeSocket: Effect.suspend(() =>
+      events === null
+        ? Effect.die("no socket is open")
+        : Queue.offer(events, { kind: "closed", reason: "network lost" }),
+    ),
+  };
+}
 
 const waitForState = (
   states: Queue.Dequeue<ZeropsDataState>,
@@ -2578,6 +2634,94 @@ describe("makeZeropsDataRuntime", () => {
         expect(nextIdentity.interestEpoch).toBeGreaterThan(firstIdentity.interestEpoch);
         expect(nextIdentity.receiver.receiverId).not.toBe(firstIdentity.receiver.receiverId);
       }
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      unsubscribe();
+      registry.dispose();
+    }),
+  );
+
+  it.effect.each([
+    ["an epoch that starts offline", false],
+    ["a socket lost while offline", true],
+  ] as const)("offline → no socket login attempts; online → one attempt: %s", ([, startOnline]) =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const logins = socketLogins();
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: logins.adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      yield* runtime.access.start({ verifier: silentVerifier, hidden: false, online: startOnline });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const leaseScope = yield* Scope.make();
+      const leases = yield* Effect.forEach(threeProjects, (descriptor) =>
+        runtime.acquire(descriptor).pipe(Scope.provide(leaseScope)),
+      );
+      const allObserving = (state: ZeropsDataState) =>
+        leases.every(
+          (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+      if (startOnline) {
+        yield* waitForState(states, allObserving);
+        expect(logins.count()).toBe(1);
+        yield* runtime.access.signal({ type: "OFFLINE" });
+        yield* logins.closeSocket;
+      }
+      const before = logins.count();
+
+      for (let minute = 0; minute < 10; minute++) {
+        yield* Effect.yieldNow;
+        yield* TestClock.adjust("1 minute");
+      }
+      expect(logins.count()).toBe(before);
+
+      yield* runtime.access.signal({ type: "ONLINE" });
+      yield* waitForState(states, allObserving);
+      yield* TestClock.adjust("1 minute");
+      expect(logins.count()).toBe(before + 1);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      unsubscribe();
+      registry.dispose();
+    }),
+  );
+
+  it.effect("a failed socket login is the one attempt of every interest waiting on it", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const logins = socketLogins({ failFirst: 1 });
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: logins.adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const leaseScope = yield* Scope.make();
+      const leases = yield* Effect.forEach(threeProjects, (descriptor) =>
+        runtime.acquire(descriptor).pipe(Scope.provide(leaseScope)),
+      );
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+      expect(logins.count()).toBe(1);
+
+      yield* TestClock.adjust("1 second");
+      yield* waitForState(states, (state) =>
+        leases.every(
+          (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
+        ),
+      );
+      expect(logins.count()).toBe(2);
 
       yield* runtime.shutdown("application-close");
       yield* Scope.close(leaseScope, Exit.void);
