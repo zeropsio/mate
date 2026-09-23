@@ -20,7 +20,6 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
-import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
@@ -647,10 +646,8 @@ export interface ChatComposerProps {
   externalDrawerAttached: boolean;
   /** Picking /usage-limits from the menu is the action itself; the draft keeps nothing of it. */
   onUsageLimitsCommand?: (() => void) | undefined;
-  environmentUnavailable: {
-    readonly label: string;
-    readonly connection: EnvironmentConnectionPresentation;
-  } | null;
+  /** The composer's environment is not connected: nothing can be sent. */
+  environmentUnavailable: boolean;
 
   // Pending approvals / inputs
   activePendingApproval: PendingApproval | null;
@@ -1565,7 +1562,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isConnecting ||
     noProviderAvailable ||
     projectSelectionRequired ||
-    environmentUnavailable !== null ||
+    environmentUnavailable ||
     !composerSendState.hasSendableContent;
   const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
@@ -2297,7 +2294,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isSendDisabled ||
       isConnecting ||
       noProviderAvailable ||
-      environmentUnavailable !== null ||
+      environmentUnavailable ||
       phase === "running"
     ) {
       return false;
@@ -3497,9 +3494,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         sendDisabledReason={sendDisabledReason}
                         isConnecting={isConnecting}
                         isEnvironmentUnavailable={
-                          environmentUnavailable !== null ||
-                          noProviderAvailable ||
-                          projectSelectionRequired
+                          environmentUnavailable || noProviderAvailable || projectSelectionRequired
                         }
                         isPreparingWorktree={false}
                         hasSendableContent={false}
@@ -3841,9 +3836,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         sendDisabledReason={sendDisabledReason}
                         isConnecting={isConnecting}
                         isEnvironmentUnavailable={
-                          environmentUnavailable !== null ||
-                          noProviderAvailable ||
-                          projectSelectionRequired
+                          environmentUnavailable || noProviderAvailable || projectSelectionRequired
                         }
                         isPreparingWorktree={false}
                         hasSendableContent={false}
@@ -3991,9 +3984,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       sendDisabledReason={sendDisabledReason}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={
-                        environmentUnavailable !== null ||
-                        noProviderAvailable ||
-                        projectSelectionRequired
+                        environmentUnavailable || noProviderAvailable || projectSelectionRequired
                       }
                       isPreparingWorktree={isPreparingWorktree}
                       hasSendableContent={composerSendState.hasSendableContent}

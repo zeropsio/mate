@@ -554,7 +554,6 @@ const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
 
 type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;
-  readonly label: string;
   readonly connection: EnvironmentConnectionPresentation;
 };
 
@@ -2058,16 +2057,12 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeReconnectingEnvironmentId]);
   const activeEnvironmentUnavailableLabel = activeEnvironment?.label ?? null;
   const activeEnvironmentUnavailableState = useMemo<EnvironmentUnavailableState | null>(() => {
-    if (!activeEnvironmentUnavailable || !activeEnvironmentUnavailableLabel || !activeEnvironment) {
-      return null;
-    }
-
+    if (!activeEnvironmentUnavailable || !activeEnvironment) return null;
     return {
       environmentId: activeEnvironment.environmentId,
-      label: activeEnvironmentUnavailableLabel,
       connection: activeEnvironment.connection,
     };
-  }, [activeEnvironment, activeEnvironmentUnavailable, activeEnvironmentUnavailableLabel]);
+  }, [activeEnvironment, activeEnvironmentUnavailable]);
   const handleReconnectActiveEnvironment = useCallback(
     async (environmentId: EnvironmentId) => {
       const toast = environmentRetryFailureToast(await retryEnvironment(environmentId));
@@ -7924,7 +7919,7 @@ export default function ChatView(props: ChatViewProps) {
                                 : undefined
                             }
                             externalDrawerAttached={externalComposerDrawerAttached}
-                            environmentUnavailable={activeEnvironmentUnavailableState}
+                            environmentUnavailable={activeEnvironmentUnavailable}
                             activePendingApproval={activePendingApproval}
                             pendingApprovals={pendingApprovals}
                             pendingUserInputs={pendingUserInputs}
