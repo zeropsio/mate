@@ -108,4 +108,20 @@ describe("the account's invalidation bus on the web (DESIGN §6.2)", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(heard).toEqual([container("p1:s1")]);
   });
+
+  it("drops a request sent while no account is open, and opens no bus for the next one", async () => {
+    fakeClocks();
+    const heard = listen();
+    openAccountLifetime("account-a");
+    closeAccountLifetime();
+    // A write that answers after sign-out still reports what it changed.
+    invalidateZerops(container("p1:s1"));
+    await vi.advanceTimersByTimeAsync(250);
+    expect(heard).toEqual([]);
+
+    openAccountLifetime("account-b");
+    closeAccountLifetime();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(heard).toEqual([]);
+  });
 });

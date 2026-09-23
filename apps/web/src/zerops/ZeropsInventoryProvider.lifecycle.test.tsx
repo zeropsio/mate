@@ -35,6 +35,7 @@ import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
@@ -145,6 +146,7 @@ function installTestDom(): void {
 }
 
 afterEach(() => {
+  closeAccountLifetime();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -185,6 +187,8 @@ const mountInventory = Effect.fn(function* (
   vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
   vi.setSystemTime(1788825600000);
   installTestDom();
+  // The signed-in session opens the account's lifetime; its intents belong to it.
+  openAccountLifetime("account");
   const registry = AtomRegistry.make();
   const account = {
     apiOrigin: makeZeropsApiOrigin("https://api.example.test"),

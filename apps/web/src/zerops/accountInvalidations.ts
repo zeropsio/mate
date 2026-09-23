@@ -20,7 +20,7 @@ import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
-import { onAccountLifetimeClose } from "./accountLifetime";
+import { currentAccountId, onAccountLifetimeClose } from "./accountLifetime";
 
 /** A visible wake needs the tab hidden at least this long (DESIGN §6.4). */
 const WAKE_AFTER_HIDDEN_MS = 30_000;
@@ -96,8 +96,12 @@ function lifetimeBus(): InvalidationBus {
   return bus;
 }
 
-/** Requests revalidation of the facts under one key: an intent a surface sends. */
+/**
+ * Requests revalidation of the facts under one key: an intent a surface sends. With no account
+ * open there is nobody to ask, so a write answering after sign-out asks for nothing.
+ */
 export function invalidateZerops(invalidation: Invalidation): void {
+  if (currentAccountId() === null) return;
   Effect.runSync(lifetimeBus().invalidate(invalidation));
 }
 
