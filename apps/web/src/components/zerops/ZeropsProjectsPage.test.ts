@@ -848,6 +848,7 @@ describe("opening a Mate from the projects page", () => {
 
   it("is one opener for a Mate's card and for the flow's names and tiles", () => {
     expect(projectsPageSource).toContain("const select = mateOpenerOf(candidate);");
+    expect(projectsPageSource).toContain("openMate={mateOpenerOf}");
     expect(projectsPageSource.match(/mateOpener\(\{/gu)).toHaveLength(1);
   });
 });

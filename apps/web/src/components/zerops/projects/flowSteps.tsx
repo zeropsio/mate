@@ -1,28 +1,125 @@
 /**
- * The step cells both views draw: a Mate's preview, `main` with its stages,
- * the production, and the group's name.
+ * The step cells both views draw: a Mate's name and preview, the pull
+ * requests, `main` with its stages, the production, and the group's name.
+ *
+ * A cell is a text block of at most two lines and, at its right end, the verb
+ * slot: the verb stands beside the thing it acts on, never under it. `line`
+ * is a cell of a row (the Overview, a narrow card); `box` is a Projects step
+ * cell. An empty step is one muted line in the same place a filled one
+ * takes — never a dashed box, never a sentence explaining itself.
  */
 
+import type {
+  FlowPullRequest,
+  GroupFlow,
+  GroupFlowMate,
+  GroupFlowStop,
+} from "@t3tools/client-runtime/zerops";
 import { ExternalLinkIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { StatusDot } from "../primitives";
-import { mainCell, productionCell, stopLine } from "./projectsView.logic";
+import {
+  mainCell,
+  nextStepCell,
+  productionCell,
+  pullRequestsLine,
+  stopLine,
+  type FlowCell,
+} from "./projectsView.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
+
+/** `line`: a row's cell, no surface. `box`: a Projects step cell. */
+export type Density = "line" | "box";
 
 export const QUIET_BUTTON_CLASS =
   "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
 
-/** A step with nothing in it is a place, drawn dashed — never a row that says "not set up yet". */
-export const STEP_BOX_CLASS = "flex min-w-0 flex-col gap-1 rounded-lg border px-3 py-2.5 text-sm";
-export const EMPTY_STEP_CLASS = "border-dashed border-border text-muted-foreground";
-export const FILLED_STEP_CLASS = "border-border/60 bg-card";
+/** A Projects step cell, empty or not: the same tint and height either way. */
+export const STEP_CELL_CLASS =
+  "flex min-h-16 min-w-0 flex-col gap-1.5 rounded-lg bg-muted/50 px-3 py-2.5";
+
+/** A cell's line 1: the thing itself, in the running hand. */
+const LINE_ONE_CLASS = "block min-w-0 truncate text-sm";
+/**
+ * A cell's line 2: what to know about it. A narrow row reads line 1 only, so
+ * the row's line 2 waits for the room.
+ */
+function lineTwoClass(density: Density): string {
+  return cn(
+    "min-w-0 truncate text-xs text-muted-foreground",
+    density === "line" ? "hidden @2xl/flow:block" : "block",
+  );
+}
+
+/** Whether a node would draw anything — a slot may answer `null` for "nothing here". */
+export function drawn(node: ReactNode): boolean {
+  return node !== null && node !== undefined && node !== false;
+}
+
+/** The verbs of a cell, at its right end, centred on its lines. Nothing for none. */
+export function VerbSlot({ children }: { readonly children?: ReactNode }) {
+  if (Children.toArray(children).length === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5" data-zerops-verb-slot="true">
+      {children}
+    </span>
+  );
+}
+
+/** A step with nothing in it: its one word, muted, where the thing would be. */
+export function EmptyStep({ children }: { readonly children: string }) {
+  return (
+    <span
+      className="truncate text-sm font-normal text-muted-foreground"
+      data-zerops-empty-step="true"
+    >
+      {children}
+    </span>
+  );
+}
+
+/** A cell: its lines, then its verbs. */
+function Cell({
+  step,
+  density,
+  lines,
+  verbs,
+  className,
+}: {
+  readonly step: FlowCell;
+  readonly density: Density;
+  readonly lines: ReactNode;
+  readonly verbs?: ReactNode;
+  readonly className?: string;
+}) {
+  const row = (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5" data-zerops-cell-lines="true">
+        {lines}
+      </span>
+      <VerbSlot>{verbs}</VerbSlot>
+    </span>
+  );
+  if (density === "box") {
+    return (
+      <div className={cn(STEP_CELL_CLASS, className)} data-zerops-step={step}>
+        {row}
+      </div>
+    );
+  }
+  return (
+    <div className={cn("min-w-0", className)} data-zerops-step={step}>
+      {row}
+    </div>
+  );
+}
 
 export function PreviewLink({ url }: { readonly url: string }) {
   return (
     <a
-      className="inline-flex items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline"
+      className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline"
       data-zerops-surface="mate-preview"
       href={url}
       rel="noreferrer"
@@ -34,151 +131,294 @@ export function PreviewLink({ url }: { readonly url: string }) {
   );
 }
 
-/** `↳ stage · follows main`, and what it runs: a group stage, where one exists. */
-function StageLines<T>({
-  entry,
-  renderStopMenu,
-  compact,
+const MATE_CHIP_CLASS =
+  "-mx-1 inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1 text-sm font-medium text-foreground";
+
+/**
+ * A Mate by name, with its face: the way into its conversation wherever a row
+ * names it. A Mate that cannot open yet — coming up, busy — is the same face
+ * and name with nothing to press.
+ */
+export function MateChip({
+  face,
+  name,
+  onOpen,
 }: {
-  readonly entry: ProjectsFlowGroup<T>;
-  readonly renderStopMenu: (item: T) => ReactNode;
-  readonly compact: boolean;
+  readonly face: ReactNode;
+  readonly name: string;
+  readonly onOpen: (() => void) | undefined;
 }) {
-  return entry.flow.stages.map((stop) => {
+  const body = (
+    <>
+      <span className="flex shrink-0">{face}</span>
+      <span className="min-w-0 truncate">{name}</span>
+    </>
+  );
+  if (onOpen === undefined) return <span className={MATE_CHIP_CLASS}>{body}</span>;
+  return (
+    <button
+      aria-label={`Open ${name}`}
+      className={cn(
+        MATE_CHIP_CLASS,
+        "outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+      data-zerops-surface="mate-open"
+      onClick={onOpen}
+      type="button"
+    >
+      {body}
+    </button>
+  );
+}
+
+/**
+ * A group stage, as one line under `main`: `↳ ● stage · Deployed e014b0e`.
+ * It says what the stage runs and nothing else — where it lives is its menu's.
+ * A row draws the first and counts the rest; a box draws each, with its menu.
+ */
+export function StageLines({
+  stages,
+  density,
+  menuFor,
+}: {
+  readonly stages: ReadonlyArray<GroupFlowStop>;
+  readonly density: Density;
+  readonly menuFor?: ((projectId: string) => ReactNode) | undefined;
+}) {
+  const shown = density === "line" ? stages.slice(0, 1) : stages;
+  const more = stages.length - shown.length;
+  return shown.map((stop) => {
     const line = stopLine(stop);
-    const item = entry.stops.get(stop.projectId)?.item;
+    const word = stages.length > 1 ? stop.name : "stage";
+    const menu = menuFor?.(stop.projectId);
     return (
-      <div
-        className={cn(
-          "flex min-w-0 flex-col gap-0.5 text-xs",
-          !compact && "ms-3 rounded-md border border-border/60 px-2.5 py-2",
-        )}
+      <span
+        className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
         data-zerops-surface="flow-stage"
         key={stop.projectId}
       >
-        <span className="text-muted-foreground">↳ {stop.name} · follows main</span>
-        <span className="flex min-w-0 items-center gap-1.5">
-          <StatusDot className="min-w-0 truncate" label={line.text} sentence tone={line.tone} />
-          {!compact && item !== undefined ? (
-            <span className="ms-auto flex shrink-0">{renderStopMenu(item)}</span>
-          ) : null}
-        </span>
-        {!compact && stop.route !== undefined ? (
-          <a
-            className="min-w-0 truncate text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            href={stop.route}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {stop.route.replace(/^https?:\/\//u, "")}
-          </a>
-        ) : null}
-      </div>
+        <span aria-hidden="true">↳</span>
+        <StatusDot className="min-w-0" label={`${word} · ${line.text}`} sentence tone={line.tone} />
+        {more > 0 ? <span className="shrink-0">· +{more}</span> : null}
+        {drawn(menu) ? <span className="ms-auto flex shrink-0">{menu}</span> : null}
+      </span>
     );
   });
 }
 
+/** `main`: the last change that landed, and whether it is live — or its stage. */
 export function MainStep<T>({
   entry,
-  renderStopMenu,
-  compact,
+  density,
   verb,
+  menuFor,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
-  readonly renderStopMenu: (item: T) => ReactNode;
-  readonly compact: boolean;
+  readonly density: Density;
   readonly verb: ReactNode;
+  readonly menuFor?: ((projectId: string) => ReactNode) | undefined;
 }) {
   const cell = mainCell(entry.flow, entry.lastMerged);
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5" data-zerops-step="main">
-      <div
-        className={cn(
-          compact ? "flex min-w-0 flex-col gap-0.5 text-sm" : STEP_BOX_CLASS,
-          !compact && (cell.empty ? EMPTY_STEP_CLASS : FILLED_STEP_CLASS),
-        )}
-      >
-        {cell.head === undefined && cell.title === undefined ? null : (
-          <span className="flex min-w-0 items-center gap-1.5">
-            {cell.head === undefined ? null : (
-              <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                {cell.head}
-              </span>
-            )}
-            {cell.title === undefined ? null : (
-              <span className="min-w-0 truncate">{cell.title}</span>
-            )}
+  const { stages } = entry.flow;
+  const notLive = entry.flow.main.notLive > 0;
+  const lineOne =
+    cell.title !== undefined ? (
+      <span className={cn(LINE_ONE_CLASS, "flex items-center gap-1.5")}>
+        {density === "box" && cell.head !== undefined ? (
+          <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+            {cell.head}
           </span>
-        )}
-        <span
-          className={cn("text-xs", cell.empty ? "text-muted-foreground" : "text-foreground/80")}
-        >
-          {cell.state}
-        </span>
-      </div>
-      <StageLines compact={compact} entry={entry} renderStopMenu={renderStopMenu} />
-      {verb}
-    </div>
+        ) : null}
+        <span className="min-w-0 truncate">{cell.title}</span>
+      </span>
+    ) : cell.empty ? (
+      <EmptyStep>{cell.state}</EmptyStep>
+    ) : (
+      <span className={LINE_ONE_CLASS}>{cell.state}</span>
+    );
+  // Line 2 says how much is not live, else — in a row — the stage, else that
+  // nothing waits; never what line 1 already said. A box draws its stages
+  // under a hairline instead, and a row with work not live leaves its stage to
+  // the opened row.
+  const stageLine =
+    density === "line" && !notLive && stages.length > 0 ? (
+      <span className="hidden min-w-0 @2xl/flow:flex">
+        <StageLines density="line" stages={stages} />
+      </span>
+    ) : null;
+  const lineTwo =
+    stageLine ??
+    (cell.title === undefined ? null : (
+      <span className={cn(lineTwoClass(density), notLive && "text-foreground/80")}>
+        {cell.state}
+      </span>
+    ));
+  return (
+    <Cell
+      density={density}
+      lines={
+        <>
+          {lineOne}
+          {lineTwo}
+          {density === "box" && stages.length > 0 ? (
+            <span className="mt-1 flex flex-col gap-1 border-t border-border/50 pt-1.5">
+              <StageLines density="box" menuFor={menuFor} stages={stages} />
+            </span>
+          ) : null}
+        </>
+      }
+      step="main"
+      verbs={verb}
+    />
   );
+}
+
+/**
+ * *Release* beside a production that has something else to do first (D28):
+ * the release that might clear a failed deploy stays in sight. Absent where
+ * the next step already is the release, so the cell never shows it twice.
+ */
+export function releaseVerbFor<T>(
+  entry: ProjectsFlowGroup<T>,
+  renderReleaseVerb: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined,
+): ReactNode {
+  const { production } = entry.flow;
+  const offered =
+    (production.kind === "ready-to-release" || production.kind === "deploy-failed") &&
+    production.candidate !== undefined;
+  if (!offered || entry.flow.nextStep.kind === "release") return null;
+  return renderReleaseVerb?.(entry) ?? null;
 }
 
 export function ProductionStep<T>({
   entry,
-  renderStopMenu,
-  compact,
+  density,
   verb,
-  renderReleaseVerb,
+  releaseVerb,
+  menu,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
-  readonly renderStopMenu: (item: T) => ReactNode;
-  readonly compact: boolean;
+  readonly density: Density;
   readonly verb: ReactNode;
-  readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  readonly releaseVerb: ReactNode;
+  readonly menu?: ReactNode;
 }) {
   const cell = productionCell(entry.flow);
-  const { production } = entry.flow;
-  const item =
-    production.kind === "absent" ? undefined : entry.stops.get(production.stop.projectId)?.item;
-  // A release is offered on either of two kinds; carried here where it does
-  // not already have the cell's own verb (D28) — the failure never hides it.
-  const candidate =
-    production.kind === "ready-to-release" || production.kind === "deploy-failed"
-      ? production.candidate
-      : undefined;
-  const releaseVerb =
-    candidate === undefined || entry.flow.nextStep.kind === "release"
-      ? null
-      : (renderReleaseVerb?.(entry) ?? null);
   return (
-    <div
-      className={cn(
-        compact ? "flex min-w-0 flex-col gap-1 text-sm" : STEP_BOX_CLASS,
-        !compact && (cell.empty ? EMPTY_STEP_CLASS : FILLED_STEP_CLASS),
-      )}
-      data-zerops-step="production"
-    >
-      <span className="flex min-w-0 items-center gap-1.5">
-        {cell.empty ? (
-          <span className="min-w-0 truncate">{cell.line}</span>
-        ) : (
-          <StatusDot className="min-w-0 truncate" label={cell.line} sentence tone={cell.tone} />
-        )}
-        {!compact && item !== undefined ? (
-          <span className="ms-auto flex shrink-0">{renderStopMenu(item)}</span>
-        ) : null}
-      </span>
-      {cell.detail === undefined ? null : (
-        <span className="text-xs text-muted-foreground">{cell.detail}</span>
-      )}
-      {verb === null || verb === undefined ? null : <span className="flex">{verb}</span>}
-      {releaseVerb === null ? null : <span className="flex">{releaseVerb}</span>}
-    </div>
+    <Cell
+      density={density}
+      lines={
+        <>
+          {cell.empty ? (
+            <EmptyStep>{cell.line}</EmptyStep>
+          ) : (
+            <StatusDot className={LINE_ONE_CLASS} label={cell.line} sentence tone={cell.tone} />
+          )}
+          {cell.detail === undefined ? null : (
+            <span className={lineTwoClass(density)}>{cell.detail}</span>
+          )}
+        </>
+      }
+      step="production"
+      // Keyed and without the empties, so a cell with nothing to press has no slot.
+      verbs={Children.toArray([
+        verb,
+        releaseVerb,
+        drawn(menu) ? <span className="flex">{menu}</span> : null,
+      ])}
+    />
   );
 }
 
-/** Whether a node would draw anything — a slot may answer `null` for "nothing here". */
-export function drawn(node: ReactNode): boolean {
-  return node !== null && node !== undefined && node !== false;
+/** The pull requests, as a row's cell: the one the next step names, else the newest. */
+export function PullRequestsStep<T>({
+  entry,
+  verb,
+}: {
+  readonly entry: ProjectsFlowGroup<T>;
+  readonly verb: ReactNode;
+}) {
+  const { flow } = entry;
+  const target = flow.nextStep.target;
+  const shown =
+    (target?.kind === "change"
+      ? flow.pullRequests.find(
+          ({ pull }) => pull.repository === target.repository && pull.number === target.number,
+        )
+      : undefined) ?? flow.pullRequests[0];
+  const more = flow.pullRequests.length - 1;
+  return (
+    <Cell
+      density="line"
+      lines={
+        shown === undefined ? (
+          <EmptyStep>{pullRequestsLine(flow)}</EmptyStep>
+        ) : (
+          <>
+            <span className={LINE_ONE_CLASS}>
+              <span className="text-muted-foreground tabular-nums">#{shown.pull.number}</span>{" "}
+              {shown.pull.title}
+            </span>
+            {shown.state === undefined && more === 0 ? null : (
+              <span className={cn(lineTwoClass("line"), "@2xl/flow:flex items-center gap-1")}>
+                {shown.state === undefined ? null : (
+                  <StatusDot
+                    className="min-w-0"
+                    label={shown.state.word}
+                    sentence
+                    tone={shown.state.tone}
+                  />
+                )}
+                {more > 0 ? (
+                  <span className="shrink-0">
+                    {shown.state === undefined ? "" : "· "}+{more} more
+                  </span>
+                ) : null}
+              </span>
+            )}
+          </>
+        )
+      }
+      step="pull-requests"
+      verbs={verb}
+    />
+  );
+}
+
+/**
+ * A group's Mates: each environment with its flow's Mate. Both lists are the
+ * group tree's Mates in its order (`groupFlowInputOf`), so they pair by place.
+ */
+export function matesOf<T>(
+  entry: ProjectsFlowGroup<T>,
+): ReadonlyArray<{ readonly item: T; readonly mate: GroupFlowMate }> {
+  return entry.mates.flatMap((item, index) => {
+    const mate = entry.flow.mates[index];
+    return mate === undefined ? [] : [{ item, mate }];
+  });
+}
+
+/**
+ * Whether a pull request is the one the next step merges — its own row then
+ * carries no second Merge beside the step's.
+ */
+export function mergesHere(flow: GroupFlow, pull: FlowPullRequest): boolean {
+  const target = flow.nextStep.target;
+  return (
+    flow.nextStep.kind === "merge" &&
+    target?.kind === "change" &&
+    target.repository === pull.repository &&
+    target.number === pull.number
+  );
+}
+
+/** A group's next-step verb, in the one cell its step acts on; nothing elsewhere. */
+export function verbFor<T>(
+  entry: ProjectsFlowGroup<T>,
+  cell: FlowCell,
+  renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode,
+): ReactNode {
+  return nextStepCell(entry.flow) === cell ? renderNextStep(entry) : null;
 }
 
 export function GroupName<T>({
@@ -201,5 +441,10 @@ export function GroupName<T>({
   );
 }
 
+/**
+ * The Overview's columns, the header's and every row's: toggle · Project ·
+ * Mates · Pull requests · main · Production · menu. A medium container drops
+ * the Mates column — the names move under the project's.
+ */
 export const OVERVIEW_GRID_CLASS =
-  "md:grid md:grid-cols-[1.75rem_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.1fr)_2rem] md:items-center md:gap-x-3";
+  "@2xl/flow:grid @2xl/flow:grid-cols-[1.75rem_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_1.75rem] @2xl/flow:gap-x-4 @5xl/flow:grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_1.75rem]";

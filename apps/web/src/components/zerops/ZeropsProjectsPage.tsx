@@ -2960,6 +2960,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         onCreateTool={() => {
           void createTool();
         }}
+        openMate={mateOpenerOf}
         onRetryContainers={(items) => {
           for (const candidate of items) runRowAction(candidate, "retry-probe");
         }}
@@ -2967,10 +2968,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         renderGroupMenu={renderGroupMenu}
         renderGroupRows={renderGroupRows}
         renderMate={renderMate}
-        renderMateFace={(candidate: ZeropsCandidatePresentation) => (
+        renderMateFace={(candidate: ZeropsCandidatePresentation, size) => (
           <MateFace
-            className="rounded-full ring-2 ring-card"
-            size="sm"
+            size={size}
             state={mateFace(candidate)}
             tint={tints.get(candidate.project.id) ?? "slate"}
           />

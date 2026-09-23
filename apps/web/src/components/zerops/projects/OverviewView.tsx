@@ -2,6 +2,12 @@
  * The Overview: the "Next steps" strip, one row per group with work on it,
  * the tiles of groups with only a Mate, the containers no project holds and
  * the page's quiet end.
+ *
+ * A row is a line per step, two lines at most per cell, and one verb — in the
+ * cell its step acts on, at that cell's end. Every Mate it names opens into
+ * its conversation. The layout follows the flow's own width (`@container/flow`):
+ * the columns, then the Mates moved under the project's name, then a stacked
+ * block of step labels and their first lines.
  */
 
 import { ChevronRightIcon } from "lucide-react";
@@ -9,63 +15,107 @@ import { Fragment, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../../ui/button";
-import { MicroLabel, StatusDot } from "../primitives";
+import { FlatCard, MicroLabel, StatusDot } from "../primitives";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import {
+  drawn,
+  EmptyStep,
   GroupName,
   MainStep,
+  MateChip,
+  matesOf,
+  mergesHere,
   OVERVIEW_GRID_CLASS,
   PreviewLink,
   ProductionStep,
+  PullRequestsStep,
   QUIET_BUTTON_CLASS,
+  releaseVerbFor,
+  VerbSlot,
+  verbFor,
 } from "./flowSteps";
 import {
   containersSummary,
   groupMetaLine,
-  nextStepCell,
   nextStepTone,
-  pullRequestsLine,
   TOOL_LABEL,
   type FlowCell,
 } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
 
-/** The Overview's first thing: what waits on somebody, across every group, with its verb. */
+/** Where a row's next-step verb sits, for the strip to hand focus to. */
+const NEXT_STEP_SLOT = "data-zerops-next-step-slot";
+/** A row's own toggle: the strip's focus where the step has no verb to press. */
+const ROW_TOGGLE = "data-zerops-row-toggle";
+
+const rowId = (groupId: string) => `flow-row-${groupId}`;
+
+/** Scrolls a group's row into view and puts focus on its verb, or on the row. */
+function jumpToRow(groupId: string): void {
+  const row = document.getElementById(rowId(groupId));
+  if (row === null) return;
+  row.scrollIntoView({ block: "nearest" });
+  const target =
+    row.querySelector<HTMLElement>(`[${NEXT_STEP_SLOT}] button:not(:disabled)`) ??
+    row.querySelector<HTMLElement>(`[${ROW_TOGGLE}]`);
+  target?.focus();
+}
+
+/**
+ * The Overview's first thing: what waits on somebody, across every group. A
+ * step is a place to go, not a second copy of its verb — the row below
+ * carries the verb, and a step jumps to it.
+ */
 export function NextStepsStrip<T>({
   entries,
-  renderNextStep,
 }: {
   readonly entries: ReadonlyArray<ProjectsFlowGroup<T>>;
-  readonly renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode;
 }) {
   if (entries.length === 0) return null;
   return (
-    <section
-      aria-label="Next steps"
-      className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
-      data-zerops-surface="next-steps"
-    >
-      <h2 className="shrink-0 text-sm font-medium text-foreground">
-        Next steps <span className="font-normal text-muted-foreground">{entries.length}</span>
-      </h2>
-      <ul className="flex min-w-0 flex-wrap gap-2">
-        {entries.map((entry) => (
-          <li
-            className="flex min-w-0 items-center gap-2 rounded-md border border-border/60 py-1 ps-2.5 pe-1"
-            data-zerops-next-step={entry.flow.nextStep.kind}
-            key={entry.group.groupId}
-          >
-            <StatusDot
-              className="min-w-0 text-sm"
-              label={`${entry.group.name} · ${entry.flow.nextStep.text}`}
-              sentence
-              tone={nextStepTone(entry.flow.nextStep.kind)}
-            />
-            {renderNextStep(entry)}
-          </li>
-        ))}
-      </ul>
-    </section>
+    <FlatCard className="px-3 py-2">
+      <section
+        aria-label="Next steps"
+        className="flex flex-col gap-1"
+        data-zerops-surface="next-steps"
+      >
+        <h2 className="text-sm font-semibold text-foreground">
+          Next steps <span className="font-normal text-muted-foreground">{entries.length}</span>
+        </h2>
+        <ul className="grid grid-cols-1 gap-1 @2xl/flow:grid-cols-2 @5xl/flow:grid-cols-3">
+          {entries.map((entry) => (
+            <li className="min-w-0" key={entry.group.groupId}>
+              <button
+                className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                data-zerops-next-step={entry.flow.nextStep.kind}
+                onClick={() => {
+                  jumpToRow(entry.group.groupId);
+                }}
+                type="button"
+              >
+                {/* The step's words follow the name: the dot's own name would say them twice. */}
+                <StatusDot
+                  aria-hidden="true"
+                  className="shrink-0"
+                  dotOnly
+                  label={entry.flow.nextStep.text}
+                  tone={nextStepTone(entry.flow.nextStep.kind)}
+                />
+                <span className="max-w-[40%] shrink-0 truncate font-medium text-foreground">
+                  {entry.group.name}
+                </span>
+                <span aria-hidden="true" className="text-muted-foreground">
+                  ·
+                </span>
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {entry.flow.nextStep.text}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </FlatCard>
   );
 }
 
@@ -75,16 +125,83 @@ function OverviewHeader() {
       aria-hidden="true"
       className={cn(
         OVERVIEW_GRID_CLASS,
-        "hidden border-b border-border/60 px-3 py-2 text-muted-foreground",
+        "hidden h-9 items-center border-b border-border/60 px-3 text-muted-foreground",
       )}
     >
       <span />
       <MicroLabel>Project</MicroLabel>
-      <MicroLabel>Mates · preview</MicroLabel>
-      <MicroLabel>→ Pull requests</MicroLabel>
-      <MicroLabel>→ main</MicroLabel>
-      <MicroLabel>→ Production</MicroLabel>
+      <MicroLabel className="hidden @5xl/flow:block">Mates</MicroLabel>
+      <MicroLabel>Pull requests</MicroLabel>
+      <MicroLabel>main</MicroLabel>
+      <MicroLabel>Production</MicroLabel>
       <span />
+    </div>
+  );
+}
+
+/**
+ * A step's place in a row. Narrow, it is a line of its own — the step's label,
+ * then its first line and its verb; with room, it is a column and the header
+ * names it.
+ */
+function StepPlace({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+  return (
+    <div className="col-span-2 grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 @2xl/flow:col-span-1 @2xl/flow:row-span-2 @2xl/flow:row-start-1 @2xl/flow:block @5xl/flow:row-span-1">
+      <MicroLabel className="text-muted-foreground @2xl/flow:hidden">{label}</MicroLabel>
+      {children}
+    </div>
+  );
+}
+
+/** At most this many Mates by name in a row; the rest are a count. */
+const MATES_NAMED = 2;
+
+function MatesCell<T>({
+  entry,
+  props,
+  verb,
+}: {
+  readonly entry: ProjectsFlowGroup<T>;
+  readonly props: ZeropsProjectsFlowProps<T>;
+  readonly verb: ReactNode;
+}) {
+  const mates = matesOf(entry);
+  const named = mates.slice(0, MATES_NAMED);
+  const preview = entry.flow.mates.find((mate) => mate.preview !== undefined)?.preview;
+  return (
+    <div
+      className="col-span-2 flex min-w-0 items-center gap-2 @2xl/flow:col-span-1 @2xl/flow:col-start-2 @2xl/flow:row-start-2 @5xl/flow:col-start-3 @5xl/flow:row-start-1"
+      data-zerops-step="mates"
+    >
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5" data-zerops-cell-lines="true">
+        {mates.length === 0 ? (
+          <EmptyStep>No Mate yet</EmptyStep>
+        ) : (
+          <span className="flex min-w-0 items-center gap-2">
+            {named.map(({ item, mate }) => (
+              <MateChip
+                face={props.renderMateFace(item, "sm")}
+                key={props.getKey(item)}
+                name={mate.name}
+                onOpen={props.openMate(item)}
+              />
+            ))}
+            {mates.length > named.length ? (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                +{mates.length - named.length}
+              </span>
+            ) : null}
+          </span>
+        )}
+        {/* With the Mates in their own column, the preview is their line 2;
+            anywhere narrower it waits in the opened row. */}
+        {preview === undefined ? null : (
+          <span className="hidden @5xl/flow:flex">
+            <PreviewLink url={preview} />
+          </span>
+        )}
+      </span>
+      <VerbSlot>{verb}</VerbSlot>
     </div>
   );
 }
@@ -101,115 +218,98 @@ function OverviewRow<T>({
   readonly onToggle: () => void;
 }) {
   const { flow, group } = entry;
-  const cell = nextStepCell(flow);
-  // The verb keeps its own width: a column's cells stretch, a button should not.
-  const verbIn = (where: FlowCell) =>
-    cell === where ? <span className="flex">{props.renderNextStep(entry)}</span> : null;
+  // The next step's verb, in the one cell it acts on, marked for the strip.
+  const verbIn = (cell: FlowCell) => {
+    const verb = verbFor(entry, cell, props.renderNextStep);
+    return drawn(verb) ? (
+      <span className="flex" {...{ [NEXT_STEP_SLOT]: "true" }}>
+        {verb}
+      </span>
+    ) : null;
+  };
   const preview = flow.mates.find((mate) => mate.preview !== undefined)?.preview;
-  const target = flow.nextStep.target;
-  const shown =
-    (target?.kind === "change"
-      ? flow.pullRequests.find(
-          (entry_) =>
-            entry_.pull.repository === target.repository && entry_.pull.number === target.number,
-        )
-      : undefined) ?? flow.pullRequests[0];
   const groupRows = props.renderGroupRows(group);
   return (
-    <li className="border-b border-border/40 last:border-b-0" data-zerops-group={group.groupId}>
-      <div className={cn(OVERVIEW_GRID_CLASS, "flex flex-col gap-2 px-3 py-2.5")}>
+    <li
+      className="scroll-mt-4 border-b border-border/40 last:border-b-0"
+      data-zerops-group={group.groupId}
+      id={rowId(group.groupId)}
+    >
+      <div
+        className={cn(
+          OVERVIEW_GRID_CLASS,
+          "grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-3 @2xl/flow:gap-y-0 @2xl/flow:py-2",
+        )}
+      >
         <button
           aria-expanded={open}
-          aria-label={open ? `Hide ${group.name}` : `Show ${group.name}`}
-          className="hidden size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent md:flex"
+          className="flex min-w-0 items-center gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring @2xl/flow:col-span-2 @2xl/flow:row-start-1 @2xl/flow:grid @2xl/flow:grid-cols-subgrid @5xl/flow:row-span-1"
           onClick={onToggle}
           type="button"
+          {...{ [ROW_TOGGLE]: "true" }}
         >
-          <ChevronRightIcon className={cn("size-3.5 transition-transform", open && "rotate-90")} />
-        </button>
-        <button
-          className="flex min-w-0 flex-col items-start text-left"
-          onClick={onToggle}
-          type="button"
-        >
-          <GroupName className="text-sm" entry={entry} />
-          <span className="text-xs text-muted-foreground">{entry.line ?? groupMetaLine(flow)}</span>
-        </button>
-        <div className="flex min-w-0 flex-col gap-1" data-zerops-step="mates">
-          {flow.mates.length === 0 ? (
-            <span className="text-sm text-muted-foreground">No Mate yet</span>
-          ) : (
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="flex shrink-0 -space-x-1.5">
-                {entry.mates.map((item) => (
-                  <Fragment key={props.getKey(item)}>{props.renderMateFace(item)}</Fragment>
-                ))}
-              </span>
-              <span className="min-w-0 truncate text-sm">
-                {flow.mates.map((mate) => mate.name).join(", ")}
-              </span>
+          <span
+            aria-hidden="true"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground"
+          >
+            <ChevronRightIcon
+              className={cn("size-3.5 transition-transform", open && "rotate-90")}
+            />
+          </span>
+          <span className="flex min-w-0 flex-col gap-0.5" data-zerops-cell-lines="true">
+            <GroupName className="text-sm" entry={entry} />
+            {/* With the Mates moved under the name, they are its line 2. */}
+            <span className="truncate text-xs text-muted-foreground @2xl/flow:hidden @5xl/flow:block">
+              {entry.line ?? groupMetaLine(flow)}
             </span>
-          )}
-          {preview === undefined ? null : <PreviewLink url={preview} />}
-          {verbIn("mates")}
-        </div>
-        <div className="flex min-w-0 flex-col gap-1" data-zerops-step="pull-requests">
-          {shown === undefined ? (
-            <span className="text-sm text-muted-foreground">{pullRequestsLine(flow)}</span>
-          ) : (
-            <>
-              <span className="min-w-0 truncate text-sm">
-                <span className="text-muted-foreground">#{shown.pull.number}</span>{" "}
-                {shown.pull.title}
-              </span>
-              {shown.state === undefined ? null : (
-                <StatusDot
-                  className="text-xs"
-                  label={shown.state.word}
-                  sentence
-                  tone={shown.state.tone}
-                />
-              )}
-              {flow.pullRequests.length > 1 ? (
-                <span className="text-xs text-muted-foreground">
-                  +{flow.pullRequests.length - 1} more
-                </span>
-              ) : null}
-            </>
-          )}
-          {verbIn("pull-requests")}
-        </div>
-        <MainStep
-          compact
-          entry={entry}
-          renderStopMenu={props.renderStopMenu}
-          verb={verbIn("main")}
-        />
-        <ProductionStep
-          compact
-          entry={entry}
-          renderReleaseVerb={props.renderReleaseVerb}
-          renderStopMenu={props.renderStopMenu}
-          verb={verbIn("production")}
-        />
-        <span className="flex justify-end">{props.renderGroupMenu(group)}</span>
+          </span>
+        </button>
+        <MatesCell entry={entry} props={props} verb={verbIn("mates")} />
+        <StepPlace label="Pull requests">
+          <PullRequestsStep entry={entry} verb={verbIn("pull-requests")} />
+        </StepPlace>
+        <StepPlace label="main">
+          <MainStep density="line" entry={entry} verb={verbIn("main")} />
+        </StepPlace>
+        <StepPlace label="Production">
+          <ProductionStep
+            density="line"
+            entry={entry}
+            releaseVerb={releaseVerbFor(entry, props.renderReleaseVerb)}
+            verb={verbIn("production")}
+          />
+        </StepPlace>
+        <span className="col-start-2 row-start-1 flex justify-end @2xl/flow:col-start-auto @2xl/flow:row-span-2 @5xl/flow:row-span-1">
+          {props.renderGroupMenu(group)}
+        </span>
       </div>
       {open ? (
-        <div className="flex flex-col gap-3 px-3 pb-3 md:ps-12" data-zerops-surface="group-detail">
+        <div
+          className="flex flex-col gap-3 px-3 pb-3 @2xl/flow:ps-[calc(1.75rem+1rem+0.75rem)]"
+          data-zerops-surface="group-detail"
+        >
           {entry.mates.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2" data-zerops-surface="mate-cards">
+            <div className="grid gap-2 @2xl/flow:grid-cols-2" data-zerops-surface="mate-cards">
               {entry.mates.map((item) => (
                 <Fragment key={props.getKey(item)}>{props.renderMate(item)}</Fragment>
               ))}
             </div>
           ) : null}
+          {preview === undefined ? null : (
+            <span className="flex @5xl/flow:hidden">
+              <PreviewLink url={preview} />
+            </span>
+          )}
           <ul
             className="flex flex-col divide-y divide-border/50"
             data-zerops-surface="environment-rows"
           >
             {flow.pullRequests.map(({ pull }) => (
               <Fragment key={`${pull.repository}#${String(pull.number)}`}>
-                {props.renderPullRequest(group, pull, { withMerge: true, compact: false })}
+                {props.renderPullRequest(group, pull, {
+                  withMerge: !mergesHere(flow, pull),
+                  compact: false,
+                })}
               </Fragment>
             ))}
             {entry.others.map(({ item, role }) => (
@@ -226,53 +326,87 @@ function OverviewRow<T>({
   );
 }
 
-/** The groups with only a Mate so far, as tiles: each has one thing to say. */
+/**
+ * The groups with only a Mate so far, as tiles: each has one thing to say,
+ * and the whole tile is the way into its Mate.
+ */
 export function OnlyAMate<T>({
   entries,
   props,
-  layout,
 }: {
   readonly entries: ReadonlyArray<ProjectsFlowGroup<T>>;
   readonly props: ZeropsProjectsFlowProps<T>;
-  readonly layout: "tiles" | "list";
 }) {
   if (entries.length === 0) return null;
   return (
     <section className="flex flex-col gap-2" data-zerops-surface="only-a-mate">
-      <h2 className="flex flex-wrap items-baseline gap-x-2 px-1 text-sm font-medium text-foreground">
-        Only a Mate so far{" "}
-        <span className="font-normal text-muted-foreground">{entries.length}</span>
-        <span className="text-xs font-normal text-muted-foreground">
+      <h2 className="flex min-w-0 items-baseline gap-x-2 px-3 text-sm font-semibold text-foreground">
+        <span className="shrink-0">
+          Only a Mate so far{" "}
+          <span className="font-normal text-muted-foreground">{entries.length}</span>
+        </span>
+        <span className="hidden min-w-0 truncate text-xs font-normal text-muted-foreground @2xl/flow:block">
           Give it a first task. Pull requests, main and production appear as the work gets there.
         </span>
       </h2>
-      <ul
-        className={cn(
-          layout === "tiles" ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-4" : "flex flex-col gap-2",
-        )}
-      >
+      <ul className="grid grid-cols-1 gap-2 @2xl/flow:grid-cols-2 @5xl/flow:grid-cols-4">
         {entries.map((entry) => (
-          <li
-            className="flex min-w-0 scroll-mt-4 items-center gap-2.5 rounded-lg border border-border/60 bg-card px-3 py-2"
-            data-zerops-group={entry.group.groupId}
-            id={layout === "list" ? `project-${entry.group.groupId}` : undefined}
-            key={entry.group.groupId}
-          >
-            {entry.mates.map((item) => (
-              <Fragment key={props.getKey(item)}>{props.renderMateFace(item)}</Fragment>
-            ))}
-            <span className="flex min-w-0 flex-1 flex-col">
-              <GroupName className="text-sm" entry={entry} />
-              <span className="truncate text-xs text-muted-foreground">
-                {entry.flow.mates.map((mate) => mate.name).join(", ")} · no task yet
-              </span>
-            </span>
-            {props.renderNextStep(entry)}
-            {props.renderGroupMenu(entry.group)}
-          </li>
+          <MateTile entry={entry} key={entry.group.groupId} props={props} />
         ))}
       </ul>
     </section>
+  );
+}
+
+function MateTile<T>({
+  entry,
+  props,
+}: {
+  readonly entry: ProjectsFlowGroup<T>;
+  readonly props: ZeropsProjectsFlowProps<T>;
+}) {
+  const mates = matesOf(entry);
+  const target = entry.flow.nextStep.target;
+  const first =
+    mates.find(({ mate }) => target?.kind === "mate" && mate.projectId === target.projectId) ??
+    mates[0];
+  const onOpen = first === undefined ? undefined : props.openMate(first.item);
+  const name = <GroupName className="block text-sm" entry={entry} />;
+  return (
+    <li className="min-w-0" data-zerops-group={entry.group.groupId}>
+      <FlatCard
+        className={cn(
+          "group/tile relative flex h-14 min-w-0 scroll-mt-4 items-center gap-2.5 px-3",
+          onOpen !== undefined && "transition-colors hover:bg-accent/40",
+        )}
+        id={`project-${entry.group.groupId}`}
+      >
+        {first === undefined ? null : (
+          <span className="flex shrink-0">{props.renderMateFace(first.item, "md")}</span>
+        )}
+        <span className="flex min-w-0 flex-1 flex-col">
+          {onOpen === undefined || first === undefined ? (
+            name
+          ) : (
+            <button
+              aria-label={`Open ${first.mate.name}`}
+              className="min-w-0 rounded-sm text-left outline-none after:absolute after:inset-0 after:rounded-[var(--zerops-card-radius)] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring"
+              data-zerops-surface="mate-open"
+              onClick={onOpen}
+              type="button"
+            >
+              {name}
+            </button>
+          )}
+          <span className="truncate text-xs text-muted-foreground">
+            {entry.flow.mates.map((mate) => mate.name).join(", ")} · no task yet
+          </span>
+        </span>
+        <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-focus-within/tile:opacity-100 group-hover/tile:opacity-100 pointer-coarse:opacity-100">
+          {props.renderGroupMenu(entry.group)}
+        </span>
+      </FlatCard>
+    </li>
   );
 }
 
@@ -289,50 +423,59 @@ export function OtherContainers<T>({
   const summary = containersSummary(rows.map((row) => row.action));
   const silent = rows.filter((row) => row.action === "retry-probe").map((row) => row.item);
   return (
-    <section
-      className="flex flex-col rounded-lg border border-border/60 bg-card"
-      data-zerops-surface="other-containers"
-    >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
-        <button
-          aria-expanded={open}
-          className="flex items-center gap-2 text-sm font-medium text-foreground"
-          onClick={() => setOpen((current) => !current)}
-          type="button"
-        >
-          <ChevronRightIcon
-            aria-hidden="true"
-            className={cn(
-              "size-3.5 text-muted-foreground transition-transform",
-              open && "rotate-90",
-            )}
-          />
-          Other containers <span className="font-normal text-muted-foreground">{rows.length}</span>
-        </button>
-        <span className="min-w-0 flex-1 text-xs text-muted-foreground">{summary.line}</span>
-        {summary.retry > 0 ? (
-          <Button onClick={() => props.onRetryContainers(silent)} size="compact" variant="outline">
-            Try again ({summary.retry})
-          </Button>
-        ) : null}
-      </div>
-      {open ? (
-        <div
-          className="grid gap-3 px-3 pb-3 sm:grid-cols-2"
-          data-zerops-surface="other-container-rows"
-        >
-          {rows.map(({ item }) => (
-            <Fragment key={props.getKey(item)}>
-              {props.isMate(item) ? (
-                props.renderMate(item)
-              ) : (
-                <ul>{props.renderEnvironment(item, undefined)}</ul>
-              )}
-            </Fragment>
-          ))}
+    <FlatCard>
+      <section className="flex flex-col" data-zerops-surface="other-containers">
+        <div className="flex h-12 min-w-0 items-center gap-x-3 px-3 @2xl/flow:gap-x-4">
+          <button
+            aria-expanded={open}
+            className="flex shrink-0 items-center gap-2 rounded-md text-sm font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring @2xl/flow:gap-4"
+            onClick={() => setOpen((current) => !current)}
+            type="button"
+          >
+            <span
+              aria-hidden="true"
+              className="flex size-7 items-center justify-center text-muted-foreground"
+            >
+              <ChevronRightIcon
+                className={cn("size-3.5 transition-transform", open && "rotate-90")}
+              />
+            </span>
+            <span>
+              Other containers{" "}
+              <span className="font-normal text-muted-foreground">{rows.length}</span>
+            </span>
+          </button>
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {summary.line}
+          </span>
+          {summary.retry > 0 ? (
+            <Button
+              onClick={() => props.onRetryContainers(silent)}
+              size="compact"
+              variant="outline"
+            >
+              Try again ({summary.retry})
+            </Button>
+          ) : null}
         </div>
-      ) : null}
-    </section>
+        {open ? (
+          <div
+            className="grid gap-2 px-3 pb-3 @2xl/flow:grid-cols-2"
+            data-zerops-surface="other-container-rows"
+          >
+            {rows.map(({ item }) => (
+              <Fragment key={props.getKey(item)}>
+                {props.isMate(item) ? (
+                  props.renderMate(item)
+                ) : (
+                  <ul>{props.renderEnvironment(item, undefined)}</ul>
+                )}
+              </Fragment>
+            ))}
+          </div>
+        ) : null}
+      </section>
+    </FlatCard>
   );
 }
 
@@ -398,19 +541,21 @@ export function Overview<T>({
     });
   };
   return (
-    <section className="rounded-lg border border-border/60 bg-card" data-zerops-surface="flow-rows">
-      <OverviewHeader />
-      <ul>
-        {active.map((entry) => (
-          <OverviewRow
-            entry={entry}
-            key={entry.group.groupId}
-            onToggle={() => toggle(entry.group.groupId)}
-            open={openGroups.has(entry.group.groupId)}
-            props={props}
-          />
-        ))}
-      </ul>
-    </section>
+    <FlatCard>
+      <section data-zerops-surface="flow-rows">
+        <OverviewHeader />
+        <ul>
+          {active.map((entry) => (
+            <OverviewRow
+              entry={entry}
+              key={entry.group.groupId}
+              onToggle={() => toggle(entry.group.groupId)}
+              open={openGroups.has(entry.group.groupId)}
+              props={props}
+            />
+          ))}
+        </ul>
+      </section>
+    </FlatCard>
   );
 }

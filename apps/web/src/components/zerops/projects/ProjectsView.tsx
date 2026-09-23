@@ -1,19 +1,21 @@
 /** The Projects view: every group as a card, its four steps side by side. */
 
-import type { FlowPullRequest, ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
+import type { ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
 import { Fragment } from "react";
 
 import { cn } from "~/lib/utils";
 import { MicroLabel, StatusDot } from "../primitives";
 import {
   drawn,
-  EMPTY_STEP_CLASS,
+  EmptyStep,
   GroupName,
   MainStep,
+  mergesHere,
   PreviewLink,
   ProductionStep,
   QUIET_BUTTON_CLASS,
-  STEP_BOX_CLASS,
+  releaseVerbFor,
+  STEP_CELL_CLASS,
 } from "./flowSteps";
 import { groupMetaLine, nextStepTone, pullRequestsLine } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
@@ -70,12 +72,11 @@ export function ProjectCard<T>({
   readonly props: ZeropsProjectsFlowProps<T>;
 }) {
   const { flow, group } = entry;
-  const target = flow.nextStep.target;
-  const mergesHere = (pull: FlowPullRequest) =>
-    flow.nextStep.kind === "merge" &&
-    target?.kind === "change" &&
-    target.repository === pull.repository &&
-    target.number === pull.number;
+  const stopMenu = (projectId: string) => {
+    const item = entry.stops.get(projectId)?.item;
+    return item === undefined ? null : props.renderStopMenu(item);
+  };
+  const { production } = flow;
   const groupRows = props.renderGroupRows(group);
   const verb = props.renderNextStep(entry);
   const offered = props.addsOffered?.(group) ?? true;
@@ -131,22 +132,24 @@ export function ProjectCard<T>({
             </ul>
           ) : null}
           {entry.mates.length === 0 && entry.others.length === 0 ? (
-            <div className={cn(STEP_BOX_CLASS, EMPTY_STEP_CLASS)}>No Mate yet</div>
+            <div className={STEP_CELL_CLASS}>
+              <EmptyStep>No Mate yet</EmptyStep>
+            </div>
           ) : null}
         </div>
         {arrow}
         <div className="flex min-w-0 flex-col gap-2" data-zerops-step="pull-requests">
           <MicroLabel className="text-muted-foreground">Pull requests</MicroLabel>
           {flow.pullRequests.length === 0 ? (
-            <div className={cn(STEP_BOX_CLASS, EMPTY_STEP_CLASS, "flex-1 justify-center")}>
-              {pullRequestsLine(flow)}
+            <div className={cn(STEP_CELL_CLASS, "flex-1 justify-center")}>
+              <EmptyStep>{pullRequestsLine(flow)}</EmptyStep>
             </div>
           ) : (
             <ul className="flex flex-col divide-y divide-border/50">
               {flow.pullRequests.map(({ pull }) => (
                 <Fragment key={`${pull.repository}#${String(pull.number)}`}>
                   {props.renderPullRequest(group, pull, {
-                    withMerge: !mergesHere(pull),
+                    withMerge: !mergesHere(flow, pull),
                     compact: true,
                   })}
                 </Fragment>
@@ -157,21 +160,16 @@ export function ProjectCard<T>({
         {arrow}
         <div className="flex min-w-0 flex-col gap-2">
           <MicroLabel className="text-muted-foreground">main</MicroLabel>
-          <MainStep
-            compact={false}
-            entry={entry}
-            renderStopMenu={props.renderStopMenu}
-            verb={null}
-          />
+          <MainStep density="box" entry={entry} menuFor={stopMenu} verb={null} />
         </div>
         {arrow}
         <div className="flex min-w-0 flex-col gap-2">
           <MicroLabel className="text-muted-foreground">Production</MicroLabel>
           <ProductionStep
-            compact={false}
+            density="box"
             entry={entry}
-            renderReleaseVerb={props.renderReleaseVerb}
-            renderStopMenu={props.renderStopMenu}
+            menu={production.kind === "absent" ? null : stopMenu(production.stop.projectId)}
+            releaseVerb={releaseVerbFor(entry, props.renderReleaseVerb)}
             verb={null}
           />
         </div>

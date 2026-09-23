@@ -9,8 +9,16 @@ import {
   type ZeropsGroup,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
+import { act, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { vi } from "vite-plus/test";
 
-import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
+import {
+  ZeropsProjectsFlow,
+  type ProjectsFlowGroup,
+  type ZeropsProjectsFlowProps,
+} from "./ZeropsProjectsFlow";
 
 export interface Item {
   readonly project: ZeropsProject;
@@ -195,7 +203,8 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
   renderGroupMenu: (group) => <span data-test-menu={group.groupId} />,
   renderGroupRows: () => null,
   renderMate: (value) => <div data-test-mate={value.project.id} />,
-  renderMateFace: (value) => <span data-test-face={value.project.id} />,
+  renderMateFace: (value, size) => <span data-test-face={value.project.id} data-test-size={size} />,
+  openMate: () => undefined,
   renderNextStep: (value) =>
     value.flow.nextStep.verb === undefined ? null : (
       <button data-test-verb={value.flow.nextStep.kind} type="button">
@@ -216,3 +225,18 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
   ungrouped: [],
   view: "overview",
 };
+
+/** A tree to press and to walk — the markup alone cannot say what a click does. */
+export function mount(element: ReactElement): ReactTestRenderer {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  let renderer: ReactTestRenderer | undefined;
+  act(() => {
+    renderer = create(element);
+  });
+  return renderer!;
+}
+
+/** The whole flow's markup, every slot a marker unless the test says otherwise. */
+export function renderFlow(props: Partial<ZeropsProjectsFlowProps<Item>> = {}): string {
+  return renderToStaticMarkup(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} {...props} />);
+}

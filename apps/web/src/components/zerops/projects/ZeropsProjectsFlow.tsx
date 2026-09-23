@@ -71,8 +71,14 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly isMate: (item: T) => boolean;
   /** A Mate's card — a `ZeropsMateCard` with every verb it has. */
   readonly renderMate: (item: T) => ReactNode;
-  /** A Mate's face, small, for a row that names its Mates. */
-  readonly renderMateFace: (item: T) => ReactNode;
+  /** A Mate's face: `sm` beside its name in a row, `md` on a tile. */
+  readonly renderMateFace: (item: T, size: "sm" | "md") => ReactNode;
+  /**
+   * How a Mate opens into its conversation, wherever the flow names it — a
+   * row's Mates, a tile; `undefined` where it cannot open yet (coming up,
+   * busy), and the name is then still.
+   */
+  readonly openMate: (item: T) => (() => void) | undefined;
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   /** A stage's or the production's own menu — its public access. */
@@ -167,7 +173,9 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
   return (
     <div
       aria-label="Projects and their flow"
-      className="flex flex-col gap-5"
+      // The flow sizes itself to its own width, not the window's: the left
+      // menu takes a share of the window the page never gets.
+      className="@container/flow flex flex-col gap-4"
       data-zerops-surface="projects-flow"
       data-zerops-view={view}
       role="region"
@@ -175,16 +183,16 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
       {view === "overview" ? (
         <>
-          <NextStepsStrip entries={folded.nextSteps} renderNextStep={props.renderNextStep} />
+          <NextStepsStrip entries={folded.nextSteps} />
           <Overview active={folded.active} props={props} />
-          <OnlyAMate entries={folded.early} layout="tiles" props={props} />
+          <OnlyAMate entries={folded.early} props={props} />
         </>
       ) : (
         <>
           {folded.active.map((entry) => (
             <ProjectCard entry={entry} key={entry.group.groupId} props={props} />
           ))}
-          <OnlyAMate entries={folded.early} layout="list" props={props} />
+          <OnlyAMate entries={folded.early} props={props} />
         </>
       )}
       <OtherContainers props={props} rows={loose.containers} />
