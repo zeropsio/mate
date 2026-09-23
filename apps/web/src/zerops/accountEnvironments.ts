@@ -21,6 +21,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { inventoryCandidates } from "./inventoryContext";
+import { batchedPerTask } from "./taskBatch";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 
 // ── The binding ──────────────────────────────────────────────────────────────────────────────
@@ -85,14 +86,25 @@ export function useAccountEnvironments(): AccountEnvironments | null {
   );
 }
 
-/** One snapshot of the bound stage, re-read on its every publication; `empty` while none is. */
+/**
+ * One snapshot of the bound stage, re-read after its publications — once per task, however many
+ * a reconnect lands in it; `empty` while none is.
+ */
 export function useAccountEnvironmentsSnapshot<T>(
   read: (environments: AccountEnvironments) => T,
   empty: T,
 ): T {
   const environments = useAccountEnvironments();
   const subscribe = useCallback(
-    (listener: () => void) => environments?.subscribe(listener) ?? (() => undefined),
+    (listener: () => void) => {
+      if (environments === null) return () => undefined;
+      const batched = batchedPerTask(listener);
+      const unsubscribe = environments.subscribe(batched.notify);
+      return () => {
+        unsubscribe();
+        batched.cancel();
+      };
+    },
     [environments],
   );
   const snapshot = useCallback(
