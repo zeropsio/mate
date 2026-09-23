@@ -10,19 +10,22 @@
  *   view finds the runtime holding it; reads and timers start after the view is published.
  * - A project's evidence that changes between rounds — it runs out, its own read verifies it, a
  *   denial closes it, its role is lowered — changes the runtime's grant at once (G2).
- * - Tab signals and a person's retry arrive as events from the account runtime, which owns them.
+ * - Tab signals arrive as events from the account runtime, which owns them. A person's retry is an
+ *   `access: renew-now` the grant hears on the account's invalidation bus (§6.2).
  */
 import type * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
+import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { mateDiagnostics } from "../../diagnostics.ts";
+import type { InvalidationBus } from "../../knowledge/invalidation.ts";
 import type { ZeropsGrantPolicy } from "../policy.ts";
 import {
   organizationKeyOf,
@@ -59,10 +62,10 @@ export interface AccessGrantView {
   readonly overdue: boolean;
 }
 
-/** The tab's signals and a person's retry, as the account runtime hands them over. */
+/** The tab's signals, as the account runtime hands them over. */
 export type GrantSignal = Extract<
   GrantEvent,
-  { readonly type: "VISIBILITY" | "WAKE" | "ONLINE" | "OFFLINE" | "USER_RETRY" }
+  { readonly type: "VISIBILITY" | "WAKE" | "ONLINE" | "OFFLINE" }
 >;
 
 /** What the grant asks the account's owners of pull-based facts to revalidate. */
@@ -81,6 +84,11 @@ export interface ZeropsAccessGrant {
   /** Starts the epoch's grant, once: its first round runs at once. */
   readonly start: (start: AccessGrantStart) => Effect.Effect<void>;
   readonly signal: (event: GrantSignal) => Effect.Effect<void>;
+  /**
+   * Hears the account's bus for the caller's scope: each `access: renew-now` is a person's retry,
+   * which a round in flight joins (G7).
+   */
+  readonly listen: (bus: InvalidationBus) => Effect.Effect<void, never, Scope.Scope>;
   readonly view: Atom.Atom<AccessGrantView>;
   /** The view now, then every later one. */
   readonly changes: Stream.Stream<AccessGrantView>;
@@ -489,6 +497,17 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
         )
         .pipe(Effect.flatMap((started) => (started ? send({ type: "START" }) : Effect.void))),
     signal: (event) => send(event),
+    listen: (bus) =>
+      Effect.flatMap(bus.subscribe, (subscription) =>
+        Stream.fromSubscription(subscription).pipe(
+          Stream.runForEach((invalidation) =>
+            invalidation.topic === "access" && invalidation.change === "renew-now"
+              ? send({ type: "USER_RETRY" })
+              : Effect.void,
+          ),
+          Effect.forkScoped,
+        ),
+      ).pipe(Effect.asVoid),
     view,
     changes: SubscriptionRef.changes(views),
     invalidations: Stream.fromPubSub(invalidations),

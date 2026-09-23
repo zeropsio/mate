@@ -57,6 +57,7 @@ export function makeFakeRuntimeFactory(
       access: {
         start: () => options.startGrant ?? Effect.void,
         signal: () => Effect.void,
+        listen: () => Effect.void,
         view: Atom.make(view),
         changes: Stream.make(view),
         invalidations: Stream.empty,

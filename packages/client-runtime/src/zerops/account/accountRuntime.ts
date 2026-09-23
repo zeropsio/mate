@@ -219,6 +219,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       Stream.runForEach(invalidations.invalidate),
       Effect.forkIn(busScope),
     );
+    yield* data.access.listen(invalidations).pipe(Scope.provide(busScope));
     yield* Queue.take(signals).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
     // The views stream replays the latest, so it misses nothing the start publishes.
     yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));

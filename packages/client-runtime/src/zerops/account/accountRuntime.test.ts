@@ -264,6 +264,52 @@ describe("the account runtime", () => {
       ),
   );
 
+  it.effect("renew-now on the bus starts one round with no React mounted", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        const page = yield* makePage();
+        const grant = heldVerifier();
+        const built = yield* Effect.gen(function* () {
+          const data = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: inertAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+          });
+          return yield* makeAccountRuntime({
+            data,
+            verifier: grant.verifier,
+            page: page.port,
+            writes: makeWrites().port,
+            atomRegistry: registry,
+          });
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* Effect.addFinalizer(() => built.close("application-close"));
+        const renewNow = built.invalidations
+          .invalidate({ topic: "access", change: "renew-now" })
+          .pipe(Effect.provideService(Clock.Clock, clock));
+        yield* settle;
+        // The first round failed: the next one waits out the backoff's 2 s.
+        yield* grant.answer({ kind: "server", status: 503 });
+        expect(grant.rounds()).toBe(1);
+
+        yield* renewNow;
+        yield* renewNow;
+        yield* clock.advance(250);
+        yield* settle;
+        expect(grant.rounds()).toBe(2);
+
+        // A retry while that round is out joins it (G7).
+        yield* renewNow;
+        yield* clock.advance(250);
+        yield* settle;
+        expect(grant.rounds()).toBe(2);
+      }),
+    ),
+  );
+
   it.effect(
     "a visible wake after 30 s hidden retries the grant at once; a quick switch does not (§6.4)",
     () =>

@@ -303,17 +303,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     [organizationRef, organizations],
   );
 
-  // A person's "Try again" on access (DESIGN §6.2); a retry during a round joins it (G7).
-  useEffect(
-    () =>
-      onZeropsInvalidation((invalidation) => {
-        if (invalidation.topic === "access" && invalidation.change === "renew-now") {
-          void Effect.runPromise(runtime.access.signal({ type: "USER_RETRY" }));
-        }
-      }),
-    [runtime],
-  );
-
   // An inventory intent re-reads that organization on a fresh receiver while
   // the rows already read stay up (`runtime.refresh`). The leases are never
   // re-taken for it: a released lease drops what it read, and the projects

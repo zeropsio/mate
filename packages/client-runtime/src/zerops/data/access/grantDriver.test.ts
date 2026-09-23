@@ -11,6 +11,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
+import { INVALIDATION_COALESCE_MS, makeInvalidationBus } from "../../knowledge/invalidation.ts";
 import { makeDeadlineClock, type DeadlineClock } from "../../testing/deadlineClock.ts";
 import { organization, project, scope, verifiedAccess } from "../__fixtures__/index.ts";
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../policy.ts";
@@ -735,22 +736,43 @@ describe("the access grant inside the data runtime", () => {
       ),
   );
 
-  it.effect("a person's retry joins a round in flight and starts one after a failure", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const platform: Platform = { ...healthy(), roundFailure: serverDown };
-        const opened = yield* tab(platform);
-        yield* opened.runtime.access.signal({ type: "USER_RETRY" });
-        yield* settle;
-        expect(opened.platform.rounds).toHaveLength(1);
+  it.effect(
+    "a person's retry on the bus joins a round in flight and starts one after a failure",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform: Platform = { ...healthy(), roundFailure: serverDown };
+          const opened = yield* tab(platform);
+          const bus = yield* makeInvalidationBus({ signals: Stream.never, shown: () => true });
+          yield* opened.runtime.access.listen(bus);
+          /** A person's "Try again", heard once the bus's coalescing window closes. */
+          const retry = bus
+            .invalidate({ topic: "access", change: "renew-now" })
+            .pipe(
+              Effect.provideService(Clock.Clock, opened.clock),
+              Effect.andThen(opened.pass(INVALIDATION_COALESCE_MS)),
+            );
+          yield* retry;
+          expect(opened.platform.rounds).toHaveLength(1);
 
-        yield* opened.pass(SECOND);
-        platform.roundFailure = null;
-        yield* opened.runtime.access.signal({ type: "USER_RETRY" });
-        yield* settle;
-        expect(opened.platform.rounds).toHaveLength(2);
-      }),
-    ),
+          yield* opened.pass(SECOND);
+          platform.roundFailure = null;
+          yield* retry;
+          expect(opened.platform.rounds).toHaveLength(2);
+
+          // Nothing else on the bus is a retry.
+          yield* opened.pass(4 * SECOND);
+          expect(opened.phase()).toBe("granted");
+          yield* bus
+            .invalidate({ topic: "access", change: "lapsed" })
+            .pipe(Effect.provideService(Clock.Clock, opened.clock));
+          yield* bus
+            .invalidate({ topic: "inventory", organization })
+            .pipe(Effect.provideService(Clock.Clock, opened.clock));
+          yield* opened.pass(INVALIDATION_COALESCE_MS);
+          expect(opened.platform.rounds).toHaveLength(2);
+        }),
+      ),
   );
 
   it.effect("a timer that wakes short of its instant on both clocks waits on until it comes", () =>
