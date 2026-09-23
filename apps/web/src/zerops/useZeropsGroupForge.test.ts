@@ -12,7 +12,10 @@ const pull = (number: number, merged = false): GiteaPullRequest => ({
   head: { ref: `mate/p${number}`, sha: `sha${number}` },
 });
 
-/** A Gitea org with two code repositories; every call is recorded, and a repository can refuse. */
+/**
+ * A Gitea org with two code repositories; every call is recorded, and a
+ * repository — or the group repo's tags, as `group` — can refuse.
+ */
 function forge(refusing: ReadonlySet<string> = new Set()) {
   const calls: string[] = [];
   const open = new Map([
@@ -39,6 +42,7 @@ function forge(refusing: ReadonlySet<string> = new Set()) {
     },
     listTags: async (owner: string, repo: string) => {
       calls.push(`tags ${owner}/${repo}`);
+      if (refusing.has(repo)) throw new Error("Gitea did not answer");
       return [];
     },
   } as unknown as GiteaClient;
@@ -72,7 +76,7 @@ describe("readForge", () => {
     expect(next?.pullRequests.map((row) => row.number)).toEqual([7]);
     // The other repository's rows are the ones already held, not a new read of them.
     expect(next?.pullRequests[0]).toBe(held.pullRequests[1]);
-    expect(next?.releases).toBe(held.releases);
+    expect(next?.released).toBe(held.released);
   });
 
   it("a failed forge read keeps the last PR rows", async () => {
@@ -90,10 +94,27 @@ describe("readForge", () => {
     expect(next?.pullRequests[0]).toBe(held.pullRequests[0]);
   });
 
-  it("answers nothing, rather than no pull requests, for a repository it never read", async () => {
+  it("shows the repositories that answered, and holds only them, while another never has", async () => {
     const { client } = forge(new Set(["appdev"]));
     const update = await readForge(client, "harbor", "group");
-    expect(update(undefined)).toBeUndefined();
+    const state = update(undefined);
+    // appdev is not among what the answer read, so nothing says it has no pull requests.
+    expect(state?.repositories).toEqual(["apidev"]);
+    expect(state?.pullRequests.map((row) => [row.repository, row.number])).toEqual([["apidev", 7]]);
+  });
+
+  it("shows the pull requests, and why the releases are missing, when the tags never answered", async () => {
+    const { client } = forge(new Set(["group"]));
+    const update = await readForge(client, "harbor", "group");
+    const state = update(undefined);
+    expect(state?.pullRequests.map((row) => row.number)).toEqual([4, 7]);
+    expect(state?.released).toEqual({ failure: "Gitea did not answer" });
+  });
+
+  it("keeps the releases it read when the tags do not answer again", async () => {
+    const held = await readAll(forge().client);
+    const update = await readForge(forge(new Set(["group"])).client, "harbor", "group");
+    expect(update(held)?.released).toBe(held.released);
   });
 
   it("reads a release's tags alone after a release", async () => {

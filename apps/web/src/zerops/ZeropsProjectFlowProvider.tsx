@@ -144,6 +144,7 @@ function projectFlow(
   mayRelease: boolean,
 ): ZeropsProjectFlow {
   const environmentInputs = deployed?.environments ?? [];
+  const released = forge !== undefined && "tags" in forge.released ? forge.released : undefined;
   const sides = releaseDeploys(environmentInputs);
   // What a release lists is what is merged (D28), whether or not the group
   // has a stage: a stage is a place that runs `main` too, not a gate the
@@ -154,7 +155,7 @@ function projectFlow(
     mayRelease,
     candidate: deployed?.mainHeads ?? EMPTY_HEADS,
     production: sides.production,
-    tags: forge?.tags ?? [],
+    tags: released?.tags ?? [],
   });
   return {
     groupId: group.groupId,
@@ -165,12 +166,12 @@ function projectFlow(
     missing: deployed?.missing ?? [],
     pullRequests: forge?.pullRequests ?? [],
     merged: forge?.merged ?? [],
-    releases: (forge?.releases ?? []).map((release, index) => releaseRow(release, index)),
+    releases: (released?.releases ?? []).map((release, index) => releaseRow(release, index)),
     release: {
       ...offer,
       gate: flowReleaseGate(offer.gate, {
         deploys: deployed !== undefined,
-        forge: forge !== undefined,
+        forge: released !== undefined,
       }),
       contents: deployed?.releaseContents ?? [],
     },

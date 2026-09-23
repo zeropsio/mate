@@ -9,9 +9,9 @@
  * its read completes (`flow/groupAnswers.ts`), every group is read again every
  * sixty seconds, and a verb re-reads at once only the part it changed
  * (`flow/verbs.ts`). Gitea has no event stream, so a clock is the only
- * freshness there is. A part that does not answer keeps what it had; a part
- * never read that does not answer leaves the group unanswered rather than
- * empty.
+ * freshness there is. A part that does not answer keeps what it had. A
+ * repository never read is left out of what the answer holds, rather than
+ * shown as having no pull requests, and releases never read carry why.
  *
  * What an environment runs is not read here: that is the account's to prove
  * (`useZeropsGroupDeploys`), and the two are joined in the provider.
@@ -34,6 +34,7 @@ import {
   type GroupAnswers,
   type GroupUpdate,
 } from "@t3tools/client-runtime/zerops/flow";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { giteaClientFor } from "./giteaSession";
@@ -42,11 +43,16 @@ import { giteaClientFor } from "./giteaSession";
 export const GROUP_FORGE_REFRESH_MS = 60_000;
 
 export interface ZeropsGroupForgeState {
-  /** The org's repositories this answer read, in the forge's order. */
+  /** The org's repositories whose pull requests this answer holds, in the forge's order. */
   readonly repositories: ReadonlyArray<string>;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   /** The landed ones, newest first as the forge lists them. */
   readonly merged: ReadonlyArray<FlowPullRequest>;
+  /** The group repo's releases, or why they have never answered. */
+  readonly released: ForgeReleases | { readonly failure: string };
+}
+
+export interface ForgeReleases {
   /** Newest first. */
   readonly releases: ReadonlyArray<FlowRelease>;
   /** Every `v*` tag, so the next one can be suggested without reusing a name. */
@@ -191,24 +197,22 @@ interface RepositoryPulls {
   readonly merged: ReadonlyArray<FlowPullRequest>;
 }
 
-interface Releases {
-  readonly releases: ReadonlyArray<FlowRelease>;
-  readonly tags: ReadonlyArray<string>;
-}
+/** A part of a read that may not answer, and why when it did not. */
+type Answered<T> = { readonly value: T } | { readonly failure: string };
 
-/** A part of a read that may not answer: `undefined` when it did not. */
-async function answered<T>(read: () => Promise<T>): Promise<T | undefined> {
+async function answered<T>(read: () => Promise<T>): Promise<Answered<T>> {
   try {
-    return await read();
-  } catch {
-    return undefined;
+    return { value: await read() };
+  } catch (cause) {
+    return { failure: zeropsErrorMessage(cause) };
   }
 }
 
 /**
  * Reads one scope of a group's forge. A whole read keeps, per repository and
- * for the releases, what is held where that part did not answer; a part that
- * did not answer and was never read leaves the group unanswered.
+ * for the releases, what is held where that part did not answer. A repository
+ * that did not answer and was never read is left out; releases that did not
+ * answer and were never read say why.
  */
 export async function readForge(
   client: GiteaClient,
@@ -229,8 +233,8 @@ export async function readForge(
           );
   }
   if (scope !== "group") {
-    const releases = await readReleases(client, slug);
-    return (held) => (held === undefined ? undefined : { ...held, ...releases });
+    const released = await readReleases(client, slug);
+    return (held) => (held === undefined ? undefined : { ...held, released });
   }
   const repositories = (await client.listOrganizationRepositories(slug)).map(
     (repository) => repository.name,
@@ -238,20 +242,21 @@ export async function readForge(
   const read = new Map<string, RepositoryPulls>();
   for (const repository of repositories) {
     const pulls = await answered(() => readRepositoryPulls(client, slug, repository));
-    if (pulls !== undefined) read.set(repository, pulls);
+    if ("value" in pulls) read.set(repository, pulls.value);
   }
   const releases = await answered(() => readReleases(client, slug));
   return (held) => {
-    const keeps = (repository: string) =>
-      read.has(repository) || (held?.repositories.includes(repository) ?? false);
-    if (!repositories.every(keeps) || (releases === undefined && held === undefined))
-      return undefined;
-    const next = withRepositories(
-      held ?? { repositories, pullRequests: [], merged: [], releases: [], tags: [] },
-      repositories,
-      read,
+    const covered = repositories.filter(
+      (repository) => read.has(repository) || (held?.repositories.includes(repository) ?? false),
     );
-    return releases === undefined ? next : { ...next, ...releases };
+    const released =
+      "value" in releases
+        ? releases.value
+        : held !== undefined && "releases" in held.released
+          ? held.released
+          : { failure: releases.failure };
+    const base = held ?? { repositories: [], pullRequests: [], merged: [], released };
+    return { ...withRepositories(base, covered, read), released };
   };
 }
 
@@ -297,7 +302,7 @@ async function readRepositoryPulls(
   return { pullRequests, merged };
 }
 
-async function readReleases(client: GiteaClient, slug: string): Promise<Releases> {
+async function readReleases(client: GiteaClient, slug: string): Promise<ForgeReleases> {
   const tags = await client.listTags(slug, GROUP_REPOSITORY);
   // Filtered into a fresh array, so the sort touches nothing else.
   const releaseTags = tags.filter((tag) => isReleaseTag(tag.name)).sort(byVersionDescending);

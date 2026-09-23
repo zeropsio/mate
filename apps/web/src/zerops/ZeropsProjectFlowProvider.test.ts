@@ -23,8 +23,7 @@ const forgeState = (): ZeropsGroupForgeState => ({
   repositories: [],
   pullRequests: [],
   merged: [],
-  releases: [],
-  tags: ["v0.1.0"],
+  released: { releases: [], tags: ["v0.1.0"] },
 });
 
 describe("joinProjectFlows", () => {
