@@ -135,7 +135,10 @@ export interface WithThrowawayInput<T> {
  *
  * Nothing interrupts the deletion: the caller giving up, the account closing
  * or somebody else signing in to the tab mid-call all leave it running, and it
- * acts as the person who minted or not at all.
+ * acts as the person who minted or not at all. Nothing waits for it either:
+ * the callback's answer is returned as soon as it is known, and the deletion
+ * runs on to its own end — its deadline and its one retry are not the
+ * caller's to sit through (DESIGN §4.4).
  *
  * A deletion that itself fails is reported and swallowed: the caller's outcome
  * is the answer, and a token with no rights is not worth turning a successful
@@ -146,10 +149,11 @@ export async function withThrowaway<T>(input: WithThrowawayInput<T>): Promise<T>
   try {
     return await input.use(minted.token);
   } finally {
+    const orphaned = (cause: unknown) => input.onOrphaned?.(cause);
     try {
-      await input.platform.remove({ clientId: input.clientId, tokenId: minted.id });
+      void input.platform.remove({ clientId: input.clientId, tokenId: minted.id }).catch(orphaned);
     } catch (cause) {
-      input.onOrphaned?.(cause);
+      orphaned(cause);
     }
   }
 }

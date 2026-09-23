@@ -134,6 +134,33 @@ describe("withThrowaway", () => {
     },
   );
 
+  it("answers without waiting for the deletion, which still runs to its end", async () => {
+    // DESIGN §4.4: the finalizer is detached. A delete that takes its full
+    // deadline and its retry never holds the exchange's answer back.
+    let finishRemove!: () => void;
+    const removed: Array<string> = [];
+    const { platform } = fakePlatform({
+      remove: (input) =>
+        new Promise<void>((resolve) => {
+          finishRemove = () => {
+            removed.push(input.tokenId);
+            resolve();
+          };
+        }),
+    });
+    await expect(
+      withThrowaway({
+        platform,
+        clientId: "org-1",
+        name: "mate-door:p:n",
+        use: () => Promise.resolve("in"),
+      }),
+    ).resolves.toBe("in");
+    expect(removed).toEqual([]);
+    finishRemove();
+    expect(removed).toEqual(["tok-1"]);
+  });
+
   it("does not turn a deletion it could not make into a failed call", async () => {
     // A throwaway has no rights; the start-up sweep is the backstop. Failing
     // a successful sign-in over a leftover row would be the worse trade.
