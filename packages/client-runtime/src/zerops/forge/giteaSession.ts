@@ -12,8 +12,9 @@
  *
  * A token acts as the person who signed in, so it lives in this object's memory only — never a
  * storage key, a log line or a fixture — and {@link GiteaSessions.close} ends the object with the
- * account: every token is forgotten, timers stop, the broker requests in flight are aborted, and
- * an answer that lands afterwards is dropped without a word. The next account gets its own.
+ * account: every token is forgotten, timers stop, the broker requests in flight are aborted and
+ * none is sent afterwards, and an answer that lands afterwards is dropped without a word. The next
+ * account gets its own.
  *
  * ## Requests as the person
  *
@@ -152,11 +153,15 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
   const listeners = new Set<() => void>();
   const closing = new AbortController();
 
-  /** A signal that ends at `ms` from now or when the sessions close, whichever is first. */
+  /**
+   * A signal that ends at `ms` from now or when the sessions close, whichever is first — at once
+   * if they already have.
+   */
   const deadline = (ms: number): { readonly signal: AbortSignal; readonly done: () => void } => {
     const controller = new AbortController();
     const end = () => controller.abort(closing.signal.reason);
-    closing.signal.addEventListener("abort", end, { once: true });
+    if (closing.signal.aborted) end();
+    else closing.signal.addEventListener("abort", end, { once: true });
     const disarm = ports.setTimer(ms, () =>
       controller.abort(new DOMException("The broker did not answer in time.", "TimeoutError")),
     );
@@ -256,6 +261,8 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
       fetch: async (input, init) => {
         const { signal, done } = deadline(BROKER_DEADLINE_MS);
         try {
+          // A throwaway minted after the account closed is never shown to the broker.
+          signal.throwIfAborted();
           return await ports.fetch(input, { ...init, signal });
         } finally {
           done();

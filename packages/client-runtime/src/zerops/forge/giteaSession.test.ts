@@ -447,5 +447,34 @@ describe("the account's Gitea sessions", () => {
       await w.time.advance(10 * MIN);
       expect(w.throwaways.minted).toHaveLength(1);
     });
+
+    it("a throwaway minted after close is never sent to the broker, and is still taken back", async () => {
+      const w = world();
+      let finishMint: () => void = () => undefined;
+      w.sessions.demand({
+        giteaOrigin: HARNESS_GITEA_ORIGIN,
+        brokerOrigin: HARNESS_BROKER_ORIGIN,
+        clientId: "org-1",
+        platform: {
+          mint: async (input) => {
+            await new Promise<void>((resolve) => {
+              finishMint = resolve;
+            });
+            return w.throwaways.platform.mint(input);
+          },
+          remove: w.throwaways.platform.remove,
+        },
+      });
+      await w.time.advance(0);
+
+      w.sessions.close();
+      finishMint();
+      await w.time.advance(0);
+
+      expect(w.throwaways.minted).toHaveLength(1);
+      expect(brokerPosts(w)).toEqual([]);
+      expect(w.throwaways.removed).toEqual(["throwaway-1"]);
+      expect(w.view()).toEqual({ signedIn: false, login: undefined, trouble: null });
+    });
   });
 });
