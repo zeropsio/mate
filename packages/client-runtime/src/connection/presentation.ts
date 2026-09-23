@@ -80,8 +80,12 @@ export function connectionStatusText(connection: EnvironmentConnectionPresentati
 export interface ConnectionBannerCopy {
   readonly title: string;
   readonly description: string | null;
-  /** The banner's one verb; the component renders it exactly once. */
-  readonly action: string;
+  /**
+   * The banner's one verb, which asks the supervisor to try now; the
+   * component renders it exactly once. Null where trying now does nothing:
+   * a connection nobody asked for stays where it is.
+   */
+  readonly action: string | null;
 }
 
 /**
@@ -102,7 +106,7 @@ export function connectionBannerCopy(
     case "connected":
       return null;
     case "available":
-      return { title: `Not connected${to}`, description: null, action: "Connect" };
+      return { title: `Not connected${to}`, description: null, action: null };
     case "offline":
       return {
         title: "You're offline",

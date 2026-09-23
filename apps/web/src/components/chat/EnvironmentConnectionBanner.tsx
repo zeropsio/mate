@@ -10,8 +10,9 @@ import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 
 /**
  * The banner over a conversation whose environment is not connected: the
- * cause named after the Mate (`connectionBannerCopy`) and its one verb, which
- * asks the supervisor to try now. The failure's own detail stays out of it.
+ * cause named after the Mate (`connectionBannerCopy`) and at most one verb,
+ * which asks the supervisor to try now. The failure's own detail stays out
+ * of it.
  */
 export function environmentConnectionBannerItem(input: {
   readonly environmentId: EnvironmentId;
@@ -27,10 +28,14 @@ export function environmentConnectionBannerItem(input: {
     icon: <WifiOffIcon />,
     title: copy.title,
     ...(copy.description === null ? {} : { description: copy.description }),
-    actions: (
-      <Button size="xs" onClick={input.onRetry}>
-        {copy.action}
-      </Button>
-    ),
+    ...(copy.action === null
+      ? {}
+      : {
+          actions: (
+            <Button size="xs" onClick={input.onRetry}>
+              {copy.action}
+            </Button>
+          ),
+        }),
   };
 }

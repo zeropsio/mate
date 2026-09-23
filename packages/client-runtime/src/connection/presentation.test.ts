@@ -173,7 +173,7 @@ describe("connection presentation", () => {
       readonly state: SupervisorConnectionState;
       readonly title: string;
       readonly description: string | null;
-      readonly action: string;
+      readonly action: string | null;
     }> = [
       ...(
         [
@@ -232,12 +232,14 @@ describe("connection presentation", () => {
         description: null,
         action: "Try now",
       },
+      // Nobody asked for this connection; a retry leaves it where it is, so
+      // the banner offers no verb that would claim to connect it.
       {
         name: "not asked to connect",
         state: supervisorState({ desired: false, phase: "available", stage: null, attempt: 0 }),
         title: "Not connected to Wren",
         description: null,
-        action: "Connect",
+        action: null,
       },
     ];
 
