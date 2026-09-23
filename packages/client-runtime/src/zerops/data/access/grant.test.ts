@@ -26,6 +26,7 @@ import {
   type Instant,
   type ProjectOutcome,
 } from "./grant.ts";
+import { explore } from "../../testing/explore.ts";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -881,6 +882,10 @@ describe("access grant reducer", () => {
 });
 
 describe("access grant invariants over enumerated event sequences", () => {
+  interface GrantNode {
+    readonly state: GrantMachine;
+    readonly now: Instant;
+  }
   const C = projectRef("project-c");
   const PROJECTS = [A, B, C] as const;
   const TOLERANCE = policy.wallJumpBackToleranceMs;
@@ -898,17 +903,30 @@ describe("access grant invariants over enumerated event sequences", () => {
         ? state.phase.last
         : null;
 
-  /** Machines are invariant under a shift of both clocks: key nodes by time relative to `now`. */
-  const nodeKey = (state: GrantMachine, now: Instant): string =>
-    JSON.stringify(state, (_key, value: unknown) => {
+  /**
+   * Machines are invariant under a shift of both clocks and of the attempt counter: key nodes by
+   * time relative to `now` and by rounds and reads relative to the next attempt, which the machine
+   * compares only for equality.
+   */
+  const nodeKey = ({ state, now }: GrantNode): string =>
+    JSON.stringify(state, function (this: object, key, value: unknown) {
+      if (typeof value === "number") {
+        switch (key) {
+          case "nextAttempt":
+            return undefined;
+          // A round's id, the round that produced account evidence, and a project read's attempt.
+          case "id":
+          case "round":
+            return state.nextAttempt - value;
+          case "attempt":
+            return "startedAt" in this ? state.nextAttempt - value : value;
+          default:
+            return value;
+        }
+      }
+      if (typeof value !== "object" || value === null) return value;
       if (value instanceof Map) return [...value.entries()];
-      if (
-        typeof value === "object" &&
-        value !== null &&
-        Object.keys(value).length === 2 &&
-        "wall" in value &&
-        "mono" in value
-      ) {
+      if ("wall" in value && "mono" in value) {
         const instant = value as Instant;
         return [instant.wall - now.wall, instant.mono - now.mono];
       }
@@ -1192,43 +1210,47 @@ describe("access grant invariants over enumerated event sequences", () => {
     }
   };
 
-  it("holds I3, I4, I6, I11, G2, G6, G12 and round liveness after every step of every sequence to depth 6", () => {
-    const roots: Array<{ state: GrantMachine; now: Instant }> = [
-      { state: initialGrant({ hidden: false, online: true }, T0), now: T0 },
-    ];
-    const granted = grantedSim();
-    roots.push({ state: granted.state, now: granted.now });
-    // B's read failed in the admitted round, and its per-project retry is in flight.
-    const retrying = new GrantSim();
-    retrying.send({ type: "START" });
-    retrying.elapse(2 * SECOND);
-    retrying.answerRound([
-      [A, verified(A)],
-      [B, failed],
-    ]);
-    retrying.elapse(policy.projectRetryMs[0]!);
-    retrying.send({ type: "TICK" });
-    expect(retrying.state.projectAttempts.has(B.projectId)).toBe(true);
-    roots.push({ state: retrying.state, now: retrying.now });
-    const visited = new Set<string>();
-    let frontier = roots;
-    let explored = 0;
-    for (let depth = 0; depth < 6; depth++) {
-      const next: Array<{ state: GrantMachine; now: Instant }> = [];
-      for (const node of frontier) {
-        for (const step of stepsFrom(node.state, node.now)) {
+  it(
+    "holds I3, I4, I6, I11, G2, G6, G12 and round liveness after every step of every sequence to depth 6",
+    { timeout: 30_000 },
+    () => {
+      const roots: Array<GrantNode> = [
+        { state: initialGrant({ hidden: false, online: true }, T0), now: T0 },
+      ];
+      const granted = grantedSim();
+      roots.push({ state: granted.state, now: granted.now });
+      // B's read failed in the admitted round, and its per-project retry is in flight.
+      const retrying = new GrantSim();
+      retrying.send({ type: "START" });
+      retrying.elapse(2 * SECOND);
+      retrying.answerRound([
+        [A, verified(A)],
+        [B, failed],
+      ]);
+      retrying.elapse(policy.projectRetryMs[0]!);
+      retrying.send({ type: "TICK" });
+      expect(retrying.state.projectAttempts.has(B.projectId)).toBe(true);
+      roots.push({ state: retrying.state, now: retrying.now });
+      const report = explore({
+        roots,
+        depth: 6,
+        events: (node: GrantNode) => stepsFrom(node.state, node.now),
+        step: (node, step) => {
           const result = transitionGrant(node.state, step.event, { now: step.now, policy });
-          explored++;
-          check(node.state, step.event, result.state, result.effects, step.now);
-          const key = nodeKey(result.state, step.now);
-          if (visited.has(key)) continue;
-          visited.add(key);
-          next.push({ state: result.state, now: step.now });
-        }
-      }
-      frontier = next;
-    }
-    expect(explored).toBeGreaterThan(10_000);
-    // Exhaustive by design: the root config's 60 s, also when the package runs its own tests.
-  }, 60_000);
+          return { state: { state: result.state, now: step.now }, effects: result.effects };
+        },
+        key: nodeKey,
+        check: (node, step, result) => {
+          try {
+            check(node.state, step.event, result.state.state, result.effects, step.now);
+            return [];
+          } catch (error) {
+            return [error instanceof Error ? error.message : String(error)];
+          }
+        },
+      });
+      expect(report.violations).toEqual([]);
+      expect(report.transitions).toBeGreaterThan(10_000);
+    },
+  );
 });
