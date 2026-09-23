@@ -78,7 +78,11 @@ function subscribeBinding(listener: () => void): () => void {
 
 /** The bound stage, re-read when it is bound or unbound. */
 export function useAccountEnvironments(): AccountEnvironments | null {
-  return useSyncExternalStore(subscribeBinding, currentAccountEnvironments);
+  return useSyncExternalStore(
+    subscribeBinding,
+    currentAccountEnvironments,
+    currentAccountEnvironments,
+  );
 }
 
 /** One snapshot of the bound stage, re-read on its every publication; `empty` while none is. */
@@ -95,7 +99,7 @@ export function useAccountEnvironmentsSnapshot<T>(
     () => (environments === null ? empty : read(environments)),
     [empty, environments, read],
   );
-  return useSyncExternalStore(subscribe, snapshot);
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 // ── What surfaces read ───────────────────────────────────────────────────────────────────────
