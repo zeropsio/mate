@@ -466,11 +466,13 @@ export function OtherContainers<T>({
               <span className="font-normal text-muted-foreground">{rows.length}</span>
             </span>
           </button>
-          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {/* A narrow container has room for a cut "Not in a…" only: the summary waits for width. */}
+          <span className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground @2xl/flow:block">
             {summary.line}
           </span>
           {summary.retry > 0 ? (
             <Button
+              className="ms-auto"
               onClick={() => props.onRetryContainers(silent)}
               size="compact"
               variant="outline"

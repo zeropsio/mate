@@ -22,6 +22,16 @@ describe("the containers no project holds", () => {
     expect(line).not.toContain("data-test-mate=");
   });
 
+  it("keeps their summary for a container with room for it, never a cut 'Not in a…'", () => {
+    const html = render({ ungrouped: rows(["open", "start"]) });
+    const summary = html.slice(
+      html.lastIndexOf("<span", html.indexOf("Not in a project")),
+      html.indexOf("Not in a project"),
+    );
+    expect(summary).toContain("hidden");
+    expect(summary).toContain("@2xl/flow:block");
+  });
+
   it("offers no re-probe when every container answers", () => {
     expect(render({ ungrouped: rows(["open"]) })).not.toContain("Try again");
   });
