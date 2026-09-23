@@ -5,7 +5,7 @@ import { Fragment, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
-import { MicroLabel, StatusDot } from "../primitives";
+import { FlatCard, MicroLabel, StatusDot } from "../primitives";
 import {
   drawn,
   GroupName,
@@ -139,8 +139,8 @@ export function ProjectCard<T>({
       <span className="flex shrink-0 items-center">{props.renderNextStep(entry)}</span>
     ) : null;
   return (
-    <section
-      className="flex scroll-mt-4 flex-col gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card p-4"
+    <FlatCard
+      className="flex scroll-mt-4 flex-col gap-3 p-4"
       data-zerops-group={group.groupId}
       id={`project-${group.groupId}`}
     >
@@ -188,16 +188,7 @@ export function ProjectCard<T>({
                   </div>
                 );
               })}
-              {entry.others.length > 0 ? (
-                <ul className="flex flex-col divide-y divide-border/50">
-                  {entry.others.map(({ item, role }) => (
-                    <Fragment key={props.getKey(item)}>
-                      {props.renderEnvironment(item, role)}
-                    </Fragment>
-                  ))}
-                </ul>
-              ) : null}
-              {entry.mates.length === 0 && entry.others.length === 0 ? (
+              {entry.mates.length === 0 ? (
                 <span className={EMPTY_WORD_CLASS}>No Mate yet</span>
               ) : null}
             </div>
@@ -247,14 +238,19 @@ export function ProjectCard<T>({
           />
         </Step>
       </div>
-      {drawn(groupRows) ? (
+      {/* The steps' own rows: the other environments, then what a release
+          would carry and the gate's reason. Nothing else goes under the steps. */}
+      {entry.others.length > 0 || drawn(groupRows) ? (
         <ul
-          className="flex flex-col divide-y divide-border/50"
+          className="flex flex-col divide-y divide-border/50 border-t border-border/50 pt-2"
           data-zerops-surface="environment-rows"
         >
+          {entry.others.map(({ item, role }) => (
+            <Fragment key={props.getKey(item)}>{props.renderEnvironment(item, role)}</Fragment>
+          ))}
           {groupRows}
         </ul>
       ) : null}
-    </section>
+    </FlatCard>
   );
 }

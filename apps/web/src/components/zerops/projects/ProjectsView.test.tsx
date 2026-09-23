@@ -310,4 +310,34 @@ describe("the Projects card", () => {
     expect(fix).toBeGreaterThanOrEqual(0);
     expect(production.indexOf('data-test-release-verb="true"')).toBeGreaterThan(fix);
   });
+
+  it("puts what a release carries, and the group's other environments, under the steps, full width", () => {
+    const value = { ...RELEASING, others: [{ item: STAGE, role: "stage" as const }] };
+    const html = card(value, { renderGroupRows: () => <li data-test-release="v0.0.9" /> });
+    const steps = between(
+      html,
+      'data-zerops-step="mates"',
+      'data-zerops-surface="environment-rows"',
+    );
+    expect(steps).not.toContain("data-test-environment");
+    expect(steps).not.toContain("data-test-release");
+    const bottom = between(html, 'data-zerops-surface="environment-rows"', undefined);
+    expect(bottom.indexOf('data-test-environment="fixture-stage"')).toBeLessThan(
+      bottom.indexOf('data-test-release="v0.0.9"'),
+    );
+  });
+
+  it("draws no bottom section where there is nothing under the steps", () => {
+    expect(card(RELEASING)).not.toContain('data-zerops-surface="environment-rows"');
+  });
+
+  it("is a flat card the page can scroll to", () => {
+    const html = card(MERGING);
+    const open = html.slice(0, html.indexOf(">"));
+    expect(open).toContain('data-zerops-primitive="flat-card"');
+    expect(open).toContain('id="project-aaa"');
+    expect(open).toContain('data-zerops-group="aaa"');
+    expect(open).toContain("scroll-mt-4");
+    expect(open).not.toContain("border-border/60");
+  });
 });
