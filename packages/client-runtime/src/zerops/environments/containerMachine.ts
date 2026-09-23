@@ -12,7 +12,9 @@
  *   until a read fact proves the container back: a link connect after the intent, a changed
  *   `/healthz` `initAt`, a reading sent after the platform's own restart process ended, or — for
  *   an update — a descriptor on another version.
- * - A live socket outranks every guess but `inactive`: a connect ends booting at once.
+ * - A live socket outranks every guess but `inactive`: a connect ends booting at once. A ready
+ *   container stays ready when a probe goes unanswered; a boot that only failed probes suggest
+ *   is `guessed`, and read at the backing-off intervals.
  */
 import type { Instant } from "../data/access/grant.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
@@ -305,7 +307,9 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
     case "initializing":
       return booting(machine, false);
     case "unreachable":
-      return booting(machine, true);
+      // No answer is no news of a container that was up: the link says it reconnects (§4.4 row
+      // 10), and the platform's status says why.
+      return current.level === "ready" ? current : booting(machine, true);
     case "predates-mate":
       // A restart of ours already came back to this: the zcp release there does not carry Mate.
       if (machine.restartTried) return { level: "not-yet-available" };

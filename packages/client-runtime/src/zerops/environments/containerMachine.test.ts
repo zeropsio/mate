@@ -322,6 +322,25 @@ describe("container machine (DESIGN §4.5)", () => {
     });
   }
 
+  it("a socket dropping under a ready container leaves it ready until a fact says why", () => {
+    const linked = drive([{ type: "LINK", connected: true }], ready());
+    // The platform restarts it; the socket drops and a probe fails before the status push lands.
+    const dropped = drive([{ type: "LINK", connected: false }], linked);
+    const unanswered = drive([probed({ kind: "unreachable" }, dropped.nowMs)], dropped);
+    expect(containerVerdict(unanswered.machine)).toEqual({ level: "ready" });
+    expect(probeCadence(unanswered.machine)).toEqual({ kind: "on-demand" });
+
+    const pushed = drive(
+      [{ type: "PLATFORM", status: { project: "ACTIVE", service: "RESTARTING" } }],
+      unanswered,
+    );
+    expect(containerVerdict(pushed.machine)).toEqual({
+      level: "restarting",
+      by: "platform",
+      overdue: false,
+    });
+  });
+
   it("a container predating Mate is Enable only on a flag read off", () => {
     const predates = transitionContainer(
       drive([active]).machine,

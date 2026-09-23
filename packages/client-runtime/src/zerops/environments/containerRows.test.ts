@@ -40,6 +40,19 @@ const ROWS: ReadonlyArray<{
   { name: "nothing read yet", machine: machine({ level: "unknown" }), health: undefined },
   { name: "ready", machine: machine({ level: "ready" }, read(READY)), health: "ready" },
   {
+    name: "ready, and a probe since went unanswered",
+    machine: machine({ level: "ready" }, read({ kind: "unreachable" })),
+    health: "unreachable",
+  },
+  {
+    name: "ready on a live socket, whatever a probe said before it",
+    machine: machine(
+      { level: "ready" },
+      { ...read({ kind: "unreachable" }), connectedSince: SINCE },
+    ),
+    health: "ready",
+  },
+  {
     name: "booting on a container answering /healthz",
     machine: machine(
       { level: "booting", since: SINCE, guessed: false },
