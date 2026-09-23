@@ -5,6 +5,7 @@ import {
   ZeropsProjectId,
   ZeropsServiceId,
   makeZeropsApiOrigin,
+  projectKeyOf,
   type ProjectRef,
 } from "@t3tools/client-runtime/zerops/data";
 import type { DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
@@ -48,8 +49,19 @@ vi.mock("./ZeropsSessionProvider", () => ({
     client: {},
   }),
 }));
-/** The account's projects the inventory holds, by id; none of them need be in a group. */
-const inventoryRefs = vi.hoisted(() => ({ refs: new Map<string, ProjectRef>() }));
+/**
+ * The account's projects the inventory holds, by id — none of them need be in a group — the ones
+ * whose content it shows, and each one's authority by project key.
+ */
+const inventoryRefs = vi.hoisted(() => ({
+  refs: new Map<string, ProjectRef>(),
+  projects: [] as ReadonlyArray<{ readonly id: string; readonly status: string }>,
+  authority: new Map<
+    string,
+    | { readonly kind: "authorized" }
+    | { readonly kind: "withheld"; readonly reason: string; readonly cause: null }
+  >(),
+}));
 /** The groups the account's Gitea registry lists. */
 const registryGroups = vi.hoisted(() => ({
   groups: [{ groupId: "g1", slug: "harbor" }] as ReadonlyArray<{
@@ -60,10 +72,10 @@ const registryGroups = vi.hoisted(() => ({
 
 vi.mock("./ZeropsInventoryProvider", () => ({
   useZeropsInventory: () => ({
-    projects: [],
+    projects: inventoryRefs.projects,
     services: new Map(),
     projectRefs: inventoryRefs.refs,
-    authority: new Map(),
+    authority: inventoryRefs.authority,
     account: access.account,
   }),
 }));
@@ -186,6 +198,8 @@ describe("ZeropsProjectFlowProvider", () => {
     gitea.trouble = null;
     access.account = { kind: "authorized" };
     inventoryRefs.refs = new Map();
+    inventoryRefs.projects = [];
+    inventoryRefs.authority = new Map();
     registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
     vi.unstubAllGlobals();
   });
@@ -283,6 +297,77 @@ describe("ZeropsProjectFlowProvider", () => {
         value: { kind: "running", version: { label: "v1.0.0" } },
       }),
     );
+
+    await act(async () => {
+      root.unmount();
+    });
+    unbind();
+  });
+
+  // G6: a project whose denial is being confirmed, or that is not ACTIVE, holds nothing open — the
+  // inventory demands none of it, and neither does its stop.
+  it("a project refused to the account, or not active, demands nothing of what it runs", async () => {
+    installTestDom();
+    registryGroups.groups = [];
+    const account = {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account"),
+    };
+    const ref = (projectId: string): ProjectRef => ({
+      kind: "project",
+      organization: {
+        kind: "organization",
+        account,
+        organizationId: ZeropsOrganizationId.make("org-1"),
+      },
+      projectId: ZeropsProjectId.make(projectId),
+    });
+    inventoryRefs.refs = new Map(
+      ["open-1", "denied-1", "stopped-1"].map((projectId) => [projectId, ref(projectId)]),
+    );
+    inventoryRefs.projects = [
+      { id: "open-1", status: "ACTIVE" },
+      { id: "stopped-1", status: "STOPPED" },
+    ];
+    inventoryRefs.authority = new Map([
+      [projectKeyOf(ref("denied-1")), { kind: "withheld", reason: "access-denied", cause: null }],
+    ]);
+    const demanded = new Set<string>();
+    const unbind = bindAccountFlow({
+      forge: null,
+      deployments: {
+        demand: (project: ProjectRef) => {
+          demanded.add(project.projectId);
+          return () => demanded.delete(project.projectId);
+        },
+        stop: () => ({ state: "unread", waitingFor: null }),
+        shows: () => false,
+        subscribe: () => () => undefined,
+        invalidate: () => undefined,
+        dispose: () => undefined,
+      } as DeploymentStore,
+      services: { serviceOf: () => null },
+    });
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+
+    expect([...demanded]).toEqual(["open-1"]);
+    // Its stop still says why it shows nothing.
+    expect(seen.at(-1)?.deployments.get("denied-1")).toEqual({
+      state: "withheld",
+      reason: "access-denied",
+      cause: null,
+    });
 
     await act(async () => {
       root.unmount();

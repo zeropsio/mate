@@ -66,7 +66,12 @@ import {
   type ZeropsGroupForges,
 } from "./useZeropsGroupForge";
 import { useZeropsRegistry } from "./useZeropsRegistry";
-import { HeldInventoryContext, projectAuthority, withheldProjectNotice } from "./inventoryContext";
+import {
+  HeldInventoryContext,
+  inventoryProjectRefKey,
+  projectAuthority,
+  withheldProjectNotice,
+} from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -291,22 +296,37 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
    * What each project the account holds runs, from the account's deployment store
    * (`flow/deploymentStore.ts`): the platform's own service listing and the builds running in the
    * project. Every project is a stop wherever it is drawn — in a group by its tags, or in none —
-   * and none of this waits on Gitea or its registry.
+   * and none of this waits on Gitea or its registry. As with the inventory's own demand, a project
+   * refused to the account (G6) or not ACTIVE holds nothing open.
    */
-  const stops = useMemo(() => [...inventory.projectRefs.values()], [inventory.projectRefs]);
+  const stops = useMemo(() => {
+    const inactive = new Set(
+      inventory.projects.filter(({ status }) => status !== "ACTIVE").map(({ id }) => id),
+    );
+    return [...inventory.projectRefs.values()].flatMap((ref) => {
+      const authority = inventory.authority.get(inventoryProjectRefKey(ref));
+      const refused = authority?.kind === "withheld" && authority.reason === "access-denied";
+      return refused || inactive.has(ref.projectId) ? [] : [ref];
+    });
+  }, [inventory.authority, inventory.projectRefs, inventory.projects]);
   const stopDeployments = useStopDeployments(stops);
-  // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12).
+  // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12), demanded
+  // or not.
   const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(
     () =>
       new Map(
-        [...stopDeployments].map(([projectId, deployment]) => {
+        [...inventory.projectRefs.values()].flatMap(({ projectId }) => {
           const authority = projectAuthority(inventory, projectId);
-          return [
-            projectId,
-            authority.kind === "withheld"
-              ? { state: "withheld", reason: authority.reason, cause: authority.cause }
-              : deployment,
-          ];
+          if (authority.kind === "withheld") {
+            return [
+              [
+                projectId,
+                { state: "withheld", reason: authority.reason, cause: authority.cause },
+              ] as const,
+            ];
+          }
+          const deployment = stopDeployments.get(projectId);
+          return deployment === undefined ? [] : [[projectId, deployment] as const];
         }),
       ),
     [inventory, stopDeployments],
