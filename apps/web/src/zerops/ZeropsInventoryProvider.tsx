@@ -72,11 +72,11 @@ const WAKE_COALESCE_MS = 10_000;
 
 const now = (): Instant => ({ wall: Date.now(), mono: performance.now() });
 
-/** The evidence's deadline on whichever clock reaches it first, as wall time. */
-function deadlineWallMs(stamp: Instant): number {
+/** How long until the evidence's deadline, on whichever clock reaches it first. */
+function remainingMs(stamp: Instant): number {
   const windowMs = DEFAULT_ZEROPS_GRANT_POLICY.windowMs;
   const at = now();
-  return at.wall + Math.min(stamp.wall + windowMs - at.wall, stamp.mono + windowMs - at.mono);
+  return Math.min(stamp.wall + windowMs - at.wall, stamp.mono + windowMs - at.mono);
 }
 
 /** Writes and account actions stay open until the evidence's deadline on either clock (G4, G5). */
@@ -84,7 +84,8 @@ function openWrites(client: Pick<ZeropsApiClient, "setWritesAllowed">, evidence:
   const stamp = evidence.account.startedAt;
   const windowMs = DEFAULT_ZEROPS_GRANT_POLICY.windowMs;
   setAccountActionsAllowed({ wallMs: stamp.wall + windowMs, monoMs: stamp.mono + windowMs });
-  client.setWritesAllowed(true, deadlineWallMs(stamp));
+  // On the api's own clock, `performance.timeOrigin + performance.now()`.
+  client.setWritesAllowed(true, performance.timeOrigin + performance.now() + remainingMs(stamp));
 }
 
 /** The data runtime's grant for admitted evidence; hidden projects stay out of it. */
@@ -96,7 +97,8 @@ function runtimeGrant(
     account: runtime.scope.account,
     accountEpoch: runtime.scope.epoch,
     verifiedAtMs: evidence.account.startedAt.wall,
-    deadlineMs: deadlineWallMs(evidence.account.startedAt),
+    // On the runtime's clock, `Date.now()`.
+    deadlineMs: Date.now() + remainingMs(evidence.account.startedAt),
     mutationsAllowed: true,
     organizations: evidence.account.organizations,
     projects: [...evidence.projects.values()]

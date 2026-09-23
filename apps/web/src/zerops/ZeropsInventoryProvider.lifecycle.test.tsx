@@ -1,6 +1,7 @@
 import { act, useEffect } from "react";
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/unstable/reactivity";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Stream from "effect/Stream";
@@ -465,6 +466,20 @@ it.live("a renewal drops a deleted project without blocking the remaining projec
       yield* renewal.establish();
       expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
       expect(harness.inventory()?.error).toBeNull();
+    }),
+  ),
+);
+
+it.live("closes the api's writes at the evidence deadline on the api's own clock", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory();
+      // The system clock was set apart from the api's `timeOrigin + performance.now()`.
+      expect(yield* Clock.currentTimeMillis).not.toBe(performance.timeOrigin + performance.now());
+      expect(harness.client.setWritesAllowed).toHaveBeenLastCalledWith(
+        true,
+        performance.timeOrigin + performance.now() + 15 * 60_000,
+      );
     }),
   ),
 );

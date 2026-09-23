@@ -201,7 +201,7 @@ describe("central Zerops data bindings", () => {
 
   it("passes the absolute verification deadline into direct-write admission", () => {
     expect(source("./ZeropsInventoryProvider.tsx")).toContain(
-      "client.setWritesAllowed(true, deadlineWallMs(stamp))",
+      "client.setWritesAllowed(true, performance.timeOrigin + performance.now() + remainingMs(stamp))",
     );
   });
 
