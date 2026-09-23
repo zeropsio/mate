@@ -228,6 +228,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   const listening = { records: 0, catalog: 0, births: 0 };
   /** How many times the records were read from storage. */
   let recordReads = 0;
+  /** What the stage hears when another tab writes the records. */
+  let recordsChanged: (() => void) | null = null;
   let catalog: CatalogListener | null = null;
   let unhardened: ReadonlySet<string> = new Set();
   const ports: AccountEnvironmentPorts = {
@@ -250,7 +252,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         return storage.get(key) ?? null;
       },
       setItem: (key, value) => void storage.set(key, value),
-      listen: () => {
+      listen: (changed) => {
+        recordsChanged = changed;
         listening.records += 1;
         return () => void (listening.records -= 1);
       },
@@ -283,6 +286,14 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     records: () =>
       JSON.parse(storage.get(REGISTRATION_RECORDS_KEY) ?? "[]") as Array<RegistrationRecord>,
     recordReads: () => recordReads,
+    /**
+     * Another tab stores these records; `announce` is whether its storage event has reached this
+     * tab yet.
+     */
+    storeElsewhere: (records: ReadonlyArray<RegistrationRecord>, announce: boolean) => {
+      storage.set(REGISTRATION_RECORDS_KEY, JSON.stringify(records));
+      if (announce) recordsChanged?.();
+    },
     /** The connection catalog as the stage hears it. */
     catalog: () => catalog!,
     setUnhardened: (next: ReadonlySet<string>) => {
@@ -1493,29 +1504,62 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  /** Three Mates, each remembered, the third the route's. */
+  const routeScene = () => {
+    const mates = [mate("1"), mate("2"), mate("3")];
+    const route = mates[2]!;
+    const environment = EnvironmentId.make("env-3");
+    const records = mates.map((listed, index): RegistrationRecord => ({
+      targetKey: listed.key,
+      environmentId: listed === route ? environment : EnvironmentId.make(`env-${index}`),
+      origin: listed.origin,
+      projectRef: { projectId: listed.projectId, orgId: "org-1" },
+      name: listed.project.name,
+    }));
+    return { mates, route, environment, records };
+  };
+
   it.effect("the route is set before the first probe of a listing change", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const mates = [mate("1"), mate("2"), mate("3")];
-        const route = mates[2]!;
-        const ENV_ROUTE = EnvironmentId.make("env-3");
-        const records = mates.map((listed, index): RegistrationRecord => ({
-          targetKey: listed.key,
-          environmentId: listed === route ? ENV_ROUTE : EnvironmentId.make(`env-${index}`),
-          origin: listed.origin,
-          projectRef: { projectId: listed.projectId, orgId: "org-1" },
-          name: listed.project.name,
-        }));
+        const { mates, route, environment, records } = routeScene();
         const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
         const projects = heldQueries(services.adapter, ["projects-of-organization"]);
-        const { rig, environments } = yield* granted(records, mates, projects.adapter);
-        environments.setRoute(ENV_ROUTE);
+        const { rig, environments } = yield* granted(
+          records.filter(({ environmentId }) => environmentId !== environment),
+          mates,
+          projects.adapter,
+        );
+        environments.setRoute(environment);
         yield* settle;
         expect(rig.probes).toEqual([]);
 
+        // Another tab stores the route's record; its storage event has not reached this tab yet.
+        rig.storeElsewhere(records, false);
         // The organization's projects are read: every remembered Mate's container is read at
         // once, the route's first.
         projects.release();
+        yield* settle;
+        expect(rig.probes.map(({ input }) => input)[0]).toBe(route.origin);
+        expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
+          mates.map(({ origin }) => origin).toSorted(),
+        );
+      }),
+    ),
+  );
+
+  it.effect("a record naming the route has the route's origin probed first", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { mates, route, environment, records } = routeScene();
+        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
+        const { rig, environments } = yield* granted([], mates, services.adapter);
+        environments.setRoute(environment);
+        yield* settle;
+        expect(rig.probes).toEqual([]);
+
+        // The organization's projects are listed already; another tab remembers every Mate.
+        rig.storeElsewhere(records, true);
         yield* settle;
         expect(rig.probes.map(({ input }) => input)[0]).toBe(route.origin);
         expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
