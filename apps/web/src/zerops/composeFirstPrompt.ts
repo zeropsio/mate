@@ -30,11 +30,8 @@ import {
 } from "@t3tools/client-runtime/zerops/firstPrompt";
 
 import { creationHandoffFor } from "./creationHandoffStorage";
-import {
-  connectionOriginFor,
-  readFirstPromptMarkers,
-  rememberFirstPromptComposed,
-} from "./firstPromptStorage";
+import { readFirstPromptMarkers, rememberFirstPromptComposed } from "./firstPromptStorage";
+import { readRegistrationRecords } from "./registrationRecords";
 
 export function composeZeropsFirstPrompt(input: {
   readonly environmentId: string;
@@ -53,7 +50,12 @@ export function composeZeropsFirstPrompt(input: {
     !shouldComposeFirstPrompt({
       environmentId: input.environmentId,
       alreadyComposed: readFirstPromptMarkers(),
-      connectedVia: connectionOriginFor(input.environmentId),
+      // Only a Zerops door exchange writes a record.
+      connectedVia: readRegistrationRecords().some(
+        (record) => record.environmentId === input.environmentId,
+      )
+        ? "zerops-identity"
+        : "pairing",
     })
   ) {
     return false;

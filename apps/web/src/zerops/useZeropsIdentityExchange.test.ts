@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
-import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -12,12 +10,7 @@ import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import {
-  connectResult,
-  rememberExchangedProjectRef,
-  webExchangePorts,
-  type ExchangeInputs,
-} from "./useZeropsIdentityExchange";
+import { connectResult, webExchangePorts, type ExchangeInputs } from "./useZeropsIdentityExchange";
 
 const mock = vi.hoisted(() => ({
   command: { _tag: "Success", value: undefined } as unknown,
@@ -28,72 +21,70 @@ vi.mock("@t3tools/client-runtime/state/runtime", async (original) => ({
   ...(await original<typeof import("@t3tools/client-runtime/state/runtime")>()),
   runAtomCommand: async () => mock.command,
 }));
-vi.mock("./rememberedEnvironments", () => ({
+vi.mock("./registrationRecords", () => ({
   beginEnvironmentIdentityExchange: () => () => undefined,
-  rememberEnvironment: (record: unknown) => {
+  rememberRegistration: (record: unknown) => {
     mock.remembered.push(record);
   },
 }));
-vi.mock("./firstPromptStorage", () => ({ rememberZeropsEnvironment: () => undefined }));
-
-function fakeStorage(): ZeropsStorageAdapter & { readonly raw: Map<string, string> } {
-  const raw = new Map<string, string>();
-  return {
-    raw,
-    get: (key) => Promise.resolve(raw.get(key) ?? null),
-    set: (key, value) => {
-      raw.set(key, value);
-      return Promise.resolve();
-    },
-    remove: (key) => {
-      raw.delete(key);
-      return Promise.resolve();
-    },
-  };
-}
 
 const ENV = "env-1" as EnvironmentId;
-const CANDIDATE = { project: { id: "project-1" } };
+const KEY = "project-1:service-1";
 
-// `rememberExchangedProjectRef` is the one call the exchange driver's install
-// port makes (`webExchangePorts`) for every environment it installs — and every
-// path that can land an environment is demand on that one driver: the projects
-// page's Connect, auto-connect, restore and repair. Proving this function
-// writes the ref correctly proves every one of those paths does.
-describe("rememberExchangedProjectRef (H12: connect, restore and repair share one write)", () => {
-  it("a restored or repaired environment remembers its project", async () => {
-    const storage = fakeStorage();
-
-    await rememberExchangedProjectRef(storage, ENV, CANDIDATE, "org-1");
-
-    expect(await lookupEnvironmentProjectRef(storage, ENV)).toMatchObject({
-      projectId: "project-1",
-      orgId: "org-1",
-      source: "connect",
-    });
-  });
-
-  it("writes nothing when the organization is not yet known", async () => {
-    const storage = fakeStorage();
-
-    await rememberExchangedProjectRef(storage, ENV, CANDIDATE, undefined);
-
-    expect(await lookupEnvironmentProjectRef(storage, ENV)).toBeUndefined();
-    expect(storage.raw.size).toBe(0);
-  });
-
-  it("a failed write is swallowed — the environment is connected either way", async () => {
-    const storage: ZeropsStorageAdapter = {
-      get: () => Promise.resolve(null),
-      set: () => Promise.reject(new Error("storage blocked")),
-      remove: () => Promise.resolve(),
-    };
-    const onRejection = vi.fn();
-
-    await expect(
-      rememberExchangedProjectRef(storage, ENV, CANDIDATE, "org-1").catch(onRejection),
-    ).resolves.toBeUndefined();
-    expect(onRejection).not.toHaveBeenCalled();
+// The exchange driver's install port (`webExchangePorts`) is the one writer of the record for
+// every environment it installs — and every path that can land an environment is demand on that
+// one driver: the projects page's Connect, auto-connect, restore and repair. Proving this port
+// writes the record correctly proves every one of those paths does.
+describe("the install port writes the target's record (H12: connect, restore and repair share one write)", () => {
+  it.each([
+    {
+      name: "a restored or repaired environment remembers its project and its organization",
+      candidates: [{ key: KEY, project: { id: "project-1", clientId: "org-2", name: "shop" } }],
+      activeOrganizationId: "org-1",
+      record: { projectRef: { projectId: "project-1", orgId: "org-2" }, name: "shop" },
+    },
+    {
+      name: "a project read that named no organization: the active one",
+      candidates: [{ key: KEY, project: { id: "project-1", name: "shop" } }],
+      activeOrganizationId: "org-1",
+      record: { projectRef: { projectId: "project-1", orgId: "org-1" }, name: "shop" },
+    },
+    {
+      name: "no organization known yet: no project ref",
+      candidates: [{ key: KEY, project: { id: "project-1", name: "shop" } }],
+      activeOrganizationId: undefined,
+      record: { projectRef: null, name: "shop" },
+    },
+    {
+      name: "a target the inventory no longer names is still remembered",
+      candidates: [],
+      activeOrganizationId: "org-1",
+      record: { projectRef: null, name: null },
+    },
+  ])("$name", async ({ candidates, activeOrganizationId, record }) => {
+    openAccountLifetime("account");
+    mock.command = { _tag: "Success", value: undefined };
+    mock.remembered = [];
+    const inputs = { candidates, activeOrganizationId } as unknown as ExchangeInputs;
+    try {
+      await webExchangePorts(() => inputs).install({
+        key: KEY,
+        environmentId: ENV,
+        credential: {
+          profile: { httpBaseUrl: "https://ZCP-1-8080.prg1.zerops.app/mate" },
+        } as never,
+      });
+      expect(mock.remembered).toEqual([
+        {
+          targetKey: KEY,
+          environmentId: ENV,
+          origin: "https://zcp-1-8080.prg1.zerops.app",
+          ...record,
+        },
+      ]);
+    } finally {
+      closeAccountLifetime();
+    }
   });
 });
 

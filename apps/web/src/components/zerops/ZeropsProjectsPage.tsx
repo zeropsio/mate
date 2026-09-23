@@ -50,7 +50,6 @@ import {
 import { listsNoProject } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
-import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
 import {
   forgetPendingCreation,
   pendingCreationProjects,
@@ -1398,7 +1397,6 @@ function ZeropsProjectsContent() {
       // lands in the conversation when the container answers.
       case "open":
         if (candidate.environmentId) {
-          rememberZeropsEnvironment(String(candidate.environmentId));
           void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
           return;
         }

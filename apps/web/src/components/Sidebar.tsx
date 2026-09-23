@@ -201,7 +201,6 @@ import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./u
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
-import { rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
 import { useAskMate } from "../zerops/useAskMate";
 import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
 import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
@@ -3933,7 +3932,6 @@ export default function Sidebar() {
                   void router.navigate({ to: "/zerops" });
                   return;
                 }
-                rememberZeropsEnvironment(String(environmentId));
                 // One environment is one conversation: open *its* conversation,
                 // not whichever project anywhere was touched last — which is
                 // what landing on the index would pick.

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 const mock = vi.hoisted(() => ({
   setPrompt: vi.fn(),
   creationHandoffFor: vi.fn(),
-  connectionOriginFor: vi.fn(),
+  readRegistrationRecords: vi.fn(),
   readFirstPromptMarkers: vi.fn(),
   rememberFirstPromptComposed: vi.fn(),
 }));
@@ -14,8 +14,10 @@ vi.mock("../composerDraftStore", () => ({
 vi.mock("./creationHandoffStorage", () => ({
   creationHandoffFor: mock.creationHandoffFor,
 }));
+vi.mock("./registrationRecords", () => ({
+  readRegistrationRecords: mock.readRegistrationRecords,
+}));
 vi.mock("./firstPromptStorage", () => ({
-  connectionOriginFor: mock.connectionOriginFor,
   readFirstPromptMarkers: mock.readFirstPromptMarkers,
   rememberFirstPromptComposed: mock.rememberFirstPromptComposed,
 }));
@@ -52,7 +54,10 @@ describe("composeZeropsFirstPrompt (R5: the creation job is the only writer whil
 
   it("composes the ordinary onboarding line once the hand-off is spent", () => {
     mock.creationHandoffFor.mockReturnValue(undefined);
-    mock.connectionOriginFor.mockReturnValue("zerops-identity");
+    // Registered through the Zerops door: this account's records name it.
+    mock.readRegistrationRecords.mockReturnValue([
+      { targetKey: "project-1:service-1", environmentId: "env-1" },
+    ]);
     mock.readFirstPromptMarkers.mockReturnValue([]);
 
     const wrote = composeZeropsFirstPrompt({
@@ -65,9 +70,11 @@ describe("composeZeropsFirstPrompt (R5: the creation job is the only writer whil
     expect(mock.rememberFirstPromptComposed).toHaveBeenCalledWith("env-1");
   });
 
-  it("still says no for a manually paired environment, hand-off or not", () => {
+  it("still says no for an environment no record names, hand-off or not", () => {
     mock.creationHandoffFor.mockReturnValue(undefined);
-    mock.connectionOriginFor.mockReturnValue("manual");
+    mock.readRegistrationRecords.mockReturnValue([
+      { targetKey: "project-1:service-1", environmentId: "env-2" },
+    ]);
     mock.readFirstPromptMarkers.mockReturnValue([]);
 
     expect(composeZeropsFirstPrompt({ environmentId: "env-1", target: TARGET as never })).toBe(

@@ -20,12 +20,11 @@ import {
   flowVerbKey,
   type MateReviewOffer,
 } from "@t3tools/client-runtime/zerops";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
-import { useCallback, useEffect, useState } from "react";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useCallback } from "react";
 
 import { useZeropsProjectFlowOptional } from "./projectFlowContext";
-import { browserZeropsStorage } from "./storage";
+import { useRegistrationRecord } from "./registrationRecords";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 
 export interface ZeropsMateReview {
@@ -47,24 +46,7 @@ const NOTHING: ZeropsMateReview = {
 export function useZeropsMateReview(threadRef: ScopedThreadRef | null): ZeropsMateReview {
   const flow = useZeropsProjectFlowOptional();
   const inventory = useZeropsInventory();
-  const environmentId = threadRef?.environmentId;
-  const [projectId, setProjectId] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (environmentId === undefined) {
-      setProjectId(undefined);
-      return;
-    }
-    let cancelled = false;
-    void lookupEnvironmentProjectRef(browserZeropsStorage, environmentId as EnvironmentId).then(
-      (ref) => {
-        if (!cancelled) setProjectId(ref?.projectId);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId]);
+  const projectId = useRegistrationRecord(threadRef?.environmentId)?.projectRef?.projectId;
 
   const project = inventory.projects.find((entry) => entry.id === projectId);
   const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;

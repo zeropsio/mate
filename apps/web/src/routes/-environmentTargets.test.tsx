@@ -38,7 +38,7 @@ const shell = vi.hoisted(() => ({
     label: string;
     connection: { phase: string };
   }>,
-  records: [] as Array<{ key: string; environmentId: string }>,
+  records: [] as Array<{ targetKey: string; environmentId: string }>,
   organization: "selected" as ZeropsOrganizationStatus,
   driver: null as unknown,
 }));
@@ -52,9 +52,8 @@ vi.mock("../state/shell", async () => {
   const cached = Atom.make({ snapshot: Option.none(), status: "cached", error: Option.none() });
   return { environmentShell: { stateValueAtom: () => cached } };
 });
-vi.mock("../zerops/rememberedEnvironments", () => ({
-  readRememberedEnvironments: () => shell.records,
-  useEnvironmentIdentityVersion: () => 0,
+vi.mock("../zerops/registrationRecords", () => ({
+  useRegistrationRecords: () => shell.records,
 }));
 vi.mock("../zerops/useZeropsIdentityExchange", () => ({
   useExchangeDriver: () => shell.driver,
@@ -215,7 +214,7 @@ describe("the route gate over the exchange driver's machines", () => {
         connection: { phase: "connected" },
       },
     ];
-    shell.records = [{ key: KEY, environmentId: ENV_A }];
+    shell.records = [{ targetKey: KEY, environmentId: ENV_A }];
     const mounts: Array<number> = [];
     function ChatView() {
       useEffect(() => {
@@ -460,7 +459,7 @@ describe("useRouteGateInputs", () => {
   const DISCOVERY: ReadonlyArray<{
     readonly name: string;
     readonly machines: ReadonlyMap<string, EnvironmentMachine>;
-    readonly records?: ReadonlyArray<{ key: string; environmentId: string }>;
+    readonly records?: ReadonlyArray<{ targetKey: string; environmentId: string }>;
     readonly inventory?: Inventory;
     readonly gate: RouteGate;
   }> = [
@@ -482,7 +481,7 @@ describe("useRouteGateInputs", () => {
     {
       name: "a remembered target the driver has not taken in yet",
       machines: new Map(),
-      records: [{ key: OTHER, environmentId: ENV_B }],
+      records: [{ targetKey: OTHER, environmentId: ENV_B }],
       gate: { kind: "wait", reachability: null },
     },
     {
@@ -499,7 +498,7 @@ describe("useRouteGateInputs", () => {
         last: { kind: "network" },
         reconnect: false,
       }),
-      records: [{ key: OTHER, environmentId: ENV_B }],
+      records: [{ targetKey: OTHER, environmentId: ENV_B }],
       gate: { kind: "unavailable", reachability: null },
     },
   ];

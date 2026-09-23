@@ -27,11 +27,10 @@
  * passing network blip clears without anyone pressing anything.
  */
 
-import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { EnvironmentId, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { browserZeropsStorage } from "./storage";
+import { useRegistrationRecord } from "./registrationRecords";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /**
@@ -318,28 +317,11 @@ export function useZeropsAgentSignerRecord(input: {
 }
 
 /**
- * Which Zerops project a connected environment is, from the durable memory
- * `environmentProjectRef.ts` keeps. `undefined` until it is known — a tag
- * write that guessed the project would be a tag on somebody else's.
+ * Which Zerops project a connected environment is, from its registration record. `undefined`
+ * until it is known — a tag write that guessed the project would be a tag on somebody else's.
  */
 export function useZeropsEnvironmentProjectId(
   environmentId: EnvironmentId | null,
 ): string | undefined {
-  const [projectId, setProjectId] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    let cancelled = false;
-    const read =
-      environmentId === null
-        ? Promise.resolve(undefined)
-        : lookupEnvironmentProjectRef(browserZeropsStorage, environmentId);
-    void read.then((stored) => {
-      if (!cancelled) setProjectId(stored?.projectId);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId]);
-
-  return projectId;
+  return useRegistrationRecord(environmentId)?.projectRef?.projectId;
 }

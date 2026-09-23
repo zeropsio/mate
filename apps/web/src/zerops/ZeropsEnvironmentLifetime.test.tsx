@@ -10,9 +10,9 @@ import { InventoryContext, type Inventory } from "./inventoryContext";
 import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
 import {
   beginEnvironmentIdentityExchange,
-  readRememberedEnvironments,
-  rememberEnvironment,
-} from "./rememberedEnvironments";
+  readRegistrationRecords,
+  rememberRegistration,
+} from "./registrationRecords";
 import { ExchangeDriverContext } from "./useZeropsIdentityExchange";
 
 const mock = vi.hoisted(() => ({
@@ -27,7 +27,7 @@ const mock = vi.hoisted(() => ({
 vi.mock("./useZeropsIdentityExchange", async () => {
   const { createContext } = await import("react");
   const { systemExchangeClock } = await import("@t3tools/client-runtime/zerops/environments");
-  const { rememberEnvironment: remember } = await import("./rememberedEnvironments");
+  const { rememberRegistration: rememberInstalled } = await import("./registrationRecords");
   return {
     ExchangeDriverContext: createContext(null),
     webExchangePorts: () => ({
@@ -35,7 +35,13 @@ vi.mock("./useZeropsIdentityExchange", async () => {
       exchange: (request: ExchangeRequest) => mock.exchange(request),
       install: async (input: { key: string; environmentId: EnvironmentId }) => {
         await mock.install(input);
-        remember({ key: input.key, environmentId: String(input.environmentId) });
+        rememberInstalled({
+          targetKey: input.key,
+          environmentId: input.environmentId,
+          origin: null,
+          projectRef: null,
+          name: null,
+        });
         return { ok: true };
       },
       readDescriptor: () => new Promise(() => undefined),
@@ -160,6 +166,16 @@ const inventory = (): Inventory => ({
   error: null,
 });
 
+/** What an install before this one left for the target. */
+const remember = (targetKey: string, environment: EnvironmentId) =>
+  rememberRegistration({
+    targetKey,
+    environmentId: environment,
+    origin: null,
+    projectRef: null,
+    name: null,
+  });
+
 const admitted = (id: EnvironmentId = environmentId): ExchangeAnswer<unknown> => ({
   ok: true,
   environmentId: id,
@@ -193,7 +209,7 @@ function ObserveRestore() {
   const machines = useSyncExternalStore(driver.subscribe, driver.machines);
   const pending = discoveryPending(
     machines,
-    readRememberedEnvironments().map((record) => record.key),
+    readRegistrationRecords().map((record) => record.targetKey),
   );
   useEffect(() => {
     restorePending = pending;
@@ -278,7 +294,7 @@ describe("restore is the records' demand on the exchange driver", () => {
     vi.useFakeTimers();
     for (const answer of row.answers) mock.exchange.mockResolvedValueOnce(answer);
     mock.exchange.mockResolvedValue(roleRefused);
-    rememberEnvironment({ key: "project:service", environmentId });
+    remember("project:service", environmentId);
     const render = await mount();
     await render();
     await render();
@@ -295,7 +311,7 @@ describe("restore is the records' demand on the exchange driver", () => {
 });
 
 it("does not repeat an in-flight restore when another inventory snapshot arrives", async () => {
-  rememberEnvironment({ key: "project:service", environmentId });
+  remember("project:service", environmentId);
   let complete!: (answer: ExchangeAnswer<unknown>) => void;
   mock.exchange.mockImplementation(
     () =>
@@ -375,7 +391,7 @@ describe("discovery waits only while a remembered target's exchange is on its wa
 
   it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
     for (const key of row.records) {
-      rememberEnvironment({ key, environmentId: EnvironmentId.make(key) });
+      remember(key, EnvironmentId.make(key));
     }
     liveInventory = {
       ...inventory(),
@@ -401,7 +417,7 @@ it("retains a registration published before its remembered identity is written",
   const render = await mount();
   expect(mock.remove).not.toHaveBeenCalled();
   await act(async () => {
-    rememberEnvironment({ key: "project:service", environmentId });
+    remember("project:service", environmentId);
     finish();
   });
   await render();
@@ -409,7 +425,7 @@ it("retains a registration published before its remembered identity is written",
 });
 
 it("retires an old service identity replaced at the same origin", async () => {
-  rememberEnvironment({ key: "project:old-service", environmentId });
+  remember("project:old-service", environmentId);
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   await mount();
   expect(mock.retire).toHaveBeenCalledWith("project:old-service", environmentId);
@@ -417,7 +433,7 @@ it("retires an old service identity replaced at the same origin", async () => {
 
 it("releases an obsolete server history once a replacement is remembered at its address", async () => {
   const replacement = EnvironmentId.make("replacement");
-  rememberEnvironment({ key: "project:service", environmentId });
+  remember("project:service", environmentId);
   const finish = beginEnvironmentIdentityExchange(origin);
   mock.environments = [
     { environmentId, displayUrl: origin + "/mate" },
@@ -426,7 +442,7 @@ it("releases an obsolete server history once a replacement is remembered at its 
   await mount();
   expect(mock.remove).not.toHaveBeenCalled();
   await act(async () => {
-    rememberEnvironment({ key: "project:service", environmentId: replacement });
+    remember("project:service", replacement);
     finish();
   });
   expect(mock.remove.mock.calls.map((call) => call[2])).toContain(environmentId);
@@ -434,7 +450,7 @@ it("releases an obsolete server history once a replacement is remembered at its 
 });
 
 it("a Mate restarting keeps its environment", async () => {
-  rememberEnvironment({ key: "project:service", environmentId });
+  remember("project:service", environmentId);
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   const render = await mount();
 
@@ -456,7 +472,7 @@ it("a Mate restarting keeps its environment", async () => {
 });
 
 it("services not yet read keep the environment", async () => {
-  rememberEnvironment({ key: "project:service", environmentId });
+  remember("project:service", environmentId);
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   const render = await mount();
 
@@ -470,7 +486,7 @@ it("services not yet read keep the environment", async () => {
 });
 
 it("an inventory read in flight or failed keeps the environment", async () => {
-  rememberEnvironment({ key: "project:service", environmentId });
+  remember("project:service", environmentId);
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   const render = await mount();
 
@@ -483,7 +499,7 @@ it("an inventory read in flight or failed keeps the environment", async () => {
 });
 
 it("a deleted project loses it, until the inventory names it again", async () => {
-  rememberEnvironment({ key: "project:service", environmentId });
+  remember("project:service", environmentId);
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   const render = await mount();
   expect(mock.retire).not.toHaveBeenCalled();

@@ -19,10 +19,7 @@ import { createElement, useEffect } from "react";
 import { environmentIdFromPathname } from "~/routes/-environmentRoute";
 import { useEnvironmentConnectionState, useEnvironments } from "~/state/environments";
 
-import {
-  readRememberedEnvironments,
-  useEnvironmentIdentityVersion,
-} from "./rememberedEnvironments";
+import { useRegistrationRecord } from "./registrationRecords";
 import { useExchangeDriver } from "./useZeropsIdentityExchange";
 
 const isConnectionBlockedError = Schema.is(ConnectionBlockedError);
@@ -65,17 +62,12 @@ export function ZeropsIdentityRepair() {
   const { environments } = useEnvironments();
   const driver = useExchangeDriver();
   const pathname = useLocation({ select: (location) => location.pathname });
-  const identityVersion = useEnvironmentIdentityVersion();
+  const routeKey = useRegistrationRecord(environmentIdFromPathname(pathname))?.targetKey;
 
   // The route's target is exchanged first (§4.4 priority); only a remembered target has a key.
   useEffect(() => {
-    const environmentId = environmentIdFromPathname(pathname);
-    const record =
-      environmentId === null
-        ? undefined
-        : readRememberedEnvironments().find((entry) => entry.environmentId === environmentId);
-    driver.setDemand("route", record === undefined ? [] : [record.key]);
-  }, [driver, identityVersion, pathname]);
+    driver.setDemand("route", routeKey === undefined ? [] : [routeKey]);
+  }, [driver, routeKey]);
 
   useEffect(() => () => driver.setDemand("route", []), [driver]);
 

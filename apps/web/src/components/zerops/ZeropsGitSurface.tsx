@@ -13,13 +13,12 @@
  */
 import { botDisplayName, readZeropsGroupTags, type GitBlock } from "@t3tools/client-runtime/zerops";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
-import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 
 import { useZeropsProjectFlow } from "../../zerops/projectFlowContext";
-import { browserZeropsStorage } from "../../zerops/storage";
+import { useRegistrationRecord } from "../../zerops/registrationRecords";
 import { useZeropsInventory } from "../../zerops/ZeropsInventoryProvider";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ZeropsGitTab } from "./ZeropsGitTab";
@@ -30,22 +29,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   const inventory = useZeropsInventory();
   const flow = useZeropsProjectFlow();
   const environmentId = threadRef?.environmentId;
-  const [projectRef, setProjectRef] = useState<
-    { readonly projectId: string; readonly orgId: string } | undefined
-  >(undefined);
-
-  useEffect(() => {
-    if (environmentId === undefined) return;
-    let cancelled = false;
-    void lookupEnvironmentProjectRef(browserZeropsStorage, environmentId as EnvironmentId).then(
-      (ref) => {
-        if (!cancelled) setProjectRef(ref);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId]);
+  const projectRef = useRegistrationRecord(environmentId)?.projectRef;
 
   const project = inventory.projects.find((entry) => entry.id === projectRef?.projectId);
   const tags = readZeropsGroupTags(project?.tagList ?? []);

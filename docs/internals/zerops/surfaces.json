@@ -1076,7 +1076,7 @@
       "connectionModeNote": "The Zerops door composes the opening prompt only on explicit onboarding. Account restoration never sends a prompt.",
       "contracts": [
         "local-storage:zerops-mate.first-prompt.v1",
-        "local-storage:zerops-mate.zerops-environments.v1"
+        "local-storage:zerops-mate.registration-records.v1"
       ],
       "reverseStates": [
         {

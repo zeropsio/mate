@@ -5,11 +5,9 @@ import { accountLocalStorage } from "./accountLifetime";
  * `composeZeropsFirstPrompt` and its route caller async as well.
  */
 import {
-  ZEROPS_ENVIRONMENTS_STORAGE_KEY,
   ZEROPS_FIRST_PROMPT_STORAGE_KEY,
   parseFirstPromptMarkers,
   withFirstPromptComposed,
-  type ZeropsConnectionOrigin,
 } from "@t3tools/client-runtime/zerops/firstPrompt";
 
 export function readFirstPromptMarkers(): ReadonlyArray<string> {
@@ -37,15 +35,4 @@ function appendStringList(key: string, value: string): void {
   } catch {
     // See above: losing the record only costs a second composed prompt.
   }
-}
-
-/** Records that this environment came from the Zerops door, not from pairing. */
-export function rememberZeropsEnvironment(environmentId: string): void {
-  appendStringList(ZEROPS_ENVIRONMENTS_STORAGE_KEY, environmentId);
-}
-
-export function connectionOriginFor(environmentId: string): ZeropsConnectionOrigin {
-  return readStringList(ZEROPS_ENVIRONMENTS_STORAGE_KEY).includes(environmentId)
-    ? "zerops-identity"
-    : "pairing";
 }

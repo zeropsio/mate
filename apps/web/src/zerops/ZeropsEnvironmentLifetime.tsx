@@ -18,7 +18,6 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
-import { EnvironmentId } from "@t3tools/contracts";
 import { useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { environmentCatalog } from "../connection/catalog";
@@ -27,9 +26,9 @@ import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { inventoryCandidates, type Inventory } from "./inventoryContext";
 import {
   hasPendingEnvironmentIdentityExchange,
-  readRememberedEnvironments,
-  useEnvironmentIdentityVersion,
-} from "./rememberedEnvironments";
+  readRegistrationRecords,
+  useRegistrationVersion,
+} from "./registrationRecords";
 import { useZeropsCandidateHealth } from "./useZeropsCandidateHealth";
 import {
   ExchangeDriverContext,
@@ -118,7 +117,7 @@ function targetsOf(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
 }): ReadonlyArray<ExchangeTarget> {
-  const records = readRememberedEnvironments();
+  const records = readRegistrationRecords();
   const unread = new Set(
     input.candidates
       .filter(
@@ -131,11 +130,11 @@ function targetsOf(input: {
   const settled = !input.inventory.isLoading && input.inventory.error === null;
   const keys = new Set([
     ...input.candidates.map((candidate) => candidate.key),
-    ...records.map((record) => record.key),
+    ...records.map((record) => record.targetKey),
   ]);
   return [...keys].map((key) => {
     const candidate = input.candidates.find((entry) => entry.key === key);
-    const record = records.find((entry) => entry.key === key);
+    const record = records.find((entry) => entry.targetKey === key);
     const projectId = key.split(":")[0] ?? key;
     const presence: Presence | null =
       candidate !== undefined
@@ -156,7 +155,7 @@ function targetsOf(input: {
               health: input.health.get(key),
               mateFlag: undefined,
             }),
-      record: record === undefined ? null : EnvironmentId.make(record.environmentId),
+      record: record?.environmentId ?? null,
     };
   });
 }
@@ -171,7 +170,7 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   const { client, activeOrganization } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const registry = useContext(RegistryContext);
-  const identityVersion = useEnvironmentIdentityVersion();
+  const recordsVersion = useRegistrationVersion();
   const candidates = useMemo(
     () => inventoryCandidates(inventory),
     [inventory.projects, inventory.services],
@@ -236,16 +235,16 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
     driver.setTargets(targetsOf({ inventory, candidates, health }));
     driver.setDemand(
       "record",
-      readRememberedEnvironments().map((record) => record.key),
+      readRegistrationRecords().map((record) => record.targetKey),
     );
-  }, [candidates, driver, health, identityVersion, inventory]);
+  }, [candidates, driver, health, inventory, recordsVersion]);
 
   // A registration no target owns — nothing remembers it and no install is writing its record —
   // is released; a remembered one leaves only when its target retires.
   useEffect(() => {
-    const remembered = new Set(readRememberedEnvironments().map((record) => record.environmentId));
+    const remembered = new Set(readRegistrationRecords().map((record) => record.environmentId));
     for (const environment of environments) {
-      if (remembered.has(String(environment.environmentId))) continue;
+      if (remembered.has(environment.environmentId)) continue;
       if (environment.displayUrl && hasPendingEnvironmentIdentityExchange(environment.displayUrl)) {
         continue;
       }
@@ -253,7 +252,7 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
         reportFailure: false,
       });
     }
-  }, [environments, identityVersion, registry]);
+  }, [environments, recordsVersion, registry]);
 
   return <ExchangeDriverContext value={driver}>{children}</ExchangeDriverContext>;
 }

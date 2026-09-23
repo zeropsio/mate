@@ -26,7 +26,6 @@ import { useCallback } from "react";
 import { useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useComposerDraftStore } from "../composerDraftStore";
-import { rememberZeropsEnvironment } from "./firstPromptStorage";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
 /** Writes `ask` into the Mate's composer and goes there. */
@@ -62,7 +61,6 @@ export function useAskMate(
       // person has already read the exact request and pressed Send (spec §5.4
       // retired for these surfaces by the owner, 2026-09-19).
       useComposerDraftStore.getState().requestSend(threadRef, ask);
-      rememberZeropsEnvironment(String(environmentId));
       onNavigate?.();
       void router.navigate({
         to: "/$environmentId/$threadId",

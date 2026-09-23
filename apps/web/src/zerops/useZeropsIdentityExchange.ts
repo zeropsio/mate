@@ -1,6 +1,6 @@
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import type { ZeropsApiClient, ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
+import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import {
   normalizeOrigin,
   zeropsMateBaseUrl,
@@ -16,7 +16,6 @@ import {
   type ExchangeDriver,
   type ExchangeDriverPorts,
 } from "@t3tools/client-runtime/zerops/environments";
-import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import {
   descriptorFacts,
   exchangeAtDoor,
@@ -47,10 +46,8 @@ import { randomUUID } from "~/lib/utils";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { promoteCreationHandoff } from "./creationHandoffStorage";
-import { rememberZeropsEnvironment } from "./firstPromptStorage";
 import { inventoryCandidates } from "./inventoryContext";
-import { beginEnvironmentIdentityExchange, rememberEnvironment } from "./rememberedEnvironments";
-import { browserZeropsStorage } from "./storage";
+import { beginEnvironmentIdentityExchange, rememberRegistration } from "./registrationRecords";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 
 export type { ZeropsIdentityExchangeResult };
@@ -71,36 +68,6 @@ export async function exchangeZeropsContainerIdentity<E>(input: {
     input.containerOrigin,
     { reason: input.reason, servedApp: { origin: input.appOrigin, basePath: input.basePath } },
   );
-}
-
-/**
- * Remembers which project and organization a successfully exchanged
- * environment belongs to — the one write every exchange that installs an
- * environment here makes the same way (H12): the signer tag
- * (`useZeropsAgentSigner.ts`) reads this ref to know which project to tag,
- * and a path that skipped it left a second browser's sign-in succeeding with
- * every turn still refused because the tag was never written.
- *
- * Best-effort and silent on failure: the environment is connected either
- * way, and a write that failed here is retried the next time anything
- * reconnects this origin.
- */
-export async function rememberExchangedProjectRef(
-  storage: ZeropsStorageAdapter,
-  environmentId: EnvironmentId,
-  candidate: { readonly project: { readonly id: string } },
-  clientId: string | undefined,
-): Promise<void> {
-  if (!clientId) return;
-  try {
-    await rememberEnvironmentProjectRef(storage, environmentId, {
-      projectId: candidate.project.id,
-      orgId: clientId,
-      source: "connect",
-    });
-  } catch {
-    // Best effort — see the doc comment above.
-  }
 }
 
 // ── The driver's ports, backed by the connection runtime ─────────────────────────────────────
@@ -152,8 +119,8 @@ const servedApp = () => ({ origin: window.location.origin, basePath: appBasePath
 
 /**
  * The exchange driver's ports on the web: the door through the connection runtime, installs
- * through `registry.rotateCredential` or `register`, and the records every installed
- * environment writes (the target, its Zerops origin, the creation hand-off, the project ref).
+ * through `registry.rotateCredential` or `register`, and what every installed environment writes:
+ * its target's registration record and the creation hand-off.
  */
 export function webExchangePorts(
   read: () => ExchangeInputs,
@@ -213,16 +180,21 @@ export function webExchangePorts(
       try {
         const result = await runAtomCommand(registry, installCommand, credential, quiet);
         if (result._tag === "Failure" || !alive()) return { ok: false };
-        rememberEnvironment({ key, environmentId: String(environmentId) });
-        rememberZeropsEnvironment(String(environmentId));
+        // The signer's tag, the review and the Git tab read the project off this record (H12):
+        // every exchange that installs an environment writes it the same way.
+        const orgId = candidate?.project.clientId ?? activeOrganizationId;
+        rememberRegistration({
+          targetKey: key,
+          environmentId,
+          origin: normalizeOrigin(credential.profile.httpBaseUrl),
+          projectRef:
+            candidate === undefined || orgId === undefined
+              ? null
+              : { projectId: candidate.project.id, orgId },
+          name: candidate?.project.name ?? null,
+        });
         if (candidate !== undefined) {
           promoteCreationHandoff(candidate.project.id, String(environmentId));
-          void rememberExchangedProjectRef(
-            browserZeropsStorage,
-            environmentId,
-            candidate,
-            candidate.project.clientId ?? activeOrganizationId,
-          );
         }
         return { ok: true };
       } finally {

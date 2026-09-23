@@ -22,10 +22,7 @@ import { useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
 import { InventoryContext } from "../zerops/inventoryContext";
-import {
-  readRememberedEnvironments,
-  useEnvironmentIdentityVersion,
-} from "../zerops/rememberedEnvironments";
+import { useRegistrationRecords } from "../zerops/registrationRecords";
 import { useExchangeDriver } from "../zerops/useZeropsIdentityExchange";
 import { useZeropsSession, type ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
@@ -163,8 +160,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const { environments } = useEnvironments();
   const inventory = useContext(InventoryContext);
   const { organizationStatus } = useZeropsSession();
-  // Remembered records are read at call time; this re-renders when they change.
-  useEnvironmentIdentityVersion();
+  const records = useRegistrationRecords();
   const content = useAtomValue(
     environmentId === null ? NO_SHELL : environmentShell.stateValueAtom(environmentId),
   ).status;
@@ -172,7 +168,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   return {
     target: routeTarget({
       machines,
-      remembered: readRememberedEnvironments().map((record) => record.key),
+      remembered: records.map((record) => record.targetKey),
       environmentId,
       inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
       organization: ORGANIZATION[organizationStatus],

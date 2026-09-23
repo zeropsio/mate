@@ -1,11 +1,6 @@
 /** React binding from a connected Mate environment to the central Zerops read model. */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import type {
-  ZeropsProject,
-  ZeropsService,
-  ZeropsStatHistoryItem,
-} from "@t3tools/client-runtime/zerops";
-import { deriveZeropsCandidates, normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
+import type { ZeropsService, ZeropsStatHistoryItem } from "@t3tools/client-runtime/zerops";
 import {
   projectRecordToZeropsProject,
   serviceRecordToZeropsService,
@@ -17,21 +12,15 @@ import {
   type RuntimeInterestDescriptor,
   type UsageRead,
 } from "@t3tools/client-runtime/zerops/data";
-import {
-  lookupEnvironmentProjectRef,
-  rememberEnvironmentProjectRef,
-  type EnvironmentProjectRef,
-} from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
-import { useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { appAtomRegistry } from "../rpc/atomRegistry";
-import { useEnvironment } from "../state/environments";
 import { projectTopologyViewAtom } from "../state/zerops";
 import { findInventoryProjectRef, useZeropsInventory } from "./inventoryContext";
-import { browserZeropsStorage } from "./storage";
+import { useRegistrationRecord } from "./registrationRecords";
 import {
   makeZeropsAtomSelectionStore,
   useZeropsData,
@@ -219,79 +208,14 @@ function useProjectHistoryReads(
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
-function matchProjectRef(
-  displayUrl: string | null,
-  projects: ReadonlyArray<ZeropsProject>,
-  services: ReadonlyMap<
-    string,
-    { readonly status: string; readonly services?: ReadonlyArray<ZeropsService> }
-  >,
-): { readonly projectId: string; readonly orgId: string } | null {
-  const origin = displayUrl === null ? null : normalizeOrigin(displayUrl);
-  if (origin === null) return null;
-  for (const project of projects) {
-    const outcome = services.get(project.id);
-    if (outcome?.status !== "resolved" || project.clientId === undefined) continue;
-    const candidate = deriveZeropsCandidates(project, outcome.services ?? [], new Map()).find(
-      (entry) =>
-        entry.containerOrigin !== undefined && normalizeOrigin(entry.containerOrigin) === origin,
-    );
-    if (candidate !== undefined) return { projectId: project.id, orgId: project.clientId };
-  }
-  return null;
-}
-
 export function useProjectTopology(environmentId: EnvironmentId | null): ProjectTopologySnapshot {
   const { runtime } = useZeropsData();
   const inventory = useZeropsInventory();
-  const environment = useEnvironment(environmentId);
-  const [remembered, setRemembered] = useState<EnvironmentProjectRef | undefined>(undefined);
-
-  useEffect(() => {
-    if (environmentId === null) {
-      setRemembered(undefined);
-      return;
-    }
-    let cancelled = false;
-    void lookupEnvironmentProjectRef(browserZeropsStorage, environmentId).then(async (stored) => {
-      if (cancelled) return;
-      if (
-        stored !== undefined &&
-        findInventoryProjectRef(inventory, stored.projectId, stored.orgId) !== null
-      ) {
-        setRemembered(stored);
-        return;
-      }
-      const matched = matchProjectRef(
-        environment?.displayUrl ?? null,
-        inventory.projects,
-        inventory.services,
-      );
-      if (matched === null) {
-        setRemembered(undefined);
-        return;
-      }
-      await rememberEnvironmentProjectRef(browserZeropsStorage, environmentId, {
-        ...matched,
-        source: "match",
-      });
-      if (!cancelled) setRemembered({ ...matched, source: "match", learnedAt: Date.now() });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    environment?.displayUrl,
-    environmentId,
-    inventory.projectRefs,
-    inventory.projects,
-    inventory.services,
-  ]);
-
+  const projectRef = useRegistrationRecord(environmentId)?.projectRef ?? null;
   const project =
-    remembered === undefined
+    projectRef === null
       ? null
-      : findInventoryProjectRef(inventory, remembered.projectId, remembered.orgId);
+      : findInventoryProjectRef(inventory, projectRef.projectId, projectRef.orgId);
   const topologyDescriptor = useMemo<RuntimeInterestDescriptor | null>(
     () =>
       project === null ? null : { kind: "project-topology", project, includeCurrentMetrics: false },
