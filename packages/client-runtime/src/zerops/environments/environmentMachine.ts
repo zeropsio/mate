@@ -262,10 +262,11 @@ export interface EnvironmentMachine {
   };
   readonly nextAttempt: number;
   /**
-   * The attempt that began by reading a remembered Mate's descriptor (A16): an exchanging
-   * credential on this attempt is still waiting for that read. Null before the first.
+   * The attempt that began by reading a remembered Mate's descriptor (A16), and the origin it
+   * reads: an exchanging credential on this attempt is still waiting for that read. Null before
+   * the first.
    */
-  readonly probing: number | null;
+  readonly probing: { readonly attempt: number; readonly origin: string } | null;
   /** When the interpreter's one timer fires; null when nothing waits on time. */
   readonly timer: Instant | null;
 }
@@ -482,7 +483,7 @@ const evaluate = (
       return {
         ...machine,
         nextAttempt: attempt + 1,
-        probing: verdict.probe ? attempt : machine.probing,
+        probing: verdict.probe ? { attempt, origin: verdict.origin } : machine.probing,
         credential: {
           kind: "exchanging",
           attempt,
@@ -625,18 +626,23 @@ const supersede = (
 };
 
 /**
- * A remembered Mate's descriptor probe answered (A16). The exchange runs, inside the same attempt's
- * deadline, when the guards still admit it: the Mate at the recorded origin is the one the record
- * names, or the inventory listed the target meanwhile. Otherwise the guards judge it again, and a
- * Mate that serves another environment waits for its project's services.
+ * A remembered Mate's descriptor probe at `origin` answered (A16). The exchange runs, inside the
+ * same attempt's deadline, when the guards still admit it: the Mate at the recorded origin is the
+ * one the record names, or the inventory listed the target there meanwhile. A read at an origin
+ * the presence has moved from says nothing of the Mate and is dropped. Otherwise the guards judge
+ * it again, and a Mate that serves another environment waits for its project's services.
  */
 const probed = (
   machine: EnvironmentMachine,
+  origin: string,
   credential: Extract<Credential, { readonly kind: "exchanging" }>,
   result: Extract<EnvironmentEvent, { readonly type: "DESCRIPTOR_READ" }>["result"],
   ctx: EnvironmentContext,
   out: Effects,
 ): EnvironmentMachine => {
+  if (originOf(machine.presence) !== origin) {
+    return { ...machine, credential: { kind: "none", reconnect: credential.reconnect } };
+  }
   if (!result.ok) {
     return backoff(machine, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
   }
@@ -857,9 +863,9 @@ const apply = (
       if (
         credential.kind === "exchanging" &&
         credential.attempt === event.attempt &&
-        machine.probing === event.attempt
+        machine.probing?.attempt === event.attempt
       ) {
-        return probed(machine, credential, event.result, ctx, out);
+        return probed(machine, machine.probing.origin, credential, event.result, ctx, out);
       }
       if (credential.kind !== "held" || credential.rereading?.attempt !== event.attempt) {
         return stale(machine, event.attempt, out);

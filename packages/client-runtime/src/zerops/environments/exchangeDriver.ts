@@ -463,7 +463,8 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
 
   /** An exchange still reading a remembered Mate's descriptor: its mint is still to come (A16). */
   const probing = (machine: EnvironmentMachine): boolean =>
-    machine.credential.kind === "exchanging" && machine.probing === machine.credential.attempt;
+    machine.credential.kind === "exchanging" &&
+    machine.probing?.attempt === machine.credential.attempt;
 
   /**
    * Hands the free slots, in priority order, to the targets a slot would start, and takes the

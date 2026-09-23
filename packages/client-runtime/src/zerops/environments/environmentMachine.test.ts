@@ -642,4 +642,33 @@ describe("a remembered target (A16)", () => {
       }),
     );
   });
+
+  it("a descriptor read at an origin the presence moved from is dropped, and the Mate is exchanged where it is listed", () => {
+    const moved = "https://zcp-2-abc.prg1.zerops.app";
+    const started = probing();
+    const listed = drive(started.machine, [
+      { type: "PRESENCE", presence: { kind: "present", origin: moved } },
+    ]);
+    const read = drive(
+      listed.machine,
+      [
+        {
+          type: "DESCRIPTOR_READ",
+          attempt: probeOf(started).attempt,
+          result: { ok: true, descriptor: descriptor({ environmentId: ENV_A }) },
+        },
+      ],
+      listed.nowMs,
+    );
+
+    // The server at the recorded origin says nothing of the Mate listed elsewhere.
+    expect(read.machine.descriptor).toBeNull();
+    expect(read.machine.identityAnswered).toBe(false);
+    expect(read.effects).toContainEqual(
+      expect.objectContaining({
+        kind: "run",
+        op: { kind: "exchange", origin: moved, expected: ENV_A },
+      }),
+    );
+  });
 });

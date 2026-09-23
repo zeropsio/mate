@@ -223,7 +223,7 @@ const violations = (
       held.kind === "exchanging" &&
       held.attempt !== exchange.attempt &&
       // A remembered Mate's descriptor probe hands its attempt on to the exchange it admits.
-      before.machine.probing !== held.attempt &&
+      before.machine.probing?.attempt !== held.attempt &&
       !(before.machine.timer !== null && after.nowMs >= before.machine.timer.wall)
     ) {
       found.push("I5: a second exchange started before the first ended");
