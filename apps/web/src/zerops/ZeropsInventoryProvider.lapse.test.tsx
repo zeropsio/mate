@@ -184,7 +184,7 @@ describe("ZeropsInventoryProvider lapse", () => {
     expect(tab.text()).toContain(CHILD);
     expect(tab.readable()).not.toContain(CHILD);
     expect(tab.readable()).not.toMatch(/One|Two|projects:/);
-    expect(tab.readable()).toContain("Couldn't confirm your Zerops access.");
+    expect(tab.readable()).toContain("Checking your Zerops access…");
 
     await tab.run(() => round.release());
     await pass(0);
@@ -192,7 +192,7 @@ describe("ZeropsInventoryProvider lapse", () => {
     expect(mounts()).toBe(1);
     expect(tab.readable()).toContain(CHILD);
     expect(tab.readable()).toContain("projects: One, Two");
-    expect(tab.readable()).not.toContain("Couldn't confirm your Zerops access.");
+    expect(tab.readable()).not.toContain("Checking your Zerops access…");
   });
 
   it("an open dialog at the deadline leaves no platform text anywhere in the document, including the title", async () => {
@@ -204,7 +204,7 @@ describe("ZeropsInventoryProvider lapse", () => {
     await pass(16 * MINUTE_MS);
 
     expect(tab.readable()).not.toMatch(/One|Two|dialog:/);
-    expect(tab.readable()).toContain("Couldn't confirm your Zerops access.");
+    expect(tab.readable()).toContain("Zerops isn't answering.");
     expect(tab.title()).not.toMatch(/One|Two/);
 
     // The next grant gives it all back.

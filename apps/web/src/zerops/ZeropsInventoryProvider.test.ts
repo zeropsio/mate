@@ -5,14 +5,17 @@ import {
   ZeropsOrganizationId,
   ZeropsProjectId,
   type AccessState,
+  type GrantRound,
   type InterestIdentity,
   type InterestState,
   type ProjectRef,
+  type Renewal,
 } from "@t3tools/client-runtime/zerops/data";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { InventoryServiceOutcome } from "./inventoryContext";
 import {
+  accessLapseCopy,
   carryForwardServiceOutcome,
   inventoryProjectRefs,
   isInterestBlocked,
@@ -284,5 +287,39 @@ describe("carryForwardServiceOutcome", () => {
 
   it.each(cases)("$name", ({ previous, projectId, computed, expected }) => {
     expect(carryForwardServiceOutcome(previous, projectId, computed)).toEqual(expected);
+  });
+});
+
+describe("accessLapseCopy", () => {
+  const at = { wall: 0, mono: 0 };
+  const round = (failures: number): GrantRound => ({
+    id: 1,
+    startedAt: at,
+    deadline: at,
+    failures,
+    organizations: null,
+    targets: null,
+    outcomes: new Map(),
+  });
+  const CHECKING = { sentence: "Checking your Zerops access…", retry: false };
+  const NOT_ANSWERING = { sentence: "Zerops isn't answering.", retry: true };
+  // One row per lapse reason (DESIGN §3.4): no cause yet, or a failure cause.
+  it.each<readonly [string, Renewal, typeof CHECKING]>([
+    ["a round is due", { status: "idle", dueAt: at }, CHECKING],
+    ["the lapse's first round runs", { status: "running", round: round(0) }, CHECKING],
+    ["hidden too long", { status: "dormant" }, CHECKING],
+    [
+      "a round failed",
+      { status: "backoff", failure: { kind: "timeout", afterMs: 30_000 }, retryAt: at, attempt: 1 },
+      NOT_ANSWERING,
+    ],
+    [
+      "a round failed offline",
+      { status: "backoff", failure: { kind: "offline" }, retryAt: at, attempt: 2 },
+      NOT_ANSWERING,
+    ],
+    ["the round after a failure runs", { status: "running", round: round(1) }, NOT_ANSWERING],
+  ])("%s", (_case, renewal, copy) => {
+    expect(accessLapseCopy(renewal)).toEqual(copy);
   });
 });

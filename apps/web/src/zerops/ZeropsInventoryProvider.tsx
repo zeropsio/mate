@@ -11,6 +11,7 @@ import {
   type InterestState,
   type OrganizationRef,
   type ProjectRef,
+  type Renewal,
   type RuntimeInterestDescriptor,
   type ScopeAuthority,
   type ViewObservation,
@@ -243,11 +244,20 @@ function makeInventorySnapshotSelector() {
 }
 
 /**
- * The lapse's one sentence (DESIGN §3.4, R-K3): its cause, for the whole lapse.
- * A round that runs, fails offline or fails again does not change why the
- * product is covered, so the words stay put until the next grant ends it.
+ * What a lapse says (DESIGN §3.4, R-K3): one sentence that names its cause
+ * only, beside "Try now" when a round failed. A round after a failure keeps
+ * the failure's words, so they change only when the cause does.
  */
-const ACCESS_LAPSE = "Couldn't confirm your Zerops access.";
+export function accessLapseCopy(renewal: Renewal): {
+  readonly sentence: string;
+  readonly retry: boolean;
+} {
+  const failed =
+    renewal.status === "backoff" || (renewal.status === "running" && renewal.round.failures > 0);
+  return failed
+    ? { sentence: "Zerops isn't answering.", retry: true }
+    : { sentence: "Checking your Zerops access…", retry: false };
+}
 
 /**
  * What a lapse of the account's access shows until the next grant: an opaque
@@ -257,7 +267,13 @@ const ACCESS_LAPSE = "Couldn't confirm your Zerops access.";
  * gate closes every floating layer, the fallback context menu is dismissed,
  * and the document title names only the app.
  */
-function AccessLapse({ onRetry }: { readonly onRetry: () => void }) {
+function AccessLapse({
+  copy,
+  onRetry,
+}: {
+  readonly copy: ReturnType<typeof accessLapseCopy>;
+  readonly onRetry: () => void;
+}) {
   useEffect(() => {
     dismissContextMenu();
     const title = document.title;
@@ -269,10 +285,15 @@ function AccessLapse({ onRetry }: { readonly onRetry: () => void }) {
   }, []);
   return (
     <div role="alert" className="fixed inset-0 z-[200] bg-background p-8">
-      {ACCESS_LAPSE}{" "}
-      <button type="button" onClick={onRetry}>
-        Try now
-      </button>
+      {copy.sentence}
+      {copy.retry ? (
+        <>
+          {" "}
+          <button type="button" onClick={onRetry}>
+            Try now
+          </button>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -551,9 +572,10 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       mateDiagnostics.record({ kind: "access-grant", round: grantedRound });
   }, [grantedRound]);
 
-  /** The mounted product's grant lapsed: the overlay covers it until the next grant. */
-  const lapsed = ready && phase.phase === "lapsed";
-  const visibleError = lapsed ? ACCESS_LAPSE : error;
+  /** What covers the mounted product while its grant is lapsed, until the next grant. */
+  const lapse = ready && phase.phase === "lapsed" ? accessLapseCopy(phase.renewal) : null;
+  const lapsed = lapse !== null;
+  const visibleError = lapse?.sentence ?? error;
   const retry = () => {
     const intents = retryInvalidations({
       granted: phase.phase === "granted",
@@ -627,7 +649,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               {children}
             </div>
           </PortalGate>
-          {lapsed ? <AccessLapse onRetry={retry} /> : null}
+          {lapse === null ? null : <AccessLapse copy={lapse} onRetry={retry} />}
         </InventoryContext>
       )}
     </>

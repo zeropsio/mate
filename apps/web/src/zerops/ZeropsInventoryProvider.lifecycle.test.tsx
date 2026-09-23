@@ -626,7 +626,7 @@ it.live("a round back from a lapse withholds a denied project and restores the o
       // Every renewal fails until the evidence runs out 15 min after the first round.
       yield* harness.advance(15 * 60_000 + 1_000);
       expect((yield* harness.runtime.state).access.status).toBe("expired");
-      expect(harness.container.textContent).toContain("Couldn't confirm your Zerops access.");
+      expect(harness.container.textContent).toContain("Zerops isn't answering.");
 
       harness.client.fetchUser.mockImplementation(readUser);
       harness.client.fetchProject.mockImplementation(async (id: string) => {
@@ -649,7 +649,7 @@ it.live("a round back from a lapse withholds a denied project and restores the o
 
       // The account is granted again; the project that answered 403 is not (T-L20).
       expect((yield* harness.runtime.state).access.status).toBe("verified");
-      expect(harness.container.textContent).not.toContain("Couldn't confirm your Zerops access.");
+      expect(harness.container.textContent).not.toContain("Zerops isn't answering.");
       expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
       expect(authority("kept")).toEqual({ kind: "authorized" });
       expect(authority("revoked")).toEqual({

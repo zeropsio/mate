@@ -211,7 +211,7 @@ describe("ZeropsInventoryProvider renewal", () => {
 
     await pass(16 * MINUTE_MS);
 
-    expect(tab.text().match(/Couldn't confirm your Zerops access\./g)).toHaveLength(1);
+    expect(tab.text().match(/Zerops isn't answering\./g)).toHaveLength(1);
     expect(tab.text().match(/Try now/g)).toHaveLength(1);
   });
 
@@ -230,29 +230,31 @@ describe("ZeropsInventoryProvider renewal", () => {
     expect(rounds()).toBe(before + 1);
     await pass(1_000);
     expect(tab.readable()).toContain(CHILD);
-    expect(tab.text()).not.toContain("Couldn't confirm your Zerops access.");
+    expect(tab.text()).not.toMatch(/Checking your Zerops access|Zerops isn't answering/);
     expect(tab.text()).not.toMatch(/Try (again|now)/);
   });
 
   // One cause-only sentence for the whole lapse, beside its one affordance (DESIGN §3.4, R-K3).
   it("the overlay copy does not change while the lapse reason is unchanged", async () => {
     const { harness, tab, pass } = await admittedProduct();
-    tab.tab.signals.offline();
+    harness.rest.hang("GET /user/info");
     await pass(16 * MINUTE_MS);
     const seen = [tab.readable()];
-    // Rounds keep failing offline, then one hangs once the network is back.
-    await pass(MINUTE_MS);
-    seen.push(tab.readable());
-    const round = harness.rest.hold("GET /user/info");
-    tab.tab.signals.online();
-    await pass(0);
-    expect(round.waiting()).toBeGreaterThan(0);
-    seen.push(tab.readable());
+    // Back after 2 min hidden, the organizations' reads stall past their grace while the rounds
+    // keep failing: the inventory's own error appears beneath the overlay (gate CD).
+    tab.tab.signals.hide();
+    await pass(2 * MINUTE_MS);
+    harness.datastream.holdRegistrations();
+    tab.tab.signals.show();
+    for (let step = 0; step < 6; step++) {
+      await pass(30_000);
+      seen.push(tab.readable());
+    }
 
     expect(new Set(seen).size).toBe(1);
     expect(seen[0]).not.toContain(CHILD);
+    expect(seen[0]).toContain("Zerops isn't answering.");
     expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now"]);
-    await tab.run(() => round.release());
   });
 
   // One project's read failing is that project's problem, never the account's (DESIGN G1, C2b).
