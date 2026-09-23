@@ -20,7 +20,7 @@ import {
   type GiteaSessions,
   type GiteaSessionsPorts,
 } from "@t3tools/client-runtime/zerops/forge";
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { randomUUID } from "../lib/utils";
 import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./accountLifetime";
@@ -93,7 +93,7 @@ export function accountGiteaSessions(): GiteaSessions | null {
 /**
  * Wants the account's Gitea signed in while the calling surface is mounted, and says how that
  * stands: `signedIn` holds through a 401's reacquire, `trouble` names a refusal at once and a
- * Gitea or broker that does not answer after two failed tries. `retry` is the person's "Try now".
+ * Gitea or broker that does not answer after two failed tries.
  */
 export function useGiteaSession(input: {
   readonly giteaOrigin: string | undefined;
@@ -101,7 +101,7 @@ export function useGiteaSession(input: {
   /** The org that owns the Gitea — where the throwaway is minted. */
   readonly clientId: string | undefined;
   readonly platform: ZeropsThrowawayPlatform | undefined;
-}): { readonly signedIn: boolean; readonly trouble: string | null; readonly retry: () => void } {
+}): { readonly signedIn: boolean; readonly trouble: string | null } {
   const { brokerOrigin, clientId, giteaOrigin, platform } = input;
   const sessions = useSyncExternalStore(subscribe, accountGiteaSessions, () => null);
   const view = useSyncExternalStore(
@@ -126,11 +126,7 @@ export function useGiteaSession(input: {
     return sessions.demand({ giteaOrigin, brokerOrigin, clientId, platform });
   }, [sessions, giteaOrigin, brokerOrigin, clientId, platform]);
 
-  const retry = useCallback(() => {
-    if (sessions !== null && giteaOrigin !== undefined) sessions.retry(giteaOrigin);
-  }, [sessions, giteaOrigin]);
-
-  return { signedIn: view.signedIn, trouble: view.trouble, retry };
+  return { signedIn: view.signedIn, trouble: view.trouble };
 }
 
 /**
