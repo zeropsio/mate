@@ -29,7 +29,7 @@ import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProject
  * and its cell, so a row's cells share one height.
  */
 const STEPS_GRID_CLASS =
-  "grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 @2xl/flow:grid-cols-2 @2xl/flow:gap-y-1.5 @5xl/flow:grid-cols-[minmax(0,1.3fr)_1rem_minmax(0,1fr)_1rem_minmax(0,1fr)_1rem_minmax(0,1fr)] @5xl/flow:grid-rows-[auto_1fr] @5xl/flow:gap-x-0";
+  "grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 @2xl/flow:grid-cols-2 @2xl/flow:gap-y-1.5 @5xl/flow:grid-cols-[minmax(0,1.1fr)_1rem_minmax(0,1fr)_1rem_minmax(0,1fr)_1rem_minmax(0,1.2fr)] @5xl/flow:grid-rows-[auto_1fr] @5xl/flow:gap-x-0";
 
 /**
  * The slot a step's cell sits in: the cell stretches to its row. A narrow
