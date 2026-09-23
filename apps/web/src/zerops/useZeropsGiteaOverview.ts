@@ -4,8 +4,9 @@
  *
  * Two account-wide reads, issued together — Gitea's list of the person's
  * repositories and its search over open pull requests — and re-read every
- * sixty seconds while the page is open. Nothing here is per project; a
- * project's own flow is the provider's (`ZeropsProjectFlowProvider`).
+ * sixty seconds while the page is open, and at once when the Gitea session is
+ * readable again. Nothing here is per project; a project's own flow is the
+ * provider's (`ZeropsProjectFlowProvider`).
  */
 import {
   giteaOverview,
@@ -15,7 +16,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useMemo, useState } from "react";
 
-import { giteaClientFor } from "./accountGiteaSessions";
+import { giteaClientFor, useGiteaReadable } from "./accountGiteaSessions";
 
 /** How often the overview is read again while the page is open. */
 export const GITEA_OVERVIEW_REFRESH_MS = 60_000;
@@ -42,6 +43,7 @@ export function useZeropsGiteaOverview(input: {
 }): ZeropsGiteaOverviewState {
   const { enabled, giteaOrigin, mateName } = input;
   const key = enabled && giteaOrigin !== undefined ? giteaOrigin : "";
+  const readable = useGiteaReadable(giteaOrigin);
   const [answer, setAnswer] = useState<{
     readonly key: string;
     readonly answer: GiteaAnswer;
@@ -59,7 +61,7 @@ export function useZeropsGiteaOverview(input: {
   }, [key]);
 
   useEffect(() => {
-    if (key === "" || giteaOrigin === undefined) return;
+    if (key === "" || giteaOrigin === undefined || !readable) return;
     // A read whose 401 no token recovered answers nothing, not an empty account (DESIGN §4.6).
     let unauthorized = false;
     const client = giteaClientFor(giteaOrigin, () => {
@@ -77,7 +79,7 @@ export function useZeropsGiteaOverview(input: {
     return () => {
       controller.abort();
     };
-  }, [giteaOrigin, key, tick]);
+  }, [giteaOrigin, key, readable, tick]);
 
   const read = answer?.key === key ? answer.answer : undefined;
   return useMemo<ZeropsGiteaOverviewState>(

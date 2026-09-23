@@ -8,13 +8,16 @@ import {
 } from "./useZeropsGiteaOverview";
 
 /**
- * Whether the next reads meet a 401 that no token recovered — the reacquire failed, or outlasted
- * the request's wait — and how many times the repositories were listed.
+ * Whether this tab can read Gitea now, whether the next reads meet a 401 that no token recovered —
+ * the reacquire failed, or outlasted the request's wait — and how many times the repositories were
+ * listed.
  */
-const gitea = vi.hoisted(() => ({ unauthorizedOnRead: false, listings: 0 }));
+const gitea = vi.hoisted(() => ({ readable: true, unauthorizedOnRead: false, listings: 0 }));
 
 vi.mock("./accountGiteaSessions", () => ({
+  useGiteaReadable: () => gitea.readable,
   giteaClientFor: (_origin: string, onUnauthorized?: () => void) => {
+    if (!gitea.readable) return null;
     const read = async <T>(answer: T): Promise<T> => {
       if (gitea.unauthorizedOnRead) {
         onUnauthorized?.();
@@ -101,6 +104,7 @@ function installTestDom(): void {
 
 describe("useZeropsGiteaOverview", () => {
   afterEach(() => {
+    gitea.readable = true;
     gitea.unauthorizedOnRead = false;
     gitea.listings = 0;
     vi.useRealTimers();
@@ -132,6 +136,41 @@ describe("useZeropsGiteaOverview", () => {
       await vi.advanceTimersByTimeAsync(GITEA_OVERVIEW_REFRESH_MS);
     });
     expect(gitea.listings).toBe(2);
+    expect(seen.at(-1)?.owners.map((owner) => owner.openPulls)).toEqual([1]);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("reads as soon as the session is readable again, not on the next minute (§4.6)", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGiteaOverviewState> = [];
+
+    function Probe(_props: { readonly render: number }) {
+      seen.push(
+        useZeropsGiteaOverview({ giteaOrigin: "https://gitea.example.test", enabled: true }),
+      );
+      return null;
+    }
+
+    gitea.readable = false;
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe, { render: 0 }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(seen.at(-1)?.read).toBe(false);
+
+    // The token arrives: the overview reads now.
+    gitea.readable = true;
+    await act(async () => {
+      root.render(createElement(Probe, { render: 1 }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.listings).toBe(1);
     expect(seen.at(-1)?.owners.map((owner) => owner.openPulls)).toEqual([1]);
 
     await act(async () => {
