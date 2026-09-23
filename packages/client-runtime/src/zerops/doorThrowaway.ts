@@ -67,16 +67,30 @@ export const DOOR_MINTS_PER_MINUTE = 10;
 export const GITEA_MINTS_PER_MINUTE = 4;
 const MINT_BUDGET_WINDOW_MS = 60_000;
 
-/** Hands out mints at a bounded rate: past the budget, a mint waits for a slot. */
+/**
+ * Hands out mints at a bounded rate: past the budget, a mint waits for a slot.
+ * Slots belong to the account epoch they were taken in
+ * (`ZeropsApiClient.accountEpoch`): the next account in the tab starts with a
+ * budget of its own, and a mint still waiting from an epoch that has ended is
+ * refused rather than given one of its slots.
+ */
 export interface MintBudget {
-  readonly take: (signal?: AbortSignal) => Promise<void>;
+  readonly take: (epoch: number, signal?: AbortSignal) => Promise<void>;
 }
 
 function makeMintBudget(perMinute: number, now: () => number): MintBudget {
   const taken: Array<number> = [];
-  const take = async (signal?: AbortSignal): Promise<void> => {
+  let takenIn = Number.NEGATIVE_INFINITY;
+  const take = async (epoch: number, signal?: AbortSignal): Promise<void> => {
     for (;;) {
       signal?.throwIfAborted();
+      if (epoch < takenIn) {
+        throw new ZeropsApiError("This account session has ended.", "expired-session", 401);
+      }
+      if (epoch > takenIn) {
+        taken.length = 0;
+        takenIn = epoch;
+      }
       const at = now();
       while (taken.length > 0 && at - taken[0]! >= MINT_BUDGET_WINDOW_MS) taken.shift();
       if (taken.length < perMinute) {
@@ -158,22 +172,29 @@ export function zeropsThrowawayPlatform(
         purpose,
         clientId: input.clientId,
       } as const;
-      await budgets[purpose].take(signal);
-      return client.mintThrowaway({ clientId: input.clientId, name: input.name }, signal).then(
-        (throwaway) => {
-          minted.set(throwaway.id, { name: input.name, mintingToken: throwaway.mintingToken });
-          mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: throwaway.id });
-          return { id: throwaway.id, token: throwaway.token };
-        },
-        (cause: unknown) => {
-          mateDiagnostics.record({
-            ...diagnostic,
-            outcome: "failed",
-            ...diagnosticFailure(cause),
-          });
-          throw cause;
-        },
-      );
+      return client
+        .mintThrowaway(
+          { clientId: input.clientId, name: input.name },
+          {
+            ...(signal === undefined ? {} : { signal }),
+            beforeMint: () => budgets[purpose].take(client.accountEpoch, signal),
+          },
+        )
+        .then(
+          (throwaway) => {
+            minted.set(throwaway.id, { name: input.name, mintingToken: throwaway.mintingToken });
+            mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: throwaway.id });
+            return { id: throwaway.id, token: throwaway.token };
+          },
+          (cause: unknown) => {
+            mateDiagnostics.record({
+              ...diagnostic,
+              outcome: "failed",
+              ...diagnosticFailure(cause),
+            });
+            throw cause;
+          },
+        );
     },
     remove: async (input) => {
       const diagnostic = {

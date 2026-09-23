@@ -761,8 +761,11 @@ async function readProjectPages<T extends { readonly id: string }>(
  */
 export class ZeropsApiClient {
   #writesAllowedUntilMs = Number.POSITIVE_INFINITY;
-  /** Everything {@link awaitAccountWindow} holds until a grant opens the window. */
-  readonly #windowWaiters = new Set<() => void>();
+  /**
+   * Everything {@link awaitAccountWindow} holds: opened by the next grant, or
+   * ended with the account epoch it was asked in.
+   */
+  readonly #windowWaiters = new Set<{ readonly open: () => void; readonly end: () => void }>();
   /**
    * Installs the verified account write window. The request path checks this
    * absolute deadline itself, so browser timer throttling cannot extend it.
@@ -773,7 +776,7 @@ export class ZeropsApiClient {
   ): void {
     this.#writesAllowedUntilMs = allowed ? deadlineMs : 0;
     if (!this.#accountWindowOpen()) return;
-    for (const wake of this.#windowWaiters) wake();
+    for (const waiter of this.#windowWaiters) waiter.open();
   }
 
   #accountWindowOpen(): boolean {
@@ -784,7 +787,9 @@ export class ZeropsApiClient {
    * Resolves once the account window is open (DESIGN §4.3 `identityMint`):
    * at once while it is, otherwise when the next grant opens it, for at most
    * {@link ACCOUNT_WINDOW_WAIT_MS}. Past that it fails with the retryable
-   * `access-unverified`.
+   * `access-unverified`. An epoch that ends meanwhile — a sign-out, another
+   * session adopted — ends the wait with `expired-session`: a grant after it
+   * is somebody else's.
    *
    * The window is the account's alone. No organization or project role is
    * checked: a throwaway carries no rights, and the door and the broker decide
@@ -797,14 +802,20 @@ export class ZeropsApiClient {
       new ZeropsApiError("The request was cancelled before it reached Zerops.", "network");
     if (signal?.aborted === true) return Promise.reject(aborted());
     return new Promise<void>((resolve, reject) => {
+      const waiter = {
+        open: () => {
+          done();
+          resolve();
+        },
+        end: () => {
+          done();
+          reject(new ZeropsApiError("This account session has ended.", "expired-session", 401));
+        },
+      };
       const done = () => {
         clearTimeout(bound);
-        this.#windowWaiters.delete(wake);
+        this.#windowWaiters.delete(waiter);
         signal?.removeEventListener("abort", abort);
-      };
-      const wake = () => {
-        done();
-        resolve();
       };
       const abort = () => {
         done();
@@ -820,7 +831,7 @@ export class ZeropsApiClient {
           ),
         );
       }, ACCOUNT_WINDOW_WAIT_MS);
-      this.#windowWaiters.add(wake);
+      this.#windowWaiters.add(waiter);
       signal?.addEventListener("abort", abort, { once: true });
     });
   }
@@ -852,6 +863,15 @@ export class ZeropsApiClient {
     return this.#baseUrl;
   }
 
+  /**
+   * The account epoch this client is in. It moves on every sign-out and every
+   * session adopted from storage or a hand-over, so whatever one account
+   * accrues in this tab can be keyed to it and left behind with it.
+   */
+  get accountEpoch(): number {
+    return this.#generation;
+  }
+
   /** Authenticated transport seam for the central data adapter. */
   requestData(input: ZeropsDataHttpRequest): Promise<unknown> {
     return this.#request(
@@ -871,7 +891,7 @@ export class ZeropsApiClient {
 
   /** Adopts a session read back from storage without re-notifying the owner. */
   restoreSession(session: ZeropsSession): void {
-    this.#generation += 1;
+    this.#nextGeneration();
     this.#session = session;
   }
 
@@ -898,7 +918,7 @@ export class ZeropsApiClient {
       );
     }
     const session: ZeropsSession = { accessToken };
-    const generation = ++this.#generation;
+    const generation = this.#nextGeneration();
     this.#session = session;
     try {
       await this.fetchUser();
@@ -913,7 +933,7 @@ export class ZeropsApiClient {
   }
 
   async signOutLocally(): Promise<void> {
-    this.#generation += 1;
+    this.#nextGeneration();
     await this.#setSession(null);
   }
 
@@ -999,6 +1019,13 @@ export class ZeropsApiClient {
       });
       if (!response.ok && response.status !== 401) throw await apiErrorFromResponse(response);
     }
+  }
+
+  /** Ends the account epoch: nothing asked for in it runs in the next. */
+  #nextGeneration(): number {
+    this.#generation += 1;
+    for (const waiter of this.#windowWaiters) waiter.end();
+    return this.#generation;
   }
 
   #assertGeneration(generation: number): void {
@@ -1599,6 +1626,11 @@ export class ZeropsApiClient {
    * ({@link awaitAccountWindow}, spec-mate C5a): a mint that lands in a lapse
    * runs on the grant that ends it. The write stays `project-write` until C6.
    *
+   * `beforeMint` is a wait of the caller's own — a rate budget — that the
+   * mint queues behind. Every wait on the way belongs to the account epoch
+   * the mint was asked in: one that ends meanwhile refuses the mint with
+   * `expired-session`, so nothing is minted as whoever signed in since.
+   *
    * `mintingToken` is the session access token the mint carried. The
    * throwaway is deleted with that token and no other
    * ({@link deleteThrowaway}), so its deletion never acts as whoever holds
@@ -1606,12 +1638,15 @@ export class ZeropsApiClient {
    */
   async mintThrowaway(
     input: { readonly clientId: string; readonly name: string },
-    signal?: AbortSignal,
+    options: { readonly signal?: AbortSignal; readonly beforeMint?: () => Promise<void> } = {},
   ): Promise<{ readonly id: string; readonly token: string; readonly mintingToken: string }> {
+    const generation = this.#generation;
+    await options.beforeMint?.();
+    this.#assertGeneration(generation);
     return this.#mintIntegrationToken(
       { clientId: input.clientId, name: input.name, roleCode: "NO_ACCESS", projects: [] },
-      signal,
-      () => this.awaitAccountWindow(signal),
+      options.signal,
+      () => this.awaitAccountWindow(options.signal),
     );
   }
 
@@ -2881,7 +2916,7 @@ export class ZeropsApiClient {
   }
 
   async #setSession(session: ZeropsSession | null): Promise<void> {
-    if (session === null) this.#generation += 1;
+    if (session === null) this.#nextGeneration();
     this.#session = session;
     await this.#onSessionChange(session);
   }
@@ -2971,7 +3006,12 @@ export class ZeropsApiClient {
     const clearSessionOnUnauthorized = options.clearSessionOnUnauthorized ?? true;
 
     const run = async () => {
-      if (mutatesProject) await options.beforeProjectWrite?.();
+      if (mutatesProject) {
+        await options.beforeProjectWrite?.();
+        // An admission can wait, and whoever holds the session once it
+        // resolves is not necessarily who asked for the write.
+        this.#assertGeneration(generation);
+      }
       if (mutatesProject && this.#now() >= this.#writesAllowedUntilMs) {
         throw new ZeropsApiError(
           "Project access could not be verified. Refresh your projects before making changes.",

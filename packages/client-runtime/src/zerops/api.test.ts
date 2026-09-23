@@ -1600,6 +1600,33 @@ describe("ZeropsApiClient.deleteThrowaway", () => {
   });
 });
 
+describe("a project write's admission", () => {
+  it("that resolves after a sign-out and another sign-in sends nothing as the new session", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    let admit!: () => void;
+    const admission = new Promise<void>((resolve) => {
+      admit = resolve;
+    });
+
+    const writing = client.requestData({
+      path: "/service-stack/s1/restart",
+      method: "PUT",
+      operationKind: "project-write",
+      signal: new AbortController().signal,
+      background: false,
+      beforeWrite: () => admission,
+    });
+    await client.signOutLocally();
+    client.restoreSession({ ...SESSION, accessToken: "access-2" });
+    admit();
+
+    await expect(writing).rejects.toMatchObject({ kind: "expired-session" });
+    expect(stub.requests).toEqual([]);
+  });
+});
+
 describe("ZeropsApiClient.adoptPersonalToken", () => {
   // The hand-over from app.zerops.io delivers a personal access token, which is
   // already a bearer — there is nothing to exchange. What there is to do is

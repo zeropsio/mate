@@ -378,6 +378,57 @@ describe("throwaway hygiene", () => {
     });
   }
 
+  // T-L16: a mint parked on a closed window belongs to the account that asked
+  // for it, and a grant for whoever signed in since never carries it out.
+  for (const row of [
+    { next: "another person", email: "user-2@example.test", password: "two" },
+    { next: "the same person", email: "user-1@example.test", password: "one" },
+  ] as const) {
+    it(`a mint waiting on a closed window is dropped when ${row.next} signs in meanwhile, and the grant mints nothing`, async () => {
+      vi.useFakeTimers();
+      const tab = signedInTab();
+      tab.client.setWritesAllowed(false);
+      const minting = tab
+        .throwaways()
+        .mint({ clientId: "org-1", name: "mate-door:p1:n1" })
+        .then(
+          () => null,
+          (cause: unknown) => cause,
+        );
+      await settle();
+
+      await tab.client.signOutLocally();
+      const signedInAgain = (await tab.client.login(row.email, row.password)).auth;
+      tab.client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
+      await settle();
+
+      expect(await minting).toMatchObject({ kind: "expired-session" });
+      expect(tab.mints()).toEqual([]);
+      expect(tab.rest.integrationTokens()).toEqual([]);
+      expect(tab.client.session?.accessToken).toBe(signedInAgain.accessToken);
+    });
+  }
+
+  it("a sign-out ends a mint's wait for the window at once", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    tab.client.setWritesAllowed(false);
+    let failure: unknown = null;
+    void tab
+      .throwaways()
+      .mint({ clientId: "org-1", name: "mate-door:p1:n1" })
+      .catch((cause: unknown) => {
+        failure = cause;
+      });
+    await settle();
+
+    await tab.client.signOutLocally();
+    await settle();
+
+    expect(failure).toMatchObject({ kind: "expired-session" });
+    expect(tab.mints()).toEqual([]);
+  });
+
   // CM-3: the organization's write flag would lock these members out, and
   // the door and the broker are what decide their roles.
   for (const row of [
@@ -437,6 +488,42 @@ describe("throwaway hygiene", () => {
     await Promise.all([eleventh, fifthGitea]);
     expect(minted("mate-door:")).toBe(DOOR_MINTS_PER_MINUTE + 1);
     expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE + 1);
+  });
+
+  it("a mint queued behind the budget is dropped when somebody else signs in meanwhile", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const platform = tab.throwaways();
+    for (let n = 1; n <= DOOR_MINTS_PER_MINUTE; n += 1)
+      await platform.mint({ clientId: "org-1", name: `mate-door:p1:${n}` });
+    const eleventh = platform.mint({ clientId: "org-1", name: "mate-door:p1:11" }).then(
+      () => null,
+      (cause: unknown) => cause,
+    );
+    await settle();
+
+    await tab.client.signOutLocally();
+    await tab.client.login("user-2@example.test", "two");
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(await eleventh).toMatchObject({ kind: "expired-session" });
+    expect(tab.mints().filter(({ token }) => token !== tab.session.accessToken)).toEqual([]);
+  });
+
+  it("the next account in the tab starts with a budget of its own", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const platform = tab.throwaways();
+    for (let n = 1; n <= DOOR_MINTS_PER_MINUTE; n += 1)
+      await platform.mint({ clientId: "org-1", name: `mate-door:p1:${n}` });
+
+    await tab.client.signOutLocally();
+    const next = (await tab.client.login("user-2@example.test", "two")).auth;
+    const first = platform.mint({ clientId: "org-1", name: "mate-door:p1:next" });
+    await settle();
+
+    expect(tab.mints().filter(({ token }) => token === next.accessToken)).toHaveLength(1);
+    await first;
   });
 
   it("a delete Zerops could not answer is tried once more, 5 s later", async () => {
