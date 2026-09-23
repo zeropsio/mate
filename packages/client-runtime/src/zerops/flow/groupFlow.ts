@@ -7,9 +7,8 @@
  * - **The release offer** is known only when every input it is measured from is known — the
  *   declarations, the group repo's tags, each production service's deployment and the head of
  *   `main` it would release, where the repository has one — and is offered only while all of
- *   them are current. Until then
- *   the gate says why in the one phrase producer's words (`knownPresentation`, §3.4): checking,
- *   or the cause of the input that failed.
+ *   them are current. Until then the gate says why in the one phrase producer's words
+ *   (`knownPresentation`, §3.4): checking, or the cause of the input that failed.
  * - **What a stop is (D7):** `environments.yaml` declares which stops exist and in what order,
  *   the project tags which Zerops projects are members. A declared stop without a member project
  *   is missing its project; a member without a declaration is not declared yet. Either takes
@@ -75,17 +74,22 @@ export interface GroupFlowCapabilities {
 /** Where a stop stands between the declarations and the project tags (D7). */
 export type StopStanding = "declared" | "missing-project" | "not-declared";
 
-export interface StopRow {
+export type StopRow = {
   readonly projectId: string;
   /** The member project's name, else the declaration's. */
   readonly name: string;
   /** `null` for a member not declared yet. */
   readonly tier: GroupEnvironment["tier"] | null;
-  readonly standing: StopStanding;
-  /** What the stop runs: its first running service by hostname, or none once each runs none. */
-  readonly deployment: Shown<Deployment>;
-  readonly services: Shown<ReadonlyArray<StopService>>;
-}
+} & (
+  | {
+      readonly standing: Exclude<StopStanding, "missing-project">;
+      /** What the stop runs: its first running service by hostname, or none once each runs none. */
+      readonly deployment: Shown<Deployment>;
+      readonly services: Shown<ReadonlyArray<StopService>>;
+    }
+  /** No project runs the stop, so there is nothing to read and nothing to wait for. */
+  | { readonly standing: "missing-project"; readonly deployment: null; readonly services: null }
+);
 
 export type ReleaseOffer = ReturnType<typeof releaseOffer>;
 
@@ -236,7 +240,7 @@ function stopsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<StopRow>> {
     projectId: string,
     name: string,
     tier: StopRow["tier"],
-    standing: StopStanding,
+    standing: Exclude<StopStanding, "missing-project">,
   ): StopRow => {
     const services = inputs.stops.get(projectId) ?? UNREAD;
     return {
@@ -251,14 +255,19 @@ function stopsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<StopRow>> {
   const memberNames = new Map(members.value.map(({ projectId, name }) => [projectId, name]));
   const declared = new Set(declarations.value.map(({ project }) => project));
   return withValue(combined.shown, () => [
-    ...declarations.value.map((declaration) =>
-      row(
-        declaration.project,
-        memberNames.get(declaration.project) ?? declaration.name,
-        declaration.tier,
-        memberNames.has(declaration.project) ? "declared" : "missing-project",
-      ),
-    ),
+    ...declarations.value.map(({ project, name, tier }): StopRow => {
+      const memberName = memberNames.get(project);
+      return memberName === undefined
+        ? {
+            projectId: project,
+            name,
+            tier,
+            standing: "missing-project",
+            deployment: null,
+            services: null,
+          }
+        : row(project, memberName, tier, "declared");
+    }),
     // Filtered into a fresh array, so the sort touches nothing else (`toSorted` is not in Hermes).
     ...members.value
       .filter(({ projectId }) => !declared.has(projectId))
@@ -360,7 +369,7 @@ export function groupFlow(
   const fed = new Map<string, Array<ServiceRef>>();
   if (isKnown(stops)) {
     for (const { tier, services } of stops.value) {
-      if (tier !== "stage" || !isKnown(services)) continue;
+      if (tier !== "stage" || services === null || !isKnown(services)) continue;
       for (const { hostname, service } of services.value) {
         fed.set(hostname, [...(fed.get(hostname) ?? []), service]);
       }

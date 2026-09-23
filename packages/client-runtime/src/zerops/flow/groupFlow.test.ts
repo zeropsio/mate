@@ -267,6 +267,21 @@ describe("groupFlow (DESIGN §4.7)", () => {
     ]);
   });
 
+  it("a stop missing its project has nothing to read, so it waits on nothing", () => {
+    const flow = groupFlow(
+      inputs({ members: known([{ projectId: "p-stage", name: "harbor stage" }]) }),
+      RELEASER,
+      NOW,
+    );
+
+    const stops = flow.stops.state === "known" ? flow.stops.value : [];
+    expect(stops.find(({ projectId }) => projectId === "p-prod")).toMatchObject({
+      standing: "missing-project",
+      services: null,
+      deployment: null,
+    });
+  });
+
   it("a stop runs its first running service, and none only when every service runs none", () => {
     const flow = groupFlow(
       inputs({
@@ -292,7 +307,7 @@ describe("groupFlow (DESIGN §4.7)", () => {
     );
 
     const stops = flow.stops.state === "known" ? flow.stops.value : [];
-    expect(stops.map(({ deployment }) => deployment.state)).toEqual(["known", "reading"]);
+    expect(stops.map(({ deployment }) => deployment?.state)).toEqual(["known", "reading"]);
     expect(stops[0]?.deployment).toMatchObject({ value: { kind: "running" } });
   });
 
