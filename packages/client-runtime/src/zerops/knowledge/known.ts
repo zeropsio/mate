@@ -121,7 +121,11 @@ export interface Cell<T> {
   readonly lastReadStart: number | null;
   /** Ordinal of the newest admitted invalidation; 0 before the first. */
   readonly lastInvalidation: number;
-  /** Invalidated during a read: one re-read after it completes. */
+  /**
+   * A read is owed: the value was invalidated during a read (M3), or no source stated its
+   * coverage. Only a value admitted with stated coverage, newer than every admitted
+   * invalidation, settles it; a failed read leaves it owed under the retry schedule.
+   */
   readonly dirty: boolean;
 }
 
@@ -141,7 +145,14 @@ export type KnownEvent<T> =
       readonly failure: FailureReason;
       readonly retryAtMs: number | null;
     }
-  | { readonly kind: "pushed"; readonly ordinal: number; readonly value: T; readonly atMs: number }
+  | {
+      readonly kind: "pushed";
+      readonly ordinal: number;
+      readonly value: T;
+      /** Stated by a source that knows it, e.g. a query observed with coverage (§3.5). */
+      readonly coverage?: Coverage;
+      readonly atMs: number;
+    }
   | {
       readonly kind: "source";
       readonly freshness:
@@ -191,19 +202,30 @@ export function advance<T>(cell: Cell<T>, event: KnownEvent<T>, nowMs: number): 
         ...cell,
         held: startRead(cell.held, event.atMs),
         lastReadStart: Math.max(cell.lastReadStart ?? 0, event.ordinal),
-        dirty: cell.dirty && event.ordinal < cell.lastInvalidation,
       };
     case "read-succeeded":
-      return admitValue(completeRead(cell, event.ordinal), event, event.coverage, "settled", nowMs);
-    case "read-failed":
-      return { ...completeRead(cell, event.ordinal), held: failRead(cell.held, event, nowMs) };
+      return admitValue(completeRead(cell, event.ordinal), event, "read", nowMs);
+    case "read-failed": {
+      // A failure of a read superseded by one still in flight is dropped (§4.0).
+      const superseded = cell.lastReadStart !== null && cell.lastReadStart > event.ordinal;
+      const completed = completeRead(cell, event.ordinal);
+      return superseded ? completed : { ...completed, held: failRead(cell.held, event, nowMs) };
+    }
     case "pushed":
-      return admitValue(cell, event, null, "live", nowMs);
+      return admitValue(cell, event, "push", nowMs);
     case "source":
       return cell.held.state === "known"
         ? {
             ...cell,
-            held: { ...cell.held, freshness: sourceFreshness(cell.held.freshness, event, nowMs) },
+            held: {
+              ...cell.held,
+              freshness: sourceFreshness(
+                cell.held.freshness,
+                cell.held.asOf.ordinal < cell.lastInvalidation,
+                event,
+                nowMs,
+              ),
+            },
           }
         : cell;
     case "invalidated":
@@ -228,6 +250,8 @@ export function advance<T>(cell: Cell<T>, event: KnownEvent<T>, nowMs: number): 
               evidence: event.evidence,
               asOf: { ordinal: event.ordinal, atMs: event.atMs },
             },
+            // Absence is sticky (M6): nothing is owed a read.
+            dirty: false,
           }
         : completed;
     }
@@ -271,29 +295,35 @@ const completeRead = <T>(cell: Cell<T>, ordinal: number): Cell<T> => ({
  */
 function admitValue<T>(
   cell: Cell<T>,
-  event: { readonly ordinal: number; readonly value: T; readonly atMs: number },
-  coverage: Coverage | null,
-  fresh: "settled" | "live",
+  event: {
+    readonly ordinal: number;
+    readonly value: T;
+    readonly atMs: number;
+    readonly coverage?: Coverage;
+  },
+  origin: "read" | "push",
   nowMs: number,
 ): Cell<T> {
   const held = cell.held;
-  if (held.state === "gone" && coverage === null) return cell;
+  if (held.state === "gone" && origin === "push") return cell;
   if ("asOf" in held && event.ordinal <= held.asOf.ordinal) return cell;
   const invalidated = event.ordinal < cell.lastInvalidation;
   const freshness: Freshness = invalidated
     ? invalidatedFreshness(held.state === "known" ? held.freshness : null, nowMs)
-    : { kind: fresh };
+    : { kind: origin === "read" ? "settled" : "live" };
+  // A push that states no coverage keeps the value's; into a cell with none it is partial, and
+  // a read is owed until one can prove the collection complete.
+  const stated = event.coverage !== undefined;
   return {
     ...cell,
     held: {
       state: "known",
       value: event.value,
       asOf: { ordinal: event.ordinal, atMs: event.atMs },
-      // A push never proves a collection complete, so a push into an empty cell is partial.
-      coverage: coverage ?? (held.state === "known" ? held.coverage : "partial"),
+      coverage: event.coverage ?? (held.state === "known" ? held.coverage : "partial"),
       freshness,
     },
-    dirty: cell.dirty || invalidated,
+    dirty: invalidated || (!stated && (cell.dirty || held.state !== "known")),
   };
 }
 
@@ -339,14 +369,16 @@ function failRead<T>(
   }
 }
 
+/** A live source never makes a value older than an admitted invalidation fresh (M3). */
 function sourceFreshness(
   current: Freshness,
+  invalidated: boolean,
   event: Extract<KnownEvent<unknown>, { kind: "source" }>,
   nowMs: number,
 ): Freshness {
   switch (event.freshness) {
     case "live":
-      return { kind: "live" };
+      return invalidated ? invalidatedFreshness(current, nowMs) : { kind: "live" };
     case "revalidating":
       return current.kind === "revalidating" ? current : { kind: "revalidating", sinceMs: nowMs };
     case "paused-background":

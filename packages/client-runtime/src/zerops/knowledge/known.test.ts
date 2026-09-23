@@ -103,6 +103,12 @@ const TRANSITIONS: ReadonlyArray<TransitionRow> = [
     }),
   },
   {
+    name: "reading, read-failed for a read superseded by one still in flight → reading, the newer ticket kept (§4.0)",
+    from: cellOf(READING, { lastReadStart: 2 }),
+    event: { kind: "read-failed", ordinal: 1, failure: TIMEOUT, retryAtMs: 54_000 },
+    to: cellOf(READING, { lastReadStart: 2 }),
+  },
+  {
     name: "reading, read-failed(unsupported) → failed with retryAt = null",
     from: cellOf(READING, { lastReadStart: 1 }),
     event: { kind: "read-failed", ordinal: 1, failure: UNSUPPORTED, retryAtMs: 54_000 },
@@ -123,6 +129,12 @@ const TRANSITIONS: ReadonlyArray<TransitionRow> = [
   {
     name: "known, proven-absent → gone(evidence)",
     from: cellOf(knownAt("a", 1)),
+    event: { kind: "proven-absent", evidence: "authoritative-removal", ordinal: 2, atMs: 2_000 },
+    to: cellOf({ ...GONE, evidence: "authoritative-removal" }),
+  },
+  {
+    name: "known with a read owed, proven-absent → gone, no read owed (M6)",
+    from: cellOf(knownAt("a", 1, { kind: "live" }, "partial"), { dirty: true }),
     event: { kind: "proven-absent", evidence: "authoritative-removal", ordinal: 2, atMs: 2_000 },
     to: cellOf({ ...GONE, evidence: "authoritative-removal" }),
   },
@@ -178,6 +190,12 @@ const TRANSITIONS: ReadonlyArray<TransitionRow> = [
         sinceMs: NOW,
       }),
     ),
+  },
+  {
+    name: "known(revalidating), read-failed for a read superseded by one still in flight → unchanged, the newer ticket kept (§4.0)",
+    from: cellOf(knownAt("a", 1, { kind: "revalidating", sinceMs: 3_000 }), { lastReadStart: 3 }),
+    event: { kind: "read-failed", ordinal: 2, failure: TIMEOUT, retryAtMs: 54_000 },
+    to: cellOf(knownAt("a", 1, { kind: "revalidating", sinceMs: 3_000 }), { lastReadStart: 3 }),
   },
   {
     name: "known, read-failed older than the applied value → unchanged, the read is complete (M2)",
@@ -243,6 +261,14 @@ const TRANSITIONS: ReadonlyArray<TransitionRow> = [
     from: cellOf(knownAt("a", 1, { kind: "paused", by: "background" })),
     event: { kind: "source", freshness: "live" },
     to: cellOf(knownAt("a", 1, { kind: "live" })),
+  },
+  {
+    name: "known(paused) older than an admitted invalidation, source(live) → known(stale(invalidated)): never fresh (M3)",
+    from: cellOf(knownAt("a", 1, { kind: "paused", by: "background" }), { lastInvalidation: 2 }),
+    event: { kind: "source", freshness: "live" },
+    to: cellOf(knownAt("a", 1, { kind: "stale", reason: { kind: "invalidated" }, sinceMs: NOW }), {
+      lastInvalidation: 2,
+    }),
   },
   {
     name: "known(stale), source(live) → known(live)",
@@ -356,10 +382,16 @@ const TRANSITIONS: ReadonlyArray<TransitionRow> = [
     to: cellOf(GONE),
   },
   {
-    name: "unread, pushed → known(live, partial): a push never earns a complete negative",
+    name: "unread, pushed without coverage → known(live, partial) + dirty: a read must earn the complete negative",
     from: newCell("account"),
     event: { kind: "pushed", ordinal: 1, value: "a", atMs: 1_000 },
-    to: cellOf(knownAt("a", 1, { kind: "live" }, "partial")),
+    to: cellOf(knownAt("a", 1, { kind: "live" }, "partial"), { dirty: true }),
+  },
+  {
+    name: "unread, pushed with coverage (a query observed with coverage, §3.5) → known(live, coverage), clean",
+    from: newCell("account"),
+    event: { kind: "pushed", ordinal: 1, value: "a", coverage: "complete", atMs: 1_000 },
+    to: cellOf(knownAt("a", 1, { kind: "live" }, "complete")),
   },
   {
     name: "known(paused), pushed newer → known(v′, live), coverage kept",
@@ -405,17 +437,52 @@ describe("Known transitions (DESIGN §3.2)", () => {
     });
   });
 
-  it("a read after the invalidation clears dirty", () => {
+  it("a read started after the invalidation settles dirty when it succeeds, not when it starts", () => {
     const dirty = cellOf(
       knownAt("a", 1, { kind: "stale", reason: { kind: "invalidated" }, sinceMs: NOW }),
       { lastInvalidation: 2, dirty: true },
     );
-    expect(advance(dirty, { kind: "read-started", ordinal: 3, atMs: 3_000 }, NOW)).toEqual(
+    const started = advance(dirty, { kind: "read-started", ordinal: 3, atMs: 3_000 }, NOW);
+    expect(started).toEqual(
       cellOf(knownAt("a", 1, { kind: "revalidating", sinceMs: 3_000 }), {
         lastReadStart: 3,
         lastInvalidation: 2,
+        dirty: true,
       }),
     );
+    expect(
+      advance(
+        started,
+        { kind: "read-succeeded", ordinal: 3, value: "b", coverage: "complete", atMs: 3_000 },
+        NOW,
+      ),
+    ).toEqual(cellOf(knownAt("b", 3), { lastInvalidation: 2 }));
+  });
+});
+
+const run = (events: ReadonlyArray<KnownEvent<string>>): Cell<string> =>
+  events.reduce((cell, event) => advance(cell, event, NOW), newCell<string>("account"));
+
+describe("Known sequences a single row cannot show", () => {
+  it("a push that overtakes the first read leaves the cell dirty, so a read can still prove it complete", () => {
+    expect(
+      run([
+        { kind: "read-started", ordinal: 1, atMs: 1_000 },
+        { kind: "pushed", ordinal: 2, value: "x", atMs: 2_000 },
+        { kind: "read-succeeded", ordinal: 1, value: "", coverage: "complete", atMs: 1_000 },
+      ]),
+    ).toEqual(cellOf(knownAt("x", 2, { kind: "live" }, "partial"), { dirty: true }));
+  });
+
+  it("a value whose coverage no source stated stays dirty through a failed read until one succeeds", () => {
+    expect(
+      run([
+        { kind: "pushed", ordinal: 1, value: "x", atMs: 1_000 },
+        { kind: "read-started", ordinal: 2, atMs: 2_000 },
+        { kind: "read-failed", ordinal: 2, failure: TIMEOUT, retryAtMs: 54_000 },
+        { kind: "source", freshness: "live" },
+      ]),
+    ).toEqual(cellOf(knownAt("x", 1, { kind: "live" }, "partial"), { dirty: true }));
   });
 });
 
