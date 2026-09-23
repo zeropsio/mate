@@ -15,7 +15,6 @@ import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { identity, organization, project, scope } from "./__fixtures__/platformData";
 import {
-  admittedOnly,
   authenticatedZeropsOrigins,
   sameProjectsRead,
   sameServicesRead,
@@ -72,33 +71,6 @@ describe("authenticatedZeropsOrigins", () => {
       group: "connected",
       environmentId,
     });
-  });
-});
-
-describe("admittedOnly", () => {
-  const listing = (value: ReadonlyArray<string>): Known<ReadonlyArray<string>> => ({
-    state: "known",
-    value,
-    asOf: { ordinal: 3, atMs: 30 },
-    coverage: "complete",
-    freshness: { kind: "live" },
-  });
-
-  it("leaves a listing partial when it drops a project the grant has not admitted, never a complete none", () => {
-    expect(admittedOnly(listing(["created-in-another-tab"]), () => false)).toEqual({
-      ...listing([]),
-      coverage: "partial",
-    });
-  });
-
-  it("keeps a listing whose every project is admitted as it was", () => {
-    const whole = listing(["a", "b"]);
-    expect(admittedOnly(whole, () => true)).toEqual(whole);
-  });
-
-  it("passes a listing it does not hold through", () => {
-    const unread: Known<ReadonlyArray<string>> = { state: "unread", waitingFor: "access-grant" };
-    expect(admittedOnly(unread, () => false)).toBe(unread);
   });
 });
 

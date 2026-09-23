@@ -935,17 +935,6 @@ const KNOWN_VALUE_READ_EXCEPTIONS: ReadonlyMap<string, string> = new Map([
     "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx deployment.value",
     "state-model 4.4: the deployment store answers which services run nothing as a selector",
   ],
-  ...[
-    "apps/web/src/components/zerops/ZeropsProjectsPage.tsx input.listing.value",
-    "apps/web/src/zerops/useZeropsCandidates.ts listing.value",
-    "apps/web/src/zerops/useZeropsCandidates.ts selected.value",
-  ].map(
-    (read) =>
-      [
-        read,
-        "state-model 1.3 follow-up: web's candidate listing narrows a Known; a cr/zerops selector answers it",
-      ] as const,
-  ),
 ]);
 
 interface KnownValueRead {

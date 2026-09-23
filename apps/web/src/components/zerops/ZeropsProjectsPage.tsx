@@ -46,6 +46,7 @@ import {
   type KnownPresentation,
   type KnownSurface,
 } from "@t3tools/client-runtime/zerops/knowledge";
+import { candidateMembers } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
@@ -333,7 +334,7 @@ export function hasNoZeropsProject(input: {
   if (input.creationPending === true) return false;
   if (input.listing.state !== "known" || input.listing.coverage !== "complete") return false;
   // Emptiness does not depend on how the tree orders what it holds.
-  const view = buildZeropsGroupTree(input.listing.value, {
+  const view = buildZeropsGroupTree(candidateMembers(input.listing), {
     rank: rankZeropsCandidateForListing,
     order: "name",
   });

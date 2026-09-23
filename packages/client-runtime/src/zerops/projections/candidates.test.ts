@@ -3,7 +3,14 @@ import { describe, expect, it } from "@effect/vitest";
 import type { Known } from "../knowledge/known.ts";
 import type { FacetAdmission, ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
 import { project, service, stamp } from "../data/__fixtures__/index.ts";
-import { candidatesComplete, selectCandidates } from "./candidates.ts";
+import type { ZeropsCandidate } from "../candidates.ts";
+import {
+  admittedOnly,
+  candidateMembers,
+  candidatesComplete,
+  presentCandidates,
+  selectCandidates,
+} from "./candidates.ts";
 
 const admission: FacetAdmission = {
   lastNativeReceiptOrdinal: null,
@@ -223,5 +230,84 @@ describe("selectCandidates", () => {
     expect(candidatesComplete(selectCandidates(row.listing, () => row.services))).toBe(
       row.complete,
     );
+  });
+});
+
+const notHeld: ReadonlyArray<{
+  readonly name: string;
+  readonly listing: Known<ReadonlyArray<ZeropsCandidate>>;
+}> = [
+  { name: "unread", listing: { state: "unread", waitingFor: null } },
+  { name: "being read", listing: { state: "reading", sinceMs: 10, attempt: 1 } },
+  {
+    name: "failed",
+    listing: {
+      state: "failed",
+      failure: { kind: "transport", detail: "gateway" },
+      atMs: 10,
+      attempt: 1,
+      retryAtMs: 90,
+    },
+  },
+  {
+    name: "gone",
+    listing: { state: "gone", evidence: "direct-forbidden", asOf: { ordinal: 2, atMs: 20 } },
+  },
+];
+
+const candidate = (id: string, tagList: ReadonlyArray<string> = []): ZeropsCandidate => ({
+  key: id,
+  project: { id, name: id, status: "ACTIVE", tagList },
+  group: "unavailable",
+});
+
+describe("presentCandidates", () => {
+  it("presents a known listing's rows and keeps its stamp, coverage and freshness", () => {
+    const listing = known([candidate("a"), candidate("b")], "partial");
+
+    expect(presentCandidates(listing, (row) => row.key)).toEqual({ ...listing, value: ["a", "b"] });
+  });
+
+  it.each(notHeld)("passes a listing that is $name through, never an empty one", ({ listing }) => {
+    expect(presentCandidates(listing, (row) => row.key)).toBe(listing);
+  });
+});
+
+describe("candidateMembers", () => {
+  it("holds a known listing's rows, a partial one's included", () => {
+    const rows = [candidate("a")];
+
+    expect(candidateMembers(known(rows, "partial"))).toBe(rows);
+  });
+
+  it.each(notHeld)("holds no member of a listing that is $name", ({ listing }) => {
+    expect(candidateMembers(listing)).toEqual([]);
+  });
+});
+
+describe("admittedOnly", () => {
+  const listing = (value: ReadonlyArray<string>): Known<ReadonlyArray<string>> => ({
+    state: "known",
+    value,
+    asOf: { ordinal: 3, atMs: 30 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+
+  it("leaves a listing partial when it drops a project the grant has not admitted, never a complete none", () => {
+    expect(admittedOnly(listing(["created-in-another-tab"]), () => false)).toEqual({
+      ...listing([]),
+      coverage: "partial",
+    });
+  });
+
+  it("keeps a listing whose every project is admitted as it was", () => {
+    const whole = listing(["a", "b"]);
+    expect(admittedOnly(whole, () => true)).toEqual(whole);
+  });
+
+  it("passes a listing it does not hold through", () => {
+    const unread: Known<ReadonlyArray<string>> = { state: "unread", waitingFor: "access-grant" };
+    expect(admittedOnly(unread, () => false)).toBe(unread);
   });
 });

@@ -89,3 +89,42 @@ export function candidatesComplete(listing: Known<ReadonlyArray<CandidateRow>>):
     listing.value.every((row) => row.presence === "known")
   );
 }
+
+/**
+ * The listing's items the account's grant admits. Dropping one leaves the listing partial: the
+ * organization holds a project this list does not show, so no surface may read "none" off it (M5).
+ */
+export function admittedOnly<T>(
+  listing: Known<ReadonlyArray<T>>,
+  admits: (item: T) => boolean,
+): Known<ReadonlyArray<T>> {
+  if (listing.state !== "known") return listing;
+  const value = listing.value.filter(admits);
+  return value.length === listing.value.length
+    ? listing
+    : { ...listing, value, coverage: "partial" };
+}
+
+/**
+ * A listing's rows as a surface presents them, as known as the listing is: a listing that holds no
+ * rows (unread, being read, failed, gone) passes through as it is, never as an empty one.
+ */
+export function presentCandidates<Row, Presented>(
+  listing: Known<ReadonlyArray<Row>>,
+  present: (row: Row) => Presented,
+): Known<ReadonlyArray<Presented>> {
+  if (listing.state !== "known") return listing;
+  return { ...listing, value: listing.value.map(present) };
+}
+
+const NO_MEMBERS: ReadonlyArray<never> = [];
+
+/**
+ * The rows a listing holds, for a surface that looks a candidate up or draws the rows read so far:
+ * every row of a complete listing, the ones read of a partial one, and none while it holds no rows
+ * at all. Nothing negative may be read off it — `candidatesComplete` says when these are all the
+ * rows there are.
+ */
+export function candidateMembers<Row>(listing: Known<ReadonlyArray<Row>>): ReadonlyArray<Row> {
+  return listing.state === "known" ? listing.value : NO_MEMBERS;
+}
