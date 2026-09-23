@@ -131,9 +131,63 @@ function rig(
   return result;
 }
 
+const ENVIRONMENT_ID = EnvironmentId.make("env-a");
+
+/**
+ * A real exchange driver bound to the store, holding a credential for `KEY` on a link that the
+ * test moves by hand; `retried` lists every link it kicked.
+ */
+async function boundDriver(rig: Rig) {
+  const retried: Array<EnvironmentId> = [];
+  const driver = makeExchangeDriver<string>({
+    clock: rig.clock,
+    exchange: async () => ({
+      ok: true,
+      environmentId: ENVIRONMENT_ID,
+      descriptor: (ready("0.11.40") as Extract<ProbeReading, { kind: "ready" }>).descriptor,
+      credential: "bearer",
+    }),
+    install: async () => ({ ok: true }),
+    readDescriptor: () => new Promise(() => undefined),
+    retryLink: (id) => {
+      retried.push(id);
+    },
+    refreshPresence: () => undefined,
+    retire: () => undefined,
+  });
+  const unbind = bindContainerStore(rig.store, driver);
+  driver.setAccount({
+    postGrant: true,
+    identityMint: { allowed: true },
+    zeropsFailing: false,
+    grantVerifiedAtMs: 0,
+  });
+  driver.setVisible(true);
+  driver.setTargets([
+    {
+      key: KEY,
+      presence: { kind: "present", origin: ORIGIN },
+      container: rig.store.verdict(KEY),
+      record: ENVIRONMENT_ID,
+    },
+  ]);
+  driver.setDemand("record", [KEY]);
+  await rig.clock.advance(0);
+  expect(driver.machine(KEY)?.credential.kind).toBe("held");
+  return {
+    driver,
+    retried,
+    dispose: () => {
+      unbind();
+      driver.dispose();
+    },
+  };
+}
+
 describe("container store (DESIGN §4.5)", () => {
   it("ready re-probes on status push, connect failure or wake", async () => {
-    const { clock, store, probes } = rig();
+    const setup = rig();
+    const { clock, store, probes } = setup;
     store.setTargets([target("ACTIVE")]);
     await clock.advance(0);
     expect(store.verdict(KEY)).toEqual({ level: "ready" });
@@ -167,6 +221,19 @@ describe("container store (DESIGN §4.5)", () => {
     store.wake(true);
     await clock.advance(0);
     expect(probes).toHaveLength(2);
+
+    // A connect that fails before it ever connects reads it again too, each time it fails.
+    const bound = await boundDriver(setup);
+    probes.length = 0;
+    for (const attempt of [1, 2]) {
+      bound.driver.link(ENVIRONMENT_ID, { phase: "connecting" });
+      await clock.advance(0);
+      expect(probes).toHaveLength(attempt - 1);
+      bound.driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: null });
+      await clock.advance(0);
+      expect(probes).toHaveLength(attempt);
+    }
+    bound.dispose();
     store.dispose();
   });
 
@@ -205,47 +272,13 @@ describe("container store (DESIGN §4.5)", () => {
   });
 
   it("container ready kicks a link in backoff", async () => {
-    const { clock, store, probes } = rig();
-    const environmentId = EnvironmentId.make("env-a");
-    const retried: Array<EnvironmentId> = [];
-    const driver = makeExchangeDriver<string>({
-      clock,
-      exchange: async () => ({
-        ok: true,
-        environmentId,
-        descriptor: (ready("0.11.40") as Extract<ProbeReading, { kind: "ready" }>).descriptor,
-        credential: "bearer",
-      }),
-      install: async () => ({ ok: true }),
-      readDescriptor: () => new Promise(() => undefined),
-      retryLink: (id) => {
-        retried.push(id);
-      },
-      refreshPresence: () => undefined,
-      retire: () => undefined,
-    });
-    const unbind = bindContainerStore(store, driver);
-    driver.setAccount({
-      postGrant: true,
-      identityMint: { allowed: true },
-      zeropsFailing: false,
-      grantVerifiedAtMs: 0,
-    });
-    driver.setVisible(true);
+    const setup = rig();
+    const { clock, store, probes } = setup;
     store.setTargets([target("ACTIVE")]);
-    driver.setTargets([
-      {
-        key: KEY,
-        presence: { kind: "present", origin: ORIGIN },
-        container: store.verdict(KEY),
-        record: environmentId,
-      },
-    ]);
-    driver.setDemand("record", [KEY]);
-    await clock.advance(0);
+    const { driver, retried, dispose } = await boundDriver(setup);
+    const environmentId = ENVIRONMENT_ID;
     driver.link(environmentId, { phase: "connected" });
     await clock.advance(0);
-    expect(driver.machine(KEY)?.credential.kind).toBe("held");
 
     // The container restarts under the socket, which falls into backoff.
     await clock.advance(5_000);
@@ -266,8 +299,7 @@ describe("container store (DESIGN §4.5)", () => {
     expect(probes.length).toBeGreaterThan(0);
     expect(store.verdict(KEY)).toEqual({ level: "ready" });
     expect(retried).toEqual([environmentId]);
-    unbind();
-    driver.dispose();
+    dispose();
     store.dispose();
   });
 });

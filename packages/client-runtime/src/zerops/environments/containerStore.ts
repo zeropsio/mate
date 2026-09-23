@@ -6,8 +6,8 @@
  *   the link (`link`), the Mate flag's read — and every probe reading lands on each target whose
  *   origin it read. Each target's machine decides its level; the store runs its effects.
  * - Probes follow each machine's cadence. A ready container is read again on a status push, on
- *   its socket failing, on a visible wake and whenever someone asks (`request`): ready is never
- *   terminal.
+ *   its socket dropping or a connect to it failing, on a visible wake and whenever someone asks
+ *   (`request`): ready is never terminal.
  * - Intents are persisted in this tab's storage as `{target, kind, since, from?}`, so a reload
  *   inside an intent's budget shows `restarting(you)` or `updating` again instead of guesses. An
  *   intent restored for a target not yet listed waits for it.
@@ -391,14 +391,20 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
     if (targets.length > 0) driver.setTargets(targets);
   };
   const exchanging = new Set<TargetKey>();
+  const failing = new Set<TargetKey>();
+  /** Reads the container once each time `now` turns true for the key. */
+  const onEdge = (seen: Set<TargetKey>, key: TargetKey, now: boolean) => {
+    if (now && !seen.has(key)) store.request(key);
+    if (now) seen.add(key);
+    else seen.delete(key);
+  };
   const toStore = () => {
     for (const [key, machine] of driver.machines()) {
       store.link(key, machine.link.phase === "connected");
       // An exchange starting reads the container it is about to meet.
-      const wants = machine.credential.kind === "exchanging";
-      if (wants && !exchanging.has(key)) store.request(key);
-      if (wants) exchanging.add(key);
-      else exchanging.delete(key);
+      onEdge(exchanging, key, machine.credential.kind === "exchanging");
+      // A connect failing, connected before or not, reads it again: ready is never terminal.
+      onEdge(failing, key, machine.link.phase === "backoff");
     }
   };
   const unsubscribeStore = store.subscribe(toDriver);
