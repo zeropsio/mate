@@ -269,15 +269,8 @@ type Admission =
 
 /** What a demand that holds nothing shows. */
 const NOT_DEMANDED: AnyShown = { state: "unread", waitingFor: null };
-/** What a demand shows once its account closed. */
+/** What a demand shows once its account closed, or when it names another account session. */
 const ACCOUNT_CLOSED: AnyShown = { state: "unread", waitingFor: "zerops-session" };
-
-const REFUSAL_WORDS: Readonly<Record<ZeropsResourceAdmissionError["reason"], string>> = {
-  "runtime-closed": "This account is signed out.",
-  "account-mismatch": "This read belongs to another account.",
-  "account-capacity": "Too many resources are open at once.",
-  "lease-released": "This read is no longer held.",
-};
 
 const accountRefsEqual = (left: AccountRef, right: AccountRef): boolean =>
   left.apiOrigin === right.apiOrigin && left.accountId === right.accountId;
@@ -771,7 +764,10 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     return {
       key,
       active,
-      shown: () => (active() ? held.shown : NOT_DEMANDED),
+      shown: () => {
+        if (closed) return ACCOUNT_CLOSED;
+        return held.demands.has(id) ? held.shown : NOT_DEMANDED;
+      },
       retry: () => {
         if (closed) return admissionError("runtime-closed");
         return active() ? retry(held) : admissionError("lease-released");
@@ -798,9 +794,14 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
           close: () => get.setSelf(ACCOUNT_CLOSED),
         });
         if ("_tag" in opened) {
+          if (opened.reason !== "account-capacity") return ACCOUNT_CLOSED;
           return {
             state: "failed",
-            failure: { kind: "refused", code: opened.reason, words: REFUSAL_WORDS[opened.reason] },
+            failure: {
+              kind: "refused",
+              code: opened.reason,
+              words: "Too many resources are open at once.",
+            },
             atMs: now(),
             attempt: 0,
             retryAtMs: null,

@@ -672,11 +672,7 @@ describe("makeZeropsResourceBroker", () => {
         _tag: "Failure",
         failure: { reason: "account-mismatch" },
       });
-      expect(registry.get(refused)).toMatchObject({
-        state: "failed",
-        failure: { kind: "refused", code: "account-mismatch" },
-        retryAtMs: null,
-      });
+      expect(registry.get(refused)).toEqual({ state: "unread", waitingFor: "zerops-session" });
       expect(calls).toBe(0);
       unmount();
       registry.dispose();
@@ -918,6 +914,38 @@ describe("makeZeropsResourceBroker", () => {
     }),
   );
 
+  it.effect("a closed broker shows every resource waiting for the Zerops session", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed([PRAGUE]) }),
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const registry = AtomRegistry.make();
+      const openAtom = broker.known(authorizedAgentsRequest(scope));
+      const unmounts = [registry.mount(openAtom)];
+      yield* Effect.yieldNow;
+
+      yield* broker.shutdown;
+      const lateAtom = broker.known(tokenGrantsRequest(scope));
+      unmounts.push(registry.mount(lateAtom));
+      const stale = broker.known(locationsRequest(accountScope("account-a", 2)));
+      unmounts.push(registry.mount(stale));
+
+      const closed = { state: "unread", waitingFor: "zerops-session" };
+      expect(yield* lease.snapshot).toEqual(closed);
+      expect(registry.get(openAtom)).toEqual(closed);
+      expect(registry.get(lateAtom)).toEqual(closed);
+      expect(registry.get(stale)).toEqual(closed);
+      for (const unmount of unmounts) unmount();
+      registry.dispose();
+      yield* Scope.close(leaseScope, Exit.void);
+    }),
+  );
+
   it.effect("erases every value and aborts every read on an idempotent shutdown", () =>
     Effect.gen(function* () {
       const scope = accountScope();
@@ -951,8 +979,8 @@ describe("makeZeropsResourceBroker", () => {
 
       yield* broker.shutdown;
       yield* broker.shutdown;
-      expect(yield* recipe.snapshot).toEqual({ state: "unread", waitingFor: null });
-      expect(yield* clone.snapshot).toEqual({ state: "unread", waitingFor: null });
+      expect(yield* recipe.snapshot).toEqual({ state: "unread", waitingFor: "zerops-session" });
+      expect(yield* clone.snapshot).toEqual({ state: "unread", waitingFor: "zerops-session" });
       expect(Exit.hasInterrupts(yield* Fiber.await(cloneSettled))).toBe(true);
       expect(Exit.hasInterrupts(yield* Effect.exit(recipe.awaitSettled))).toBe(true);
       // The finished read has nothing left to abort; the one in flight is aborted.
