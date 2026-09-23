@@ -10,7 +10,7 @@
  */
 
 import {
-  connectionStatusText,
+  connectionBannerCopy,
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import {
@@ -215,12 +215,6 @@ function isConnectionInFlight(candidate: ZeropsRowCandidate): boolean {
   return phase === "available" || phase === "connecting" || phase === "reconnecting";
 }
 
-function connectionDetail(candidate: ZeropsRowCandidate): string | undefined {
-  const connection = candidate.connection;
-  if (connection === undefined || connection.phase === "connected") return undefined;
-  return connection.phase === "available" ? "Connecting..." : connectionStatusText(connection);
-}
-
 export function isZeropsToolCandidate(candidate: ZeropsCandidate): boolean {
   return readZeropsToolKind(candidate.project.tagList) !== undefined;
 }
@@ -350,23 +344,23 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
 
-  // Ready: what the socket, then the probe, have to say.
+  // Ready: what the socket, then the probe, have to say. A failed socket
+  // names its cause (`connectionBannerCopy`), never the failure's own words,
+  // which carry the container's host and URL.
   const connection = candidate.connection;
-  if (connection?.error) {
+  const failed =
+    connection !== undefined &&
+    (connection.phase === "error" ||
+      (connection.phase === "reconnecting" && connection.error !== null));
+  if (failed) {
+    const cause = connectionBannerCopy(connection, null)?.description ?? null;
     return {
-      detail: connectionDetail(candidate) ?? connection.error,
-      detailIsError: true,
       status:
         connection.phase === "error"
           ? { label: "Connection failed", tone: "failed" }
           : { label: "Reconnecting", tone: "attention" },
-    };
-  }
-  if (connection?.phase === "error") {
-    return {
-      detail: connectionDetail(candidate) ?? "Connection failed",
+      ...(cause === null ? {} : { detail: cause }),
       detailIsError: true,
-      status: { label: "Connection failed", tone: "failed" },
     };
   }
   if (isConnectionInFlight(candidate)) {
