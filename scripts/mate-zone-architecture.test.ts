@@ -494,7 +494,18 @@ const PURE_EFFECT_MODULES: ReadonlySet<string> = new Set([
 // Shared modules that compute values, import nothing and run nothing.
 const PURE_SHARED_MODULES: ReadonlySet<string> = new Set(["@t3tools/shared/semver"]);
 
-const NETWORK_AND_STORAGE_GLOBALS = [
+// A use no pure zone file may make, reported as `uses ${name}`.
+interface ForbiddenUse {
+  readonly name: string;
+  readonly pattern: RegExp;
+}
+
+const globalUse = (name: string): ForbiddenUse => ({
+  name,
+  pattern: new RegExp(`(?<![\\w$])${name}(?![\\w$])`, "u"),
+});
+
+const NETWORK_AND_STORAGE_USES: ReadonlyArray<ForbiddenUse> = [
   "fetch",
   "XMLHttpRequest",
   "WebSocket",
@@ -502,11 +513,34 @@ const NETWORK_AND_STORAGE_GLOBALS = [
   "localStorage",
   "sessionStorage",
   "indexedDB",
-] as const;
+].map(globalUse);
+
+const TIMER_USES: ReadonlyArray<ForbiddenUse> = [
+  "setTimeout",
+  "setInterval",
+  "setImmediate",
+  "requestAnimationFrame",
+  "requestIdleCallback",
+  "queueMicrotask",
+].map(globalUse);
+
+// Reads of the wall or the monotonic clock. Time reaches a machine, reducer or
+// pure projection only through `ctx.now`.
+const CLOCK_READS: ReadonlyArray<ForbiddenUse> = [
+  { name: "Date.now", pattern: /(?<![\w$])Date\s*\.\s*now(?![\w$])/u },
+  { name: "performance.now", pattern: /(?<![\w$])performance\s*\.\s*now(?![\w$])/u },
+  // `new Date()` and `new Date` read the clock; `new Date(value)` does not.
+  { name: "new Date()", pattern: /(?<![\w$])new\s+Date(?![\w$])(?!\s*\(\s*[^\s)])/u },
+];
+
+const FORBIDDEN_USES: ReadonlyArray<ForbiddenUse> = [
+  ...NETWORK_AND_STORAGE_USES,
+  ...TIMER_USES,
+  ...CLOCK_READS,
+];
 
 interface PureZone {
   readonly contains: (zeropsRelativeFile: string) => boolean;
-  readonly forbiddenGlobals: ReadonlyArray<string>;
 }
 
 // `knowledge/` ports and the invalidation bus are drivers, not reducers.
@@ -516,7 +550,8 @@ const KNOWLEDGE_DRIVER_FILES: ReadonlySet<string> = new Set([
   "knowledge/clock.ts",
 ]);
 
-// Rule 2: machine and reducer files import no Effect runtime, fetch or storage.
+// Rule 2: machine and reducer files import no Effect runtime, fetch or
+// storage, read no clock and set no timer.
 const MACHINE_ZONE: PureZone = {
   contains: (file) =>
     (file.startsWith("knowledge/") && !KNOWLEDGE_DRIVER_FILES.has(file)) ||
@@ -524,27 +559,16 @@ const MACHINE_ZONE: PureZone = {
     file === "environments/reachability.ts" ||
     file === "environments/gate.ts" ||
     /Machine\.tsx?$/u.test(file),
-  forbiddenGlobals: NETWORK_AND_STORAGE_GLOBALS,
 };
 
-const TIMER_GLOBALS = [
-  "setTimeout",
-  "setInterval",
-  "setImmediate",
-  "requestAnimationFrame",
-  "requestIdleCallback",
-  "queueMicrotask",
-] as const;
-
 // Rule 3: projections and the named pure modules are pure — no Effect runtime,
-// fetch, storage or timers.
+// fetch, storage, clock or timers.
 const PURE_PROJECTION_ZONE: PureZone = {
   contains: (file) =>
     file.startsWith("projections/") ||
     file === "flow/groupFlow.ts" ||
     file === "environments/reachability.ts" ||
     file === "environments/gate.ts",
-  forbiddenGlobals: [...NETWORK_AND_STORAGE_GLOBALS, ...TIMER_GLOBALS],
 };
 
 function isTestFile(file: string): boolean {
@@ -591,9 +615,9 @@ function collectPureZoneViolations(
 
         const source = yield* fs.readFileString(file);
         const code = scanSourceLiterals(source).jsxSource;
-        for (const global of zone.forbiddenGlobals) {
-          if (new RegExp(`(?<![\\w$])${global}(?![\\w$])`, "u").test(code)) {
-            report(`uses ${global}`);
+        for (const use of FORBIDDEN_USES) {
+          if (use.pattern.test(code)) {
+            report(`uses ${use.name}`);
           }
         }
         if (collectDynamicImportArguments(source).length > 0) {
@@ -2025,7 +2049,67 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
       }).pipe(Effect.scoped),
   );
 
-  it.effect("rule 2: machine and reducer files reach no Effect runtime, fetch or storage", () =>
+  it.effect("rule 2 fixture: machine and reducer files read no clock and set no timer", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
+        "knowledge/known.ts": "export const at = () => Date.now();\n",
+        "data/access/grant.ts": [
+          'import { later } from "./later.ts";',
+          "// Date.now() and performance.now() in a comment are prose, not reads.",
+          'export const label = "new Date()";',
+          "export const stamp = (wall: number) => new Date(wall);",
+          "",
+        ].join("\n"),
+        "data/access/later.ts": "export const later = () => setTimeout(() => undefined, 0);\n",
+        "environments/environmentMachine.ts": [
+          "export const mono = () => globalThis.performance.now();",
+          "export const wall = () => new Date( );",
+          "",
+        ].join("\n"),
+        "environments/reachability.ts": "export const wall = () => new Date;\n",
+        "environments/containerMachine.ts": "export const tick = () => setInterval(() => 0, 1);\n",
+        "environments/probeStore.ts": "export const at = () => Date.now();\n",
+      });
+
+      const violations = yield* collectPureZoneViolations(fixtureRoot, MACHINE_ZONE);
+
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      assert.deepStrictEqual(violations, [
+        {
+          root: `${zerops}/data/access/grant.ts`,
+          file: `${zerops}/data/access/later.ts`,
+          reason: "uses setTimeout",
+        },
+        {
+          root: `${zerops}/environments/containerMachine.ts`,
+          file: `${zerops}/environments/containerMachine.ts`,
+          reason: "uses setInterval",
+        },
+        {
+          root: `${zerops}/environments/environmentMachine.ts`,
+          file: `${zerops}/environments/environmentMachine.ts`,
+          reason: "uses new Date()",
+        },
+        {
+          root: `${zerops}/environments/environmentMachine.ts`,
+          file: `${zerops}/environments/environmentMachine.ts`,
+          reason: "uses performance.now",
+        },
+        {
+          root: `${zerops}/environments/reachability.ts`,
+          file: `${zerops}/environments/reachability.ts`,
+          reason: "uses new Date()",
+        },
+        {
+          root: `${zerops}/knowledge/known.ts`,
+          file: `${zerops}/knowledge/known.ts`,
+          reason: "uses Date.now",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 2: machines and reducers reach no Effect runtime, I/O, clock or timer", () =>
     Effect.gen(function* () {
       const root = yield* repoRoot;
       assert.deepStrictEqual(yield* collectPureZoneViolations(root, MACHINE_ZONE), []);
@@ -2077,6 +2161,53 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           root: `${zerops}/projections/sidebarRows.ts`,
           file: `${zerops}/projections/sidebarRows.ts`,
           reason: "uses setTimeout",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 3 fixture: projections and the named pure modules read no clock", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
+        "projections/sidebarRows.ts": [
+          'import { age } from "./age.ts";',
+          "export const rows = (now: number) => age(now);",
+          "",
+        ].join("\n"),
+        "projections/age.ts": "export const age = (now: number) => Date.now() - now;\n",
+        "projections/banner.ts": [
+          "// performance.now() in a comment is prose, not a read.",
+          "export const since = (wall: number) => new Date(wall);",
+          "",
+        ].join("\n"),
+        "flow/groupFlow.ts": "export const at = () => performance.now();\n",
+        "flow/deploymentStore.ts": "export const at = () => Date.now();\n",
+        "environments/gate.ts": "export const wall = () => new Date().getTime();\n",
+      });
+
+      const violations = yield* collectPureZoneViolations(fixtureRoot, PURE_PROJECTION_ZONE);
+
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      assert.deepStrictEqual(violations, [
+        {
+          root: `${zerops}/environments/gate.ts`,
+          file: `${zerops}/environments/gate.ts`,
+          reason: "uses new Date()",
+        },
+        {
+          root: `${zerops}/flow/groupFlow.ts`,
+          file: `${zerops}/flow/groupFlow.ts`,
+          reason: "uses performance.now",
+        },
+        {
+          root: `${zerops}/projections/age.ts`,
+          file: `${zerops}/projections/age.ts`,
+          reason: "uses Date.now",
+        },
+        {
+          root: `${zerops}/projections/sidebarRows.ts`,
+          file: `${zerops}/projections/age.ts`,
+          reason: "uses Date.now",
         },
       ]);
     }).pipe(Effect.scoped),

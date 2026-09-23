@@ -510,9 +510,11 @@ Dependency rules, each an import-graph test in `scripts/mate-zone-architecture.t
 [status table](#status-by-phase) says so:
 
 1. `cr/zerops/**` imports no React and no DOM globals.
-2. Machine and reducer files import no Effect runtime, fetch or storage; drivers reach sources only
-   through ports.
-3. `projections/**`, `flow/groupFlow.ts` and `environments/{reachability,gate}.ts` are pure.
+2. Machine and reducer files import no Effect runtime, fetch or storage, and read no clock: no
+   `Date.now`, `performance.now`, argument-less `new Date()` or timer; time comes in through
+   `ctx.now`. Drivers reach sources only through ports.
+3. `projections/**`, `flow/groupFlow.ts` and `environments/{reachability,gate}.ts` are pure,
+   reading no clock by the same measure.
 4. Web and mobile components import hooks only — never a store, `api.ts`, `giteaClient.ts` or
    `fetch` — and set no timer for data.
 5. `Cell` and `advance` stay private to their store; `.value` is read only in selectors.
@@ -594,6 +596,7 @@ carries it. "Live" means it holds on `main` today.
 | Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                                      | Live                                             |
 | Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)                    | 0.Z; zone test "rule 2"                          |
 | Dependency rule 3 (projections and the named pure modules are pure)                                         | 0.Z; zone test "rule 3"                          |
+| Dependency rules 2 and 3 read no clock and set no timer                                                     | 0.Z2; zone tests "rule 2" and "rule 3"           |
 | Dependency rule 4 (components import hooks only and set no data timer)                                      | 5.5                                              |
 | Dependency rule 5 (`Cell` and `advance` private to their store; `.value` only in selectors)                 | 1.5                                              |
 | Dependency rule 6, one way (only `account/` and `testing/` depend on `account/`)                            | 0.Z; zone test "rule 6"                          |
