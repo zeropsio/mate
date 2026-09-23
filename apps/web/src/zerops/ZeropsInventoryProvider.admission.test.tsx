@@ -70,18 +70,22 @@ describe("ZeropsInventoryProvider first admission", () => {
     expect(accessAtMount).toEqual(["verified"]);
   });
 
+  // An organization's project list failing fails the whole round, today and
+  // after one project's failure stops failing it (DESIGN G1).
   it("shows a failed first admission with one retry, and the retry admits", async () => {
     const harness = signedInHarness();
-    harness.rest.failProject("p1", 503);
+    const listing = harness.rest.hold("GET /client/org-1/project");
     const { mounting, accessAtMount } = mountProduct(harness);
     const tab = await mounting;
+    expect(listing.waiting()).toBe(1);
+
+    await tab.run(() => listing.fail(503));
 
     expect(tab.text()).toContain("Could not load your Zerops projects.");
     expect(tab.text()).not.toContain(CHILD);
     const retries = buttonsLabelled(tab.container(), "Try again");
     expect(retries).toHaveLength(1);
 
-    harness.rest.failProject("p1", null);
     await tab.run(() => press(retries[0]!));
 
     expect(tab.text()).toContain(CHILD);
