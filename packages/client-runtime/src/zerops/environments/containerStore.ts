@@ -28,12 +28,7 @@ import {
 } from "./containerMachine.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
 import type { ExchangeClock, ExchangeDriver, TargetKey } from "./exchangeDriver.ts";
-import {
-  makeProbeStore,
-  type ProbeCadence,
-  type ProbeFact,
-  type ProbeReading,
-} from "./probeStore.ts";
+import { makeProbeStore, type ProbeCadence, type ProbeReading } from "./probeStore.ts";
 
 /** One target as the platform describes it now. */
 export interface ContainerTarget {
@@ -90,8 +85,6 @@ export interface ContainerStore {
   readonly wake: (visible: boolean) => void;
   readonly verdict: (key: TargetKey) => ContainerVerdict;
   readonly machine: (key: TargetKey) => ContainerMachine | undefined;
-  /** The origin's descriptor and `/healthz` as last read (C6). */
-  readonly fact: (origin: string) => ProbeFact;
   /** Every target's machine as last published; the same map until the next publication. */
   readonly machines: () => ReadonlyMap<TargetKey, ContainerMachine>;
   readonly subscribe: (listener: () => void) => () => void;
@@ -352,7 +345,6 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
       return machine === undefined ? { level: "unknown" } : containerVerdict(machine);
     },
     machine: (key) => entries.get(key)?.machine,
-    fact: (origin) => probes.fact(origin),
     machines: () => published,
     subscribe: (listener) => {
       listeners.add(listener);
