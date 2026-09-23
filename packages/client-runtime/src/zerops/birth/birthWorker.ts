@@ -10,16 +10,29 @@
  *   registry does not name yet is one the card and the half-made reconcile finish (MB-24), never
  *   one left unhardened.
  * - `harden` and `health` are `provisioning.ts`'s wait: the container found and its own boot over
- *   (a read, never a timer), the project closed off, the Mate answering. A cap past its budget
- *   sets `overdue` on the step and changes nothing else (MC-13).
- * - A birth whose Mate answered is not driven again; its record stays until the connect promotes
- *   it, and nothing connects to it on its own before its step is `health` (`unhardenedBirths`).
- * - One tab drives a birth: its driver holds Web Lock `mate:birth:<projectId>` (§6.7), and a tab
- *   that gets the lock after another let it go reads the record first and goes on from its step.
+ *   (a read, never a timer), the project closed off, the Mate answering. A harden that answers
+ *   "not yet" is tried on the retry ladder; one that fails waits for "Try again". A cap past its
+ *   budget sets `overdue` on the step and changes nothing else (MC-13) but the wait's cadence:
+ *   every 2 s, and once overdue 10 s rising to 60 s.
+ * - A birth ends without a Mate when its project was removed or its creation failed — read while
+ *   the container is waited on, and every 30 s while the Mate is — or when its container import
+ *   failed (`container` false).
+ * - A birth whose Mate answered is read no more by the tab that saw it: that tab holds the birth
+ *   until the connect promotes it. A tab that takes a birth up after a reload reads its health
+ *   again once. Nothing connects to a Mate on its own before its step is `health`
+ *   (`unhardenedBirths`).
+ * - One tab drives a birth: its driver holds Web Lock `mate:birth:<projectId>` (§6.7) for as long
+ *   as the record is there, and a tab that gets the lock after another let it go reads the record
+ *   first and goes on from its step.
  */
 import type { ZeropsProject, ZeropsService } from "../api.ts";
 import type { ExchangeClock } from "../environments/exchangeDriver.ts";
-import { RETRY_RUNGS_MS, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
+import {
+  INITIAL_BACKOFF,
+  RETRY_RUNGS_MS,
+  scheduleRetry,
+  type Backoff,
+} from "../knowledge/retryPolicy.ts";
 import {
   advanceProvisioning,
   readProvisioning,
@@ -33,6 +46,12 @@ import type { BirthRecord, BirthStep, BirthStore } from "./birthStore.ts";
 
 /** How often a birth's wait reads what it waits on. */
 export const BIRTH_POLL_MS = 2_000;
+
+/** How often the health wait reads its project again, to hear that it was removed. */
+export const BIRTH_PROJECT_RECHECK_MS = 30_000;
+
+/** Once overdue, the wait reads this far apart, doubling up to the last (DESIGN §4.5 probes). */
+export const BIRTH_OVERDUE_POLL_MS = { first: 10_000, last: 60_000 } as const;
 
 /** What a group write or the harden answered. */
 export type BirthStepOutcome =
@@ -62,8 +81,13 @@ export interface BirthWorkerPorts {
   readonly writeTags: (birth: BirthRecord) => Promise<BirthStepOutcome>;
   /** The rest of its group registration: the broker's grant, a stage's key and declaration. */
   readonly writeRegistry: (birth: BirthRecord) => Promise<BirthStepOutcome>;
-  /** The project and its services by a direct read; `gone` once the platform no longer has it. */
-  readonly readProject: (birth: BirthRecord) => Promise<BirthProjectReading | "gone">;
+  /**
+   * The project and its services by a direct read; `gone` once the platform no longer has it,
+   * `creation-failed` once the platform failed or canceled its creation.
+   */
+  readonly readProject: (
+    birth: BirthRecord,
+  ) => Promise<BirthProjectReading | "gone" | "creation-failed">;
   /** Whether the activity feed reads a process running on the container; null before it answered. */
   readonly processRunning: (birth: BirthRecord, serviceId: string | null) => boolean | null;
   /** Closes the birth's project off (`projectIsolation.ts`); safe to run again. */
@@ -93,14 +117,19 @@ interface Driver {
   /** The wait of the step `step` names; a step moved by anyone else starts its wait over. */
   state: ProvisioningState | null;
   step: BirthStep | null;
-  /** Where a group write that answered "not yet" is on the retry ladder; null before one did. */
+  /** Where a write that answered "not yet" is on the retry ladder; null before one did. */
   backoff: Backoff | null;
+  /** When the health wait last read its project, or began; null before it began. */
+  projectReadAtMs: number | null;
+  /** How many reads this wait has made since it went overdue. */
+  overdueReads: number;
   /** Ends the current pause early. */
   wake: (() => void) | null;
   stopped: boolean;
 }
 
-type Next = { readonly after: number } | "finished";
+/** Read again after a pause; rest until "Try again" or the record moves; or let the birth go. */
+type Next = { readonly after: number } | "rest" | "finished";
 
 const AGAIN: Next = { after: 0 };
 const POLL: Next = { after: BIRTH_POLL_MS };
@@ -127,12 +156,16 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
 
   const nowMs = () => clock.now().wall;
 
-  const pause = (driver: Driver, ms: number) =>
+  /** Waits `ms`, or with null until woken: by "Try again", or by the record moving on. */
+  const pause = (driver: Driver, ms: number | null) =>
     new Promise<void>((resolve) => {
-      const cancel = clock.setTimer(ms, () => {
-        driver.wake = null;
-        resolve();
-      });
+      const cancel =
+        ms === null
+          ? () => undefined
+          : clock.setTimer(ms, () => {
+              driver.wake = null;
+              resolve();
+            });
       driver.wake = () => {
         cancel();
         driver.wake = null;
@@ -140,11 +173,38 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
       };
     });
 
+  /** The next read of a wait: every 2 s, and once overdue 10 s rising to 60 s. */
+  const poll = (driver: Driver, state: ProvisioningState): Next => {
+    if (!state.overdue) {
+      driver.overdueReads = 0;
+      return POLL;
+    }
+    const after = Math.min(
+      BIRTH_OVERDUE_POLL_MS.first * 2 ** driver.overdueReads,
+      BIRTH_OVERDUE_POLL_MS.last,
+    );
+    driver.overdueReads += 1;
+    return { after };
+  };
+
+  /** The next attempt of a write that answered "not yet", on the retry ladder. */
+  const backOff = (driver: Driver): Next => {
+    const retry = scheduleRetry(driver.backoff ?? INITIAL_BACKOFF, nowMs(), clock.random);
+    driver.backoff = retry.backoff;
+    return { after: retry.retryAtMs - nowMs() };
+  };
+
   /** The wait moved: published, and its `overdue` carried onto the record. */
   const commit = (birth: BirthRecord, driver: Driver, state: ProvisioningState) => {
     driver.state = state;
     if (state.overdue !== birth.overdue) store.update(birth.projectId, { overdue: state.overdue });
     publish();
+  };
+
+  /** Nothing is born of the birth: its project failed or was removed, or it has no container. */
+  const end = (birth: BirthRecord): Next => {
+    store.forget(birth.projectId);
+    return "finished";
   };
 
   const groupStep = async (
@@ -169,11 +229,8 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
       if (outcome.kind !== "done") ports.outstanding(birth, outcome.reason);
     }
     driver.backoff = null;
-    if (next === null) {
-      // Nothing to bring up: a stage or a production without an agent is born with its writes.
-      store.forget(birth.projectId);
-      return "finished";
-    }
+    // Nothing to bring up: a stage or a production without an agent is born with its writes.
+    if (next === null) return end(birth);
     store.update(birth.projectId, { step: next });
     return AGAIN;
   };
@@ -195,41 +252,43 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
         });
         driver.step = "health";
         driver.state = state;
+        driver.projectReadAtMs = nowMs();
         publish();
         return AGAIN;
       }
       if (outcome.kind === "failed") {
-        state = advanceProvisioning(
-          state,
-          { kind: "harden-failed", message: outcome.reason },
-          nowMs(),
+        // An answer, not a delay: asked again only when the person says "Try again".
+        commit(
+          birth,
+          driver,
+          advanceProvisioning(state, { kind: "harden-failed", message: outcome.reason }, nowMs()),
         );
+        return "rest";
       }
-    } else {
-      const reading = await ports.readProject(birth);
-      if (reading === "gone") {
-        store.forget(birth.projectId);
-        return "finished";
-      }
-      state = advanceProvisioning(
+      commit(birth, driver, state);
+      return backOff(driver);
+    }
+    const reading = await ports.readProject(birth);
+    if (reading === "gone" || reading === "creation-failed") return end(birth);
+    state = advanceProvisioning(
+      state,
+      await readProvisioning({
         state,
-        await readProvisioning({
-          state,
-          project: reading.project,
-          services: reading.services,
-          probeHealth: ports.probeHealth,
-        }),
-        nowMs(),
-      );
-      if (state.phase === "awaiting-settled") {
-        const running = ports.processRunning(birth, state.containerServiceId);
-        if (running !== null) {
-          state = advanceProvisioning(state, { kind: "process", running, observed: true }, nowMs());
-        }
+        project: reading.project,
+        services: reading.services,
+        probeHealth: ports.probeHealth,
+      }),
+      nowMs(),
+    );
+    if (state.phase === "awaiting-settled") {
+      const running = ports.processRunning(birth, state.containerServiceId);
+      if (running !== null) {
+        state = advanceProvisioning(state, { kind: "process", running, observed: true }, nowMs());
       }
     }
-    commit(birth, driver, advanceProvisioning(state, { kind: "tick" }, nowMs()));
-    return state.phase === "hardening" ? AGAIN : POLL;
+    state = advanceProvisioning(state, { kind: "tick" }, nowMs());
+    commit(birth, driver, state);
+    return state.phase === "hardening" ? AGAIN : poll(driver, state);
   };
 
   const health = async (birth: BirthRecord, driver: Driver): Promise<Next> => {
@@ -237,6 +296,13 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
       // No container was ever named: harden finds it again, and harden is safe to repeat.
       store.update(birth.projectId, { step: "harden" });
       return AGAIN;
+    }
+    if (driver.projectReadAtMs === null) {
+      driver.projectReadAtMs = nowMs();
+    } else if (nowMs() - driver.projectReadAtMs >= BIRTH_PROJECT_RECHECK_MS) {
+      driver.projectReadAtMs = nowMs();
+      const reading = await ports.readProject(birth);
+      if (reading === "gone" || reading === "creation-failed") return end(birth);
     }
     let state =
       driver.state ??
@@ -268,13 +334,16 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
       nowMs(),
     );
     commit(birth, driver, state);
-    return state.phase === "ready" ? "finished" : POLL;
+    // A Mate that answered is read no more; its tab keeps the lock until the connect promotes it.
+    return state.phase === "ready" ? "rest" : poll(driver, state);
   };
 
-  const step = (birth: BirthRecord, driver: Driver): Promise<Next> => {
+  const step = async (birth: BirthRecord, driver: Driver): Promise<Next> => {
     if (driver.step !== birth.step) {
       driver.step = birth.step;
       driver.state = null;
+      driver.backoff = null;
+      driver.projectReadAtMs = null;
     }
     switch (birth.step) {
       case "tags":
@@ -282,9 +351,9 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
       case "registry":
         return groupStep(birth, driver, ports.writeRegistry, birth.container ? "harden" : null);
       case "harden":
-        return harden(birth, driver);
+        return birth.container ? harden(birth, driver) : end(birth);
       case "health":
-        return health(birth, driver);
+        return birth.container ? health(birth, driver) : end(birth);
     }
   };
 
@@ -303,7 +372,7 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
         next = POLL;
       }
       if (next === "finished" || driver.stopped) return;
-      await pause(driver, next.after);
+      await pause(driver, next === "rest" ? null : next.after);
     }
   };
 
@@ -324,6 +393,8 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
         state: null,
         step: null,
         backoff: null,
+        projectReadAtMs: null,
+        overdueReads: 0,
         wake: null,
         stopped: false,
       };

@@ -121,8 +121,10 @@ interface Rig {
   health: ZeropsContainerHealth;
   tags: BirthStepOutcome;
   registry: BirthStepOutcome;
-  /** The platform no longer has the project. */
-  gone: boolean;
+  /** What closing the project off answers. */
+  hardened: BirthStepOutcome;
+  /** The platform no longer has the project, or failed to create it. */
+  ended: "gone" | "creation-failed" | null;
 }
 
 /** One tab's locks, as `navigator.locks` grants them. */
@@ -157,7 +159,8 @@ function rig(
     health: "initializing",
     tags: DONE,
     registry: DONE,
-    gone: false,
+    hardened: DONE,
+    ended: null,
     worker: undefined as unknown as BirthWorker,
   };
   result.worker = makeBirthWorker({
@@ -174,12 +177,12 @@ function rig(
     },
     readProject: async (birth) => {
       calls.push(`read ${birth.projectId}`);
-      return result.gone ? "gone" : { project: PROJECT, services: result.services };
+      return result.ended ?? { project: PROJECT, services: result.services };
     },
     processRunning: () => result.running,
     harden: async (birth) => {
       calls.push(`harden ${birth.projectId}`);
-      return DONE;
+      return result.hardened;
     },
     probeHealth: async (origin) => {
       calls.push(`probe ${origin}`);
@@ -194,16 +197,13 @@ function rig(
 }
 
 describe("the birth worker", () => {
-  it("leaving /zerops mid-birth keeps it hardening", async () => {
+  it("reads its own project until the container's boot is over, then hardens it once", async () => {
     const r = rig();
-    // The projects page shows the birth, and the person leaves it before the container is up.
-    const leave = r.worker.subscribe(() => undefined);
     r.store.begin(mate);
     await r.clock.advance(2_000);
     expect(r.store.birth("project-1")?.step).toBe("harden");
-    leave();
 
-    // The container comes up and its own boot finishes: the birth goes on without any view.
+    // The container comes up and its own boot finishes.
     r.services = [CONTAINER];
     await r.clock.advance(2_000);
     r.running = false;
@@ -246,6 +246,31 @@ describe("the birth worker", () => {
     expect(b.worker.waits().get("project-1")?.phase).toBe("ready");
   });
 
+  it("a Mate that answered stays its tab's until the connect promotes it", async () => {
+    const browser = makeHarnessBrowser();
+    const [first, second] = [browser.openTab(), browser.openTab()];
+    const clock = manualClock();
+    const a = rig({ clock, storage: first.localStorage, locks: tabLocks(first) });
+    a.services = [CONTAINER];
+    a.running = false;
+    a.health = "ready";
+    a.store.begin({ ...mate, registration: null });
+    await clock.advance(2_000);
+    expect(a.worker.waits().get("project-1")?.phase).toBe("ready");
+
+    // Another tab opens while the connect is on its way: it drives nothing of this birth.
+    const b = rig({ clock, storage: second.localStorage, locks: tabLocks(second) });
+    b.health = "ready";
+    await clock.advance(10_000);
+    expect(b.calls).toEqual([]);
+
+    a.store.promote("project-1", "environment-1");
+    b.store.reload();
+    await clock.advance(2_000);
+    expect(b.calls).toEqual([]);
+    expect(browser.locksHeld()).toEqual([]);
+  });
+
   it("a group write that fails is said, and the birth still hardens", async () => {
     const r = rig();
     r.services = [CONTAINER];
@@ -268,14 +293,70 @@ describe("the birth worker", () => {
     expect(r.outstanding).toEqual(["project-1: The account is being verified."]);
   });
 
-  it("a birth whose project is gone ends", async () => {
+  it("a harden that is not through yet is tried on the retry ladder, never in a loop", async () => {
     const r = rig();
-    r.gone = true;
-    r.store.begin(mate);
-    await r.clock.advance(2_000);
-    expect(r.store.birth("project-1")).toBeUndefined();
-    expect(r.worker.waits().size).toBe(0);
+    r.services = [CONTAINER];
+    r.running = false;
+    r.hardened = { kind: "not-yet", reason: "The account is being verified." };
+    r.store.begin({ ...mate, registration: null });
+    // Settled on the second read; the harden then waits 2 s, 4 s, 8 s between its attempts.
+    await r.clock.advance(2_000 + 2_000 + 4_000 + 8_000);
+    expect(r.calls.filter((call) => call.startsWith("harden"))).toHaveLength(4);
+
+    r.hardened = DONE;
+    await r.clock.advance(15_000);
+    expect(r.store.birth("project-1")?.step).toBe("health");
   });
+
+  it("a harden that failed waits for Try again", async () => {
+    const r = rig();
+    r.services = [CONTAINER];
+    r.running = false;
+    r.hardened = { kind: "failed", reason: "You may not change this project." };
+    r.store.begin({ ...mate, registration: null });
+    await r.clock.advance(600_000);
+    expect(r.calls.filter((call) => call.startsWith("harden"))).toHaveLength(1);
+    expect(r.worker.waits().get("project-1")).toMatchObject({
+      phase: "hardening",
+      detail: "You may not change this project.",
+    });
+
+    r.hardened = DONE;
+    r.worker.retry("project-1");
+    await r.clock.advance(0);
+    expect(r.calls.filter((call) => call.startsWith("harden"))).toHaveLength(2);
+    expect(r.store.birth("project-1")?.step).toBe("health");
+  });
+
+  it.each(["gone", "creation-failed"] as const)(
+    "a birth whose project is %s ends, waiting on its container or on its Mate",
+    async (ended) => {
+      const waiting = rig();
+      waiting.ended = ended;
+      waiting.store.begin(mate);
+      await waiting.clock.advance(2_000);
+      expect(waiting.store.birth("project-1")).toBeUndefined();
+      expect(waiting.worker.waits().size).toBe(0);
+
+      // The project is read again while its Mate is waited on, at a slower cadence than the probe.
+      const answering = rig();
+      answering.store.begin({ ...mate, registration: null });
+      answering.store.update("project-1", {
+        step: "health",
+        serviceId: "service-1",
+        origin: ORIGIN,
+      });
+      await answering.clock.advance(2_000);
+      const count = (kind: string) =>
+        answering.calls.filter((call) => call.startsWith(kind)).length;
+      const [reads, probes] = [count("read"), count("probe")];
+      answering.ended = ended;
+      await answering.clock.advance(30_000);
+      expect(count("read") - reads).toBe(1);
+      expect(count("probe") - probes).toBe(14);
+      expect(answering.store.birth("project-1")).toBeUndefined();
+    },
+  );
 
   it("a stage without an agent is born with its group writes", async () => {
     const r = rig();
@@ -286,6 +367,21 @@ describe("the birth worker", () => {
     });
     await r.clock.advance(2_000);
     expect(r.calls).toEqual(["tags project-1", "registry project-1"]);
+    expect(r.store.birth("project-1")).toBeUndefined();
+  });
+
+  it("a birth whose container import failed ends with its group writes", async () => {
+    const r = rig();
+    r.store.begin(mate);
+    await r.clock.advance(0);
+    expect(r.store.birth("project-1")?.step).toBe("harden");
+
+    // The creation's container import failed after the project was accepted.
+    r.store.update("project-1", { container: false });
+    r.services = [CONTAINER];
+    r.running = false;
+    await r.clock.advance(4_000);
+    expect(r.calls.some((call) => call.startsWith("harden"))).toBe(false);
     expect(r.store.birth("project-1")).toBeUndefined();
   });
 
@@ -311,6 +407,25 @@ describe("the birth worker", () => {
     r.worker.retry("project-1");
     await r.clock.advance(2_000);
     expect(r.store.birth("project-1")).toMatchObject({ step: "harden", overdue: false });
+  });
+
+  it("an overdue wait reads every 10 s rising to 60 s, and Keep waiting reads at once", async () => {
+    const r = rig();
+    r.store.begin({ ...mate, registration: null });
+    const reads = () => r.calls.filter((call) => call.startsWith("read")).length;
+    // Overdue on the read at 302 s.
+    await r.clock.advance(304_000);
+    expect(r.store.birth("project-1")?.overdue).toBe(true);
+    const before = reads();
+    // Then at 312 s, 332 s, 372 s.
+    await r.clock.advance(70_000);
+    expect(reads() - before).toBe(3);
+
+    r.worker.retry("project-1");
+    await r.clock.advance(0);
+    expect(reads() - before).toBe(4);
+    await r.clock.advance(2_000);
+    expect(reads() - before).toBe(5);
   });
 
   it("a reload resumes the health wait on the container hardening found, never hardening again", async () => {

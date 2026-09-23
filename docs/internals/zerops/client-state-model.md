@@ -307,7 +307,10 @@ is driven by one account worker under Web Lock `mate:birth:<projectId>`; auto-co
 `harden` to be done. The record carries its own group writes (the registry entry, then the broker's
 grant and a stage's key and declaration) and its organization, so neither an organization switch
 nor leaving the page strands them; a group write that fails is said and never holds the harden. A
-birth has no expiry: the connect promotes it, or a failed or removed project ends it (spec MB-24).
+harden that answers "not yet" is tried on the retry ladder, and one refused waits for _Try again_.
+The driving tab keeps the lock until the record is gone, so a Mate that answered is not read again
+by another tab. A birth has no expiry: the connect promotes it; a failed or removed project, or a
+container import that failed, ends it (spec MB-24).
 
 ### Gitea session, one per (epoch, Gitea origin)
 

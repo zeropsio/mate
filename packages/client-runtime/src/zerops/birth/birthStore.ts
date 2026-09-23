@@ -52,7 +52,10 @@ export interface BirthRecord {
   readonly overdue: boolean;
   /** The group writes this birth owes; null when none are this person's to write. */
   readonly registration: BirthRegistration | null;
-  /** Whether a Mate container is born: false for a stage or a production without an agent. */
+  /**
+   * Whether a Mate container is born: false for a stage or a production without an agent, and for
+   * a creation whose container import failed after its project was accepted.
+   */
   readonly container: boolean;
   /** The Mate's service and origin, once hardening found them; `health` resumes on them. */
   readonly serviceId: string | null;
@@ -76,7 +79,9 @@ export interface BeginBirth {
   readonly handoff: ZeropsCreationHandoff | null;
 }
 
-export type BirthPatch = Partial<Pick<BirthRecord, "step" | "overdue" | "serviceId" | "origin">>;
+export type BirthPatch = Partial<
+  Pick<BirthRecord, "step" | "overdue" | "container" | "serviceId" | "origin">
+>;
 
 /** One account's storage, synchronous: the opening job is read inside a route effect. */
 export interface BirthsStorage {
