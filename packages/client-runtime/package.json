@@ -335,6 +335,10 @@
       "types": "./src/zerops/session.ts",
       "default": "./src/zerops/session.ts"
     },
+    "./zerops/testing": {
+      "types": "./src/zerops/testing/accountHarness.ts",
+      "default": "./src/zerops/testing/accountHarness.ts"
+    },
     "./zerops/strip": {
       "types": "./src/zerops/strip.ts",
       "default": "./src/zerops/strip.ts"
