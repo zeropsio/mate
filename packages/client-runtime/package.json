@@ -267,6 +267,10 @@
       "types": "./src/zerops/data/index.ts",
       "default": "./src/zerops/data/index.ts"
     },
+    "./zerops/flow": {
+      "types": "./src/zerops/flow/index.ts",
+      "default": "./src/zerops/flow/index.ts"
+    },
     "./zerops/knowledge": {
       "types": "./src/zerops/knowledge/index.ts",
       "default": "./src/zerops/knowledge/index.ts"
