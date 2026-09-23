@@ -5,8 +5,9 @@
  * Two account-wide reads, issued together — Gitea's list of the person's
  * repositories and its search over open pull requests — and re-read every
  * sixty seconds while the page is open, and at once when the Gitea session is
- * readable again. A read that fails keeps what was read before it and names
- * its cause beside it; it never answers "no repositories" or "no pull
+ * readable again. Each list stands on its own: one that fails keeps what it
+ * read before and names its cause beside it, and never takes the other's
+ * answer with it; neither ever answers "no repositories" or "no pull
  * requests". Nothing here is per project; a project's own flow is the
  * provider's (`ZeropsProjectFlowProvider`).
  */
@@ -26,22 +27,20 @@ export const GITEA_OVERVIEW_REFRESH_MS = 60_000;
 
 export interface ZeropsGiteaOverviewState {
   readonly owners: ReadonlyArray<GiteaOverviewOwner>;
-  /** False until the first answer, so an empty page is "not read yet", never "nothing". */
+  /** False until both lists first answer, so an empty page is "not read yet", never "nothing". */
   readonly read: boolean;
-  /** Why the last read did not answer, beside what was read before it; null once one answers. */
+  /** Why the last read did not answer, beside what was read before it; null once both lists answer. */
   readonly failure: string | null;
 }
 
-/** What Gitea answered, before it is grouped: the names come from the account, later or sooner. */
-interface GiteaAnswer {
-  readonly repositories: ReadonlyArray<GiteaRepository>;
-  readonly pulls: ReadonlyArray<GiteaIssueSearchHit>;
-}
-
-/** What was read for one Gitea, and why the read after it did not answer. */
+/**
+ * What Gitea last answered for one Gitea, list by list, before it is grouped — the names come
+ * from the account, later or sooner — and why the last read did not answer.
+ */
 interface HeldOverview {
   readonly key: string;
-  readonly answer: GiteaAnswer | undefined;
+  readonly repositories: ReadonlyArray<GiteaRepository> | undefined;
+  readonly pulls: ReadonlyArray<GiteaIssueSearchHit> | undefined;
   readonly failure: string | null;
 }
 
@@ -76,19 +75,25 @@ export function useZeropsGiteaOverview(input: {
     });
     if (client === null) return;
     const controller = new AbortController();
-    void Promise.all([client.listUserRepositories(), client.searchPullRequests()]).then(
+    void Promise.allSettled([client.listUserRepositories(), client.searchPullRequests()]).then(
       ([repositories, pulls]) => {
-        if (controller.signal.aborted || unauthorized) return;
-        setHeld({ key, answer: { repositories, pulls }, failure: null });
-      },
-      (error: unknown) => {
         // The session names a 401's cause; what was read stands either way.
         if (controller.signal.aborted || unauthorized) return;
-        setHeld((last) => ({
-          key,
-          answer: last?.key === key ? last.answer : undefined,
-          failure: zeropsErrorMessage(error),
-        }));
+        const failures = new Set(
+          [repositories, pulls].flatMap((settled) =>
+            settled.status === "rejected" ? [zeropsErrorMessage(settled.reason)] : [],
+          ),
+        );
+        setHeld((last) => {
+          const kept = last?.key === key ? last : undefined;
+          return {
+            key,
+            repositories:
+              repositories.status === "fulfilled" ? repositories.value : kept?.repositories,
+            pulls: pulls.status === "fulfilled" ? pulls.value : kept?.pulls,
+            failure: failures.size === 0 ? null : [...failures].join(" "),
+          };
+        });
       },
     );
     return () => {
@@ -97,21 +102,22 @@ export function useZeropsGiteaOverview(input: {
   }, [giteaOrigin, key, readable, tick]);
 
   const current = held?.key === key ? held : undefined;
-  const read = current?.answer;
+  const repositories = current?.repositories;
+  const pulls = current?.pulls;
   const failure = current?.failure ?? null;
   return useMemo<ZeropsGiteaOverviewState>(
     () =>
-      read === undefined
+      repositories === undefined || pulls === undefined
         ? { owners: [], read: false, failure }
         : {
             owners: giteaOverview({
-              repositories: read.repositories,
-              pulls: read.pulls,
+              repositories,
+              pulls,
               ...(mateName === undefined ? {} : { mateName }),
             }),
             read: true,
             failure,
           },
-    [failure, mateName, read],
+    [failure, mateName, pulls, repositories],
   );
 }

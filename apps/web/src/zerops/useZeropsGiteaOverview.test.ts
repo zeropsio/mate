@@ -10,12 +10,14 @@ import {
 /**
  * Whether this tab can read Gitea now, whether the next reads meet a 401 that no token recovered —
  * the reacquire failed, or outlasted the request's wait — what Gitea answers the pull request
- * search instead of a list, and how many times the repositories were listed.
+ * search instead of a list, whether the person has a second repository, and how many times the
+ * repositories were listed.
  */
 const gitea = vi.hoisted(() => ({
   readable: true,
   unauthorizedOnRead: false,
   searchFails: null as string | null,
+  secondRepository: false,
   listings: 0,
 }));
 
@@ -35,6 +37,9 @@ vi.mock("./accountGiteaSessions", () => ({
         gitea.listings += 1;
         return read([
           { full_name: "harbor/app", html_url: "https://gitea.example.test/harbor/app" },
+          ...(gitea.secondRepository
+            ? [{ full_name: "harbor/api", html_url: "https://gitea.example.test/harbor/api" }]
+            : []),
         ]);
       },
       searchPullRequests: () =>
@@ -116,6 +121,7 @@ describe("useZeropsGiteaOverview", () => {
     gitea.readable = true;
     gitea.unauthorizedOnRead = false;
     gitea.searchFails = null;
+    gitea.secondRepository = false;
     gitea.listings = 0;
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -221,6 +227,49 @@ describe("useZeropsGiteaOverview", () => {
       await vi.advanceTimersByTimeAsync(GITEA_OVERVIEW_REFRESH_MS);
     });
     expect(seen.at(-1)).toMatchObject({ read: true, failure: null });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps a list that answered when the other one fails beside it", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGiteaOverviewState> = [];
+
+    function Probe() {
+      seen.push(
+        useZeropsGiteaOverview({ giteaOrigin: "https://gitea.example.test", enabled: true }),
+      );
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // A repository appears while the pull request search fails: it is listed, the pulls read
+    // before stand, and the cause is named.
+    gitea.secondRepository = true;
+    gitea.searchFails = "Gitea answered 500.";
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GITEA_OVERVIEW_REFRESH_MS);
+    });
+    expect(seen.at(-1)).toMatchObject({ read: true, failure: "Gitea answered 500." });
+    expect(
+      seen
+        .at(-1)
+        ?.owners.flatMap((owner) =>
+          owner.repositories.map((repository) => [repository.fullName, repository.pulls.length]),
+        ),
+    ).toEqual([
+      ["harbor/api", 0],
+      ["harbor/app", 1],
+    ]);
 
     await act(async () => {
       root.unmount();
