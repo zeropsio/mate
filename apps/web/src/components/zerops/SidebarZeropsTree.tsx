@@ -639,24 +639,6 @@ export function ProjectHeader({
           {title}
         </button>
       )}
-      {/* Always on, unlike the verbs below: this says something is waiting on
-          the person, which is not a fact that should hide until they hover. */}
-      {nextStep === undefined || !nextStepAwaitsSomebody(nextStep.kind) ? null : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <StatusDot
-                className="shrink-0"
-                data-zerops-surface="sidebar-project-next-step"
-                dotOnly
-                label={nextStep.text}
-                tone={nextStepTone(nextStep.kind)}
-              />
-            }
-          />
-          <TooltipPopup side="right">{nextStep.text}</TooltipPopup>
-        </Tooltip>
-      )}
       {/* Hidden until hover keeps a list of five projects calm, but a finger
           never hovers — so a coarse pointer gets them at rest, as the stop
           rows below already do. */}
@@ -707,6 +689,25 @@ export function ProjectHeader({
             </MenuPopup>
           </Menu>
         </span>
+      )}
+      {/* Always on, unlike the verbs before it: this says something is waiting
+          on the person, which is not a fact that should hide until they hover.
+          Last, so at rest it sits on the end edge, over the Mates' times. */}
+      {nextStep === undefined || !nextStepAwaitsSomebody(nextStep.kind) ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <StatusDot
+                className="shrink-0"
+                data-zerops-surface="sidebar-project-next-step"
+                dotOnly
+                label={nextStep.text}
+                tone={nextStepTone(nextStep.kind)}
+              />
+            }
+          />
+          <TooltipPopup side="right">{nextStep.text}</TooltipPopup>
+        </Tooltip>
       )}
     </div>
   );

@@ -764,6 +764,14 @@ describe("the project's flow under it", () => {
       expect(html).toContain('data-zerops-surface="sidebar-project-next-step"');
     });
 
+    it("sits the dot at the heading's end edge, after the verbs that show on hover", () => {
+      const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+      const heading = html.slice(html.indexOf('data-zerops-surface="sidebar-project"'));
+      expect(heading.indexOf('data-zerops-surface="sidebar-project-more"')).toBeLessThan(
+        heading.indexOf('data-zerops-surface="sidebar-project-next-step"'),
+      );
+    });
+
     it("carries no dot once the flow says nothing is left to do", () => {
       const talked: ZeropsAgentActivity = {
         threadId: "thread-x" as ZeropsAgentActivity["threadId"],
