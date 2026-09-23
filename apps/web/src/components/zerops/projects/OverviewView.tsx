@@ -410,7 +410,7 @@ function MateTile<T>({
             name
           ) : (
             <button
-              aria-label={`Open ${first.mate.name}`}
+              aria-label={`${entry.group.name}, open ${first.mate.name}`}
               className="min-w-0 rounded-sm text-left outline-none after:absolute after:inset-0 after:rounded-[var(--zerops-card-radius)] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring"
               data-zerops-surface="mate-open"
               onClick={onOpen}

@@ -265,7 +265,8 @@ describe("the Overview", () => {
     const tile = tree.root.findByProps({ "data-zerops-surface": "only-a-mate" });
     const buttons = tile.findAllByType("button");
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]!.props["aria-label"]).toBe("Open Uma");
+    // Its name starts with what it shows, so a spoken "hokuspokus" finds it (WCAG 2.5.3).
+    expect(buttons[0]!.props["aria-label"]).toBe("hokuspokus, open Uma");
     expect(buttons[0]!.props.type).toBe("button");
     act(() => buttons[0]!.props.onClick());
     expect(open).toHaveBeenCalledTimes(1);
