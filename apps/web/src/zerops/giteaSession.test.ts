@@ -1,4 +1,5 @@
 import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
+import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -110,6 +111,34 @@ describe("ensureGiteaSession", () => {
     expect((failure as GiteaSignInError).message).toBe("Gitea is still setting up.");
     // The throwaway was taken back whatever the broker answered, and nothing is held.
     expect(removed).toEqual(["token-1"]);
+    expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
+  });
+
+  it("asks again later when the mint waited out a closed access window", async () => {
+    const where = origins();
+    const { platform, minted } = recording();
+    const { fetch, seen } = answering({ status: 200, body: { token: "t", login: "u-abc" } });
+
+    const failure = await ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform: {
+        ...platform,
+        mint: () =>
+          Promise.reject(
+            new ZeropsApiError(
+              "Zerops access is still being checked. Try again in a moment.",
+              "access-unverified",
+            ),
+          ),
+      },
+      fetch,
+    }).catch((cause: unknown) => cause);
+
+    expect(failure).toBeInstanceOf(GiteaSignInError);
+    expect((failure as GiteaSignInError).pending).toBe(true);
+    expect(minted).toEqual([]);
+    expect(seen).toEqual([]);
     expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
   });
 

@@ -35,7 +35,11 @@ import {
   MateCredentialError,
   type ZeropsThrowawayPlatform,
 } from "@t3tools/client-runtime/authorization";
-import { createGiteaClient, type GiteaClient } from "@t3tools/client-runtime/zerops";
+import {
+  createGiteaClient,
+  ZeropsApiError,
+  type GiteaClient,
+} from "@t3tools/client-runtime/zerops";
 
 import { randomUUID } from "../lib/utils";
 import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
@@ -106,8 +110,9 @@ export const GITEA_RETRY_MS = 20_000;
 /**
  * Signed in to Mate is signed in to Gitea (D21): this tab holds a session for
  * the account's Gitea, acquired from the org's broker on a throwaway — the
- * same proof the door takes — with nothing to click. A Gitea still setting up
- * is asked again in a while; a refusal is said once and left, in `trouble`.
+ * same proof the door takes — with nothing to click. A Gitea still setting up,
+ * or a throwaway mint that waited out a closed access window, is asked again in
+ * a while; a refusal is said once and left, in `trouble`.
  *
  * Any surface that reads Gitea as the person calls this, the projects page
  * first: the sign-in lived in the Git tab alone, so the page read no group
@@ -207,6 +212,10 @@ export class GiteaSignInError extends Error {
 /** The words for what the broker answered, in the person's terms. */
 export function giteaSignInMessage(cause: unknown): GiteaSignInError {
   if (cause instanceof GiteaSignInError) return cause;
+  if (cause instanceof ZeropsApiError && cause.kind === "access-unverified") {
+    // The throwaway mint waited out a closed access window; the next grant opens it.
+    return new GiteaSignInError(cause.message, true);
+  }
   if (cause instanceof MateCredentialError) {
     if (cause.status === 502 || cause.status === 503) {
       return new GiteaSignInError("Gitea is still setting up.", true);

@@ -68,6 +68,9 @@ export const DEFAULT_ZEROPS_API_BASE = "https://api.app-prg1.zerops.io";
 
 const PUBLIC_API_PREFIX = "/api/rest/public";
 
+/** How long a throwaway mint waits for a closed account window to open (DESIGN §4.3). */
+export const ACCOUNT_WINDOW_WAIT_MS = 30_000;
+
 export interface ZeropsClientMembership {
   readonly id: string;
   readonly clientId?: string;
@@ -427,6 +430,8 @@ export interface ZeropsLoginResponse {
  */
 export type ZeropsApiErrorKind =
   | "network"
+  /** The account window stayed closed for the whole wait; worth trying again. */
+  | "access-unverified"
   | "uncertain"
   | "expired-session"
   | "forbidden"
@@ -750,6 +755,8 @@ async function readProjectPages<T extends { readonly id: string }>(
  */
 export class ZeropsApiClient {
   #writesAllowedUntilMs = Number.POSITIVE_INFINITY;
+  /** Everything {@link awaitAccountWindow} holds until a grant opens the window. */
+  readonly #windowWaiters = new Set<() => void>();
   /**
    * Installs the verified account write window. The request path checks this
    * absolute deadline itself, so browser timer throttling cannot extend it.
@@ -759,6 +766,57 @@ export class ZeropsApiClient {
     deadlineMs: number = allowed ? Number.POSITIVE_INFINITY : 0,
   ): void {
     this.#writesAllowedUntilMs = allowed ? deadlineMs : 0;
+    if (!this.#accountWindowOpen()) return;
+    for (const wake of this.#windowWaiters) wake();
+  }
+
+  #accountWindowOpen(): boolean {
+    return this.#now() < this.#writesAllowedUntilMs;
+  }
+
+  /**
+   * Resolves once the account window is open (DESIGN §4.3 `identityMint`):
+   * at once while it is, otherwise when the next grant opens it, for at most
+   * {@link ACCOUNT_WINDOW_WAIT_MS}. Past that it fails with the retryable
+   * `access-unverified`.
+   *
+   * The window is the account's alone. No organization or project role is
+   * checked: a throwaway carries no rights, and the door and the broker decide
+   * roles with their own keys — a BASIC_USER or a READ_ONLY member with a
+   * project override mints like an owner.
+   */
+  awaitAccountWindow(signal?: AbortSignal): Promise<void> {
+    if (this.#accountWindowOpen()) return Promise.resolve();
+    const aborted = () =>
+      new ZeropsApiError("The request was cancelled before it reached Zerops.", "network");
+    if (signal?.aborted === true) return Promise.reject(aborted());
+    return new Promise<void>((resolve, reject) => {
+      const done = () => {
+        clearTimeout(bound);
+        this.#windowWaiters.delete(wake);
+        signal?.removeEventListener("abort", abort);
+      };
+      const wake = () => {
+        done();
+        resolve();
+      };
+      const abort = () => {
+        done();
+        reject(aborted());
+      };
+      // @effect-diagnostics-next-line globalTimers:off -- a plain-promise client bounding its own wait.
+      const bound = setTimeout(() => {
+        done();
+        reject(
+          new ZeropsApiError(
+            "Zerops access is still being checked. Try again in a moment.",
+            "access-unverified",
+          ),
+        );
+      }, ACCOUNT_WINDOW_WAIT_MS);
+      this.#windowWaiters.add(wake);
+      signal?.addEventListener("abort", abort, { once: true });
+    });
   }
   readonly #baseUrl: string;
   readonly #fetch: FetchImplementation;
@@ -1549,6 +1607,25 @@ export class ZeropsApiClient {
       );
     }
     return { id: response.id, token: response.token };
+  }
+
+  /**
+   * Mints a throwaway — `NO_ACCESS`, no projects, no flags — for one door or
+   * one Gitea sign-in (`authorization/zeropsThrowaway.ts`).
+   *
+   * A closed account window is waited for rather than refused
+   * ({@link awaitAccountWindow}, spec-mate C5a): a mint that lands in a lapse
+   * runs on the grant that ends it. The write stays `project-write` until C6.
+   */
+  mintThrowaway(
+    input: { readonly clientId: string; readonly name: string },
+    signal?: AbortSignal,
+  ): Promise<{ readonly id: string; readonly token: string }> {
+    return this.mintIntegrationToken(
+      { clientId: input.clientId, name: input.name, roleCode: "NO_ACCESS", projects: [] },
+      signal,
+      () => this.awaitAccountWindow(signal),
+    );
   }
 
   /**

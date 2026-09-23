@@ -50,9 +50,10 @@ export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
  * The two platform calls a throwaway is, backed by the signed-in account's own
  * API client.
  *
- * `mintIntegrationToken` already refuses to set a flag of any kind, which is
- * what makes what it mints a throwaway rather than something a door has to
- * argue with.
+ * `mintThrowaway` mints `NO_ACCESS` with no projects and refuses to set a
+ * flag of any kind, which is what makes what it mints a throwaway rather than
+ * something a door has to argue with. It waits for a closed account window
+ * rather than refusing, and `signal` ends that wait and the mint.
  */
 export function zeropsThrowawayPlatform(
   client: ZeropsApiClient,
@@ -66,25 +67,20 @@ export function zeropsThrowawayPlatform(
         purpose: input.name.startsWith(`${GITEA_THROWAWAY_PREFIX}:`) ? "gitea" : "door",
         clientId: input.clientId,
       } as const;
-      return client
-        .mintIntegrationToken(
-          { clientId: input.clientId, name: input.name, roleCode: "NO_ACCESS", projects: [] },
-          signal,
-        )
-        .then(
-          (minted) => {
-            mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: minted.id });
-            return minted;
-          },
-          (cause: unknown) => {
-            mateDiagnostics.record({
-              ...diagnostic,
-              outcome: "failed",
-              ...diagnosticFailure(cause),
-            });
-            throw cause;
-          },
-        );
+      return client.mintThrowaway({ clientId: input.clientId, name: input.name }, signal).then(
+        (minted) => {
+          mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: minted.id });
+          return minted;
+        },
+        (cause: unknown) => {
+          mateDiagnostics.record({
+            ...diagnostic,
+            outcome: "failed",
+            ...diagnosticFailure(cause),
+          });
+          throw cause;
+        },
+      );
     },
     remove: (input) => {
       const diagnostic = {

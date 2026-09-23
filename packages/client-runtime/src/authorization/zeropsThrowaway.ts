@@ -89,7 +89,8 @@ export function isThrowawayName(name: string): boolean {
 export interface ZeropsThrowawayPlatform {
   /**
    * `POST /client/{org}/integration-token` — `NO_ACCESS`, no `projects`, no
-   * flags, this name. The implementation is `ZeropsApiClient.mintIntegrationToken`.
+   * flags, this name. The implementation is `ZeropsApiClient.mintThrowaway`,
+   * which waits for a closed account window rather than refusing.
    */
   readonly mint: (input: {
     readonly clientId: string;

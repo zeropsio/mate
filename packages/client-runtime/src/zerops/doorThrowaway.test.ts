@@ -1,8 +1,9 @@
+// @effect-diagnostics globalDate:off -- fake timers own `Date.now()`; the clients under test read it.
 import * as DateTime from "effect/DateTime";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
-import { ZeropsApiError, type ZeropsApiClient } from "./api.ts";
+import { ACCOUNT_WINDOW_WAIT_MS, ZeropsApiClient, ZeropsApiError, type ZeropsUser } from "./api.ts";
 import { mateDiagnostics } from "./diagnostics.ts";
 import {
   connectThroughThrowaway,
@@ -10,6 +11,7 @@ import {
   THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
 } from "./doorThrowaway.ts";
+import { makeFakeZeropsRest } from "./testing/fakeZeropsRest.ts";
 
 const NOW = Date.parse("2026-09-16T10:00:00.000Z");
 const at = (msAgo: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - msAgo));
@@ -121,7 +123,7 @@ describe("connectThroughThrowaway", () => {
 describe("zeropsThrowawayPlatform's diagnostics", () => {
   it("tells door and Gitea mints apart and pairs each delete with its mint", async () => {
     const client = {
-      mintIntegrationToken: async (input: { readonly name: string }) =>
+      mintThrowaway: async (input: { readonly name: string }) =>
         input.name.startsWith("gitea-signin:")
           ? { id: "gitea-token", token: "a-value" }
           : { id: "door-token", token: "a-value" },
@@ -174,4 +176,135 @@ describe("zeropsThrowawayPlatform's diagnostics", () => {
     ]);
     expect(JSON.stringify(mateDiagnostics.snapshot())).not.toContain("a-value");
   });
+});
+
+const ACCESS_WINDOW_MS = 15 * 60 * 1000;
+
+function member(id: string, roleCode: string): ZeropsUser {
+  return {
+    id,
+    email: `${id}@example.test`,
+    clientUserList: [{ id: `cu-${id}`, clientId: "org-1", roleCode }],
+  };
+}
+
+/**
+ * One tab signed in to the account harness's Zerops, its access window open
+ * as the inventory provider opens it after a grant.
+ */
+function signedInTab(roleCode = "OWNER") {
+  const rest = makeFakeZeropsRest();
+  rest.addUser({ user: member("user-1", roleCode), password: "one" });
+  const client = new ZeropsApiClient({ fetch: rest.fetch, now: () => Date.now() });
+  client.restoreSession(rest.issueSession("user-1"));
+  client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
+  const mints = () => rest.requests().filter(({ route }) => route.startsWith("POST /client/"));
+  const throwaways = () => zeropsThrowawayPlatform(client);
+  return { rest, client, mints, throwaways };
+}
+
+/** Lets every promise that can settle without a timer settle. */
+const settle = () => vi.advanceTimersByTimeAsync(0);
+
+describe("throwaway hygiene", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("mint during a round proceeds", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    // A renewal round is in flight: its reads have left and not come back.
+    const round = tab.rest.hold("GET /user/info");
+    const renewal = tab.client.fetchUser();
+    await settle();
+    expect(round.waiting()).toBe(1);
+
+    const minted = await tab.throwaways().mint({
+      clientId: "org-1",
+      name: "mate-door:p1:n1",
+    });
+
+    expect(minted.id).toBe("integration-1");
+    expect(tab.mints()).toHaveLength(1);
+    round.release();
+    await renewal;
+  });
+
+  it("mint during a lapse waits, then runs on the new grant", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    tab.client.setWritesAllowed(false);
+
+    const minting = tab.throwaways().mint({
+      clientId: "org-1",
+      name: "mate-door:p1:n1",
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(tab.mints()).toHaveLength(0);
+
+    tab.client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
+
+    await expect(minting).resolves.toMatchObject({ id: "integration-1" });
+    expect(tab.mints()).toHaveLength(1);
+  });
+
+  it("bound elapses → retryable", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    tab.client.setWritesAllowed(false);
+
+    const minting = tab
+      .throwaways()
+      .mint({ clientId: "org-1", name: "mate-door:p1:n1" })
+      .then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+    await vi.advanceTimersByTimeAsync(ACCOUNT_WINDOW_WAIT_MS - 1);
+    expect(tab.mints()).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+
+    const failure = await minting;
+    expect(failure).toBeInstanceOf(ZeropsApiError);
+    expect((failure as ZeropsApiError).kind).toBe("access-unverified");
+    expect(tab.mints()).toHaveLength(0);
+    // A grant after the attempt gave up mints nothing on its behalf.
+    tab.client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
+    await settle();
+    expect(tab.mints()).toHaveLength(0);
+  });
+
+  // CM-3: the organization's write flag would lock these members out, and
+  // the door and the broker are what decide their roles.
+  for (const row of [
+    { member: "a BASIC_USER", roleCode: "BASIC_USER", override: null },
+    { member: "a READ_ONLY-with-override", roleCode: "READ_ONLY", override: "ADMIN" },
+  ] as const) {
+    it(`${row.member} member can mint`, async () => {
+      vi.useFakeTimers();
+      const tab = signedInTab(row.roleCode);
+      tab.rest.addProject({
+        id: "p1",
+        clientId: "org-1",
+        name: "One",
+        status: "ACTIVE",
+        ...(row.override === null
+          ? {}
+          : { userRoles: [{ clientUserId: "cu-user-1", roleCode: row.override }] }),
+      });
+      const platform = tab.throwaways();
+
+      const door = await platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" });
+      const gitea = await platform.mint({ clientId: "org-1", name: "gitea-signin:git.example:n2" });
+      await platform.remove({ clientId: "org-1", tokenId: door.id });
+      await platform.remove({ clientId: "org-1", tokenId: gitea.id });
+
+      expect(tab.mints().map(({ body }) => body)).toEqual([
+        expect.objectContaining({ name: "mate-door:p1:n1", roleCode: "NO_ACCESS", projects: [] }),
+        expect.objectContaining({ name: "gitea-signin:git.example:n2", roleCode: "NO_ACCESS" }),
+      ]);
+      expect(tab.rest.orphanTokens()).toEqual([]);
+    });
+  }
 });
