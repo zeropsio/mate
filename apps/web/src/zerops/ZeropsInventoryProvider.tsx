@@ -171,6 +171,16 @@ function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRe
   return [...refs.values()];
 }
 
+/** The projects a denial withholds until its confirming read (G6), by `inventoryProjectRefKey`. */
+function pendingDenials(evidence: Evidence | null): ReadonlySet<string> {
+  if (evidence === null) return new Set();
+  return new Set(
+    [...evidence.closedProjects.values()]
+      .filter(({ confirmation }) => confirmation.status === "due")
+      .map(({ project }) => inventoryProjectRefKey(project)),
+  );
+}
+
 /** Evidence projects plus those a command established since, from the runtime's grant. */
 export function inventoryProjectRefs(
   granted: ReadonlyArray<ProjectRef>,
@@ -647,6 +657,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     () => inventoryProjectRefs(evidenceProjectRefs(evidence), access),
     [access, evidence],
   );
+  const denied = useMemo(() => pendingDenials(evidence), [evidence]);
 
   const organizationReadEntries = useMemo(
     () =>
@@ -692,11 +703,12 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
             ? projectRecordToZeropsProject(knowledge.record)
             : null;
         const status = observed?.status ?? readStatuses.get(ref.projectId);
-        return status === undefined || status === "ACTIVE"
+        // A project withheld until its denial is confirmed is not demanded (G6).
+        return !denied.has(key) && (status === undefined || status === "ACTIVE")
           ? [{ kind: "project-inventory" as const, project: ref }]
           : [];
       }),
-    [knownProjectRefs, projectReads, readStatuses],
+    [denied, knownProjectRefs, projectReads, readStatuses],
   );
   const serviceReadEntries = useMemo(
     () =>
@@ -741,18 +753,22 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     for (const ref of knownProjectRefs) {
       const key = inventoryProjectRefKey(ref);
       projectRefs.set(key, ref);
+      // A project withheld until its denial is confirmed holds nothing open (G6).
+      const incomplete = () => {
+        if (!denied.has(key)) complete = false;
+      };
       const project = projectReads.get(key)?.value;
       if (project === undefined) {
-        complete = false;
+        incomplete();
         continue;
       }
       if (project.knowledge !== "observed") {
-        complete = false;
+        incomplete();
         continue;
       }
       const dto = projectRecordToZeropsProject(project.record);
       if (dto === null) {
-        complete = false;
+        incomplete();
         continue;
       }
       projects.push(dto);
@@ -762,14 +778,14 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       }
       const serviceRead = serviceReads.get(key);
       if (serviceRead === undefined) {
-        complete = false;
+        incomplete();
         const outcome = resolvedOrCarried(dto.id, { status: "failed" });
         services.set(dto.id, outcome);
         carryableOutcomes.set(dto.id, outcome);
         continue;
       }
       if (serviceRead.query.status !== "observed") {
-        complete = false;
+        incomplete();
         const outcome = resolvedOrCarried(dto.id, { status: "failed" });
         services.set(dto.id, outcome);
         carryableOutcomes.set(dto.id, outcome);
@@ -779,13 +795,13 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       let serviceComplete = true;
       for (const knowledge of serviceRead.value) {
         if (knowledge.knowledge !== "observed") {
-          complete = false;
+          incomplete();
           serviceComplete = false;
           continue;
         }
         const service = serviceRecordToZeropsService(knowledge.record);
         if (service === null) {
-          complete = false;
+          incomplete();
           serviceComplete = false;
         } else decoded.push(service);
       }
@@ -824,6 +840,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       pausedOnly,
     };
   }, [
+    denied,
     organizationDescriptors,
     organizationReads,
     projectDescriptors,

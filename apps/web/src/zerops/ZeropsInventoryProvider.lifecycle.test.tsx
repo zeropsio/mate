@@ -172,6 +172,8 @@ const mountInventory = Effect.fn(function* (
     readonly holdFirstRound?: boolean;
     /** Projects whose own read answers 503 from the start. */
     readonly failing?: ReadonlyArray<string>;
+    /** Projects the organization still lists whose own read answers `not-found`. */
+    readonly gone?: ReadonlyArray<string>;
     /** Memberships the first `fetchUser` answers with. */
     readonly firstMemberships?: ReadonlyArray<never>;
   } = {},
@@ -212,6 +214,7 @@ const mountInventory = Effect.fn(function* (
   let registrationGate: Deferred.Deferred<void> | null = null;
   const indexed = new Set(ids);
   const failing = new Set(options.failing);
+  const gone = new Set(options.gone);
   const client = {
     fetchUser: vi.fn(async () => {
       if (fetchGate !== null) await fetchGate;
@@ -225,7 +228,7 @@ const mountInventory = Effect.fn(function* (
     ),
     fetchProject: vi.fn(async (id: string) => {
       if (failing.has(id)) throw new ZeropsApiError("Unavailable", "server", 503);
-      const project = projects.get(id);
+      const project = gone.has(id) ? undefined : projects.get(id);
       if (project === undefined) throw new ZeropsApiError("Gone", "not-found");
       return project;
     }),
@@ -275,7 +278,8 @@ const mountInventory = Effect.fn(function* (
         }),
       read: (ticket) => {
         if (ticket.target.kind !== "project") return Effect.succeed({ observations: [] });
-        const value = projects.get(ticket.target.ref.projectId);
+        const id = ticket.target.ref.projectId;
+        const value = gone.has(id) ? undefined : projects.get(id);
         if (value === undefined)
           return Effect.fail({
             _tag: "ZeropsDataAdapterError",
@@ -695,6 +699,32 @@ it.live(
         yield* harness.advance(5_000);
         expect(harness.inventory()?.isLoading).toBe(false);
         expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
+      }),
+    ),
+);
+
+it.live(
+  "the first mount is not held open by a project the organization still lists and cannot hand over",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // Signing in seconds after a project was deleted from outside the app.
+        const harness = yield* mountInventory(["kept", "vanishing"], { gone: ["vanishing"] });
+        const vanishing = inventoryProjectRefKey(harness.projectRef("org", "vanishing"));
+
+        // Admitted at once, with the project withheld until the confirming read (G6, G10).
+        expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+        expect(harness.inventory()?.authority.get(vanishing)).toEqual({
+          kind: "withheld",
+          reason: "access-denied",
+          cause: null,
+        });
+        expect(harness.inventory()?.error).toBeNull();
+        yield* harness.advance(5_000);
+        expect(
+          [...harness.inventory()!.projectRefs.values()].map(({ projectId }) => projectId),
+        ).toEqual(["kept"]);
+        expect(harness.inventory()?.isLoading).toBe(false);
       }),
     ),
 );
