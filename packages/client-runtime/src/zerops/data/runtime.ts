@@ -2423,8 +2423,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       // A paused tab has no receivers left, so each organization gets a fresh one. A tab that
       // returned before the pause still holds its live receiver, which keeps serving the
       // interests observing on it: a failed interest retries there rather than replacing it.
+      // A visible wake is the first rung, now: a login that failed before it is not the attempt.
       for (const runtimeInterest of toResume) {
         const receiver = receiverFor(organizationOfInterest(runtimeInterest.descriptor));
+        receiver.openFailure = null;
         const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
         yield* applyControl({ kind: "interest-upserted", interest: desired });
       }

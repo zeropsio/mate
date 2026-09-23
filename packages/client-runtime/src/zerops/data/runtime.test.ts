@@ -281,12 +281,15 @@ const silentVerifier: AccessVerifier = {
 };
 
 /**
- * Counts socket logins (`openReceiver`): the first `failFirst` are refused as a login sent
- * offline would be, or get no answer as on a black-holed network (`failure: "no-answer"`);
- * `closeSocket` closes the socket of the last one that succeeded.
+ * Counts socket logins (`openReceiver`): each answers once `answerAfter` of its number does, and
+ * the first `failFirst` are refused as a login sent offline would be; `closeSocket` closes the
+ * socket of the last one that succeeded.
  */
 function socketLogins(
-  options: { readonly failFirst?: number; readonly failure?: "refused" | "no-answer" } = {},
+  options: {
+    readonly failFirst?: number;
+    readonly answerAfter?: (login: number) => Effect.Effect<void>;
+  } = {},
 ) {
   let logins = 0;
   let events: Queue.Queue<ReceiverEvent> | null = null;
@@ -294,9 +297,9 @@ function socketLogins(
     ...makeAdapterHarness().adapter,
     openReceiver: (_scope, organization, identity) =>
       Effect.gen(function* () {
-        logins += 1;
-        if (logins <= (options.failFirst ?? 0)) {
-          if (options.failure === "no-answer") return yield* Effect.never;
+        const login = ++logins;
+        yield* options.answerAfter?.(login) ?? Effect.void;
+        if (login <= (options.failFirst ?? 0)) {
           return yield* Effect.fail({
             _tag: "ZeropsDataAdapterError",
             kind: "socket-open",
@@ -2699,14 +2702,18 @@ describe("makeZeropsDataRuntime", () => {
   );
 
   it.effect.each([
-    ["is refused", "refused", "0 seconds"],
-    ["gets no answer before the establishment deadline", "no-answer", "60 seconds"],
+    ["is refused", () => Effect.void, "0 seconds"],
+    [
+      "gets no answer before the establishment deadline",
+      (login: number) => (login === 1 ? Effect.never : Effect.void),
+      "60 seconds",
+    ],
   ] as const)(
     "a socket login that %s is the one attempt of every interest waiting on it",
-    ([, failure, abandonedAfter]) =>
+    ([, answerAfter, abandonedAfter]) =>
       Effect.gen(function* () {
         const registry = AtomRegistry.make();
-        const logins = socketLogins({ failFirst: 1, failure });
+        const logins = socketLogins({ failFirst: 1, answerAfter });
         const runtime = yield* makeZeropsDataRuntime({
           scope: runtimeScope,
           adapter: logins.adapter,
@@ -2732,6 +2739,68 @@ describe("makeZeropsDataRuntime", () => {
           ),
         );
         expect(logins.count()).toBe(2);
+
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        unsubscribe();
+        registry.dispose();
+      }),
+  );
+
+  it.effect(
+    "a visible wake logs in at once over a receiver whose last socket login failed while hidden",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        /** The recovery cycle's retry, the second login: in flight while the tab hides. */
+        const retryAnswers = yield* Deferred.make<void>();
+        const logins = socketLogins({
+          failFirst: 2,
+          answerAfter: (login) => (login === 2 ? Deferred.await(retryAnswers) : Effect.void),
+        });
+        const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
+        const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: logins.adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          visibility: {
+            current: Ref.get(visibilityState),
+            changes: Stream.fromQueue(visibilityChanges),
+          },
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+          Queue.offerUnsafe(states, state);
+        });
+        const leaseScope = yield* Scope.make();
+        const lease = yield* runtime.acquire(threeProjects[0]!).pipe(Scope.provide(leaseScope));
+        const settle = Effect.gen(function* () {
+          for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+        });
+        // The first login is refused; the recovery cycle's retry is in flight when the tab hides.
+        yield* TestClock.adjust("1 second");
+        yield* settle;
+        yield* Ref.set(visibilityState, "hidden");
+        yield* Queue.offer(visibilityChanges, "hidden");
+        yield* settle;
+        yield* Deferred.succeed(retryAnswers, undefined);
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "paused",
+        );
+        expect(logins.count()).toBe(2);
+
+        // Shown again before the receiver is paused: no time passes before the next login.
+        yield* Ref.set(visibilityState, "visible");
+        yield* Queue.offer(visibilityChanges, "visible");
+        yield* settle;
+        expect(logins.count()).toBe(3);
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
 
         yield* runtime.shutdown("application-close");
         yield* Scope.close(leaseScope, Exit.void);
