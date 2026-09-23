@@ -3860,6 +3860,11 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
       before: null,
       limit: 20,
     },
+    {
+      kind: "project-metric-history",
+      project: topologyDescriptor.project,
+      window: { timeGroupBy: "1h", limit: 24, timeZone: "UTC" },
+    },
   ];
   const isActivityQuery = (request: RegistrationRequest) =>
     request.descriptor.kind === "query-membership" &&
@@ -3884,6 +3889,7 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
     "an optional registration fails every time",
     "a registration never answers once",
     "a direct read fails once",
+    "a malformed frame names one subscription",
   ] as const;
   const hiddenFor = ["past the pause", "shorter than the pause"] as const;
 
@@ -3903,6 +3909,12 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
             let requiredFailures = 0;
             let hangs = 0;
             let readFailures = 0;
+            // Past the bound the platform heals: every interest must then observe, so an
+            // interest that visited `failed` and lost its retry is caught.
+            let healed = false;
+            let liveEvents: Queue.Queue<ReceiverEvent> | null = null;
+            let activitySubscription: string | null = null;
+            let malformedSent = false;
             const registering = yield* Deferred.make<void>();
             const heldOutcome = yield* Deferred.make<void, AdapterError>();
             const adapter: ZeropsDataAdapter = {
@@ -3912,15 +3924,22 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
                   if (opensAfterResume === 1)
                     return Effect.fail({ ...failure("offline"), kind: "socket-open" });
                 }
-                return Effect.succeed({
-                  identity,
-                  organization,
-                  delivery: "hot-single-consumer-buffered-before-open-resolves",
-                  events: Stream.never,
-                } satisfies ReceiverHandle);
+                return Queue.unbounded<ReceiverEvent>().pipe(
+                  Effect.map((events) => {
+                    liveEvents = events;
+                    return {
+                      identity,
+                      organization,
+                      delivery: "hot-single-consumer-buffered-before-open-resolves",
+                      events: Stream.fromQueue(events),
+                    } satisfies ReceiverHandle;
+                  }),
+                );
               },
               register: (_receiver, request) => {
                 const ok = Effect.succeed({ responseObservations: [] });
+                if (isActivityQuery(request)) activitySubscription = request.subscriptionName;
+                if (healed) return ok;
                 if (!resumed) {
                   if (pending === "none" || heldRegistration || !isActivityQuery(request))
                     return ok;
@@ -3953,6 +3972,7 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
               read: (ticket) => {
                 if (
                   resumed &&
+                  !healed &&
                   fault === "a direct read fails once" &&
                   ticket.target.kind === "project"
                 ) {
@@ -4017,7 +4037,23 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
                   arrived.add(lease.interest);
                 }
               }
-              if (arrived.size === leases.length) break;
+              if (arrived.size === leases.length) {
+                if (
+                  fault !== "a malformed frame names one subscription" ||
+                  malformedSent ||
+                  liveEvents === null ||
+                  activitySubscription === null
+                )
+                  break;
+                // Once everything has settled, a frame the activity subscription cannot
+                // parse sends its interests round again.
+                malformedSent = true;
+                arrived.clear();
+                yield* Queue.offer(liveEvents, {
+                  kind: "malformed",
+                  subscriptionName: activitySubscription,
+                });
+              }
               yield* TestClock.adjust(`${stepMs} millis`);
             }
 
@@ -4026,6 +4062,18 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
               .filter((lease) => !arrived.has(lease.interest))
               .map((lease) => final.interests.get(lease.interest)?.interest);
             expect(stranded).toEqual([]);
+
+            healed = true;
+            for (let elapsed = 0; elapsed <= boundMs; elapsed += stepMs) {
+              yield* TestClock.adjust(`${stepMs} millis`);
+              for (let index = 0; index < 20; index++) yield* Effect.yieldNow;
+            }
+            const healedState = yield* runtime.state;
+            expect(
+              leases
+                .map((lease) => healedState.interests.get(lease.interest)?.interest)
+                .filter((interest) => interest?.status !== "observing"),
+            ).toEqual([]);
 
             yield* runtime.shutdown("application-close");
             yield* Scope.close(leaseScope, Exit.void);
