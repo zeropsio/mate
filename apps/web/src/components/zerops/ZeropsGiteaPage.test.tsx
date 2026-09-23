@@ -37,7 +37,7 @@ const render = (
 
 describe("ZeropsGiteaOverview", () => {
   it("lists each owner, its repositories and the pull requests open on them", () => {
-    const html = render({ kind: "read", owners: OWNERS });
+    const html = render({ kind: "read", owners: OWNERS, failure: null });
     expect(html).toContain('data-zerops-gitea-owner="todo"');
     expect(html).toContain('data-zerops-gitea-repository="todo/appdev"');
     expect(html).toContain('href="https://gitea.example/todo/appdev"');
@@ -53,14 +53,17 @@ describe("ZeropsGiteaOverview", () => {
 
   it("names a project the way every other surface names it", () => {
     // A Gitea org is a group's slug; `todo` is not what the person called it.
-    const html = render({ kind: "read", owners: OWNERS }, { ownerName: () => "Todo" });
+    const html = render(
+      { kind: "read", owners: OWNERS, failure: null },
+      { ownerName: () => "Todo" },
+    );
     expect(html).toContain(">Todo</h2>");
     expect(html).not.toContain(">todo</h2>");
   });
 
   it("gives a change this account can draw its own state and its own page", () => {
     const html = render(
-      { kind: "read", owners: OWNERS },
+      { kind: "read", owners: OWNERS, failure: null },
       {
         change: () => ({
           state: { word: "needs a rebase", tone: "attention" },
@@ -81,12 +84,26 @@ describe("ZeropsGiteaOverview", () => {
       state: { kind: "sign-in-refused", reason: "Gitea refused: no login source" },
       says: "no login source",
     },
-    { state: { kind: "read", owners: [] }, says: "No repository yet" },
+    { state: { kind: "read", owners: [], failure: null }, says: "No repository yet" },
   ] as const)("says $says before the list", ({ state, says }) => {
     expect(render(state)).toContain(says);
   });
 
   it("says nothing while the first read is on its way", () => {
-    expect(render({ kind: "unread" })).toBe("");
+    expect(render({ kind: "unread", failure: null })).toBe("");
+  });
+
+  it("names why the first read did not answer instead of an empty page", () => {
+    const html = render({ kind: "unread", failure: "Gitea answered 500." });
+    expect(html).toContain('data-zerops-surface="gitea-read-trouble"');
+    expect(html).toContain("Gitea answered 500.");
+    expect(html).not.toContain("No repository yet");
+  });
+
+  it("names why the last read did not answer beside what was read before it", () => {
+    const html = render({ kind: "read", owners: OWNERS, failure: "Gitea answered 500." });
+    expect(html).toContain('data-zerops-surface="gitea-read-trouble"');
+    expect(html).toContain("Gitea answered 500.");
+    expect(html).toContain('data-zerops-gitea-repository="todo/appdev"');
   });
 });

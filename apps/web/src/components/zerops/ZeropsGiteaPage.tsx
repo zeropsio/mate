@@ -46,13 +46,20 @@ import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 
-/** What the page has to say before the list, when it has nothing else. */
+/**
+ * What the page has to say before the list, when it has nothing else; `failure` is why the last
+ * read did not answer, said beside whatever was read before it.
+ */
 export type ZeropsGiteaOverviewState =
   | { readonly kind: "no-gitea" }
   | { readonly kind: "signing-in" }
   | { readonly kind: "sign-in-refused"; readonly reason: string }
-  | { readonly kind: "unread" }
-  | { readonly kind: "read"; readonly owners: ReadonlyArray<GiteaOverviewOwner> };
+  | { readonly kind: "unread"; readonly failure: string | null }
+  | {
+      readonly kind: "read";
+      readonly owners: ReadonlyArray<GiteaOverviewOwner>;
+      readonly failure: string | null;
+    };
 
 /** What this account knows about one change beyond the forge's own listing. */
 export interface ZeropsGiteaChange {
@@ -60,6 +67,18 @@ export interface ZeropsGiteaChange {
   readonly state: { readonly word: string; readonly tone: ServiceStatusToneId } | undefined;
   /** Its own page, when this account can draw it. */
   readonly open: (() => void) | undefined;
+}
+
+function ReadTrouble({ failure }: { readonly failure: string | null }) {
+  if (failure === null) return null;
+  return (
+    <p
+      className="text-sm text-[var(--zerops-status-failed)]"
+      data-zerops-surface="gitea-read-trouble"
+    >
+      {failure}
+    </p>
+  );
 }
 
 export function ZeropsGiteaOverview({
@@ -97,83 +116,90 @@ export function ZeropsGiteaOverview({
     case "unread":
       // Nothing read yet is not nothing: the list lands in a moment, and an
       // empty state that gives way to it is the layout shift this page refuses.
-      return null;
+      // A read that did not answer says why instead.
+      return <ReadTrouble failure={state.failure} />;
     case "read":
       if (state.owners.length === 0) {
         return (
-          <p className="text-sm text-muted-foreground" data-zerops-surface="gitea-empty">
-            No repository yet. The first project brings one.
-          </p>
+          <>
+            <ReadTrouble failure={state.failure} />
+            <p className="text-sm text-muted-foreground" data-zerops-surface="gitea-empty">
+              No repository yet. The first project brings one.
+            </p>
+          </>
         );
       }
       return (
-        <div className="flex flex-col gap-10" data-zerops-surface="gitea-overview">
-          {state.owners.map((owner) => (
-            <section
-              className="flex flex-col gap-3"
-              data-zerops-gitea-owner={owner.owner}
-              key={owner.owner}
-            >
-              <h2 className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-foreground">
-                {ownerName?.(owner.owner) ?? owner.owner}
-              </h2>
-              <ul className="flex flex-col divide-y divide-border/50">
-                {owner.repositories.map((repository) => (
-                  <li
-                    className="flex flex-col"
-                    data-zerops-gitea-repository={repository.fullName}
-                    key={repository.fullName}
-                  >
-                    <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto] sm:py-0">
-                      {repository.url === undefined ? (
-                        <span className="min-w-0 truncate text-[13px] text-foreground">
-                          {repository.name}
+        <>
+          <ReadTrouble failure={state.failure} />
+          <div className="flex flex-col gap-10" data-zerops-surface="gitea-overview">
+            {state.owners.map((owner) => (
+              <section
+                className="flex flex-col gap-3"
+                data-zerops-gitea-owner={owner.owner}
+                key={owner.owner}
+              >
+                <h2 className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-foreground">
+                  {ownerName?.(owner.owner) ?? owner.owner}
+                </h2>
+                <ul className="flex flex-col divide-y divide-border/50">
+                  {owner.repositories.map((repository) => (
+                    <li
+                      className="flex flex-col"
+                      data-zerops-gitea-repository={repository.fullName}
+                      key={repository.fullName}
+                    >
+                      <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto] sm:py-0">
+                        {repository.url === undefined ? (
+                          <span className="min-w-0 truncate text-[13px] text-foreground">
+                            {repository.name}
+                          </span>
+                        ) : (
+                          <a
+                            className="min-w-0 truncate rounded-sm text-[13px] text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                            href={repository.url}
+                            rel="noopener"
+                            target="_blank"
+                          >
+                            {repository.name}
+                          </a>
+                        )}
+                        <span className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1">
+                          {giteaRepositoryLine(repository.pulls.length)}
                         </span>
-                      ) : (
-                        <a
-                          className="min-w-0 truncate rounded-sm text-[13px] text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                          href={repository.url}
-                          rel="noopener"
-                          target="_blank"
-                        >
-                          {repository.name}
-                        </a>
+                      </div>
+                      {repository.pulls.length === 0 ? null : (
+                        <ul className="flex flex-col divide-y divide-border/50 border-t border-border/50 ps-4">
+                          {repository.pulls.map((pull) => {
+                            const known = change?.(owner.owner, repository.name, pull.number);
+                            return (
+                              <ZeropsPullRequestRow
+                                key={pull.number}
+                                line={pull.line}
+                                tag="pr"
+                                title={pull.title}
+                                status={
+                                  known?.state === undefined ? undefined : (
+                                    <StatusDot
+                                      label={known.state.word}
+                                      sentence
+                                      tone={known.state.tone}
+                                    />
+                                  )
+                                }
+                                {...(known?.open === undefined ? {} : { onOpen: known.open })}
+                              />
+                            );
+                          })}
+                        </ul>
                       )}
-                      <span className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1">
-                        {giteaRepositoryLine(repository.pulls.length)}
-                      </span>
-                    </div>
-                    {repository.pulls.length === 0 ? null : (
-                      <ul className="flex flex-col divide-y divide-border/50 border-t border-border/50 ps-4">
-                        {repository.pulls.map((pull) => {
-                          const known = change?.(owner.owner, repository.name, pull.number);
-                          return (
-                            <ZeropsPullRequestRow
-                              key={pull.number}
-                              line={pull.line}
-                              tag="pr"
-                              title={pull.title}
-                              status={
-                                known?.state === undefined ? undefined : (
-                                  <StatusDot
-                                    label={known.state.word}
-                                    sentence
-                                    tone={known.state.tone}
-                                  />
-                                )
-                              }
-                              {...(known?.open === undefined ? {} : { onOpen: known.open })}
-                            />
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </>
       );
   }
 }
@@ -252,8 +278,8 @@ export function ZeropsGiteaPage() {
           ? { kind: "signing-in" }
           : { kind: "sign-in-refused", reason: flow.signInTrouble }
         : !overview.read
-          ? { kind: "unread" }
-          : { kind: "read", owners: overview.owners };
+          ? { kind: "unread", failure: overview.failure }
+          : { kind: "read", owners: overview.owners, failure: overview.failure };
 
   return (
     <ZeropsHostedFrame
