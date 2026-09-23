@@ -70,6 +70,7 @@ import type { GiteaSessions } from "./giteaSession.ts";
 import {
   MERGE_RECHECK_AFTER_MS,
   mergeabilityAfter,
+  mergeReadOf,
   mergeStateOf,
   type MergeabilityTrack,
   type MergeState,
@@ -512,12 +513,7 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       landed = before.pull.merged === true;
       if (entry.cell.lastInvalidation <= held.asOf.ordinal) prior = before.merge;
     }
-    const merge = mergeabilityAfter(prior, {
-      mergeable: pull.mergeable,
-      headSha: pull.head?.sha,
-      baseSha: pull.base?.sha,
-      atMs: at.wall,
-    });
+    const merge = mergeabilityAfter(prior, mergeReadOf(pull, at.wall));
     const value: PullRequestFact = { pull, merge };
     const applied = entry.cell;
     apply(entry, {

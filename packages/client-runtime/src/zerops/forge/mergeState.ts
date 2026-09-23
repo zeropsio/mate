@@ -1,17 +1,14 @@
 /**
  * Whether a pull request merges, as one projection for every surface that asks (DESIGN §4.7
- * "MergeState", A7).
+ * "MergeState", A7, A11).
  *
- * Gitea recomputes `mergeable` after every push to either side of a pull request, and while it
- * does it answers `false` or `null` — so one `false` is not a verdict. `true` is mergeable at
- * once. `false`, `null` or no answer is `checking`; a pull request is `conflicting` only after a
- * second `false` at least {@link MERGE_CONFLICT_CONFIRM_MS} after the first, over the same head
- * and base shas. A read that knows neither sha can never confirm a conflict, and a `null` starts
- * the count again. The forge store reads a pull request that is checking again at
+ * Gitea recomputes `mergeable` after every push to either side of a pull request, and answers
+ * `false` for about two seconds while it does (A11, measured 2026-09-23) — so a `false` that soon
+ * after a push is not a verdict. `true` is mergeable at once. `false`, `null` or no answer is
+ * `checking`; a `false` is `conflicting` only once {@link MERGE_CHECKING_WINDOW_MS} have passed
+ * since these head and base shas were first read, and a read that knows neither sha can never be
+ * one. The forge store reads a pull request that is checking again at
  * {@link MERGE_RECHECK_AFTER_MS} while it is demanded.
- *
- * The parameters are provisional until the OQ-4 measurement of Gitea's `mergeable` sequence
- * (D8).
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -21,8 +18,8 @@ import type { GiteaPullRequest } from "../giteaClient.ts";
 import type { GitCheckTone } from "../gitTab.ts";
 import type { Shown } from "../knowledge/known.ts";
 
-/** A second `false` this long after the first, over the same shas, is a conflict. */
-export const MERGE_CONFLICT_CONFIRM_MS = 5_000;
+/** A `false` this soon after the head or base sha changed is Gitea still checking. */
+export const MERGE_CHECKING_WINDOW_MS = 5_000;
 
 /** A pull request that is checking is read again this long after it started checking. */
 export const MERGE_RECHECK_AFTER_MS: ReadonlyArray<number> = [2_000, 5_000, 10_000];
@@ -31,6 +28,9 @@ export type Mergeability =
   | { readonly kind: "checking"; readonly sinceMs: number; readonly falseReads: number }
   | { readonly kind: "mergeable" }
   | { readonly kind: "conflicting" };
+
+/** How an open pull request merges, as far as a surface that draws it needs to know. */
+export type MergeabilityKind = Mergeability["kind"];
 
 export type MergeState =
   | {
@@ -59,54 +59,48 @@ export interface MergeRead {
 /** What one pull request's reads have shown so far. */
 export interface MergeabilityTrack {
   readonly mergeability: Mergeability;
-  /** When the current run of `false` reads began; `null` outside one. */
-  readonly firstFalseAtMs: number | null;
+  /** When a read first saw these head and base shas. */
+  readonly seenAtMs: number;
   /** The shas the last read was about: a read about others starts over. */
   readonly headSha: string | undefined;
   readonly baseSha: string | undefined;
 }
 
-/** Checking, from when the prior track started checking or else from `atMs`. */
-const checkingFrom = (
-  prior: MergeabilityTrack | null,
-  atMs: number,
-): Extract<Mergeability, { kind: "checking" }> =>
-  prior?.mergeability.kind === "checking"
-    ? { ...prior.mergeability, falseReads: 0 }
-    : { kind: "checking", sinceMs: atMs, falseReads: 0 };
+/** One read of `pull`, started at `atMs`. */
+export function mergeReadOf(pull: GiteaPullRequest, atMs: number): MergeRead {
+  return { mergeable: pull.mergeable, headSha: pull.head?.sha, baseSha: pull.base?.sha, atMs };
+}
 
 /**
  * The mergeability after one more read. `track` is `null` for a pull request not read before, or
  * one whose earlier reads no longer count — its base moved, say. A read about another head or
- * base than the last one is a new question, so the earlier reads do not count for it either, and
- * its checking — with the rechecks keyed on when that began — starts at that read.
+ * base than the last one is a new question, so the earlier reads do not count for it either: its
+ * window, and its checking with the rechecks keyed on when that began, start at that read.
  */
 export function mergeabilityAfter(
   track: MergeabilityTrack | null,
   read: MergeRead,
 ): MergeabilityTrack {
-  const shas = { headSha: read.headSha, baseSha: read.baseSha };
   const prior =
     track !== null && track.headSha === read.headSha && track.baseSha === read.baseSha
       ? track
       : null;
-  if (read.mergeable === true) {
-    return { mergeability: { kind: "mergeable" }, firstFalseAtMs: null, ...shas };
+  const next = {
+    seenAtMs: prior?.seenAtMs ?? read.atMs,
+    headSha: read.headSha,
+    baseSha: read.baseSha,
+  };
+  if (read.mergeable === true) return { mergeability: { kind: "mergeable" }, ...next };
+  const known = read.headSha !== undefined && read.baseSha !== undefined;
+  if (read.mergeable === false && known && read.atMs - next.seenAtMs >= MERGE_CHECKING_WINDOW_MS) {
+    return { mergeability: { kind: "conflicting" }, ...next };
   }
-  if (read.mergeable !== false || read.headSha === undefined || read.baseSha === undefined) {
-    return { mergeability: checkingFrom(prior, read.atMs), firstFalseAtMs: null, ...shas };
-  }
-  const firstFalseAtMs = prior?.firstFalseAtMs ?? null;
-  if (firstFalseAtMs === null) {
-    const checking = checkingFrom(prior, read.atMs);
-    return { mergeability: { ...checking, falseReads: 1 }, firstFalseAtMs: read.atMs, ...shas };
-  }
-  if (read.atMs - firstFalseAtMs >= MERGE_CONFLICT_CONFIRM_MS) {
-    return { mergeability: { kind: "conflicting" }, firstFalseAtMs, ...shas };
-  }
-  const checking = checkingFrom(prior, firstFalseAtMs);
-  const falseReads = prior?.mergeability.kind === "checking" ? prior.mergeability.falseReads : 0;
-  return { mergeability: { ...checking, falseReads: falseReads + 1 }, firstFalseAtMs, ...shas };
+  const checking =
+    prior?.mergeability.kind === "checking"
+      ? prior.mergeability
+      : { kind: "checking" as const, sinceMs: read.atMs, falseReads: 0 };
+  const falseReads = checking.falseReads + (read.mergeable === false ? 1 : 0);
+  return { mergeability: { ...checking, falseReads }, ...next };
 }
 
 /** The pull request as every surface sees it: landed, closed, or open and how it merges. */

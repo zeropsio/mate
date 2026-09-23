@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { GiteaPullRequest } from "../giteaClient.ts";
 import {
-  MERGE_CONFLICT_CONFIRM_MS,
+  MERGE_CHECKING_WINDOW_MS,
   mergeabilityAfter,
   mergeStateOf,
   type MergeabilityTrack,
@@ -26,14 +26,14 @@ function kinds(reads: ReadonlyArray<MergeRead>): ReadonlyArray<string> {
   return seen;
 }
 
-describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7)", () => {
-  it("false then true within 5 s reads Checking, never Needs a rebase", () => {
+describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7, A11)", () => {
+  it("a false then a true inside the window is checking, then mergeable", () => {
     expect(kinds([read(false, 0), read(false, 2_000), read(true, 4_000)])).toEqual([
       "checking",
       "checking",
       "mergeable",
     ]);
-    expect(MERGE_CONFLICT_CONFIRM_MS).toBe(5_000);
+    expect(MERGE_CHECKING_WINDOW_MS).toBe(5_000);
   });
 
   it.each([
@@ -63,9 +63,19 @@ describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7)", () => {
       seen: ["checking", "checking"],
     },
     {
-      name: "null is not a verdict and starts the count again",
-      reads: [read(false, 0), read(null, 2_000), read(false, 5_000), read(false, 10_000)],
-      seen: ["checking", "checking", "checking", "conflicting"],
+      name: "null is checking, never a verdict",
+      reads: [read(false, 0), read(null, 2_000), read(false, 5_000)],
+      seen: ["checking", "checking", "conflicting"],
+    },
+    {
+      name: "the window runs from the first read of these shas, not from the first false",
+      reads: [read(null, 0), read(false, 2_000), read(false, 5_000)],
+      seen: ["checking", "checking", "conflicting"],
+    },
+    {
+      name: "a false after the window over the same shas is a conflict at once",
+      reads: [read(true, 0), read(false, 6_000)],
+      seen: ["mergeable", "conflicting"],
     },
     {
       name: "no answer at all is checking, never a negative",
@@ -91,7 +101,7 @@ describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7)", () => {
     track = mergeabilityAfter(track, read(false, 3_000));
     expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 1_000, falseReads: 2 });
     track = mergeabilityAfter(track, read(null, 4_000));
-    expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 1_000, falseReads: 0 });
+    expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 1_000, falseReads: 2 });
   });
 
   it("a new head or base starts checking over from the read that saw it", () => {
