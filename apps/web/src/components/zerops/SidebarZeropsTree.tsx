@@ -62,7 +62,6 @@ import {
   type GroupEnvironmentTier,
   type GroupFlow,
   type GroupNextStep,
-  type GroupNextStepKind,
   type GroupRowTone,
   type ReleaseContentsSummary,
   type MissingEnvironmentRow,
@@ -109,6 +108,7 @@ import { COUNT_TONE_CLASS, ZeropsMateVerb } from "./ZeropsMateCard";
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
+  nextStepTone,
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
@@ -157,23 +157,6 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
 }
 
 const NO_HEALTH: ReadonlyMap<string, ZeropsContainerHealth> = new Map();
-
-/** The tone a next-step dot wears — worst first, the same order `groupFlow` picks in. */
-function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
-  switch (kind) {
-    case "answer-mate":
-    case "fix-deploy":
-    case "unblock":
-      return "attention";
-    case "merge":
-    case "release":
-    case "add-production":
-    case "first-task":
-      return "busy";
-    default:
-      return "off";
-  }
-}
 
 /**
  * One project's flow, as the menu needs it: the open pull requests, each
@@ -597,7 +580,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
  * its own: not every project wants one, and a permanent row asking for
  * something optional reads as a fault (the owner, 2026-09-19).
  */
-function ProjectHeader({
+export function ProjectHeader({
   group,
   name,
   muted = false,

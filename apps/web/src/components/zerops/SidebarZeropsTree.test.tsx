@@ -18,10 +18,11 @@ import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
+  nextStepTone,
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
-import { SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
+import { ProjectHeader, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 
 function candidate(
@@ -783,6 +784,34 @@ describe("the project's flow under it", () => {
     it("carries no dot while the flow is unread", () => {
       const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
       expect(html).not.toContain('data-zerops-surface="sidebar-project-next-step"');
+    });
+
+    // Every kind, so a kind added to the flow cannot slip past the heading.
+    const KINDS: Record<GroupNextStepKind, true> = {
+      "answer-mate": true,
+      "fix-deploy": true,
+      merge: true,
+      unblock: true,
+      release: true,
+      "add-production": true,
+      "first-task": true,
+      none: true,
+    };
+    const heading = (kind: GroupNextStepKind) =>
+      renderToStaticMarkup(
+        <ProjectHeader
+          name="Links"
+          nextStep={{ kind, text: `step ${kind}`, verb: undefined, target: undefined }}
+          onBrowseProjects={() => {}}
+        />,
+      );
+    const dotOf = (html: string) =>
+      /data-zerops-surface="sidebar-project-next-step"[^>]*/u.exec(html)?.[0];
+
+    it.each(
+      (Object.keys(KINDS) as ReadonlyArray<GroupNextStepKind>).filter((kind) => kind !== "none"),
+    )("wears the page's tone for %s", (kind) => {
+      expect(dotOf(heading(kind))).toContain(`data-zerops-status-tone="${nextStepTone(kind)}"`);
     });
   });
 });
