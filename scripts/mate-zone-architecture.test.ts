@@ -469,7 +469,8 @@ function collectUiImportViolations(
 // a zone path is checked from its first commit; a path with no file yet holds
 // vacuously. Each zone file is walked through its value imports: relative
 // edges are followed transitively, a type-only edge is erased at compile time
-// and skipped, and a package edge must name a pure effect data module.
+// and skipped, and a package edge must name a pure effect data module or a
+// pure shared module.
 const CLIENT_RUNTIME_ZEROPS_DIR = "packages/client-runtime/src/zerops";
 
 // Effect modules that compute values and run nothing. Every other `effect`
@@ -489,6 +490,9 @@ const PURE_EFFECT_MODULES: ReadonlySet<string> = new Set([
   "effect/Result",
   "effect/Struct",
 ]);
+
+// Shared modules that compute values, import nothing and run nothing.
+const PURE_SHARED_MODULES: ReadonlySet<string> = new Set(["@t3tools/shared/semver"]);
 
 const NETWORK_AND_STORAGE_GLOBALS = [
   "fetch",
@@ -604,7 +608,10 @@ function collectPureZoneViolations(
             continue;
           }
           if (!statement.specifier.startsWith(".")) {
-            if (!PURE_EFFECT_MODULES.has(statement.specifier)) {
+            if (
+              !PURE_EFFECT_MODULES.has(statement.specifier) &&
+              !PURE_SHARED_MODULES.has(statement.specifier)
+            ) {
               report(`imports ${statement.specifier}, which is not a pure effect data module`);
             }
             continue;
@@ -2034,6 +2041,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           "",
         ].join("\n"),
         "projections/banner.ts": 'import * as Stream from "effect/Stream";\n',
+        "projections/candidates.ts": 'import { parseSemver } from "@t3tools/shared/semver";\n',
         "flow/groupFlow.ts": "export const read = () => localStorage.getItem('k');\n",
         "flow/deploymentStore.ts": "export const later = () => setInterval(() => undefined, 1);\n",
         "environments/reachability.ts":
