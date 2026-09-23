@@ -1,52 +1,10 @@
-import {
-  type EnvironmentConnectionPhase,
-  type EnvironmentConnectionPresentation,
-} from "@t3tools/client-runtime/connection";
+import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { SymbolView } from "../../components/AppSymbol";
 import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
-
-function noticeTitle(phase: EnvironmentConnectionPhase, environmentLabel: string): string {
-  switch (phase) {
-    case "offline":
-      return "You are offline";
-    case "connecting":
-      return `Connecting to ${environmentLabel}...`;
-    case "reconnecting":
-      return `Reconnecting to ${environmentLabel}...`;
-    case "error":
-      return `${environmentLabel} is unavailable`;
-    case "available":
-      return `${environmentLabel} is disconnected`;
-    case "connected":
-      return "";
-  }
-}
-
-function noticeDetail(
-  phase: EnvironmentConnectionPhase,
-  resourceName: string,
-  error: string | null,
-): string {
-  if (error) {
-    return `The app will keep retrying automatically. ${error}`;
-  }
-
-  switch (phase) {
-    case "offline":
-      return `Cached data remains available. The ${resourceName} will load when your connection returns.`;
-    case "connecting":
-    case "reconnecting":
-      return `The ${resourceName} will load as soon as the environment is ready.`;
-    case "available":
-    case "error":
-      return `Reconnect the environment to load the ${resourceName}.`;
-    case "connected":
-      return "";
-  }
-}
+import { environmentConnectionNoticeCopy } from "./EnvironmentConnectionNotice.logic";
 
 export function EnvironmentConnectionNotice(props: {
   readonly environmentLabel: string;
@@ -56,6 +14,7 @@ export function EnvironmentConnectionNotice(props: {
 }) {
   const isRetrying =
     props.connection.phase === "connecting" || props.connection.phase === "reconnecting";
+  const copy = environmentConnectionNoticeCopy(props);
 
   return (
     <View className="flex-1 items-center justify-center px-8">
@@ -71,11 +30,9 @@ export function EnvironmentConnectionNotice(props: {
           />
         )}
 
-        <Text className="text-center text-lg font-t3-bold text-foreground">
-          {noticeTitle(props.connection.phase, props.environmentLabel)}
-        </Text>
+        <Text className="text-center text-lg font-t3-bold text-foreground">{copy.title}</Text>
         <Text className="text-center text-sm leading-normal text-foreground-muted">
-          {noticeDetail(props.connection.phase, props.resourceName, props.connection.error)}
+          {copy.detail}
           {props.connection.traceId ? (
             <>
               {" Trace ID: "}
