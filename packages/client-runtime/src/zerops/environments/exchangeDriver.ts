@@ -121,7 +121,11 @@ export interface ExchangeDriverPorts<C> {
   readonly retryLink: (environmentId: EnvironmentId) => void;
   /** The inventory re-reads this target's presence. */
   readonly refreshPresence: (key: TargetKey) => void;
-  /** `catalog.remove` and the door's logout; drafts keep their keys (AL-13). */
+  /**
+   * `catalog.remove`; drafts keep their keys (AL-13). The door's logout and the record's
+   * deletion wait for an absence a direct read confirmed (C19, 3.9): until then a target found
+   * gone may come back, and its record restores it.
+   */
   readonly retire: (key: TargetKey, environmentId: EnvironmentId | null) => void;
   readonly log?: (key: TargetKey, diagnostic: EnvironmentDiagnostic) => void;
 }
@@ -235,6 +239,14 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     };
     entries.set(key, created);
     return created;
+  };
+
+  /** Ends everything an entry holds: its timer and its ops in flight. */
+  const endOps = (entry: Entry): void => {
+    entry.cancelTimer?.();
+    entry.cancelTimer = null;
+    for (const controller of entry.inFlight.values()) controller.abort();
+    entry.inFlight.clear();
   };
 
   const wantedBy = (key: TargetKey): ReadonlyArray<DemandReason | "user"> =>
@@ -537,7 +549,19 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     setTargets: (targets) =>
       enqueue(() => {
         for (const target of targets) {
-          const entry = entryFor(target.key, target.record);
+          let entry = entryFor(target.key, target.record);
+          // Retirement absorbs every event. A target found gone that the inventory names again
+          // is a new target: its absence was never confirmed by a direct read (C19, 3.9).
+          if (
+            entry.machine.credential.kind === "retired" &&
+            entry.machine.presence.kind === "gone" &&
+            target.presence !== null &&
+            target.presence.kind !== "gone"
+          ) {
+            endOps(entry);
+            entries.delete(target.key);
+            entry = entryFor(target.key, target.record);
+          }
           if (target.presence !== null && !sameJson(target.presence, entry.machine.presence)) {
             step(target.key, { type: "PRESENCE", presence: target.presence });
           }
@@ -598,11 +622,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       if (disposed) return;
       disposed = true;
       cancelMintTimer?.();
-      for (const entry of entries.values()) {
-        entry.cancelTimer?.();
-        for (const controller of entry.inFlight.values()) controller.abort();
-        entry.inFlight.clear();
-      }
+      for (const entry of entries.values()) endOps(entry);
       for (const resolvers of connects.values()) {
         for (const resolve of resolvers) resolve({ _tag: "Closed" });
       }

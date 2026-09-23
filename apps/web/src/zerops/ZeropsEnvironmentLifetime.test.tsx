@@ -464,7 +464,7 @@ it("an inventory read in flight or failed keeps the environment", async () => {
   expect(mock.retire).not.toHaveBeenCalled();
 });
 
-it("a deleted project loses it", async () => {
+it("a deleted project loses it, until the inventory names it again", async () => {
   rememberEnvironment({ key: "project:service", environmentId });
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   const render = await mount();
@@ -476,6 +476,12 @@ it("a deleted project loses it", async () => {
   await render();
 
   expect(mock.retire).toHaveBeenCalledWith("project:service", environmentId);
+
+  // One settled read is not a confirmed absence (C19): a project named again is restored.
+  const exchanges = mock.exchange.mock.calls.length;
+  liveInventory = inventory();
+  await render();
+  expect(mock.exchange).toHaveBeenCalledTimes(exchanges + 1);
 });
 
 it("releases an unremembered registration when its identity exchange ends unsuccessfully", async () => {

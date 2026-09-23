@@ -466,6 +466,27 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(retriedLinks).toEqual([environmentId]);
   });
 
+  it("a target retired on absence starts over when the inventory names it again", async () => {
+    const shop = mate("shop");
+    const { driver, exchanges, start, reach } = rig([shop]);
+    await start({ records: [shop] });
+    const target = (presence: Presence) => ({
+      key: keyOf(shop),
+      presence,
+      container: { level: "ready" } as const,
+      record: EnvironmentId.make("env-shop"),
+    });
+
+    driver.setTargets([target({ kind: "gone", evidence: "complete-scope-omits-verified" })]);
+    await flush();
+    expect(reach(shop)).toEqual({ kind: "gone", because: "complete-scope-omits-verified" });
+
+    driver.setTargets([target({ kind: "present", origin: shop.origin })]);
+    await flush();
+    expect(exchanges).toHaveLength(2);
+    expect(reach(shop)).toEqual({ kind: "ready", notice: null });
+  });
+
   it("the user's Connect answers once the credential is installed, or with why it is not", async () => {
     const shop = mate("shop");
     const readOnly = mate("ro");
