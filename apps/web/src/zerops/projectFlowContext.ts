@@ -5,7 +5,8 @@
  * screen and a Mate's Git tab all show a leg of the same flow, and each
  * reading Gitea for itself is how the account was read seven hundred times a
  * minute once (`useZeropsGroupDeploys`). The value is what was read and the
- * verbs that change it, as the person; a verb re-reads once it has settled.
+ * verbs that change it, as the person; a verb re-reads what it changed once
+ * it has settled.
  */
 import type {
   EnvironmentRow,
@@ -72,7 +73,6 @@ export interface ZeropsProjectFlowValue {
   readonly pending: ReadonlySet<string>;
   /** What the last verb's refusal said, until the next verb. */
   readonly trouble: string | null;
-  readonly refresh: () => void;
   /** Merges it in Gitea as the person; Gitea's own permissions are the gate. */
   readonly mergePullRequest: (
     slug: string,

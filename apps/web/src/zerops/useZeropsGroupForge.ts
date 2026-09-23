@@ -3,13 +3,15 @@
  * request on the project's repositories and every release of its group repo
  * (`projectFlow.ts`).
  *
- * One pass per group: the org's repositories, the pull requests open on each
+ * One read per group: the org's repositories, the pull requests open on each
  * and the checks on each one's head, then the group repo's `v*` tags and the
- * broker's verdict on each (`release.ts`). Re-read every sixty seconds, and
- * at once after a verb — the caller bumps `generation`. Gitea has no event
- * stream, so a clock is the only freshness there is; a read that fails
- * answers nothing for that group rather than something, and the surfaces
- * keep what they had.
+ * broker's verdict on each (`release.ts`). Each group is published the moment
+ * its read completes (`flow/groupAnswers.ts`), every group is read again every
+ * sixty seconds, and a verb re-reads at once only the part it changed
+ * (`flow/verbs.ts`). Gitea has no event stream, so a clock is the only
+ * freshness there is. A part that does not answer keeps what it had; a part
+ * never read that does not answer leaves the group unanswered rather than
+ * empty.
  *
  * What an environment runs is not read here: that is the account's to prove
  * (`useZeropsGroupDeploys`), and the two are joined in the provider.
@@ -26,8 +28,13 @@ import {
   type FlowRelease,
   type GiteaClient,
 } from "@t3tools/client-runtime/zerops";
-import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { useEffect, useState } from "react";
+import {
+  createGroupAnswers,
+  type ForgeScope,
+  type GroupAnswers,
+  type GroupUpdate,
+} from "@t3tools/client-runtime/zerops/flow";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { giteaClientFor } from "./giteaSession";
 
@@ -35,6 +42,8 @@ import { giteaClientFor } from "./giteaSession";
 export const GROUP_FORGE_REFRESH_MS = 60_000;
 
 export interface ZeropsGroupForgeState {
+  /** The org's repositories this answer read, in the forge's order. */
+  readonly repositories: ReadonlyArray<string>;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   /** The landed ones, newest first as the forge lists them. */
   readonly merged: ReadonlyArray<FlowPullRequest>;
@@ -46,7 +55,11 @@ export interface ZeropsGroupForgeState {
 
 export type ZeropsGroupForges = ReadonlyMap<string, ZeropsGroupForgeState>;
 
-const EMPTY: ZeropsGroupForges = new Map();
+export interface ZeropsGroupForge {
+  readonly forges: ZeropsGroupForges;
+  /** Re-reads one part of one group at once: what a verb changed. */
+  readonly invalidate: (groupId: string, scope: ForgeScope) => void;
+}
 
 /**
  * How many of a repository's closed changes are read for the landings a
@@ -58,94 +71,235 @@ const MERGED_PER_REPOSITORY = 20;
 export function useZeropsGroupForge(input: {
   readonly giteaOrigin: string | undefined;
   readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
-  /** Bumped by the caller after a verb, to read again at once. */
-  readonly generation: number;
   readonly enabled: boolean;
-}): ZeropsGroupForges {
-  const { enabled, generation, giteaOrigin } = input;
-  const key =
-    enabled && giteaOrigin !== undefined
-      ? JSON.stringify([giteaOrigin, input.groups.map((group) => [group.groupId, group.slug])])
-      : "";
-  const [answer, setAnswer] = useState<{
-    readonly key: string;
-    readonly forges: ZeropsGroupForges;
-  } | null>(null);
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    if (key === "") return;
-    const timer = window.setInterval(() => {
-      setTick((count) => count + 1);
-    }, GROUP_FORGE_REFRESH_MS);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [key]);
-
-  useEffect(() => {
-    if (key === "" || giteaOrigin === undefined) return;
-    const client = giteaClientFor(giteaOrigin);
-    if (client === null) return;
-    const controller = new AbortController();
-    const groups = input.groups;
-    const pass = mateDiagnostics.span("flow-pass", { pass: "forge", groups: groups.length });
-    void (async () => {
-      const forges = new Map<string, ZeropsGroupForgeState>();
-      for (const group of groups) {
-        const state = await readForge(client, group.slug).catch(() => undefined);
-        if (controller.signal.aborted) return;
-        if (state !== undefined) forges.set(group.groupId, state);
-      }
-      if (!controller.signal.aborted) setAnswer({ key, forges });
-      pass.end({ answered: forges.size });
-    })();
-    return () => {
-      controller.abort();
-      pass.drop();
-    };
-    // `key` carries every group; `generation` and `tick` are the two reasons
-    // to read the same ones again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation, giteaOrigin, key, tick]);
-
-  return answer?.key === key ? answer.forges : EMPTY;
+}): ZeropsGroupForge {
+  const { answers, invalidate } = useGroupAnswers<
+    { readonly groupId: string; readonly slug: string },
+    ForgeScope,
+    ZeropsGroupForgeState
+  >({
+    pass: "forge",
+    giteaOrigin: input.giteaOrigin,
+    enabled: input.enabled,
+    groups: input.groups,
+    refreshMs: GROUP_FORGE_REFRESH_MS,
+    keyOf: (group) => group.slug,
+    read: (client, group, scope) => readForge(client, group.slug, scope),
+  });
+  return { forges: answers, invalidate };
 }
 
-async function readForge(client: GiteaClient, slug: string): Promise<ZeropsGroupForgeState> {
-  const repositories = await client.listOrganizationRepositories(slug);
-  const pullRequests: Array<FlowPullRequest> = [];
-  for (const repository of repositories) {
-    const pulls = await client
-      .listPullRequests(slug, repository.name, { state: "open" })
-      .catch(() => []);
-    for (const pull of pulls) {
-      const head = pull.head?.sha;
-      const checks =
-        head === undefined
-          ? []
-          : await client.listCommitStatuses(slug, repository.name, head).catch(() => []);
-      pullRequests.push(flowPullRequest({ repository: repository.name, pull, checks }));
-    }
-  }
+/**
+ * One group's answers, per group and kept across reads, for as long as the
+ * tab holds a Gitea session with this origin — the React half of
+ * `createGroupAnswers`, shared by the flow's two halves. Losing the session
+ * stops the reads and keeps what was read; another Gitea starts from nothing.
+ */
+export function useGroupAnswers<Group extends { readonly groupId: string }, Scope, Answer>(input: {
+  readonly pass: "forge" | "deploys";
+  readonly giteaOrigin: string | undefined;
+  readonly enabled: boolean;
+  readonly groups: ReadonlyArray<Group>;
+  readonly refreshMs: number;
+  readonly keyOf: (group: Group) => string;
+  readonly read: (
+    client: GiteaClient,
+    group: Group,
+    scope: Scope | "group",
+    signal: AbortSignal,
+    held: Answer | undefined,
+  ) => Promise<GroupUpdate<Answer>>;
+}): {
+  readonly answers: ReadonlyMap<string, Answer>;
+  readonly invalidate: (groupId: string, scope: Scope | "group") => void;
+} {
+  const { enabled, giteaOrigin, groups, pass, refreshMs } = input;
+  const [held, setHeld] = useState<{
+    readonly origin: string | undefined;
+    readonly answers: ReadonlyMap<string, Answer>;
+  }>({ origin: undefined, answers: new Map() });
+  // The reads run off the driver, never off the inputs' identity: the groups
+  // are rebuilt from an inventory that moves with every read, and keying the
+  // effect on them read the group repo about 700 times a minute once (the
+  // owner's org, 2026-09-17). The driver reads a group again only when its
+  // key changes, and takes the latest inputs from here.
+  const latest = useRef({ input, held });
+  useEffect(() => {
+    latest.current = { input, held };
+  });
+  const driver = useRef<GroupAnswers<Group, Scope> | null>(null);
 
+  useEffect(() => {
+    if (!enabled || giteaOrigin === undefined) return;
+    const client = giteaClientFor(giteaOrigin);
+    if (client === null) return;
+    const kept =
+      latest.current.held.origin === giteaOrigin ? latest.current.held.answers : undefined;
+    const answers = createGroupAnswers<Group, Scope, Answer>({
+      pass,
+      idOf: (group) => group.groupId,
+      keyOf: (group) => latest.current.input.keyOf(group),
+      read: (group, scope, signal, previous) =>
+        latest.current.input.read(client, group, scope, signal, previous),
+      publish: (groupId, answer) => {
+        setHeld((current) => ({
+          origin: giteaOrigin,
+          answers: new Map(current.origin === giteaOrigin ? current.answers : []).set(
+            groupId,
+            answer,
+          ),
+        }));
+      },
+      forget: (groupIds) => {
+        setHeld((current) => {
+          const next = new Map(current.answers);
+          for (const groupId of groupIds) next.delete(groupId);
+          return { origin: current.origin, answers: next };
+        });
+      },
+      ...(kept === undefined ? {} : { initial: kept }),
+    });
+    driver.current = answers;
+    answers.setGroups(latest.current.input.groups);
+    const timer = window.setInterval(answers.refresh, refreshMs);
+    return () => {
+      window.clearInterval(timer);
+      answers.dispose();
+      driver.current = null;
+    };
+  }, [enabled, giteaOrigin, pass, refreshMs]);
+
+  useEffect(() => {
+    driver.current?.setGroups(groups);
+  }, [groups]);
+
+  const invalidate = useCallback((groupId: string, scope: Scope | "group") => {
+    driver.current?.invalidate(groupId, scope);
+  }, []);
+
+  return {
+    answers: held.origin === giteaOrigin ? held.answers : EMPTY_ANSWERS,
+    invalidate,
+  };
+}
+
+const EMPTY_ANSWERS: ReadonlyMap<string, never> = new Map<string, never>();
+
+/** One repository's changes: the open ones with their checks, and the recent landings. */
+interface RepositoryPulls {
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+}
+
+interface Releases {
+  readonly releases: ReadonlyArray<FlowRelease>;
+  readonly tags: ReadonlyArray<string>;
+}
+
+/** A part of a read that may not answer: `undefined` when it did not. */
+async function answered<T>(read: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await read();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Reads one scope of a group's forge. A whole read keeps, per repository and
+ * for the releases, what is held where that part did not answer; a part that
+ * did not answer and was never read leaves the group unanswered.
+ */
+export async function readForge(
+  client: GiteaClient,
+  slug: string,
+  scope: ForgeScope | "group",
+): Promise<GroupUpdate<ZeropsGroupForgeState>> {
+  if (scope !== "group" && scope.kind === "repository") {
+    const pulls = await readRepositoryPulls(client, slug, scope.repository);
+    return (held) =>
+      held === undefined
+        ? undefined
+        : withRepositories(
+            held,
+            held.repositories.includes(scope.repository)
+              ? held.repositories
+              : [...held.repositories, scope.repository],
+            new Map([[scope.repository, pulls]]),
+          );
+  }
+  if (scope !== "group") {
+    const releases = await readReleases(client, slug);
+    return (held) => (held === undefined ? undefined : { ...held, ...releases });
+  }
+  const repositories = (await client.listOrganizationRepositories(slug)).map(
+    (repository) => repository.name,
+  );
+  const read = new Map<string, RepositoryPulls>();
+  for (const repository of repositories) {
+    const pulls = await answered(() => readRepositoryPulls(client, slug, repository));
+    if (pulls !== undefined) read.set(repository, pulls);
+  }
+  const releases = await answered(() => readReleases(client, slug));
+  return (held) => {
+    const keeps = (repository: string) =>
+      read.has(repository) || (held?.repositories.includes(repository) ?? false);
+    if (!repositories.every(keeps) || (releases === undefined && held === undefined))
+      return undefined;
+    const next = withRepositories(
+      held ?? { repositories, pullRequests: [], merged: [], releases: [], tags: [] },
+      repositories,
+      read,
+    );
+    return releases === undefined ? next : { ...next, ...releases };
+  };
+}
+
+/** The held answer with the given repositories' rows replaced, in `repositories` order. */
+function withRepositories(
+  held: ZeropsGroupForgeState,
+  repositories: ReadonlyArray<string>,
+  fresh: ReadonlyMap<string, RepositoryPulls>,
+): ZeropsGroupForgeState {
+  const rows = (repository: string, part: keyof RepositoryPulls) =>
+    fresh.get(repository)?.[part] ?? held[part].filter((pull) => pull.repository === repository);
+  return {
+    ...held,
+    repositories,
+    pullRequests: repositories.flatMap((repository) => rows(repository, "pullRequests")),
+    merged: repositories.flatMap((repository) => rows(repository, "merged")),
+  };
+}
+
+async function readRepositoryPulls(
+  client: GiteaClient,
+  slug: string,
+  repository: string,
+): Promise<RepositoryPulls> {
+  const pullRequests: Array<FlowPullRequest> = [];
+  for (const pull of await client.listPullRequests(slug, repository, { state: "open" })) {
+    const head = pull.head?.sha;
+    const checks =
+      head === undefined
+        ? []
+        : await client.listCommitStatuses(slug, repository, head).catch(() => []);
+    pullRequests.push(flowPullRequest({ repository, pull, checks }));
+  }
   // The landed ones, so a conversation can place its own work landing on its
   // timeline. No checks are read for them: a change that is over is not waiting
-  // on CI, and the read is per repository already. Capped, because a long-lived
-  // group's closed list is unbounded and only the recent ones sit inside a
-  // conversation anybody still has open.
-  const merged: Array<FlowPullRequest> = [];
-  for (const repository of repositories) {
-    const closed = await client
-      .listPullRequests(slug, repository.name, { state: "closed" })
-      .catch(() => []);
-    for (const pull of closed.slice(0, MERGED_PER_REPOSITORY)) {
-      if (pull.merged !== true) continue;
-      merged.push(flowPullRequest({ repository: repository.name, pull, checks: [] }));
-    }
-  }
+  // on CI. Capped, because a long-lived group's closed list is unbounded and
+  // only the recent ones sit inside a conversation anybody still has open.
+  const closed = await client.listPullRequests(slug, repository, { state: "closed" });
+  const merged = closed
+    .slice(0, MERGED_PER_REPOSITORY)
+    .filter((pull) => pull.merged === true)
+    .map((pull) => flowPullRequest({ repository, pull, checks: [] }));
+  return { pullRequests, merged };
+}
 
-  const tags = await client.listTags(slug, GROUP_REPOSITORY).catch(() => []);
+async function readReleases(client: GiteaClient, slug: string): Promise<Releases> {
+  const tags = await client.listTags(slug, GROUP_REPOSITORY);
+  // Filtered into a fresh array, so the sort touches nothing else.
   const releaseTags = tags.filter((tag) => isReleaseTag(tag.name)).sort(byVersionDescending);
   const releases: Array<FlowRelease> = [];
   for (const tag of releaseTags) {
@@ -163,8 +317,7 @@ async function readForge(client: GiteaClient, slug: string): Promise<ZeropsGroup
       line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     });
   }
-
-  return { pullRequests, merged, releases, tags: releaseTags.map((tag) => tag.name) };
+  return { releases, tags: releaseTags.map((tag) => tag.name) };
 }
 
 /** Newest release first, by version rather than by name. */

@@ -42,11 +42,16 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   readonly idOf: (group: Group) => string;
   /** Everything a group's read depends on; a change reads that group again. */
   readonly keyOf: (group: Group) => string;
-  /** Rejects when the read failed: the group keeps what it had. */
+  /**
+   * Rejects when the read failed: the group keeps what it had. `held` is the
+   * group's answer when the read starts, for a read that keeps a part of it
+   * that did not answer this time.
+   */
   readonly read: (
     group: Group,
     scope: Scope | "group",
     signal: AbortSignal,
+    held: Answer | undefined,
   ) => Promise<GroupUpdate<Answer>>;
   readonly publish: (groupId: string, answer: Answer) => void;
   readonly forget: (groupIds: ReadonlyArray<string>) => void;
@@ -71,7 +76,7 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
     const ticket = tickets;
     let update: GroupUpdate<Answer>;
     try {
-      update = await options.read(group, scope, controller.signal);
+      update = await options.read(group, scope, controller.signal, held.get(groupId)?.answer);
     } catch {
       return false;
     }
@@ -107,7 +112,7 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   const schedule = (groupIds: Iterable<string>) => {
     if (controller.signal.aborted) return;
     for (const groupId of groupIds) due.add(groupId);
-    void drain();
+    if (due.size > 0) void drain();
   };
 
   return {

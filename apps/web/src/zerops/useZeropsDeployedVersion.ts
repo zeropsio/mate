@@ -9,8 +9,8 @@
  * rather than each holding a read of their own, so a group is read the same way
  * wherever it is shown.
  *
- * A read that fails answers nothing, which is a row without a commit rather
- * than a row that lies.
+ * A read that fails rejects: the flow keeps the version it read last rather
+ * than a row that says nothing is there.
  */
 import type {
   ZeropsResourceBroker,
@@ -27,26 +27,33 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 /**
  * A one-shot action demand owns its lease until the resource settles, or
  * until `signal` aborts — an unmount abandoning the flow releases the lease
- * immediately instead of holding it until the read finally settles.
+ * immediately instead of holding it until the read finally settles. Rejects
+ * when the read did not succeed.
  */
+export function readZeropsResource<Request extends ZeropsResourceRequest>(
+  resources: ZeropsResourceBroker,
+  request: Request,
+  signal?: AbortSignal,
+): Promise<ZeropsResourceValue<Request>> {
+  return Effect.runPromise(
+    Effect.scoped(resources.acquire(request).pipe(Effect.flatMap((lease) => lease.awaitSettled))),
+    signal === undefined ? undefined : { signal },
+  ).then((snapshot) => {
+    if (snapshot.status === "success") return snapshot.value;
+    throw new Error(`The ${request.kind} read did not succeed (${snapshot.status}).`);
+  });
+}
+
+/** {@link readZeropsResource} for a caller that treats a failed read as no answer. */
 export function readZeropsResourceOnce<Request extends ZeropsResourceRequest>(
   resources: ZeropsResourceBroker,
   request: Request,
   signal?: AbortSignal,
 ): Promise<ZeropsResourceValue<Request> | undefined> {
-  return Effect.runPromise(
-    Effect.scoped(
-      resources.acquire(request).pipe(
-        Effect.flatMap((lease) => lease.awaitSettled),
-        Effect.map((snapshot) => (snapshot.status === "success" ? snapshot.value : undefined)),
-        Effect.orElseSucceed(() => undefined),
-      ),
-    ),
-    signal === undefined ? undefined : { signal },
-  ).catch(() => undefined);
+  return readZeropsResource(resources, request, signal).catch(() => undefined);
 }
 
-/** Reads one service's deployed version name, in the account's scope. */
+/** Reads one service's deployed version name, in the account's scope; rejects when it could not. */
 export type ZeropsDeployedVersionReader = (
   projectId: string,
   serviceId: string,
@@ -58,8 +65,8 @@ export function useZeropsDeployedVersionReader(): ZeropsDeployedVersionReader {
   const { projectRef, runtime } = useZeropsData();
   return useCallback(
     async (projectId: string, serviceId: string, signal: AbortSignal) => {
-      if (activeOrganization === null) return undefined;
-      return readZeropsResourceOnce(
+      if (activeOrganization === null) throw new Error("No organization is chosen.");
+      return readZeropsResource(
         runtime.resources,
         {
           kind: "service-deployed-version",

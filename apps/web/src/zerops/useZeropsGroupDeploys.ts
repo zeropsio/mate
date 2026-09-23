@@ -9,11 +9,14 @@
  *
  * ## What a missing answer does: nothing
  *
- * Not signed in to Gitea in this tab, or the broker has not made the group's
- * repositories yet, and the group simply keeps the rows it already had — the
- * environments are still read from the account, they just carry no commit and
- * no deploy word. A row's height never depends on which of the three landed
- * (`environmentRow`), so the page does not move under somebody arriving.
+ * Each group is read on its own and published the moment it completes
+ * (`flow/groupAnswers.ts`). A group repo that does not answer fails the
+ * group's read, and the group keeps the rows it already had; a version read
+ * that does not answer keeps the version that service was last read with.
+ * Whether anything runs at all is the platform's pushed answer
+ * (`flow/deployment.ts`), not this read's. A row's height never depends on
+ * which of the three landed (`environmentRow`), so the page does not move
+ * under somebody arriving.
  *
  * The platform read is the caller's to perform: the one-shot resource lease
  * lives on the screen that owns the account scope, and handing it in keeps
@@ -32,6 +35,7 @@ import {
   planReleaseReads,
   releaseDeploys,
   RECIPE_TIER_PATHS,
+  type GiteaClient,
   type GiteaCommit,
   type GiteaCommitStatus,
   type GiteaPullRequest,
@@ -43,10 +47,11 @@ import {
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
-import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { useEffect, useRef, useState } from "react";
+import type { GroupUpdate } from "@t3tools/client-runtime/zerops/flow";
+import { useCallback } from "react";
 
-import { giteaClientFor } from "./giteaSession";
+import type { ZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
+import { useGroupAnswers } from "./useZeropsGroupForge";
 
 /** Where `environments.yaml` lives, and what the group repo is called. */
 const GROUP_REPOSITORY = "group";
@@ -107,33 +112,24 @@ export interface ReleaseContent {
 
 export type ZeropsGroupDeploys = ReadonlyMap<string, ZeropsGroupDeployState>;
 
-const EMPTY: ZeropsGroupDeploys = new Map();
+export interface ZeropsGroupDeployAnswers {
+  readonly deploys: ZeropsGroupDeploys;
+  /** Re-reads one group at once: what a verb changed. */
+  readonly invalidate: (groupId: string) => void;
+}
 
 /**
- * Serialises what the reads depend on, so an unchanged account is read once.
- *
- * `generation` is bumped once by every verb the person runs. Without it the
- * deploy state moved on the 60s clock alone, so a merge emptied the
- * pull-request row at once — the forge hook is told — while the line beside
- * it went on saying what was waiting to go live before the merge, for up to a
- * minute. A verb is a discrete bump, not a moving input, so this stays one
- * read per change rather than the 700 a minute that keying on the groups cost.
+ * Serialises what one group's reads depend on, so an unchanged group is read
+ * once per tick and a group whose projects moved is read again on its own.
  */
-export function readGroupDeploysKey(
-  groups: ReadonlyArray<ZeropsDeployGroup>,
-  giteaOrigin: string | undefined,
-  generation: number,
-): string {
+export function deployGroupKey(group: ZeropsDeployGroup): string {
   return JSON.stringify([
-    giteaOrigin ?? "",
-    generation,
-    groups.map((group) => [
-      group.slug,
-      group.projects.map((project) => [
-        project.projectId,
-        project.role ?? "",
-        project.services.map((service) => service.serviceId).toSorted(),
-      ]),
+    group.slug,
+    group.projects.map((project) => [
+      project.projectId,
+      project.name,
+      project.role ?? "",
+      project.services.map((service) => service.serviceId).toSorted(),
     ]),
   ]);
 }
@@ -141,209 +137,174 @@ export function readGroupDeploysKey(
 export function useZeropsGroupDeploys(input: {
   readonly groups: ReadonlyArray<ZeropsDeployGroup>;
   readonly giteaOrigin: string | undefined;
-  /** Reads one service's deployed version name, through the account's runtime. */
-  readonly readVersion: (
-    projectId: string,
-    serviceId: string,
-    signal: AbortSignal,
-  ) => Promise<string | undefined>;
+  readonly readVersion: ZeropsDeployedVersionReader;
   readonly enabled: boolean;
-  /** Bumped once per verb the person ran, so the flow is re-read when it settles. */
-  readonly generation?: number | undefined;
-}): ZeropsGroupDeploys {
-  const { enabled, giteaOrigin, groups, readVersion } = input;
-  const generation = input.generation ?? 0;
-  const key =
-    enabled && giteaOrigin !== undefined
-      ? readGroupDeploysKey(groups, giteaOrigin, generation)
-      : "";
-  const [answer, setAnswer] = useState<{
-    readonly key: string;
-    readonly deploys: ZeropsGroupDeploys;
-  } | null>(null);
-  const [tick, setTick] = useState(0);
-  // The reads run off `key` and the clock, never off the inputs' identity: on
-  // the Git tab the groups are rebuilt from an inventory that moves with every
-  // read this hook makes, and keying the effect on them read the group repo
-  // about 700 times a minute for as long as the tab was open (the owner's org,
-  // 2026-09-17, 19:35Z on). The latest inputs are read from here when a pass
-  // starts.
-  const latest = useRef({ groups, readVersion });
-  useEffect(() => {
-    latest.current = { groups, readVersion };
-  }, [groups, readVersion]);
-
-  useEffect(() => {
-    if (key === "") return;
-    const timer = window.setInterval(() => {
-      setTick((count) => count + 1);
-    }, GROUP_DEPLOYS_REFRESH_MS);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [key]);
-
-  useEffect(() => {
-    if (key === "" || giteaOrigin === undefined) return;
-    const client = giteaClientFor(giteaOrigin);
-    const controller = new AbortController();
-    const pass = mateDiagnostics.span("flow-pass", {
+}): ZeropsGroupDeployAnswers {
+  const { answers, invalidate } = useGroupAnswers<ZeropsDeployGroup, never, ZeropsGroupDeployState>(
+    {
       pass: "deploys",
-      groups: latest.current.groups.length,
-    });
+      giteaOrigin: input.giteaOrigin,
+      enabled: input.enabled,
+      groups: input.groups,
+      refreshMs: GROUP_DEPLOYS_REFRESH_MS,
+      keyOf: deployGroupKey,
+      read: (client, group, _scope, signal, held) =>
+        readGroupDeploys({ client, group, readVersion: input.readVersion, held, signal }),
+    },
+  );
+  const invalidateGroup = useCallback(
+    (groupId: string) => {
+      invalidate(groupId, "group");
+    },
+    [invalidate],
+  );
+  return { deploys: answers, invalidate: invalidateGroup };
+}
 
-    void (async () => {
-      const { groups, readVersion } = latest.current;
-      const deploys = new Map<string, ZeropsGroupDeployState>();
-      for (const group of groups) {
-        if (controller.signal.aborted) return;
-        // Signed in to Gitea or not, the group's declarations are the group
-        // repo's: with no session there is nothing to declare from and the
-        // group keeps whatever the account alone can say, which is nothing.
-        const declarations =
-          client === null
-            ? []
-            : await readDeclarations(client, group.slug).catch(
-                (): ReadonlyArray<GroupEnvironment> => [],
-              );
-        const pullRequests =
-          client === null
-            ? []
-            : await client
-                .listPullRequests(group.slug, GROUP_REPOSITORY, { state: "open" })
-                .catch((): ReadonlyArray<GiteaPullRequest> => []);
-        const onMain =
-          client === null
-            ? NO_TIERS
-            : await readTiersOnMain(client, group.slug).catch((): TiersOnMain => NO_TIERS);
-        const tiersOnMain = onMain.tiers;
-        if (controller.signal.aborted) return;
-        // A tier the account already holds a project for is not missing, even
-        // while its declaration is still on its way to the group repo.
-        const filledTiers = group.projects.flatMap((project) => {
-          const tier = environmentTierForRole(project.role);
-          return tier === undefined ? [] : [tier];
-        });
-        const missing = missingEnvironmentRows({ tiersOnMain, declarations, filledTiers });
-        if (declarations.length === 0 && pullRequests.length === 0 && missing.length === 0)
-          continue;
+/**
+ * One group's deploy half. The group repo's declarations, open pulls and
+ * tiers must answer or the read fails; a version read that does not answer
+ * keeps the version `held` has for that service.
+ */
+export async function readGroupDeploys(input: {
+  readonly client: GiteaClient;
+  readonly group: ZeropsDeployGroup;
+  readonly readVersion: ZeropsDeployedVersionReader;
+  readonly held: ZeropsGroupDeployState | undefined;
+  readonly signal: AbortSignal;
+}): Promise<GroupUpdate<ZeropsGroupDeployState>> {
+  const { client, group, held, signal } = input;
+  const declarations = await readDeclarations(client, group.slug);
+  const pullRequests = await client.listPullRequests(group.slug, GROUP_REPOSITORY, {
+    state: "open",
+  });
+  const onMain = await readTiersOnMain(client, group.slug);
+  const tiersOnMain = onMain.tiers;
+  // A tier the account already holds a project for is not missing, even
+  // while its declaration is still on its way to the group repo.
+  const filledTiers = group.projects.flatMap((project) => {
+    const tier = environmentTierForRole(project.role);
+    return tier === undefined ? [] : [tier];
+  });
+  const missing = missingEnvironmentRows({ tiersOnMain, declarations, filledTiers });
+  if (declarations.length === 0 && pullRequests.length === 0 && missing.length === 0)
+    return (previous) => (previous === undefined ? undefined : NOTHING_DECLARED);
 
-        const services: ReadonlyArray<GroupEnvironmentService> = group.projects.flatMap((project) =>
-          project.services.map((service) => ({
-            projectId: project.projectId,
-            serviceId: service.serviceId,
-            hostname: service.hostname,
-          })),
-        );
-        const versions = new Map<string, string>();
-        for (const read of planDeployedVersionReads({ declarations, services })) {
-          const name = await readVersion(read.projectId, read.serviceId, controller.signal);
-          if (controller.signal.aborted) return;
-          if (name !== undefined) versions.set(read.serviceId, name);
-        }
+  const services: ReadonlyArray<GroupEnvironmentService> = group.projects.flatMap((project) =>
+    project.services.map((service) => ({
+      projectId: project.projectId,
+      serviceId: service.serviceId,
+      hostname: service.hostname,
+    })),
+  );
+  const versions = new Map<string, string>();
+  for (const read of planDeployedVersionReads({ declarations, services })) {
+    signal.throwIfAborted();
+    const name = await input
+      .readVersion(read.projectId, read.serviceId, signal)
+      .catch(() => heldVersion(held, read));
+    if (name !== undefined) versions.set(read.serviceId, name);
+  }
 
-        const statuses = new Map<string, ReadonlyArray<GiteaCommitStatus>>();
-        if (client !== null) {
-          const reads = planDeployStatusReads({
-            owner: group.slug,
-            versions: services.map((service) => ({
-              hostname: service.hostname,
-              appVersionName: versions.get(service.serviceId),
-              repository: onMain.repositories.get(service.hostname),
-            })),
-          });
-          for (const read of reads) {
-            // A refusal is not an answer: the row says nothing about a deploy
-            // it could not be told about, rather than calling it neutral.
-            const answered = await client
-              .listCommitStatuses(read.owner, read.repo, read.sha)
-              .catch(() => null);
-            if (controller.signal.aborted) return;
-            if (answered !== null) statuses.set(deployStatusKey(read), answered);
-          }
-        }
+  const statuses = new Map<string, ReadonlyArray<GiteaCommitStatus>>();
+  const reads = planDeployStatusReads({
+    owner: group.slug,
+    versions: services.map((service) => ({
+      hostname: service.hostname,
+      appVersionName: versions.get(service.serviceId),
+      repository: onMain.repositories.get(service.hostname),
+    })),
+  });
+  for (const read of reads) {
+    signal.throwIfAborted();
+    // A refusal is not an answer: the row says nothing about a deploy
+    // it could not be told about, rather than calling it neutral.
+    const answered = await client
+      .listCommitStatuses(read.owner, read.repo, read.sha)
+      .catch(() => null);
+    if (answered !== null) statuses.set(deployStatusKey(read), answered);
+  }
 
-        const rowInputs = buildGroupEnvironmentRowInputs({
-          owner: group.slug,
-          declarations,
-          projectNames: new Map(group.projects.map((project) => [project.projectId, project.name])),
-          services,
-          versions,
-          statuses,
-          // Which repository each service is built from, so a row's version can
-          // address the commit it was built from.
-          repositories: onMain.repositories,
-        });
+  const rowInputs = buildGroupEnvironmentRowInputs({
+    owner: group.slug,
+    declarations,
+    projectNames: new Map(group.projects.map((project) => [project.projectId, project.name])),
+    services,
+    versions,
+    statuses,
+    // Which repository each service is built from, so a row's version can
+    // address the commit it was built from.
+    repositories: onMain.repositories,
+  });
 
-        // What a release would put live: the head of each production service's
-        // repository, whether or not the group has a stage (D28). The comment
-        // here used to say a group with a stage never issued these reads,
-        // which `planMainHeadReads` has not done since D28 landed.
-        const mainHeads = new Map<string, string>();
-        if (client !== null) {
-          for (const read of planMainHeadReads({
-            declarations,
-            services,
-            repositories: onMain.repositories,
-          })) {
-            const branch = await client.getBranch(group.slug, read.repo, "main").catch(() => null);
-            if (controller.signal.aborted) return;
-            const sha = branch?.commit?.id;
-            if (sha !== undefined && sha !== "") mainHeads.set(read.hostname, sha);
-          }
-        }
+  // What a release would put live: the head of each production service's
+  // repository, whether or not the group has a stage (D28).
+  const mainHeads = new Map<string, string>();
+  for (const read of planMainHeadReads({
+    declarations,
+    services,
+    repositories: onMain.repositories,
+  })) {
+    signal.throwIfAborted();
+    const branch = await client.getBranch(group.slug, read.repo, "main").catch(() => null);
+    const sha = branch?.commit?.id;
+    if (sha !== undefined && sha !== "") mainHeads.set(read.hostname, sha);
+  }
 
-        // What each production service is not running yet. Read against the
-        // deployed commit, not against the newest tag: a release that was
-        // never deployed is still ahead of the service, and the person is
-        // being told what pressing the verb would put there.
-        const running = releaseDeploys(rowInputs).production;
-        const releaseContents: Array<ReleaseContent> = [];
-        if (client !== null) {
-          for (const read of planReleaseReads(mainHeads, running)) {
-            const repo = onMain.repositories.get(read.service) ?? read.service;
-            // No base is a first release: the head is the whole of what would
-            // go live, so it is named rather than skipped.
-            const commits =
-              read.from === undefined
-                ? await client
-                    .commitDetail(group.slug, repo, read.head)
-                    .then((detail): ReadonlyArray<GiteaCommit> =>
-                      detail === undefined ? [] : [{ sha: detail.sha, subject: detail.subject }],
-                    )
-                    .catch((): ReadonlyArray<GiteaCommit> => [])
-                : await client
-                    .compareCommits(group.slug, repo, read.from, read.head)
-                    .catch((): ReadonlyArray<GiteaCommit> => []);
-            if (controller.signal.aborted) return;
-            if (commits.length > 0) releaseContents.push({ service: read.service, commits });
-          }
-        }
+  // What each production service is not running yet. Read against the
+  // deployed commit, not against the newest tag: a release that was
+  // never deployed is still ahead of the service, and the person is
+  // being told what pressing the verb would put there.
+  const running = releaseDeploys(rowInputs).production;
+  const releaseContents: Array<ReleaseContent> = [];
+  for (const read of planReleaseReads(mainHeads, running)) {
+    signal.throwIfAborted();
+    const repo = onMain.repositories.get(read.service) ?? read.service;
+    // No base is a first release: the head is the whole of what would
+    // go live, so it is named rather than skipped.
+    const commits =
+      read.from === undefined
+        ? await client
+            .commitDetail(group.slug, repo, read.head)
+            .then((detail): ReadonlyArray<GiteaCommit> =>
+              detail === undefined ? [] : [{ sha: detail.sha, subject: detail.subject }],
+            )
+            .catch((): ReadonlyArray<GiteaCommit> => [])
+        : await client
+            .compareCommits(group.slug, repo, read.from, read.head)
+            .catch((): ReadonlyArray<GiteaCommit> => []);
+    if (commits.length > 0) releaseContents.push({ service: read.service, commits });
+  }
 
-        deploys.set(group.groupId, {
-          declarations,
-          pullRequests,
-          missing,
-          mainHeads,
-          releaseContents,
-          environments: rowInputs,
-        });
-      }
-      if (!controller.signal.aborted) setAnswer({ key, deploys });
-      pass.end({ answered: deploys.size });
-    })();
+  const state: ZeropsGroupDeployState = {
+    declarations,
+    pullRequests,
+    missing,
+    mainHeads,
+    releaseContents,
+    environments: rowInputs,
+  };
+  return () => state;
+}
 
-    return () => {
-      controller.abort();
-      pass.drop();
-    };
-    // `key` is the serialisation of `groups`, which is what the reads depend
-    // on; keying on the array's identity would read the whole account again
-    // on every render. `tick` is the clock: the same reads again, with what
-    // was read last staying up until they land.
-  }, [giteaOrigin, key, tick]);
+/** A group whose repo declares nothing, has nothing open and offers no tier. */
+const NOTHING_DECLARED: ZeropsGroupDeployState = {
+  declarations: [],
+  pullRequests: [],
+  missing: [],
+  mainHeads: new Map(),
+  releaseContents: [],
+  environments: [],
+};
 
-  return answer?.key === key ? answer.deploys : EMPTY;
+/** The version a service was last read with, by its project and hostname. */
+function heldVersion(
+  held: ZeropsGroupDeployState | undefined,
+  read: GroupEnvironmentService,
+): string | undefined {
+  return held?.environments
+    .find((environment) => environment.projectId === read.projectId)
+    ?.services.find((service) => service.hostname === read.hostname)?.appVersionName;
 }
 
 /** What the group repo's `main` says: the tiers on it, and each hostname's repository. */
@@ -357,19 +318,12 @@ interface TiersOnMain {
   readonly repositories: ReadonlyMap<string, string>;
 }
 
-const NO_TIERS: TiersOnMain = { tiers: [], repositories: new Map() };
-
-async function readTiersOnMain(
-  client: NonNullable<ReturnType<typeof giteaClientFor>>,
-  slug: string,
-): Promise<TiersOnMain> {
+async function readTiersOnMain(client: GiteaClient, slug: string): Promise<TiersOnMain> {
   const tiers: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
   const repositories = new Map<string, string>();
   const present = await Promise.all(
     tiers.map(async (tier) => {
-      const file = await client
-        .readFile(slug, GROUP_REPOSITORY, RECIPE_TIER_PATHS[tier], "main")
-        .catch(() => undefined);
+      const file = await client.readFile(slug, GROUP_REPOSITORY, RECIPE_TIER_PATHS[tier], "main");
       if (file === undefined) return [];
       for (const [hostname, source] of Object.entries(
         importReadyTier(file.content)?.sources ?? {},
@@ -391,7 +345,7 @@ function repositoryName(cloneUrl: string): string | undefined {
 }
 
 async function readDeclarations(
-  client: NonNullable<ReturnType<typeof giteaClientFor>>,
+  client: GiteaClient,
   slug: string,
 ): Promise<ReadonlyArray<GroupEnvironment>> {
   const file = await client.readFile(slug, GROUP_REPOSITORY, ENVIRONMENTS_PATH, "main");

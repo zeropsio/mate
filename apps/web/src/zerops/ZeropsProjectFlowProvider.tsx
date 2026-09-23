@@ -7,7 +7,9 @@
  * of them runs (`useZeropsGroupDeploys`), Gitea says what is waiting to land
  * and what was released (`useZeropsGroupForge`). The declarations in the
  * group repo say which of those projects are environments and what feeds
- * them; the registry says which Gitea org a group is.
+ * them; the registry says which Gitea org a group is. Each half is kept per
+ * group, and a group's flow is the same object until one of its own halves
+ * changes, so one group answering never republishes another.
  *
  * Signed in to Mate is signed in to Gitea (D21): the provider signs the tab
  * in by itself, and until that lands every flow is empty and the surfaces
@@ -27,7 +29,9 @@ import {
   summarizeEnvironmentServices,
   GROUP_REPOSITORY,
   type FlowPullRequest,
+  type FlowVerb,
 } from "@t3tools/client-runtime/zerops";
+import { flowReleaseGate, flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -41,14 +45,108 @@ import {
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
 import { useZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
-import { useZeropsGroupDeploys, type ZeropsDeployGroup } from "./useZeropsGroupDeploys";
-import { useZeropsGroupForge } from "./useZeropsGroupForge";
+import {
+  useZeropsGroupDeploys,
+  type ZeropsDeployGroup,
+  type ZeropsGroupDeployState,
+  type ZeropsGroupDeploys,
+} from "./useZeropsGroupDeploys";
+import {
+  useZeropsGroupForge,
+  type ZeropsGroupForgeState,
+  type ZeropsGroupForges,
+} from "./useZeropsGroupForge";
 import { useZeropsRegistry } from "./useZeropsRegistry";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
 const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
+
+/** Stands for a half a group has no answer for, as a key of {@link joinedFlows}. */
+const UNREAD_HALF = {};
+
+/**
+ * Every group's flow, by the identity of its two halves: a group whose halves
+ * did not change keeps its flow object.
+ */
+const joinedFlows = new WeakMap<object, WeakMap<object, Map<string, ZeropsProjectFlow>>>();
+
+/**
+ * Joins each group's two halves into its flow. A group is shown once either
+ * half answered; the release is offered only once both have (`flow/release.ts`).
+ */
+export function joinProjectFlows(input: {
+  readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
+  readonly deploys: ZeropsGroupDeploys;
+  readonly forges: ZeropsGroupForges;
+  readonly mayRelease: boolean;
+}): ReadonlyMap<string, ZeropsProjectFlow> {
+  const flows = new Map<string, ZeropsProjectFlow>();
+  for (const group of input.groups) {
+    const deployed = input.deploys.get(group.groupId);
+    const forge = input.forges.get(group.groupId);
+    if (deployed === undefined && forge === undefined) continue;
+    let byForge = joinedFlows.get(deployed ?? UNREAD_HALF);
+    if (byForge === undefined) {
+      byForge = new WeakMap();
+      joinedFlows.set(deployed ?? UNREAD_HALF, byForge);
+    }
+    let byGroup = byForge.get(forge ?? UNREAD_HALF);
+    if (byGroup === undefined) {
+      byGroup = new Map();
+      byForge.set(forge ?? UNREAD_HALF, byGroup);
+    }
+    const key = JSON.stringify([group.groupId, group.slug, input.mayRelease]);
+    let flow = byGroup.get(key);
+    if (flow === undefined) {
+      flow = projectFlow(group, deployed, forge, input.mayRelease);
+      byGroup.set(key, flow);
+    }
+    flows.set(group.groupId, flow);
+  }
+  return flows;
+}
+
+function projectFlow(
+  group: { readonly groupId: string; readonly slug: string },
+  deployed: ZeropsGroupDeployState | undefined,
+  forge: ZeropsGroupForgeState | undefined,
+  mayRelease: boolean,
+): ZeropsProjectFlow {
+  const environmentInputs = deployed?.environments ?? [];
+  const sides = releaseDeploys(environmentInputs);
+  // What a release lists is what is merged (D28), whether or not the group
+  // has a stage: a stage is a place that runs `main` too, not a gate the
+  // tag waits behind, and one mid-deploy must not change what Release
+  // means. Holding production until a stage has the commit is said once,
+  // explicitly, as `requireOnStage`.
+  const offer = releaseOffer({
+    mayRelease,
+    candidate: deployed?.mainHeads ?? EMPTY_HEADS,
+    production: sides.production,
+    tags: forge?.tags ?? [],
+  });
+  return {
+    groupId: group.groupId,
+    slug: group.slug,
+    declarations: deployed?.declarations ?? [],
+    environments: environmentInputs.map((entry) => environmentRow(entry)),
+    environmentInputs,
+    missing: deployed?.missing ?? [],
+    pullRequests: forge?.pullRequests ?? [],
+    merged: forge?.merged ?? [],
+    releases: (forge?.releases ?? []).map((release, index) => releaseRow(release, index)),
+    release: {
+      ...offer,
+      gate: flowReleaseGate(offer.gate, {
+        deploys: deployed !== undefined,
+        forge: forge !== undefined,
+      }),
+      contents: deployed?.releaseContents ?? [],
+    },
+  };
+}
 
 export function ZeropsProjectFlowProvider({ children }: { readonly children: ReactNode }) {
   const session = useZeropsSession();
@@ -104,13 +202,21 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [groups],
   );
 
-  const [generation, setGeneration] = useState(0);
   const [trouble, setTrouble] = useState<string | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const readVersion = useZeropsDeployedVersionReader();
   const enabled = signedInToMate && signedIn;
-  const deploys = useZeropsGroupDeploys({ groups, giteaOrigin, readVersion, enabled, generation });
-  const forges = useZeropsGroupForge({ giteaOrigin, groups: forgeGroups, generation, enabled });
+  const { deploys, invalidate: invalidateDeploys } = useZeropsGroupDeploys({
+    groups,
+    giteaOrigin,
+    readVersion,
+    enabled,
+  });
+  const { forges, invalidate: invalidateForge } = useZeropsGroupForge({
+    giteaOrigin,
+    groups: forgeGroups,
+    enabled,
+  });
 
   /**
    * Whether this person may tag. The app's own gate — Gitea's tag protection
@@ -119,46 +225,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
    */
   const mayRelease = organization?.roleCode === "ADMIN" || organization?.roleCode === "OWNER";
 
-  const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(() => {
-    if (!enabled) return EMPTY_FLOWS;
-    const next = new Map<string, ZeropsProjectFlow>();
-    for (const group of groups) {
-      const deployed = deploys.get(group.groupId);
-      const forge = forges.get(group.groupId);
-      if (deployed === undefined && forge === undefined) continue;
-      const environmentInputs = deployed?.environments ?? [];
-      const sides = releaseDeploys(environmentInputs);
-      const tags = forge?.tags ?? [];
-      const declarations = deployed?.declarations ?? [];
-      // What a release lists is what is merged (D28), whether or not the group
-      // has a stage: a stage is a place that runs `main` too, not a gate the
-      // tag waits behind, and one mid-deploy must not change what Release
-      // means. Holding production until a stage has the commit is said once,
-      // explicitly, as `requireOnStage`.
-      const candidate = deployed?.mainHeads ?? EMPTY_HEADS;
-      next.set(group.groupId, {
-        groupId: group.groupId,
-        slug: group.slug,
-        declarations,
-        environments: environmentInputs.map((entry) => environmentRow(entry)),
-        environmentInputs,
-        missing: deployed?.missing ?? [],
-        pullRequests: forge?.pullRequests ?? [],
-        merged: forge?.merged ?? [],
-        releases: (forge?.releases ?? []).map((release, index) => releaseRow(release, index)),
-        release: {
-          ...releaseOffer({
-            mayRelease,
-            candidate,
-            production: sides.production,
-            tags,
-          }),
-          contents: deployed?.releaseContents ?? [],
-        },
-      });
-    }
-    return next;
-  }, [deploys, enabled, forges, groups, mayRelease]);
+  const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
+    () => (enabled ? joinProjectFlows({ groups, deploys, forges, mayRelease }) : EMPTY_FLOWS),
+    [deploys, enabled, forges, groups, mayRelease],
+  );
 
   // Time to the first pull request row, per group, for diagnostics.
   useEffect(() => {
@@ -168,13 +238,26 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     }
   }, [flows]);
 
-  const settled = useCallback(() => {
-    setGeneration((current) => current + 1);
-  }, []);
+  const groupOfSlug = useMemo(
+    () => new Map(registry.registry.groups.map((entry) => [entry.slug, entry.groupId])),
+    [registry.registry.groups],
+  );
 
-  /** Holds the verb's key in `pending` while it runs, then reads the flow again. */
+  /** Re-reads what a settled verb changed, in its own group and nothing else (`flow/verbs.ts`). */
+  const reread = useCallback(
+    (verb: FlowVerb, groupId: string | undefined) => {
+      if (groupId === undefined) return;
+      const changed = flowVerbInvalidations(verb);
+      if (changed.forge !== null) invalidateForge(groupId, changed.forge);
+      if (changed.deploys !== null) invalidateDeploys(groupId);
+    },
+    [invalidateDeploys, invalidateForge],
+  );
+
+  /** Holds the verb's key in `pending` while it runs, then re-reads what it changed. */
   const run = useCallback(
-    async (key: string, act: () => Promise<void>) => {
+    async (verb: FlowVerb, groupId: string | undefined, act: () => Promise<void>) => {
+      const key = flowVerbKey(verb);
       setPending((current) => new Set(current).add(key));
       try {
         await act();
@@ -184,10 +267,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           next.delete(key);
           return next;
         });
-        settled();
+        reread(verb, groupId);
       }
     },
-    [settled],
+    [reread],
   );
 
   const slugs = useMemo(
@@ -214,7 +297,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       const client = giteaClientFor(giteaOrigin);
       if (client === null) return;
       await run(
-        flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
+        { kind: "merge", slug, repository: pull.repository, number: pull.number },
+        groupOfSlug.get(slug),
         async () => {
           try {
             await client.mergePullRequest(slug, pull.repository, pull.number);
@@ -225,7 +309,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         },
       );
     },
-    [giteaOrigin, run],
+    [giteaOrigin, groupOfSlug, run],
   );
 
   const createPullRequest = useCallback(
@@ -242,7 +326,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       const client = giteaClientFor(giteaOrigin);
       if (client === null) return;
       await run(
-        flowVerbKey({ kind: "open", slug, repository: input.repository, head: input.head }),
+        { kind: "open", slug, repository: input.repository, head: input.head },
+        groupOfSlug.get(slug),
         async () => {
           try {
             await client.createPullRequest(slug, input.repository, {
@@ -257,7 +342,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         },
       );
     },
-    [giteaOrigin, run],
+    [giteaOrigin, groupOfSlug, run],
   );
 
   /** A tag on the group repo's `main`, as the person; Gitea's tag protection is the real gate. */
@@ -294,7 +379,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       // differ for a project releasing what is merged (D28).
       const entries = flow.release.entries;
       if (entries.length === 0) return;
-      await run(flowVerbKey({ kind: "release", groupId }), () =>
+      await run({ kind: "release", groupId }, groupId, () =>
         tagAs(
           flow.slug,
           releaseTagName(flow.release.suggestion.replace(/^v/u, "")),
@@ -311,7 +396,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (flow === undefined || giteaOrigin === undefined) return;
       const client = giteaClientFor(giteaOrigin);
       if (client === null) return;
-      await run(flowVerbKey({ kind: "roll-back", groupId, tag: earlier }), async () => {
+      await run({ kind: "roll-back", groupId, tag: earlier }, groupId, async () => {
         const tags = await client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => []);
         const found = tags.find((entry) => entry.name === earlier);
         const plan =
@@ -342,7 +427,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       mateNames,
       pending,
       trouble,
-      refresh: settled,
       mergePullRequest,
       createPullRequest,
       release,
@@ -357,7 +441,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       pending,
       release,
       rollBack,
-      settled,
       signInTrouble,
       signedIn,
       slugs,

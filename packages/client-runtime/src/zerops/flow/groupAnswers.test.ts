@@ -18,6 +18,7 @@ interface PendingRead {
   readonly groupId: string;
   readonly scope: Scope | "group";
   readonly signal: AbortSignal;
+  readonly held: Answer | undefined;
   readonly resolve: (update: GroupUpdate<Answer>) => void;
   readonly reject: (cause: unknown) => void;
 }
@@ -30,9 +31,9 @@ function harness(initial?: ReadonlyMap<string, Answer>) {
     pass: "forge",
     idOf: (group) => group.groupId,
     keyOf: (group) => group.key,
-    read: (group, scope, signal) =>
+    read: (group, scope, signal, held) =>
       new Promise((resolve, reject) => {
-        reads.push({ groupId: group.groupId, scope, signal, resolve, reject });
+        reads.push({ groupId: group.groupId, scope, signal, held, resolve, reject });
       }),
     publish: (groupId, answer) => {
       published.push({ groupId, answer });
@@ -177,6 +178,17 @@ describe("createGroupAnswers", () => {
     expect(held).toEqual(answer("kept"));
     answers.setGroups([G1]);
     expect(forgotten).toEqual(["g2"]);
+  });
+
+  it("hands a group's read the answer it holds when the read starts", async () => {
+    const { answers, settle, next } = harness();
+    answers.setGroups([G1]);
+    const first = next("g1");
+    expect(first.held).toBeUndefined();
+    first.resolve(() => answer("g1"));
+    await settle();
+    answers.refresh();
+    expect(next("g1").held).toEqual(answer("g1"));
   });
 
   it("aborts what is in flight and publishes nothing once disposed", async () => {
