@@ -4,10 +4,19 @@
  * module-level state such as the account lifetime is per tab, the way two
  * browser tabs keep it.
  *
- * A tab's code runs with the globals of that tab: the fixture points
- * `window`, `document` and `fetch` at the tab before mounting it and before
- * delivering a browser signal to it. A reload unmounts the page, drops what
- * it held and mounts a fresh module graph over the same storage.
+ * The tabs share one JavaScript realm, so `window`, `document` and `fetch`
+ * are the globals of one tab at a time. The fixture points them at a tab for
+ * each piece of that tab's code it starts — mounting, `run`, delivering a
+ * browser signal, a reload — and a signal or a reload gives them back to the
+ * tab that had them when it is done, so the tab whose `run` caused it keeps
+ * its own. Code that resumes on its own later (a promise continuation, an
+ * effect React flushes after the fixture's turn) reads whichever tab holds
+ * the globals then: a test that needs a tab's own globals there starts that
+ * code with the tab's `run`. The client's `fetch` is bound when the session
+ * provider builds it, so session calls always reach their own tab's network.
+ *
+ * A reload unmounts the page, drops what it held and mounts a fresh module
+ * graph over the same storage.
  */
 import type {
   AccountHarness,
@@ -29,6 +38,8 @@ const RELOAD_LOOP = 10;
 
 const mounted = new Set<MountedTab>();
 const reloading = new Set<Promise<void>>();
+/** Points the globals at the tab that holds them now; `null` before any tab opens. */
+let active: (() => void) | null = null;
 
 interface TabGraph {
   readonly ZeropsSessionProvider: typeof import("../ZeropsSessionProvider").ZeropsSessionProvider;
@@ -137,15 +148,29 @@ export async function mountTab(
     vi.stubGlobal("fetch", harness.rest.fetchFor(tab));
     vi.stubGlobal("HTMLIFrameElement", TestNode);
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    active = activate;
   };
 
+  /** Runs the tab's `work` on its globals, then gives them back to the tab that had them. */
+  async function visit(work: () => void | Promise<void>) {
+    const previous = active;
+    activate();
+    try {
+      await work();
+    } finally {
+      previous?.();
+    }
+  }
+
   const deliver = (signal: BrowserSignal) => {
+    const previous = active;
     activate();
     const { type, ...detail } = signal;
     const event = Object.assign(new Event(type), detail);
     if (type === "visibilitychange" || type === "freeze" || type === "resume")
       window.document.dispatchEvent(event);
     else window.dispatchEvent(event);
+    previous?.();
   };
 
   async function openPage() {
@@ -183,9 +208,11 @@ export async function mountTab(
 
   async function reloadPage() {
     await nextTask();
-    await closePage();
-    tab.reload();
-    await openPage();
+    await visit(async () => {
+      await closePage();
+      tab.reload();
+      await openPage();
+    });
   }
 
   await openPage();
@@ -215,7 +242,7 @@ export async function mountTab(
     },
     unmount: async () => {
       mounted.delete(page);
-      await closePage();
+      await visit(closePage);
     },
   };
   mounted.add(page);
@@ -226,6 +253,7 @@ export async function mountTab(
 export async function unmountTabs(): Promise<void> {
   await Promise.all(reloading);
   for (const page of mounted) await page.unmount();
+  active = null;
 }
 
 /**
