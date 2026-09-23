@@ -31,6 +31,7 @@ it("refuses identity exchange when there is nothing to mint a throwaway with", a
   expect(result).toEqual({
     _tag: "Failure",
     error: "Sign in to Zerops again to connect this container.",
+    retryable: false,
   });
   expect(connected).toBe(false);
 });
