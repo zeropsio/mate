@@ -1,5 +1,6 @@
 /**
- * The person's Gitea session, held in memory for as long as the tab lives.
+ * The person's Gitea session, held in memory for as long as their account is
+ * signed in to the tab.
  *
  * Mate drives Gitea **as the person** (guide 4.4): the token it holds is theirs,
  * so Gitea enforces the rights the broker mirrored from Zerops and the app
@@ -12,12 +13,13 @@
  *
  * ## Nothing is persisted
  *
- * The token lives in module memory, keyed by Gitea origin. A reload acquires
- * another, which is one round trip nobody sees, and is the price of not
- * leaving a token that acts as the person in a company forge where every
- * script on the origin could read it. The broker retires every app token by
- * age; the first `401` Gitea answers forgets the session here, and the surface
- * acquires again.
+ * The token lives in module memory, keyed by Gitea origin, and is forgotten
+ * when the account closes — sign-out, another person, a refused refresh —
+ * whether or not the page reloads. A reload acquires another, which is one
+ * round trip nobody sees, and is the price of not leaving a token that acts
+ * as the person in a company forge where every script on the origin could
+ * read it. The broker retires every app token by age; the first `401` Gitea
+ * answers forgets the session here, and the surface acquires again.
  *
  * ## One acquisition at a time
  *
@@ -36,6 +38,7 @@ import {
 import { createGiteaClient, type GiteaClient } from "@t3tools/client-runtime/zerops";
 
 import { randomUUID } from "../lib/utils";
+import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 
 interface GiteaSession {
   readonly accessToken: string;
@@ -56,6 +59,15 @@ function changed(): void {
   for (const listener of listeners) listener();
 }
 
+// A token acts as the person who signed in, so it dies with their account:
+// the next person on this tab acquires their own, and an acquisition still in
+// flight lands nowhere (`ensureGiteaSession` checks the epoch it started in).
+onAccountLifetimeClose(() => {
+  sessions.clear();
+  inflight.clear();
+  changed();
+});
+
 /** Whether this tab already holds a token for that Gitea. */
 export function hasGiteaSession(giteaOrigin: string): boolean {
   return sessions.has(normalize(giteaOrigin));
@@ -66,7 +78,7 @@ export function giteaSessionLogin(giteaOrigin: string): string | undefined {
   return sessions.get(normalize(giteaOrigin))?.login;
 }
 
-/** Forgets everything about one Gitea — a token Gitea refused, or a sign-out. */
+/** Forgets everything about one Gitea. The account closing forgets them all. */
 export function forgetGiteaSession(giteaOrigin: string): void {
   if (sessions.delete(normalize(giteaOrigin))) changed();
 }
@@ -236,7 +248,8 @@ export function ensureGiteaSession(input: EnsureGiteaSessionInput): Promise<void
   const running = inflight.get(origin);
   if (running !== undefined) return running;
 
-  const acquisition = acquireGiteaPersonToken({
+  const epoch = currentAccountEpoch();
+  const acquisition: Promise<void> = acquireGiteaPersonToken({
     brokerUrl: input.brokerOrigin,
     giteaUrl: origin,
     clientId: input.clientId,
@@ -244,15 +257,20 @@ export function ensureGiteaSession(input: EnsureGiteaSessionInput): Promise<void
     platform: input.platform,
     fetch: input.fetch ?? globalThis.fetch.bind(globalThis),
   })
-    .then((answer) => {
-      sessions.set(origin, { accessToken: answer.token, login: answer.login });
-      changed();
-    })
-    .catch((cause: unknown) => {
-      throw giteaSignInMessage(cause);
-    })
+    .then(
+      (answer) => {
+        if (epoch !== currentAccountEpoch()) {
+          throw new GiteaSignInError("This Gitea sign-in was cancelled.");
+        }
+        sessions.set(origin, { accessToken: answer.token, login: answer.login });
+        changed();
+      },
+      (cause: unknown) => {
+        throw giteaSignInMessage(cause);
+      },
+    )
     .finally(() => {
-      inflight.delete(origin);
+      if (inflight.get(origin) === acquisition) inflight.delete(origin);
     });
   inflight.set(origin, acquisition);
   return acquisition;

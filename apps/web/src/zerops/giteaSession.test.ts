@@ -1,6 +1,7 @@
 import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   ensureGiteaSession,
   forgetGiteaSession,
@@ -13,7 +14,7 @@ import {
 
 /**
  * A distinct Gitea per case: the session store is module memory for the life
- * of the tab, which is the behaviour, not a test artefact.
+ * of the account, and these cases open none, so nothing clears it between them.
  */
 let counter = 0;
 function origins(): { readonly giteaOrigin: string; readonly brokerOrigin: string } {
@@ -186,5 +187,142 @@ describe("ensureGiteaSession", () => {
     await ensureGiteaSession({ ...where, clientId: "org-1", platform, fetch });
     forgetGiteaSession(where.giteaOrigin);
     expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
+  });
+});
+
+/** A broker that holds its answer until the test releases it. */
+function held(body: { readonly token: string; readonly login: string }) {
+  let calls = 0;
+  let release: () => void = () => undefined;
+  const fetchFn = (async () => {
+    calls += 1;
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+  return { fetch: fetchFn, calls: () => calls, answer: () => release() } as const;
+}
+
+/** Answers every Gitea read with an empty list and records the bearer it carried. */
+async function readTagsAs(giteaOrigin: string): Promise<ReadonlyArray<string> | null> {
+  const client = giteaClientFor(giteaOrigin);
+  if (client === null) return null;
+  const bearers: Array<string> = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (_url: string | URL | Request, init: RequestInit = {}) => {
+    const headers = init.headers as Record<string, string> | undefined;
+    bearers.push(headers?.authorization ?? "");
+    return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof globalThis.fetch;
+  try {
+    await client.listTags("acme", "group");
+  } finally {
+    globalThis.fetch = original;
+  }
+  return bearers;
+}
+
+describe("Gitea sessions belong to one account", () => {
+  afterEach(() => {
+    closeAccountLifetime();
+  });
+
+  it("sign-out, another person signs in on the same tab: no Gitea request carries the first person's token", async () => {
+    const where = origins();
+    const { platform } = recording();
+    openAccountLifetime("person-a");
+    await ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform,
+      fetch: answering({ status: 200, body: { token: "token-of-a", login: "u-a" } }).fetch,
+    });
+    expect(await readTagsAs(where.giteaOrigin)).toEqual(["Bearer token-of-a"]);
+
+    closeAccountLifetime();
+    openAccountLifetime("person-b");
+
+    // Nothing of A's is left to read with: B's surface has to acquire its own.
+    expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
+    expect(await readTagsAs(where.giteaOrigin)).toBeNull();
+
+    const b = answering({ status: 200, body: { token: "token-of-b", login: "u-b" } });
+    await ensureGiteaSession({ ...where, clientId: "org-1", platform, fetch: b.fetch });
+    expect(b.seen).toHaveLength(1);
+    expect(giteaSessionLogin(where.giteaOrigin)).toBe("u-b");
+    expect(await readTagsAs(where.giteaOrigin)).toEqual(["Bearer token-of-b"]);
+  });
+
+  it("an acquisition in flight at sign-out never lands in the next account", async () => {
+    const where = origins();
+    const { platform } = recording();
+    const brokerOfA = held({ token: "token-of-a", login: "u-a" });
+    const brokerOfB = held({ token: "token-of-b", login: "u-b" });
+
+    openAccountLifetime("person-a");
+    const acquisitionOfA = ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform,
+      fetch: brokerOfA.fetch,
+    }).catch((cause: unknown) => cause);
+    await vi.waitFor(() => expect(brokerOfA.calls()).toBe(1));
+
+    closeAccountLifetime();
+    openAccountLifetime("person-b");
+
+    // B does not wait on A's request: it asks the broker itself.
+    const acquisitionOfB = ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform,
+      fetch: brokerOfB.fetch,
+    });
+    await vi.waitFor(() => expect(brokerOfB.calls()).toBe(1));
+
+    brokerOfA.answer();
+    const outcomeOfA = await acquisitionOfA;
+    expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
+    // Whoever awaited A's sign-in hears it did not go through.
+    expect(outcomeOfA).toBeInstanceOf(GiteaSignInError);
+
+    // A settling late does not unseat B's acquisition: another ask joins it.
+    const brokerAskedAgain = held({ token: "token-of-b2", login: "u-b" });
+    const joined = ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform,
+      fetch: brokerAskedAgain.fetch,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(brokerAskedAgain.calls()).toBe(0);
+
+    brokerOfB.answer();
+    await Promise.all([acquisitionOfB, joined]);
+    expect(giteaSessionLogin(where.giteaOrigin)).toBe("u-b");
+    expect(await readTagsAs(where.giteaOrigin)).toEqual(["Bearer token-of-b"]);
+  });
+
+  it("account close notifies subscribers", async () => {
+    const where = origins();
+    const { platform } = recording();
+    openAccountLifetime("person-a");
+    await ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform,
+      fetch: answering({ status: 200, body: { token: "token-of-a", login: "u-a" } }).fetch,
+    });
+
+    const seen: Array<boolean> = [];
+    const stop = subscribeGiteaSessions(() => seen.push(hasGiteaSession(where.giteaOrigin)));
+    closeAccountLifetime();
+    stop();
+
+    expect(seen).toEqual([false]);
   });
 });
