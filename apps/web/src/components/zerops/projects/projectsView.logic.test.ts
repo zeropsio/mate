@@ -230,7 +230,8 @@ describe("where a group's next step sits", () => {
     [string, GroupFlow, ReturnType<typeof nextStepCell>, ReturnType<typeof nextStepTone>]
   > = [
     ["a Mate waiting is answered in the Mates' cell", FLOWS.answer, "mates", "attention"],
-    ["a first task is given in the Mates' cell", FLOWS.firstTask, "mates", "off"],
+    // The Mate itself is the way in to a first task: no verb in any cell.
+    ["a first task gives no cell a verb", FLOWS.firstTask, undefined, "off"],
     ["a merge is the pull request's", FLOWS.merge, "pull-requests", "attention"],
     ["a release is production's", FLOWS.release, "production", "busy"],
     ["adding production is production's", FLOWS.addProduction, "production", "busy"],

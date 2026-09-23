@@ -156,13 +156,13 @@ export type FlowCell = "mates" | "pull-requests" | "main" | "production";
  * The cell a group's next step is taken in, so its verb stands beside the
  * thing it acts on: a merge on the pull request, a release on production, an
  * answer on the Mate. A failed stage deploy sits under `main`, where the stage
- * is drawn. `undefined` where nothing waits.
+ * is drawn. `undefined` where nothing waits, and for a first task: the Mate
+ * itself is the way in, so no cell carries a verb for it.
  */
 export function nextStepCell(flow: GroupFlow): FlowCell | undefined {
   const { nextStep } = flow;
   switch (nextStep.kind) {
     case "answer-mate":
-    case "first-task":
       return "mates";
     case "merge":
     case "unblock":
@@ -178,6 +178,7 @@ export function nextStepCell(flow: GroupFlow): FlowCell | undefined {
         target.projectId === flow.production.stop.projectId;
       return onProduction ? "production" : "main";
     }
+    case "first-task":
     case "none":
       return undefined;
   }
