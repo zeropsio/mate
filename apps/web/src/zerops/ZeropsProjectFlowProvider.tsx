@@ -288,19 +288,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   );
 
   /**
-   * What each group's stops run, from the account's deployment store (`flow/deploymentStore.ts`):
-   * the platform's own service listing and the builds running in the project.
+   * What each project the account holds runs, from the account's deployment store
+   * (`flow/deploymentStore.ts`): the platform's own service listing and the builds running in the
+   * project. Every project is a stop wherever it is drawn — in a group by its tags, or in none —
+   * and none of this waits on Gitea or its registry.
    */
-  const stops = useMemo(
-    () =>
-      groups.flatMap(({ projects }) =>
-        projects.flatMap(({ projectId }) => {
-          const ref = inventory.projectRefs.get(projectId);
-          return ref === undefined ? [] : [ref];
-        }),
-      ),
-    [groups, inventory.projectRefs],
-  );
+  const stops = useMemo(() => [...inventory.projectRefs.values()], [inventory.projectRefs]);
   const stopDeployments = useStopDeployments(stops);
   // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12).
   const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(

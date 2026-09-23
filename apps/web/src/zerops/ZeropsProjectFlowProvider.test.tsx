@@ -1,7 +1,18 @@
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
+import {
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+  ZeropsProjectId,
+  ZeropsServiceId,
+  makeZeropsApiOrigin,
+  type ProjectRef,
+} from "@t3tools/client-runtime/zerops/data";
+import type { DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import { ZeropsProjectFlowProvider } from "./ZeropsProjectFlowProvider";
@@ -37,11 +48,21 @@ vi.mock("./ZeropsSessionProvider", () => ({
     client: {},
   }),
 }));
+/** The account's projects the inventory holds, by id; none of them need be in a group. */
+const inventoryRefs = vi.hoisted(() => ({ refs: new Map<string, ProjectRef>() }));
+/** The groups the account's Gitea registry lists. */
+const registryGroups = vi.hoisted(() => ({
+  groups: [{ groupId: "g1", slug: "harbor" }] as ReadonlyArray<{
+    readonly groupId: string;
+    readonly slug: string;
+  }>,
+}));
+
 vi.mock("./ZeropsInventoryProvider", () => ({
   useZeropsInventory: () => ({
     projects: [],
     services: new Map(),
-    projectRefs: new Map(),
+    projectRefs: inventoryRefs.refs,
     authority: new Map(),
     account: access.account,
   }),
@@ -57,7 +78,7 @@ vi.mock("./giteaProject", () => ({
       : undefined,
 }));
 vi.mock("./useZeropsRegistry", () => ({
-  useZeropsRegistry: () => ({ registry: { groups: [{ groupId: "g1", slug: "harbor" }] } }),
+  useZeropsRegistry: () => ({ registry: { groups: registryGroups.groups } }),
 }));
 vi.mock("./useZeropsDeployedVersion", () => ({
   useZeropsDeployedVersionReader: () => async () => undefined,
@@ -164,7 +185,109 @@ describe("ZeropsProjectFlowProvider", () => {
     gitea.origin = true;
     gitea.trouble = null;
     access.account = { kind: "authorized" };
+    inventoryRefs.refs = new Map();
+    registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
     vi.unstubAllGlobals();
+  });
+
+  // DESIGN §4.7, D6: what a stop runs needs no Gitea, and every project the sidebar draws is a stop
+  // — one tagged into no registered group, or in none at all, reads what it runs all the same.
+  it("every project the account holds reads what it runs, with no group registered", async () => {
+    installTestDom();
+    registryGroups.groups = [];
+    const account = {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account"),
+    };
+    const loose: ProjectRef = {
+      kind: "project",
+      organization: {
+        kind: "organization",
+        account,
+        organizationId: ZeropsOrganizationId.make("org-1"),
+      },
+      projectId: ZeropsProjectId.make("loose-1"),
+    };
+    inventoryRefs.refs = new Map([["loose-1", loose]]);
+    const running: Shown<ReadonlyArray<StopService>> = {
+      state: "known",
+      value: [
+        {
+          service: { kind: "service", project: loose, serviceId: ZeropsServiceId.make("app-id") },
+          hostname: "app",
+          deployment: {
+            state: "known",
+            value: {
+              kind: "running",
+              activatedAt: null,
+              version: {
+                name: "v1.0.0",
+                commit: undefined,
+                sha: undefined,
+                taggedBy: undefined,
+                label: "v1.0.0",
+              },
+            },
+            asOf: { ordinal: 1, atMs: 0 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          },
+        },
+      ],
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    // The store publishes a stop as it is first demanded.
+    const demanded = new Set<string>();
+    const listeners = new Set<(project: ProjectRef) => void>();
+    const deployments = {
+      demand: (project: ProjectRef) => {
+        demanded.add(project.projectId);
+        for (const listener of listeners) listener(project);
+        return () => demanded.delete(project.projectId);
+      },
+      stop: (project: ProjectRef) =>
+        demanded.has(project.projectId) ? running : { state: "unread", waitingFor: null },
+      shows: () => false,
+      subscribe: (listener: (project: ProjectRef) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      invalidate: () => undefined,
+      dispose: () => undefined,
+    } as DeploymentStore;
+    const unbind = bindAccountFlow({
+      forge: null,
+      deployments,
+      services: { serviceOf: () => null },
+    });
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+
+    expect([...demanded]).toEqual(["loose-1"]);
+    // The store's publication reaches React in the next task.
+    await vi.waitFor(() =>
+      expect(seen.at(-1)?.deployments.get("loose-1")).toMatchObject({
+        state: "known",
+        value: { kind: "running", version: { label: "v1.0.0" } },
+      }),
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+    unbind();
   });
 
   // DESIGN §3.1, §4.2 G12: the registry's groups and what was read of them are platform content.
