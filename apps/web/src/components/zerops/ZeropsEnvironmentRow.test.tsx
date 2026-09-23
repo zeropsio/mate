@@ -66,6 +66,14 @@ describe("ZeropsEnvironmentRow", () => {
     expect(html).toContain("group-hover/row:opacity-100");
   });
 
+  it("gives its end one width down a list, whether or not a row has a verb in it", () => {
+    // An `auto` end sized each row by its own verb, so the columns before it
+    // started at a different x on a row with Set up Mate than on one without.
+    const html = row();
+    const classes = html.slice(html.indexOf("<li"), html.indexOf(">", html.indexOf("<li")));
+    expect(classes).toContain("sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(9.5rem,auto)]");
+  });
+
   it("says when it is busy", () => {
     expect(row({ busy: true })).toContain('aria-busy="true"');
   });
