@@ -94,11 +94,19 @@ The client reaches a Mate only through the throwaway door
 ([spec §10.4](../../../../zcp/docs/spec-mate.md#104-the-door-post-apiauthzerops-throwaway)): it
 mints a rights-less integration token as the person, presents it once, and deletes it whether the
 door admitted or refused. The client checks no organization or project role for the mint; the door
-and the broker decide roles. From 0.7 the mint waits up to 30 s for the account's verification
-window instead of failing, and the delete carries the minting token, never the current session, with
-its own 15 s timeout and outside the exchange's cancellation, so it can neither run under another
-account nor end anyone's session. A token it could not delete is removed by the same account's next
-sweep.
+and the broker decide roles. From 2.4 a mint of `NO_ACCESS` with no projects and no flags is an
+account write: it runs only after the sign-in's first access grant, and a verification window that
+has closed since does not hold it up. Any mint that grants a project stays a project write and is
+refused while the window is closed. The delete carries the minting token, never the current
+session, with its own 15 s timeout and outside the exchange's cancellation, so it can neither run
+under another account nor end anyone's session. A token it could not delete is removed by the same
+account's next sweep.
+
+The window guards against a person whose access lapsed acting on the platform past it. Minting a
+token with no role, no project grant and no flag while project writes are closed cannot grant
+anything: the door and the broker decide what it opens when it is presented, re-reading the
+person's role with their own keys, and refuse a token that carries a grant or a flag. A mint that
+grants a project would add authority, so it keeps the window.
 
 `packages/client-runtime/src/zerops/serverCompatibility.ts` defines the GUI's minimum supported
 server version, currently 0.11.0, the first server whose only door is the throwaway one,
