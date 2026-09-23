@@ -10,8 +10,17 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { vi } from "vite-plus/test";
 
 import { createZeropsFeedAtoms } from "./feeds";
+
+/** Every lifecycle envelope the account's bus heard, beside the one before it. */
+const envelopesHeard = vi.hoisted(() => [] as Array<readonly [unknown, unknown]>);
+vi.mock("./accountForge", () => ({
+  lifecycleEnvelopeChanged: (previous: unknown, next: unknown) => {
+    envelopesHeard.push([previous, next]);
+  },
+}));
 
 const ENVIRONMENT_ID = EnvironmentId.make("env-zerops-1");
 const THREAD_A = ThreadId.make("thread-a");
@@ -349,6 +358,47 @@ describe("createZeropsFeedAtoms", () => {
       const dataConsoleAtom = rig.feeds.dataConsole({ environmentId: ENVIRONMENT_ID, input: {} });
 
       expect(dataConsoleAtom.idleTTL).toBeLessThanOrEqual(10_000);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("each lifecycle frame reaches the account's bus beside the one before it", () =>
+    Effect.gen(function* () {
+      envelopesHeard.length = 0;
+      const rig = yield* makeHarness();
+      const atom = rig.feeds.lifecycle({
+        environmentId: ENVIRONMENT_ID,
+        input: { threadId: THREAD_A },
+      });
+      rig.registry.mount(atom);
+      const withEnvelope = (generated: string) =>
+        ({
+          threadId: THREAD_A,
+          recentTools: [],
+          envelope: { generated },
+        }) as unknown as ZeropsLifecycle;
+
+      yield* rig.publishLifecycle(withEnvelope("first"));
+      yield* until(
+        () => envelopesHeard.length,
+        (count) => count === 1,
+      );
+      yield* rig.publishLifecycle(withEnvelope("second"));
+      yield* until(
+        () => envelopesHeard.length,
+        (count) => count === 2,
+      );
+      // A new session's first frame is compared with the last one the old session sent.
+      yield* rig.reconnect;
+      yield* until(
+        () => envelopesHeard.length,
+        (count) => count === 3,
+      );
+
+      expect(envelopesHeard).toEqual([
+        [undefined, { generated: "first" }],
+        [{ generated: "first" }, { generated: "second" }],
+        [{ generated: "second" }, { generated: "second" }],
+      ]);
     }).pipe(Effect.scoped),
   );
 });

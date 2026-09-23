@@ -1,12 +1,13 @@
 import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
-import type { PlatformSignal, PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
+import { makeGiteaSessions } from "@t3tools/client-runtime/zerops/forge";
 import { fetchAcross, makeFakeBroker, makeFakeGitea } from "@t3tools/client-runtime/zerops/testing";
 import { act, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { webForgePorts } from "./accountForge";
 import {
   accountGiteaSessions,
-  bindGiteaSessionsSignals,
+  bindAccountGiteaSessions,
   giteaClientFor,
   giteaSessionLogin,
   useGiteaReadable,
@@ -58,9 +59,14 @@ function forge() {
 /** Who the fake broker names, as the throwaway's owner. */
 const accountOf = { current: "nobody" };
 
+/**
+ * The person signs in, and the epoch's first grant builds their Gitea sessions — as the account
+ * runtime does, over the browser's ports — which the host binds.
+ */
 function signIn(person: string): void {
   accountOf.current = person;
   openAccountLifetime(person);
+  bindAccountGiteaSessions(makeGiteaSessions({ ...webForgePorts, visible: () => true }));
 }
 
 function demandGitea(): () => void {
@@ -146,75 +152,6 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
-/** The account's tab signals, sent by the test. */
-function fakeSignals() {
-  const hearers = new Set<(signal: PlatformSignal) => void>();
-  let hidden = false;
-  const signals: PlatformSignals = {
-    hidden: () => hidden,
-    online: () => true,
-    listen: (hear) => {
-      hearers.add(hear);
-      return () => {
-        hearers.delete(hear);
-      };
-    },
-  };
-  return {
-    signals,
-    listening: () => hearers.size,
-    send: (signal: PlatformSignal) => {
-      if (signal.type === "visibility") hidden = signal.hidden;
-      for (const hear of hearers) hear(signal);
-    },
-  };
-}
-
-describe("the account's Gitea sessions and the tab's signals", () => {
-  afterEach(() => {
-    closeAccountLifetime();
-    vi.unstubAllGlobals();
-  });
-
-  it("hear the tab only while its signals are bound", () => {
-    const tab = fakeSignals();
-    signIn("person-a");
-    expect(tab.listening()).toBe(0);
-
-    const unbind = bindGiteaSessionsSignals(tab.signals);
-    expect(tab.listening()).toBe(1);
-    unbind();
-    expect(tab.listening()).toBe(0);
-  });
-
-  it.each([
-    ["a visible wake wakes them", { type: "wake", visible: true, cause: "shown" }, "wake"],
-    [
-      "a hidden wake evaluates what came due",
-      { type: "wake", visible: false, cause: "resume" },
-      "resume",
-    ],
-    ["shown again runs what came due", { type: "visibility", hidden: false }, "resume"],
-    ["online tries them again", { type: "network", online: true }, "online"],
-  ] as const)("%s", (_case, signal, called) => {
-    const tab = fakeSignals();
-    signIn("person-a");
-    const unbind = bindGiteaSessionsSignals(tab.signals);
-    const sessions = accountGiteaSessions();
-    if (sessions === null) throw new Error("no account open");
-    const calls = (["wake", "resume", "online"] as const).map(
-      (method) => [method, vi.spyOn(sessions, method)] as const,
-    );
-
-    tab.send(signal);
-
-    expect(calls.filter(([, spy]) => spy.mock.calls.length > 0).map(([method]) => method)).toEqual([
-      called,
-    ]);
-    unbind();
-  });
-});
-
 describe("the account's Gitea sessions in this tab", () => {
   let world: ReturnType<typeof forge>;
   const original = globalThis.fetch;
@@ -292,11 +229,26 @@ describe("the account's Gitea sessions in this tab", () => {
     });
   });
 
-  it("exist only while an account is open", () => {
+  it("exist only from the epoch's first grant until sign-out", () => {
+    openAccountLifetime("person-a");
+    // Signed in, not yet granted: nothing of Gitea stands.
     expect(accountGiteaSessions()).toBeNull();
     signIn("person-a");
     expect(accountGiteaSessions()).not.toBeNull();
     closeAccountLifetime();
+    expect(accountGiteaSessions()).toBeNull();
+  });
+
+  it("an unbind leaves a newer binding alone", () => {
+    openAccountLifetime("person-a");
+    const sessions = () => makeGiteaSessions({ ...webForgePorts, visible: () => true });
+    const unbindFirst = bindAccountGiteaSessions(sessions());
+    const newer = sessions();
+    const unbindNewer = bindAccountGiteaSessions(newer);
+
+    unbindFirst();
+    expect(accountGiteaSessions()).toBe(newer);
+    unbindNewer();
     expect(accountGiteaSessions()).toBeNull();
   });
 

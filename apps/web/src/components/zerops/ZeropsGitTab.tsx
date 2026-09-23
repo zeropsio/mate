@@ -3,7 +3,9 @@
  *
  * The checkout half is one live `subscribeVcsStatus` **per mount** — a child
  * per repository, because a hook cannot be called in a loop and because each
- * mount's subscription then lives and dies with its own row. The forge half is
+ * mount's subscription then lives and dies with its own row. Each status is
+ * also a push: commits leaving a checkout for its remote re-read that
+ * repository in the account's forge (`checkoutChanged`, DESIGN §6.1). The forge half is
  * `useZeropsGitForge`, re-read on open, after each action and every sixty
  * seconds. What the two mean together is `gitTab.ts`, which this file does not
  * second-guess.
@@ -32,10 +34,12 @@ import {
   type GitCheckoutState,
   type GroupEnvironment,
 } from "@t3tools/client-runtime/zerops";
+import type { ForgeRepository } from "@t3tools/client-runtime/zerops/flow";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { checkoutChanged } from "../../zerops/accountForge";
 import { useZeropsChangeCommits } from "../../zerops/useZeropsRepositoryCommits";
 import { useNowMs } from "../../zerops/useNowMs";
 
@@ -53,17 +57,23 @@ import { ZeropsMateVerb } from "./ZeropsMateCard";
 const EMPTY_CHANGED: ReadonlyArray<GitChangedFile> = [];
 
 /**
- * Subscribes to one mount's VCS status and reports it up. Renders nothing:
- * its whole job is to own a subscription that belongs to one row.
+ * Subscribes to one mount's VCS status, reports it up, and tells the account's
+ * forge what it pushed. Renders nothing: its whole job is to own a
+ * subscription that belongs to one row.
  */
 function CheckoutProbe({
   environmentId,
+  giteaOrigin,
   hostname,
   onState,
+  owner,
 }: {
   readonly environmentId: EnvironmentId;
+  readonly giteaOrigin: string | undefined;
   readonly hostname: string;
   readonly onState: (hostname: string, state: GitCheckoutState) => void;
+  /** The group's Gitea org, which holds the checkout's repository. */
+  readonly owner: string | undefined;
 }) {
   const cwd = checkoutPathFor(hostname);
   const status = useEnvironmentQuery(vcsEnvironment.status({ environmentId, input: { cwd } }));
@@ -87,6 +97,18 @@ function CheckoutProbe({
     // The serialised state is the dependency: an identical answer re-reported
     // would set state in a loop.
   }, [hostname, key, onState, state]);
+  const repository = useMemo<ForgeRepository | null>(
+    () =>
+      giteaOrigin === undefined || owner === undefined
+        ? null
+        : { origin: giteaOrigin, owner, repo: hostname },
+    [giteaOrigin, hostname, owner],
+  );
+  const heard = useRef<GitCheckoutState | undefined>(undefined);
+  useEffect(() => {
+    checkoutChanged(heard.current, state, repository);
+    heard.current = state;
+  }, [repository, state]);
   return null;
 }
 
@@ -350,7 +372,9 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
               environmentId={environmentId}
               hostname={hostname}
               key={hostname}
+              giteaOrigin={props.giteaOrigin}
               onState={onState}
+              owner={props.owner}
             />
           ))}
       <ZeropsGitPanel

@@ -34,8 +34,8 @@ import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNod
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { bindAccountEnvironments, useAccountEnvironments } from "./accountEnvironments";
+import { bindAccountFlow, webForgePorts } from "./accountForge";
 import { bindAccountInvalidations } from "./accountInvalidations";
-import { bindGiteaSessionsSignals } from "./accountGiteaSessions";
 import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { browserPlatformSignals, signalsVisibility } from "./browserSignals";
 import { makeBrowserDataScheduler } from "./dataScheduler";
@@ -176,7 +176,8 @@ function accountRefs(
  * platform-data runtime `makeRuntime` builds, its access grant verified
  * through the session's client, its invalidation bus bound for the web's
  * surfaces, and — once the epoch's first grant built it — its post-grant
- * stage: the Mate environments, and the births beside them.
+ * stage: the Mate environments, the project flow's Gitea sessions, forge and
+ * deployments, and the births beside them.
  */
 export function ZeropsDataProvider({
   children,
@@ -209,8 +210,8 @@ export function ZeropsDataProvider({
     let current: ManagedZeropsDataRuntime | null = null;
     let removeLifetimeClose: () => void = () => undefined;
     let unbindInvalidations: () => void = () => undefined;
-    let unbindGiteaSignals: () => void = () => undefined;
     let unbindEnvironments: () => void = () => undefined;
+    let unbindFlow: () => void = () => undefined;
     setStartupFailure(null);
     const scope = {
       account: {
@@ -263,6 +264,7 @@ export function ZeropsDataProvider({
             signals,
             atomRegistry: registry,
             environments: webEnvironmentPorts({ client, registry }),
+            forge: webForgePorts,
           }),
         );
         void account.then(
@@ -274,14 +276,15 @@ export function ZeropsDataProvider({
             });
             // Surfaces send their intents to this account's bus from the first mount.
             unbindInvalidations = bindAccountInvalidations(built.invalidations);
-            unbindGiteaSignals = bindGiteaSessionsSignals(signals);
             setOpened({ runtime: created, signals });
             // The post-grant stage stands on the epoch's first grant: surfaces read its Mate
-            // environments from then on, and the account's births start beside them.
+            // environments and its project flow — the Gitea sessions, the forge, the deployments —
+            // from then on, and the account's births start beside them.
             void Effect.runPromise(built.postGrant).then(
               (stage) => {
                 if (cancelled) return;
                 unbindEnvironments = bindAccountEnvironments(stage.environments);
+                unbindFlow = bindAccountFlow(stage);
                 bindBirthInputs({
                   client,
                   runtime: created,
@@ -313,8 +316,8 @@ export function ZeropsDataProvider({
       abort.abort();
       removeLifetimeClose();
       unbindInvalidations();
-      unbindGiteaSignals();
       unbindEnvironments();
+      unbindFlow();
       setOpened(null);
       if (current !== null) void shutdown(current, "account-replaced");
     };
