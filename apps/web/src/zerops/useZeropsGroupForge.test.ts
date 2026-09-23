@@ -111,10 +111,14 @@ describe("readForge", () => {
     expect(state?.released).toEqual({ failure: "Gitea did not answer" });
   });
 
-  it("keeps the releases it read when the tags do not answer again", async () => {
+  it("keeps the releases it read, and says why, when the tags do not answer again", async () => {
     const held = await readAll(forge().client);
     const update = await readForge(forge(new Set(["group"])).client, "harbor", "group");
-    expect(update(held)?.released).toBe(held.released);
+    const stale = update(held);
+    expect(stale?.released).toEqual({ ...held.released, failure: "Gitea did not answer" });
+    // The tags answering again is what takes the failure back.
+    const again = await readForge(forge().client, "harbor", "group");
+    expect(again(stale)?.released).toEqual(held.released);
   });
 
   it("reads a release's tags alone after a release", async () => {

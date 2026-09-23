@@ -183,10 +183,9 @@ function projectFlow(
   const { deployed, forge, failures } = halves;
   const environmentInputs = deployed?.environments ?? [];
   const released = forge !== undefined && "tags" in forge.released ? forge.released : undefined;
-  // Releases that never answered say why, like a forge read that failed outright.
-  const forgeFailure =
-    failures.forge ??
-    (forge !== undefined && "failure" in forge.released ? forge.released.failure : undefined);
+  // Releases that did not answer say why, like a forge read that failed
+  // outright: tags kept from an earlier read are not what a release checks.
+  const forgeFailure = failures.forge ?? forge?.released.failure;
   const sides = releaseDeploys(environmentInputs);
   // What a release lists is what is merged (D28), whether or not the group
   // has a stage: a stage is a place that runs `main` too, not a gate the

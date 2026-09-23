@@ -11,7 +11,8 @@
  * (`flow/verbs.ts`). Gitea has no event stream, so a clock is the only
  * freshness there is. A part that does not answer keeps what it had. A
  * repository never read is left out of what the answer holds, rather than
- * shown as having no pull requests, and releases never read carry why.
+ * shown as having no pull requests, and releases that did not answer carry
+ * why, whether or not earlier ones are kept.
  *
  * What an environment runs is not read here: that is the account's to prove
  * (`useZeropsGroupDeploys`), and the two are joined in the provider.
@@ -57,6 +58,8 @@ export interface ForgeReleases {
   readonly releases: ReadonlyArray<FlowRelease>;
   /** Every `v*` tag, so the next one can be suggested without reusing a name. */
   readonly tags: ReadonlyArray<string>;
+  /** Why the latest read of them failed, while the ones read before are kept. */
+  readonly failure?: string;
 }
 
 export type ZeropsGroupForges = ReadonlyMap<string, ZeropsGroupForgeState>;
@@ -237,7 +240,7 @@ async function answered<T>(read: () => Promise<T>): Promise<Answered<T>> {
  * Reads one scope of a group's forge. A whole read keeps, per repository and
  * for the releases, what is held where that part did not answer. A repository
  * that did not answer and was never read is left out; releases that did not
- * answer and were never read say why.
+ * answer say why, beside the ones kept from an earlier read.
  */
 export async function readForge(
   client: GiteaClient,
@@ -278,7 +281,7 @@ export async function readForge(
       "value" in releases
         ? releases.value
         : held !== undefined && "releases" in held.released
-          ? held.released
+          ? { ...held.released, failure: releases.failure }
           : { failure: releases.failure };
     const base = held ?? { repositories: [], pullRequests: [], merged: [], released };
     return { ...withRepositories(base, covered, read), released };

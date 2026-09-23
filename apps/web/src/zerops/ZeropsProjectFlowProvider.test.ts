@@ -100,5 +100,31 @@ describe("joinProjectFlows", () => {
       allowed: false,
       reason: "Can't check what can be released: Gitea did not answer.",
     });
+    // Tags kept from an earlier read are stale while the read fails: the
+    // suggestion they would give is not offered, and the releases still show.
+    const tagsStale = joinProjectFlows({
+      groups: GROUPS,
+      deploys: new Map([["g1", deployState()]]),
+      forges: new Map([
+        [
+          "g1",
+          {
+            ...forgeState(),
+            released: {
+              releases: [{ tag: "v0.1.0", verdict: "approved", detail: undefined, line: "" }],
+              tags: ["v0.1.0"],
+              failure: "Gitea did not answer",
+            },
+          },
+        ],
+      ]),
+      mayRelease: true,
+      failures: NO_FAILURES,
+    });
+    expect(tagsStale.get("g1")?.release.gate).toEqual({
+      allowed: false,
+      reason: "Can't check what can be released: Gitea did not answer.",
+    });
+    expect(tagsStale.get("g1")?.releases.map((release) => release.tag)).toEqual(["v0.1.0"]);
   });
 });
