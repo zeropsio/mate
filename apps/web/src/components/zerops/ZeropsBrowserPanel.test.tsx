@@ -48,6 +48,15 @@ const THREAD_REF: ScopedThreadRef = {
 
 const FRAME = { type: "frame" as const, data: "AAAA", width: 640, height: 360 };
 
+/** The lifecycle feed's live answer for this thread. */
+const knownLifecycle = (recentTools: ReadonlyArray<unknown>) => ({
+  state: "known",
+  value: { threadId: THREAD_REF.threadId, recentTools },
+  asOf: { ordinal: 1, atMs: 0 },
+  coverage: "complete",
+  freshness: { kind: "live" },
+});
+
 function findByAttribute(tree: unknown, attribute: string) {
   return visitElements(tree, (element) => attribute in element.props);
 }
@@ -114,10 +123,9 @@ describe("ZeropsBrowserPanel", () => {
 
   it("panel disables input while the agent drives and enables it on take-over", () => {
     feedState.browserStream = { status: "live", frame: FRAME };
-    feedState.lifecycle = {
-      threadId: THREAD_REF.threadId,
-      recentTools: [{ toolName: "zerops_browser", status: "inProgress", at: new Date() }],
-    };
+    feedState.lifecycle = knownLifecycle([
+      { toolName: "zerops_browser", status: "inProgress", at: new Date() },
+    ]);
 
     hooks.beginRender();
     const disabledTree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
@@ -177,10 +185,9 @@ describe("ZeropsBrowserPanel", () => {
 
   it("shows the agent's driving line with the page it is verifying", () => {
     feedState.browserStream = { status: "live", url: "https://weatherdash.example/", frame: FRAME };
-    feedState.lifecycle = {
-      threadId: THREAD_REF.threadId,
-      recentTools: [{ toolName: "zerops_browser", status: "inProgress", at: new Date() }],
-    };
+    feedState.lifecycle = knownLifecycle([
+      { toolName: "zerops_browser", status: "inProgress", at: new Date() },
+    ]);
     hooks.beginRender();
     const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
     const driving = findByAttribute(tree, "data-zerops-browser-driving");
@@ -333,30 +340,27 @@ describe("ZeropsBrowserPanel", () => {
     // Mounts straight into an already-in-progress call with take-over
     // already granted (e.g. restored) — must NOT spuriously reset on mount.
     feedState.browserStream = { status: "live", frame: FRAME };
-    feedState.lifecycle = {
-      threadId: THREAD_REF.threadId,
-      recentTools: [{ toolName: "zerops_browser", status: "inProgress", at: new Date() }],
-    };
+    feedState.lifecycle = knownLifecycle([
+      { toolName: "zerops_browser", status: "inProgress", at: new Date() },
+    ]);
     hooks.beginRender();
     let tree = ZeropsBrowserPanel({ threadRef: THREAD_REF, initialTakeOver: true });
     let canvas = findByAttribute(tree, "data-zerops-browser-input-disabled");
     expect(canvas?.props["data-zerops-browser-input-disabled"]).toBe(false);
 
     // The agent's call completes.
-    feedState.lifecycle = {
-      threadId: THREAD_REF.threadId,
-      recentTools: [{ toolName: "zerops_browser", status: "completed", at: new Date() }],
-    };
+    feedState.lifecycle = knownLifecycle([
+      { toolName: "zerops_browser", status: "completed", at: new Date() },
+    ]);
     hooks.beginRender();
     ZeropsBrowserPanel({ threadRef: THREAD_REF });
 
     // A NEW zerops_browser call starts — take-over must not carry forward.
     // A state update made during render settles on the NEXT render, exactly
     // like React's own double-render for this pattern.
-    feedState.lifecycle = {
-      threadId: THREAD_REF.threadId,
-      recentTools: [{ toolName: "zerops_browser", status: "inProgress", at: new Date() }],
-    };
+    feedState.lifecycle = knownLifecycle([
+      { toolName: "zerops_browser", status: "inProgress", at: new Date() },
+    ]);
     hooks.beginRender();
     ZeropsBrowserPanel({ threadRef: THREAD_REF });
     hooks.beginRender();

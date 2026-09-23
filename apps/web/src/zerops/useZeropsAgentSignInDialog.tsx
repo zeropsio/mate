@@ -52,7 +52,7 @@ export function useZeropsAgentSignInDialog(
       agentId={openAgentId}
       onClose={() => setOpenAgentId(null)}
       projectName={options?.projectName ?? null}
-      snapshot={agentAuth ?? null}
+      snapshot={agentAuth?.state === "known" ? agentAuth.value : null}
       threadRef={threadRef}
     />
   );

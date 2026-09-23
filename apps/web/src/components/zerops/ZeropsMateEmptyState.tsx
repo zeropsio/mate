@@ -33,7 +33,9 @@ export function ZeropsMateEmptyState({
   readonly mate: ZeropsMateIdentity;
   readonly threadRef: ScopedThreadRef | null;
 }) {
-  const agentAuth = useZeropsAgentAuth(environmentId);
+  const agentAuthRead = useZeropsAgentAuth(environmentId);
+  // Only a known snapshot can ask for a sign-in; one still being read asks for nothing.
+  const agentAuth = agentAuthRead?.state === "known" ? agentAuthRead.value : undefined;
   const signInRequired = agentAuth !== undefined && zeropsAgentSignInRequired(agentAuth);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   // D6: the conversation view (`ChatView`) is the one place that records the

@@ -1,10 +1,10 @@
 /**
  * Component-facing reads of the Zerops feeds.
  *
- * Every read here returns `undefined` until the first snapshot arrives, and
- * stays `undefined` forever in a non-Zerops environment. Callers render
- * nothing in that case — there is no loading or error state worth showing
- * for a panel that does not apply here.
+ * The lifecycle and agent-auth reads are `Known` (DESIGN §2.C C12–C13): a
+ * caller tells "not read yet", "read, now stale" and "this Mate cannot say"
+ * apart instead of seeing one `undefined` for all three. `undefined` means
+ * only that there is no environment (or thread) to read.
  *
  * `useZeropsTopology` is a PURE atom read, deliberately: it must never import
  * `useProjectTopology`, platform data transport, candidate loading, or `api.ts` — the
@@ -35,6 +35,7 @@ import {
   INITIAL_DATA_CONSOLE_STATE,
   type ZeropsDataConsoleSessionState,
 } from "@t3tools/client-runtime/zerops/dataConsole";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import { projectTopologyViewAtom, zeropsFeeds } from "../state/zerops";
 
@@ -55,19 +56,19 @@ export function useZeropsTopology(
 export function useZeropsLifecycle(
   environmentId: EnvironmentId | null,
   threadId: ThreadId | null,
-): ZeropsLifecycle | undefined {
+): Known<ZeropsLifecycle> | undefined {
   return useAtomValue(
     environmentId === null || threadId === null
       ? EMPTY_ATOM
-      : zeropsFeeds.lifecycleValue({ environmentId, input: { threadId } }),
+      : zeropsFeeds.lifecycle({ environmentId, input: { threadId } }),
   );
 }
 
 export function useZeropsAgentAuth(
   environmentId: EnvironmentId | null,
-): ZeropsAgentAuthSnapshot | undefined {
+): Known<ZeropsAgentAuthSnapshot> | undefined {
   return useAtomValue(
-    environmentId === null ? EMPTY_ATOM : zeropsFeeds.agentAuthValue({ environmentId, input: {} }),
+    environmentId === null ? EMPTY_ATOM : zeropsFeeds.agentAuth({ environmentId, input: {} }),
   );
 }
 

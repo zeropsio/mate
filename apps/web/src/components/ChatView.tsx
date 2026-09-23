@@ -2308,7 +2308,10 @@ export default function ChatView(props: ChatViewProps) {
   // Fetched here (rather than beside its other Zerops-agent consumers below)
   // because the composer's own selection gate needs it: a candidate whose
   // agent this viewer cannot run must never become the selection (D6).
-  const zeropsAgentAuth = useZeropsAgentAuth(activeThreadEnvironmentId);
+  const zeropsAgentAuthRead = useZeropsAgentAuth(activeThreadEnvironmentId);
+  // The sign-in surfaces below show a snapshot once one is known, kept while stale.
+  const zeropsAgentAuth =
+    zeropsAgentAuthRead?.state === "known" ? zeropsAgentAuthRead.value : undefined;
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
   // The record this client wrote itself counts until the snapshot carries it.
   const zeropsLocalSigners = useLocalAgentSigners();
@@ -2403,7 +2406,9 @@ export default function ChatView(props: ChatViewProps) {
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
   );
-  const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
+  const activeZeropsLifecycleRead = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
+  const activeZeropsLifecycle =
+    activeZeropsLifecycleRead?.state === "known" ? activeZeropsLifecycleRead.value : undefined;
   const zeropsThreadModel = useMemo(
     () =>
       deriveZeropsThreadModel({

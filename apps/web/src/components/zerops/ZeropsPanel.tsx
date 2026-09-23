@@ -48,10 +48,11 @@ export function ZeropsPanel({
   readonly runningToolLabel?: string | undefined;
 }) {
   const topology = useProjectTopology(threadRef?.environmentId ?? null);
-  const lifecycle = useZeropsLifecycle(
+  const lifecycleRead = useZeropsLifecycle(
     threadRef?.environmentId ?? null,
     threadRef?.threadId ?? null,
   );
+  const lifecycle = lifecycleRead?.state === "known" ? lifecycleRead.value : undefined;
   const [authorizationAgentId, setAuthorizationAgentId] = useState<
     ZeropsAgentAuthSnapshot["agents"][number]["agentId"] | null
   >(null);

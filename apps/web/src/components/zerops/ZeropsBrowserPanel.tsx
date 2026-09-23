@@ -57,7 +57,7 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
   const sendInputCommand = useAtomCommand(zeropsCommands.browserInput, "zerops browser input");
 
   const driving = resolveBrowserDrivingState({
-    recentTools: lifecycle?.recentTools ?? [],
+    recentTools: lifecycle?.state === "known" ? lifecycle.value.recentTools : [],
     takeOver,
     lastUserInputAtMs: lastUserInputAtRef.current,
     nowMs: Date.now(),
