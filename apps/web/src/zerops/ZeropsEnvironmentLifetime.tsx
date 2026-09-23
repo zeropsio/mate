@@ -46,9 +46,6 @@ import {
 } from "./zeropsContainers";
 import { useZeropsData } from "./zeropsDataContext";
 
-/** A tab hidden at least this long wakes its retries when it is shown again (§6.4). */
-const WAKE_AFTER_HIDDEN_MS = 30_000;
-
 // ── One driver per account epoch ─────────────────────────────────────────────────────────────
 
 /**
@@ -168,7 +165,7 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   const inventory = useZeropsInventory();
   const { environments } = useEnvironments();
   const { client, activeOrganization } = useZeropsSession();
-  const { organizationRef, runtime } = useZeropsData();
+  const { organizationRef, runtime, signals } = useZeropsData();
   const registry = useContext(RegistryContext);
   const recordsVersion = useRegistrationVersion();
   const candidates = useMemo(
@@ -222,31 +219,25 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
       });
   }, [driver]);
 
+  // The tab, as the account hears it (§6.4): retries wait while hidden and fire on a visible wake.
   useEffect(() => {
-    let hiddenSince: number | null = null;
-    const visibility = () => {
-      const visible = document.visibilityState === "visible";
-      driver.setVisible(visible);
-      containers.setVisible(visible);
-      if (!visible) {
-        hiddenSince ??= performance.now();
-        return;
+    driver.setVisible(!signals.hidden());
+    containers.setVisible(!signals.hidden());
+    return signals.listen((signal) => {
+      switch (signal.type) {
+        case "visibility":
+          driver.setVisible(!signal.hidden);
+          containers.setVisible(!signal.hidden);
+          return;
+        case "network":
+          if (signal.online) driver.online();
+          return;
+        case "wake":
+          driver.wake(signal.visible);
+          containers.wake(signal.visible);
       }
-      if (hiddenSince !== null && performance.now() - hiddenSince >= WAKE_AFTER_HIDDEN_MS) {
-        driver.wake(true);
-        containers.wake(true);
-      }
-      hiddenSince = null;
-    };
-    const online = () => driver.online();
-    visibility();
-    document.addEventListener("visibilitychange", visibility);
-    window.addEventListener("online", online);
-    return () => {
-      document.removeEventListener("visibilitychange", visibility);
-      window.removeEventListener("online", online);
-    };
-  }, [containers, driver]);
+    });
+  }, [containers, driver, signals]);
 
   useEffect(() => {
     driver.setTargets(targetsOf({ inventory, candidates, containers }));

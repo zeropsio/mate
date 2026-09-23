@@ -14,8 +14,8 @@ import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
-import * as Stream from "effect/Stream";
 
+import { signalsVisibility } from "../browserSignals";
 import type { MakeZeropsDataRuntime } from "../ZeropsDataProvider";
 import { tabClock } from "../tabClock";
 
@@ -24,7 +24,7 @@ export function harnessRuntime(
   resourceAdapter?: ZeropsResourceAdapter,
 ): MakeZeropsDataRuntime {
   let opaque = 0;
-  return ({ scope, registry, scheduler, signal }) =>
+  return ({ scope, registry, scheduler, signals, signal }) =>
     Effect.runPromise(
       makeZeropsDataRuntime({
         scope,
@@ -32,15 +32,8 @@ export function harnessRuntime(
         ...(resourceAdapter === undefined ? {} : { resourceAdapter }),
         atomRegistry: registry,
         makeOpaqueId: () => `opaque-${++opaque}`,
-        // The tab's visibility, as the browser runtime reads it: a hidden tab pauses its push half.
-        visibility: {
-          current: Effect.sync(() =>
-            document.visibilityState === "hidden" ? "hidden" : "visible",
-          ),
-          changes: Stream.fromEventListener(document, "visibilitychange").pipe(
-            Stream.map(() => (document.visibilityState === "hidden" ? "hidden" : "visible")),
-          ),
-        },
+        // The tab's visibility, as the browser runtime hears it: a hidden tab pauses its push half.
+        visibility: signalsVisibility(signals),
       }).pipe(
         Effect.provideService(Scheduler.Scheduler, scheduler),
         Effect.provideService(Clock.Clock, tabClock),

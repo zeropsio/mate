@@ -7,13 +7,15 @@ import type {
   RuntimeInterestDescriptor,
   ZeropsEntityRecord,
 } from "@t3tools/client-runtime/zerops/data";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { PlatformSignals, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 export interface ZeropsDataContextValue {
   readonly runtime: ManagedZeropsDataRuntime;
+  /** The tab, as every consumer of the account hears it (DESIGN §6.4). */
+  readonly signals: PlatformSignals;
   readonly organizationRef: (organizationId: string) => OrganizationRef;
   readonly projectRef: (organizationId: string, projectId: string) => ProjectRef;
 }

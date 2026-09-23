@@ -171,6 +171,7 @@ function locationsContext(broker: LocationsBroker) {
   } as unknown as ManagedZeropsDataRuntime;
   return {
     runtime,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => organization,
     projectRef: () => {
       throw new Error("not used");

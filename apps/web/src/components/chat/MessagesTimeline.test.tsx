@@ -1449,6 +1449,7 @@ describe("MessagesTimeline", () => {
     };
     const zeropsData: ZeropsDataContextValue = {
       runtime: {} as ManagedZeropsDataRuntime,
+      signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
       organizationRef: () => {
         throw new Error("not used");
       },

@@ -8,10 +8,10 @@
  * signed in for as long as the surface that calls it is mounted — the flow provider, for the
  * whole account — and every other reader takes a client from {@link giteaClientFor}.
  *
- * This module is the sessions' browser half: fetch, the clocks, timers and the tab's visibility.
- * It registers with the account lifetime when it loads, which is before any account opens: the
- * app imports it statically through `ZeropsProjectFlowProvider`. It listens to the document and
- * the window only while an account is open.
+ * This module is the sessions' browser half: fetch, the clocks and timers. It registers with the
+ * account lifetime when it loads, which is before any account opens: the app imports it statically
+ * through `ZeropsProjectFlowProvider`. The tab reaches the sessions through the account's
+ * PlatformSignals port, which the data provider binds before anything can demand a session.
  */
 import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
 import type { GiteaClient } from "@t3tools/client-runtime/zerops";
@@ -22,21 +22,19 @@ import {
   type GiteaSessionsPorts,
   type GiteaSessionView,
 } from "@t3tools/client-runtime/zerops/forge";
+import type { PlatformSignal, PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { useEffect, useSyncExternalStore } from "react";
 
 import { randomUUID } from "../lib/utils";
 import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./accountLifetime";
 
-/** A tab hidden at least this long wakes its waits when it is shown again (DESIGN §6.4). */
-const VISIBLE_WAKE_AFTER_HIDDEN_MS = 30_000;
-
-const tabVisible = (): boolean =>
-  typeof document === "undefined" || document.visibilityState === "visible";
+/** The account's tab signals, once the data provider bound them. */
+let tabSignals: PlatformSignals | null = null;
 
 const browserPorts: GiteaSessionsPorts = {
   fetch: (input, init) => globalThis.fetch(input, init),
   now: () => ({ wall: Date.now(), mono: performance.now() }),
-  visible: tabVisible,
+  visible: () => tabSignals !== null && !tabSignals.hidden(),
   random: Math.random,
   nonce: randomUUID,
   setTimer: (delayMs, fire) => {
@@ -46,52 +44,49 @@ const browserPorts: GiteaSessionsPorts = {
 };
 
 let current: GiteaSessions | null = null;
-let unbindTabSignals: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
 function changed(): void {
   for (const listener of listeners) listener();
 }
 
-/**
- * Tells the sessions when the tab is shown again and when it comes back online (DESIGN §6.4),
- * until the returned unbind.
- */
-function bindTabSignals(sessions: GiteaSessions): () => void {
-  if (typeof document === "undefined") return () => undefined;
-  // An account opened on a hidden tab has been hidden since it opened.
-  let hiddenSinceMs: number | null = tabVisible() ? null : performance.now();
-  const onVisibility = () => {
-    if (!tabVisible()) {
-      hiddenSinceMs = performance.now();
+/** What the sessions hear of the tab (DESIGN §6.4). */
+function hear(signal: PlatformSignal): void {
+  if (current === null) return;
+  switch (signal.type) {
+    case "visibility":
+      // Shown again: what came due while hidden runs now; a visible wake says more on its own.
+      if (!signal.hidden) current.resume();
       return;
-    }
-    const hiddenForMs = hiddenSinceMs === null ? 0 : performance.now() - hiddenSinceMs;
-    hiddenSinceMs = null;
-    if (hiddenForMs >= VISIBLE_WAKE_AFTER_HIDDEN_MS) sessions.wake();
-    else sessions.resume();
-  };
-  const onOnline = () => sessions.online();
-  document.addEventListener("visibilitychange", onVisibility);
-  window.addEventListener("online", onOnline);
+    case "network":
+      if (signal.online) current.online();
+      return;
+    case "wake":
+      // A hidden wake only evaluates expiry; a visible one tries every wait again now.
+      if (signal.visible) current.wake();
+      else current.resume();
+  }
+}
+
+/** The account's tab reaches its Gitea sessions through `signals`, until the returned unbind. */
+export function bindGiteaSessionsSignals(signals: PlatformSignals): () => void {
+  tabSignals = signals;
+  const unlisten = signals.listen(hear);
   return () => {
-    document.removeEventListener("visibilitychange", onVisibility);
-    window.removeEventListener("online", onOnline);
+    unlisten();
+    if (tabSignals === signals) tabSignals = null;
   };
 }
 
 onAccountLifetimeOpen(() => {
   current = makeGiteaSessions(browserPorts);
   current.subscribe(changed);
-  unbindTabSignals = bindTabSignals(current);
   changed();
 });
 
 onAccountLifetimeClose(() => {
   const closing = current;
   current = null;
-  unbindTabSignals?.();
-  unbindTabSignals = null;
   closing?.close();
   changed();
 });

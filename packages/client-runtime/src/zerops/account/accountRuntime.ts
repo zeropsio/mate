@@ -11,15 +11,13 @@
  *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10).
  *
- * It owns the tab's signals as the account's machines hear them (§6.4): the page's visibility,
- * its network and its lifecycle become the grant's events and the bus's signals, with a visible
- * wake only after the tab was hidden for a while.
+ * It hands the tab's signals (§6.4, the PlatformSignals port) to the grant and the bus: the page's
+ * visibility, its network and the coalesced wake become the grant's events and the bus's signals.
  *
  * Modules of the post-grant stage are constructed here and nowhere else (§7.2 rule 6). The
  * environment store and exchange driver, and the Gitea sessions, are still constructed in the
  * web's React tree until 3.4 moves them.
  */
-import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -30,7 +28,6 @@ import * as Stream from "effect/Stream";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
-import type { Instant } from "../data/access/grant.ts";
 import type { AccessVerifier } from "../data/access/verifier.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import { organizationKeyOf, projectKeyOf, type RuntimeInterestDescriptor } from "../data/types.ts";
@@ -40,31 +37,14 @@ import {
   type InvalidationBus,
   type InvalidationSignal,
 } from "../knowledge/invalidation.ts";
-
-/** A visible wake needs the tab hidden at least this long (§6.4). */
-const WAKE_AFTER_HIDDEN_MS = 30_000;
-/** Wakes are coalesced to at most one per this long (§6.4). */
-const WAKE_COALESCE_MS = 10_000;
-
-/** What the page tells the account: its visibility, its network, a return from the bfcache or a freeze. */
-export type PageSignal =
-  | { readonly type: "visibility"; readonly hidden: boolean }
-  | { readonly type: "resume" }
-  | { readonly type: "online" }
-  | { readonly type: "offline" };
-
-export interface PagePort {
-  readonly hidden: () => boolean;
-  readonly online: () => boolean;
-  /** Tells `hear` every signal from now on, until the returned function stops it. */
-  readonly listen: (hear: (signal: PageSignal) => void) => () => void;
-}
+import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
 
 export interface AccountRuntimePorts {
   /** The epoch's data runtime, which the host built for the verified principal. */
   readonly data: ManagedZeropsDataRuntime;
   readonly verifier: AccessVerifier;
-  readonly page: PagePort;
+  /** The tab, as every consumer of the account hears it. */
+  readonly signals: PlatformSignals;
   /** The registry the data runtime publishes to: what is shown is read from it. */
   readonly atomRegistry: AtomRegistry.AtomRegistry;
 }
@@ -93,12 +73,7 @@ const organizationOf = (descriptor: RuntimeInterestDescriptor) =>
 export const makeAccountRuntime = Effect.fnUntraced(function* (
   ports: AccountRuntimePorts,
 ): Effect.fn.Return<AccountRuntime> {
-  const { data, page } = ports;
-  const clock = yield* Clock.Clock;
-  const now = (): Instant => ({
-    wall: clock.currentTimeMillisUnsafe(),
-    mono: Number(clock.monotonicTimeNanosUnsafe()) / 1_000_000,
-  });
+  const { data, signals } = ports;
   const epoch = yield* Scope.make();
   /** The bus's own scope: it closes first, so nothing still coalescing reaches a subscriber. */
   const busScope = yield* Scope.make();
@@ -135,7 +110,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const invalidations = yield* makeInvalidationBus({
     // The page as it is when the bus starts hearing it, then every change.
     signals: Stream.concat(
-      Stream.suspend(() => Stream.make(page.hidden() ? HIDDEN : VISIBLE)),
+      Stream.suspend(() => Stream.make(signals.hidden() ? HIDDEN : VISIBLE)),
       Stream.fromPubSub(busSignals),
     ),
     shown,
@@ -148,46 +123,27 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       }
     });
 
-  let hiddenAtMs: number | null = page.hidden() ? now().mono : null;
-  let lastWakeMs = Number.NEGATIVE_INFINITY;
-  const wake = Effect.suspend(() => {
-    const at = now().mono;
-    if (at - lastWakeMs < WAKE_COALESCE_MS) return Effect.void;
-    lastWakeMs = at;
-    const visible = hiddenAtMs === null;
-    return data.access
-      .signal({ type: "WAKE", visible })
-      .pipe(Effect.andThen(visible ? PubSub.publish(busSignals, VISIBLE_WAKE) : Effect.void));
-  });
-  const hear = (signal: PageSignal): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      switch (signal.type) {
-        case "visibility": {
-          yield* data.access.signal({ type: "VISIBILITY", hidden: signal.hidden });
-          if (signal.hidden) {
-            hiddenAtMs ??= now().mono;
-            yield* PubSub.publish(busSignals, HIDDEN);
-            return;
-          }
-          const away = hiddenAtMs === null ? 0 : now().mono - hiddenAtMs;
-          hiddenAtMs = null;
-          yield* PubSub.publish(busSignals, VISIBLE);
-          if (away >= WAKE_AFTER_HIDDEN_MS) yield* wake;
-          return;
-        }
-        case "resume":
-          return yield* wake;
-        case "online":
-          return yield* data.access.signal({ type: "ONLINE" });
-        case "offline":
-          return yield* data.access.signal({ type: "OFFLINE" });
-      }
-    });
+  const hear = (signal: PlatformSignal): Effect.Effect<void> => {
+    switch (signal.type) {
+      case "visibility":
+        return data.access
+          .signal({ type: "VISIBILITY", hidden: signal.hidden })
+          .pipe(Effect.andThen(PubSub.publish(busSignals, signal.hidden ? HIDDEN : VISIBLE)));
+      case "network":
+        return data.access.signal({ type: signal.online ? "ONLINE" : "OFFLINE" });
+      case "wake":
+        return data.access
+          .signal({ type: "WAKE", visible: signal.visible })
+          .pipe(
+            Effect.andThen(signal.visible ? PubSub.publish(busSignals, VISIBLE_WAKE) : Effect.void),
+          );
+    }
+  };
 
   yield* Effect.gen(function* () {
-    // The page is heard from the moment its state is read, one signal at a time.
-    const signals = yield* Queue.unbounded<PageSignal>();
-    const unlisten = page.listen((signal) => Queue.offerUnsafe(signals, signal));
+    // The tab is heard from the moment its state is read, one signal at a time.
+    const heard = yield* Queue.unbounded<PlatformSignal>();
+    const unlisten = signals.listen((signal) => Queue.offerUnsafe(heard, signal));
     yield* Scope.addFinalizer(epoch, Effect.sync(unlisten));
     yield* data.access.invalidations.pipe(
       Stream.runForEach(invalidations.invalidate),
@@ -195,13 +151,13 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     );
     yield* data.access.listen(invalidations).pipe(Scope.provide(busScope));
     yield* data.listen(invalidations).pipe(Scope.provide(busScope));
-    yield* Queue.take(signals).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
+    yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
     // The views stream replays the latest, so it misses nothing the start publishes.
     yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));
     yield* data.access.start({
       verifier: ports.verifier,
-      hidden: page.hidden(),
-      online: page.online(),
+      hidden: signals.hidden(),
+      online: signals.online(),
     });
     // An epoch that cannot start leaves nothing of its own running; its host closes the data.
   }).pipe(

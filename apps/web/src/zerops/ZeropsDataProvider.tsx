@@ -3,7 +3,6 @@ import { RegistryContext } from "@effect/atom-react";
 import {
   makeAccountRuntime,
   type AccountRuntime,
-  type PagePort,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   AccountEpoch,
@@ -25,17 +24,19 @@ import {
   type PlatformWatchSocket,
 } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
+import type { PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
-import * as Stream from "effect/Stream";
 import { type AtomRegistry } from "effect/unstable/reactivity";
 import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { bindAccountInvalidations } from "./accountInvalidations";
+import { bindGiteaSessionsSignals } from "./accountGiteaSessions";
 import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
+import { browserPlatformSignals, signalsVisibility } from "./browserSignals";
 import { makeBrowserDataScheduler } from "./dataScheduler";
 import { tabClock } from "./tabClock";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -58,50 +59,6 @@ export function connectZeropsDataSocket(url: string): PlatformWatchSocket {
   return wrapper;
 }
 
-function browserVisibility() {
-  return {
-    current: Effect.sync(() => (document.visibilityState === "hidden" ? "hidden" : "visible")),
-    changes: Stream.fromEventListener(document, "visibilitychange").pipe(
-      Stream.map(() => (document.visibilityState === "hidden" ? "hidden" : "visible")),
-    ),
-  } as const;
-}
-
-/**
- * The page as the account runtime hears it (DESIGN §6.4): the document's
- * visibility, a return from the back-forward cache or a freeze, and the
- * network. Bound to this document and window, whichever tab later holds the
- * globals.
- */
-export function browserPage(document: Document, window: Window): PagePort {
-  return {
-    hidden: () => document.visibilityState === "hidden",
-    online: () => typeof navigator === "undefined" || navigator.onLine !== false,
-    listen: (hear) => {
-      const onVisibility = () =>
-        hear({ type: "visibility", hidden: document.visibilityState === "hidden" });
-      const onResume = () => hear({ type: "resume" });
-      const onPageShow = (event: Event) => {
-        if ((event as PageTransitionEvent).persisted) hear({ type: "resume" });
-      };
-      const onOnline = () => hear({ type: "online" });
-      const onOffline = () => hear({ type: "offline" });
-      document.addEventListener("visibilitychange", onVisibility);
-      document.addEventListener("resume", onResume);
-      window.addEventListener("pageshow", onPageShow);
-      window.addEventListener("online", onOnline);
-      window.addEventListener("offline", onOffline);
-      return () => {
-        document.removeEventListener("visibilitychange", onVisibility);
-        document.removeEventListener("resume", onResume);
-        window.removeEventListener("pageshow", onPageShow);
-        window.removeEventListener("online", onOnline);
-        window.removeEventListener("offline", onOffline);
-      };
-    },
-  };
-}
-
 /**
  * Builds one platform-data runtime for one account. The default is the real
  * browser adapter stack; a test may substitute a fake one (the only clean
@@ -118,6 +75,8 @@ export type MakeZeropsDataRuntime = (input: {
   readonly client: ZeropsApiClient;
   readonly registry: AtomRegistry.AtomRegistry;
   readonly scheduler: Scheduler.Scheduler;
+  /** The account's tab signals: the runtime pauses its push half while the tab is hidden. */
+  readonly signals: PlatformSignals;
   readonly signal: AbortSignal;
 }) => Promise<ManagedZeropsDataRuntime>;
 
@@ -126,6 +85,7 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
   client,
   registry,
   scheduler,
+  signals,
   signal,
 }) => {
   const adapter = makeZeropsDataAdapter({
@@ -155,7 +115,7 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
       logTimers,
       atomRegistry: registry,
       makeOpaqueId: () => crypto.randomUUID(),
-      visibility: browserVisibility(),
+      visibility: signalsVisibility(signals),
     }).pipe(
       Effect.provideService(Scheduler.Scheduler, scheduler),
       Effect.provideService(Clock.Clock, tabClock),
@@ -206,7 +166,10 @@ export function ZeropsDataProvider({
   );
   const registry = useContext(RegistryContext);
   const accountId = status === "signed-in" ? (user?.id ?? null) : null;
-  const [runtime, setRuntime] = useState<ManagedZeropsDataRuntime | null>(null);
+  const [opened, setOpened] = useState<{
+    readonly runtime: ManagedZeropsDataRuntime;
+    readonly signals: PlatformSignals;
+  } | null>(null);
   const [startupFailure, setStartupFailure] = useState<{
     readonly accountId: string;
     readonly message: string;
@@ -219,6 +182,7 @@ export function ZeropsDataProvider({
     let current: ManagedZeropsDataRuntime | null = null;
     let removeLifetimeClose: () => void = () => undefined;
     let unbindInvalidations: () => void = () => undefined;
+    let unbindGiteaSignals: () => void = () => undefined;
     setStartupFailure(null);
     const scope = {
       account: {
@@ -229,7 +193,7 @@ export function ZeropsDataProvider({
     };
     const taskScheduler = makeBrowserDataScheduler();
     const abort = new AbortController();
-    const page = browserPage(document, window);
+    const signals = browserPlatformSignals(document, window);
     /** The account runtime being built on the data runtime, once there is one. */
     let account: Promise<AccountRuntime> | null = null;
     let shutdownPromise: Promise<void> | null = null;
@@ -248,6 +212,7 @@ export function ZeropsDataProvider({
       client,
       registry,
       scheduler: taskScheduler.scheduler,
+      signals,
       signal: abort.signal,
     }).then(
       (created) => {
@@ -267,7 +232,7 @@ export function ZeropsDataProvider({
               concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
               onUser: (verified) => verifiedMemberships(verified),
             }),
-            page,
+            signals,
             atomRegistry: registry,
           }),
         );
@@ -280,7 +245,8 @@ export function ZeropsDataProvider({
             });
             // Surfaces send their intents to this account's bus from the first mount.
             unbindInvalidations = bindAccountInvalidations(built.invalidations);
-            setRuntime(created);
+            unbindGiteaSignals = bindGiteaSessionsSignals(signals);
+            setOpened({ runtime: created, signals });
           },
           (cause: unknown) => {
             void shutdown(created, "account-replaced");
@@ -302,13 +268,15 @@ export function ZeropsDataProvider({
       abort.abort();
       removeLifetimeClose();
       unbindInvalidations();
-      setRuntime(null);
+      unbindGiteaSignals();
+      setOpened(null);
       if (current !== null) void shutdown(current, "account-replaced");
     };
   }, [accountId, client, makeRuntime, registry, startupAttempt]);
 
   const value = useMemo<ZeropsDataContextValue | null>(() => {
-    if (runtime === null || runtime.scope.account.accountId !== accountId) return null;
+    if (opened === null || opened.runtime.scope.account.accountId !== accountId) return null;
+    const { runtime, signals } = opened;
     const organizationRef = (organizationId: string) => ({
       kind: "organization" as const,
       account: runtime.scope.account,
@@ -316,6 +284,7 @@ export function ZeropsDataProvider({
     });
     return {
       runtime,
+      signals,
       organizationRef,
       projectRef: (organizationId, projectId) => ({
         kind: "project",
@@ -323,7 +292,7 @@ export function ZeropsDataProvider({
         projectId: ZeropsProjectId.make(projectId),
       }),
     };
-  }, [accountId, runtime]);
+  }, [accountId, opened]);
 
   const startupError = startupFailure?.accountId === accountId ? startupFailure.message : null;
   if (value === null)

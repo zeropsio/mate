@@ -89,6 +89,7 @@ function runtime(): ManagedZeropsDataRuntime {
 function context(value: ManagedZeropsDataRuntime): ZeropsDataContextValue {
   return {
     runtime: value,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => {
       throw new Error("not used");
     },

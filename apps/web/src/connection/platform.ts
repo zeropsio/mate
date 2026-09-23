@@ -13,6 +13,7 @@ import {
   Wakeups,
 } from "@t3tools/client-runtime/connection";
 import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";
+import type { PlatformSignal, PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { AuthZeropsClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -30,6 +31,7 @@ import {
   type PrimaryEnvironmentTarget,
 } from "../environments/primary/target";
 import { isHostedStaticApp } from "../hostedPairing";
+import { browserPlatformSignals } from "../zerops/browserSignals";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
 import { connectionStorageLayer } from "./storage";
 import { clientPresentationMetadata } from "./clientMetadata";
@@ -64,61 +66,33 @@ const connectivityLayer = Connectivity.layer({
 });
 
 /**
- * The wakeup a browser lifecycle event stands for, or `null` when it means
- * nothing to the connection layer.
- *
- * `visibilitychange` alone is too weak for this client. It does not fire when
- * the user switches back from another APPLICATION — the document stays
- * "visible" throughout — so returning to mate that way produced no signal at
- * all, and it cannot distinguish an ordinary tab switch from a back/forward
- * cache restore, where the browser has already killed the socket.
+ * The connection wakeup a tab signal stands for, or `null` when it means
+ * nothing to the connection layer. The connection hears the same coalesced
+ * visible wake as the account (DESIGN §6.4): focus back from another
+ * application after 30 s is one, a click into an iframe and back or a short
+ * tab switch is not.
  */
-export function connectionWakeupForDocumentEvent(event: {
-  readonly type: string;
-  readonly persisted?: boolean;
-  readonly visibilityState?: DocumentVisibilityState;
-}): Wakeups.ConnectionWakeup | null {
-  switch (event.type) {
-    case "pageshow":
-      // Only a bfcache restore; a cold load connects on its own. The socket is
-      // already gone, so replace the lease instead of probing it.
-      return event.persisted === true ? "application-active-reconnect" : null;
-    case "focus":
-      return "application-active";
-    case "visibilitychange":
-      return event.visibilityState === "visible" ? "application-active" : null;
-    default:
-      return null;
-  }
+export function connectionWakeupForSignal(signal: PlatformSignal): Wakeups.ConnectionWakeup | null {
+  if (signal.type !== "wake" || !signal.visible) return null;
+  // A back/forward cache restore comes back with a socket the browser already
+  // killed: replace the lease instead of probing it.
+  return signal.cause === "pageshow" ? "application-active-reconnect" : "application-active";
 }
 
-const WAKEUP_EVENT_TYPES = ["visibilitychange", "focus", "pageshow"] as const;
+/** The tab's signals for the connection layer, made when a connection first listens. */
+let tabSignals: PlatformSignals | null = null;
 
 const wakeupsLayer = Wakeups.layer({
   changes: Stream.callback<Wakeups.ConnectionWakeup>((queue) =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        const listener = (event: Event) => {
-          const wakeup = connectionWakeupForDocumentEvent({
-            type: event.type,
-            ...("persisted" in event ? { persisted: Boolean(event.persisted) } : {}),
-            visibilityState: document.visibilityState,
-          });
-          if (wakeup !== null) {
-            Queue.offerUnsafe(queue, wakeup);
-          }
-        };
-        for (const type of WAKEUP_EVENT_TYPES) {
-          window.addEventListener(type, listener);
-        }
-        return listener;
+        tabSignals ??= browserPlatformSignals(document, window);
+        return tabSignals.listen((signal) => {
+          const wakeup = connectionWakeupForSignal(signal);
+          if (wakeup !== null) Queue.offerUnsafe(queue, wakeup);
+        });
       }),
-      (listener) =>
-        Effect.sync(() => {
-          for (const type of WAKEUP_EVENT_TYPES) {
-            window.removeEventListener(type, listener);
-          }
-        }),
+      (unlisten) => Effect.sync(unlisten),
     ).pipe(Effect.asVoid),
   ),
 });

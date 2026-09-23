@@ -150,6 +150,7 @@ function contextFor(broker: GrantsBroker, setIntegrationTokenProjects: (input: u
   } as unknown as ManagedZeropsDataRuntime;
   return {
     runtime,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => organization,
     projectRef: (_organizationId: string, projectId: string) =>
       ({ kind: "project", organization, projectId }) as never,
@@ -523,6 +524,7 @@ describe("useZeropsGroupReach", () => {
     } as unknown as ManagedZeropsDataRuntime;
     const context: ZeropsDataContextValue = {
       runtime,
+      signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
       organizationRef: () => organization,
       projectRef: () => {
         throw new Error("not used");

@@ -1,10 +1,12 @@
 import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
+import type { PlatformSignal, PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { fetchAcross, makeFakeBroker, makeFakeGitea } from "@t3tools/client-runtime/zerops/testing";
 import { act, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   accountGiteaSessions,
+  bindGiteaSessionsSignals,
   giteaClientFor,
   giteaSessionLogin,
   useGiteaReadable,
@@ -144,26 +146,28 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
-/** A document and a window that record which listeners are held on them. */
-function installListenerDom(visibility: DocumentVisibilityState = "visible") {
-  const held = { document: new Map<string, unknown>(), window: new Map<string, unknown>() };
-  const target = (on: Map<string, unknown>) => ({
-    addEventListener: (type: string, listener: unknown) => {
-      on.set(type, listener);
+/** The account's tab signals, sent by the test. */
+function fakeSignals() {
+  const hearers = new Set<(signal: PlatformSignal) => void>();
+  let hidden = false;
+  const signals: PlatformSignals = {
+    hidden: () => hidden,
+    online: () => true,
+    listen: (hear) => {
+      hearers.add(hear);
+      return () => {
+        hearers.delete(hear);
+      };
     },
-    removeEventListener: (type: string, listener: unknown) => {
-      if (on.get(type) === listener) on.delete(type);
-    },
-  });
-  const document = { visibilityState: visibility, ...target(held.document) };
-  vi.stubGlobal("document", document);
-  vi.stubGlobal("window", target(held.window));
-  /** Shows or hides the tab, as the browser tells the document. */
-  const show = (next: DocumentVisibilityState) => {
-    document.visibilityState = next;
-    (held.document.get("visibilitychange") as () => void)();
   };
-  return { held, show };
+  return {
+    signals,
+    listening: () => hearers.size,
+    send: (signal: PlatformSignal) => {
+      if (signal.type === "visibility") hidden = signal.hidden;
+      for (const hear of hearers) hear(signal);
+    },
+  };
 }
 
 describe("the account's Gitea sessions and the tab's signals", () => {
@@ -172,45 +176,42 @@ describe("the account's Gitea sessions and the tab's signals", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loading the module listens for neither visibility nor online", async () => {
-    const { held } = installListenerDom();
-    vi.resetModules();
-    await import("./accountGiteaSessions");
-
-    expect(held.document.has("visibilitychange")).toBe(false);
-    expect(held.window.has("online")).toBe(false);
-  });
-
-  it("an open account listens for visibility and online, and its close lets both go", () => {
-    const { held } = installListenerDom();
-
+  it("hear the tab only while its signals are bound", () => {
+    const tab = fakeSignals();
     signIn("person-a");
-    expect(held.document.has("visibilitychange")).toBe(true);
-    expect(held.window.has("online")).toBe(true);
+    expect(tab.listening()).toBe(0);
 
-    closeAccountLifetime();
-    expect(held.document.has("visibilitychange")).toBe(false);
-    expect(held.window.has("online")).toBe(false);
+    const unbind = bindGiteaSessionsSignals(tab.signals);
+    expect(tab.listening()).toBe(1);
+    unbind();
+    expect(tab.listening()).toBe(0);
   });
 
-  it("an account opened while the tab is hidden wakes its Gitea sessions when shown after 30 s", () => {
-    vi.useFakeTimers({ toFake: ["performance"] });
-    try {
-      const { show } = installListenerDom("hidden");
-      signIn("person-a");
-      const sessions = accountGiteaSessions();
-      if (sessions === null) throw new Error("no account open");
-      const wake = vi.spyOn(sessions, "wake");
-      const resume = vi.spyOn(sessions, "resume");
+  it.each([
+    ["a visible wake wakes them", { type: "wake", visible: true, cause: "shown" }, "wake"],
+    [
+      "a hidden wake evaluates what came due",
+      { type: "wake", visible: false, cause: "resume" },
+      "resume",
+    ],
+    ["shown again runs what came due", { type: "visibility", hidden: false }, "resume"],
+    ["online tries them again", { type: "network", online: true }, "online"],
+  ] as const)("%s", (_case, signal, called) => {
+    const tab = fakeSignals();
+    signIn("person-a");
+    const unbind = bindGiteaSessionsSignals(tab.signals);
+    const sessions = accountGiteaSessions();
+    if (sessions === null) throw new Error("no account open");
+    const calls = (["wake", "resume", "online"] as const).map(
+      (method) => [method, vi.spyOn(sessions, method)] as const,
+    );
 
-      vi.advanceTimersByTime(30_000);
-      show("visible");
+    tab.send(signal);
 
-      expect(wake).toHaveBeenCalledTimes(1);
-      expect(resume).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(calls.filter(([, spy]) => spy.mock.calls.length > 0).map(([method]) => method)).toEqual([
+      called,
+    ]);
+    unbind();
   });
 });
 

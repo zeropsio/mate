@@ -21,10 +21,11 @@ import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
 import { makeZeropsDataRuntime } from "../data/runtime.ts";
 import { ZeropsOrganizationId, type ZeropsDataAdapter } from "../data/types.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
+import { makePlatformSignals, type PageEvent } from "../knowledge/signals.ts";
 import { makeDeadlineClock, type DeadlineClock } from "../testing/deadlineClock.ts";
 import { makeFakeDatastream } from "../testing/fakeDatastream.ts";
 import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
-import { makeAccountRuntime, type PageSignal } from "./accountRuntime.ts";
+import { makeAccountRuntime } from "./accountRuntime.ts";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -50,39 +51,37 @@ const settle = Effect.gen(function* () {
   }
 });
 
-/** A tab's page as the platform reports it: its visibility, its network, its lifecycle. */
-const makePage = Effect.fnUntraced(function* () {
-  const signals = yield* PubSub.unbounded<PageSignal>();
-  const listeners = new Set<(signal: PageSignal) => void>();
+/** A tab's page as the platform reports it, and the signals the account hears of it (§6.4). */
+const makePage = Effect.fnUntraced(function* (clock: DeadlineClock) {
+  const visibility = yield* PubSub.unbounded<boolean>();
+  const hearers = new Set<(event: PageEvent) => void>();
   let hidden = false;
-  return {
-    port: {
-      hidden: () => hidden,
-      online: () => true,
-      listen: (hear: (signal: PageSignal) => void) => {
-        listeners.add(hear);
-        return () => listeners.delete(hear);
-      },
+  const signals = makePlatformSignals({
+    hidden: () => hidden,
+    online: () => true,
+    now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
+    listen: (hear) => {
+      hearers.add(hear);
+      return () => hearers.delete(hear);
     },
+  });
+  return {
+    signals,
+    hidden: () => hidden,
     /** The runtime's own visibility port over the same page. */
     visibility: {
       current: Effect.sync(() => (hidden ? ("hidden" as const) : ("visible" as const))),
-      changes: Stream.fromPubSub(signals).pipe(
-        Stream.filter((signal) => signal.type === "visibility"),
-        Stream.map((signal) =>
-          signal.type === "visibility" && signal.hidden
-            ? ("hidden" as const)
-            : ("visible" as const),
-        ),
+      changes: Stream.fromPubSub(visibility).pipe(
+        Stream.map((isHidden) => (isHidden ? ("hidden" as const) : ("visible" as const))),
       ),
     },
     /** How many listeners hear the page now. */
-    listening: () => listeners.size,
-    emit: (signal: PageSignal) =>
+    listening: () => hearers.size,
+    emit: (event: PageEvent) =>
       Effect.suspend(() => {
-        if (signal.type === "visibility") hidden = signal.hidden;
-        for (const hear of listeners) hear(signal);
-        return PubSub.publish(signals, signal);
+        if (event.type === "visibility") hidden = event.hidden;
+        for (const hear of hearers) hear(event);
+        return event.type === "visibility" ? PubSub.publish(visibility, event.hidden) : Effect.void;
       }).pipe(Effect.andThen(settle)),
   };
 });
@@ -141,7 +140,7 @@ describe("the account runtime", () => {
         Effect.gen(function* () {
           const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
           const registry = AtomRegistry.make();
-          const page = yield* makePage();
+          const page = yield* makePage(clock);
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
@@ -153,7 +152,7 @@ describe("the account runtime", () => {
             return yield* makeAccountRuntime({
               data,
               verifier: grant.verifier,
-              page: page.port,
+              signals: page.signals,
               atomRegistry: registry,
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -194,7 +193,7 @@ describe("the account runtime", () => {
         Effect.gen(function* () {
           const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
           const registry = AtomRegistry.make();
-          const page = yield* makePage();
+          const page = yield* makePage(clock);
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
@@ -206,7 +205,7 @@ describe("the account runtime", () => {
             return yield* makeAccountRuntime({
               data,
               verifier: grant.verifier,
-              page: page.port,
+              signals: page.signals,
               atomRegistry: registry,
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -250,7 +249,7 @@ describe("the account runtime", () => {
       Effect.gen(function* () {
         const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
         const registry = AtomRegistry.make();
-        const page = yield* makePage();
+        const page = yield* makePage(clock);
         const grant = heldVerifier();
         const built = yield* Effect.gen(function* () {
           const data = yield* makeZeropsDataRuntime({
@@ -262,7 +261,7 @@ describe("the account runtime", () => {
           return yield* makeAccountRuntime({
             data,
             verifier: grant.verifier,
-            page: page.port,
+            signals: page.signals,
             atomRegistry: registry,
           });
         }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -295,7 +294,7 @@ describe("the account runtime", () => {
       Effect.gen(function* () {
         const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
         const registry = AtomRegistry.make();
-        const page = yield* makePage();
+        const page = yield* makePage(clock);
         const other = { ...organization, organizationId: ZeropsOrganizationId.make("org-2") };
         const rest = makeFakeZeropsRest();
         rest.addUser({
@@ -343,7 +342,7 @@ describe("the account runtime", () => {
               concurrency: policy.roundProjectConcurrency,
               onUser: () => undefined,
             }),
-            page: page.port,
+            signals: page.signals,
             atomRegistry: registry,
           });
         }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -387,7 +386,7 @@ describe("the account runtime", () => {
         Effect.gen(function* () {
           const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
           const registry = AtomRegistry.make();
-          const page = yield* makePage();
+          const page = yield* makePage(clock);
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
@@ -399,7 +398,7 @@ describe("the account runtime", () => {
             return yield* makeAccountRuntime({
               data,
               verifier: grant.verifier,
-              page: page.port,
+              signals: page.signals,
               atomRegistry: registry,
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -434,7 +433,7 @@ describe("the account runtime", () => {
       Effect.gen(function* () {
         const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
         const registry = AtomRegistry.make();
-        const page = yield* makePage();
+        const page = yield* makePage(clock);
         const grant = heldVerifier();
         const exit = yield* Effect.gen(function* () {
           const data = yield* makeZeropsDataRuntime({
@@ -449,7 +448,7 @@ describe("the account runtime", () => {
           return yield* makeAccountRuntime({
             data,
             verifier: grant.verifier,
-            page: page.port,
+            signals: page.signals,
             atomRegistry: registry,
           }).pipe(Effect.exit);
         }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -468,7 +467,7 @@ describe("the account runtime", () => {
         Effect.gen(function* () {
           const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
           const registry = AtomRegistry.make();
-          const page = yield* makePage();
+          const page = yield* makePage(clock);
           const rest = makeFakeZeropsRest();
           rest.addUser({
             user: {
@@ -507,7 +506,7 @@ describe("the account runtime", () => {
                 concurrency: policy.roundProjectConcurrency,
                 onUser: () => undefined,
               }),
-              page: page.port,
+              signals: page.signals,
               atomRegistry: registry,
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -523,7 +522,7 @@ describe("the account runtime", () => {
             const due =
               clock.monoMs() +
               Math.max(0, Math.min(at.wall - clock.wallMs(), at.mono - clock.monoMs()));
-            return page.port.hidden() ? Math.ceil(due / MINUTE) * MINUTE : due;
+            return page.hidden() ? Math.ceil(due / MINUTE) * MINUTE : due;
           };
           const pass = passWith(clock, nextTimer);
           const interest = () =>

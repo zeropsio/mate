@@ -247,6 +247,7 @@ function runtime(logs: FakeLogs, epoch = 1): ManagedZeropsDataRuntime {
 function context(value: ManagedZeropsDataRuntime): ZeropsDataContextValue {
   return {
     runtime: value,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => organization,
     projectRef: () => PROJECT,
   };

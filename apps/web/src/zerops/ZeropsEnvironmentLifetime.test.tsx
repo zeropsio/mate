@@ -73,7 +73,10 @@ vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ client: {}, activeOrganization: null }),
 }));
 vi.mock("./zeropsDataContext", () => {
-  const data = { organizationRef: () => undefined };
+  const data = {
+    organizationRef: () => undefined,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
+  };
   return { useZeropsData: () => data };
 });
 vi.mock("../state/environments", () => ({

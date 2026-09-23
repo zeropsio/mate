@@ -57,6 +57,7 @@ const dataOver = (...views: ReadonlyArray<AccessGrantView>): ZeropsDataContextVa
         clock: tabClock,
       },
     } as unknown as ManagedZeropsDataRuntime,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => {
       throw new Error("unused");
     },
