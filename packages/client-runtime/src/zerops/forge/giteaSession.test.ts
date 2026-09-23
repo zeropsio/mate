@@ -128,6 +128,40 @@ const brokerPosts = (w: ReturnType<typeof world>) =>
 const livenessChecks = (w: ReturnType<typeof world>) =>
   w.broker.requests().filter((request) => request.route === "GET /");
 
+/**
+ * The broker's mint, held by the test: `hold` keeps each mint unanswered until `refuse` answers
+ * them 502, or until the request is aborted at the broker's deadline.
+ */
+function brokerGate() {
+  let holding = false;
+  const held: Array<() => void> = [];
+  const wrap =
+    (fetch: Fetch): Fetch =>
+    async (input, init) => {
+      if (holding && String(input).endsWith("/person/token")) {
+        return new Promise<Response>((resolve, reject) => {
+          held.push(() => resolve(new Response("", { status: 502 })));
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        });
+      }
+      return fetch(input, init);
+    };
+  return {
+    wrap,
+    hold: () => {
+      holding = true;
+    },
+    refuse: () => {
+      holding = false;
+      for (const answer of held.splice(0)) answer();
+    },
+  } as const;
+}
+
+type BrokerGate = ReturnType<typeof brokerGate>;
+
 const readTags = (sessions: GiteaSessions) => {
   const client = sessions.clientFor(HARNESS_GITEA_ORIGIN);
   if (client === null) throw new Error("no Gitea client");
@@ -377,41 +411,80 @@ describe("the account's Gitea sessions", () => {
       });
     });
 
-    it("that no token recovered is told to the client's reader; one the reacquire recovered is not", async () => {
-      let brokerHangs = false;
-      const w = world({
-        wrapFetch: (fetch) =>
-          (async (input: string | URL | Request, init?: RequestInit) => {
-            if (brokerHangs && String(input).endsWith("/person/token")) {
-              return new Promise<Response>((_resolve, reject) => {
-                init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
-                  once: true,
-                });
-              });
-            }
-            return fetch(input, init);
-          }) as Fetch,
-      });
+    it("one the reacquire recovered is not told to the client's reader", async () => {
+      const w = world();
       w.gitea.setTags("acme", "group", ["v1.0.0"]);
       w.demand();
       await w.time.advance(0);
       let unauthorized = 0;
-      const tell = () => {
-        unauthorized += 1;
-      };
 
       w.gitea.revoke("gitea-token-1");
-      const recovered = w.sessions.clientFor(HARNESS_GITEA_ORIGIN, tell);
-      await expect(recovered?.listTags("acme", "group")).resolves.toEqual([{ name: "v1.0.0" }]);
+      const client = w.sessions.clientFor(HARNESS_GITEA_ORIGIN, () => {
+        unauthorized += 1;
+      });
+      await expect(client?.listTags("acme", "group")).resolves.toEqual([{ name: "v1.0.0" }]);
       expect(unauthorized).toBe(0);
+    });
 
-      // The next reacquire outlasts the queue: the read answers Gitea's 401, and its pass is told.
-      w.gitea.revoke("gitea-token-2");
-      brokerHangs = true;
-      const client = w.sessions.clientFor(HARNESS_GITEA_ORIGIN, tell);
-      const read = client?.listTags("acme", "group").catch((cause: unknown) => cause);
-      await w.time.advance(REQUEST_QUEUE_MS);
-      expect(((await read) as GiteaApiError).status).toBe(401);
+    it.each([
+      {
+        name: "the reacquire outlasts the request's wait",
+        // The broker holds the mint past REQUEST_QUEUE_MS; the read answers Gitea's 401.
+        read: async (w: ReturnType<typeof world>, gate: BrokerGate, tell: () => void) => {
+          w.gitea.revoke("gitea-token-1");
+          gate.hold();
+          const read = w.sessions
+            .clientFor(HARNESS_GITEA_ORIGIN, tell)
+            ?.listTags("acme", "group")
+            .catch((cause: unknown) => cause);
+          await w.time.advance(REQUEST_QUEUE_MS);
+          return read;
+        },
+      },
+      {
+        name: "no token is there to send: the reacquire it waited on failed",
+        // Taken while another read's reacquire runs; the broker then refuses, before this read is sent.
+        read: async (w: ReturnType<typeof world>, gate: BrokerGate, tell: () => void) => {
+          w.gitea.revoke("gitea-token-1");
+          gate.hold();
+          void readTags(w.sessions).catch(() => undefined);
+          await w.time.advance(0);
+          const read = w.sessions
+            .clientFor(HARNESS_GITEA_ORIGIN, tell)
+            ?.listTags("acme", "group")
+            .catch((cause: unknown) => cause);
+          gate.refuse();
+          await w.time.advance(0);
+          return read;
+        },
+      },
+      {
+        name: "the recovered token is refused too",
+        read: async (w: ReturnType<typeof world>, _gate: BrokerGate, tell: () => void) => {
+          w.gitea.revoke("gitea-token-1");
+          w.gitea.revoke("gitea-token-2");
+          const read = w.sessions
+            .clientFor(HARNESS_GITEA_ORIGIN, tell)
+            ?.listTags("acme", "group")
+            .catch((cause: unknown) => cause);
+          await w.time.advance(0);
+          return read;
+        },
+      },
+    ])("that no token recovered is told to the client's reader: $name", async ({ read }) => {
+      const gate = brokerGate();
+      const w = world({ wrapFetch: gate.wrap });
+      w.gitea.setTags("acme", "group", ["v1.0.0"]);
+      w.demand();
+      await w.time.advance(0);
+      let unauthorized = 0;
+
+      const failure = await read(w, gate, () => {
+        unauthorized += 1;
+      });
+
+      expect(failure).toBeInstanceOf(GiteaApiError);
+      expect((failure as GiteaApiError).status).toBe(401);
       expect(unauthorized).toBe(1);
     });
 
