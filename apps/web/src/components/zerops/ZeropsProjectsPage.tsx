@@ -2952,7 +2952,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   }));
 
   return (
-    <div className="space-y-6">
+    // The page's end clears the app's fixed "Open main sidebar" control, so
+    // the last row is never under it with the menu closed.
+    <div className="space-y-6 pb-12">
       {listingNotice === null ? null : listingNotice.region === "message" ? (
         <div
           className="flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
