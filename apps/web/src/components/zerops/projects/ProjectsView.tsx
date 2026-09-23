@@ -144,8 +144,9 @@ export function ProjectCard<T>({
       data-zerops-group={group.groupId}
       id={`project-${group.groupId}`}
     >
-      <header className="flex h-8 min-w-0 items-center gap-3">
-        <h2 className="min-w-0 shrink-0">
+      {/* Narrow: name, meta and menu on one line, the step under them. */}
+      <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @2xl/flow:h-8 @2xl/flow:flex-nowrap">
+        <h2 className="min-w-0">
           <GroupName className="block text-base" entry={entry} />
         </h2>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -154,7 +155,7 @@ export function ProjectCard<T>({
         {/* The step, named; its verb is in the step it acts on, once. */}
         {flow.nextStep.kind === "none" || flow.nextStep.kind === "first-task" ? null : (
           <StatusDot
-            className="min-w-0 shrink text-xs"
+            className="order-last w-full min-w-0 text-xs @2xl/flow:order-none @2xl/flow:w-auto"
             label={flow.nextStep.text}
             sentence
             tone={nextStepTone(flow.nextStep.kind)}
