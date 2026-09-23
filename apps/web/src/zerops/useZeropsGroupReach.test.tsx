@@ -1,12 +1,14 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import { Atom } from "effect/unstable/reactivity";
 
 import {
   AccountEpoch,
   makeZeropsApiOrigin,
   ZeropsAccountId,
   ZeropsOrganizationId,
+  type AccessState,
   type ManagedZeropsDataRuntime,
   type OrganizationIntegrationTokenGrantsResourceRequest,
   type ZeropsIntegrationTokenGrantMetadata,
@@ -107,12 +109,16 @@ const GROUP: ZeropsGroupReachGroup = {
   mateProjectIds: ["project-a"],
 };
 
+/** The runtime's access, which no test here moves. */
+const unverified = Atom.make<AccessState>({ status: "unverified" });
+
 type GrantsBroker = FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>;
 
 function contextFor(broker: GrantsBroker, setIntegrationTokenProjects: (input: unknown) => void) {
   const runtime = {
     scope,
     resources: { acquire: broker.acquire },
+    reads: { access: unverified },
     commands: {
       setIntegrationTokenProjects: (input: unknown) => {
         setIntegrationTokenProjects(input);
@@ -457,6 +463,7 @@ describe("useZeropsGroupReach", () => {
     const runtime = {
       scope,
       resources: { acquire: broker.acquire },
+      reads: { access: unverified },
       commands: {
         setIntegrationTokenProjects: (input: { readonly tokenId: string }) =>
           Effect.promise(async () => {

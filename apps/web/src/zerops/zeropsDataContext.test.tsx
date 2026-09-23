@@ -1,3 +1,4 @@
+import { RegistryContext } from "@effect/atom-react";
 import { act, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
@@ -8,6 +9,7 @@ import {
   makeZeropsApiOrigin,
   ZeropsAccountId,
   ZeropsOrganizationId,
+  type AccessState,
   type ManagedZeropsDataRuntime,
   type OrganizationLocationsResourceRequest,
 } from "@t3tools/client-runtime/zerops/data";
@@ -148,10 +150,28 @@ const organization = {
   organizationId: ZeropsOrganizationId.make("org-1"),
 };
 
-function locationsRuntime(broker: FakeLocationsBroker): ManagedZeropsDataRuntime {
+/** The runtime's access as a grant round `verifiedAtMs` published it. */
+function verified(verifiedAtMs: number): AccessState {
+  return {
+    status: "verified",
+    account,
+    accountEpoch: scope.epoch,
+    verifiedAtMs,
+    deadlineMs: verifiedAtMs + 15 * 60_000,
+    mutationsAllowed: true,
+    organizations: [],
+    projects: [],
+  };
+}
+
+function locationsRuntime(
+  broker: FakeLocationsBroker,
+  access: Atom.Atom<AccessState> = Atom.make(verified(0)),
+): ManagedZeropsDataRuntime {
   return {
     scope,
     resources: { acquire: broker.acquire },
+    reads: { access },
   } as unknown as ManagedZeropsDataRuntime;
 }
 
@@ -222,6 +242,79 @@ describe("useZeropsResource", () => {
         await broker.publish({ status: "success", attempt: 1, value: [] });
       });
       expect(onResult.mock.calls.at(-1)?.[0]).toEqual({ status: "success", attempt: 1, value: [] });
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
+
+  // The broker erases its values at the deadline and ends the lease; demand
+  // survives and re-reads under the next grant (DESIGN §9 C4).
+  it("a lease the broker erased re-admits on the next grant, and not before", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeLocationsBroker();
+    const registry = AtomRegistry.make();
+    const access = Atom.make(verified(0));
+    const runtime = locationsRuntime(broker, access);
+    const onResult = vi.fn();
+    const request: OrganizationLocationsResourceRequest = {
+      kind: "organization-locations",
+      account: scope,
+      organization,
+    };
+
+    function Probe() {
+      const result = useZeropsResource(request);
+      useEffect(() => onResult(result), [result]);
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    const last = () => onResult.mock.calls.at(-1)?.[0];
+    try {
+      await act(() => {
+        root.render(
+          <RegistryContext value={registry}>
+            <ZeropsDataContext value={locationsContext(runtime)}>
+              <Probe />
+            </ZeropsDataContext>
+          </RegistryContext>,
+        );
+      });
+      await act(async () => {
+        await broker.publish({ status: "success", attempt: 1, value: [] });
+      });
+      expect(last()).toEqual({ status: "success", attempt: 1, value: [] });
+
+      // The deadline: the broker erases the value while the old grant is still published.
+      await act(async () => {
+        await broker.publish({ status: "released" });
+      });
+      expect(last()).toEqual({ status: "released" });
+      await flushEffects();
+      expect(broker.acquisitions).toBe(1);
+
+      await act(async () =>
+        registry.set(access, {
+          status: "expired",
+          accountEpoch: scope.epoch,
+          expiredAtMs: 15 * 60_000,
+          previous: verified(0),
+        } as AccessState),
+      );
+      await flushEffects();
+      expect(broker.acquisitions).toBe(1);
+
+      // The next grant admits the demand again, once.
+      broker.current = { status: "loading", attempt: 1 };
+      await act(async () => registry.set(access, verified(20 * 60_000)));
+      await flushEffects();
+      expect(broker.acquisitions).toBe(2);
+      await act(async () => {
+        await broker.publish({ status: "success", attempt: 1, value: [] });
+      });
+      expect(last()).toEqual({ status: "success", attempt: 1, value: [] });
+      expect(broker.acquisitions).toBe(2);
     } finally {
       await act(() => root.unmount());
     }
