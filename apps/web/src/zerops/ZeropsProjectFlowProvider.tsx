@@ -79,6 +79,8 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
 const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
+/** What a verb says when it is pressed while the flows stand and no Gitea token is held. */
+const SIGNING_IN_AGAIN = "Signing in to Gitea again. Try it again in a moment.";
 
 /** A service listing whose members, membership and sources did not change. */
 function sameServiceListing(
@@ -417,10 +419,20 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [inventory.projects],
   );
 
+  /**
+   * A client to act as the person with, or `null` with the reason said where the verbs are: the
+   * flows stand through a failed reacquire while no token is held, and a verb pressed then
+   * would otherwise do nothing and say nothing.
+   */
+  const actingClient = useCallback(() => {
+    const client = giteaOrigin === undefined ? null : giteaClientFor(giteaOrigin);
+    if (client === null) setTrouble(SIGNING_IN_AGAIN);
+    return client;
+  }, [giteaOrigin]);
+
   const mergePullRequest = useCallback(
     async (slug: string, pull: Pick<FlowPullRequest, "repository" | "number">) => {
-      if (giteaOrigin === undefined) return;
-      const client = giteaClientFor(giteaOrigin);
+      const client = actingClient();
       if (client === null) return;
       await run(
         { kind: "merge", slug, repository: pull.repository, number: pull.number },
@@ -435,7 +447,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         },
       );
     },
-    [giteaOrigin, groupOfSlug, run],
+    [actingClient, groupOfSlug, run],
   );
 
   const createPullRequest = useCallback(
@@ -448,8 +460,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         readonly title: string;
       },
     ) => {
-      if (giteaOrigin === undefined) return;
-      const client = giteaClientFor(giteaOrigin);
+      const client = actingClient();
       if (client === null) return;
       await run(
         { kind: "open", slug, repository: input.repository, head: input.head },
@@ -468,14 +479,13 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         },
       );
     },
-    [giteaOrigin, groupOfSlug, run],
+    [actingClient, groupOfSlug, run],
   );
 
   /** A tag on the group repo's `main`, as the person; Gitea's tag protection is the real gate. */
   const tagAs = useCallback(
     async (slug: string, tag: string, message: string) => {
-      if (giteaOrigin === undefined) return;
-      const client = giteaClientFor(giteaOrigin);
+      const client = actingClient();
       if (client === null) return;
       const head = await client.getBranch(slug, GROUP_REPOSITORY, "main").catch(() => undefined);
       const target = head?.commit?.id;
@@ -494,7 +504,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         );
       }
     },
-    [giteaOrigin],
+    [actingClient],
   );
 
   const release = useCallback(
@@ -519,8 +529,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const rollBack = useCallback(
     async (groupId: string, earlier: string) => {
       const flow = flows.get(groupId);
-      if (flow === undefined || giteaOrigin === undefined) return;
-      const client = giteaClientFor(giteaOrigin);
+      if (flow === undefined) return;
+      const client = actingClient();
       if (client === null) return;
       await run({ kind: "roll-back", groupId, tag: earlier }, groupId, async () => {
         const tags = await client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => []);
@@ -540,7 +550,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         await tagAs(flow.slug, plan.tag, plan.message);
       });
     },
-    [flows, giteaOrigin, run, tagAs],
+    [actingClient, flows, run, tagAs],
   );
 
   const value = useMemo<ZeropsProjectFlowValue>(
