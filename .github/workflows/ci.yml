@@ -71,6 +71,9 @@ jobs:
       - name: Check legacy vocabulary exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-legacy-vocabulary
 
+      - name: Reconcile no-failure-to-empty exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-failure-to-empty
+
       - name: Check CSS theme tokens
         run: node scripts/check-css-tokens.ts
 

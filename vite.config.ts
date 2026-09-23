@@ -140,6 +140,7 @@ export default defineConfig({
           ],
         },
       ],
+      "t3code/no-failure-to-empty": "error",
       "t3code/no-global-process-runtime": "error",
       "t3code/no-infinite-motion": "error",
       "t3code/no-inline-schema-compile": "warn",

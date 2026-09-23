@@ -1,6 +1,7 @@
 import { definePlugin } from "@oxlint/plugins";
 
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
+import noFailureToEmpty from "./rules/no-failure-to-empty.ts";
 import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
 import noHermesUnsupportedApis from "./rules/no-hermes-unsupported-apis.ts";
 import noInfiniteMotion from "./rules/no-infinite-motion.ts";
@@ -17,6 +18,7 @@ export default definePlugin({
   },
   rules: {
     "namespace-node-imports": namespaceNodeImports,
+    "no-failure-to-empty": noFailureToEmpty,
     "no-global-process-runtime": noGlobalProcessRuntime,
     "no-hermes-unsupported-apis": noHermesUnsupportedApis,
     "no-infinite-motion": noInfiniteMotion,

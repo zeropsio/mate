@@ -1,0 +1,330 @@
+[
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "lifecycle?.recentTools ?? []",
+    "owner": "state-model 1.4",
+    "reason": "an unread lifecycle feed reads as no recent tools; Mate feeds become Known",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "project?.tagList ?? []",
+    "owner": "state-model 1.3",
+    "reason": "unread project tags read as no tags; inventory selectors return tags as unread, never []",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitTab.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "data?.workingTree.files ?? EMPTY_CHANGED",
+    "owner": "state-model 4.5",
+    "reason": "an unread working-tree status reads as no changes; the Git tab takes Known inputs with the VCS invalidations",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitTab.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "topology.view?.services ?? []",
+    "owner": "state-model 3.6",
+    "reason": "an unread topology reads as no services; topology becomes a derived Known atom",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "candidate?.routeOffers ?? EMPTY_OFFERS",
+    "owner": "state-model 1.3",
+    "reason": "unread candidate routes read as none; selectCandidates gives web candidates with presence unknown",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "candidate?.routes ?? EMPTY_ROUTES",
+    "owner": "state-model 1.3",
+    "reason": "unread candidate routes read as none; selectCandidates gives web candidates with presence unknown",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.environments ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.environments ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.environments ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.pullRequests ?? EMPTY_PULLS",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.pullRequests ?? EMPTY_PULLS",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.release.contents ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.release.contents ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.release.contents ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "flow?.release.contents ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "mateNames ?? EMPTY_MATE_NAMES",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "mateNames ?? EMPTY_MATE_NAMES",
+    "owner": "state-model 4.5",
+    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "groupDeploys.get(group.groupId)?.missing ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "groupDeploys.get(group.groupId)?.missing ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "groupDeploys.get(group.groupId)?.pullRequests ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "groupDeploys.get(group.groupId)?.pullRequests ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "groupDeploys.get(group.groupId)?.releases ?? []",
+    "owner": "state-model 4.5",
+    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "done.catch(() => undefined)",
+    "owner": "karel",
+    "reason": "keeps the access queue running after a failed observation; the caught value is the queue tail, never read as a fact",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.getBranch(slug, GROUP_REPOSITORY, \"main\").catch(() => undefined)",
+    "owner": "state-model 4.6",
+    "reason": "a failed main-branch read is told as \"no main to tag\"; per-verb attempts (4.5) name the cause and 4.6 deletes the provider",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => [])",
+    "owner": "state-model 4.6",
+    "reason": "a failed tag read reads as the release not existing; per-verb attempts (4.5) name the cause and 4.6 deletes the provider",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/addGroupEnvironment.ts",
+    "kind": "CallExpression",
+    "fingerprint": "gitea.getBranch(slug, GROUP_REPOSITORY, write.branch).catch(() => undefined)",
+    "owner": "state-model 4.2",
+    "reason": "a failed branch read is taken as no branch left by an earlier attempt; the write then meets Gitea refusing an existing branch. The registry projection and forge store answer it as Known",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/addGroupEnvironment.ts",
+    "kind": "CallExpression",
+    "fingerprint": "gitea.listPullRequests(slug, GROUP_REPOSITORY, { state: \"open\" }).catch( (): ReadonlyArray<{ readonly number: number; readonly head?: { readonly ref?: string } | undefined; }> => [], )",
+    "owner": "state-model 4.2",
+    "reason": "a failed pull-request read is taken as no open request; the write then opens one. The registry projection and forge store answer it as Known",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsDeployedVersion.ts",
+    "kind": "CallExpression",
+    "fingerprint": "readZeropsResource(resources, request, signal).catch(() => undefined)",
+    "owner": "state-model 4.6",
+    "reason": "readZeropsResourceOnce turns a failed broker read into no answer; the deployment store (4.4) replaces its callers and 4.6 deletes the hook",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGiteaOverview.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.listUserRepositories().catch(() => [])",
+    "owner": "state-model 4.1",
+    "reason": "a failed Gitea list reads as no repositories / no pull requests; the forge store holds the lists as Known",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGiteaOverview.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.searchPullRequests().catch(() => [])",
+    "owner": "state-model 4.1",
+    "reason": "a failed Gitea list reads as no repositories / no pull requests; the forge store holds the lists as Known",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client .commitDetail(slug, repo, read.head) .then((detail): ReadonlyArray<GiteaCommit> => detail === undefined ? [] : [{ sha: detail.sha, subject: detail.subject }], ) .catch((): ReadonlyArray<GiteaCommit> => [])",
+    "owner": "state-model 4.6",
+    "reason": "a failed commit read reads as nothing waiting to go live; the forge store (4.1) holds release contents as Known and 4.6 deletes the hook",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client .compareCommits(slug, repo, read.from, read.head) .catch((): ReadonlyArray<GiteaCommit> => [])",
+    "owner": "state-model 4.6",
+    "reason": "a failed compare reads as nothing waiting to go live; the forge store (4.1) holds release contents as Known and 4.6 deletes the hook",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client .listCommitStatuses(read.owner, read.repo, read.sha) .catch(() => null)",
+    "owner": "state-model 4.6",
+    "reason": "null marks a status read that did not answer and the row stays silent; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.getBranch(slug, repository, \"main\").catch(() => null)",
+    "owner": "state-model 4.6",
+    "reason": "a failed main-branch read leaves the head unknown by omission; the forge store (4.1) holds heads as Known and 4.6 deletes the hook",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGroupEnvironmentReconcile.ts",
+    "kind": "CallExpression",
+    "fingerprint": "addGroupEnvironment({ client, gitea: giteaClientFor(giteaOrigin), clientId, giteaProjectId, registry: registry.current, groupId: entry.groupId, slug: registryGroupSlug(registry.current, entry.groupId), environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
+    "owner": "state-model 4.7",
+    "reason": "a failed repair reads as no outcome and the entry is given back for the next pass; the reconciler becomes an account worker with typed attempts",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.listCommitStatuses(slug, GROUP_REPOSITORY, sha).catch(() => [])",
+    "owner": "state-model 4.6",
+    "reason": "a failed status read reads as no checks; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.listCommitStatuses(slug, repository, head).catch(() => [])",
+    "owner": "state-model 4.6",
+    "reason": "a failed status read reads as no checks; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsGroupOrganizations.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.getOrganization(slug).catch(() => null)",
+    "owner": "state-model 4.1",
+    "reason": "null marks an organization read that did not answer and the pair is left out, never taken as absent; the forge store holds it as Known",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsMateReview.ts",
+    "kind": "LogicalExpression",
+    "fingerprint": "project?.tagList ?? []",
+    "owner": "state-model 1.3",
+    "reason": "unread project tags read as no tags; inventory selectors return tags as unread, never []",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsRepositoryCommits.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.listTags(owner, GROUP_REPOSITORY).catch(() => [])",
+    "owner": "state-model 4.1",
+    "reason": "a failed tag read shows the history without release names; the forge store holds tags as Known",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/giteaClient.ts",
+    "kind": "CallExpression",
+    "fingerprint": "response.json().catch(() => null)",
+    "owner": "karel",
+    "reason": "an unparseable error body carries no detail; the refusal itself is still thrown, so no failure becomes a negative",
+    "expires": "never"
+  }
+]
