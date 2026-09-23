@@ -112,7 +112,10 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
     <div className="relative h-0" data-composer-banner-anchor="true">
       <div
         ref={stackRef}
-        className={cn(className, "group/banner-stack absolute inset-x-0 bottom-0 pb-2")}
+        className={cn(
+          className,
+          "group/banner-stack absolute inset-x-0 bottom-0 mx-auto max-w-3xl pb-2",
+        )}
         data-composer-banner-stack="true"
       >
         <div

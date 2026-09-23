@@ -68,6 +68,9 @@ describe("ComposerBannerStack", () => {
     const slot = markup.match(/<div[^>]*data-composer-banner-stack="true"[^>]*>/)?.[0] ?? "";
 
     expect(slot).toContain("inset-x-0");
+    // The composer shell's own measure: on a wide column the banner must not
+    // run edge to edge above a composer capped at 48rem.
+    expect(slot).toContain("mx-auto max-w-3xl");
     expect(slot).toContain("pb-2");
     expect(markup).not.toContain("chat-composer-drawer");
     expect(markup.match(/alert-glass rounded-\[22px\]/g)).toHaveLength(2);
