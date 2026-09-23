@@ -144,6 +144,50 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
+/** A document and a window that record which listeners are held on them. */
+function installListenerDom() {
+  const held = { document: new Map<string, unknown>(), window: new Map<string, unknown>() };
+  const target = (on: Map<string, unknown>) => ({
+    addEventListener: (type: string, listener: unknown) => {
+      on.set(type, listener);
+    },
+    removeEventListener: (type: string, listener: unknown) => {
+      if (on.get(type) === listener) on.delete(type);
+    },
+  });
+  vi.stubGlobal("document", { visibilityState: "visible", ...target(held.document) });
+  vi.stubGlobal("window", target(held.window));
+  return held;
+}
+
+describe("the account's Gitea sessions and the tab's signals", () => {
+  afterEach(() => {
+    closeAccountLifetime();
+    vi.unstubAllGlobals();
+  });
+
+  it("loading the module listens for neither visibility nor online", async () => {
+    const held = installListenerDom();
+    vi.resetModules();
+    await import("./accountGiteaSessions");
+
+    expect(held.document.has("visibilitychange")).toBe(false);
+    expect(held.window.has("online")).toBe(false);
+  });
+
+  it("an open account listens for visibility and online, and its close lets both go", () => {
+    const held = installListenerDom();
+
+    signIn("person-a");
+    expect(held.document.has("visibilitychange")).toBe(true);
+    expect(held.window.has("online")).toBe(true);
+
+    closeAccountLifetime();
+    expect(held.document.has("visibilitychange")).toBe(false);
+    expect(held.window.has("online")).toBe(false);
+  });
+});
+
 describe("the account's Gitea sessions in this tab", () => {
   let world: ReturnType<typeof forge>;
   const original = globalThis.fetch;

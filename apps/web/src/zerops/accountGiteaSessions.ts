@@ -10,7 +10,8 @@
  *
  * This module is the sessions' browser half: fetch, the clocks, timers and the tab's visibility.
  * It registers with the account lifetime when it loads, which is before any account opens: the
- * app imports it statically through `ZeropsProjectFlowProvider`.
+ * app imports it statically through `ZeropsProjectFlowProvider`. It listens to the document and
+ * the window only while an account is open.
  */
 import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
 import type { GiteaClient } from "@t3tools/client-runtime/zerops";
@@ -45,39 +46,54 @@ const browserPorts: GiteaSessionsPorts = {
 };
 
 let current: GiteaSessions | null = null;
+let unbindTabSignals: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
 function changed(): void {
   for (const listener of listeners) listener();
 }
 
-onAccountLifetimeOpen(() => {
-  current = makeGiteaSessions(browserPorts);
-  current.subscribe(changed);
-  changed();
-});
-
-onAccountLifetimeClose(() => {
-  const closing = current;
-  current = null;
-  closing?.close();
-  changed();
-});
-
-if (typeof document !== "undefined") {
+/**
+ * Tells the sessions when the tab is shown again and when it comes back online (DESIGN §6.4),
+ * until the returned unbind.
+ */
+function bindTabSignals(sessions: GiteaSessions): () => void {
+  if (typeof document === "undefined") return () => undefined;
   let hiddenSinceMs: number | null = null;
-  document.addEventListener("visibilitychange", () => {
+  const onVisibility = () => {
     if (!tabVisible()) {
       hiddenSinceMs = performance.now();
       return;
     }
     const hiddenForMs = hiddenSinceMs === null ? 0 : performance.now() - hiddenSinceMs;
     hiddenSinceMs = null;
-    if (hiddenForMs >= VISIBLE_WAKE_AFTER_HIDDEN_MS) current?.wake();
-    else current?.resume();
-  });
-  window.addEventListener("online", () => current?.online());
+    if (hiddenForMs >= VISIBLE_WAKE_AFTER_HIDDEN_MS) sessions.wake();
+    else sessions.resume();
+  };
+  const onOnline = () => sessions.online();
+  document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("online", onOnline);
+  return () => {
+    document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("online", onOnline);
+  };
 }
+
+onAccountLifetimeOpen(() => {
+  current = makeGiteaSessions(browserPorts);
+  current.subscribe(changed);
+  unbindTabSignals = bindTabSignals(current);
+  changed();
+});
+
+onAccountLifetimeClose(() => {
+  const closing = current;
+  current = null;
+  unbindTabSignals?.();
+  unbindTabSignals = null;
+  closing?.close();
+  changed();
+});
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
