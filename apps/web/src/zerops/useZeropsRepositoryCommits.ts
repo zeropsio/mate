@@ -8,6 +8,7 @@
  *
  * A read that fails answers its reason rather than nothing, because this is
  * the whole of what the surface shows — there is no last-good list to keep.
+ * With no Gitea token to read with it says so, and reads once one is back.
  */
 import {
   GROUP_REPOSITORY,
@@ -17,7 +18,7 @@ import {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useEffect, useState } from "react";
 
-import { giteaClientFor } from "./accountGiteaSessions";
+import { giteaClientFor, useGiteaReadable } from "./accountGiteaSessions";
 
 /** How far back a history goes before it stops being one. */
 export const HISTORY_COMMITS = 30;
@@ -45,6 +46,7 @@ export function useZeropsRepositoryCommits(
   const giteaOrigin = request?.giteaOrigin;
   const owner = request?.owner;
   const repo = request?.repo;
+  const readable = useGiteaReadable(giteaOrigin);
   const [state, setState] = useState<ZeropsCommitsState>({ kind: "reading" });
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function useZeropsRepositoryCommits(
       setState({ kind: "no-gitea" });
       return;
     }
-    const client = giteaClientFor(giteaOrigin);
+    const client = readable ? giteaClientFor(giteaOrigin) : null;
     if (client === null) {
       setState({ kind: "no-gitea" });
       return;
@@ -75,7 +77,7 @@ export function useZeropsRepositoryCommits(
     return () => {
       live = false;
     };
-  }, [giteaOrigin, owner, repo]);
+  }, [giteaOrigin, owner, readable, repo]);
 
   return state;
 }
@@ -103,6 +105,7 @@ export function useZeropsChangeCommits(
   const repo = request?.repo;
   const base = request?.base;
   const head = request?.head;
+  const readable = useGiteaReadable(giteaOrigin);
   const [state, setState] = useState<ZeropsCommitsState>({ kind: "reading" });
 
   useEffect(() => {
@@ -116,7 +119,7 @@ export function useZeropsChangeCommits(
       setState({ kind: "no-gitea" });
       return;
     }
-    const client = giteaClientFor(giteaOrigin);
+    const client = readable ? giteaClientFor(giteaOrigin) : null;
     if (client === null) {
       setState({ kind: "no-gitea" });
       return;
@@ -135,7 +138,7 @@ export function useZeropsChangeCommits(
     return () => {
       live = false;
     };
-  }, [giteaOrigin, owner, repo, base, head]);
+  }, [giteaOrigin, owner, readable, repo, base, head]);
 
   return state;
 }

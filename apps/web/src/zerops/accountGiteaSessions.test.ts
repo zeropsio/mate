@@ -7,6 +7,7 @@ import {
   accountGiteaSessions,
   giteaClientFor,
   giteaSessionLogin,
+  useGiteaReadable,
   useGiteaSession,
 } from "./accountGiteaSessions";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -186,6 +187,34 @@ describe("the account's Gitea sessions in this tab", () => {
       closeAccountLifetime();
     });
     expect(renders).toHaveLength(before + 1);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("a one-shot reader learns when it can read Gitea as the person", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    signIn("person-a");
+    const renders: Array<boolean> = [];
+
+    function Probe() {
+      renders.push(useGiteaReadable(GITEA));
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+    });
+    expect(renders.at(-1)).toBe(false);
+
+    await act(async () => {
+      demandGitea();
+      await vi.waitFor(() => expect(giteaSessionLogin(GITEA)).toBe("u-person-a"));
+    });
+    expect(renders.at(-1)).toBe(true);
 
     await act(async () => {
       root.unmount();

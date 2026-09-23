@@ -4,7 +4,8 @@
  *
  * Read on demand like the history, not on the sixty-second clock — a build
  * nobody is looking at is a request per group per minute for a pane that is
- * usually shut.
+ * usually shut. With no Gitea token to read with it says so, and reads once
+ * one is back.
  *
  * The client has had `listActionRuns`, `listActionJobs`, `actionJobLogs` and
  * `rerunActionJob` since the forge landed and used none of them anywhere, so a
@@ -17,7 +18,7 @@ import type { GiteaActionJob } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useState } from "react";
 
-import { giteaClientFor } from "./accountGiteaSessions";
+import { giteaClientFor, useGiteaReadable } from "./accountGiteaSessions";
 
 /** How far back the run listing looks for the commit's build. */
 export const DEPLOY_RUN_SEARCH = 50;
@@ -56,6 +57,7 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
   const owner = request?.owner;
   const repo = request?.repo;
   const sha = request?.sha;
+  const readable = useGiteaReadable(giteaOrigin);
   const [state, setState] = useState<ZeropsDeployRunState>({ kind: "reading" });
   const [generation, setGeneration] = useState(0);
 
@@ -69,7 +71,7 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
       setState({ kind: "no-gitea" });
       return;
     }
-    const client = giteaClientFor(giteaOrigin);
+    const client = readable ? giteaClientFor(giteaOrigin) : null;
     if (client === null) {
       setState({ kind: "no-gitea" });
       return;
@@ -95,7 +97,7 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
     return () => {
       live = false;
     };
-  }, [giteaOrigin, owner, repo, sha, generation]);
+  }, [giteaOrigin, owner, readable, repo, sha, generation]);
 
   const readLog = useCallback(
     async (jobId: number) => {

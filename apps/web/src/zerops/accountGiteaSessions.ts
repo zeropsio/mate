@@ -135,6 +135,14 @@ export function useGiteaSession(input: {
 }
 
 /**
+ * Whether a request can go out to that Gitea as the person now. A reader that reads once keys
+ * its read on it, so it reads again when a token comes back.
+ */
+export function useGiteaReadable(giteaOrigin: string | undefined): boolean {
+  return useGiteaView(giteaOrigin).readable;
+}
+
+/**
  * A client that acts as the person on that Gitea, or `null` while the account holds no session
  * there. Each request carries the token held when it is sent.
  */
