@@ -19,6 +19,8 @@ const deployState = (): ZeropsGroupDeployState => ({
   releaseContents: [],
 });
 
+const NO_FAILURES = { deploys: new Map<string, string>(), forge: new Map<string, string>() };
+
 const forgeState = (): ZeropsGroupForgeState => ({
   repositories: [],
   pullRequests: [],
@@ -35,6 +37,7 @@ describe("joinProjectFlows", () => {
       deploys: new Map([["g1", g1Deploys]]),
       forges: new Map([["g1", g1Forge]]),
       mayRelease: true,
+      failures: NO_FAILURES,
     });
     const after = joinProjectFlows({
       groups: GROUPS,
@@ -44,6 +47,7 @@ describe("joinProjectFlows", () => {
       ]),
       forges: new Map([["g1", g1Forge]]),
       mayRelease: true,
+      failures: NO_FAILURES,
     });
     expect(after.get("g2")).toBeDefined();
     expect(after.get("g1")).toBe(before.get("g1"));
@@ -56,6 +60,7 @@ describe("joinProjectFlows", () => {
       deploys,
       forges: new Map(),
       mayRelease: true,
+      failures: NO_FAILURES,
     });
     expect(halfJoined.get("g1")?.release.gate).toEqual({
       allowed: false,
@@ -66,7 +71,33 @@ describe("joinProjectFlows", () => {
       deploys,
       forges: new Map([["g1", forgeState()]]),
       mayRelease: true,
+      failures: NO_FAILURES,
     });
     expect(joined.get("g1")?.release.gate).toEqual({ allowed: true });
+  });
+
+  it("says why a release cannot be checked when a half keeps failing, rather than checking for ever", () => {
+    const failing = joinProjectFlows({
+      groups: GROUPS,
+      deploys: new Map(),
+      forges: new Map([["g1", forgeState()]]),
+      mayRelease: true,
+      failures: { ...NO_FAILURES, deploys: new Map([["g1", "Gitea did not answer"]]) },
+    });
+    expect(failing.get("g1")?.release.gate).toEqual({
+      allowed: false,
+      reason: "Can't check what can be released: Gitea did not answer.",
+    });
+    const tagsNeverRead = joinProjectFlows({
+      groups: GROUPS,
+      deploys: new Map([["g1", deployState()]]),
+      forges: new Map([["g1", { ...forgeState(), released: { failure: "Gitea did not answer" } }]]),
+      mayRelease: true,
+      failures: NO_FAILURES,
+    });
+    expect(tagsNeverRead.get("g1")?.release.gate).toEqual({
+      allowed: false,
+      reason: "Can't check what can be released: Gitea did not answer.",
+    });
   });
 });

@@ -114,6 +114,8 @@ export type ZeropsGroupDeploys = ReadonlyMap<string, ZeropsGroupDeployState>;
 
 export interface ZeropsGroupDeployAnswers {
   readonly deploys: ZeropsGroupDeploys;
+  /** Why each group's latest deploy read failed, while it keeps failing. */
+  readonly failures: ReadonlyMap<string, string>;
   /** Re-reads one group at once: what a verb changed. */
   readonly invalidate: (groupId: string) => void;
 }
@@ -140,25 +142,27 @@ export function useZeropsGroupDeploys(input: {
   readonly readVersion: ZeropsDeployedVersionReader;
   readonly enabled: boolean;
 }): ZeropsGroupDeployAnswers {
-  const { answers, invalidate } = useGroupAnswers<ZeropsDeployGroup, never, ZeropsGroupDeployState>(
-    {
-      pass: "deploys",
-      giteaOrigin: input.giteaOrigin,
-      enabled: input.enabled,
-      groups: input.groups,
-      refreshMs: GROUP_DEPLOYS_REFRESH_MS,
-      keyOf: deployGroupKey,
-      read: (client, group, _scope, signal, held) =>
-        readGroupDeploys({ client, group, readVersion: input.readVersion, held, signal }),
-    },
-  );
+  const { answers, failures, invalidate } = useGroupAnswers<
+    ZeropsDeployGroup,
+    never,
+    ZeropsGroupDeployState
+  >({
+    pass: "deploys",
+    giteaOrigin: input.giteaOrigin,
+    enabled: input.enabled,
+    groups: input.groups,
+    refreshMs: GROUP_DEPLOYS_REFRESH_MS,
+    keyOf: deployGroupKey,
+    read: (client, group, _scope, signal, held) =>
+      readGroupDeploys({ client, group, readVersion: input.readVersion, held, signal }),
+  });
   const invalidateGroup = useCallback(
     (groupId: string) => {
       invalidate(groupId, "group");
     },
     [invalidate],
   );
-  return { deploys: answers, invalidate: invalidateGroup };
+  return { deploys: answers, failures, invalidate: invalidateGroup };
 }
 
 /**
@@ -188,7 +192,7 @@ export async function readGroupDeploys(input: {
   });
   const missing = missingEnvironmentRows({ tiersOnMain, declarations, filledTiers });
   if (declarations.length === 0 && pullRequests.length === 0 && missing.length === 0)
-    return (previous) => (previous === undefined ? undefined : NOTHING_DECLARED);
+    return () => NOTHING_DECLARED;
 
   const services: ReadonlyArray<GroupEnvironmentService> = group.projects.flatMap((project) =>
     project.services.map((service) => ({

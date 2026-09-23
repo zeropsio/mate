@@ -57,6 +57,7 @@ describe("deployGroupKey", () => {
         published.push(groupId);
       },
       forget: () => {},
+      failure: () => {},
     });
     answers.setGroups([GROUP, NEIGHBOUR]);
     for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
@@ -116,6 +117,18 @@ describe("readGroupDeploys", () => {
       signal: new AbortController().signal,
     });
     expect(again(held)?.environments[0]?.services[0]?.appVersionName).toBe(SHA);
+  });
+
+  it("answers that a group repo declaring nothing declares nothing, from its first read", async () => {
+    const client = { ...groupRepo(), readFile: async () => undefined } as unknown as GiteaClient;
+    const update = await readGroupDeploys({
+      client,
+      group: GROUP,
+      readVersion: async () => SHA,
+      held: undefined,
+      signal: new AbortController().signal,
+    });
+    expect(update(undefined)).toMatchObject({ declarations: [], environments: [], missing: [] });
   });
 
   it("fails the group's read when the group repo does not answer, rather than declaring nothing", async () => {

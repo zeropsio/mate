@@ -27,6 +27,7 @@ function harness(initial?: ReadonlyMap<string, Answer>) {
   const reads: PendingRead[] = [];
   const published: Array<{ readonly groupId: string; readonly answer: Answer }> = [];
   const forgotten: string[] = [];
+  const failures: Array<{ readonly groupId: string; readonly cause: string | null }> = [];
   const answers = createGroupAnswers<Group, Scope, Answer>({
     pass: "forge",
     idOf: (group) => group.groupId,
@@ -41,6 +42,9 @@ function harness(initial?: ReadonlyMap<string, Answer>) {
     forget: (groupIds) => {
       forgotten.push(...groupIds);
     },
+    failure: (groupId, cause) => {
+      failures.push({ groupId, cause });
+    },
     ...(initial === undefined ? {} : { initial }),
   });
   const settle = async () => {
@@ -52,7 +56,7 @@ function harness(initial?: ReadonlyMap<string, Answer>) {
     if (index < 0) throw new Error(`no read of ${groupId} is waiting`);
     return reads.splice(index, 1)[0]!;
   };
-  return { answers, reads, published, forgotten, settle, next };
+  return { answers, reads, published, forgotten, failures, settle, next };
 }
 
 const answer = (...rows: string[]): Answer => ({ rows });
@@ -91,6 +95,27 @@ describe("createGroupAnswers", () => {
     });
     await settle();
     expect(seen).toEqual(answer("#4"));
+  });
+
+  it("says why a group's reads fail, once, and takes it back when one answers", async () => {
+    const { answers, failures, settle, next } = harness();
+    answers.setGroups([G1, G2]);
+    next("g1").reject(new Error("Gitea did not answer"));
+    await settle();
+    next("g2").resolve(() => answer("g2"));
+    await settle();
+    answers.refresh();
+    next("g1").reject(new Error("Gitea did not answer"));
+    await settle();
+    // Failing again the same way is not news; the neighbour never failed.
+    expect(failures).toEqual([{ groupId: "g1", cause: "Gitea did not answer" }]);
+    next("g2").resolve(() => answer("g2"));
+    await settle();
+    answers.refresh();
+    // An answer that changes nothing still ends the failure.
+    next("g1").resolve(() => undefined);
+    await settle();
+    expect(failures.at(-1)).toEqual({ groupId: "g1", cause: null });
   });
 
   it("a pass longer than 60 s still publishes", async () => {

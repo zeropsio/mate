@@ -63,6 +63,8 @@ export type ZeropsGroupForges = ReadonlyMap<string, ZeropsGroupForgeState>;
 
 export interface ZeropsGroupForge {
   readonly forges: ZeropsGroupForges;
+  /** Why each group's latest forge read failed, while it keeps failing. */
+  readonly failures: ReadonlyMap<string, string>;
   /** Re-reads one part of one group at once: what a verb changed. */
   readonly invalidate: (groupId: string, scope: ForgeScope) => void;
 }
@@ -79,7 +81,7 @@ export function useZeropsGroupForge(input: {
   readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
   readonly enabled: boolean;
 }): ZeropsGroupForge {
-  const { answers, invalidate } = useGroupAnswers<
+  const { answers, failures, invalidate } = useGroupAnswers<
     { readonly groupId: string; readonly slug: string },
     ForgeScope,
     ZeropsGroupForgeState
@@ -92,14 +94,15 @@ export function useZeropsGroupForge(input: {
     keyOf: (group) => group.slug,
     read: (client, group, scope) => readForge(client, group.slug, scope),
   });
-  return { forges: answers, invalidate };
+  return { forges: answers, failures, invalidate };
 }
 
 /**
  * One group's answers, per group and kept across reads, for as long as the
  * tab holds a Gitea session with this origin — the React half of
- * `createGroupAnswers`, shared by the flow's two halves. Losing the session
- * stops the reads and keeps what was read; another Gitea starts from nothing.
+ * `createGroupAnswers`, shared by the flow's two halves, with why each
+ * failing group's reads fail. Losing the session stops the reads and keeps
+ * what was read; another Gitea starts from nothing.
  */
 export function useGroupAnswers<Group extends { readonly groupId: string }, Scope, Answer>(input: {
   readonly pass: "forge" | "deploys";
@@ -117,13 +120,15 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   ) => Promise<GroupUpdate<Answer>>;
 }): {
   readonly answers: ReadonlyMap<string, Answer>;
+  readonly failures: ReadonlyMap<string, string>;
   readonly invalidate: (groupId: string, scope: Scope | "group") => void;
 } {
   const { enabled, giteaOrigin, groups, pass, refreshMs } = input;
   const [held, setHeld] = useState<{
     readonly origin: string | undefined;
     readonly answers: ReadonlyMap<string, Answer>;
-  }>({ origin: undefined, answers: new Map() });
+    readonly failures: ReadonlyMap<string, string>;
+  }>({ origin: undefined, answers: new Map(), failures: new Map() });
   // The reads run off the driver, never off the inputs' identity: the groups
   // are rebuilt from an inventory that moves with every read, and keying the
   // effect on them read the group repo about 700 times a minute once (the
@@ -148,19 +153,37 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
       read: (group, scope, signal, previous) =>
         latest.current.input.read(client, group, scope, signal, previous),
       publish: (groupId, answer) => {
-        setHeld((current) => ({
-          origin: giteaOrigin,
-          answers: new Map(current.origin === giteaOrigin ? current.answers : []).set(
-            groupId,
-            answer,
-          ),
-        }));
+        setHeld((current) => {
+          const same = current.origin === giteaOrigin;
+          return {
+            origin: giteaOrigin,
+            answers: new Map(same ? current.answers : []).set(groupId, answer),
+            failures: same ? current.failures : new Map(),
+          };
+        });
       },
       forget: (groupIds) => {
         setHeld((current) => {
-          const next = new Map(current.answers);
-          for (const groupId of groupIds) next.delete(groupId);
-          return { origin: current.origin, answers: next };
+          const answers = new Map(current.answers);
+          const failures = new Map(current.failures);
+          for (const groupId of groupIds) {
+            answers.delete(groupId);
+            failures.delete(groupId);
+          }
+          return { origin: current.origin, answers, failures };
+        });
+      },
+      failure: (groupId, cause) => {
+        setHeld((current) => {
+          const same = current.origin === giteaOrigin;
+          const failures = new Map(same ? current.failures : []);
+          if (cause === null) failures.delete(groupId);
+          else failures.set(groupId, cause);
+          return {
+            origin: giteaOrigin,
+            answers: same ? current.answers : new Map(),
+            failures,
+          };
         });
       },
       ...(kept === undefined ? {} : { initial: kept }),
@@ -183,8 +206,10 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
     driver.current?.invalidate(groupId, scope);
   }, []);
 
+  const current = held.origin === giteaOrigin;
   return {
-    answers: held.origin === giteaOrigin ? held.answers : EMPTY_ANSWERS,
+    answers: current ? held.answers : EMPTY_ANSWERS,
+    failures: current ? held.failures : EMPTY_ANSWERS,
     invalidate,
   };
 }

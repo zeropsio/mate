@@ -13,11 +13,15 @@
  * before a newer one of the same group had its answer accepted is suppressed
  * (M2). Only `dispose` aborts — the owner is gone.
  *
+ * A group whose reads fail says why, once, and takes it back when a read
+ * answers: a failure beside a kept answer is not the same as a fresh one.
+ *
  * UI-free and platform-free (rule R1): the owner supplies the reads and the clock.
  *
  * @module flow/groupAnswers
  */
 import { mateDiagnostics } from "../diagnostics.ts";
+import { zeropsErrorMessage } from "../errors.ts";
 
 /**
  * What a completed read makes of the group's held answer. A read of one part
@@ -55,6 +59,8 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   ) => Promise<GroupUpdate<Answer>>;
   readonly publish: (groupId: string, answer: Answer) => void;
   readonly forget: (groupIds: ReadonlyArray<string>) => void;
+  /** A group's reads started failing with `cause`, or answered again (`null`). */
+  readonly failure: (groupId: string, cause: string | null) => void;
   /** What an earlier owner already published, kept until a read replaces it. */
   readonly initial?: ReadonlyMap<string, Answer>;
 }): GroupAnswers<Group, Scope> {
@@ -63,6 +69,8 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   for (const [groupId, answer] of options.initial ?? []) held.set(groupId, { ticket: 0, answer });
   const groups = new Map<string, Group>();
   const keys = new Map<string, string>();
+  /** Why each failing group's latest read failed, and which read that was. */
+  const failing = new Map<string, { readonly ticket: number; readonly cause: string }>();
   /** Groups owed a whole read, in the order they became due. */
   const due = new Set<string>();
   let tickets = 0;
@@ -74,15 +82,27 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
     if (group === undefined) return false;
     tickets += 1;
     const ticket = tickets;
-    let update: GroupUpdate<Answer>;
+    let update: GroupUpdate<Answer> | { readonly failed: string };
     try {
       update = await options.read(group, scope, controller.signal, held.get(groupId)?.answer);
-    } catch {
-      return false;
+    } catch (cause) {
+      update = { failed: zeropsErrorMessage(cause) };
     }
     if (controller.signal.aborted || !groups.has(groupId)) return false;
     const previous = held.get(groupId);
     if (previous !== undefined && previous.ticket > ticket) return false;
+    const failed = failing.get(groupId);
+    if (typeof update !== "function") {
+      if (failed !== undefined && failed.ticket > ticket) return false;
+      failing.set(groupId, { ticket, cause: update.failed });
+      if (failed?.cause !== update.failed) options.failure(groupId, update.failed);
+      return false;
+    }
+    // A read that started before the failure proves nothing about it.
+    if (failed !== undefined && failed.ticket < ticket) {
+      failing.delete(groupId);
+      options.failure(groupId, null);
+    }
     const answer = update(previous?.answer);
     if (answer === undefined || answer === previous?.answer) return false;
     held.set(groupId, { ticket, answer });
@@ -123,6 +143,7 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
         groups.delete(groupId);
         keys.delete(groupId);
         held.delete(groupId);
+        failing.delete(groupId);
         due.delete(groupId);
       }
       if (left.length > 0) options.forget([...new Set(left)]);

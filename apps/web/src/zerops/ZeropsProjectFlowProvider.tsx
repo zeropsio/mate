@@ -38,6 +38,7 @@ import {
   flowVerbInvalidations,
   stopDeployment,
   type Deployment,
+  type FlowHalf,
 } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -102,15 +103,23 @@ const UNREAD_HALF = {};
  */
 const joinedFlows = new WeakMap<object, WeakMap<object, Map<string, ZeropsProjectFlow>>>();
 
+/** Why each group's latest read of either half failed, while it keeps failing. */
+export interface FlowFailures {
+  readonly deploys: ReadonlyMap<string, string>;
+  readonly forge: ReadonlyMap<string, string>;
+}
+
 /**
  * Joins each group's two halves into its flow. A group is shown once either
- * half answered; the release is offered only once both have (`flow/release.ts`).
+ * half answered; the release is offered only once both have, and says why
+ * while either half fails (`flow/release.ts`).
  */
 export function joinProjectFlows(input: {
   readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
   readonly deploys: ZeropsGroupDeploys;
   readonly forges: ZeropsGroupForges;
   readonly mayRelease: boolean;
+  readonly failures: FlowFailures;
 }): ReadonlyMap<string, ZeropsProjectFlow> {
   const flows = new Map<string, ZeropsProjectFlow>();
   for (const group of input.groups) {
@@ -127,10 +136,20 @@ export function joinProjectFlows(input: {
       byGroup = new Map();
       byForge.set(forge ?? UNREAD_HALF, byGroup);
     }
-    const key = JSON.stringify([group.groupId, group.slug, input.mayRelease]);
+    const failures = {
+      deploys: input.failures.deploys.get(group.groupId),
+      forge: input.failures.forge.get(group.groupId),
+    };
+    const key = JSON.stringify([
+      group.groupId,
+      group.slug,
+      input.mayRelease,
+      failures.deploys ?? null,
+      failures.forge ?? null,
+    ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
-      flow = projectFlow(group, deployed, forge, input.mayRelease);
+      flow = projectFlow(group, { deployed, forge, failures }, input.mayRelease);
       byGroup.set(key, flow);
     }
     flows.set(group.groupId, flow);
@@ -138,14 +157,28 @@ export function joinProjectFlows(input: {
   return flows;
 }
 
+/** Where one half stands for the release: failing, answered, or not yet. */
+function half(answered: boolean, failure: string | undefined): FlowHalf {
+  if (failure !== undefined) return { failed: failure };
+  return answered ? "read" : "unread";
+}
+
 function projectFlow(
   group: { readonly groupId: string; readonly slug: string },
-  deployed: ZeropsGroupDeployState | undefined,
-  forge: ZeropsGroupForgeState | undefined,
+  halves: {
+    readonly deployed: ZeropsGroupDeployState | undefined;
+    readonly forge: ZeropsGroupForgeState | undefined;
+    readonly failures: { readonly deploys: string | undefined; readonly forge: string | undefined };
+  },
   mayRelease: boolean,
 ): ZeropsProjectFlow {
+  const { deployed, forge, failures } = halves;
   const environmentInputs = deployed?.environments ?? [];
   const released = forge !== undefined && "tags" in forge.released ? forge.released : undefined;
+  // Releases that never answered say why, like a forge read that failed outright.
+  const forgeFailure =
+    failures.forge ??
+    (forge !== undefined && "failure" in forge.released ? forge.released.failure : undefined);
   const sides = releaseDeploys(environmentInputs);
   // What a release lists is what is merged (D28), whether or not the group
   // has a stage: a stage is a place that runs `main` too, not a gate the
@@ -171,8 +204,8 @@ function projectFlow(
     release: {
       ...offer,
       gate: flowReleaseGate(offer.gate, {
-        deploys: deployed !== undefined,
-        forge: released !== undefined,
+        deploys: half(deployed !== undefined, failures.deploys),
+        forge: half(released !== undefined, forgeFailure),
       }),
       contents: deployed?.releaseContents ?? [],
     },
@@ -264,13 +297,21 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const readVersion = useZeropsDeployedVersionReader();
   const enabled = signedInToMate && signedIn;
-  const { deploys, invalidate: invalidateDeploys } = useZeropsGroupDeploys({
+  const {
+    deploys,
+    failures: deployFailures,
+    invalidate: invalidateDeploys,
+  } = useZeropsGroupDeploys({
     groups,
     giteaOrigin,
     readVersion,
     enabled,
   });
-  const { forges, invalidate: invalidateForge } = useZeropsGroupForge({
+  const {
+    forges,
+    failures: forgeFailures,
+    invalidate: invalidateForge,
+  } = useZeropsGroupForge({
     giteaOrigin,
     groups: forgeGroups,
     enabled,
@@ -284,8 +325,17 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const mayRelease = organization?.roleCode === "ADMIN" || organization?.roleCode === "OWNER";
 
   const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
-    () => (enabled ? joinProjectFlows({ groups, deploys, forges, mayRelease }) : EMPTY_FLOWS),
-    [deploys, enabled, forges, groups, mayRelease],
+    () =>
+      enabled
+        ? joinProjectFlows({
+            groups,
+            deploys,
+            forges,
+            mayRelease,
+            failures: { deploys: deployFailures, forge: forgeFailures },
+          })
+        : EMPTY_FLOWS,
+    [deployFailures, deploys, enabled, forgeFailures, forges, groups, mayRelease],
   );
 
   // Time to the first pull request row, per group, for diagnostics.
