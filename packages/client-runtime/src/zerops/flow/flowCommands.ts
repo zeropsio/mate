@@ -157,21 +157,19 @@ export function flowCommandInvalidations(command: FlowCommand): ReadonlyArray<In
   }
 }
 
-/** Merging one of the group's pull requests, with the stages its repository feeds. */
+/**
+ * Merging one of the group's pull requests, with the stages its repository feeds; `null` while
+ * those are not known — a merge that named none would leave the stage it deploys to unread.
+ */
 export function mergeCommand(
   flow: GroupFlow,
   origin: string,
   repository: string,
   number: number,
-): FlowCommand {
-  return {
-    kind: "merge",
-    origin,
-    slug: flow.slug,
-    repository,
-    number,
-    feeds: flow.feeds(repository),
-  };
+): FlowCommand | null {
+  const feeds = flow.feeds(repository);
+  if (feeds.state !== "known") return null;
+  return { kind: "merge", origin, slug: flow.slug, repository, number, feeds: feeds.value };
 }
 
 /** Tagging what the release offer showed; `null` while the offer is not known. */
@@ -201,9 +199,8 @@ export type FlowRequest =
   | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
 
 /**
- * The command a surface's request is, over the flows read: `null` for a release or a roll back
- * of a group whose flow is not read, or a release whose offer is not known. A merge in a group
- * whose flow is not read names no stages it feeds; the platform's push re-reads them.
+ * The command a surface's request is, over the flows read: `null` for a verb on a group whose
+ * flow is not read, a merge whose stages it feeds are not known, or a release whose offer is not.
  */
 export function flowCommandFor(
   request: FlowRequest,
@@ -215,14 +212,7 @@ export function flowCommandFor(
     case "merge": {
       const flow = groups.find(({ slug }) => slug === request.slug);
       return flow === undefined
-        ? {
-            kind: "merge",
-            origin,
-            slug: request.slug,
-            repository: request.repository,
-            number: request.number,
-            feeds: [],
-          }
+        ? null
         : mergeCommand(flow, origin, request.repository, request.number);
     }
     case "open":

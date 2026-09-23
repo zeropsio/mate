@@ -433,11 +433,18 @@ describe("groupFlow (DESIGN §4.7)", () => {
     expect(midDeploy({ kind: "none" }).releaseGate).toEqual({ allowed: true });
   });
 
-  it("a merge into a repository feeds the stages that run it, never production", () => {
-    const flow = groupFlow(inputs(), RELEASER, NOW);
+  it("a merge into a repository feeds the stages that run it, never production, known once they and the tiers are", () => {
+    const feeds = (overrides: Partial<GroupFlowInputs>, repository: string) =>
+      groupFlow(inputs(overrides), RELEASER, NOW).feeds(repository);
 
-    expect(flow.feeds("appdev")).toEqual([service("p-stage-appdev", project("p-stage"))]);
-    expect(flow.feeds("group")).toEqual([]);
+    expect(feeds({}, "appdev")).toMatchObject({
+      state: "known",
+      value: [service("p-stage-appdev", project("p-stage"))],
+    });
+    expect(feeds({}, "group")).toMatchObject({ state: "known", value: [] });
+    // What the stage runs, or where its code lives, still being read names no stage it feeds.
+    expect(feeds({ tiers: READING }, "appdev").state).toBe("reading");
+    expect(feeds({ stops: new Map([["p-prod", known([])]]) }, "appdev").state).toBe("unread");
   });
 
   it("a service whose tier builds from a repository with another name releases that repository's main", () => {
@@ -461,8 +468,10 @@ describe("groupFlow (DESIGN §4.7)", () => {
       { service: "app", commit: MAIN_SHA },
     ]);
     // A merge into `appdev` deploys the stage's `app`; nothing is named `app` on Gitea.
-    expect(flow.feeds("appdev")).toEqual([service("p-stage-app", project("p-stage"))]);
-    expect(flow.feeds("app")).toEqual([]);
+    expect(flow.feeds("appdev")).toMatchObject({
+      value: [service("p-stage-app", project("p-stage"))],
+    });
+    expect(flow.feeds("app")).toMatchObject({ value: [] });
   });
 
   it("the release waits for the tiers on main, which name where production's code lives", () => {

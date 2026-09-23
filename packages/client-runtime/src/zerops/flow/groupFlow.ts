@@ -210,8 +210,11 @@ export interface GroupFlow {
   readonly releaseGate: ReleaseGate;
   /** What the person can do about a gate an input holds shut: *Try again* after a failed read. */
   readonly releaseAffordance: KnownAffordance | null;
-  /** The stage services a merge into `repository`'s `main` deploys to. */
-  readonly feeds: (repository: string) => ReadonlyArray<ServiceRef>;
+  /**
+   * The stage services a merge into `repository`'s `main` deploys to: known once the stops, the
+   * tiers on `main` and every stage's services are.
+   */
+  readonly feeds: (repository: string) => Shown<ReadonlyArray<ServiceRef>>;
 }
 
 /** One commit whose statuses the flow reads. */
@@ -831,6 +834,38 @@ function releaseGateOf(
   };
 }
 
+/**
+ * The stage services a merge into each repository's `main` deploys to, by repository: its tier on
+ * `main` names where each stage service builds from. Known once every stage's services are.
+ */
+function feedsOf(
+  inputs: GroupFlowInputs,
+  stops: Shown<ReadonlyArray<StopRow>>,
+): Shown<ReadonlyMap<string, ReadonlyArray<ServiceRef>>> {
+  const { declarations, members, tiers } = inputs;
+  const parts: Array<Part> = [
+    { shown: declarations, source: "gitea" },
+    { shown: members, source: "zerops" },
+    { shown: tiers, source: "gitea" },
+  ];
+  const fed = new Map<string, Array<ServiceRef>>();
+  if (isKnown(stops) && isKnown(tiers)) {
+    for (const { tier, services } of stops.value) {
+      // A stage missing its project runs nothing a merge could deploy to.
+      if (tier !== "stage" || services === null) continue;
+      parts.push({ shown: services, source: "zerops" });
+      if (!isKnown(services)) continue;
+      for (const { hostname, service } of services.value) {
+        const repository = tiers.value.repositories.get(hostname);
+        if (repository !== undefined) {
+          fed.set(repository, [...(fed.get(repository) ?? []), service]);
+        }
+      }
+    }
+  }
+  return withValue(combine(parts).shown, () => fed);
+}
+
 export function groupFlow(
   inputs: GroupFlowInputs,
   capabilities: GroupFlowCapabilities,
@@ -839,18 +874,7 @@ export function groupFlow(
   const stops = stopsOf(inputs);
   const { release, source } = releaseOf(inputs, capabilities);
   const { gate, affordance } = releaseGateOf(release, source, nowMs);
-  const fed = new Map<string, Array<ServiceRef>>();
-  if (isKnown(stops) && isKnown(inputs.tiers)) {
-    const { repositories } = inputs.tiers.value;
-    for (const { tier, services } of stops.value) {
-      if (tier !== "stage" || services === null || !isKnown(services)) continue;
-      for (const { hostname, service } of services.value) {
-        const repository = repositories.get(hostname);
-        if (repository !== undefined)
-          fed.set(repository, [...(fed.get(repository) ?? []), service]);
-      }
-    }
-  }
+  const fed = feedsOf(inputs, stops);
   return {
     groupId: inputs.entry.groupId,
     slug: inputs.entry.slug,
@@ -863,6 +887,7 @@ export function groupFlow(
     releases: releasesOf(inputs),
     releaseGate: gate,
     releaseAffordance: affordance,
-    feeds: (repository) => fed.get(repository) ?? [],
+    feeds: (repository) =>
+      isKnown(fed) ? { ...fed, value: fed.value.get(repository) ?? [] } : (fed as Shown<never>),
   };
 }

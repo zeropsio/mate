@@ -2,8 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { Capability } from "../data/access/capabilities.ts";
 import { project, service } from "../data/__fixtures__/index.ts";
+import type { ServiceRef } from "../data/types.ts";
 import { GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
+import type { Shown } from "../knowledge/known.ts";
 import { flowVerbKey } from "../projectFlow.ts";
 import { RELEASE_NOT_A_RELEASER } from "../release.ts";
 import {
@@ -294,7 +296,20 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
 });
 
 describe("a group flow's commands", () => {
-  const flow = (release: GroupFlow["release"]): GroupFlow => ({
+  const KNOWN = {
+    state: "known",
+    asOf: { ordinal: 1, atMs: 1 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  } as const;
+  const stagesKnown = (repository: string): Shown<ReadonlyArray<ServiceRef>> => ({
+    ...KNOWN,
+    value: repository === "appdev" ? [APPSTAGE] : [],
+  });
+  const flow = (
+    release: GroupFlow["release"],
+    feeds: GroupFlow["feeds"] = stagesKnown,
+  ): GroupFlow => ({
     groupId: "g1",
     slug: "harbor",
     pullRequests: { state: "unread", waitingFor: null },
@@ -306,7 +321,7 @@ describe("a group flow's commands", () => {
     releases: { state: "unread", waitingFor: null },
     releaseGate: { allowed: true },
     releaseAffordance: null,
-    feeds: (repository) => (repository === "appdev" ? [APPSTAGE] : []),
+    feeds,
   });
   const offer = {
     gate: { allowed: true },
@@ -315,10 +330,19 @@ describe("a group flow's commands", () => {
     entries: [{ service: "appdev", commit: HEAD }],
   } as const;
 
-  it("a merge names the stages its repository feeds", () => {
-    expect(mergeCommand(flow({ state: "unread", waitingFor: null }), GITEA, "appdev", 4)).toEqual(
-      MERGE,
-    );
+  it("a merge names the stages its repository feeds, and is not built until they are known", () => {
+    const unread = { state: "unread", waitingFor: null } as const;
+    expect(mergeCommand(flow(unread), GITEA, "appdev", 4)).toEqual(MERGE);
+    // A merge settled with no stage named would leave the stage it deploys to unread again.
+    const reading = { state: "reading", sinceMs: 1, attempt: 1 } as const;
+    expect(
+      mergeCommand(
+        flow(unread, () => reading),
+        GITEA,
+        "appdev",
+        4,
+      ),
+    ).toBeNull();
   });
 
   it("a release tags what the offer showed, and only a known offer", () => {
@@ -351,14 +375,14 @@ describe("a group flow's commands", () => {
         GITEA,
       ),
     ).toEqual(MERGE);
-    // A group whose flow is not read merges all the same; the platform re-reads what it feeds.
+    // A group whose flow is not read names no stage its merge feeds: there is none to build.
     expect(
       flowCommandFor(
         { kind: "merge", slug: "cove", repository: "appdev", number: 4 },
         flows,
         GITEA,
       ),
-    ).toEqual({ ...MERGE, slug: "cove", feeds: [] });
+    ).toBeNull();
     const open = {
       kind: "open",
       slug: "harbor",
