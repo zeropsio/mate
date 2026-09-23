@@ -12,7 +12,11 @@
  * one that finished elsewhere is a no-op.
  *
  * Failures are swallowed: a background repair, tried again on the next read;
- * what is outstanding shows as the row that still asks.
+ * what is outstanding shows as the row that still asks. The declaration is
+ * written as the person, so no repair starts while Gitea holds no token for
+ * them, and one that loses it part-way is given back unreported: the caller
+ * enables the reconcile again once the token is back
+ * (`GiteaSessionView.readable`).
  */
 
 import type {
@@ -69,6 +73,7 @@ export function useZeropsGroupEnvironmentReconcile(input: {
 
   useEffect(() => {
     if (!enabled || clientId === undefined || giteaOrigin === undefined || key === "") return;
+    if (giteaClientFor(giteaOrigin) === null) return;
     const pending = latest.current.filter((entry) => !attempted.current.has(entry.projectId));
     if (pending.length === 0) return;
     for (const entry of pending) attempted.current.add(entry.projectId);
@@ -98,6 +103,9 @@ export function useZeropsGroupEnvironmentReconcile(input: {
         // An abort during the repair leaves it unfinished, so this entry is
         // given back too: the next effect is what tries it again.
         if (controller.signal.aborted) return release(index);
+        // Its Gitea half ran without the token, and says only that: not an
+        // outcome, a repair the next enabled run makes.
+        if (giteaClientFor(giteaOrigin) === null) return release(index);
         if (outcome !== undefined) onOutcome.current?.(entry, outcome);
       }
       if (!controller.signal.aborted) refresh.current();

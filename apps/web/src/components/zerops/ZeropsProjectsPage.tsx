@@ -2017,7 +2017,7 @@ function ZeropsProjectsContent() {
     [candidates, declaredByGroup, registryState.registry, withoutDeployToken],
   );
   useZeropsGroupEnvironmentReconcile({
-    enabled: status === "signed-in" && projectFlow.signedIn && !isLoading && !creationRunning,
+    enabled: status === "signed-in" && projectFlow.readable && !isLoading && !creationRunning,
     client,
     clientId: activeOrganization?.id,
     giteaOrigin,
