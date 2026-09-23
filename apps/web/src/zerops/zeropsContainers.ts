@@ -11,6 +11,7 @@ import { readZeropsContainer } from "@t3tools/client-runtime/zerops/containerHea
 import { ZeropsServiceId, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import {
   containerVerdict,
+  environmentTarget,
   makeContainerStore,
   systemExchangeClock,
   type ContainerMachine,
@@ -27,7 +28,6 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
-import { environmentTarget } from "../routes/-environmentTargets";
 import { accountStorageKey, currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { findInventoryProjectRef, type Inventory } from "./inventoryContext";
 import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";

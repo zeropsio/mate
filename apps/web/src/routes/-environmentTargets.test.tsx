@@ -3,16 +3,22 @@ import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerop
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   environmentLinkable,
+  initialContainer,
   initialEnvironment,
   isTerminalReachability,
+  makeContainerStore,
   makeExchangeDriver,
   routeGatePhrase,
   selectReachability,
   selectRouteGate,
+  type ContainerMachine,
+  type ContainerStore,
   type ContainerVerdict,
   type EnvironmentMachine,
   type ExchangeDriver,
+  type ExchangeRequest,
   type Presence,
+  type ProbeReading,
   type Reachability,
   type RouteGate,
   type RouteTarget,
@@ -22,7 +28,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "../zerops/__fixtures__/testDom";
-import { useEnvironmentLinks, useRouteGateInputs } from "./-environmentTargets";
+import { useEnvironmentLinks, useRouteGateInputs, useRouteTargetKey } from "./-environmentTargets";
 import { RouteGateView } from "./-routeGate";
 import { InventoryContext, type Inventory } from "../zerops/inventoryContext";
 import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
@@ -41,6 +47,7 @@ const shell = vi.hoisted(() => ({
   records: [] as Array<{ targetKey: string; environmentId: string }>,
   organization: "selected" as ZeropsOrganizationStatus,
   driver: null as unknown,
+  containers: null as unknown,
 }));
 
 vi.mock("../state/environments", () => ({
@@ -60,6 +67,9 @@ vi.mock("../zerops/useZeropsIdentityExchange", () => ({
 }));
 vi.mock("../zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ organizationStatus: shell.organization }),
+}));
+vi.mock("../zerops/zeropsContainers", () => ({
+  hostContainerStore: () => shell.containers,
 }));
 
 const project = {
@@ -110,6 +120,7 @@ beforeEach(() => {
   shell.records = [];
   shell.organization = "selected";
   shell.driver = publishing(new Map());
+  shell.containers = descriptorRig([]).containers;
 });
 
 afterEach(() => {
@@ -389,6 +400,21 @@ const VERDICTS: ReadonlyArray<readonly [Reachability["kind"], EnvironmentMachine
 const publishing = (machines: ReadonlyMap<string, EnvironmentMachine>) =>
   ({ subscribe: () => () => undefined, machines: () => machines }) as unknown as ExchangeDriver;
 
+/** A container store whose probes last read these, target by target; it reads nothing more. */
+const reading = (readings: ReadonlyMap<string, ProbeReading>) => {
+  const machines = new Map<string, ContainerMachine>(
+    [...readings].map(([key, value]) => [
+      key,
+      { ...initialContainer(), reading: { reading: value, sentAt: { wall: 0, mono: 0 } } },
+    ]),
+  );
+  return {
+    subscribe: () => () => undefined,
+    machines: () => machines,
+    request: () => undefined,
+  } as unknown as ContainerStore;
+};
+
 const candidate: ZeropsCandidate = {
   key: KEY,
   project: { id: "project-1", name: "shop", status: "ACTIVE" } as ZeropsProject,
@@ -461,6 +487,8 @@ describe("useRouteGateInputs", () => {
     readonly machines: ReadonlyMap<string, EnvironmentMachine>;
     readonly records?: ReadonlyArray<{ targetKey: string; environmentId: string }>;
     readonly inventory?: Inventory;
+    /** What the probes last read at each target's origin. */
+    readonly readings?: ReadonlyMap<string, ProbeReading>;
     readonly gate: RouteGate;
   }> = [
     {
@@ -491,7 +519,7 @@ describe("useRouteGateInputs", () => {
       gate: { kind: "wait", reachability: null },
     },
     {
-      name: "every exchange has settled and none named it",
+      name: "a present Mate's descriptor has not answered",
       machines: other({
         kind: "backoff",
         retryAt: { wall: 5_000, mono: 5_000 },
@@ -499,6 +527,25 @@ describe("useRouteGateInputs", () => {
         reconnect: false,
       }),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
+      readings: new Map([[OTHER, { kind: "unreachable" }]]),
+      gate: { kind: "wait", reachability: null },
+    },
+    {
+      name: "every exchange has settled and every present descriptor named another",
+      machines: other({
+        kind: "backoff",
+        retryAt: { wall: 5_000, mono: 5_000 },
+        last: { kind: "network" },
+        reconnect: false,
+      }),
+      records: [{ targetKey: OTHER, environmentId: ENV_B }],
+      readings: new Map([[OTHER, answering(ENV_B)]]),
+      gate: { kind: "unavailable", reachability: null },
+    },
+    {
+      name: "the only present Mate serves no Mate at all",
+      machines: other({ kind: "none", reconnect: false }),
+      readings: new Map([[OTHER, { kind: "predates-mate" }]]),
       gate: { kind: "unavailable", reachability: null },
     },
   ];
@@ -507,9 +554,241 @@ describe("useRouteGateInputs", () => {
     "an environment no target names: %s",
     async (_name, row) => {
       shell.driver = publishing(row.machines);
+      shell.containers = reading(row.readings ?? new Map());
       shell.records = [...(row.records ?? [])];
 
       expect(await gateOnRoute(row.inventory ?? inventory("ACTIVE"))).toEqual(row.gate);
     },
   );
+});
+
+// ── The descriptor index and its sweep (§4.8 resolveTarget) ──────────────────────────────────
+
+/** A Mate a present candidate serves: its target, its origin and its project. */
+const mate = (index: number) => ({
+  key: `project-${index}:service-${index}`,
+  origin: `https://zcp-${index}-8080.prg1.zerops.app`,
+  projectId: `project-${index}`,
+});
+
+const answering = (environmentId: EnvironmentId): ProbeReading => ({
+  kind: "ready",
+  descriptor: {
+    environmentId,
+    serverVersion: "0.12.0",
+    update: null,
+    identity: "ok",
+    identityCheckedAt: null,
+  },
+  initAt: null,
+});
+
+/**
+ * A real container store and exchange driver for present candidates on a device with no record:
+ * every probe waits for the test to answer it, and every exchange started is kept, unanswered.
+ */
+function descriptorRig(mates: ReadonlyArray<ReturnType<typeof mate>>) {
+  const pending = new Map<string, (reading: ProbeReading) => void>();
+  const probed: Array<string> = [];
+  const exchanges: Array<ExchangeRequest> = [];
+  const clock = {
+    now: () => ({ wall: nowMs, mono: nowMs }),
+    random: () => 0.5,
+    setTimer: () => () => undefined,
+  };
+  let intents: string | null = null;
+  const containers: ContainerStore = makeContainerStore({
+    clock,
+    probe: (origin) =>
+      new Promise((resolve) => {
+        probed.push(origin);
+        pending.set(origin, resolve);
+      }),
+    readMateFlag: async () => "unknown",
+    intents: {
+      read: () => intents,
+      write: (value) => {
+        intents = value;
+      },
+    },
+  });
+  const driver = makeExchangeDriver<unknown>({
+    clock,
+    exchange: (request) => {
+      exchanges.push(request);
+      return new Promise(() => undefined);
+    },
+    install: async () => ({ ok: true }),
+    readDescriptor: () => new Promise(() => undefined),
+    retryLink: () => undefined,
+    refreshPresence: () => undefined,
+    retire: () => undefined,
+  });
+  containers.setTargets(
+    mates.map(({ key, origin }) => ({
+      key,
+      origin,
+      platform: { project: "ACTIVE", service: "ACTIVE" },
+    })),
+  );
+  driver.setAccount({
+    postGrant: true,
+    identityMint: { allowed: true },
+    zeropsFailing: false,
+    grantVerifiedAtMs: nowMs,
+  });
+  driver.setVisible(true);
+  driver.setTargets(
+    mates.map(({ key, origin }) => ({
+      key,
+      presence: { kind: "present", origin } as const,
+      container: { level: "unknown" } as const,
+      record: null,
+    })),
+  );
+  return {
+    containers,
+    driver,
+    probed,
+    exchanges,
+    /** Answers the probe in flight for this origin. */
+    answer: async (origin: string, reading: ProbeReading) => {
+      const resolve = pending.get(origin);
+      if (resolve === undefined) throw new Error(`No probe of ${origin} is in flight.`);
+      pending.delete(origin);
+      resolve(reading);
+      await settle();
+    },
+  };
+}
+
+interface Routed {
+  readonly target: RouteTarget | null;
+  readonly projectId: string | null;
+  readonly routeKey: string | null;
+}
+
+/** Mounts what `__root` and the route's demand read for a route to `env-a`; `read` looks again. */
+function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACTIVE")) {
+  function Probe() {
+    const inputs = useRouteGateInputs(environmentId);
+    return JSON.stringify({
+      target: inputs.target,
+      projectId: inputs.projectId,
+      routeKey: useRouteTargetKey(environmentId) ?? null,
+    });
+  }
+  act(() =>
+    root.render(
+      <InventoryContext value={value}>
+        <Probe />
+      </InventoryContext>,
+    ),
+  );
+  return { read: () => JSON.parse(container.textContent) as Routed };
+}
+
+describe("the descriptor index", () => {
+  it("deep link resolves through the descriptor on a device with no record", async () => {
+    const one = mate(1);
+    const rig = descriptorRig([one]);
+    shell.driver = rig.driver;
+    shell.containers = rig.containers;
+    await settle();
+    const routed = routeTo(ENV_A);
+    expect(selectRouteGate(routed.read().target)).toEqual({ kind: "wait", reachability: null });
+
+    await rig.answer(one.origin, answering(ENV_A));
+
+    const seen = routed.read();
+    expect(seen.target?.kind).toBe("resolved");
+    expect(seen.projectId).toBe(one.projectId);
+    expect(seen.routeKey).toBe(one.key);
+    // The route's demand on that target exchanges it, expecting no remembered environment.
+    rig.driver.setDemand("route", [one.key]);
+    await settle();
+    expect(rig.exchanges.map(({ key, expected }) => ({ key, expected }))).toEqual([
+      { key: one.key, expected: null },
+    ]);
+    rig.driver.dispose();
+    rig.containers.dispose();
+  });
+
+  it("route Mate is the 9th of 12 → resolves, never RG3 early", async () => {
+    const mates = Array.from({ length: 12 }, (_, index) => mate(index + 1));
+    const rig = descriptorRig(mates);
+    shell.driver = rig.driver;
+    shell.containers = rig.containers;
+    await settle();
+    function Probe() {
+      const inputs = useRouteGateInputs(ENV_A);
+      return JSON.stringify({ gate: selectRouteGate(inputs.target), projectId: inputs.projectId });
+    }
+    act(() =>
+      root.render(
+        <InventoryContext value={inventory("ACTIVE")}>
+          <Probe />
+        </InventoryContext>,
+      ),
+    );
+    const look = () =>
+      JSON.parse(container.textContent) as { gate: RouteGate; projectId: string | null };
+    const seen: Array<{ answered: number; gate: RouteGate["kind"]; projectId: string | null }> = [];
+
+    // Every present Mate's descriptor answers in turn, the pool's four at a time.
+    for (const [position, each] of mates.entries()) {
+      await rig.answer(
+        each.origin,
+        answering(position === 8 ? ENV_A : EnvironmentId.make(`env-${position + 1}`)),
+      );
+      seen.push({ answered: position + 1, gate: look().gate.kind, projectId: look().projectId });
+    }
+
+    expect(rig.probed).toEqual(mates.map(({ origin }) => origin));
+    expect(seen.filter(({ answered }) => answered < 9).map(({ gate }) => gate)).toEqual(
+      Array.from({ length: 8 }, () => "wait"),
+    );
+    expect(seen.filter(({ answered }) => answered >= 9).map(({ projectId }) => projectId)).toEqual(
+      Array.from({ length: 4 }, () => "project-9"),
+    );
+    expect(seen.map(({ gate }) => gate)).not.toContain("unavailable");
+    rig.driver.dispose();
+    rig.containers.dispose();
+  });
+
+  it("a route nothing names reads each present Mate read without an answer once more", async () => {
+    const [down, coming] = [mate(1), mate(2)];
+    const rig = descriptorRig([down, coming]);
+    shell.driver = rig.driver;
+    shell.containers = rig.containers;
+    await settle();
+    // Unreachable, it boots: read at once, then on the poll's cadence, whose timer never fires here.
+    await rig.answer(down.origin, { kind: "unreachable" });
+    await rig.answer(down.origin, { kind: "unreachable" });
+    expect(rig.probed).toEqual([down.origin, coming.origin, down.origin]);
+
+    const routed = routeTo(ENV_A);
+    await settle();
+
+    // The unreachable one is read again at once; the unread one is already on its way.
+    expect(rig.probed).toEqual([down.origin, coming.origin, down.origin, down.origin]);
+    expect(selectRouteGate(routed.read().target)).toEqual({ kind: "wait", reachability: null });
+
+    // The other one fails too: it is swept once, and the first is not read again for this route.
+    await rig.answer(down.origin, { kind: "unreachable" });
+    await rig.answer(coming.origin, { kind: "unreachable" });
+    await rig.answer(coming.origin, { kind: "unreachable" });
+    routed.read();
+    await settle();
+    expect(rig.probed).toEqual([
+      down.origin,
+      coming.origin,
+      down.origin,
+      down.origin,
+      coming.origin,
+      coming.origin,
+    ]);
+    rig.driver.dispose();
+    rig.containers.dispose();
+  });
 });

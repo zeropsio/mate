@@ -11,15 +11,15 @@ import {
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
 import type { LinkPhase } from "@t3tools/client-runtime/zerops/environments";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 import { useLocation } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { createElement, useEffect } from "react";
 
 import { environmentIdFromPathname } from "~/routes/-environmentRoute";
+import { useRouteTargetKey } from "~/routes/-environmentTargets";
 import { useEnvironmentConnectionState, useEnvironments } from "~/state/environments";
 
-import { useRegistrationRecord } from "./registrationRecords";
 import { useExchangeDriver } from "./useZeropsIdentityExchange";
 
 const isConnectionBlockedError = Schema.is(ConnectionBlockedError);
@@ -62,9 +62,13 @@ export function ZeropsIdentityRepair() {
   const { environments } = useEnvironments();
   const driver = useExchangeDriver();
   const pathname = useLocation({ select: (location) => location.pathname });
-  const routeKey = useRegistrationRecord(environmentIdFromPathname(pathname))?.targetKey;
+  const routeEnvironmentId = environmentIdFromPathname(pathname);
+  const routeKey = useRouteTargetKey(
+    routeEnvironmentId === null ? null : EnvironmentId.make(routeEnvironmentId),
+  );
 
-  // The route's target is exchanged first (§4.4 priority); only a remembered target has a key.
+  // The route's target is exchanged first (§4.4 priority): the remembered one, or the one whose
+  // descriptor serves the route's environment.
   useEffect(() => {
     driver.setDemand("route", routeKey === undefined ? [] : [routeKey]);
   }, [driver, routeKey]);

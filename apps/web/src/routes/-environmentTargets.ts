@@ -1,13 +1,17 @@
 /**
  * The route gate's input and every link into an environment (DESIGN §4.4, §4.8), read off the
  * exchange driver's machine per Mate target through `selectReachability`, the one verdict: a
- * route and the links into it agree on which environments are worth opening.
+ * route and the links into it agree on which environments are worth opening. An environment no
+ * machine names is looked up in the descriptor index, and a route to one nothing names sweeps
+ * every present Mate whose descriptor has not answered.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   environmentLinkable,
-  selectReachability,
+  indexDescriptors,
+  resolveEnvironment,
+  type DescriptorIndex,
   type EnvironmentMachine,
   type RouteContent,
   type RouteTarget,
@@ -17,13 +21,14 @@ import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell"
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
-import { useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
 import { InventoryContext } from "../zerops/inventoryContext";
 import { useRegistrationRecords } from "../zerops/registrationRecords";
 import { useExchangeDriver } from "../zerops/useZeropsIdentityExchange";
+import { hostContainerStore } from "../zerops/zeropsContainers";
 import { useZeropsSession, type ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
 const NO_SHELL = Atom.make<EnvironmentShellState>({
@@ -33,27 +38,6 @@ const NO_SHELL = Atom.make<EnvironmentShellState>({
 }).pipe(Atom.withLabel("route-gate:no-environment"));
 
 export type Machines = ReadonlyMap<TargetKey, EnvironmentMachine>;
-
-const holds = (machine: EnvironmentMachine, environmentId: EnvironmentId): boolean =>
-  machine.credential.kind === "held" && machine.credential.environmentId === environmentId;
-
-/**
- * The target whose machine names the environment: the one holding its credential, else one that
- * remembers it or knows the redeploy that replaced it.
- */
-export function environmentTarget(
-  machines: Machines,
-  environmentId: EnvironmentId,
-): { readonly key: TargetKey; readonly machine: EnvironmentMachine } | undefined {
-  const entries = [...machines];
-  const [key, machine] =
-    entries.find(([, entry]) => holds(entry, environmentId)) ??
-    entries.find(
-      ([, entry]) => entry.record === environmentId || entry.superseded.has(environmentId),
-    ) ??
-    [];
-  return key === undefined || machine === undefined ? undefined : { key, machine };
-}
 
 /**
  * A credential still on its way: not yet judged, exchanging, answered but not yet installed,
@@ -108,6 +92,7 @@ export type RouteOrganization = "chosen" | "choosing" | "not-chosen";
 /** The gate's target for the route's environment. */
 export function routeTarget(input: {
   readonly machines: Machines;
+  readonly index: DescriptorIndex;
   readonly remembered: ReadonlyArray<TargetKey>;
   readonly environmentId: EnvironmentId;
   /** The inventory is read, not loading or failing. */
@@ -115,13 +100,9 @@ export function routeTarget(input: {
   readonly organization: RouteOrganization;
   readonly content: RouteContent;
 }): RouteTarget {
-  const found = environmentTarget(input.machines, input.environmentId);
+  const found = resolveEnvironment(input.machines, input.index, input.environmentId);
   if (found !== undefined) {
-    return {
-      kind: "resolved",
-      reachability: selectReachability(found.machine, input.environmentId),
-      content: input.content,
-    };
+    return { kind: "resolved", reachability: found.reachability, content: input.content };
   }
   if (input.organization === "not-chosen") {
     return { kind: "unresolved", discovery: "no-organization" };
@@ -129,7 +110,8 @@ export function routeTarget(input: {
   const discovering =
     input.organization === "choosing" ||
     !input.inventoryKnown ||
-    discoveryPending(input.machines, input.remembered);
+    discoveryPending(input.machines, input.remembered) ||
+    input.index.unanswered.length > 0;
   return { kind: "unresolved", discovery: discovering ? "pending" : "settled" };
 }
 
@@ -146,6 +128,37 @@ function useMachines(): Machines {
   return useSyncExternalStore(driver.subscribe, driver.machines);
 }
 
+/** The descriptor index over the machines and the container store's latest readings. */
+function useDescriptorIndex(machines: Machines): DescriptorIndex {
+  const containers = hostContainerStore();
+  const readings = useSyncExternalStore(containers.subscribe, containers.machines);
+  return useMemo(() => indexDescriptors(machines, readings), [machines, readings]);
+}
+
+/**
+ * The sweep (§4.8): while the route's environment is unresolved, every present target read
+ * without an answer is read once more, each once per route; an unread one is already on its way.
+ */
+function useDescriptorSweep(environmentId: EnvironmentId | null, failed: ReadonlyArray<TargetKey>) {
+  const swept = useRef<{ environmentId: EnvironmentId | null; keys: Set<TargetKey> }>({
+    environmentId: null,
+    keys: new Set(),
+  });
+  const pendingKey = failed.join(",");
+  useEffect(() => {
+    if (swept.current.environmentId !== environmentId) {
+      swept.current = { environmentId, keys: new Set() };
+    }
+    if (environmentId === null || pendingKey === "") return;
+    const containers = hostContainerStore();
+    for (const key of pendingKey.split(",")) {
+      if (swept.current.keys.has(key)) continue;
+      swept.current.keys.add(key);
+      containers.request(key);
+    }
+  }, [environmentId, pendingKey]);
+}
+
 export interface RouteGateInputs {
   /** Null on a route that targets no environment (RG1). */
   readonly target: RouteTarget | null;
@@ -157,6 +170,7 @@ export interface RouteGateInputs {
 /** What the route gate reads for the route's environment. */
 export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGateInputs {
   const machines = useMachines();
+  const index = useDescriptorIndex(machines);
   const { environments } = useEnvironments();
   const inventory = useContext(InventoryContext);
   const { organizationStatus } = useZeropsSession();
@@ -164,17 +178,26 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const content = useAtomValue(
     environmentId === null ? NO_SHELL : environmentShell.stateValueAtom(environmentId),
   ).status;
+  const target =
+    environmentId === null
+      ? null
+      : routeTarget({
+          machines,
+          index,
+          remembered: records.map((record) => record.targetKey),
+          environmentId,
+          inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
+          organization: ORGANIZATION[organizationStatus],
+          content,
+        });
+  useDescriptorSweep(
+    target?.kind === "unresolved" && target.discovery === "pending" ? environmentId : null,
+    index.failed,
+  );
   if (environmentId === null) return { target: null, projectId: null, mateName: "This Mate" };
   return {
-    target: routeTarget({
-      machines,
-      remembered: records.map((record) => record.targetKey),
-      environmentId,
-      inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
-      organization: ORGANIZATION[organizationStatus],
-      content,
-    }),
-    projectId: environmentTarget(machines, environmentId)?.key.split(":")[0] ?? null,
+    target,
+    projectId: resolveEnvironment(machines, index, environmentId)?.key.split(":")[0] ?? null,
     mateName:
       environments.find((entry) => entry.environmentId === environmentId)?.label ?? "This Mate",
   };
@@ -190,15 +213,14 @@ export interface EnvironmentLinks {
 /** The shared `environmentLinkable` rule for every producer of a link into an environment. */
 export function useEnvironmentLinks(): EnvironmentLinks {
   const machines = useMachines();
+  const index = useDescriptorIndex(machines);
   const { environments } = useEnvironments();
   const linkable = useCallback(
     (environmentId: EnvironmentId) => {
-      const found = environmentTarget(machines, environmentId);
-      return (
-        found !== undefined && environmentLinkable(selectReachability(found.machine, environmentId))
-      );
+      const found = resolveEnvironment(machines, index, environmentId);
+      return found !== undefined && environmentLinkable(found.reachability);
     },
-    [machines],
+    [index, machines],
   );
   const registered = useMemo(
     () => new Set(environments.map((entry) => entry.environmentId)),
@@ -218,4 +240,19 @@ export function useEnvironmentLinks(): EnvironmentLinks {
     [linkable, machines, registered],
   );
   return useMemo(() => ({ linkable, linkTarget }), [linkable, linkTarget]);
+}
+
+/**
+ * The target the route's environment is exchanged on (§4.4 WANT): the one its record remembers,
+ * else the one the descriptor index finds for it.
+ */
+export function useRouteTargetKey(environmentId: EnvironmentId | null): TargetKey | undefined {
+  const records = useRegistrationRecords();
+  const machines = useMachines();
+  const index = useDescriptorIndex(machines);
+  if (environmentId === null) return undefined;
+  return (
+    records.find((record) => record.environmentId === environmentId)?.targetKey ??
+    resolveEnvironment(machines, index, environmentId)?.key
+  );
 }
