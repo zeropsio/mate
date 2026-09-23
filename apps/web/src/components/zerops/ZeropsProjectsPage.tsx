@@ -2443,22 +2443,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     return (
       <ZeropsEnvironmentRow
         action={
-          action.kind === "set-up-mate" ? (
-            <ZeropsMateVerb
+          // A row's verb is the page's verb: 28px, outline, like Merge beside it.
+          action.kind === "set-up-mate" || action.kind === "remove" ? (
+            <Button
+              data-zerops-primary-action={action.label}
               disabled={busy}
-              label={busy ? "Setting up…" : action.label}
               onClick={() => {
                 runRowAction(candidate, action.kind);
               }}
-            />
-          ) : action.kind === "remove" ? (
-            <ZeropsMateVerb
-              disabled={busy}
-              label={busy ? "Removing…" : action.label}
-              onClick={() => {
-                runRowAction(candidate, action.kind);
-              }}
-            />
+              size="compact"
+              variant="outline"
+            >
+              {busy ? (action.kind === "remove" ? "Removing…" : "Setting up…") : action.label}
+            </Button>
           ) : undefined
         }
         busy={busy}
