@@ -31,12 +31,21 @@ export interface Inventory {
   readonly authority: ReadonlyMap<string, ScopeAuthority>;
 }
 
+/**
+ * What the account's product publishes of its inventory for the derived atoms (`state/zerops.ts`):
+ * the projection without the round's loading and error words.
+ */
+export type InventoryProjection = Pick<
+  Inventory,
+  "projects" | "services" | "projectRefs" | "authority"
+>;
+
 export function inventoryProjectRefKey(ref: ProjectRef): string {
   return projectKeyOf(ref);
 }
 
 export function findInventoryProjectRef(
-  inventory: Inventory,
+  inventory: Pick<Inventory, "projectRefs">,
   projectId: string,
   organizationId?: string,
 ): ProjectRef | null {

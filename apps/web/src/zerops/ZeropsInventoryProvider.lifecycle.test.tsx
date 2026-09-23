@@ -251,6 +251,8 @@ const mountInventory = Effect.fn(function* (
     status: "signed-in",
     user,
     organizations: zeropsClientsFromUser(user),
+    activeOrganization: null,
+    organizationStatus: "needs-selection",
     updateVerifiedMemberships: vi.fn(),
     signOut: vi.fn(),
   };

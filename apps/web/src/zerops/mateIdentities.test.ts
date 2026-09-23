@@ -3,13 +3,11 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  MATES_UNREAD,
   mateQuestion,
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
   zeropsMateDecisions,
   zeropsMateIdentities,
-  zeropsMatesOf,
   type ZeropsMateDirectory,
   type ZeropsMateIdentity,
 } from "./mateIdentities";
@@ -117,36 +115,16 @@ describe("zeropsMateAt", () => {
     readonly environmentId: EnvironmentId;
     readonly kind: "mate" | "nobody" | "unknown";
   }>([
+    { name: "a decided Mate", directory: decided, environmentId: FEN, kind: "mate" },
+    { name: "a decided nobody", directory: decided, environmentId: STAGE, kind: "nobody" },
     {
-      name: "a decided Mate",
-      directory: { decided, complete: false },
-      environmentId: FEN,
-      kind: "mate",
-    },
-    {
-      name: "a decided nobody",
-      directory: { decided, complete: false },
-      environmentId: STAGE,
-      kind: "nobody",
-    },
-    {
-      name: "an environment no read row reaches, the list read in part",
-      directory: { decided, complete: false },
+      name: "an environment no read row reaches",
+      directory: decided,
       environmentId: JUNO,
       kind: "unknown",
     },
-    {
-      name: "an environment no read row reaches, the list read in full",
-      directory: { decided, complete: true },
-      environmentId: JUNO,
-      kind: "nobody",
-    },
   ])("answers $name as $kind", ({ directory, environmentId, kind }) => {
     expect(zeropsMateAt(directory, environmentId).kind).toBe(kind);
-  });
-
-  it("remembers the Mates alone: the cache names nobody", () => {
-    expect([...zeropsMatesOf({ decided, complete: true }).keys()]).toEqual([FEN]);
   });
 });
 
@@ -159,13 +137,13 @@ describe("withEnvironmentsOutsideZerops", () => {
     projectUrl: "https://app.zerops.io/project/acme-docs-dev",
     connected: false,
   };
-  const outside = { environment: {} };
-  const inZerops = { environment: { zerops: { projectId: "acme-docs-dev" } } };
-  const servers = new Map([
-    [LOCAL, outside],
-    [JUNO, inZerops],
-    [FEN, outside],
-  ]);
+  const NOTHING: ZeropsMateDirectory = new Map();
+  const environments = [
+    { environmentId: LOCAL, zeropsProjectId: null },
+    { environmentId: JUNO, zeropsProjectId: "acme-docs-dev" },
+    { environmentId: FEN, zeropsProjectId: null },
+    { environmentId: STAGE, zeropsProjectId: undefined },
+  ];
 
   it.each<{
     readonly name: string;
@@ -175,40 +153,36 @@ describe("withEnvironmentsOutsideZerops", () => {
   }>([
     {
       name: "an environment whose server runs outside Zerops, no list read",
-      directory: MATES_UNREAD,
+      directory: NOTHING,
       environmentId: LOCAL,
       kind: "nobody",
     },
     {
       name: "a Zerops environment no read row reaches",
-      directory: MATES_UNREAD,
+      directory: NOTHING,
       environmentId: JUNO,
       kind: "unknown",
     },
     {
       name: "an environment whose server has not said where it runs",
-      directory: MATES_UNREAD,
+      directory: NOTHING,
       environmentId: STAGE,
       kind: "unknown",
     },
     {
       name: "a Mate the list decided",
-      directory: { decided: new Map([[FEN, FEN_MATE]]), complete: false },
+      directory: new Map([[FEN, FEN_MATE]]),
       environmentId: FEN,
       kind: "mate",
     },
   ])("answers $name as $kind", ({ directory, environmentId, kind }) => {
     expect(
-      zeropsMateAt(withEnvironmentsOutsideZerops(directory, servers), environmentId).kind,
+      zeropsMateAt(withEnvironmentsOutsideZerops(directory, environments), environmentId).kind,
     ).toBe(kind);
   });
 
   it("hands back the same directory when it decides nothing new", () => {
-    const complete: ZeropsMateDirectory = { decided: new Map(), complete: true };
-    expect(withEnvironmentsOutsideZerops(complete, servers)).toBe(complete);
-    expect(withEnvironmentsOutsideZerops(MATES_UNREAD, new Map([[JUNO, inZerops]]))).toBe(
-      MATES_UNREAD,
-    );
+    expect(withEnvironmentsOutsideZerops(NOTHING, [environments[1]!])).toBe(NOTHING);
   });
 });
 

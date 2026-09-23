@@ -30,7 +30,6 @@ vi.mock("../state/entities", () => ({
     },
   ],
   useProjects: () => [],
-  useServerConfigs: () => state.servers,
 }));
 
 vi.mock("../state/server", async () => {
@@ -38,12 +37,17 @@ vi.mock("../state/server", async () => {
   return { primaryServerSettingsAtom: Atom.make(DEFAULT_SERVER_SETTINGS) };
 });
 
-// No list read yet, and no cache from an earlier one.
-vi.mock("../state/zerops", async () => {
-  const { Atom } = await import("effect/unstable/reactivity");
-  const { MATES_UNREAD } = await import("../zerops/mateIdentities");
-  return { zeropsMatesAtom: Atom.make(MATES_UNREAD) };
-});
+vi.mock("../state/zerops", () => ({}));
+
+// No list read yet: only a server that runs outside Zerops is known to hold nobody.
+vi.mock("../zerops/useZeropsMates", () => ({
+  useZeropsMateDirectory: () =>
+    new Map(
+      [...state.servers].flatMap(([environmentId, server]) =>
+        server.environment.zerops === undefined ? [[environmentId, null] as const] : [],
+      ),
+    ),
+}));
 
 vi.mock("./useSettings", () => ({ useClientSettings: () => ({}) }));
 

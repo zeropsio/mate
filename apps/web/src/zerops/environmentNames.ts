@@ -2,7 +2,7 @@
  * The Zerops project's name per mate environment, read off the candidate
  * list — what a picker calls an environment when the workspace folder
  * ("www", the same in every container) says nothing. Pure: the candidate
- * list is the one source, and `useZeropsCandidates` publishes the result.
+ * list is the one source, and `zeropsEnvironmentNamesAtom` derives the result.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";

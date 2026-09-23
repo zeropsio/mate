@@ -75,8 +75,8 @@ describe("central Zerops data bindings", () => {
   });
 
   it("binds per-project views to projection families instead of the account root atom", () => {
-    const topology = source("./useProjectTopology.ts");
-    expect(topology).toContain("runtime.reads.topology(project)");
+    const topology = source("../state/zerops.ts");
+    expect(topology).toContain("runtime.reads.topology(");
     expect(topology).not.toContain("runtime.stateAtom");
 
     const activity = source("./activity/useProjectActivity.ts");
@@ -91,7 +91,7 @@ describe("central Zerops data bindings", () => {
     expect(inventory).toContain("runtime.reads.servicesOf(");
     expect(inventory).not.toContain("runtime.stateAtom");
 
-    const candidates = source("./useZeropsCandidates.ts");
+    const candidates = source("../state/zerops.ts");
     expect(candidates).toContain("runtime.reads.projectsOf(");
     expect(candidates).toContain("runtime.reads.servicesOf(");
     expect(candidates).not.toContain("runtime.stateAtom");

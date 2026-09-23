@@ -97,7 +97,7 @@ const mateState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../zerops/useZeropsMates", () => ({
-  useZeropsMateDirectory: () => ({ decided: mateState.mates, complete: true }),
+  useZeropsMateDirectory: () => mateState.mates,
 }));
 
 vi.mock("../../zerops/useZeropsAgentActivity", () => ({
@@ -486,8 +486,8 @@ describe("ZeropsPanel — the Mate's home", () => {
 
   it("sleeps while the container is not connected, whatever the last activity said", () => {
     feedState.topology = resolved(VIEW_WITH_ZCP);
-    // Known from the project's tags, or from the last reload's cache, before
-    // this session's socket is up: the home says who, not that it is awake.
+    // Known from the project's tags before this session's socket is up: the
+    // home says who, not that it is awake.
     mateState.mates.set(THREAD_REF.environmentId, {
       name: "Fen",
       tint: "coral",

@@ -98,3 +98,30 @@ describe("ZeropsInventoryProvider first admission", () => {
     expect(accessAtMount).toEqual(["verified"]);
   });
 });
+
+describe("ZeropsInventoryProvider publication", () => {
+  it("publishes the account's inventory into its registry, where the candidate listing derives from it", async () => {
+    const harness = signedInHarness();
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      page: async () => {
+        const { AccountProduct } = await import("./__fixtures__/accountProduct");
+        const { useAtomValue } = await import("@effect/atom-react");
+        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
+        const { candidateRowsAtom } = await import("../state/zerops");
+        function Rows() {
+          const rows = useAtomValue(candidateRowsAtom);
+          const names = heldCandidates(rows).rows.map((row) => row.project.name);
+          return `rows ${rows.state}: ${names.join(", ")}`;
+        }
+        return (
+          <AccountProduct datastream={harness.datastream}>
+            <Rows />
+          </AccountProduct>
+        );
+      },
+    });
+    await settle();
+
+    expect(tab.text()).toContain("rows known: One");
+  });
+});

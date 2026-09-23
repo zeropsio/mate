@@ -1,13 +1,11 @@
-import { useZeropsInventory } from "./ZeropsInventoryProvider";
 /** Web projection over the active organization's shared project/service records. */
-
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type {
   EnvironmentConnectionPhase,
   EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 import {
   derivePublicRouteOffers,
@@ -17,47 +15,16 @@ import {
   type ZeropsPublicRoute,
   type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
-
-import { useEnvironments } from "../state/environments";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  knownProjectsOf,
-  knownServicesOf,
-  projectKeyOf,
-  projectsSourceOf,
-  servicesSourceOf,
-  type CollectionRead,
-  type ProjectRecord,
-  type ServiceRecord,
-} from "@t3tools/client-runtime/zerops/data";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-import {
-  admittedOnly,
-  candidatesComplete,
-  heldCandidates,
-  presentCandidates,
-  selectCandidates,
-  type CandidateRow,
-} from "@t3tools/client-runtime/zerops/projections";
+import { presentCandidates, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { Atom } from "effect/unstable/reactivity";
-import { appAtomRegistry } from "../rpc/atomRegistry";
-import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
-import { writeCachedZeropsMates } from "./mateIdentitiesCache";
+
+import { candidateRowsAtom, zeropsEnvironmentsAtom, zeropsInventoryAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
-import { zeropsEnvironmentNames } from "./environmentNames";
-import {
-  MATES_UNREAD,
-  zeropsMateDecisions,
-  zeropsMatesOf,
-  type ZeropsMateDirectory,
-} from "./mateIdentities";
-import { inventoryProjectRefKey } from "./inventoryContext";
-import { useZeropsSession, type ZeropsSessionStatus } from "./ZeropsSessionProvider";
-import {
-  useZeropsAtomSelections,
-  useZeropsData,
-  zeropsKnowledgeArraysEqual,
-} from "./zeropsDataContext";
+import { useZeropsInventory } from "./inventoryContext";
+import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useZeropsData } from "./zeropsDataContext";
 
 export interface ZeropsCandidatePresentation extends CandidateRow {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -110,79 +77,6 @@ export function withZeropsConnection(
   return environmentId === undefined ? row : { ...row, group: "connected", environmentId };
 }
 
-function sameMembers<Record extends ProjectRecord | ServiceRecord>(
-  left: CollectionRead<Record>,
-  right: CollectionRead<Record>,
-): boolean {
-  return (
-    left.query === right.query &&
-    zeropsKnowledgeArraysEqual(left.value, right.value) &&
-    left.observation.access === right.observation.access
-  );
-}
-
-/**
- * Whether two reads of the organization's projects are the same knowledge:
- * the same query, members and access, and the same interest they are as
- * current as. That interest failing leaves the query as it was, and is a new
- * read; any other interest the account holds changing is not.
- */
-export function sameProjectsRead(
-  left: CollectionRead<ProjectRecord>,
-  right: CollectionRead<ProjectRecord>,
-): boolean {
-  return sameMembers(left, right) && projectsSourceOf(left) === projectsSourceOf(right);
-}
-
-/** Whether two reads of a project's services are the same knowledge, like `sameProjectsRead`. */
-export function sameServicesRead(
-  left: CollectionRead<ServiceRecord>,
-  right: CollectionRead<ServiceRecord>,
-): boolean {
-  return sameMembers(left, right) && servicesSourceOf(left) === servicesSourceOf(right);
-}
-
-/** A read, and the moment this client saw it change. */
-interface StampedRead<Read> {
-  readonly read: Read;
-  readonly atMs: number;
-}
-
-/**
- * Holds a read until it changes, stamped with the moment it did. The stamp is
- * what `known.ts` dates a read with no value yet by (when it failed, or began
- * to recover); taken here, it never ticks, so no clock re-derives the rows and
- * hands every consumer a new array of the same candidates.
- */
-function stampedReadAtom<Read>(
-  source: Atom.Atom<Read>,
-  same: (left: Read, right: Read) => boolean,
-): Atom.Atom<StampedRead<Read>> {
-  let previous: StampedRead<Read> | undefined;
-  return Atom.make((get) => {
-    const read = get(source);
-    if (previous !== undefined && same(previous.read, read)) return previous;
-    previous = { read, atMs: Date.now() };
-    return previous;
-  });
-}
-
-/** Every registered environment keyed by origin, socket up or not — who lives where is known before it connects. */
-function registeredZeropsOrigins(
-  environments: ReadonlyArray<{
-    readonly environmentId: EnvironmentId;
-    readonly displayUrl: string | null;
-  }>,
-): ReadonlyMap<string, EnvironmentId> {
-  const byOrigin = new Map<string, EnvironmentId>();
-  for (const environment of environments) {
-    if (!environment.displayUrl) continue;
-    const origin = normalizeOrigin(environment.displayUrl);
-    if (origin) byOrigin.set(origin, environment.environmentId);
-  }
-  return byOrigin;
-}
-
 function zeropsConnectionsByOrigin(
   environments: ReadonlyArray<{
     readonly displayUrl: string | null;
@@ -204,184 +98,25 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
   deployedAt: undefined,
   deployable: [],
 };
-const EMPTY_PROJECTS_READ_ATOM = Atom.make<StampedRead<CollectionRead<ProjectRecord>> | null>(
-  null,
-).pipe(Atom.withLabel("zerops:candidates-projects-empty"));
-
-const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
 /**
- * What `useZeropsCandidates` publishes for the readers that never load
- * candidates (`useZeropsEnvironmentNames`, `useZeropsMate`): nothing, each
- * environment's name and who lives in it, or that none of it is known any more.
+ * The active organization's candidates as knowledge (DESIGN §3): the rows
+ * (`candidateRowsAtom`), each ready one joined with the environment connected
+ * at its origin, and presented with its routes and services off the account's
+ * inventory. Derived, with no writer: it reads the account's registry, which
+ * starts over when the account closes.
  */
-export type CandidatesPublication =
-  | { readonly kind: "hold" }
-  | { readonly kind: "forget" }
-  | {
-      readonly kind: "publish";
-      readonly names: ReadonlyMap<EnvironmentId, string>;
-      readonly mates: ZeropsMateDirectory;
-    };
-
-/** The names and Mates the readers hold now; names are `null` until first read. */
-export interface PublishedCandidates {
-  readonly names: ReadonlyMap<EnvironmentId, string> | null;
-  readonly mates: ZeropsMateDirectory;
-}
-
-const HOLD: CandidatesPublication = { kind: "hold" };
-const FORGET: CandidatesPublication = { kind: "forget" };
-
-/**
- * Names and Mates are read off a known listing only. One that is unread,
- * being read or failed publishes nothing, so what the readers had stays up.
- * A listing known in full (`candidatesComplete`) replaces what was published
- * and says nobody lives anywhere it found no Mate. One known in part adds the
- * names it has read and decides only the environments its read rows reach
- * (M4): a Mate there is added, one that no longer lives there is dropped, and
- * every other environment keeps its answer, since this list cannot say nobody
- * lives where it has not read (M5). That answer is the last word given
- * (`ZeropsMateDirectory.complete`): unknown before any, nobody after a list
- * read in full or its cache.
- * A session still being checked, or one the API could not verify
- * (`unavailable`), publishes nothing either: the account behind it is not
- * known to be gone. A signed-out session forgets every name and Mate — they
- * belonged to the account that left — and the next list starts from unknown.
- */
-export function candidatesPublication(input: {
-  readonly status: ZeropsSessionStatus;
-  readonly listing: Known<ReadonlyArray<ZeropsCandidatePresentation>>;
-  readonly registeredOrigins: ReadonlyMap<string, EnvironmentId>;
-  readonly published: PublishedCandidates;
-}): CandidatesPublication {
-  if (input.status === "signed-out") return FORGET;
-  if (input.status !== "signed-in" || input.listing.state !== "known") return HOLD;
-  const candidates = heldCandidates(input.listing).rows;
-  const names = zeropsEnvironmentNames(candidates);
-  const decided = zeropsMateDecisions(candidates, input.registeredOrigins);
-  if (candidatesComplete(input.listing)) {
-    return { kind: "publish", names, mates: { decided, complete: true } };
-  }
-  if (names.size === 0 && decided.size === 0) return HOLD;
-  const { published } = input;
-  return {
-    kind: "publish",
-    names: published.names === null ? names : new Map([...published.names, ...names]),
-    mates: {
-      decided: new Map([...published.mates.decided, ...decided]),
-      complete: published.mates.complete,
-    },
-  };
-}
-
-/**
- * The names and Mates the readers hold now. They live in the account's atom
- * registry, which starts over when the account closes (`atomRegistry.ts`), so
- * another account signing in here reads none of the last one's.
- */
-export function publishedCandidates(): PublishedCandidates {
-  return {
-    names: appAtomRegistry.get(zeropsEnvironmentNamesAtom),
-    mates: appAtomRegistry.get(zeropsMatesAtom),
-  };
-}
-
-export function applyCandidatesPublication(publication: CandidatesPublication): void {
-  if (publication.kind === "hold") return;
-  if (publication.kind === "forget") {
-    appAtomRegistry.set(zeropsEnvironmentNamesAtom, null);
-    appAtomRegistry.set(zeropsMatesAtom, MATES_UNREAD);
-    return;
-  }
-  appAtomRegistry.set(zeropsEnvironmentNamesAtom, publication.names);
-  appAtomRegistry.set(zeropsMatesAtom, publication.mates);
-  // Remembered across reloads, so the next one knows who lives where from
-  // its first frame (`zeropsMatesAtom` starts from this). The cache says
-  // nobody lives where it names no Mate, so only a directory that can say
-  // so is remembered.
-  if (publication.mates.complete) writeCachedZeropsMates(zeropsMatesOf(publication.mates));
-}
-
-export function useZeropsCandidates(): {
-  /**
-   * The active organization's candidates as knowledge (DESIGN §3), and the
-   * only way they are handed out: a surface reads it through the
-   * `projections` selectors (`heldCandidates`, `findCandidate`,
-   * `takenBotNames`, `candidatesNotice`), so "no projects" is only ever read
-   * off a known, complete listing. A re-read keeps the list already read up
-   * while the fresh baseline lands.
-   */
-  readonly listing: Known<ReadonlyArray<ZeropsCandidatePresentation>>;
-  /** A read is in flight: the header's spinner, never a reason to paint less. */
-  readonly isLoading: boolean;
-  readonly error: string | null;
-  readonly refresh: () => void;
-} {
-  const { activeOrganization, organizationStatus, status } = useZeropsSession();
-  const { runtime, organizationRef } = useZeropsData();
-  const { environments } = useEnvironments();
-  const inventory = useZeropsInventory();
-  const { services, error } = inventory;
-  const canLoad = status === "signed-in" && organizationStatus === "selected";
-  const isLoading = inventory.isLoading || !canLoad;
-  const activeOrganizationRef = useMemo(
-    () => (activeOrganization === null ? null : organizationRef(activeOrganization.id)),
-    [activeOrganization, organizationRef],
-  );
-  const projectsReadAtom = useMemo(
-    () =>
-      activeOrganizationRef === null
-        ? EMPTY_PROJECTS_READ_ATOM
-        : stampedReadAtom(runtime.reads.projectsOf(activeOrganizationRef), sameProjectsRead),
-    [activeOrganizationRef, runtime],
-  );
-  const rawProjects = useAtomValue(projectsReadAtom);
-  const serviceReadEntries = useMemo(
-    () =>
-      activeOrganizationRef === null
-        ? []
-        : [...inventory.projectRefs.values()].flatMap((ref) =>
-            ref.organization.organizationId === activeOrganizationRef.organizationId
-              ? ([
-                  [
-                    projectKeyOf(ref),
-                    stampedReadAtom(runtime.reads.servicesOf(ref), sameServicesRead),
-                  ],
-                ] as const)
-              : [],
-          ),
-    [activeOrganizationRef, inventory.projectRefs, runtime],
-  );
-  const serviceReads =
-    useZeropsAtomSelections<StampedRead<CollectionRead<ServiceRecord>>>(serviceReadEntries);
-
-  const connectedOrigins = useMemo(() => authenticatedZeropsOrigins(environments), [environments]);
-  const connectionsByOrigin = useMemo(
-    () => zeropsConnectionsByOrigin(environments),
-    [environments],
-  );
-  const registeredOrigins = useMemo(() => registeredZeropsOrigins(environments), [environments]);
-
-  const listing = useMemo((): Known<ReadonlyArray<ZeropsCandidatePresentation>> => {
-    if (!canLoad || activeOrganization === null || rawProjects === null) return UNREAD;
-    const projects = knownProjectsOf(rawProjects.read, rawProjects.atMs);
-    const allowedProjects = admittedOnly(projects, (record) => {
-      const allowed = inventory.projectRefs.get(inventoryProjectRefKey(record.ref));
-      return (
-        allowed !== undefined &&
-        projectKeyOf(allowed) === projectKeyOf(record.ref) &&
-        serviceReads.has(projectKeyOf(record.ref))
-      );
-    });
-    const selected = selectCandidates(allowedProjects, (ref) => {
-      const read = serviceReads.get(projectKeyOf(ref));
-      return read === undefined ? UNREAD : knownServicesOf(read.read, read.atMs);
-    });
-    return presentCandidates(selected, (row): ZeropsCandidatePresentation => {
+export const candidateListingAtom = Atom.make(
+  (get): Known<ReadonlyArray<ZeropsCandidatePresentation>> => {
+    const rows = get(candidateRowsAtom);
+    const inventory = get(zeropsInventoryAtom);
+    const environments = get(zeropsEnvironmentsAtom);
+    const connectedOrigins = authenticatedZeropsOrigins(environments);
+    const connectionsByOrigin = zeropsConnectionsByOrigin(environments);
+    return presentCandidates(rows, (row): ZeropsCandidatePresentation => {
       const candidate = withZeropsConnection(row, connectedOrigins);
-      const project = inventory.projects.find((entry) => entry.id === candidate.project.id);
-      const outcome = services.get(candidate.project.id);
+      const project = inventory?.projects.find((entry) => entry.id === candidate.project.id);
+      const outcome = inventory?.services.get(candidate.project.id);
       const resolved = outcome?.status === "resolved" ? outcome.services : null;
       const routes =
         project === undefined || resolved === null
@@ -401,27 +136,34 @@ export function useZeropsCandidates(): {
         ...(connection === undefined ? {} : { connection }),
       };
     });
-  }, [
-    activeOrganization,
-    canLoad,
-    connectedOrigins,
-    connectionsByOrigin,
-    inventory.projectRefs,
-    inventory.projects,
-    rawProjects,
-    serviceReads,
-    services,
-  ]);
-  useEffect(() => {
-    applyCandidatesPublication(
-      candidatesPublication({
-        status,
-        listing,
-        registeredOrigins,
-        published: publishedCandidates(),
-      }),
-    );
-  }, [listing, registeredOrigins, status]);
+  },
+).pipe(Atom.withLabel("zerops:candidate-listing"));
+
+export function useZeropsCandidates(): {
+  /**
+   * The active organization's candidates as knowledge (DESIGN §3), and the
+   * only way they are handed out: a surface reads it through the
+   * `projections` selectors (`heldCandidates`, `findCandidate`,
+   * `takenBotNames`, `candidatesNotice`), so "no projects" is only ever read
+   * off a known, complete listing. A re-read keeps the list already read up
+   * while the fresh baseline lands.
+   */
+  readonly listing: Known<ReadonlyArray<ZeropsCandidatePresentation>>;
+  /** A read is in flight: the header's spinner, never a reason to paint less. */
+  readonly isLoading: boolean;
+  readonly error: string | null;
+  readonly refresh: () => void;
+} {
+  const { activeOrganization, organizationStatus, status } = useZeropsSession();
+  const { organizationRef } = useZeropsData();
+  const inventory = useZeropsInventory();
+  const listing = useAtomValue(candidateListingAtom);
+  const canLoad = status === "signed-in" && organizationStatus === "selected";
+  const isLoading = inventory.isLoading || !canLoad;
+  const activeOrganizationRef = useMemo(
+    () => (activeOrganization === null ? null : organizationRef(activeOrganization.id)),
+    [activeOrganization, organizationRef],
+  );
 
   // The header's reload: the active organization's inventory is read again (DESIGN §6.2).
   const refresh = useCallback(() => {
@@ -429,5 +171,5 @@ export function useZeropsCandidates(): {
     invalidateZerops({ topic: "inventory", organization: activeOrganizationRef });
   }, [activeOrganizationRef]);
 
-  return { listing, isLoading, error, refresh };
+  return { listing, isLoading, error: inventory.error, refresh };
 }

@@ -2288,9 +2288,9 @@ export default function ChatView(props: ChatViewProps) {
   // The record this client wrote itself counts until the snapshot carries it.
   const zeropsLocalSigners = useLocalAgentSigners();
   // The environment, not the thread: a draft has one before it has the other,
-  // and the header names the project either way. This is the writer half of
-  // the topology split (`useProjectTopology`) — the panel mounts the same
-  // ref-counted watcher, so opening it costs nothing extra. Hoisted here
+  // and the header names the project either way. This host demands the
+  // project's topology (`useProjectTopology`) — the panel demands the same
+  // ref-counted interest, so opening it costs nothing extra. Hoisted here
   // (rather than beside `zeropsChrome` below, which also reads it) so the
   // sign-in dialog's project-name chip is available from its very first call.
   const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;

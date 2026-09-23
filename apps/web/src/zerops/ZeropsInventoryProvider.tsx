@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
   interestKeyOf,
@@ -19,12 +19,13 @@ import {
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { PortalGate } from "../components/ui/portal-gate";
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { dismissContextMenu } from "../contextMenuFallback";
+import { zeropsDataRuntimeAtom, zeropsInventoryAtom, zeropsSessionAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   InventoryContext,
@@ -306,10 +307,28 @@ function AccessLapse({
  * One account inventory, read from the data runtime: its projects and
  * services, and the access grant the runtime interprets (DESIGN §4.2) — the
  * evidence that names the projects, each project's authority, and the lapse.
+ *
+ * It publishes the runtime, the session and, once the product mounts, the
+ * inventory into the account's atom registry (`state/zerops.ts`): the one base
+ * the derived candidate listing, names, Mates and topology read, which starts
+ * over when the account closes.
  */
 export function ZeropsInventoryProvider({ children }: { readonly children: ReactNode }) {
-  const { organizations, signOut } = useZeropsSession();
+  const { activeOrganization, organizationStatus, organizations, signOut, status } =
+    useZeropsSession();
   const { runtime, organizationRef } = useZeropsData();
+  const registry = useContext(RegistryContext);
+  useEffect(() => {
+    registry.set(zeropsDataRuntimeAtom, runtime);
+  }, [registry, runtime]);
+  useEffect(() => {
+    registry.set(zeropsSessionAtom, {
+      status,
+      organizationStatus,
+      activeOrganization:
+        activeOrganization === null ? null : organizationRef(activeOrganization.id),
+    });
+  }, [activeOrganization, organizationRef, organizationStatus, registry, status]);
   const grant = useAtomValue(runtime.access.view);
   /** The first mount happened; the product stays mounted from then on for the epoch. */
   const [admitted, setAdmitted] = useState(false);
@@ -596,6 +615,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     isLoading: !projected.read && error === null,
     error: visibleError,
   });
+  useEffect(() => {
+    if (!ready) return;
+    const { projects, services, projectRefs, authority: projectAuthority } = snapshot;
+    registry.set(zeropsInventoryAtom, {
+      projects,
+      services,
+      projectRefs,
+      authority: projectAuthority,
+    });
+  }, [ready, registry, snapshot]);
 
   return (
     <>

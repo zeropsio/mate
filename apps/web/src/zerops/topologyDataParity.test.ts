@@ -47,7 +47,7 @@ import {
   service,
   stamp,
 } from "./__fixtures__/platformData";
-import { projectTopologySnapshotFromRead } from "./useProjectTopology";
+import { projectTopologySnapshotFromRead } from "../state/zerops";
 import { projectActivitySnapshotFromRead } from "./activity/useProjectActivity";
 
 const owner = project();

@@ -12,11 +12,11 @@
  * (`scripts/mate-zone-architecture.test.ts` "protected roots render only",
  * and every file in this one is reachable from `ZeropsServiceMap.tsx`,
  * `ZeropsLifecycleStrip.tsx`, `ZeropsOperationCard.tsx`,
- * `ZeropsQuickActions.tsx`). `useProjectTopology` projects the shared account read into the atom
- * this reads (`../state/zerops.ts`'s `projectTopologyViewAtom`); it runs only
- * in non-protected hosts (`ChatView.tsx`, `ZeropsPanel.tsx`), which is also
- * where a caller that needs liveness or the last-read error reads it
- * directly instead of through this thin view-only read.
+ * `ZeropsQuickActions.tsx`). It reads the project's topology atom, derived from the
+ * account's runtime (`../state/zerops.ts`'s `projectTopologyAtom`), through the environment's
+ * project (`useEnvironmentProjectRef`); `useProjectTopology` is where a non-protected host
+ * (`ChatView.tsx`, `ZeropsPanel.tsx`) demands it, and where a caller that needs liveness or
+ * the last-read error reads it instead of through this thin view-only read.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -36,8 +36,20 @@ import {
   type ZeropsDataConsoleSessionState,
 } from "@t3tools/client-runtime/zerops/dataConsole";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
-import { projectTopologyViewAtom, zeropsFeeds } from "../state/zerops";
+import { useMemo } from "react";
+
+import {
+  EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
+  environmentProjectRef,
+  environmentProjectsAtom,
+  projectTopologyAtom,
+  zeropsFeeds,
+  zeropsInventoryAtom,
+  type ProjectTopologySnapshot,
+} from "../state/zerops";
+import { useRegistrationRecord } from "./registrationRecords";
 
 /**
  * Selected when there is no environment or thread to read. Hooks cannot be
@@ -46,11 +58,39 @@ import { projectTopologyViewAtom, zeropsFeeds } from "../state/zerops";
  */
 const EMPTY_ATOM = Atom.make(undefined).pipe(Atom.withLabel("zerops:feed-empty"));
 
+const NO_TOPOLOGY_ATOM = Atom.make(EMPTY_PROJECT_TOPOLOGY_SNAPSHOT).pipe(
+  Atom.withLabel("zerops:topology-empty"),
+);
+
+/**
+ * The project an environment belongs to (DESIGN §2.C C3): its descriptor, its registration record
+ * or a listing row, resolved against the account's inventory. Null while none places it.
+ */
+export function useEnvironmentProjectRef(environmentId: EnvironmentId | null): ProjectRef | null {
+  const record = useRegistrationRecord(environmentId);
+  const located = useAtomValue(environmentProjectsAtom);
+  const inventory = useAtomValue(zeropsInventoryAtom);
+  return useMemo(
+    () =>
+      environmentId === null || inventory === null
+        ? null
+        : environmentProjectRef({ environmentId, record, located, inventory }),
+    [environmentId, inventory, located, record],
+  );
+}
+
+/** The topology of the project an environment belongs to, derived; empty while it is not placed. */
+export function useEnvironmentTopology(
+  environmentId: EnvironmentId | null,
+): ProjectTopologySnapshot {
+  const project = useEnvironmentProjectRef(environmentId);
+  return useAtomValue(project === null ? NO_TOPOLOGY_ATOM : projectTopologyAtom(project));
+}
+
 export function useZeropsTopology(
   environmentId: EnvironmentId | null,
 ): ZeropsTopologyView | undefined {
-  return useAtomValue(environmentId === null ? EMPTY_ATOM : projectTopologyViewAtom(environmentId))
-    ?.view;
+  return useEnvironmentTopology(environmentId).view;
 }
 
 export function useZeropsLifecycle(
