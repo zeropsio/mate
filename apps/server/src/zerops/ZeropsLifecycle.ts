@@ -221,8 +221,10 @@ export const make = (options: ZeropsLifecycleOptions) =>
 
           // A state folded over an unread row would be persisted over it and
           // drop its envelope, so an event that cannot be read against its
-          // thread's state is dropped instead. The next one reads again.
-          const loaded = yield* Effect.result(load(event.threadId));
+          // thread's state is dropped instead. The next one reads again. A
+          // defect is dropped the same way: one bad row must not stop the
+          // ingest for every other thread.
+          const loaded = yield* Effect.result(Effect.sandbox(load(event.threadId)));
           if (Result.isFailure(loaded)) {
             yield* Effect.logWarning("Dropped a Zerops lifecycle event: stored state unreadable", {
               threadId: event.threadId,
