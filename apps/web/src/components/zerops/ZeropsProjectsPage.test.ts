@@ -1,6 +1,13 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import {
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+  makeZeropsApiOrigin,
+  type OrganizationRef,
+} from "@t3tools/client-runtime/zerops/data";
+import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { createElement } from "react";
@@ -9,17 +16,20 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   autoConnectServedZeropsEnvironment,
-  containerInvalidation,
   hasNoZeropsProject,
   isZeropsBirthConnectTarget,
   nextZeropsBirthRetryDelayMs,
   projectsListingNotice,
   projectsPageError,
+  readContainerAfter,
+  readContainerAgain,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
   showsZeropsBirthLine,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
+import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
+import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { isAccessNotYetVerified } from "~/zerops/useZeropsProvisioning";
 import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
@@ -433,58 +443,104 @@ describe("isZeropsBirthConnectTarget", () => {
   });
 });
 
+const ORGANIZATION: OrganizationRef = {
+  kind: "organization",
+  account: {
+    apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+    accountId: ZeropsAccountId.make("account"),
+  },
+  organizationId: ZeropsOrganizationId.make("org-1"),
+};
+
+/** What the account's bus delivers for the intents `run` sends, once their window has closed. */
+async function heardFrom(run: () => unknown): Promise<ReadonlyArray<Invalidation>> {
+  vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+  const hrtime = vi
+    .spyOn(process.hrtime, "bigint")
+    .mockImplementation(() => BigInt(Math.round(performance.now() * 1_000_000)));
+  openAccountLifetime("account");
+  const heard: Array<Invalidation> = [];
+  const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
+  try {
+    await run();
+    await vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS);
+    return heard;
+  } finally {
+    stop();
+    closeAccountLifetime();
+    hrtime.mockRestore();
+    vi.useRealTimers();
+  }
+}
+
 describe("the page's refreshes are intents (DESIGN §6.2)", () => {
+  const mate = { project: { id: "project-1" }, service: { id: "service-1" } };
+  const read: Invalidation = { topic: "container", target: "project-1:service-1" };
   it.each([
     {
-      name: "a Mate's re-probe, start or restart reads its container again",
-      candidate: { project: { id: "project-1" }, service: { id: "service-1" } },
-      intent: { topic: "container", target: "project-1:service-1" },
+      name: "a re-probe reads its container again",
+      run: () => readContainerAgain(mate),
+      want: [read],
+    },
+    {
+      name: "an accepted start or restart reads its container again",
+      run: () => readContainerAfter(mate, Promise.resolve()),
+      want: [read],
+    },
+    {
+      name: "a refused start or restart reads nothing",
+      run: () => readContainerAfter(mate, Promise.reject(new Error("refused"))).catch(() => {}),
+      want: [],
     },
     {
       name: "a row without a container asks for nothing",
-      candidate: { project: { id: "project-1" } },
-      intent: null,
+      run: () => readContainerAgain({ project: { id: "project-1" } }),
+      want: [],
     },
-  ])("$name", ({ candidate, intent }) => {
-    expect(containerInvalidation(candidate)).toEqual(intent);
+  ])("$name", async ({ run, want }) => {
+    expect(await heardFrom(run)).toEqual(want);
   });
 });
 
 describe("removeFailedZeropsProject", () => {
-  it("deletes, then forgets the creation and re-reads the list, in that order", async () => {
+  it("deletes, then forgets the creation and reads its organization again", async () => {
     const calls: Array<string> = [];
-    const outcome = await removeFailedZeropsProject({
-      projectId: "proj-1",
-      deleteProject: async (projectId) => {
-        calls.push(`delete:${projectId}`);
-      },
-      forgetCreation: (projectId) => {
-        calls.push(`forget:${projectId}`);
-      },
-      refresh: () => {
-        calls.push("refresh");
-      },
+    let outcome: unknown;
+    const heard = await heardFrom(async () => {
+      outcome = await removeFailedZeropsProject({
+        projectId: "proj-1",
+        organization: ORGANIZATION,
+        deleteProject: async (projectId) => {
+          calls.push(`delete:${projectId}`);
+        },
+        forgetCreation: (projectId) => {
+          calls.push(`forget:${projectId}`);
+        },
+      });
     });
 
     expect(outcome).toEqual({ ok: true });
-    expect(calls).toEqual(["delete:proj-1", "forget:proj-1", "refresh"]);
+    expect(calls).toEqual(["delete:proj-1", "forget:proj-1"]);
+    expect(heard).toEqual([{ topic: "inventory", organization: ORGANIZATION }]);
   });
 
   it("keeps the handoff and the list when the platform refuses the delete", async () => {
     const calls: Array<string> = [];
-    const outcome = await removeFailedZeropsProject({
-      projectId: "proj-1",
-      deleteProject: () => Promise.reject(new Error("A process is running.")),
-      forgetCreation: (projectId) => {
-        calls.push(`forget:${projectId}`);
-      },
-      refresh: () => {
-        calls.push("refresh");
-      },
+    let outcome: unknown;
+    const heard = await heardFrom(async () => {
+      outcome = await removeFailedZeropsProject({
+        projectId: "proj-1",
+        organization: ORGANIZATION,
+        deleteProject: () => Promise.reject(new Error("A process is running.")),
+        forgetCreation: (projectId) => {
+          calls.push(`forget:${projectId}`);
+        },
+      });
     });
 
     expect(outcome).toEqual({ ok: false, error: "A process is running." });
     expect(calls).toEqual([]);
+    expect(heard).toEqual([]);
   });
 });
 

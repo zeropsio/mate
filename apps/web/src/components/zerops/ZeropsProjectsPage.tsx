@@ -12,6 +12,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import {
   ZeropsServiceId,
+  type OrganizationRef,
   type ServiceAuthorizedAgentsResourceRequest,
 } from "@t3tools/client-runtime/zerops/data";
 import type * as React from "react";
@@ -116,7 +117,6 @@ import {
   type ZeropsGroupTags,
   type ZeropsProjectOrder,
 } from "@t3tools/client-runtime/zerops";
-import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { creationRefreshWanted, useCreationInventoryRefresh } from "~/zerops/creationRefresh";
 
@@ -222,17 +222,26 @@ export function autoConnectServedZeropsEnvironment(input: {
 }
 
 /**
- * The intent a row's re-probe, start or restart sends once it is accepted
- * (DESIGN §6.2): its container is read again. The platform pushes the status
- * change itself; a row without a container has nothing to read.
+ * A row's re-probe (DESIGN §6.2): its container is read again. The platform
+ * pushes a status change itself; a row without a container has nothing to read.
  */
-export function containerInvalidation(candidate: {
+export function readContainerAgain(candidate: {
   readonly project: { readonly id: string };
   readonly service?: { readonly id: string } | undefined;
-}): Invalidation | null {
-  return candidate.service === undefined
-    ? null
-    : { topic: "container", target: `${candidate.project.id}:${candidate.service.id}` };
+}): void {
+  if (candidate.service === undefined) return;
+  invalidateZerops({
+    topic: "container",
+    target: `${candidate.project.id}:${candidate.service.id}`,
+  });
+}
+
+/** A row's start or restart: once the platform accepts the write, its container is read again. */
+export function readContainerAfter(
+  candidate: Parameters<typeof readContainerAgain>[0],
+  write: Promise<unknown>,
+): Promise<void> {
+  return write.then(() => readContainerAgain(candidate));
 }
 
 /**
@@ -244,9 +253,10 @@ export function containerInvalidation(candidate: {
  */
 export async function removeFailedZeropsProject(input: {
   readonly projectId: string;
+  /** The organization the project was in, whose inventory is read again. */
+  readonly organization: OrganizationRef;
   readonly deleteProject: (projectId: string) => Promise<unknown>;
   readonly forgetCreation: (projectId: string) => void;
-  readonly refresh: () => void;
 }): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }> {
   try {
     await input.deleteProject(input.projectId);
@@ -254,7 +264,7 @@ export async function removeFailedZeropsProject(input: {
     return { ok: false, error: zeropsErrorMessage(cause) };
   }
   input.forgetCreation(input.projectId);
-  input.refresh();
+  invalidateZerops({ topic: "inventory", organization: input.organization });
   return { ok: true };
 }
 
@@ -1400,11 +1410,9 @@ function ZeropsProjectsContent() {
       // A harmless re-probe (H9) — `unreachable`/`stalled` cannot be told
       // apart from `predates-mate` by a browser, so nothing here writes;
       // this only asks for the container to be read again.
-      case "retry-probe": {
-        const intent = containerInvalidation(candidate);
-        if (intent !== null) invalidateZerops(intent);
+      case "retry-probe":
+        readContainerAgain(candidate);
         return;
-      }
       case "enable": {
         const serviceId = candidate.service?.id;
         if (!serviceId || activeOrganization === null) return;
@@ -1457,11 +1465,7 @@ function ZeropsProjectsContent() {
           setStartingCandidateKey(null);
           return;
         }
-        void write
-          .then(() => {
-            const intent = containerInvalidation(candidate);
-            if (intent !== null) invalidateZerops(intent);
-          })
+        void readContainerAfter(candidate, write)
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
           })
@@ -1477,17 +1481,16 @@ function ZeropsProjectsContent() {
         setConnectError(null);
         setRestartingCandidateKey(candidate.key);
         const project = projectRef(activeOrganization.id, candidate.project.id);
-        void runZeropsCommand(
-          runtime.commands.restartService({
-            kind: "service",
-            project,
-            serviceId: ZeropsServiceId.make(serviceId),
-          }),
+        void readContainerAfter(
+          candidate,
+          runZeropsCommand(
+            runtime.commands.restartService({
+              kind: "service",
+              project,
+              serviceId: ZeropsServiceId.make(serviceId),
+            }),
+          ),
         )
-          .then(() => {
-            const intent = containerInvalidation(candidate);
-            if (intent !== null) invalidateZerops(intent);
-          })
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
           })
@@ -1500,21 +1503,13 @@ function ZeropsProjectsContent() {
         if (activeOrganization === null) return;
         setConnectError(null);
         setRemovingCandidateKey(candidate.key);
+        const organization = organizationRef(activeOrganization.id);
         void removeFailedZeropsProject({
           projectId: candidate.project.id,
+          organization,
           deleteProject: (projectId) =>
-            runZeropsCommand(
-              runtime.commands.deleteProject({
-                organization: organizationRef(activeOrganization.id),
-                projectId,
-              }),
-            ),
+            runZeropsCommand(runtime.commands.deleteProject({ organization, projectId })),
           forgetCreation: forgetPendingCreation,
-          refresh: () =>
-            invalidateZerops({
-              topic: "inventory",
-              organization: organizationRef(activeOrganization.id),
-            }),
         })
           .then((outcome) => {
             if (!outcome.ok) setConnectError(outcome.error);

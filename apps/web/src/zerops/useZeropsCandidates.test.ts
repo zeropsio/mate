@@ -1,20 +1,30 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { act, createElement, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
 import {
   interestKeyOf,
   makeInitialZeropsDataState,
+  makeZeropsApiOrigin,
   selectProjectsOf,
   ReceiptOrdinal,
   selectServicesOf,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
   type InterestState,
+  type OrganizationRef,
 } from "@t3tools/client-runtime/zerops/data";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
+import { Atom } from "effect/unstable/reactivity";
 
 import { identity, organization, project, scope } from "./__fixtures__/platformData";
+import { TestNode } from "./__fixtures__/testDom";
 import { MATES_UNREAD, zeropsMateAt, type ZeropsMateIdentity } from "./mateIdentities";
+import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   applyCandidatesPublication,
@@ -23,9 +33,58 @@ import {
   publishedCandidates,
   sameProjectsRead,
   sameServicesRead,
+  useZeropsCandidates,
   withZeropsConnection,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
+
+const organizationRef = (organizationId: string): OrganizationRef => ({
+  kind: "organization",
+  account: {
+    apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+    accountId: ZeropsAccountId.make("account"),
+  },
+  organizationId: ZeropsOrganizationId.make(organizationId),
+});
+const noProjectsRead = Atom.make(
+  selectProjectsOf(makeInitialZeropsDataState(scope()), organization),
+);
+
+vi.mock("./ZeropsSessionProvider", () => ({
+  useZeropsSession: () => ({
+    activeOrganization: { id: "org-1" },
+    organizationStatus: "selected",
+    status: "signed-in",
+  }),
+}));
+vi.mock("./zeropsDataContext", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useZeropsData: () => ({
+    organizationRef,
+    runtime: { reads: { projectsOf: () => noProjectsRead, servicesOf: () => noProjectsRead } },
+  }),
+}));
+vi.mock("./ZeropsInventoryProvider", () => ({
+  useZeropsInventory: () => ({
+    projects: [],
+    services: new Map(),
+    projectRefs: new Map(),
+    isLoading: false,
+    error: null,
+  }),
+}));
+vi.mock("../state/environments", () => ({ useEnvironments: () => ({ environments: [] }) }));
+vi.mock("./mateIdentitiesCache", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  writeCachedZeropsMates: () => undefined,
+}));
+
+afterEach(() => {
+  closeAccountLifetime();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const PROJECT: ZeropsProject = {
   id: "project-1",
@@ -309,5 +368,39 @@ describe("candidatesPublication", () => {
     });
     expect(whoLivesAt(published, environmentId)).toBe("unknown");
     closeAccountLifetime();
+  });
+});
+
+describe("useZeropsCandidates", () => {
+  it("the header's reload reads the active organization's inventory again", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    vi.spyOn(process.hrtime, "bigint").mockImplementation(() =>
+      BigInt(Math.round(performance.now() * 1_000_000)),
+    );
+    const document = new TestNode("#document", null, 9);
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", { document, HTMLIFrameElement: TestNode });
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    openAccountLifetime("account");
+    const heard: Array<Invalidation> = [];
+    const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
+    let refresh!: () => void;
+    function Header() {
+      const reload = useZeropsCandidates().refresh;
+      useEffect(() => {
+        refresh = reload;
+      }, [reload]);
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      act(() => root.render(createElement(Header)));
+      refresh();
+      await act(() => vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS));
+      expect(heard).toEqual([{ topic: "inventory", organization: organizationRef("org-1") }]);
+    } finally {
+      stop();
+      act(() => root.unmount());
+    }
   });
 });
