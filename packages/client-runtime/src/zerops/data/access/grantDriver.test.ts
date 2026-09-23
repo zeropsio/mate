@@ -662,6 +662,56 @@ describe("the access grant inside the data runtime", () => {
   );
 
   it.effect(
+    "the first mount's wait is overdue 20 s after the round that granted it, and never once it mounted",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const opened = yield* grantedTab(healthy());
+          yield* opened.pass(20 * SECOND - 1);
+          expect(opened.view().overdue).toBe(false);
+
+          yield* opened.pass(1);
+          expect(opened.view().overdue).toBe(true);
+
+          yield* opened.runtime.access.mounted;
+          expect(opened.view().overdue).toBe(false);
+          // Renewals come and go; the mounted epoch never waits for a first mount again.
+          yield* opened.pass(30 * MINUTE);
+          expect(opened.platform.rounds.length).toBeGreaterThan(1);
+          expect(opened.view().overdue).toBe(false);
+        }),
+      ),
+  );
+
+  it.effect(
+    "the first mount's wait is overdue 20 s into a round that never answers, and starts over with each round",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform: Platform = { ...healthy(), accountMs: Number.POSITIVE_INFINITY };
+          const opened = yield* tab(platform);
+          yield* opened.pass(20 * SECOND - 1);
+          expect(opened.view().overdue).toBe(false);
+
+          yield* opened.pass(1);
+          expect(opened.phase()).toBe("verifying");
+          expect(opened.view().overdue).toBe(true);
+
+          // The round's own deadline fails it; the retry 2 s later waits afresh.
+          yield* opened.pass(10 * SECOND);
+          expect(opened.phase()).toBe("unverified-failed");
+          expect(opened.view().overdue).toBe(false);
+          yield* opened.pass(2 * SECOND);
+          expect(platform.rounds).toHaveLength(2);
+          yield* opened.pass(20 * SECOND - 1);
+          expect(opened.view().overdue).toBe(false);
+          yield* opened.pass(1);
+          expect(opened.view().overdue).toBe(true);
+        }),
+      ),
+  );
+
+  it.effect(
     "fails the first round with the platform's words and retries it by the session backoff",
     () =>
       Effect.scoped(

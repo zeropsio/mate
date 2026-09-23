@@ -52,6 +52,11 @@ export interface AccessGrantView {
   readonly machine: GrantMachine;
   /** Why the last round failed, in the platform's words; null once another round starts. */
   readonly failure: string | null;
+  /**
+   * The epoch's first mount has waited `firstMountPatienceMs` since its round started or ended
+   * (G10): its wait offers a way off. Never once the first mount happened.
+   */
+  readonly overdue: boolean;
 }
 
 /** The tab's signals and a person's retry, as the account runtime hands them over. */
@@ -81,6 +86,8 @@ export interface ZeropsAccessGrant {
   readonly changes: Stream.Stream<AccessGrantView>;
   /** Each invalidation the grant asks for from the moment of subscribing. */
   readonly invalidations: Stream.Stream<GrantInvalidation>;
+  /** The epoch's first mount happened: its wait is over for the epoch. */
+  readonly mounted: Effect.Effect<void>;
 }
 
 export interface GrantDriverOptions {
@@ -144,6 +151,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
   const lock = yield* Semaphore.make(1);
   let machine = initialGrant({ hidden: false, online: true }, yield* now);
   let failure: string | null = null;
+  let overdue = false;
   let verifier: AccessVerifier | null = null;
   let timer: Fiber.Fiber<void> | null = null;
   /** The round the verifier runs for the machine, while the machine holds it in flight. */
@@ -153,12 +161,19 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
     ZeropsProjectId,
     { readonly attempt: number; readonly fiber: Fiber.Fiber<void> }
   >();
+  /** Whether the epoch's first mount happened. */
+  let mounted = false;
+  /** The round the first mount's wait last started over for: the one in flight, or none. */
+  let waitRound: number | null = null;
+  /** Counts the first mount's waits, so a wait that started over is never overdue. */
+  let waits = 0;
+  let patience: Fiber.Fiber<void> | null = null;
   /** The evidence the runtime's grant was last built from, by `grantKey`. */
   let grantedKey: string | null = null;
   /** The projects the last grant carried from evidence, by `projectKeyOf`. */
   let fromEvidence: ReadonlySet<string> = new Set();
 
-  const initialView: AccessGrantView = { machine, failure };
+  const initialView: AccessGrantView = { machine, failure, overdue };
   // Kept for the registry's life, so a closed grant still reads closed.
   const view = Atom.keepAlive(Atom.make(initialView));
   const views = yield* SubscriptionRef.make(initialView);
@@ -257,7 +272,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
     });
 
   const publish = Effect.suspend(() => {
-    const next: AccessGrantView = { machine, failure };
+    const next: AccessGrantView = { machine, failure, overdue };
     options.atomRegistry.set(view, next);
     return SubscriptionRef.set(views, next);
   });
@@ -350,6 +365,32 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
     return running === null ? Effect.void : Fiber.interrupt(running);
   });
 
+  const cancelPatience = Effect.suspend(() => {
+    const running = patience;
+    patience = null;
+    return running === null ? Effect.void : Fiber.interrupt(running);
+  });
+
+  /** The first mount's wait starts over: overdue after the patience, unless it starts over again. */
+  const waitPatiently = Effect.gen(function* () {
+    yield* cancelPatience;
+    const wait = waits;
+    const at = yield* now;
+    const becomeOverdue = lock.withPermit(
+      Effect.suspend(() => {
+        if (wait !== waits) return Effect.void;
+        overdue = true;
+        return publish;
+      }),
+    );
+    patience = yield* options.fork(
+      untilReached({
+        wall: at.wall + policy.firstMountPatienceMs,
+        mono: at.mono + policy.firstMountPatienceMs,
+      }).pipe(Effect.andThen(options.fork(becomeOverdue)), Effect.asVoid),
+    );
+  });
+
   /**
    * The work the machine no longer holds: a round that is no longer in flight, a read whose
    * attempt is no longer current. Work that ended on its own last answer is finishing by itself;
@@ -413,10 +454,22 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
           failure = null;
         }
         const abandoned = abandonedWork(event, before, at);
+        // The first mount waits afresh whenever a round starts or ends.
+        const round = grantRoundInFlight(machine)?.id ?? null;
+        const waitAgain =
+          !mounted &&
+          machine.phase.phase !== "closed" &&
+          (event.type === "START" || round !== waitRound);
+        if (waitAgain) {
+          waitRound = round;
+          waits++;
+          overdue = false;
+        }
         yield* observeTransition(before, effects, at);
         yield* publish;
         for (const effect of effects) yield* interpret(effect);
         yield* interruptWork(abandoned);
+        if (waitAgain) yield* waitPatiently;
       }),
     );
   }
@@ -439,6 +492,18 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
     view,
     changes: SubscriptionRef.changes(views),
     invalidations: Stream.fromPubSub(invalidations),
+    mounted: lock
+      .withPermit(
+        Effect.suspend(() => {
+          if (mounted) return Effect.void;
+          mounted = true;
+          waits++;
+          if (!overdue) return Effect.void;
+          overdue = false;
+          return publish;
+        }),
+      )
+      .pipe(Effect.andThen(cancelPatience)),
   };
 
   return {
@@ -451,10 +516,12 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
           const event: GrantEvent = { type: "EPOCH_CLOSED" };
           machine = transitionGrant(machine, event, { now: at, policy }).state;
           const abandoned = abandonedWork(event, before, at);
+          waits++;
+          overdue = false;
           yield* publish;
           yield* interruptWork(abandoned);
         }),
       )
-      .pipe(Effect.andThen(cancelTimer)),
+      .pipe(Effect.andThen(cancelTimer), Effect.andThen(cancelPatience)),
   } satisfies GrantDriver;
 });

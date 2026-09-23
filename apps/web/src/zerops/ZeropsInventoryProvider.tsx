@@ -568,8 +568,10 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       : null;
   const ready = admitted || firstRound !== null;
   useEffect(() => {
-    if (firstRound !== null) setAdmitted(true);
-  }, [firstRound]);
+    if (firstRound === null) return;
+    setAdmitted(true);
+    void Effect.runPromise(runtime.access.mounted);
+  }, [firstRound, runtime]);
 
   /** The round whose grant the mounted product runs on, as it reaches the gate. */
   const grantedRound = ready && phase.phase === "granted" ? phase.evidence.account.round : null;
@@ -620,6 +622,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           </div>
         ) : projected.pausedOnly ? (
           <ZeropsLandingWait label="Paused while this tab is in the background…" />
+        ) : grant.overdue ? (
+          <div role="alert" className="p-8">
+            Still checking your Zerops projects.{" "}
+            <button type="button" onClick={retry}>
+              Try again
+            </button>{" "}
+            <button type="button" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </div>
         ) : (
           <ZeropsLandingWait label="Checking your Zerops projects…" />
         )

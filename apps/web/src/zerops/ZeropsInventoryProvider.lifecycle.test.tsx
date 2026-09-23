@@ -181,6 +181,8 @@ const mountInventory = Effect.fn(function* (
   ids: ReadonlyArray<string> = ["kept"],
   options: {
     readonly holdFirstRound?: boolean;
+    /** The push half's registrations wait until the test lets them go. */
+    readonly holdRegistrations?: boolean;
     /** Projects whose own read answers 503 from the start. */
     readonly failing?: ReadonlyArray<string>;
     /** Projects the organization still lists whose own read answers `not-found`. */
@@ -223,7 +225,8 @@ const mountInventory = Effect.fn(function* (
     ],
   };
   let fetchGate: Promise<void> | null = null;
-  let registrationGate: Deferred.Deferred<void> | null = null;
+  let registrationGate: Deferred.Deferred<void> | null =
+    options.holdRegistrations === true ? Deferred.makeUnsafe<void>() : null;
   const indexed = new Set(ids);
   const failing = new Set(options.failing);
   const gone = new Set(options.gone);
@@ -378,7 +381,7 @@ const mountInventory = Effect.fn(function* (
     yield* Effect.promise(async () =>
       act(async () => {
         await admitted.promise;
-        await mounted.promise;
+        if (options.holdRegistrations !== true) await mounted.promise;
         await turns();
       }),
     );
@@ -790,21 +793,48 @@ it.live("a new session callback neither restarts nor duplicates the grant's roun
   ),
 );
 
-it.live("a first round that never settles fails at its own deadline, with a way off (G7)", () =>
+it.live(
+  "a first round that never settles offers a way off after 20 s, and fails at its own deadline (G7, G10)",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // A round that rejects puts its reason on screen with a retry. One whose
+        // user read simply never answers would leave a spinner with no words —
+        // the label is `sr-only` — until the round's deadline, 30 s after it
+        // started: the grant's own patience offers the way off first.
+        const harness = yield* mountInventory(["kept"], { holdFirstRound: true });
+        yield* harness.advance(19_000);
+        expect(harness.container.textContent).not.toContain("Try again");
+
+        yield* harness.advance(1_000);
+        expect(harness.container.textContent).toContain("Still checking your Zerops projects.");
+        expect(harness.container.textContent).toContain("Try again");
+        expect(harness.container.textContent).toContain("Sign out");
+
+        yield* harness.advance(10_000);
+
+        expect(harness.container.textContent).toContain(
+          "Could not load your Zerops projects. Zerops didn't answer.",
+        );
+        expect(harness.container.textContent).toContain("Try again");
+        expect(harness.container.textContent).toContain("Sign out");
+      }),
+    ),
+);
+
+it.live("a first mount whose data never arrives offers a way off 20 s after its grant (G10)", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      // A round that rejects puts its reason on screen with a retry; one whose
-      // user read simply never answers fails at the round's deadline, 30 s after
-      // it started, and says so the same way.
-      const harness = yield* mountInventory(["kept"], { holdFirstRound: true });
-      yield* harness.advance(29_000);
+      // Granted, while the push half never gets its registrations answered.
+      const harness = yield* mountInventory(["kept"], { holdRegistrations: true });
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+      yield* harness.advance(19_000);
+      expect(harness.grantsWhenChildMounted()).toBeNull();
       expect(harness.container.textContent).not.toContain("Try again");
 
       yield* harness.advance(1_000);
 
-      expect(harness.container.textContent).toContain(
-        "Could not load your Zerops projects. Zerops didn't answer.",
-      );
+      expect(harness.container.textContent).toContain("Still checking your Zerops projects.");
       expect(harness.container.textContent).toContain("Try again");
       expect(harness.container.textContent).toContain("Sign out");
     }),

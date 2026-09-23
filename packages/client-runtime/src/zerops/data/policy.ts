@@ -174,6 +174,11 @@ export interface ZeropsGrantPolicy {
   readonly lapsedRetryMs: ReadonlyArray<number>;
   /** One project whose read failed transiently, while the account stays granted (G1). */
   readonly projectRetryMs: ReadonlyArray<number>;
+  /**
+   * The epoch's first mount waits this long after its round started or ended before its wait
+   * offers a way off (G10): a round that never answers, or data that never arrives.
+   */
+  readonly firstMountPatienceMs: number;
 }
 
 const SECOND_MS = 1_000;
@@ -197,6 +202,7 @@ export const DEFAULT_ZEROPS_GRANT_POLICY: ZeropsGrantPolicy = Object.freeze({
   renewalRetryMs: seconds(10, 20, 40, 60),
   lapsedRetryMs: seconds(2, 5, 15, 30, 60),
   projectRetryMs: seconds(10, 20, 40, 60),
+  firstMountPatienceMs: 20 * SECOND_MS,
 });
 
 /** G13: `max(floor, timer alignment + p95 round + one retry)`. */

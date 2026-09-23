@@ -45,6 +45,7 @@ export function makeFakeRuntimeFactory(
     const view: AccessGrantView = {
       machine: initialGrant({ hidden: false, online: true }, { wall: 0, mono: 0 }),
       failure: null,
+      overdue: false,
     };
     const runtime = {
       scope,
@@ -54,6 +55,7 @@ export function makeFakeRuntimeFactory(
         view: Atom.make(view),
         changes: Stream.make(view),
         invalidations: Stream.empty,
+        mounted: Effect.void,
       },
       shutdown: (reason: ShutdownReason) => Effect.sync(() => shutdownReasons.push(reason)),
     } as unknown as ManagedZeropsDataRuntime;
