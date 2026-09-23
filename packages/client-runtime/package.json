@@ -263,6 +263,10 @@
       "types": "./src/zerops/data/index.ts",
       "default": "./src/zerops/data/index.ts"
     },
+    "./zerops/knowledge": {
+      "types": "./src/zerops/knowledge/index.ts",
+      "default": "./src/zerops/knowledge/index.ts"
+    },
     "./zerops/cards/decode": {
       "types": "./src/zerops/cards/decode.ts",
       "default": "./src/zerops/cards/decode.ts"
