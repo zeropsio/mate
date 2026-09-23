@@ -13,8 +13,9 @@
  * before a newer one of the same group had its answer accepted is suppressed
  * (M2). Only `dispose` aborts — the owner is gone.
  *
- * A group whose reads fail says why, once, and takes it back when a read
- * answers: a failure beside a kept answer is not the same as a fresh one.
+ * A group whose reads fail says why, once, and takes it back when a whole
+ * read answers: a failure beside a kept answer is not the same as a fresh
+ * one, and a verb's read of one part proves nothing about the rest.
  *
  * UI-free and platform-free (rule R1): the owner supplies the reads and the clock.
  *
@@ -59,7 +60,7 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   ) => Promise<GroupUpdate<Answer>>;
   readonly publish: (groupId: string, answer: Answer) => void;
   readonly forget: (groupIds: ReadonlyArray<string>) => void;
-  /** A group's reads started failing with `cause`, or answered again (`null`). */
+  /** A group's reads started failing with `cause`, or a whole read answered again (`null`). */
   readonly failure: (groupId: string, cause: string | null) => void;
   /** What an earlier owner already published, kept until a read replaces it. */
   readonly initial?: ReadonlyMap<string, Answer>;
@@ -98,8 +99,8 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
       if (failed?.cause !== update.failed) options.failure(groupId, update.failed);
       return false;
     }
-    // A read that started before the failure proves nothing about it.
-    if (failed !== undefined && failed.ticket < ticket) {
+    // A read that started before the failure, or read only a part, proves nothing about it.
+    if (scope === "group" && failed !== undefined && failed.ticket < ticket) {
       failing.delete(groupId);
       options.failure(groupId, null);
     }

@@ -118,6 +118,25 @@ describe("createGroupAnswers", () => {
     expect(failures.at(-1)).toEqual({ groupId: "g1", cause: null });
   });
 
+  it("keeps a group's failure while only a part of it answers", async () => {
+    const { answers, failures, settle, next } = harness(new Map([["g1", answer("g1")]]));
+    answers.setGroups([G1]);
+    next("g1").reject(new Error("Gitea did not answer"));
+    await settle();
+    // A verb's read of one repository proves nothing about the whole read.
+    answers.invalidate("g1", { kind: "repository", repository: "appdev" });
+    next("g1").resolve((held) => held);
+    await settle();
+    answers.invalidate("g1", { kind: "repository", repository: "appdev" });
+    next("g1").resolve(() => answer("g1, appdev merged"));
+    await settle();
+    expect(failures).toEqual([{ groupId: "g1", cause: "Gitea did not answer" }]);
+    answers.refresh();
+    next("g1").resolve(() => answer("g1, whole"));
+    await settle();
+    expect(failures.at(-1)).toEqual({ groupId: "g1", cause: null });
+  });
+
   it("a pass longer than 60 s still publishes", async () => {
     const { answers, reads, published, settle, next } = harness();
     answers.setGroups([G1, G2]);
