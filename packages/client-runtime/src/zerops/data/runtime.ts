@@ -811,27 +811,48 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
 
   let pendingPublication: ZeropsDataState | null = null;
   let publicationEvents = 0;
-  const flushPublication = Effect.sync(() => {
+  const flushPendingPublication = () => {
     const next = pendingPublication;
     pendingPublication = null;
     publicationEvents = 0;
     if (next !== null) options.atomRegistry.set(rootAtom, next);
-  });
+  };
+  const flushPublication = Effect.sync(flushPendingPublication);
+  // Every change a task makes reaches the atoms in one publication, after the task: each
+  // publication recomputes every projection, so the leases of a whole account taken one by one
+  // must not recompute them once per lease.
+  const publicationDispatcher = scheduler.makeDispatcher();
+  let publicationScheduled = false;
+  const publishAfterTask = () => {
+    if (publicationScheduled) return;
+    publicationScheduled = true;
+    publicationDispatcher.scheduleTask(() => {
+      publicationScheduled = false;
+      flushPendingPublication();
+    }, 0);
+  };
 
-  /** Every change of access reaches the build logs and the resource broker, whatever made it. */
-  const publish = (next: ZeropsDataState, deferPublication = false): Effect.Effect<void> =>
+  /**
+   * Every change of access reaches the build logs and the resource broker, whatever made it. The
+   * atoms hear the change now, after the task, or when the ingress loop flushes its batch.
+   */
+  const publish = (
+    next: ZeropsDataState,
+    publication: "now" | "after-task" | "ingress-batch" = "now",
+  ): Effect.Effect<void> =>
     Ref.set(model, next).pipe(
       Effect.andThen(
         Effect.suspend(() => {
           pendingPublication = next;
           publicationEvents += 1;
+          if (publication === "after-task") publishAfterTask();
           if (next.access === reconciledAccess) return Effect.void;
           reconciledAccess = next.access;
           logs.reconcileAccess();
           return resources.reconcileAccess;
         }),
       ),
-      Effect.andThen(deferPublication ? Effect.void : flushPublication),
+      Effect.andThen(publication === "now" ? flushPublication : Effect.void),
     );
 
   const applyControl = (input: RuntimeControlInput): Effect.Effect<void> =>
@@ -839,7 +860,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       Effect.gen(function* () {
         const current = yield* Ref.get(model);
         const reduction = reduceZeropsDataState(current, input, policy);
-        if (reduction.state !== current) yield* publish(reduction.state);
+        if (reduction.state !== current) yield* publish(reduction.state, "after-task");
       }),
     );
 
@@ -952,7 +973,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             }
           }
           if (reduction.state !== current)
-            yield* publish(reduction.state, input.kind === "observation");
+            yield* publish(reduction.state, input.kind === "observation" ? "ingress-batch" : "now");
           return reduction.followUps;
         }),
       );
@@ -3238,6 +3259,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // Fence publication and clear grants/model first; transport finalizers run afterward.
         yield* Ref.set(closed, true);
         yield* applyControl({ kind: "runtime-closed" });
+        yield* flushPublication;
         yield* ingress.shutdown;
         yield* resources.shutdown;
         logs.shutdown();

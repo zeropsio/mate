@@ -4388,3 +4388,91 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
     }
   }
 });
+
+describe("publication: one per task", () => {
+  /** Every socket login waits forever, so an establishment publishes nothing of its own. */
+  const silentAdapter: ZeropsDataAdapter = {
+    ...makeAdapterHarness().adapter,
+    openReceiver: () => Effect.never,
+  };
+
+  /** Lets the task the calls ran in end, and the ones it scheduled run. */
+  const nextTask = Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+
+  const makePublishing = Effect.fnUntraced(function* () {
+    const registry = AtomRegistry.make();
+    const runtime = yield* makeZeropsDataRuntime({
+      scope: runtimeScope,
+      adapter: silentAdapter,
+      atomRegistry: registry,
+      makeOpaqueId: makeIdFactory(),
+    });
+    const published: Array<ZeropsDataState> = [];
+    const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+      published.push(state);
+    });
+    yield* Effect.addFinalizer(() =>
+      runtime.shutdown("application-close").pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            unsubscribe();
+            registry.dispose();
+          }),
+        ),
+      ),
+    );
+    return { runtime, published };
+  });
+
+  it.effect("control changes in one task publish once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { runtime, published } = yield* makePublishing();
+        const [first, second] = threeProjects;
+        const topology = yield* runtime.acquire(first!);
+        const other = yield* runtime.acquire(second!);
+        yield* nextTask;
+
+        expect(published).toHaveLength(1);
+        expect([...published[0]!.interests.keys()]).toEqual([topology.interest, other.interest]);
+      }),
+    ),
+  );
+
+  it.effect("ingress and control in the same task publish once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { runtime, published } = yield* makePublishing();
+        // The observation is queued now; the ingress loop takes it once this task yields.
+        const observed = yield* Effect.forkChild(
+          runtime.observeAccess({
+            kind: "access-verification-started",
+            accountEpoch: runtimeScope.epoch,
+          }),
+          { startImmediately: true },
+        );
+        const lease = yield* runtime.acquire(threeProjects[0]!);
+        yield* Fiber.join(observed);
+        yield* nextTask;
+
+        expect(published).toHaveLength(1);
+        expect(published[0]!.access.status).toBe("verifying");
+        expect([...published[0]!.interests.keys()]).toEqual([lease.interest]);
+      }),
+    ),
+  );
+
+  it.effect("a lease released inside the same task never publishes its interest", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { runtime, published } = yield* makePublishing();
+        const kept = yield* runtime.acquire(threeProjects[0]!);
+        const dropped = yield* runtime.acquire(threeProjects[1]!);
+        yield* dropped.release;
+        yield* nextTask;
+
+        expect(published.map((state) => [...state.interests.keys()])).toEqual([[kept.interest]]);
+      }),
+    ),
+  );
+});
