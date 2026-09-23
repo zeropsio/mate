@@ -162,6 +162,16 @@ export const COMING_UP_LINE = "Coming up. A few minutes.";
 export const ALMOST_THERE_LINE = "Almost there.";
 
 /**
+ * The line under a Mate whose container the platform restarts, ours or
+ * anyone's, so it names no one. The container already exists; "Coming up"
+ * would say it is being made.
+ */
+const RESTARTING_LINE = "This Mate is restarting.";
+
+/** Service statuses the inventory files under provisioning that restart a container it has. */
+const RESTARTING_SERVICE_STATUSES: ReadonlySet<string> = new Set(["RESTARTING", "UPGRADING"]);
+
+/**
  * The line under a project the platform failed to create, with the
  * platform's own words when it gave any worth repeating. Its empty internal
  * error says nothing a person can act on, so the line stays at the fact.
@@ -282,6 +292,12 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     return { status: { label: "Connected", tone: "ok" } };
   }
   if (candidate.group === "provisioning") {
+    if (RESTARTING_SERVICE_STATUSES.has(candidate.service?.status ?? "")) {
+      return {
+        status: { label: "Restarting", pulse: true, tone: "busy" },
+        detail: RESTARTING_LINE,
+      };
+    }
     return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };
   }
   if (candidate.group === "unavailable") {

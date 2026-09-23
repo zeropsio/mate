@@ -50,6 +50,32 @@ function input(
   return { candidate, health, can };
 }
 
+describe("a Mate the platform restarts", () => {
+  const restarting = (status: string): ZeropsRowCandidate => ({
+    ...READY,
+    group: "provisioning",
+    reason: `container is starting (${status})`,
+    service: { id: "zcp", name: "zcp", status },
+  });
+
+  it.each(["RESTARTING", "UPGRADING"])(
+    "says it restarts, never that it is being made (%s)",
+    (status) => {
+      expect(deriveZeropsRowPresentation(input(restarting(status), "initializing"))).toEqual({
+        status: { label: "Restarting", pulse: true, tone: "busy" },
+        detail: "This Mate is restarting.",
+      });
+    },
+  );
+
+  it("a container starting is still on its way up", () => {
+    expect(deriveZeropsRowPresentation(input(restarting("STARTING"), undefined))).toEqual({
+      status: { label: "Preparing", pulse: true, tone: "busy" },
+      detail: "Coming up. A few minutes.",
+    });
+  });
+});
+
 describe("a project the platform failed to create", () => {
   const FAILED_CREATION: ZeropsRowCandidate = {
     key: "p-new",
