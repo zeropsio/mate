@@ -46,6 +46,7 @@ import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationD
 import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
 import { projectTagsWrite, registerMateInGroup } from "./brokerGrant";
 import { useAccountGitea } from "./giteaProject";
+import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useProjectOrderPreference } from "./projectOrderPreference";
 import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
@@ -103,7 +104,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { projectRef, runtime } = useZeropsData();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
-  const [dialog, setDialog] = useState<MateDialog | null>(null);
+  // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
+  const [dialog, setDialog] = useProjectDialog((open: MateDialog) => open.candidate.project.id);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   // The same preference the projects screen's sort control writes — the
@@ -455,14 +457,25 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             ]),
       ];
     },
-    [busyKey, move, register, registerVerbFor, restart, rowInputFor, serverVersions, start, viewer],
+    [
+      busyKey,
+      move,
+      register,
+      registerVerbFor,
+      restart,
+      rowInputFor,
+      serverVersions,
+      setDialog,
+      start,
+      viewer,
+    ],
   );
 
   const mintGroupId = useCallback(
     () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
     [],
   );
-  const close = useCallback(() => setDialog(null), []);
+  const close = useCallback(() => setDialog(null), [setDialog]);
   const dialogs = (
     <>
       {dialog?.kind === "rename" ? (

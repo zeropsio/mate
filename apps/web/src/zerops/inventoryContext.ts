@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
@@ -167,4 +167,23 @@ export function useZeropsInventory(): Inventory {
   const inventory = useContext(InventoryContext);
   if (!inventory) throw new Error("Zerops inventory requires a verified account.");
   return inventory;
+}
+
+/**
+ * A dialog's state that holds one project's content — what it captured when it opened — closed the
+ * moment that project stops being shown: the grant withholds it, the account's lapse included, or
+ * it is lost (DESIGN §4.2 G6, G12). A captured copy outlives the read that withheld it.
+ */
+export function useProjectDialog<T>(
+  projectOf: (dialog: T) => string,
+): readonly [T | null, (dialog: T | null) => void] {
+  const inventory = useZeropsInventory();
+  const [dialog, setDialog] = useState<T | null>(null);
+  if (dialog === null) return [null, setDialog];
+  const projectId = projectOf(dialog);
+  if (inventory.lost.has(projectId) || projectAuthority(inventory, projectId).kind === "withheld") {
+    setDialog(null);
+    return [null, setDialog];
+  }
+  return [dialog, setDialog];
 }

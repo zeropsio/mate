@@ -245,21 +245,22 @@ describe("ZeropsInventoryProvider lapse", () => {
 
     await pass(16 * MINUTE_MS);
 
-    // Every region reads its platform facts withheld, the open dialog's and the title's included.
-    expect(tab.text()).not.toMatch(/One|Two|Prague/);
+    // Every region reads its platform facts withheld, and the title; the open dialog, which held
+    // what it showed, closed.
+    expect(tab.readable()).not.toMatch(/One|Two|Prague/);
     expect(tab.title()).not.toMatch(/One|Two/);
     expect(tab.readable()).toContain(CHILD);
     expect(tab.readable()).toContain("listing: withheld");
     expect(tab.readable().match(/Zerops isn't answering\./g)).toHaveLength(1);
 
-    // The next grant gives it all back within a second of its round: "Try now" starts one, or
-    // joins the one out, and Zerops answers it.
+    // The next grant gives the regions back within a second of its round: "Try now" starts one, or
+    // joins the one out, and Zerops answers it. The dialog stays closed.
     await tab.run(() => press(buttonsLabelled(tab.container(), "Try now")[0]!));
     await pass(INVALIDATION_COALESCE_MS);
     await tab.run(() => renewals.release());
     await pass(1_000);
     expect(tab.readable()).toContain("projects: One, Two");
-    expect(tab.readable()).toContain("dialog: One, Two");
+    expect(tab.readable()).not.toContain("dialog:");
     expect(tab.title()).toBe("One, Two · Zerops Mate");
     expect(tab.readable()).not.toContain("Zerops isn't answering.");
   });
