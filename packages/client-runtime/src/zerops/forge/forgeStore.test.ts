@@ -483,6 +483,24 @@ describe("forge store failures and the session (DESIGN §4.6, §6.4)", () => {
     expect(sent("pulls shop/app open")).toHaveLength(2);
   });
 
+  it("a wake reads nothing that is final: a pull request gone or landed, statuses done", async () => {
+    const { clock, store, sent, pending } = rig();
+    store.demand({ kind: "pull", ...pullKey(4) });
+    store.demand({ kind: "pull", ...pullKey(5) });
+    store.demand({ kind: "statuses", origin: ORIGIN, owner: "shop", repo: "app", sha: "h4" });
+    await clock.advance(0);
+    await pending("pull shop/app#4").answer(undefined);
+    await pending("pull shop/app#5").answer(pull(5, { state: "closed", merged: true }));
+    await pending("statuses shop/app@h4").answer([{ context: "ci", state: "success" }]);
+
+    await clock.advance(FORGE_WAKE_REVALIDATE_MS * 4);
+    store.wake();
+    await clock.advance(0);
+    expect(sent("pull shop/app#4")).toHaveLength(1);
+    expect(sent("pull shop/app#5")).toHaveLength(1);
+    expect(sent("statuses shop/app@h4")).toHaveLength(1);
+  });
+
   it("the store's end aborts the reads in flight and publishes nothing after", async () => {
     const { clock, store, pending } = rig();
     const fact = openPulls("shop", "app");

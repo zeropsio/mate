@@ -31,7 +31,8 @@
  *   read whose Gitea 401 no token recovered is no answer: the key waits for the session to be
  *   readable again and reads then.
  * - While the tab is hidden nothing starts. A visible wake resets the backoff and reads again
- *   every demanded key read more than {@link FORGE_WAKE_REVALIDATE_MS} ago.
+ *   every demanded key read more than {@link FORGE_WAKE_REVALIDATE_MS} ago, except what no read
+ *   changes: a key proved absent, a pull request that landed, statuses none of which is pending.
  *
  * ## Retention
  *
@@ -385,6 +386,25 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
   };
 
   const reached = (at: number | null, mono: number): boolean => at !== null && mono >= at;
+
+  /**
+   * What no read changes: a key proved absent (M6), a pull request that landed, statuses none of
+   * which is pending (D5). Only an invalidation reads it again.
+   */
+  const final = (entry: Entry): boolean => {
+    if (entry.cell.held.state === "gone") return true;
+    switch (entry.fact.kind) {
+      case "pull":
+        return holds<"pull">(entry, (fact) => fact.pull.merged === true);
+      case "statuses":
+        return holds<"statuses">(
+          entry,
+          (statuses) => !statuses.some((status) => status.state === "pending"),
+        );
+      default:
+        return false;
+    }
+  };
 
   /** A key never read waits for the Gitea session, which is not a failure. */
   const waitForSession = (entry: Entry): void => {
@@ -828,6 +848,7 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
         entry.backoff = INITIAL_BACKOFF;
         if (entry.inFlight !== null || rankOf(entry) === null) continue;
         if (entry.retryAt !== null) entry.retryAt = now.mono;
+        if (final(entry)) continue;
         if (entry.readAt === null || now.mono - entry.readAt >= FORGE_WAKE_REVALIDATE_MS) {
           owe(entry);
         }
