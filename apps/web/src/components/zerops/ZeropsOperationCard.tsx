@@ -324,7 +324,7 @@ export function ZeropsOperationCard(props: {
             ) : null}
             {durationText !== undefined ? (
               <span
-                className="font-mono text-[11px] text-muted-foreground tabular-nums"
+                className="text-[11px] text-muted-foreground tabular-nums"
                 data-zerops-operation-duration
               >
                 · {durationText}

@@ -538,7 +538,7 @@ describe("ZeropsOperationCard — the duration renders outside the uppercase sta
     expect(durationSpan![1]).toContain("0:42");
   });
 
-  it("renders the settled duration in normal case, tabular-nums, separate from the uppercase status word", () => {
+  it("renders the settled duration in the body font, normal case, tabular-nums, separate from the uppercase status word", () => {
     const operation = operationFor(
       zeropsCall({
         id: "dur-settled",
@@ -561,6 +561,8 @@ describe("ZeropsOperationCard — the duration renders outside the uppercase sta
     const durationSpanTag = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>/)?.[0];
     expect(durationSpanTag).toBeDefined();
     expect(durationSpanTag).toContain("tabular-nums");
+    // The mono face set "1 s" with a full-width gap between number and unit.
+    expect(durationSpanTag).not.toContain("font-mono");
     expect(durationSpanTag).not.toContain("uppercase");
     const durationText = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
     expect(durationText).toContain("1m 12s");
