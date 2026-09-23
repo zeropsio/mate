@@ -918,14 +918,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           return reduction.followUps;
         }),
       );
-      yield* Effect.forEach(
-        followUps,
-        (followUp) =>
-          followUp.kind === "hydrate-unresolved-query-members"
-            ? scheduleHydration(followUp.query)
-            : Effect.void,
-        { discard: true },
-      );
+      yield* Effect.forEach(followUps, (followUp) => scheduleHydration(followUp.query), {
+        discard: true,
+      });
     });
 
   const markRecovering = (

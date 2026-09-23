@@ -955,6 +955,107 @@ describe("makeZeropsDataRuntime", () => {
   );
 
   it.effect(
+    "a registration that fails after the background pause leaves its interest to resume",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const registering = yield* Deferred.make<void>();
+        const outcome = yield* Deferred.make<void, AdapterError>();
+        let queryRegistrations = 0;
+        const adapter: ZeropsDataAdapter = {
+          openReceiver: (_scope, organization, identity) =>
+            Effect.succeed({
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.never,
+            }),
+          register: (_receiver, request) => {
+            if (request.descriptor.kind !== "query-membership")
+              return Effect.succeed({ responseObservations: [] });
+            queryRegistrations += 1;
+            if (queryRegistrations > 1) return Effect.succeed({ responseObservations: [] });
+            return Deferred.succeed(registering, undefined).pipe(
+              Effect.andThen(Deferred.await(outcome)),
+              Effect.as({ responseObservations: [] }),
+            );
+          },
+          read: () => Effect.succeed({ observations: [] }),
+          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          closeReceiver: () => Effect.void,
+        };
+        const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
+        const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          policy: makeZeropsDataPolicy({ hiddenReceiverPauseAfterMs: 50 }),
+          visibility: {
+            current: Ref.get(visibilityState),
+            changes: Stream.fromQueue(visibilityChanges),
+          },
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+          Queue.offerUnsafe(states, state);
+        });
+        const leaseScope = yield* Scope.make();
+        const lease = yield* runtime
+          .acquire({ kind: "project-activity", project: topologyDescriptor.project })
+          .pipe(Scope.provide(leaseScope));
+        yield* Deferred.await(registering);
+
+        yield* Ref.set(visibilityState, "hidden");
+        yield* Queue.offer(visibilityChanges, "hidden");
+        yield* TestClock.adjust("50 millis");
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "paused",
+        );
+
+        // The registration sent before the pause fails only now, still under the interest's
+        // identity: the pause gave it no new one. `recovering` here would have no exit, since
+        // the receiver it would recover is gone and resume looks only for paused interests.
+        yield* Deferred.fail(outcome, {
+          _tag: "ZeropsDataAdapterError",
+          kind: "registration",
+          message: "socket closed",
+          retryable: true,
+          accountRevocationEvidence: false,
+        } satisfies AdapterError);
+        yield* waitForState(states, (state) =>
+          [...state.reads.values()].some(
+            (read) =>
+              read.status === "failed" &&
+              read.ticket.owner.kind === "interest" &&
+              read.ticket.owner.identity.key === lease.interest,
+          ),
+        );
+        yield* runtime.observeAccess({
+          kind: "access-verification-started",
+          accountEpoch: runtimeScope.epoch,
+        });
+        expect((yield* runtime.state).interests.get(lease.interest)?.interest.status).toBe(
+          "paused",
+        );
+
+        yield* Ref.set(visibilityState, "visible");
+        yield* Queue.offer(visibilityChanges, "visible");
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        unsubscribe();
+        registry.dispose();
+      }),
+  );
+
+  it.effect(
     "refresh joins an in-progress recovery cycle for the organization instead of racing it",
     () =>
       Effect.gen(function* () {

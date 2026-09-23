@@ -141,13 +141,10 @@ export type RuntimeControlInput =
 
 export type ZeropsDataModelInput = IngestionInput | RuntimeControlInput;
 
-export type ZeropsDataFollowUp =
-  | { readonly kind: "hydrate-unresolved-query-members"; readonly query: QueryKey }
-  | {
-      readonly kind: "recover-interest";
-      readonly interest: InterestIdentity;
-      readonly reason: string;
-    };
+export type ZeropsDataFollowUp = {
+  readonly kind: "hydrate-unresolved-query-members";
+  readonly query: QueryKey;
+};
 
 export interface ZeropsDataReduction {
   readonly state: ZeropsDataState;
@@ -387,6 +384,15 @@ const interestProgress = (state: DesiredInterestState): InterestProgress => {
   };
 };
 
+/**
+ * Whether a failure moves this interest into `recovering`. A paused interest leaves through
+ * the foreground resume and a failed one through its own `retryAtMs`; a late failure of work
+ * started before either state brings nothing new, and `recovering` would give the interest
+ * no scheduled exit (I7).
+ */
+const recoversOnFailure = (interest: InterestState): boolean =>
+  interest.status !== "paused" && interest.status !== "failed";
+
 function advanceInterest(
   state: ZeropsDataState,
   identity: InterestIdentity,
@@ -398,6 +404,7 @@ function advanceInterest(
   if (desired === undefined || !sameInterestIdentity(desired.interest.identity, identity))
     return state;
   if (failedReason !== undefined) {
+    if (!recoversOnFailure(desired.interest)) return state;
     const interests = new Map(state.interests);
     interests.set(identity.key, {
       ...desired,
@@ -1058,7 +1065,12 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
   let interests: Map<InterestKey, DesiredInterestState> | null = null;
   const recover = (identity: InterestIdentity): void => {
     const desired = next.interests.get(identity.key);
-    if (desired === undefined || !sameInterestIdentity(desired.interest.identity, identity)) return;
+    if (
+      desired === undefined ||
+      !sameInterestIdentity(desired.interest.identity, identity) ||
+      !recoversOnFailure(desired.interest)
+    )
+      return;
     interests ??= new Map(next.interests);
     interests.set(identity.key, {
       ...desired,
@@ -1509,15 +1521,6 @@ export function reduceZeropsDataState(
   for (const query of [...state.inventory.queries.values(), ...state.activity.queries.values()]) {
     if (query.unresolvedMemberKeys.length > 0) {
       followUps.push({ kind: "hydrate-unresolved-query-members", query: query.key });
-    }
-  }
-  for (const desired of state.interests.values()) {
-    if (desired.interest.status === "recovering") {
-      followUps.push({
-        kind: "recover-interest",
-        interest: desired.interest.identity,
-        reason: desired.interest.reason,
-      });
     }
   }
   return { state, followUps };

@@ -14,6 +14,7 @@ import {
   projectKeyOf,
   queryKeyOf,
   serviceKeyOf,
+  type DesiredInterestState,
   type ReadTicket,
   type PlatformObservation,
 } from "./types.ts";
@@ -602,6 +603,113 @@ describe("Zerops data model coordination", () => {
       status: "recovering",
       reason: "overflow",
     });
+  });
+
+  describe("a late failure never strands a paused or failed interest in recovering", () => {
+    const tiny = makeZeropsDataPolicy({ membershipMarkersPerQuery: 1 });
+    const servicesQuery = {
+      kind: "services-of-project" as const,
+      project: project("held-project"),
+      schemaVersion: 1 as const,
+    };
+    const held = {
+      paused: { status: "paused", reason: "background" },
+      failed: {
+        status: "failed",
+        reason: "registration churn",
+        retryable: true,
+        attempts: 1,
+        retryAtMs: 5_000,
+      },
+    } as const;
+    const failures = {
+      "registration failure": (
+        state: ReturnType<typeof makeInitialZeropsDataState>,
+        id: ReturnType<typeof identity>,
+      ) =>
+        reduce(
+          state,
+          {
+            kind: "registration-completion",
+            stamp: stamp(1),
+            completion: {
+              kind: "registration-failed",
+              request: entityRegistration("service", id),
+              reason: "socket closed",
+            },
+          },
+          tiny,
+        ),
+      "read failure": (
+        state: ReturnType<typeof makeInitialZeropsDataState>,
+        id: ReturnType<typeof identity>,
+      ) =>
+        reduce(
+          state,
+          {
+            kind: "read-completion",
+            stamp: stamp(1),
+            completion: {
+              kind: "read-failed",
+              ticket: queryTicket(servicesQuery, id, 1, 0, 1),
+              failure: "cancelled",
+            },
+          },
+          tiny,
+        ),
+      "membership overflow": (
+        state: ReturnType<typeof makeInitialZeropsDataState>,
+        id: ReturnType<typeof identity>,
+      ) => {
+        const ticket = queryTicket(servicesQuery, id, 1, 0, 1);
+        const registration = queryRegistration(servicesQuery, id, ticket);
+        let next = state;
+        for (let index = 0; index < 2; index++) {
+          next = reduce(
+            next,
+            {
+              kind: "observation",
+              observation: {
+                stamp: stamp(index + 1),
+                accessEvidence: null,
+                input: {
+                  kind: "query-membership-observed",
+                  operation: "add",
+                  member: service(`held-service-${index}`, servicesQuery.project),
+                  registration,
+                },
+              },
+            },
+            tiny,
+          );
+        }
+        return tick(next, 3, tiny);
+      },
+    } as const;
+
+    for (const [holding, interest] of Object.entries(held)) {
+      for (const [failure, apply] of Object.entries(failures)) {
+        it(`keeps a ${holding} interest ${holding} after a ${failure}`, () => {
+          const id = identity();
+          const heldInterest = { ...interest, identity: id } as DesiredInterestState["interest"];
+          let state = reduce(
+            makeInitialZeropsDataState(scope()),
+            {
+              kind: "interest-upserted",
+              interest: { ...desiredInterest(id, 1), interest: heldInterest },
+            },
+            tiny,
+          );
+          state = reduce(
+            state,
+            { kind: "read-started", ticket: queryTicket(servicesQuery, id, 1, 0, 1) },
+            tiny,
+          );
+          state = apply(state, id);
+          expect(state.interests.get(id.key)?.interest).toEqual(heldInterest);
+        });
+      }
+    }
   });
 
   it("immediately removes inactive query state and only its unused member refs and history", () => {
