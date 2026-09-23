@@ -51,7 +51,7 @@ describe("ZeropsEnvironmentRow", () => {
     expect(html).not.toContain("No services");
   });
 
-  it("puts the project's trouble, the one verb and the menu at the far end, the menu on hover", () => {
+  it("puts the project's trouble, the menu and the one verb at the far end, the verb on the edge", () => {
     const html = row({
       action: <button data-test="verb" type="button" />,
       menu: <span data-test="menu" />,
@@ -61,8 +61,10 @@ describe("ZeropsEnvironmentRow", () => {
     expect(end).toContain('data-test="status"');
     expect(end).toContain('data-test="verb"');
     expect(end).toContain('data-test="menu"');
-    expect(end.indexOf('data-test="status"')).toBeLessThan(end.indexOf('data-test="verb"'));
-    expect(end.indexOf('data-test="verb"')).toBeLessThan(end.indexOf('data-test="menu"'));
+    // A menu shown on hover still takes its width while hidden: before the
+    // verb, it leaves the verb on the content edge every other verb ends on.
+    expect(end.indexOf('data-test="status"')).toBeLessThan(end.indexOf('data-test="menu"'));
+    expect(end.indexOf('data-test="menu"')).toBeLessThan(end.indexOf('data-test="verb"'));
     expect(html).toContain("group-hover/row:opacity-100");
   });
 

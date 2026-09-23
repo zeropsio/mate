@@ -110,12 +110,14 @@ export function ZeropsEnvironmentRow({
         {status === undefined ? null : (
           <span className="text-xs text-muted-foreground">{status}</span>
         )}
-        {action}
+        {/* The menu before the verb: hidden, it still takes its width, and
+            the verb keeps the content edge every other verb on the page ends on. */}
         {menu === undefined || menu === null ? null : (
           <span className="flex opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
             {menu}
           </span>
         )}
+        {action}
       </span>
     </li>
   );
