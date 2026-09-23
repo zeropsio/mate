@@ -2559,7 +2559,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               descriptor,
               key,
               leases: new Set(),
-              required: descriptor.kind !== "project-current-metrics",
+              // Metrics and history enrich what the inventory interests hold: their
+              // failures retry on their own and never replace the organization receiver.
+              required:
+                descriptor.kind !== "project-current-metrics" &&
+                descriptor.kind !== "project-process-history" &&
+                descriptor.kind !== "project-metric-history",
               identity,
               recoveryAttempts: 0,
               readController: new AbortController(),

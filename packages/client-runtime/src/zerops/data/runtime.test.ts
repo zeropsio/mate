@@ -1366,6 +1366,104 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
+  describe("a history interest is optional", () => {
+    const histories = {
+      "process history": {
+        descriptor: {
+          kind: "project-process-history",
+          project: topologyDescriptor.project,
+          before: null,
+          limit: 20,
+        },
+        fails: (request: RegistrationRequest) =>
+          request.descriptor.kind === "query-membership" &&
+          request.descriptor.query.kind === "process-history-window",
+      },
+      "metric history": {
+        descriptor: {
+          kind: "project-metric-history",
+          project: topologyDescriptor.project,
+          window: { timeGroupBy: "1h", limit: 24, timeZone: "UTC" },
+        },
+        fails: (request: RegistrationRequest) => request.descriptor.kind === "metric-history",
+      },
+    } as const satisfies Record<
+      string,
+      {
+        readonly descriptor: RuntimeInterestDescriptor;
+        readonly fails: (request: RegistrationRequest) => boolean;
+      }
+    >;
+
+    for (const [name, history] of Object.entries(histories)) {
+      it.effect(`keeps topology observing on its receiver when the ${name} fails`, () =>
+        Effect.gen(function* () {
+          const registry = AtomRegistry.make();
+          const harness = makeAdapterHarness();
+          let opens = 0;
+          const runtime = yield* makeZeropsDataRuntime({
+            scope: runtimeScope,
+            adapter: {
+              ...harness.adapter,
+              openReceiver: (...args) => {
+                opens += 1;
+                return harness.adapter.openReceiver(...args);
+              },
+              register: (receiver, request, context) => {
+                if (!history.fails(request))
+                  return harness.adapter.register(receiver, request, context);
+                return Effect.fail({
+                  _tag: "ZeropsDataAdapterError",
+                  kind: "registration",
+                  message: "history unavailable",
+                  retryable: true,
+                  accountRevocationEvidence: false,
+                } satisfies AdapterError);
+              },
+            },
+            atomRegistry: registry,
+            makeOpaqueId: makeIdFactory(),
+          });
+          const states = yield* Queue.unbounded<ZeropsDataState>();
+          const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+            Queue.offerUnsafe(states, state);
+          });
+          const leaseScope = yield* Scope.make();
+          const topology = yield* runtime
+            .acquire(topologyDescriptor)
+            .pipe(Scope.provide(leaseScope));
+          const observed = yield* waitForState(
+            states,
+            (state) => state.interests.get(topology.interest)?.interest.status === "observing",
+          );
+          const topologyIdentity = observed.interests.get(topology.interest)!.interest.identity;
+          const historyLease = yield* runtime
+            .acquire(history.descriptor)
+            .pipe(Scope.provide(leaseScope));
+          const settled = yield* waitForState(
+            states,
+            (state) => state.interests.get(historyLease.interest)?.interest.status === "failed",
+          );
+          expect(settled.interests.get(historyLease.interest)?.required).toBe(false);
+          expect(settled.interests.get(historyLease.interest)?.interest).toMatchObject({
+            status: "failed",
+            retryAtMs: expect.any(Number),
+          });
+          expect(settled.interests.get(topology.interest)?.interest).toMatchObject({
+            status: "observing",
+            identity: topologyIdentity,
+          });
+          expect(opens).toBe(1);
+
+          yield* runtime.shutdown("application-close");
+          yield* Scope.close(leaseScope, Exit.void);
+          unsubscribe();
+          registry.dispose();
+        }),
+      );
+    }
+  });
+
   it.effect(
     "admits project-scoped continuation writes after an organization-authorized create",
     () =>
