@@ -9,13 +9,15 @@ import {
   type Known,
   type KnownEvent,
 } from "./known.ts";
+import { explore } from "../testing/explore.ts";
 
 /**
  * DESIGN §3.3 M1–M3, M5, M7 and §4.0's superseded attempts (§11.3 I1, I11) over every event
- * sequence a store can send, breadth first, deduplicated by state. The domains are bounded: at
- * most two reads in flight, one prerequisite, one value per ordinal, one withholding reason.
- * Ordinals are allocated the way a store allocates them — strictly increasing across read starts,
- * pushes, invalidations and removals — and a read result names a read that is in flight.
+ * sequence a store can send, breadth first. The domains are bounded: at most two reads in flight,
+ * one prerequisite, one value per ordinal, one withholding reason. Ordinals are allocated the way
+ * a store allocates them — strictly increasing across read starts, pushes, invalidations and
+ * removals — and a read result names a read that is in flight. Each step happens a second after
+ * the one before.
  */
 const DEPTH = 8;
 const MAX_OPEN_READS = 2;
@@ -26,6 +28,7 @@ interface ModelState {
   readonly openReads: ReadonlyArray<number>;
   /** The coverage the newest admitted source statement gave the held value; `null` without one. */
   readonly stated: Coverage | null;
+  readonly nowMs: number;
 }
 
 const eventsFrom = (state: ModelState): ReadonlyArray<KnownEvent<string>> => {
@@ -87,7 +90,8 @@ const eventsFrom = (state: ModelState): ReadonlyArray<KnownEvent<string>> => {
   return events;
 };
 
-const step = (state: ModelState, event: KnownEvent<string>, nowMs: number): ModelState => {
+const step = (state: ModelState, event: KnownEvent<string>): ModelState => {
+  const nowMs = state.nowMs + 1_000;
   const allocates =
     event.kind === "read-started" ||
     event.kind === "pushed" ||
@@ -104,6 +108,7 @@ const step = (state: ModelState, event: KnownEvent<string>, nowMs: number): Mode
     cell.held.asOf.ordinal === event.ordinal;
   return {
     cell,
+    nowMs,
     stated:
       cell.held.state !== "known"
         ? null
@@ -118,6 +123,44 @@ const step = (state: ModelState, event: KnownEvent<string>, nowMs: number): Mode
           ? state.openReads.filter((ordinal) => ordinal !== event.ordinal)
           : state.openReads,
   };
+};
+
+/**
+ * Two states share a key when they differ only in their times and by an order-preserving
+ * renumbering of their ordinals. `advance` compares ordinals only with each other and never reads
+ * a time; a time it writes is `nowMs`, newer than every time held, or an event's `atMs`, which
+ * follows its ordinal. So every sequence from one state checks as it does from the other.
+ */
+const keyOf = (state: ModelState): string => {
+  const { cell } = state;
+  const ordinals = [...state.openReads, state.nextOrdinal, cell.lastInvalidation];
+  if (cell.lastReadStart !== null) ordinals.push(cell.lastReadStart);
+  const held = cell.held;
+  if (held.state === "known" || held.state === "gone") ordinals.push(held.asOf.ordinal);
+  const ranks = [...new Set(ordinals)].sort((left, right) => left - right);
+  // Ranks from 0: an invalidation older than every other ordinal compares like none at all.
+  const rank = (ordinal: number) => ranks.indexOf(ordinal);
+  return JSON.stringify(
+    { cell, nextOrdinal: state.nextOrdinal, openReads: state.openReads, stated: state.stated },
+    (name, value: unknown) => {
+      switch (name) {
+        case "atMs":
+        case "sinceMs":
+          return undefined;
+        case "ordinal":
+        case "lastReadStart":
+        case "lastInvalidation":
+        case "nextOrdinal":
+          return typeof value === "number" ? rank(value) : value;
+        case "openReads":
+          return (value as ReadonlyArray<number>).map(rank);
+        case "value":
+          return typeof value === "string" ? value.replace(/\d+$/, (n) => String(rank(+n))) : value;
+        default:
+          return value;
+      }
+    },
+  );
 };
 
 const stampOf = (held: Known<string>): number | null =>
@@ -215,35 +258,29 @@ const violations = (
 
 describe("Known monotonicity (DESIGN §3.3 M1–M3, M5, M7) over enumerated event sequences", () => {
   for (const scope of ["account", null] as const) {
-    it(`holds for every sequence to depth ${DEPTH} (scope ${scope ?? "none"})`, () => {
-      let layer = new Map<string, { state: ModelState; path: ReadonlyArray<string> }>();
-      const initial: ModelState = {
-        cell: newCell(scope),
-        nextOrdinal: 1,
-        openReads: [],
-        stated: null,
-      };
-      layer.set(JSON.stringify(initial), { state: initial, path: [] });
-      const found: Array<string> = [];
-      let transitions = 0;
-      for (let depth = 1; depth <= DEPTH && found.length === 0; depth += 1) {
-        const nowMs = 100_000 + depth * 1_000;
-        const nextLayer = new Map<string, { state: ModelState; path: ReadonlyArray<string> }>();
-        for (const { state, path } of layer.values()) {
-          for (const event of eventsFrom(state)) {
-            const after = step(state, event, nowMs);
-            transitions += 1;
-            const trail = [...path, JSON.stringify(event)];
-            for (const violation of violations(state.cell, event, after.cell, after.stated)) {
-              found.push(`${violation}\n  after ${trail.join("\n  ")}`);
-            }
-            nextLayer.set(JSON.stringify(after), { state: after, path: trail });
-          }
-        }
-        layer = nextLayer;
-      }
-      expect(found.slice(0, 3)).toEqual([]);
-      expect(transitions).toBeGreaterThan(10_000);
-    });
+    it(
+      `holds for every sequence to depth ${DEPTH} (scope ${scope ?? "none"})`,
+      { timeout: 30_000 },
+      () => {
+        const root: ModelState = {
+          cell: newCell(scope),
+          nextOrdinal: 1,
+          openReads: [],
+          stated: null,
+          nowMs: 100_000,
+        };
+        const report = explore({
+          roots: [root],
+          depth: DEPTH,
+          events: eventsFrom,
+          step: (state, event) => ({ state: step(state, event) }),
+          key: keyOf,
+          check: (before, event, { state: after }) =>
+            violations(before.cell, event, after.cell, after.stated),
+        });
+        expect(report.violations.slice(0, 3)).toEqual([]);
+        expect(report.transitions).toBeGreaterThan(10_000);
+      },
+    );
   }
 });
