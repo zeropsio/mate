@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import type { Known } from "../knowledge/known.ts";
+import type { Known, Shown } from "../knowledge/known.ts";
 import type { FacetAdmission, ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
 import { project, service, stamp } from "../data/__fixtures__/index.ts";
 import type { ZeropsCandidate } from "../candidates.ts";
@@ -504,5 +504,34 @@ describe("admittedOnly", () => {
   it("passes a listing it does not hold through", () => {
     const unread: Known<ReadonlyArray<string>> = { state: "unread", waitingFor: "access-grant" };
     expect(admittedOnly(unread, () => false)).toBe(unread);
+  });
+});
+
+// DESIGN §3.1, §4.2 G12: while the account's access lapses, the listing is withheld at its read.
+describe("a withheld listing", () => {
+  const withheld: Shown<ReadonlyArray<CandidateRow>> = {
+    state: "withheld",
+    reason: "access-lapsed",
+    cause: null,
+  };
+  const surface = {
+    subject: "your projects",
+    entity: "project",
+    source: "zerops" as const,
+    checking: null,
+    negative: null,
+  };
+
+  it("holds no row, finds none absent, names no bot, and never says none", () => {
+    expect(heldCandidates(withheld)).toEqual({ rows: [], complete: false });
+    expect(candidatesComplete(withheld)).toBe(false);
+    expect(findCandidate(withheld, () => true)).toEqual({ kind: "unknown" });
+    expect(takenBotNames(withheld)).toEqual({ names: [], complete: false });
+    expect(listsNoProject(withheld, () => true)).toBe(false);
+    expect(presentCandidates(withheld, (entry: CandidateRow) => entry.key)).toBe(withheld);
+  });
+
+  it("leaves its words to the app's one lapse banner", () => {
+    expect(candidatesNotice(withheld, surface, 0)).toBeNull();
   });
 });
