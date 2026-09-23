@@ -72,6 +72,19 @@ describe("selectCandidates", () => {
     });
   });
 
+  it("says nothing negative of a row whose presence is unknown: no reason, no missing container", () => {
+    const selected = selectCandidates(known([projectRecord()]), () => ({
+      state: "unread",
+      waitingFor: null,
+    }));
+
+    expect(selected).toMatchObject({ state: "known" });
+    const [row] = selected.state === "known" ? selected.value : [];
+    expect(row).toBeDefined();
+    expect(row).not.toHaveProperty("reason");
+    expect(row).not.toHaveProperty("missingContainer");
+  });
+
   const unread = (): Known<ReadonlyArray<ServiceRecord>> => ({ state: "unread", waitingFor: null });
 
   it.each<{
@@ -91,9 +104,19 @@ describe("selectCandidates", () => {
       row: { key: "project-1", presence: "unknown" },
     },
     {
-      name: "a partial services listing leaves presence unknown",
+      name: "a partial services listing with no zcp container read leaves presence unknown",
       services: known([], "partial"),
       row: { key: "project-1", presence: "unknown" },
+    },
+    {
+      name: "a partial services listing that holds a zcp container is present at its origin",
+      services: known([zcpRecord(project())], "partial"),
+      row: {
+        key: "project-1:service-1",
+        group: "ready",
+        containerOrigin: "https://zcp-24cb-8080.prg1.zerops.app",
+        presence: "known",
+      },
     },
     {
       name: "a complete listing with a zcp container is present at its origin, not connected",

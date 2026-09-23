@@ -3,15 +3,17 @@
  * region P).
  *
  * Pure: it takes the inventory's `Known` reads and derives one row per zcp container, with no
- * socket phase or health mixed in. A row whose project's service listing is not a known, complete
- * read has presence `unknown` — the inventory has not said whether a container is there, so the
- * row is neither "no container" nor "unavailable". Which rows are connected is the caller's join
- * with its environments.
+ * socket phase or health mixed in. A row whose project's service listing is not known, or is
+ * partial with no zcp container read, has presence `unknown`: the inventory has not said whether
+ * a container is there. Such a row sits in the `unavailable` bucket only because that bucket
+ * offers no verb; it carries no reason and no missing container, so nothing negative can be read
+ * off it, and a surface reads its presence before its group. Which rows are connected is the
+ * caller's join with its environments.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ZeropsService } from "../api.ts";
-import { deriveZeropsCandidates, type ZeropsCandidate } from "../candidates.ts";
+import { deriveZeropsCandidates, isZcpService, type ZeropsCandidate } from "../candidates.ts";
 import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
 import type { ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
 import type { Known } from "../knowledge/known.ts";
@@ -23,18 +25,23 @@ export type CandidateRow = ZeropsCandidate & { readonly presence: CandidatePrese
 
 const NO_CONNECTIONS: ReadonlyMap<string, EnvironmentId> = new Map();
 
-/** A project's services, decoded, when the listing is known and complete; `null` otherwise. */
+/**
+ * The project's services that decide its rows; `null` while that is not known. A known, complete
+ * listing decides them all, including "no container". A partial one decides only the containers
+ * it has read: a zcp service it holds is there, and one it lacks may still be unread.
+ */
 function readServices(
   services: Known<ReadonlyArray<ServiceRecord>>,
 ): ReadonlyArray<ZeropsService> | null {
-  if (services.state !== "known" || services.coverage !== "complete") return null;
+  if (services.state !== "known") return null;
   const decoded: ZeropsService[] = [];
+  let complete = services.coverage === "complete";
   for (const record of services.value) {
     const service = serviceRecordToZeropsService(record);
-    if (service === null) return null;
-    decoded.push(service);
+    if (service === null) complete = false;
+    else decoded.push(service);
   }
-  return decoded;
+  return complete || decoded.some(isZcpService) ? decoded : null;
 }
 
 /**
@@ -61,9 +68,12 @@ export function selectCandidates(
       continue;
     }
     const services = readServices(servicesOf(record.ref));
-    const presence: CandidatePresence = services === null ? "unknown" : "known";
+    if (services === null) {
+      rows.push({ key: project.id, project, group: "unavailable", presence: "unknown" });
+      continue;
+    }
     for (const candidate of deriveZeropsCandidates(project, services, NO_CONNECTIONS))
-      rows.push({ ...candidate, presence });
+      rows.push({ ...candidate, presence: "known" });
   }
   return { ...projects, value: rows, coverage: complete ? "complete" : "partial" };
 }
