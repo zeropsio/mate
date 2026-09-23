@@ -5,8 +5,8 @@
  * - An origin is `unread` until its first probe answers. A descriptor's `zerops.identity` keeps
  *   `unknown` apart from `failed`: `failed` means the Mate could not check, never a refusal.
  * - Reads are pulled: on the cadence each container's level asks for (every 2 s while it comes
- *   up, 10 s rising to 60 s once that is overdue), and once more whenever a push, a connect
- *   failure or a wake asks (`request`).
+ *   up, 10 s rising to 60 s once that is overdue or while only failed probes say it is coming
+ *   up), and once more whenever a push, a connect failure or a wake asks (`request`).
  * - The pool runs at most `PROBE_POOL_SIZE` probes at once, each ending by its
  *   `PROBE_DEADLINE_MS` as `unreachable`. Slots go by priority and, within one, round-robin to
  *   the origin started least recently; overdue origins share at most `OVERDUE_PROBE_SLOTS`, so
@@ -36,7 +36,11 @@ export type ProbeReading =
   /** No usable answer before the deadline: the container is away, or restarting. */
   | { readonly kind: "unreachable" };
 
-/** How often a container's level asks for its origin to be read. */
+/**
+ * How often a container's level asks for its origin to be read. An `overdue` poll backs off
+ * (`OVERDUE_POLL_INTERVALS_MS`) within the pool's overdue share: the level ran past its cap, or
+ * nothing but failed probes says the container is coming up.
+ */
 export type ProbeCadence =
   | { readonly kind: "poll"; readonly overdue: boolean }
   | { readonly kind: "on-demand" }
@@ -52,7 +56,7 @@ export const PROBE_DEADLINE_MS = 8_000;
 /** Overdue origins never hold more of the pool than this. */
 export const OVERDUE_PROBE_SLOTS = 2;
 export const POLL_INTERVAL_MS = 2_000;
-/** Past its cap, a container is read at these intervals, staying on the last. */
+/** An overdue poll reads at these intervals, staying on the last. */
 export const OVERDUE_POLL_INTERVALS_MS: ReadonlyArray<number> = [10_000, 20_000, 40_000, 60_000];
 export const HIDDEN_PROBE_PAUSE_MS = 60_000;
 

@@ -42,19 +42,22 @@ const ROWS: ReadonlyArray<{
   {
     name: "booting on a container answering /healthz",
     machine: machine(
-      { level: "booting", since: SINCE },
+      { level: "booting", since: SINCE, guessed: false },
       read({ kind: "initializing", initAt: null }),
     ),
     health: "initializing",
   },
   {
     name: "booting on a container that does not answer",
-    machine: machine({ level: "booting", since: SINCE }, read({ kind: "unreachable" })),
+    machine: machine(
+      { level: "booting", since: SINCE, guessed: true },
+      read({ kind: "unreachable" }),
+    ),
     health: "unreachable",
   },
   {
     name: "a boot past its cap",
-    machine: machine({ level: "booting", since: SINCE }, { overdue: true }),
+    machine: machine({ level: "booting", since: SINCE, guessed: false }, { overdue: true }),
     health: "stalled",
   },
   {

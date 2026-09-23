@@ -1142,7 +1142,8 @@ describe("the post-grant stage's Mate environments", () => {
           const probed = () => rig.probes.length;
           const unanswered = () => environments.index().unanswered;
           yield* answerProbe(rig, named.origin, answering(ENV_B, named.projectId));
-          // Unreachable, it boots and is read again at once; a Mate still coming up answers /healthz only.
+          // Unreachable, it boots on a guess and is read again at once; a Mate still coming up
+          // answers /healthz only.
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
           const beforeSweep = probed();
@@ -1153,19 +1154,16 @@ describe("the post-grant stage's Mate environments", () => {
           // The read that left a moment after the first failure does not answer for the sweep.
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
           const aMomentApart = unanswered();
-          // A poll interval on, each landing lets the poll read the other Mate again.
-          yield* clock.advance(2 * SECOND);
+          // Its first backed-off poll is 10 s on; a landing lets the poll read it.
+          yield* clock.advance(10 * SECOND);
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-          yield* clock.advance(2 * SECOND);
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-          const polled = unanswered();
-          yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
 
-          expect({ sweptAtOnce, aMomentApart, polled, comingUp: unanswered() }).toEqual({
+          // The Mate coming up read again on the sweep's watch has still not answered.
+          expect({ sweptAtOnce, aMomentApart, polled: unanswered() }).toEqual({
             sweptAtOnce: 0,
             aMomentApart: [down.key, coming.key],
             polled: [coming.key],
-            comingUp: [coming.key],
           });
           expect(environments.index().failed).toEqual([down.key, coming.key]);
         }),

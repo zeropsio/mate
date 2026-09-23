@@ -55,7 +55,15 @@ export type ContainerLevel =
   | { readonly level: "ready" }
   | { readonly level: "creating"; readonly since: Instant }
   | { readonly level: "provisioning"; readonly since: Instant }
-  | { readonly level: "booting"; readonly since: Instant }
+  | {
+      readonly level: "booting";
+      readonly since: Instant;
+      /**
+       * Only failed probes say it is coming up: no platform transition, no process, no `/healthz`
+       * answering. Evidence of any of those clears it for the rest of the boot.
+       */
+      readonly guessed: boolean;
+    }
   | {
       readonly level: "restarting";
       readonly by: "platform" | "you";
@@ -175,11 +183,13 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
 
 /**
  * How often the probe store reads this container (§4.5 probes): every 2 s while it comes up,
- * never while a socket proves it up, and otherwise only when a push, a failure or a wake asks.
+ * backing off past its cap or while only failed probes say it is coming up, never while a socket
+ * proves it up, and otherwise only when a push, a failure or a wake asks.
  */
 export const probeCadence = (machine: ContainerMachine): ProbeCadence => {
   switch (machine.state.level) {
     case "booting":
+      return { kind: "poll", overdue: machine.overdue || machine.state.guessed };
     case "restarting":
     case "updating":
       return { kind: "poll", overdue: machine.overdue };
@@ -289,21 +299,32 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
   if (machine.connectedSince !== null) return { level: "ready" };
   const current = machine.state;
   if (reading === null || machine.reading === null) return current;
-  const booting: ContainerLevel =
-    current.level === "booting" ? current : { level: "booting", since: machine.reading.sentAt };
   switch (reading.kind) {
     case "ready":
       return { level: "ready" };
     case "initializing":
+      return booting(machine, false);
     case "unreachable":
-      return booting;
+      return booting(machine, true);
     case "predates-mate":
       // A restart of ours already came back to this: the zcp release there does not carry Mate.
       if (machine.restartTried) return { level: "not-yet-available" };
       // Unread or unreadable, the flag keeps the container booting: never Enable on a guess.
       if (machine.mateFlag === false) return { level: "needs-enable" };
-      return machine.mateFlag === true ? { level: "needs-update" } : booting;
+      return machine.mateFlag === true ? { level: "needs-update" } : booting(machine, true);
   }
+};
+
+/**
+ * The boot a reading puts the container in, from when its probe was sent. `guessed` when the
+ * reading says nothing of Mate coming up; a restart that just ended, or a process the platform
+ * runs against it, says it is.
+ */
+const booting = (machine: ContainerMachine, guessed: boolean): ContainerLevel => {
+  const current = machine.state;
+  const guess = guessed && current.level !== "restarting" && !machine.processRunning;
+  if (current.level === "booting") return guess ? current : { ...current, guessed: false };
+  return { level: "booting", since: machine.reading!.sentAt, guessed: guess };
 };
 
 /** A restart of ours or the platform's is over once a read fact proves the container back. */
@@ -416,7 +437,7 @@ const settleFacts = (machine: ContainerMachine, now: Instant): ContainerMachine 
       state.level === "inactive"
     ) {
       // The platform brought it up: only a probe sent from now on says how far Mate got.
-      return moveTo(machine, { level: "booting", since: now });
+      return moveTo(machine, { level: "booting", since: now, guessed: false });
     }
   }
   switch (state.level) {

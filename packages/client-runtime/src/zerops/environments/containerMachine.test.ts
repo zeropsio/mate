@@ -5,6 +5,7 @@ import type { Instant } from "../data/access/grant.ts";
 import {
   containerVerdict,
   initialContainer,
+  probeCadence,
   transitionContainer,
   type ContainerEvent,
   type ContainerMachine,
@@ -263,6 +264,63 @@ describe("container machine (DESIGN §4.5)", () => {
     const linked = drive([{ type: "LINK", connected: true }], booting);
     expect(containerVerdict(linked.machine)).toEqual({ level: "ready" });
   });
+
+  const CADENCE_ROWS: ReadonlyArray<{
+    readonly name: string;
+    readonly events: ReadonlyArray<ContainerEvent>;
+    readonly cadence: ReturnType<typeof probeCadence>;
+  }> = [
+    {
+      name: "an ACTIVE container that has only failed probes backs off from the first",
+      events: [active, probed({ kind: "unreachable" }, START_MS)],
+      cadence: { kind: "poll", overdue: true },
+    },
+    {
+      name: "a process the platform runs against it is a boot on its way",
+      events: [
+        active,
+        probed({ kind: "unreachable" }, START_MS),
+        { type: "PROCESS", running: true },
+      ],
+      cadence: { kind: "poll", overdue: false },
+    },
+    {
+      name: "and stays one once the process ends",
+      events: [
+        active,
+        probed({ kind: "unreachable" }, START_MS),
+        { type: "PROCESS", running: true },
+        { type: "PROCESS", running: false },
+      ],
+      cadence: { kind: "poll", overdue: false },
+    },
+    {
+      name: "a service the platform brought up is read every 2 s",
+      events: [
+        { type: "PLATFORM", status: { project: "ACTIVE", service: "STARTING" } },
+        active,
+        probed({ kind: "unreachable" }, START_MS + 2_000),
+      ],
+      cadence: { kind: "poll", overdue: false },
+    },
+    {
+      name: "a /healthz answering says Mate is on its way",
+      events: [
+        active,
+        probed({ kind: "unreachable" }, START_MS),
+        probed({ kind: "initializing", initAt: null }, START_MS + 1_000),
+      ],
+      cadence: { kind: "poll", overdue: false },
+    },
+  ];
+
+  for (const row of CADENCE_ROWS) {
+    it(`a boot is read as its evidence asks: ${row.name}`, () => {
+      const run = drive(row.events);
+      expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
+      expect(probeCadence(run.machine)).toEqual(row.cadence);
+    });
+  }
 
   it("a container predating Mate is Enable only on a flag read off", () => {
     const predates = transitionContainer(

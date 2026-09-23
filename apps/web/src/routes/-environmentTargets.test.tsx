@@ -917,8 +917,8 @@ describe("the descriptor index", () => {
     await rig.fail(dead.origin);
     await rig.fail(alsoDead.origin);
     look();
-    // The poll reads each again a poll interval on.
-    await rig.advance(2_000);
+    // A boot only failed reads suggest: the poll reads each again at its first backed-off interval.
+    await rig.advance(10_000);
     await rig.fail(dead.origin);
     look();
     await rig.fail(alsoDead.origin);
