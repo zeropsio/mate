@@ -363,10 +363,6 @@ const accountRefusal = (machine: GrantMachine, ctx: GrantContext): GrantCapabili
   }
 };
 
-/** Door and Gitea throwaway mints (§4.3, Phase 0–1): the account window only, no role. */
-export const grantIdentityMint = (machine: GrantMachine, ctx: GrantContext): GrantCapability =>
-  accountRefusal(machine, ctx) ?? ALLOWED;
-
 const projectRefusal = (
   machine: GrantMachine,
   projectId: ZeropsProjectId,

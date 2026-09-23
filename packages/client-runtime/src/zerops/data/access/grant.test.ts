@@ -13,7 +13,6 @@ import {
   type ProjectRef,
 } from "../types.ts";
 import {
-  grantIdentityMint,
   grantPlatformRead,
   grantPlatformWrite,
   grantRoundInFlight,
@@ -291,7 +290,6 @@ describe("access grant reducer", () => {
     expect(sim.write(A)).toEqual({ allowed: true });
     expect(sim.write(B)).toEqual({ allowed: false, reason: "role-denies", waitable: false });
     expect(sim.read(B)).toEqual({ allowed: true });
-    expect(grantIdentityMint(sim.state, sim.ctx)).toEqual({ allowed: true });
   });
 
   it("stamps evidence when the round starts, so authority ends 15 min after the start on either clock (G2, T-L4)", () => {
@@ -303,12 +301,7 @@ describe("access grant reducer", () => {
 
     const sleeper = grantedSim(40 * SECOND);
     sleeper.shiftWall(WINDOW - 40 * SECOND);
-    expect(sleeper.write(A).allowed).toBe(false);
-    expect(grantIdentityMint(sleeper.state, sleeper.ctx)).toEqual({
-      allowed: false,
-      reason: "access-lapsed",
-      waitable: true,
-    });
+    expect(sleeper.write(A)).toEqual({ allowed: false, reason: "access-lapsed", waitable: true });
   });
 
   it("keeps a tab hidden across the renewal granted, with no lapse and writes open throughout (T-L1)", () => {

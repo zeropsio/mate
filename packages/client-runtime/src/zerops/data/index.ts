@@ -1,3 +1,4 @@
+export * from "./access/capabilities.ts";
 export * from "./access/grant.ts";
 export * from "./access/grantDriver.ts";
 export * from "./access/verifier.ts";
