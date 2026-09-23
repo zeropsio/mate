@@ -170,7 +170,7 @@ export interface ZeropsResourceLease<Request extends ZeropsResourceRequest> {
   readonly request: Request;
   /** The resource read through withholding; a released lease shows nothing. */
   readonly snapshot: Effect.Effect<Shown<ZeropsResourceValue<Request>>>;
-  /** The first state with no read in flight: known, failed, gone or withheld. */
+  /** The first state with no read in flight: known, failed, gone or withheld; interrupted by release. */
   readonly awaitSettled: Effect.Effect<Shown<ZeropsResourceValue<Request>>>;
   /** Reads again now, once for every lease, when the last read failed. */
   readonly retry: Effect.Effect<boolean, ZeropsResourceAdmissionError>;
@@ -819,16 +819,21 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     Effect.gen(function* () {
       const leaseScope = yield* Scope.Scope;
       const waiters = new Set<Demand>();
+      const closeWaiters = () => {
+        for (const waiter of waiters) waiter.close();
+      };
       const opened = open(request, {
         publish: (shown) => {
           for (const waiter of waiters) waiter.publish(shown);
         },
-        close: () => {
-          for (const waiter of waiters) waiter.close();
-        },
+        close: closeWaiters,
       });
       if ("_tag" in opened) return yield* Effect.fail(opened);
-      const release = Effect.sync(opened.release);
+      // A released lease is told nothing more, so its waits end with it.
+      const release = Effect.sync(() => {
+        opened.release();
+        closeWaiters();
+      });
       yield* Scope.addFinalizer(leaseScope, release);
       type Value = Shown<ZeropsResourceValue<typeof request>>;
       const shown = () => opened.shown() as Value;

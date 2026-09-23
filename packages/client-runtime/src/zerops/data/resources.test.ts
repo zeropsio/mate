@@ -535,6 +535,29 @@ describe("makeZeropsResourceBroker", () => {
     }),
   );
 
+  it.effect("releasing a lease interrupts a wait for its settled state", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.never }),
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const waiting = yield* Effect.forkChild(lease.awaitSettled);
+      yield* Effect.yieldNow;
+
+      yield* lease.release;
+      yield* Effect.yieldNow;
+
+      const exit = waiting.pollUnsafe();
+      expect(exit !== undefined && Exit.hasInterrupts(exit)).toBe(true);
+      yield* Scope.close(leaseScope, Exit.void);
+      yield* broker.shutdown;
+    }),
+  );
+
   it.effect("routes every named resource through its restricted adapter result", () =>
     Effect.gen(function* () {
       const scope = accountScope();
