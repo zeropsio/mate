@@ -4,8 +4,8 @@
  *
  * Read on demand like the history, not on the sixty-second clock — a build
  * nobody is looking at is a request per group per minute for a pane that is
- * usually shut. With no Gitea token to read with it says so, and reads once
- * one is back. A build already answered keeps its answer while the token is
+ * usually shut. With no Gitea token to read with — none held, or a 401 that
+ * no token recovered — it says so, and reads once one is back. A build already answered keeps its answer while the token is
  * gone and while it is read again (DESIGN §4.6: a 401 never blanks what was
  * read); a refresh reads it afresh.
  *
@@ -89,7 +89,12 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
       return;
     }
     const key = JSON.stringify([giteaOrigin, owner, repo, sha, generation]);
-    const client = readable ? giteaClientFor(giteaOrigin) : null;
+    let unauthorized = false;
+    const client = readable
+      ? giteaClientFor(giteaOrigin, () => {
+          unauthorized = true;
+        })
+      : null;
     if (client === null) {
       setHeld(holdFor(key, { kind: "no-gitea" }));
       return;
@@ -113,7 +118,12 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
         }
       })
       .catch((error: unknown) => {
-        if (live) setHeld({ key, state: { kind: "failed", reason: zeropsErrorMessage(error) } });
+        if (!live) return;
+        setHeld(
+          unauthorized
+            ? holdFor(key, { kind: "no-gitea" })
+            : { key, state: { kind: "failed", reason: zeropsErrorMessage(error) } },
+        );
       });
     return () => {
       live = false;

@@ -8,7 +8,8 @@
  *
  * A read that fails answers its reason rather than nothing, because this is
  * the whole of what the surface shows — there is no last-good list to keep.
- * With no Gitea token to read with it says so, and reads once one is back. A
+ * With no Gitea token to read with — none held, or a 401 that no token
+ * recovered — it says so, and reads once one is back. A
  * history already answered keeps its answer while the token is gone and while
  * it is read again (DESIGN §4.6: a 401 never blanks what was read).
  */
@@ -71,7 +72,12 @@ export function useZeropsRepositoryCommits(
       return;
     }
     const key = JSON.stringify([giteaOrigin, owner, repo]);
-    const client = readable ? giteaClientFor(giteaOrigin) : null;
+    let unauthorized = false;
+    const client = readable
+      ? giteaClientFor(giteaOrigin, () => {
+          unauthorized = true;
+        })
+      : null;
     if (client === null) {
       setHeld(holdFor(key, { kind: "no-gitea" }));
       return;
@@ -86,12 +92,20 @@ export function useZeropsRepositoryCommits(
       client.listTags(owner, GROUP_REPOSITORY).catch(() => []),
     ])
       .then(([commits, tags]) => {
-        if (live) {
-          setHeld({ key, state: { kind: "read", commits, releases: releaseTagsByCommit(tags) } });
+        if (!live) return;
+        if (unauthorized) {
+          setHeld(holdFor(key, { kind: "no-gitea" }));
+          return;
         }
+        setHeld({ key, state: { kind: "read", commits, releases: releaseTagsByCommit(tags) } });
       })
       .catch((error: unknown) => {
-        if (live) setHeld({ key, state: { kind: "failed", reason: zeropsErrorMessage(error) } });
+        if (!live) return;
+        setHeld(
+          unauthorized
+            ? holdFor(key, { kind: "no-gitea" })
+            : { key, state: { kind: "failed", reason: zeropsErrorMessage(error) } },
+        );
       });
     return () => {
       live = false;
@@ -139,7 +153,12 @@ export function useZeropsChangeCommits(
       return;
     }
     const key = JSON.stringify([giteaOrigin, owner, repo, base, head]);
-    const client = readable ? giteaClientFor(giteaOrigin) : null;
+    let unauthorized = false;
+    const client = readable
+      ? giteaClientFor(giteaOrigin, () => {
+          unauthorized = true;
+        })
+      : null;
     if (client === null) {
       setHeld(holdFor(key, { kind: "no-gitea" }));
       return;
@@ -158,7 +177,12 @@ export function useZeropsChangeCommits(
         }
       })
       .catch((error: unknown) => {
-        if (live) setHeld({ key, state: { kind: "failed", reason: zeropsErrorMessage(error) } });
+        if (!live) return;
+        setHeld(
+          unauthorized
+            ? holdFor(key, { kind: "no-gitea" })
+            : { key, state: { kind: "failed", reason: zeropsErrorMessage(error) } },
+        );
       });
     return () => {
       live = false;

@@ -3,18 +3,29 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useZeropsDeployRun, type ZeropsDeployRunState } from "./useZeropsDeployRun";
 
-/** Whether this tab can read Gitea now. */
-const gitea = vi.hoisted(() => ({ readable: false }));
+/**
+ * Whether this tab can read Gitea now, and whether its reads meet a 401 that no token recovered —
+ * the reacquire failed, or outlasted the request's wait.
+ */
+const gitea = vi.hoisted(() => ({ readable: false, unauthorizedOnRead: false }));
 
 vi.mock("./accountGiteaSessions", () => ({
   useGiteaReadable: () => gitea.readable,
-  giteaClientFor: () =>
-    gitea.readable
+  giteaClientFor: (_origin: string, onUnauthorized?: () => void) => {
+    const read = async <T>(answer: T): Promise<T> => {
+      if (gitea.unauthorizedOnRead) {
+        onUnauthorized?.();
+        throw new Error("You are not signed in to Gitea.");
+      }
+      return answer;
+    };
+    return gitea.readable
       ? {
-          listActionRuns: async () => [{ id: 4, run_number: 12, head_sha: "abc123" }],
-          listActionJobs: async () => [],
+          listActionRuns: () => read([{ id: 4, run_number: 12, head_sha: "abc123" }]),
+          listActionJobs: () => read([]),
         }
-      : null,
+      : null;
+  },
 }));
 
 class TestNode {
@@ -84,6 +95,7 @@ function installTestDom(): void {
 describe("useZeropsDeployRun", () => {
   afterEach(() => {
     gitea.readable = false;
+    gitea.unauthorizedOnRead = false;
     vi.unstubAllGlobals();
   });
 
@@ -151,6 +163,50 @@ describe("useZeropsDeployRun", () => {
       root.render(createElement(Probe, { render: 1 }));
     });
     gitea.readable = true;
+    await act(async () => {
+      root.render(createElement(Probe, { render: 2 }));
+    });
+
+    expect(seen.slice(readAt).map((state) => state.kind)).toEqual(
+      seen.slice(readAt).map(() => "read"),
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps a build it read when the re-read meets a 401 that no token recovered (§4.6)", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsDeployRunState> = [];
+    const request = {
+      giteaOrigin: "https://gitea.example.test",
+      owner: "harbor",
+      repo: "app",
+      sha: "abc123",
+    };
+
+    function Probe(_props: { readonly render: number }) {
+      seen.push(useZeropsDeployRun(request).state);
+      return null;
+    }
+
+    gitea.readable = true;
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe, { render: 0 }));
+    });
+    expect(seen.at(-1)?.kind).toBe("read");
+    const readAt = seen.length - 1;
+
+    gitea.readable = false;
+    await act(async () => {
+      root.render(createElement(Probe, { render: 1 }));
+    });
+    // The token is back, and the re-read's own 401 is not recovered in its wait.
+    gitea.readable = true;
+    gitea.unauthorizedOnRead = true;
     await act(async () => {
       root.render(createElement(Probe, { render: 2 }));
     });
