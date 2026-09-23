@@ -257,6 +257,25 @@ function onStorageChanged(
   }
 }
 
+/**
+ * A probed session belongs to the open account's login: the probe named this
+ * tab's principal, and the owner record carries this tab's generation (or
+ * none, for a session an older build stored).
+ */
+function isSameLogin(
+  state: Extract<ZeropsSessionState, { status: "signed-in" }>,
+  verdict: ZeropsPrincipalVerdict,
+  owner: ZeropsSessionOwner | null,
+): boolean {
+  return (
+    verdict.kind === "user" &&
+    verdict.user.id === state.user.id &&
+    (owner === null ||
+      (owner.userId === state.user.id &&
+        (state.generation === null || owner.loginGeneration === state.generation)))
+  );
+}
+
 function onProbed(
   state: Extract<ZeropsSessionState, { status: "signed-in" }>,
   token: Extract<ZeropsTokenState, { status: "adopting" }>,
@@ -272,13 +291,7 @@ function onProbed(
       effects: [...cancel, { kind: "schedule", at: retryAtMs }],
     };
   }
-  const sameLogin =
-    verdict.kind === "user" &&
-    verdict.user.id === state.user.id &&
-    (owner === null ||
-      (owner.userId === state.user.id &&
-        (state.generation === null || owner.loginGeneration === state.generation)));
-  if (!sameLogin) return verify(state, token.next);
+  if (!isSameLogin(state, verdict, owner)) return verify(state, token.next);
   return {
     state: signedIn(state.user, state.generation ?? owner?.loginGeneration ?? null),
     effects: [...cancel, { kind: "adopt", session: token.next }],
@@ -452,9 +465,10 @@ export interface ZeropsSessionDriver {
   readonly signedIn: (user: ZeropsUser) => void;
   /**
    * The client's `renewSession` hook. Under the refresh lock it re-reads the
-   * stored session: while it still holds `stale`, `refresh` runs; a session
-   * another tab renewed for this tab's login is handed back instead; anything
-   * else is refused, and the storage event it came with closes or re-verifies.
+   * stored session: while it still holds `stale`, or storage is blocked,
+   * `refresh` runs; a session another tab renewed for this tab's login, as a
+   * probe of it proves, is handed back instead; anything else is refused, and
+   * the storage event it came with closes or re-verifies.
    */
   readonly renew: (
     stale: ZeropsSession,
@@ -596,12 +610,21 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
     renew: (stale, refresh) =>
       ports.withRefreshLock(async () => {
         const stored = await ports.loadStored();
-        if (stored === null) throw refusal();
+        if (stored === null) {
+          // Storage that holds no owner record either is blocked: the login is memory-only.
+          if (state.status === "signed-in" && ports.owner.read() === null) return refresh();
+          throw refusal();
+        }
         if (stored.accessToken === stale.accessToken) return refresh();
         // Not signed in yet: the verification this renewal serves names the principal.
         if (state.status !== "signed-in") return stored;
-        const owner = ports.owner.read();
-        if (owner?.userId === state.user.id && owner.loginGeneration === state.generation)
+        // A sign-in stores its session before it writes the owner record, so
+        // the record alone never vouches for a session: the probe names whose it is.
+        const verdict = await ports.probe(stored);
+        if (verdict.kind === "unavailable")
+          throw new ZeropsApiError("Network error contacting Zerops.", "network");
+        const current = state;
+        if (current.status === "signed-in" && isSameLogin(current, verdict, ports.owner.read()))
           return stored;
         throw refusal();
       }),

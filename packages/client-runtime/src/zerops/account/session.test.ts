@@ -534,6 +534,48 @@ describe("makeZeropsSessionDriver", () => {
       expect(refreshed).toBe(false);
     });
 
+    it("refuses another person's session while the owner record still names this login", async () => {
+      const origin = makeOrigin({ session: stored, owner });
+      const tab = origin.tab({ probe: async () => user(other) });
+      tab.driver.start();
+      await flush();
+      origin.setSession(next);
+
+      const error = await tab.driver
+        .renew(stored, async () => stored)
+        .catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(ZeropsApiError);
+      expect((error as ZeropsApiError).kind).toBe("expired-session");
+    });
+
+    it("refreshes over the network a memory-only login, where storage holds neither session nor owner record", async () => {
+      const origin = makeOrigin({ session: null, owner: null });
+      const tab = origin.tab({ owner: { read: () => null, write: () => undefined } });
+      tab.driver.start();
+      await flush();
+      tab.driver.signedIn(person);
+
+      const renewed = await tab.driver.renew(stored, async () => next);
+
+      expect(renewed).toBe(next);
+    });
+
+    it("fails as the network while the probe cannot reach the platform", async () => {
+      const origin = makeOrigin({ session: stored, owner });
+      const tab = origin.tab({ probe: async () => unavailable });
+      tab.driver.start();
+      await flush();
+      origin.setSession(next);
+
+      const error = await tab.driver
+        .renew(stored, async () => stored)
+        .catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(ZeropsApiError);
+      expect((error as ZeropsApiError).kind).toBe("network");
+    });
+
     it.each([
       ["another tab signed out", null, owner],
       ["another tab signed in anew", next, { userId: "user-1", loginGeneration: "g2" }],

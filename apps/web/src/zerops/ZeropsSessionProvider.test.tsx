@@ -376,6 +376,34 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     expect(b.tab.reloads).toBe(0);
   });
 
+  it("never replays a request with another person's session stored before its owner record", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const b = await recordingTab(harness);
+    const stale = storedToken(harness);
+    const other = harness.rest.issueSession("user-2");
+    harness.rest.expireAccessToken(stale);
+    const probes = harness.rest.hold("GET /user/info");
+
+    // Another tab's sign-in has stored its session; its owner record still names user-1.
+    harness.browser
+      .openTab()
+      .localStorage.setItem(ZEROPS_SESSION_STORAGE_KEY, JSON.stringify(other));
+    const read = b
+      .session()
+      .client.listClientProjects("org-1")
+      .catch((cause: unknown) => cause);
+    await settle();
+    expect(requestsOf(harness, b, other.accessToken)).not.toContain("GET /client/org-1/project");
+
+    probes.release();
+    await settle();
+
+    expect(await read).toBeInstanceOf(Error);
+    expect(requestsOf(harness, b, other.accessToken)).not.toContain("GET /client/org-1/project");
+    expect(b.session().user?.id).toBe("user-2");
+    expect(b.accountId()).toBe("user-2");
+  });
+
   it("closes and re-verifies when another tab signs in anew as the same person", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const a = await recordingTab(harness);
