@@ -62,8 +62,19 @@ function harness(initial?: ReadonlyMap<string, Answer>) {
 const answer = (...rows: string[]): Answer => ({ rows });
 const G1: Group = { groupId: "g1", key: "g1@1" };
 const G2: Group = { groupId: "g2", key: "g2@1" };
+const G3: Group = { groupId: "g3", key: "g3@1" };
 
 describe("createGroupAnswers", () => {
+  it("two groups are read at once", async () => {
+    const { answers, reads, settle, next } = harness();
+    answers.setGroups([G1, G2, G3]);
+    expect(reads.map((read) => read.groupId)).toEqual(["g1", "g2"]);
+    // A slot that frees takes the next due group; the other read keeps going.
+    next("g1").resolve(() => answer("g1"));
+    await settle();
+    expect(reads.map((read) => read.groupId)).toEqual(["g2", "g3"]);
+  });
+
   it("G2 resolving leaves G1's stops", async () => {
     const { answers, published, settle, next } = harness();
     answers.setGroups([G1, G2]);
@@ -200,8 +211,9 @@ describe("createGroupAnswers", () => {
     const { answers, reads, published, settle, next } = harness();
     answers.setGroups([G1, G2]);
     const slow = next("g1");
-    // Two clock ticks while the first group is still being read: neither
-    // aborts it, and neither starts a second read of anything beside it.
+    const other = next("g2");
+    // Two clock ticks while both groups are still being read: neither aborts
+    // a read, and neither starts a second read of a group beside its own.
     answers.refresh();
     answers.refresh();
     expect(slow.signal.aborted).toBe(false);
@@ -209,12 +221,13 @@ describe("createGroupAnswers", () => {
     slow.resolve(() => answer("g1 stage"));
     await settle();
     expect(published.map((entry) => entry.groupId)).toEqual(["g1"]);
-    next("g2").resolve(() => answer("g2 stage"));
+    other.resolve(() => answer("g2 stage"));
     await settle();
     expect(published.map((entry) => entry.groupId)).toEqual(["g1", "g2"]);
-    // The ticks are owed once each group is done: one more read of G1, which
-    // was read before they arrived; G2 was already due, so it is read once.
+    // The ticks are owed once each group is done: one more read of each.
+    expect(reads.map((read) => read.groupId)).toEqual(["g1", "g2"]);
     next("g1").resolve(() => answer("g1 stage, again"));
+    next("g2").resolve(() => answer("g2 stage, again"));
     await settle();
     expect(reads).toHaveLength(0);
   });

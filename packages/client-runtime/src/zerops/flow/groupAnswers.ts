@@ -1,7 +1,7 @@
 /**
  * Per-group retaining publication for the project flow (DESIGN §4.7, M3, M4, M8).
  *
- * The flow's two halves are read one group at a time, and each group is its
+ * The flow's two halves are read two groups at a time, and each group is its
  * own fact: it is published the moment its read completes, a read that fails
  * keeps the group's last answer, and a group whose inputs change is read again
  * without touching its neighbours. A clock tick asks for every group again
@@ -22,8 +22,11 @@
  *
  * @module flow/groupAnswers
  */
-import { mateDiagnostics } from "../diagnostics.ts";
+import { mateDiagnostics, type MateDiagnosticSpan } from "../diagnostics.ts";
 import { zeropsErrorMessage } from "../errors.ts";
+
+/** How many groups a pass reads at once, so one slow group does not hold up the next. */
+const GROUP_READS_AT_ONCE = 2;
 
 /**
  * What a completed read makes of the group's held answer. A read of one part
@@ -81,8 +84,11 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   >();
   /** Groups owed a whole read, in the order they became due. */
   const due = new Set<string>();
+  /** The groups a pass reads now. */
+  const reading = new Set<string>();
+  /** The pass running now, which ends when nothing is read or due. */
+  let pass: { readonly span: MateDiagnosticSpan<"flow-pass">; answered: number } | null = null;
   let tickets = 0;
-  let draining = false;
 
   /** Reads one scope of one group and accepts its answer if nothing newer was accepted. */
   const readGroup = async (groupId: string, scope: Scope | "group"): Promise<boolean> => {
@@ -127,29 +133,48 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
     return true;
   };
 
-  /** Reads every due group, one at a time; what becomes due meanwhile is read in the same run. */
-  const drain = async () => {
-    if (draining) return;
-    draining = true;
-    const span = mateDiagnostics.span("flow-pass", { pass: options.pass, groups: due.size });
-    let answered = 0;
-    try {
-      for (let groupId = first(due); groupId !== undefined; groupId = first(due)) {
-        if (controller.signal.aborted) break;
-        due.delete(groupId);
-        if (await readGroup(groupId, "group")) answered += 1;
-      }
-    } finally {
-      draining = false;
-      if (controller.signal.aborted) span.drop();
-      else span.end({ answered });
+  /** The group due longest that is not read now. */
+  const nextDue = (): string | undefined => {
+    for (const groupId of due) if (!reading.has(groupId)) return groupId;
+    return undefined;
+  };
+
+  /**
+   * Reads due groups, {@link GROUP_READS_AT_ONCE} at a time and never one group twice at once;
+   * what becomes due meanwhile is read in the same pass.
+   */
+  const drain = () => {
+    if (controller.signal.aborted) return;
+    for (
+      let groupId = reading.size < GROUP_READS_AT_ONCE ? nextDue() : undefined;
+      groupId !== undefined;
+      groupId = reading.size < GROUP_READS_AT_ONCE ? nextDue() : undefined
+    ) {
+      const current = (pass ??= {
+        span: mateDiagnostics.span("flow-pass", { pass: options.pass, groups: due.size }),
+        answered: 0,
+      });
+      due.delete(groupId);
+      reading.add(groupId);
+      void readGroup(groupId, "group")
+        .then((answered) => {
+          if (answered) current.answered += 1;
+        })
+        .finally(() => {
+          reading.delete(groupId);
+          drain();
+          if (reading.size > 0) return;
+          pass = null;
+          if (controller.signal.aborted) current.span.drop();
+          else current.span.end({ answered: current.answered });
+        });
     }
   };
 
   const schedule = (groupIds: Iterable<string>) => {
     if (controller.signal.aborted) return;
     for (const groupId of groupIds) due.add(groupId);
-    if (due.size > 0) void drain();
+    drain();
   };
 
   return {
@@ -187,8 +212,6 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
     },
   };
 }
-
-const first = (set: ReadonlySet<string>): string | undefined => set.values().next().value;
 
 /** Scopes are flat records: two name the same part when every field agrees. */
 function sameScope<Scope>(a: Scope | "group", b: Scope | "group"): boolean {
