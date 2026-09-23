@@ -167,6 +167,7 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
     connect: Effect.void,
     disconnect: Effect.void,
     retryNow: Effect.void,
+    reportStreamDefect: () => Effect.void,
   });
   const environmentRegistry = EnvironmentRegistry.of({
     entries: yield* SubscriptionRef.make<ReadonlyMap<EnvironmentId, ConnectionCatalogEntry>>(

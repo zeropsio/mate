@@ -70,6 +70,7 @@ const makeHarness = Effect.fn("TestEnvironmentRpc.makeHarness")(function* () {
   );
   const prepared = yield* SubscriptionRef.make<Option.Option<PreparedConnection>>(Option.none());
   const retryCount = yield* Ref.make(0);
+  const defectiveSessions: Array<RpcSession.RpcSession> = [];
   const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
     target: TARGET,
     state,
@@ -78,10 +79,12 @@ const makeHarness = Effect.fn("TestEnvironmentRpc.makeHarness")(function* () {
     connect: Effect.void,
     disconnect: Effect.void,
     retryNow: Ref.update(retryCount, (count) => count + 1),
+    reportStreamDefect: (defective) => Effect.sync(() => defectiveSessions.push(defective)),
   } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
   return {
     activeSession,
     retryCount,
+    defectiveSessions,
     supervisor,
   };
 });
@@ -448,6 +451,61 @@ describe("environment RPC", () => {
         expect(streams).toBe(where === "input" ? 0 : 1);
         expect(expectedFailureCount).toBe(0);
         expect(observedDefects).toEqual([defect]);
+      }),
+  );
+
+  it.effect(
+    "a defect on a subscription that reconnects on defects drops its session and resumes on the next",
+    () =>
+      Effect.gen(function* () {
+        const defect = new Error("shell frame could not be decoded");
+        const subscriptions: Array<string> = [];
+        const observedDefects: Array<unknown> = [];
+        const client = (name: string, stream: Stream.Stream<never>) =>
+          ({
+            [WS_METHODS.subscribeTerminalEvents]: () => {
+              subscriptions.push(name);
+              return stream;
+            },
+          }) as unknown as WsRpcProtocolClient;
+        const { activeSession, defectiveSessions, supervisor } = yield* makeHarness();
+        const first = session(client("first", Stream.die(defect)));
+        yield* SubscriptionRef.set(activeSession, Option.some(first));
+        const fiber = yield* subscribe(
+          WS_METHODS.subscribeTerminalEvents,
+          {},
+          {
+            onDefect: (cause) =>
+              Effect.sync(() => {
+                observedDefects.push(Cause.squash(cause));
+              }),
+            reconnectOnDefect: true,
+          },
+        ).pipe(
+          Stream.runDrain,
+          Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+          Effect.exit,
+          Effect.forkChild,
+        );
+        for (let attempt = 0; attempt < 100 && defectiveSessions.length < 1; attempt += 1) {
+          yield* Effect.yieldNow;
+        }
+
+        expect(defectiveSessions).toEqual([first]);
+        expect(observedDefects).toEqual([defect]);
+        expect(fiber.pollUnsafe()).toBeUndefined();
+
+        yield* SubscriptionRef.set(
+          activeSession,
+          Option.some(session(client("second", Stream.never))),
+        );
+        for (let attempt = 0; attempt < 100 && subscriptions.length < 2; attempt += 1) {
+          yield* Effect.yieldNow;
+        }
+        yield* Fiber.interrupt(fiber);
+
+        expect(subscriptions).toEqual(["first", "second"]);
+        expect(defectiveSessions).toEqual([first]);
       }),
   );
 
