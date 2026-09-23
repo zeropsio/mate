@@ -402,6 +402,28 @@ export const resolveServerConfig = (
         zeropsFixtures,
       });
     }
+    const zerops =
+      zeropsFixtures === undefined
+        ? resolveZeropsEnvironment({
+            projectId: env.zeropsProjectId,
+            apiHost: env.zeropsApiHost,
+            allowedOrigins: env.zeropsAllowedOrigins,
+            publicOrigin: env.zeropsPublicOrigin,
+            apiToken: env.zeropsApiToken,
+            roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
+            sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
+          })
+        : undefined;
+    if (
+      zerops !== undefined &&
+      env.zeropsRoleRecheckSeconds !== undefined &&
+      Duration.toSeconds(zerops.roleRecheckInterval) < env.zeropsRoleRecheckSeconds
+    ) {
+      yield* Effect.logWarning("Zerops role re-check interval is clamped.", {
+        configuredSeconds: env.zeropsRoleRecheckSeconds,
+        effectiveSeconds: Duration.toSeconds(zerops.roleRecheckInterval),
+      });
+    }
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
     const config: ServerConfig.ServerConfig["Service"] = {
@@ -435,18 +457,7 @@ export const resolveServerConfig = (
       devUrl,
       devAllowedOrigins: env.devAllowedOrigins,
       zeropsFixtures,
-      zerops:
-        zeropsFixtures === undefined
-          ? resolveZeropsEnvironment({
-              projectId: env.zeropsProjectId,
-              apiHost: env.zeropsApiHost,
-              allowedOrigins: env.zeropsAllowedOrigins,
-              publicOrigin: env.zeropsPublicOrigin,
-              apiToken: env.zeropsApiToken,
-              roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
-              sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
-            })
-          : undefined,
+      zerops,
       noBrowser,
       startupPresentation,
       desktopBootstrapToken,

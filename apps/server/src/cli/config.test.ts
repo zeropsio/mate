@@ -7,6 +7,7 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -158,6 +159,52 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       expect(resolved.zerops).toBeUndefined();
     }),
   );
+
+  for (const [configured, logged] of [
+    ["3600", ["Zerops role re-check interval is clamped."]],
+    ["300", []],
+    ["60", []],
+  ] as const) {
+    it.effect(
+      `logs once at startup only when the configured re-check interval is clamped (${configured} s)`,
+      () =>
+        Effect.gen(function* () {
+          const { join } = yield* Path.Path;
+          const messages: Array<unknown> = [];
+          const logger = Logger.make<unknown, void>((options) => {
+            messages.push(options.message);
+          });
+          yield* resolveServerConfig(
+            {
+              ...noFlags,
+              port: Option.some(3773),
+              baseDir: Option.some(join(NodeOS.tmpdir(), "t3-cli-config-role-recheck")),
+            },
+            Option.none(),
+          ).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                ConfigProvider.layer(
+                  ConfigProvider.fromEnv({
+                    env: {
+                      T3CODE_ZEROPS_PROJECT_ID: "nTV3oMB2SS634ImDJnQckg",
+                      T3CODE_ZEROPS_ROLE_RECHECK_SECONDS: configured,
+                    },
+                  }),
+                ),
+                NetService.layer,
+                Logger.layer([logger], { mergeWithExisting: false }),
+              ),
+            ),
+          );
+
+          const firstLines = messages.map((message) =>
+            Array.isArray(message) ? message[0] : message,
+          );
+          expect(firstLines.filter((line) => String(line).includes("re-check"))).toEqual(logged);
+        }),
+    );
+  }
 
   const openBootstrapFd = Effect.fn(function* (payload: DesktopBackendBootstrapValue) {
     const fs = yield* FileSystem.FileSystem;
