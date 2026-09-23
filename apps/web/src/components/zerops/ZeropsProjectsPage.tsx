@@ -2273,8 +2273,8 @@ function ZeropsProjectsContent() {
       )}
       {/* A project the grant withholds says why in place of its rows: its name,
           tags and Mates are its content, so none of them is drawn (DESIGN §3.4). */}
-      {withheldProjectNotices(inventory).map(({ projectId, notice }) => (
-        <p className="text-xs text-muted-foreground" key={projectId} role="status">
+      {withheldProjectNotices(inventory).map((notice) => (
+        <p className="text-xs text-muted-foreground" key={notice} role="status">
           {notice}
         </p>
       ))}

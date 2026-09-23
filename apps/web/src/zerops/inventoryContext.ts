@@ -114,16 +114,17 @@ export function withheldProjectNotice(inventory: Inventory, projectId: string): 
 }
 
 /**
- * The notice of every project the grant withholds alone, one each, in place of the rows its
- * content would draw (DESIGN §3.4); none while a lapse withholds them all.
+ * Why the projects the grant withholds alone are not shown, in place of the rows their content
+ * would draw (DESIGN §3.4): each cause once, however many projects it withholds, and none while
+ * a lapse withholds them all.
  */
-export function withheldProjectNotices(
-  inventory: Inventory,
-): ReadonlyArray<{ readonly projectId: string; readonly notice: string }> {
-  return [...inventory.projectRefs.values()].flatMap(({ projectId }) => {
+export function withheldProjectNotices(inventory: Inventory): ReadonlyArray<string> {
+  const notices = new Set<string>();
+  for (const { projectId } of inventory.projectRefs.values()) {
     const notice = withheldProjectNotice(inventory, projectId);
-    return notice === null ? [] : [{ projectId, notice }];
-  });
+    if (notice !== null) notices.add(notice);
+  }
+  return [...notices];
 }
 
 /**

@@ -80,12 +80,38 @@ describe("withheldProjectNotice", () => {
     expect(withheldProjectNotices(inventory(LAPSED, LAPSED))).toEqual([]);
   });
 
-  it("lists each project withheld alone once", () => {
+  // Gate F: one cause-only sentence per withheld region. Two projects withheld for the same
+  // cause read as one sentence, not as the same sentence twice with nothing to tell them apart.
+  it("says each cause once, however many projects it withholds", () => {
+    const refOf = (projectId: string): ProjectRef => ({
+      ...ref,
+      projectId: ZeropsProjectId.make(projectId),
+    });
+    const withheld = (reason: "access-unverified" | "access-denied"): ScopeAuthority => ({
+      kind: "withheld",
+      reason,
+      cause: null,
+    });
+    const refs = ["p1", "p2", "p3"].map(refOf);
+    expect(
+      withheldProjectNotices({
+        ...inventory(null),
+        projectRefs: new Map(refs.map((entry) => [inventoryProjectRefKey(entry), entry])),
+        authority: new Map([
+          [inventoryProjectRefKey(refs[0]!), withheld("access-unverified")],
+          [inventoryProjectRefKey(refs[1]!), withheld("access-denied")],
+          [inventoryProjectRefKey(refs[2]!), withheld("access-unverified")],
+        ]),
+      }),
+    ).toEqual(["Checking your access to this project…", "Your access to this project changed."]);
+  });
+
+  it("says why a project withheld alone is not shown", () => {
     expect(
       withheldProjectNotices(
         inventory({ kind: "withheld", reason: "access-unverified", cause: null }),
       ),
-    ).toEqual([{ projectId: "p1", notice: "Checking your access to this project…" }]);
+    ).toEqual(["Checking your access to this project…"]);
   });
 });
 
