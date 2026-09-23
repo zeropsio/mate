@@ -10,7 +10,8 @@
  *
  * The one negative, "Nothing deployed yet", is earned: only a complete listing
  * whose every runtime service is observed with no active deploy says it. A
- * facet not yet read is `unread`, and the stop holds its line.
+ * facet not yet read is `unread`, and the stop holds its line; a facet the
+ * platform will not show fails the stop rather than proving it empty.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -90,6 +91,8 @@ const newer = (left: Stamp | null, right: Stamp): Stamp =>
 type ServiceAnswer =
   | { readonly kind: "not-a-stop" }
   | { readonly kind: "pending" }
+  /** The platform shows the service but will not say what it runs: no answer, never a none. */
+  | { readonly kind: "withheld"; readonly reason: string; readonly atMs: number }
   | { readonly kind: "none"; readonly asOf: Stamp }
   | {
       readonly kind: "running";
@@ -108,7 +111,8 @@ function serviceAnswer(knowledge: CollectionRead<ServiceRecord>["value"][number]
   // The platform's core and the Mate's own container deploy nothing the group declared.
   if (service.isSystem === true || isZcpService(service)) return { kind: "not-a-stop" };
   const facet = record.deployment;
-  if (facet.knowledge === "unavailable") return { kind: "not-a-stop" };
+  if (facet.knowledge === "unavailable")
+    return { kind: "withheld", reason: facet.reason, atMs: facet.stamp.observedAtMs };
   if (facet.knowledge === "unresolved" || facet.fields.activeDeploy === undefined)
     return { kind: "pending" };
   const deploy = facet.fields.activeDeploy;
@@ -261,6 +265,15 @@ export function stopDeployment(
     read.query.status === "observed" && read.query.coverage.kind === "exhausted-traversal";
   if (!listed || answers.some((answer) => answer.kind === "pending"))
     return notYetKnown(source, nowMs);
+  const withheld = answers.find((answer) => answer.kind === "withheld");
+  if (withheld !== undefined)
+    return {
+      state: "failed",
+      failure: { kind: "refused", code: withheld.reason, words: "" },
+      atMs: withheld.atMs,
+      attempt: 1,
+      retryAtMs: null,
+    };
   let asOf: Stamp | null = read.query.status === "observed" ? toStamp(read.query.stamp) : null;
   for (const answer of answers) if (answer.kind === "none") asOf = newer(asOf, answer.asOf);
   return {

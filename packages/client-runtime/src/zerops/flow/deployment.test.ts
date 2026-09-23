@@ -9,7 +9,13 @@ import type {
   ServiceDeployInfo,
   ServiceRecord,
 } from "../data/types.ts";
-import { ReadStartOrdinal, ReceiptOrdinal, queryKeyOf } from "../data/types.ts";
+import {
+  AccountEpoch,
+  DispatchOrdinal,
+  ReadStartOrdinal,
+  ReceiptOrdinal,
+  queryKeyOf,
+} from "../data/types.ts";
 import type { EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
 import {
@@ -205,6 +211,20 @@ const UNRESOLVED_DEPLOYMENT: ServiceRecord["deployment"] = {
   admission,
 };
 
+const UNAVAILABLE_DEPLOYMENT: ServiceRecord["deployment"] = {
+  knowledge: "unavailable",
+  reason: "forbidden",
+  previousFields: {},
+  stamp: stamp(5),
+  fence: {
+    accountEpoch: AccountEpoch.make(1),
+    readStartOrdinal: ReadStartOrdinal.make(1),
+    dispatchOrdinal: DispatchOrdinal.make(1),
+    verifiedAccessDeadlineMs: 0,
+  },
+  admission,
+};
+
 function record(
   id: string,
   hostname: string,
@@ -358,6 +378,20 @@ describe("stopDeployment", () => {
         record("s3", "app", deployed(null)),
       ]),
       expected: "none",
+    },
+    {
+      // The platform refused to say what the service runs: that is no answer, not a none.
+      name: "a service whose deployment the platform will not show",
+      read: servicesRead([record("s1", "app", UNAVAILABLE_DEPLOYMENT)]),
+      expected: "failed",
+    },
+    {
+      name: "a running service beside one whose deployment the platform will not show",
+      read: servicesRead([
+        record("s1", "app", deployed(PUSHED)),
+        record("s2", "api", UNAVAILABLE_DEPLOYMENT),
+      ]),
+      expected: "running",
     },
     {
       name: "a partial listing never proves none",
