@@ -50,6 +50,18 @@ export type ThrowawayPurpose = "door" | "gitea";
 export type IdentityExchangeReason = "restore" | "auto-connect" | "repair" | "user";
 
 /**
+ * Why a round of the access grant started: the epoch's first, the grant's own
+ * timer (a renewal due, a retry on its ladder, the lapse), a person's "Try
+ * again", or a wake — the network back, or the tab shown again.
+ */
+export type AccessRoundCause =
+  | "first"
+  | "scheduled"
+  | "user-retry"
+  | "wake-online"
+  | "wake-visible";
+
+/**
  * The things measured from start to end. A span that never ends — its read
  * superseded by a newer key, its component gone — ends as `dropped`.
  */
@@ -104,7 +116,13 @@ export type MateDiagnosticEvent =
   | { readonly [K in MateDiagnosticSpanKind]: SpanEvent<K> }[MateDiagnosticSpanKind]
   /** The grant of `round` reached the data runtime and the gate opened. */
   | { readonly kind: "access-grant"; readonly round: number }
-  | { readonly kind: "access-timer"; readonly timer: "expiry" | "renewal" }
+  | { readonly kind: "access-timer"; readonly timer: "expiry" }
+  /** What started round `round`; its `access-round` span measures it. */
+  | {
+      readonly kind: "access-round-cause";
+      readonly round: number;
+      readonly cause: AccessRoundCause;
+    }
   | ({
       readonly kind: "throwaway";
       readonly action: "mint";

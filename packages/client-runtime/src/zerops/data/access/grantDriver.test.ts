@@ -11,6 +11,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
+import { mateDiagnostics } from "../../diagnostics.ts";
 import { INVALIDATION_COALESCE_MS, makeInvalidationBus } from "../../knowledge/invalidation.ts";
 import { makeDeadlineClock, type DeadlineClock } from "../../testing/deadlineClock.ts";
 import { organization, project, scope, verifiedAccess } from "../__fixtures__/index.ts";
@@ -263,6 +264,8 @@ const tab = Effect.fnUntraced(function* (
       ),
   };
 });
+
+type Tab = Effect.Success<ReturnType<typeof tab>>;
 
 /** A tab whose first round answered, `roundMs` after it started. */
 const grantedTab = Effect.fnUntraced(function* (platform: Platform) {
@@ -773,6 +776,85 @@ describe("the access grant inside the data runtime", () => {
           expect(opened.platform.rounds).toHaveLength(2);
         }),
       ),
+  );
+
+  it.effect.each([
+    ["the epoch's first", healthy(), () => Effect.void, ["first"]],
+    [
+      "a renewal due",
+      healthy(),
+      (opened: Tab) => opened.pass(12 * MINUTE + 2 * SECOND),
+      ["first", "scheduled"],
+    ],
+    [
+      "a retry on the ladder",
+      { ...healthy(), roundFailure: serverDown },
+      (opened: Tab) => opened.pass(3 * SECOND),
+      ["first", "scheduled"],
+    ],
+    [
+      "a person's retry",
+      { ...healthy(), roundFailure: serverDown },
+      (opened: Tab) =>
+        Effect.gen(function* () {
+          yield* opened.pass(1500);
+          const bus = yield* makeInvalidationBus({ signals: Stream.never, shown: () => true });
+          yield* opened.runtime.access.listen(bus);
+          yield* bus
+            .invalidate({ topic: "access", change: "renew-now" })
+            .pipe(Effect.provideService(Clock.Clock, opened.clock));
+          yield* opened.pass(INVALIDATION_COALESCE_MS);
+        }),
+      ["first", "user-retry"],
+    ],
+    [
+      "the network back",
+      { ...healthy(), roundFailure: serverDown },
+      (opened: Tab) =>
+        opened
+          .pass(1500)
+          .pipe(
+            Effect.andThen(opened.runtime.access.signal({ type: "ONLINE" })),
+            Effect.andThen(settle),
+          ),
+      ["first", "wake-online"],
+    ],
+    [
+      "a visible wake",
+      { ...healthy(), roundFailure: serverDown },
+      (opened: Tab) =>
+        opened
+          .pass(1500)
+          .pipe(
+            Effect.andThen(opened.runtime.access.signal({ type: "WAKE", visible: true })),
+            Effect.andThen(settle),
+          ),
+      ["first", "wake-visible"],
+    ],
+  ] as const)("the diagnostics record the round's cause: %s", ([, platform, act, causes]) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        mateDiagnostics.enable();
+        mateDiagnostics.clear();
+        const opened = yield* tab({ ...platform, rounds: [], reads: [], interrupted: [] });
+
+        yield* act(opened);
+
+        expect(
+          mateDiagnostics
+            .snapshot()
+            .flatMap((entry) =>
+              entry.kind === "access-round-cause"
+                ? [{ round: entry.round, cause: entry.cause }]
+                : [],
+            ),
+        ).toEqual(
+          opened.platform.rounds.map(({ round }, index) => ({ round, cause: causes[index] })),
+        );
+        expect(opened.platform.rounds).toHaveLength(causes.length);
+        expect(mateDiagnostics.snapshot().map(({ kind }) => kind)).not.toContain("access-timer");
+      }),
+    ),
   );
 
   it.effect("a timer that wakes short of its instant on both clocks waits on until it comes", () =>

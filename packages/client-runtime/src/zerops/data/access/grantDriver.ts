@@ -24,7 +24,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
-import { mateDiagnostics } from "../../diagnostics.ts";
+import { mateDiagnostics, type AccessRoundCause } from "../../diagnostics.ts";
 import type { InvalidationBus } from "../../knowledge/invalidation.ts";
 import type { ZeropsGrantPolicy } from "../policy.ts";
 import {
@@ -146,6 +146,27 @@ const establishedProjects = (access: AccessState): ReadonlyArray<ProjectRef> => 
         ? (access.previous?.projects ?? [])
         : [];
   return held.filter(({ role }) => role !== "NO_ACCESS").map(({ project }) => project);
+};
+
+/**
+ * Why a round the machine started while handling `event` runs. A hidden tab's visibility or wake
+ * only re-evaluates the clocks, so a round it starts is one the grant's own timer had due.
+ */
+const roundCause = (event: GrantEvent): AccessRoundCause => {
+  switch (event.type) {
+    case "START":
+      return "first";
+    case "USER_RETRY":
+      return "user-retry";
+    case "ONLINE":
+      return "wake-online";
+    case "WAKE":
+      return event.visible ? "wake-visible" : "scheduled";
+    case "VISIBILITY":
+      return event.hidden ? "scheduled" : "wake-visible";
+    default:
+      return "scheduled";
+  }
 };
 
 /** How long `stamp`'s evidence still authorizes, on whichever clock runs out first. */
@@ -287,17 +308,15 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
     return SubscriptionRef.set(views, next);
   });
 
-  /** Runs one effect after the view that asked for it is published. */
-  const interpret = (effect: GrantEffect): Effect.Effect<void> => {
+  /** Runs one effect, asked for while handling `event`, after the view that asked for it is published. */
+  const interpret = (effect: GrantEffect, event: GrantEvent): Effect.Effect<void> => {
     switch (effect.kind) {
       case "run": {
         const port = verifier!;
         if (effect.op.kind === "verify-round") {
           const round = effect.attempt;
           const carried = effect.op.carried;
-          if (machine.phase.phase !== "verifying") {
-            mateDiagnostics.record({ kind: "access-timer", timer: "renewal" });
-          }
+          mateDiagnostics.record({ kind: "access-round-cause", round, cause: roundCause(event) });
           return Effect.gen(function* () {
             // Projects a command established since are the grant's too: read them.
             const established = establishedProjects(yield* options.access);
@@ -477,7 +496,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
         }
         yield* observeTransition(before, effects, at);
         yield* publish;
-        for (const effect of effects) yield* interpret(effect);
+        for (const effect of effects) yield* interpret(effect, event);
         yield* interruptWork(abandoned);
         if (waitAgain) yield* waitPatiently;
       }),

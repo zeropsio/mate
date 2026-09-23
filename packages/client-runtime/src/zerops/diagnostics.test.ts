@@ -35,7 +35,7 @@ describe("the diagnostics ring", () => {
   it("stamps each typed event with the injected clock", () => {
     const time = clock(1_000);
     const diagnostics = createMateDiagnostics({ now: time.now, enabled: true });
-    diagnostics.record({ kind: "access-timer", timer: "renewal" });
+    diagnostics.record({ kind: "access-round-cause", round: 2, cause: "user-retry" });
     time.advance(250);
     diagnostics.record({
       kind: "route-gate",
@@ -47,7 +47,7 @@ describe("the diagnostics ring", () => {
     // @ts-expect-error — not a diagnostic the client knows
     diagnostics.record({ kind: "keystroke", key: "a" });
     expect(diagnostics.snapshot().slice(0, 3)).toEqual([
-      { t: 1_000, kind: "access-timer", timer: "renewal" },
+      { t: 1_000, kind: "access-round-cause", round: 2, cause: "user-retry" },
       {
         t: 1_250,
         kind: "route-gate",
