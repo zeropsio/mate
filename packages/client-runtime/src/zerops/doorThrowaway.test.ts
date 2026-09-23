@@ -241,6 +241,11 @@ describe("throwaway hygiene", () => {
     vi.useRealTimers();
   });
 
+  // The client's half of T-L6: requests in flight never hold a mint while the
+  // window is open. It pins the client only: the inventory provider closes
+  // the window at the start of every round, so in the app a mint during a
+  // round waits for that round's grant. The end-to-end row, with the window
+  // kept open through a renewal, belongs to slice 0.6.
   it("mint during a round proceeds", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
