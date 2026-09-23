@@ -1,12 +1,17 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import type { ItemLifecyclePayload, SpiEvent, ThreadId } from "@t3tools/contracts";
 
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
@@ -265,6 +270,163 @@ describe("ZeropsLifecycle", () => {
 
         // The other thread's event must not reach this subscriber.
         expect(published._tag === "Some" ? published.value.threadId : undefined).toBe(THREAD);
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect("33 updates on other threads never displace thread A's latest", () =>
+    withLifecycle((lifecycle) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          // A slow subscriber: it reads nothing until every update has landed.
+          const subscription = yield* lifecycle.subscribe(THREAD);
+          yield* lifecycle.ingest(claudeEvent({ text: envelopeBlock("develop-active") }));
+          for (let index = 0; index < 33; index += 1) {
+            yield* lifecycle.ingest(
+              claudeEvent({ threadId: OTHER_THREAD, text: envelopeBlock("bootstrap-active") }),
+            );
+          }
+
+          const next = yield* Stream.runHead(subscription.changes).pipe(
+            Effect.timeoutOption("1 second"),
+            Effect.forkChild,
+          );
+          yield* TestClock.adjust("1 second");
+          const delivered = Option.flatten(yield* Fiber.join(next));
+
+          expect(Option.map(delivered, (state) => state.threadId)).toEqual(Option.some(THREAD));
+          expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
+            Option.some("develop-active"),
+          );
+        }),
+      ),
+    ),
+  );
+
+  it.effect("a transient DB read failure is not persisted over the row", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const first = yield* ZeropsLifecycle.make({
+              toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+              repository,
+            });
+            yield* first.ingest(claudeEvent({}));
+          }),
+        );
+
+        const readsFail = yield* Ref.make(true);
+        const lifecycle = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository: {
+            ...repository,
+            getByThreadId: (threadId) =>
+              Effect.flatMap(Ref.get(readsFail), (fail) =>
+                fail
+                  ? Effect.fail(
+                      new PersistenceSqlError({ operation: "getByThreadId", cause: "busy" }),
+                    )
+                  : repository.getByThreadId(threadId),
+              ),
+          },
+        });
+
+        // A result with no envelope, folded while the row cannot be read.
+        yield* lifecycle.ingest(
+          claudeEvent({ toolName: "mcp__zerops__zerops_deploy", text: '{"status":"ok"}' }),
+        );
+        yield* Ref.set(readsFail, false);
+
+        const row = yield* repository.getByThreadId(THREAD);
+        expect(Option.map(row, (stored) => stored.envelope !== null)).toEqual(Option.some(true));
+        expect((yield* lifecycle.get(THREAD)).envelope?.phase).toBe("develop-active");
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect("an update between snapshot and subscribe is delivered", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const service = yield* Deferred.make<ZeropsLifecycle.ZeropsLifecycle["Service"]>();
+        const reads = yield* Ref.make(0);
+        const scope = yield* Effect.scope;
+        const lifecycle = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository: {
+            ...repository,
+            // The subscriber's snapshot read lets an update start while it is
+            // in flight, and gives that update a second to land.
+            getByThreadId: (threadId) =>
+              Effect.gen(function* () {
+                const stored = yield* repository.getByThreadId(threadId);
+                if ((yield* Ref.getAndUpdate(reads, (count) => count + 1)) === 0) {
+                  const racing = yield* Effect.flatMap(Deferred.await(service), (running) =>
+                    running.ingest(claudeEvent({})),
+                  ).pipe(Effect.forkIn(scope));
+                  yield* Fiber.await(racing).pipe(Effect.timeoutOption("1 second"));
+                }
+                return stored;
+              }),
+          },
+        });
+        yield* Deferred.succeed(service, lifecycle);
+
+        const subscribing = yield* lifecycle.subscribe(THREAD).pipe(Effect.forkScoped);
+        yield* TestClock.adjust("1 second");
+        const subscription = yield* Fiber.join(subscribing);
+
+        const seen = yield* Stream.concat(
+          Stream.make(subscription.latest),
+          subscription.changes,
+        ).pipe(
+          Stream.filter((state) => state.envelope !== undefined),
+          Stream.runHead,
+          Effect.timeoutOption("1 second"),
+          Effect.forkChild,
+        );
+        yield* TestClock.adjust("1 second");
+        const delivered = Option.flatten(yield* Fiber.join(seen));
+
+        expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
+          Option.some("develop-active"),
+        );
+        expect((yield* lifecycle.get(THREAD)).envelope?.phase).toBe("develop-active");
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect("ingest failure restarts the ingest", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const bus = yield* Queue.unbounded<SpiEvent>();
+        const runs = yield* Ref.make(0);
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const lifecycle = yield* ZeropsLifecycle.make({
+          // The first run of the event stream dies; every later run is healthy.
+          toolEvents: Stream.unwrap(
+            Effect.map(
+              Ref.getAndUpdate(runs, (count) => count + 1),
+              (run) => (run === 0 ? Stream.die("provider stream defect") : Stream.fromQueue(bus)),
+            ),
+          ),
+          repository,
+        });
+
+        const subscription = yield* lifecycle.subscribe(THREAD);
+        const next = yield* Stream.runHead(subscription.changes).pipe(
+          Effect.timeoutOption("1 minute"),
+          Effect.forkChild,
+        );
+        yield* Queue.offer(bus, claudeEvent({}));
+        yield* TestClock.adjust("1 minute");
+        const delivered = Option.flatten(yield* Fiber.join(next));
+
+        expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
+          Option.some("develop-active"),
+        );
       }),
     ).pipe(Effect.provide(persistence)),
   );

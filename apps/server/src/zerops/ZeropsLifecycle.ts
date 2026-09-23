@@ -21,11 +21,14 @@
  */
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -40,12 +43,12 @@ import {
   type ZeropsLifecycle as ZeropsLifecycleState,
 } from "@t3tools/contracts";
 
+import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import {
   ZeropsThreadLifecycleRepository,
   type ZeropsThreadLifecycleRow,
 } from "../persistence/ZeropsThreadLifecycle.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
-import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { extractZeropsEnvelope } from "./zeropsEnvelope.ts";
 import { readZeropsToolCall } from "./zeropsToolResult.ts";
 
@@ -100,6 +103,12 @@ const withRecentTool = (
   return next.slice(-ZEROPS_RECENT_TOOLS_LIMIT);
 };
 
+const INGEST_RESTART_SCHEDULE = Schedule.exponential("1 second").pipe(
+  Schedule.modifyDelay(({ duration }) =>
+    Effect.succeed(Duration.min(duration, Duration.seconds(30))),
+  ),
+);
+
 export interface ZeropsLifecycleOptions {
   readonly toolEvents: Stream.Stream<SpiEvent>;
   readonly repository: ZeropsThreadLifecycleRepository["Service"];
@@ -108,8 +117,7 @@ export interface ZeropsLifecycleOptions {
 export const make = (options: ZeropsLifecycleOptions) =>
   Effect.gen(function* () {
     const { toolEvents, repository } = options;
-    const changes = yield* PubSub.sliding<ZeropsLifecycleState>(32);
-    const subscribeMutex = yield* Semaphore.make(1);
+    const channels = yield* Ref.make(new Map<ThreadId, PubSub.PubSub<ZeropsLifecycleState>>());
     const writeMutex = yield* Semaphore.make(1);
     const cache = yield* Ref.make(new Map<ThreadId, ZeropsLifecycleState>());
 
@@ -129,29 +137,55 @@ export const make = (options: ZeropsLifecycleOptions) =>
       updatedAt: DateTime.makeUnsafe(row.updatedAt),
     });
 
-    const load = (threadId: ThreadId): Effect.Effect<ZeropsLifecycleState> =>
+    /**
+     * The thread's state, read from the store on first use. Only a successful
+     * read is cached: a failed one says nothing about the row, so nothing may
+     * be built on it.
+     */
+    const load = (
+      threadId: ThreadId,
+    ): Effect.Effect<ZeropsLifecycleState, ProjectionRepositoryError> =>
       Effect.gen(function* () {
         const cached = (yield* Ref.get(cache)).get(threadId);
         if (cached !== undefined) {
           return cached;
         }
-        // A read failure is not worth propagating: the client's fallback is one
-        // `zerops_workflow action="status"` call, which is the same recovery
-        // path a compacted thread already takes.
-        const stored = yield* repository.getByThreadId(threadId).pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Could not read stored Zerops lifecycle state", {
-              threadId,
-              cause,
-            }).pipe(Effect.as(Option.none<ZeropsThreadLifecycleRow>())),
-          ),
-        );
+        const stored = yield* repository.getByThreadId(threadId);
         const state = Option.match(stored, {
           onNone: () => emptyState(threadId),
           onSome: fromRow,
         });
         yield* Ref.update(cache, (current) => new Map(current).set(threadId, state));
         return state;
+      });
+
+    // A read failure is not worth propagating to a reader: the client's
+    // fallback is one `zerops_workflow action="status"` call, which is the same
+    // recovery path a compacted thread already takes.
+    const loadOrEmpty = (threadId: ThreadId): Effect.Effect<ZeropsLifecycleState> =>
+      load(threadId).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Could not read stored Zerops lifecycle state", {
+            threadId,
+            cause,
+          }).pipe(Effect.as(emptyState(threadId))),
+        ),
+      );
+
+    /**
+     * One channel per thread, so no other thread's traffic can push a thread's
+     * latest state out of a subscriber's buffer. Each state is complete, so a
+     * subscriber needs only the newest one it has not read yet.
+     */
+    const channel = (threadId: ThreadId) =>
+      Effect.gen(function* () {
+        const existing = (yield* Ref.get(channels)).get(threadId);
+        if (existing !== undefined) {
+          return existing;
+        }
+        const created = yield* PubSub.sliding<ZeropsLifecycleState>(1);
+        yield* Ref.update(channels, (current) => new Map(current).set(threadId, created));
+        return created;
       });
 
     const persist = (state: ZeropsLifecycleState, at: DateTime.Utc) =>
@@ -185,7 +219,18 @@ export const make = (options: ZeropsLifecycleOptions) =>
             return;
           }
 
-          const previous = yield* load(event.threadId);
+          // A state folded over an unread row would be persisted over it and
+          // drop its envelope, so an event that cannot be read against its
+          // thread's state is dropped instead. The next one reads again.
+          const loaded = yield* Effect.result(load(event.threadId));
+          if (Result.isFailure(loaded)) {
+            yield* Effect.logWarning("Dropped a Zerops lifecycle event: stored state unreadable", {
+              threadId: event.threadId,
+              cause: loaded.failure,
+            });
+            return;
+          }
+          const previous = loaded.success;
           const at = yield* DateTime.now;
           const resultText = call.result?.text;
           const failed = call.result?.failed === true;
@@ -214,24 +259,34 @@ export const make = (options: ZeropsLifecycleOptions) =>
 
           yield* Ref.update(cache, (current) => new Map(current).set(next.threadId, next));
           yield* persist(next, at);
-          yield* PubSub.publish(changes, next);
+          yield* PubSub.publish(yield* channel(next.threadId), next);
         }),
       );
 
+    // The ingest is the feed's only writer, so it must not end quietly: a
+    // defect in the event stream or in the reducer is logged and the stream
+    // resubscribed, backing off to one attempt every 30 s.
     yield* toolEvents.pipe(
       Stream.runForEach(ingest),
-      Effect.catchCause(() => Effect.void),
+      Effect.sandbox,
+      Effect.tapError((cause) =>
+        Effect.logError("Zerops lifecycle ingest failed; restarting it", { cause }),
+      ),
+      Effect.retry(INGEST_RESTART_SCHEDULE),
       Effect.forkScoped,
     );
 
     return {
-      get: load,
+      get: (threadId) => writeMutex.withPermits(1)(loadOrEmpty(threadId)),
+      // Under the write mutex no update can land between the subscription and
+      // the snapshot, so a subscriber misses nothing and sees nothing twice.
       subscribe: (threadId) =>
-        subscribeBeforeSnapshot(changes, load(threadId), subscribeMutex).pipe(
-          Effect.map(({ latest, changes: allChanges }) => ({
-            latest,
-            changes: Stream.filter(allChanges, (state) => state.threadId === threadId),
-          })),
+        writeMutex.withPermits(1)(
+          Effect.gen(function* () {
+            const subscription = yield* PubSub.subscribe(yield* channel(threadId));
+            const latest = yield* loadOrEmpty(threadId);
+            return { latest, changes: Stream.fromSubscription(subscription) };
+          }),
         ),
       ingest,
     } satisfies ZeropsLifecycle["Service"];
