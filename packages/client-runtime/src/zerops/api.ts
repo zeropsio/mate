@@ -423,8 +423,6 @@ export interface ZeropsLoginResponse {
  */
 export type ZeropsApiErrorKind =
   | "network"
-  /** The account window stayed closed for the whole wait; worth trying again. */
-  | "access-unverified"
   | "uncertain"
   | "expired-session"
   | "forbidden"

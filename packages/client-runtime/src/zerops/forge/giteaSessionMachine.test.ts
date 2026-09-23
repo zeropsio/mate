@@ -132,15 +132,6 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       runs: ["acquire"],
     },
     {
-      row: "acquiring ─the mint waited out a closed account window─► waiting on identityMint",
-      steps: [
-        [DEMAND, 0],
-        [failed(1, { kind: "access-unverified" }), 0],
-      ] as ReadonlyArray<Step>,
-      phase: "waiting",
-      runs: ["acquire"],
-    },
-    {
       row: "acquiring ─Zerops 401 on the throwaway─► waiting on the Zerops session",
       steps: [
         [DEMAND, 0],
@@ -231,10 +222,10 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       expect(delays).toEqual([10 * S, 20 * S, 40 * S, 60 * S, 60 * S, 60 * S]);
     });
 
-    it("waits on identityMint on the common ladder and counts no failure", () => {
+    it("waits on the Zerops session on the common ladder and counts no failure", () => {
       const run = play([
         [DEMAND, 0],
-        [failed(1, { kind: "access-unverified" }), 0],
+        [failed(1, { kind: "zerops-session" }), 0],
       ]);
       expect(scheduled(run.effects)).toEqual([2 * S]);
       expect(run.machine.failures).toBe(0);

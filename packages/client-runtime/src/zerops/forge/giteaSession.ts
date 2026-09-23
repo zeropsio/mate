@@ -126,7 +126,6 @@ export function classifyAcquireFailure(cause: unknown): GiteaAcquireFailure {
     return { kind: "refused", reason: cause.message };
   }
   if (cause instanceof ZeropsApiError) {
-    if (cause.kind === "access-unverified") return { kind: "access-unverified" };
     if (cause.kind === "expired-session" || cause.status === 401) return { kind: "zerops-session" };
     if (cause.kind === "network" || cause.kind === "server" || cause.kind === "uncertain") {
       return { kind: "unreachable", source: "zerops" };

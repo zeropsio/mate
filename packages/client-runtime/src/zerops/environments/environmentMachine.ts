@@ -98,8 +98,6 @@ export type ExchangeCause =
   | { readonly kind: "descriptor-unreachable" }
   /** The door's `503 zerops_identity_unavailable` (D11). */
   | { readonly kind: "identity-unavailable" }
-  /** The mint still waited on project access after its 30 s wait. */
-  | { readonly kind: "access-unverified" }
   /** The descriptor reports `zerops.identity = "failed"`: the Mate could not check who you are. */
   | { readonly kind: "identity-failed" }
   /** The Mate kept refusing freshly exchanged credentials. */

@@ -56,8 +56,6 @@ export type GiteaAcquireFailure =
   | { readonly kind: "unreachable"; readonly source: "broker" | "zerops" }
   /** Gitea or the broker said no, in these words. */
   | { readonly kind: "refused"; readonly reason: string }
-  /** The throwaway mint waited out a closed account window (C5a). */
-  | { readonly kind: "access-unverified" }
   /** Zerops answered the mint 401; the Zerops session machine owns what follows. */
   | { readonly kind: "zerops-session" };
 
@@ -100,7 +98,7 @@ export type GiteaSessionPhase =
     }
   | {
       readonly kind: "waiting";
-      readonly on: "identity-mint" | "zerops-session";
+      readonly on: "zerops-session";
       readonly retryAt: Instant;
     }
   | { readonly kind: "refused"; readonly reason: string; readonly retryAt: Instant }
@@ -279,17 +277,12 @@ function failed(
           retryAt: after(ctx.now, REFUSED_RETRY_MS),
         },
       };
-    case "access-unverified":
     case "zerops-session": {
       const { retryAt, rung } = retryAfter(machine, RETRY_RUNGS_MS, ctx);
       return {
         ...machine,
         rung,
-        phase: {
-          kind: "waiting",
-          on: failure.kind === "access-unverified" ? "identity-mint" : "zerops-session",
-          retryAt,
-        },
+        phase: { kind: "waiting", on: "zerops-session", retryAt },
       };
     }
   }

@@ -2,7 +2,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
-import { ZeropsApiError } from "../api.ts";
 import { GiteaApiError } from "../giteaClient.ts";
 import {
   fetchAcross,
@@ -286,24 +285,6 @@ describe("the account's Gitea sessions", () => {
     w.sessions.resume();
     await w.time.advance(0);
     expect(brokerPosts(w)).toHaveLength(2);
-    expect(w.view().signedIn).toBe(true);
-  });
-
-  it("a mint that waited out a closed account window asks again soon and says nothing", async () => {
-    const w = world();
-    w.throwaways.refuseMints(
-      new ZeropsApiError(
-        "Zerops access is still being checked. Try again in a moment.",
-        "access-unverified",
-      ),
-    );
-    w.demand();
-    await w.time.advance(0);
-    expect(w.view()).toEqual({ signedIn: false, readable: false, login: undefined, trouble: null });
-    expect(brokerPosts(w)).toEqual([]);
-
-    w.throwaways.refuseMints(null);
-    await w.time.advance(2 * S);
     expect(w.view().signedIn).toBe(true);
   });
 
