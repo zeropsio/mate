@@ -201,7 +201,9 @@ function AccessLapseBanner({
   readonly onSignOut: () => void;
 }) {
   return (
-    <div role="alert" className="fixed inset-x-0 top-0 z-50 bg-background p-4">
+    // Above every layer the app opens (dialogs, menus, tooltips): a dialog left open when the
+    // lapse starts must not stand between the person and Sign out.
+    <div role="alert" className="fixed inset-x-0 top-0 z-[200] bg-background p-4">
       {copy.sentence}{" "}
       {copy.retry ? (
         <>
