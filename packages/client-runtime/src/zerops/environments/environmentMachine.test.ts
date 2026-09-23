@@ -2,6 +2,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  CAPPED_RETRY_MS,
   identityRestartOffered,
   initialEnvironment,
   transitionEnvironment,
@@ -166,6 +167,35 @@ describe("environment machine (DESIGN §4.4)", () => {
     ]).machine;
     // The server re-checks roles on a timer: its first verdict on the raised role may be stale.
     expect(blockAndRotate(rotated).credential.kind).toBe("held");
+  });
+
+  it("after five consecutive automatic failures the next retry is five minutes out", () => {
+    let run = drive(initialEnvironment({ record: ENV_A }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    const retryDelays: Array<number> = [];
+    for (let failure = 1; failure <= 5; failure += 1) {
+      run = drive(
+        run.machine,
+        [
+          {
+            type: "EXCHANGE_FAILED",
+            attempt: lastExchange(run.machine),
+            failure: { class: "retryable", cause: { kind: "network" } },
+            descriptor: null,
+          },
+        ],
+        run.nowMs,
+      );
+      const credential = run.machine.credential;
+      if (credential.kind !== "backoff") throw new Error("no backoff");
+      retryDelays.push(credential.retryAt.wall - run.nowMs);
+      run = drive(run.machine, [{ type: "TICK" }], run.nowMs);
+    }
+    expect(retryDelays.slice(0, 4).every((delay) => delay < CAPPED_RETRY_MS)).toBe(true);
+    expect(retryDelays[4]).toBe(CAPPED_RETRY_MS);
   });
 
   it("counts one auth rejection per rotated credential and backs off on the third within two minutes", () => {
