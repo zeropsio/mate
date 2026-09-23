@@ -147,6 +147,7 @@ const ServiceRow = Schema.Struct({
 const EmbeddedServiceRow = Schema.Struct({ id: Schema.String });
 const ProcessAppVersionRow = Schema.Struct({
   id: OptionalNullableString,
+  name: OptionalNullableString,
   status: OptionalNullableString,
   build: Schema.optionalKey(
     Schema.Union([

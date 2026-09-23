@@ -47,6 +47,8 @@ export interface ActivityPrepareCustomRuntime {
 /** The slice of `AppVersionJsonObject` the pipeline-state port reads. */
 export interface ActivityAppVersion {
   readonly id?: string;
+  /** The name the deploy was given — the commit sha on a Mate's deploys. */
+  readonly name?: string;
   /** One of the `AppVersionStatusEnum` values, e.g. `BUILDING`, `WAITING_TO_DEPLOY`. */
   readonly status?: string;
   readonly build?: ActivityAppVersionBuild;
@@ -79,6 +81,7 @@ export function readActivityAppVersion(value: unknown): ActivityAppVersion | und
   const prepareCustomRuntime = readRecord(record.prepareCustomRuntime);
   return {
     ...(readString(record.id) === undefined ? {} : { id: readString(record.id)! }),
+    ...(readString(record.name) === undefined ? {} : { name: readString(record.name)! }),
     ...(readString(record.status) === undefined ? {} : { status: readString(record.status)! }),
     ...(build === undefined
       ? {}

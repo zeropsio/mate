@@ -1081,4 +1081,47 @@ describe("the datastream's deploy frames", () => {
       }),
     );
   });
+
+  it("a build process frame names its appVersion's sha", () => {
+    const sha = "ec3d2cb9ea02144b23300dd8cd16ae02bbcb321c";
+    const observations = decodeUpdate("process", {
+      id: "process",
+      projectId: "project",
+      actionName: "stack.build",
+      status: "RUNNING",
+      created: "2026-09-23T14:01:39Z",
+      serviceStackId: "service",
+      appVersion: {
+        id: "app-version",
+        name: sha,
+        source: "CLI",
+        status: "BUILDING",
+        activationDate: null,
+        build: {
+          serviceStackId: "build-service",
+          pipelineStart: "2026-09-23T14:01:40.174564611Z",
+          pipelineFinish: null,
+          pipelineFailed: null,
+          startDate: null,
+          endDate: null,
+        },
+        prepareCustomRuntime: null,
+      },
+    });
+
+    expect(observations).toContainEqual(
+      expect.objectContaining({
+        kind: "process-pipeline-observed",
+        observation: expect.objectContaining({
+          fields: {
+            appVersion: expect.objectContaining({
+              id: "app-version",
+              name: sha,
+              status: "BUILDING",
+            }),
+          },
+        }),
+      }),
+    );
+  });
 });
