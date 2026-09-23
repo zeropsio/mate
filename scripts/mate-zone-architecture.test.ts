@@ -463,6 +463,167 @@ function collectUiImportViolations(
   return violations;
 }
 
+// Dependency rules 2 and 3 of the client state model
+// (docs/internals/zerops/client-state-model.md, "Module boundaries"). A zone is
+// a set of paths under `cr/zerops`, matched by name so that a module landing at
+// a zone path is checked from its first commit; a path with no file yet holds
+// vacuously. Each zone file is walked through its value imports: relative
+// edges are followed transitively, a type-only edge is erased at compile time
+// and skipped, and a package edge must name a pure effect data module.
+const CLIENT_RUNTIME_ZEROPS_DIR = "packages/client-runtime/src/zerops";
+
+// Effect modules that compute values and run nothing. Every other `effect`
+// module (Effect, Stream, Layer, Fiber, Schedule, Clock, Schema, the bare
+// `effect` barrel, …) and every other package is out of bounds for a value
+// import from a pure zone; a type-only import of any of them is allowed.
+const PURE_EFFECT_MODULES: ReadonlySet<string> = new Set([
+  "effect/Array",
+  "effect/Equal",
+  "effect/Equivalence",
+  "effect/Function",
+  "effect/Hash",
+  "effect/Option",
+  "effect/Order",
+  "effect/Predicate",
+  "effect/Record",
+  "effect/Result",
+  "effect/Struct",
+]);
+
+const NETWORK_AND_STORAGE_GLOBALS = [
+  "fetch",
+  "XMLHttpRequest",
+  "WebSocket",
+  "EventSource",
+  "localStorage",
+  "sessionStorage",
+  "indexedDB",
+] as const;
+
+interface PureZone {
+  readonly contains: (zeropsRelativeFile: string) => boolean;
+  readonly forbiddenGlobals: ReadonlyArray<string>;
+}
+
+// `knowledge/` ports and the invalidation bus are drivers, not reducers.
+const KNOWLEDGE_DRIVER_FILES: ReadonlySet<string> = new Set([
+  "knowledge/invalidation.ts",
+  "knowledge/signals.ts",
+  "knowledge/clock.ts",
+]);
+
+// Rule 2: machine and reducer files import no Effect runtime, fetch or storage.
+const MACHINE_ZONE: PureZone = {
+  contains: (file) =>
+    (file.startsWith("knowledge/") && !KNOWLEDGE_DRIVER_FILES.has(file)) ||
+    file === "data/access/grant.ts" ||
+    file === "environments/reachability.ts" ||
+    file === "environments/gate.ts" ||
+    /Machine\.tsx?$/u.test(file),
+  forbiddenGlobals: NETWORK_AND_STORAGE_GLOBALS,
+};
+
+function isTestFile(file: string): boolean {
+  return /\.test\.tsx?$/u.test(file);
+}
+
+interface PureZoneViolation {
+  readonly root: string;
+  readonly file: string;
+  readonly reason: string;
+}
+
+function collectPureZoneViolations(
+  root: string,
+  zone: PureZone,
+): Effect.Effect<
+  ReadonlyArray<PureZoneViolation>,
+  PlatformError,
+  FileSystem.FileSystem | Path.Path
+> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const zeropsDir = path.join(root, CLIENT_RUNTIME_ZEROPS_DIR);
+    const label = (file: string): string => path.relative(root, file).split(path.sep).join("/");
+    const zoneFiles = (yield* collectTsFiles(zeropsDir)).filter(
+      (file) =>
+        !isTestFile(file) &&
+        zone.contains(path.relative(zeropsDir, file).split(path.sep).join("/")),
+    );
+
+    const violations: Array<PureZoneViolation> = [];
+    for (const zoneFile of zoneFiles) {
+      const visited = new Set<string>();
+      const pending = [zoneFile];
+      while (pending.length > 0) {
+        const file = pending.pop()!;
+        if (visited.has(file)) {
+          continue;
+        }
+        visited.add(file);
+        const report = (reason: string) =>
+          violations.push({ root: label(zoneFile), file: label(file), reason });
+
+        const source = yield* fs.readFileString(file);
+        const code = scanSourceLiterals(source).jsxSource;
+        for (const global of zone.forbiddenGlobals) {
+          if (new RegExp(`(?<![\\w$])${global}(?![\\w$])`, "u").test(code)) {
+            report(`uses ${global}`);
+          }
+        }
+        if (collectDynamicImportArguments(source).length > 0) {
+          report("uses a dynamic import");
+        }
+        if ((source.match(IMPORT_ASSIGNMENT_PATTERN)?.length ?? 0) > 0) {
+          report("uses a TypeScript import assignment");
+        }
+
+        for (const statement of collectImportStatements(source)) {
+          if (statement.typeOnly) {
+            continue;
+          }
+          if (!statement.specifier.startsWith(".")) {
+            if (!PURE_EFFECT_MODULES.has(statement.specifier)) {
+              report(`imports ${statement.specifier}, which is not a pure effect data module`);
+            }
+            continue;
+          }
+          const unresolved = path.resolve(path.dirname(file), statement.specifier);
+          const extension = path.extname(unresolved);
+          const candidates =
+            TS_EXTENSIONS.has(extension) || extension === ".json"
+              ? [unresolved]
+              : [
+                  `${unresolved}.ts`,
+                  `${unresolved}.tsx`,
+                  path.join(unresolved, "index.ts"),
+                  path.join(unresolved, "index.tsx"),
+                ];
+          let imported: string | undefined;
+          for (const candidate of candidates) {
+            if (imported === undefined && (yield* fs.exists(candidate))) {
+              imported = candidate;
+            }
+          }
+          if (imported === undefined) {
+            report(`imports ${statement.specifier}, which does not resolve to a module`);
+          } else if (TS_EXTENSIONS.has(path.extname(imported))) {
+            pending.push(imported);
+          }
+        }
+      }
+    }
+
+    return violations.sort(
+      (left, right) =>
+        left.root.localeCompare(right.root) ||
+        left.file.localeCompare(right.file) ||
+        left.reason.localeCompare(right.reason),
+    );
+  });
+}
+
 // Keep this list identical to t3code/no-infinite-motion's protected roots.
 const PROTECTED_ROOTS = [
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
@@ -851,6 +1012,20 @@ const makeProtectedRootFixture = Effect.fn("makeProtectedRootFixture")(function*
     rootFile: path.join(webSrcDir, "components/Root.tsx"),
     webSrcDir,
   };
+});
+
+const makeClientRuntimeZeropsFixture = Effect.fn("makeClientRuntimeZeropsFixture")(function* (
+  files: Readonly<Record<string, string>>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "mate-zerops-zones-" });
+  for (const [relativePath, source] of Object.entries(files)) {
+    const file = path.join(fixtureRoot, CLIENT_RUNTIME_ZEROPS_DIR, relativePath);
+    yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+    yield* fs.writeFileString(file, source);
+  }
+  return fixtureRoot;
 });
 
 it.layer(NodeServices.layer)("mate zone architecture", (it) => {
@@ -1678,5 +1853,83 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         },
       ]);
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "rule 2 fixture: machine and reducer files reach no Effect runtime, fetch or storage",
+    () =>
+      Effect.gen(function* () {
+        const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
+          "knowledge/known.ts": [
+            'import type * as Effect from "effect/Effect";',
+            'import * as Option from "effect/Option";',
+            'import * as Stream from "effect/Stream";',
+            "// fetch and localStorage in a comment are prose, not calls.",
+            'export const label = "sessionStorage";',
+            "",
+          ].join("\n"),
+          "knowledge/invalidation.ts": 'import * as PubSub from "effect/PubSub";\n',
+          "data/access/grant.ts": 'import { readUser } from "../../api.ts";\n',
+          "api.ts": "export const readUser = () => fetch('/user');\n",
+          "environments/containerMachine.ts":
+            'import { settle } from "./settle.ts";\nexport const saved = localStorage.getItem("k");\n',
+          "environments/settle.ts":
+            'import { Duration } from "effect";\nexport const settle = 1;\n',
+          "environments/containerMachine.test.ts": 'import * as Effect from "effect/Effect";\n',
+          "environments/probeStore.ts": 'import * as Effect from "effect/Effect";\n',
+          "environments/gate.ts":
+            'import { type Stream } from "effect/Stream";\nimport { held } from "./held";\n',
+          "environments/held/index.ts": 'export const held = sessionStorage.getItem("k");\n',
+          "environments/reachability.ts": 'export const load = () => import("./nowhere.ts");\n',
+        });
+
+        const violations = yield* collectPureZoneViolations(fixtureRoot, MACHINE_ZONE);
+
+        const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+        assert.deepStrictEqual(violations, [
+          {
+            root: `${zerops}/data/access/grant.ts`,
+            file: `${zerops}/api.ts`,
+            reason: "uses fetch",
+          },
+          {
+            root: `${zerops}/environments/containerMachine.ts`,
+            file: `${zerops}/environments/containerMachine.ts`,
+            reason: "uses localStorage",
+          },
+          {
+            root: `${zerops}/environments/containerMachine.ts`,
+            file: `${zerops}/environments/settle.ts`,
+            reason: "imports effect, which is not a pure effect data module",
+          },
+          {
+            root: `${zerops}/environments/gate.ts`,
+            file: `${zerops}/environments/held/index.ts`,
+            reason: "uses sessionStorage",
+          },
+          {
+            root: `${zerops}/environments/reachability.ts`,
+            file: `${zerops}/environments/reachability.ts`,
+            reason: "imports ./nowhere.ts, which does not resolve to a module",
+          },
+          {
+            root: `${zerops}/environments/reachability.ts`,
+            file: `${zerops}/environments/reachability.ts`,
+            reason: "uses a dynamic import",
+          },
+          {
+            root: `${zerops}/knowledge/known.ts`,
+            file: `${zerops}/knowledge/known.ts`,
+            reason: "imports effect/Stream, which is not a pure effect data module",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 2: machine and reducer files reach no Effect runtime, fetch or storage", () =>
+    Effect.gen(function* () {
+      const root = yield* repoRoot;
+      assert.deepStrictEqual(yield* collectPureZoneViolations(root, MACHINE_ZONE), []);
+    }),
   );
 });
