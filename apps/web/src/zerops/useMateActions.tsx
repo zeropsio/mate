@@ -254,9 +254,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       if (activeOrganization === null) return;
       void write(candidate.key, () =>
         runZeropsCommand(
-          runtime.commands.nameProjectAgent(
+          runtime.commands.updateProjectTags(
             projectRef(activeOrganization.id, candidate.project.id),
-            name,
+            { kind: "agent-name", name },
           ),
         ),
       );
@@ -289,7 +289,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const project = projectRef(activeOrganization.id, candidate.project.id);
       void write(candidate.key, () => {
         if (membership.kind === "none") {
-          return runZeropsCommand(runtime.commands.updateProjectGroupTags(project, {}));
+          return runZeropsCommand(
+            runtime.commands.updateProjectTags(project, { kind: "group-membership", next: {} }),
+          );
         }
         // Joining an existing group carries its name along, so the mirror on
         // this member agrees with the others'.
@@ -298,11 +300,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         )?.group;
         const label = membership.label ?? known?.name;
         return runZeropsCommand(
-          runtime.commands.updateProjectGroupTags(project, {
-            groupId: membership.groupId,
-            role: membership.role,
-            ...(label !== undefined && known?.nameSource !== "id" ? { label } : {}),
-            ...(membership.label !== undefined ? { label: membership.label } : {}),
+          runtime.commands.updateProjectTags(project, {
+            kind: "group-membership",
+            next: {
+              groupId: membership.groupId,
+              role: membership.role,
+              ...(label !== undefined && known?.nameSource !== "id" ? { label } : {}),
+              ...(membership.label !== undefined ? { label: membership.label } : {}),
+            },
           }),
         );
       });

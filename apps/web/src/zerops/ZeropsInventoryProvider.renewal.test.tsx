@@ -1,4 +1,4 @@
-import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
+import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { CAPABILITY_WAIT_MS } from "@t3tools/client-runtime/zerops/data";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
@@ -12,6 +12,10 @@ vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
 }));
 
 const MINUTE_MS = 60_000;
+
+/** A project write as the TagWriter makes one: the project read, then its tags written. */
+const renameTags = async (client: ZeropsApiClient) =>
+  client.writeProjectTags(await client.fetchProject("p1"), ["mate:name:Renamed"]);
 const CHILD = "product mounted";
 
 const person: ZeropsUser = {
@@ -93,9 +97,9 @@ async function refusedWrite({ harness, tab, pass }: Product) {
     harness.rest.requests().filter(({ route }) => route === "PUT /project/p1").length;
   const sent = writes();
   const { refused } = await tab.run(() => ({
-    refused: expect(
-      tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }),
-    ).rejects.toMatchObject({ message: "Project access could not be verified." }),
+    refused: expect(renameTags(tab.session().client)).rejects.toMatchObject({
+      message: "Project access could not be verified.",
+    }),
   }));
   await pass(CAPABILITY_WAIT_MS);
   await refused;
@@ -134,8 +138,7 @@ describe("ZeropsInventoryProvider renewal", () => {
     const { harness, tab, pass, rounds } = await admittedProduct();
     const before = rounds();
     const renewal = harness.rest.hold("GET /user/info");
-    const write = () =>
-      tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }));
+    const write = () => tab.run(() => renameTags(tab.session().client));
 
     // Past the renewal and short of the deadline, with every renewal attempt still out.
     await pass(14 * MINUTE_MS + 30_000);
@@ -181,8 +184,7 @@ describe("ZeropsInventoryProvider renewal", () => {
       const { harness, tab } = product;
       // Every renewal hangs: nothing extends the evidence the product was admitted on.
       harness.rest.hang("GET /user/info");
-      const write = () =>
-        tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }));
+      const write = () => tab.run(() => renameTags(tab.session().client));
 
       await toJustBefore(product);
       await expect(write()).resolves.toMatchObject({ id: "p1" });
@@ -195,8 +197,7 @@ describe("ZeropsInventoryProvider renewal", () => {
     const product = await admittedProduct({ firstRoundMs: 40_000 });
     const { harness, tab, pass, firstRoundBy } = product;
     harness.rest.hang("GET /user/info");
-    const write = () =>
-      tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }));
+    const write = () => tab.run(() => renameTags(tab.session().client));
     const toDeadline = () => firstRoundBy + 15 * MINUTE_MS - performance.now();
 
     // Admitted 40 s into its round, the evidence is stamped when the round
@@ -299,9 +300,9 @@ describe("ZeropsInventoryProvider renewal", () => {
       // The failing project keeps its place; its content waits for fresh evidence.
       expect(tab.text()).toContain("p2: Checking your access to this project…");
       expect(tab.text()).not.toContain("p1:");
-      await expect(
-        tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" })),
-      ).resolves.toMatchObject({ id: "p1" });
+      await expect(tab.run(() => renameTags(tab.session().client))).resolves.toMatchObject({
+        id: "p1",
+      });
     },
   );
 });

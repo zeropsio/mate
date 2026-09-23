@@ -55,8 +55,7 @@ describe("central Zerops data bindings", () => {
     ];
     const legacyMethods = [
       "restartService",
-      "nameProjectAgent",
-      "updateProjectGroupTags",
+      "writeProjectTags",
       "importDevelopmentContainer",
       "enableZeropsMate",
       "enableSubdomainAccess",

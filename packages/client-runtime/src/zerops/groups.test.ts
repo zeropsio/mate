@@ -594,7 +594,7 @@ describe("withZeropsGroupTags preserves what it was not asked to change", () => 
   /**
    * Membership is written as a whole, so a caller changing a role passes the
    * group with it. A role alone is a project that has left its group and kept
-   * a role — which is why `updateProjectGroupTags` reads before it writes.
+   * a role — which is why a membership patch meets a fresh read (`data/tagWriter.ts`).
    */
   it("treats a role without a group as leaving the group", () => {
     const after = withZeropsGroupTags(FULL, { role: "prod" });

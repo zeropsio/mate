@@ -18,4 +18,6 @@ export * from "./logTransport.ts";
 export * from "./logs.ts";
 export * from "./runtime.ts";
 export * from "./state.ts";
+export * from "./tagPatch.ts";
+export * from "./tagWriter.ts";
 export * from "./types.ts";

@@ -170,14 +170,14 @@ export interface ZeropsProject {
    * and `GET /project/{id}` — return it.
    */
   readonly tagList?: ReadonlyArray<string>;
-  /** Round-tripped by `updateProjectGroupTags`, which must not blank it. */
+  /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
   /**
-   * Round-tripped by the registry write (`writeGroupRegistry`). `PUT
+   * Round-tripped by every tag write (`writeProjectTags`). `PUT
    * /project/{id}` replaces the record, so a tag write that omitted these two
    * would quietly take a shared IPv4 away or reset somebody's credit limit —
-   * on the Gitea project, which is the one project the whole account depends
-   * on.
+   * on any project, the Gitea project the whole account depends on among
+   * them.
    */
   readonly publicIpV4Shared?: boolean;
   readonly maxCreditLimit?: number | null;
@@ -1057,41 +1057,34 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Moves a project into a group, out of one, or changes what it is for.
+   * `PUT /project/{id}` with `tagList` — the one call that writes a project's
+   * tags, and only the TagWriter makes it (`data/tagWriter.ts`), with a list
+   * it just applied a patch to.
    *
-   * Read-modify-write because `PUT /project/{id}` replaces `tagList` wholesale
-   * — a blind write would delete whatever the user tagged the project with
-   * themselves. `withZeropsGroupTags` is what preserves them.
-   *
-   * This is also the path that makes an existing project adoptable and lets a
-   * production environment be paired retroactively, which the create-time tag
-   * alone cannot do.
+   * `project` is the read that list came from: the platform replaces the
+   * record, so the fields the write must not change are round-tripped from it
+   * (`projectTagWriteBody`), and `userRoles` is never sent.
    */
-  async updateProjectGroupTags(
-    projectId: string,
-    next: {
-      readonly groupId?: string;
-      readonly role?: ZeropsEnvironmentRole;
-      /** The group's display name, mirrored into `mate:name:` (`groups.ts`). */
-      readonly label?: string;
-    },
+  async writeProjectTags(
+    project: ZeropsProject,
+    tagList: ReadonlyArray<string>,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.fetchProject(projectId, signal);
-    this.#assertGeneration(generation);
     return this.#request<ZeropsProject>(
-      `/project/${projectId}`,
+      `/project/${project.id}`,
       {
         method: "PUT",
         signal: signal ?? null,
-        body: JSON.stringify({
-          name: project.name,
-          description: project.description ?? "",
-          tagList: withZeropsGroupTags(project.tagList, next),
-        }),
+        body: JSON.stringify(
+          projectTagWriteBody({
+            name: project.name,
+            description: project.description,
+            tagList,
+            publicIpV4Shared: project.publicIpV4Shared,
+            maxCreditLimit: project.maxCreditLimit,
+          }),
+        ),
       },
       {
         operationKind: "project-write",
@@ -1242,44 +1235,6 @@ export class ZeropsApiClient {
           description: project.description ?? "",
           tagList: project.tagList ?? [],
           userRoles: withMateProjectRole(project.userRoles, input.clientUserId, input.roleCode),
-        }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /**
-   * `PUT /project/{id}` with the agent's name in `mate:bot:` and every other
-   * tag kept — the write replaces the list wholesale, so this is a
-   * read-modify-write like `updateProjectGroupTags`, and it goes through
-   * `withZeropsBotTag` rather than a membership write, which would clear the
-   * group (`groups.ts`). Naming an agent declares the Mate: a non-blank name
-   * also writes the `mate` marker, so "Set up Mate" is one write and a
-   * rename heals a project the marker never reached.
-   */
-  async nameProjectAgent(
-    projectId: string,
-    name: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.fetchProject(projectId, signal);
-    const named = withZeropsBotTag(project.tagList, name);
-    this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(
-      `/project/${projectId}`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          name: project.name,
-          description: project.description ?? "",
-          tagList: name.trim().length === 0 ? named : withZeropsMateTag(named),
         }),
       },
       {

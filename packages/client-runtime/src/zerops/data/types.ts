@@ -11,6 +11,8 @@ import type { ZeropsEnvironmentRole } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsToolKind } from "../tools.ts";
 import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
+import type { ProjectTagPatch } from "./tagPatch.ts";
+import type { ProjectTagWrite } from "./tagWriter.ts";
 
 /**
  * Stable platform identities. Adapters decode untrusted values with these
@@ -1369,8 +1371,7 @@ export type PlatformCommandKind =
   | "restart-service"
   | "start-service"
   | "start-project"
-  | "name-project-agent"
-  | "update-project-group-tags"
+  | "update-project-tags"
   | "set-project-member-role"
   | "import-development-container"
   | "enable-zerops-mate"
@@ -1586,20 +1587,11 @@ export interface StartProjectCommandIntent {
   readonly project: ProjectRef;
 }
 
-export interface NameProjectAgentCommandIntent {
-  readonly kind: "name-project-agent";
+/** The one write of a project's `tagList`: a patch the TagWriter applies to a fresh read (B2). */
+export interface UpdateProjectTagsCommandIntent {
+  readonly kind: "update-project-tags";
   readonly project: ProjectRef;
-  readonly name: string;
-}
-
-export interface UpdateProjectGroupTagsCommandIntent {
-  readonly kind: "update-project-group-tags";
-  readonly project: ProjectRef;
-  readonly next: {
-    readonly groupId?: string;
-    readonly role?: ZeropsEnvironmentRole;
-    readonly label?: string;
-  };
+  readonly patch: ProjectTagPatch;
 }
 
 /** The five roles a project override may carry (`groupReach.ts`'s vocabulary). */
@@ -1755,8 +1747,7 @@ export type PlatformCommandIntent =
   | RestartServiceCommandIntent
   | StartServiceCommandIntent
   | StartProjectCommandIntent
-  | NameProjectAgentCommandIntent
-  | UpdateProjectGroupTagsCommandIntent
+  | UpdateProjectTagsCommandIntent
   | SetProjectMemberRoleCommandIntent
   | ImportDevelopmentContainerCommandIntent
   | EnableZeropsMateCommandIntent
@@ -1806,8 +1797,7 @@ export type PlatformCommandResult =
   | { readonly kind: "restart-service"; readonly value: void }
   | { readonly kind: "start-service"; readonly value: void }
   | { readonly kind: "start-project"; readonly value: void }
-  | { readonly kind: "name-project-agent"; readonly value: ZeropsProject }
-  | { readonly kind: "update-project-group-tags"; readonly value: ZeropsProject }
+  | { readonly kind: "update-project-tags"; readonly value: ProjectTagWrite }
   | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
@@ -2004,14 +1994,15 @@ export interface ZeropsDataCommands {
   readonly startProject: (
     project: ProjectRef,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly nameProjectAgent: (
+  /**
+   * Writes a project's tags (DESIGN §2.B B2): the patch is applied to a fresh read, serialized per
+   * project across this browser's tabs, and verified by reading back. A patch the list refuses is
+   * an answer, not a failure: nothing was written and `refused` says why.
+   */
+  readonly updateProjectTags: (
     project: ProjectRef,
-    name: string,
-  ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
-  readonly updateProjectGroupTags: (
-    project: ProjectRef,
-    next: UpdateProjectGroupTagsCommandIntent["next"],
-  ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
+    patch: ProjectTagPatch,
+  ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
   /**
    * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one
    * command that writes a project's `userRoles`.

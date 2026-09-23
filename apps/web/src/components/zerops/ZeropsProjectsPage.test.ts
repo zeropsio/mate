@@ -84,8 +84,7 @@ describe("same-origin Zerops identity bootstrap", () => {
 
   it("routes project and service writes through typed runtime commands", () => {
     for (const method of [
-      "nameProjectAgent",
-      "updateProjectGroupTags",
+      "writeProjectTags",
       "importDevelopmentContainer",
       "enableZeropsMate",
       "enableSubdomainAccess",

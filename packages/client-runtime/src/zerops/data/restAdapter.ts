@@ -39,6 +39,7 @@ import type {
 import { ZeropsProcessId } from "./types.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
+import { makeProjectTagWriter, type ProjectTagLocks } from "./tagWriter.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
 
@@ -48,6 +49,11 @@ export interface ZeropsDataAdapterOptions {
   /** Injected so tests and the runtime own all handshake deadlines. */
   readonly timers: PlatformWatchTimers;
   readonly policy?: ZeropsDataPolicy;
+  /**
+   * The page's exclusive locks, which serialize tag writes across the browser's tabs
+   * (`mate:tags:<projectId>`, DESIGN §6.7). Absent where the platform has none.
+   */
+  readonly locks?: ProjectTagLocks;
 }
 
 type BufferedReceiverItem =
@@ -429,6 +435,7 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
  */
 export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): ZeropsDataAdapter {
   const policy = options.policy ?? DEFAULT_ZEROPS_DATA_POLICY;
+  const tags = makeProjectTagWriter({ source: options.client, locks: options.locks });
   const openReceivers = new WeakMap<ReceiverHandle, OpenReceiverInternals>();
   let accountBufferedEvents = 0;
   let accountBufferedBytes = 0;
@@ -924,8 +931,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       PlatformCommand,
       {
         readonly kind:
-          | "name-project-agent"
-          | "update-project-group-tags"
+          | "update-project-tags"
           | "set-project-member-role"
           | "create-project"
           | "create-project-with-mate"
@@ -1038,17 +1044,17 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     }
 
     switch (command.kind) {
-      case "name-project-agent":
+      case "update-project-tags":
         return executeApi(context, (signal) =>
-          options.client.nameProjectAgent(
-            command.project.projectId,
-            command.name,
+          tags.write(command.project.projectId, command.patch, {
             signal,
-            context.beforeProjectWrite,
-          ),
+            beforeWrite: context.beforeProjectWrite,
+          }),
         ).pipe(
+          // The read that confirmed the write — or found nothing to write — is the project as
+          // the platform holds it now: the re-read after our own write (DESIGN §6.2).
           Effect.flatMap((value) =>
-            projectCommandReceipt(command, value, { kind: command.kind, value }),
+            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
           ),
           Effect.mapError(uncertainCommandError),
         );
@@ -1060,20 +1066,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               clientUserId: command.clientUserId,
               roleCode: command.roleCode,
             },
-            signal,
-            context.beforeProjectWrite,
-          ),
-        ).pipe(
-          Effect.flatMap((value) =>
-            projectCommandReceipt(command, value, { kind: command.kind, value }),
-          ),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "update-project-group-tags":
-        return executeApi(context, (signal) =>
-          options.client.updateProjectGroupTags(
-            command.project.projectId,
-            command.next,
             signal,
             context.beforeProjectWrite,
           ),

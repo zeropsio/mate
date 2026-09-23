@@ -30,8 +30,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "enable-zerops-mate":
     case "enable-subdomain-access":
       return intent.service;
-    case "name-project-agent":
-    case "update-project-group-tags":
+    case "update-project-tags":
     case "set-project-member-role":
     case "import-development-container":
     case "import-services":

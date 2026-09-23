@@ -44,12 +44,15 @@ export function useRenameGroup(): RenameGroup {
         // The name lives on every member; a rename is one write per member.
         for (const environment of group.environments) {
           await runZeropsCommand(
-            runtime.commands.updateProjectGroupTags(
+            runtime.commands.updateProjectTags(
               projectRef(activeOrganization.id, environment.project.id),
               {
-                groupId: group.groupId,
-                ...(environment.role === undefined ? {} : { role: environment.role }),
-                label: name,
+                kind: "group-membership",
+                next: {
+                  groupId: group.groupId,
+                  ...(environment.role === undefined ? {} : { role: environment.role }),
+                  label: name,
+                },
               },
             ),
           );

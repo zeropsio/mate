@@ -1069,7 +1069,9 @@ function ZeropsProjectsContent() {
           handoff: null,
         });
         if (!isCurrent()) return;
-        await runZeropsCommand(runtime.commands.nameProjectAgent(project, botName));
+        await runZeropsCommand(
+          runtime.commands.updateProjectTags(project, { kind: "agent-name", name: botName }),
+        );
       } catch (cause) {
         if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
       } finally {

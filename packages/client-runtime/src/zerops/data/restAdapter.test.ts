@@ -171,9 +171,9 @@ const startProjectCommand: PlatformCommand = {
 };
 
 const nameProjectCommand: PlatformCommand = {
-  kind: "name-project-agent",
+  kind: "update-project-tags",
   project,
-  name: "Ada",
+  patch: { kind: "agent-name", name: "Ada" },
   attemptId: ZeropsCommandAttemptId.make("name-attempt"),
   accountEpoch: scope.epoch,
   startedAtReceiptOrdinal: ReceiptOrdinal.make(9),
@@ -1002,12 +1002,13 @@ describe("ZeropsDataAdapter receiver", () => {
       const requests: RequestInit[] = [];
       const client = clientFor((_url, init) => {
         requests.push(init ?? {});
+        // The first read finds no name; the write and its read-back carry it.
         return new Response(
           JSON.stringify({
             id: "project",
             name: "application",
             status: "ACTIVE",
-            tagList: ["mate", "mate:bot:Ada"],
+            tagList: requests.length === 1 ? [] : ["mate", "mate:bot:Ada"],
           }),
           { status: 200 },
         );
@@ -1020,10 +1021,10 @@ describe("ZeropsDataAdapter receiver", () => {
 
       const receipt = yield* adapter.execute(nameProjectCommand, context());
 
-      expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "PUT"]);
+      expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "PUT", "GET"]);
       expect(receipt.result).toMatchObject({
-        kind: "name-project-agent",
-        value: { id: "project", tagList: ["mate", "mate:bot:Ada"] },
+        kind: "update-project-tags",
+        value: { kind: "written", project: { id: "project", tagList: ["mate", "mate:bot:Ada"] } },
       });
       expect(receipt.observations).toEqual(
         expect.arrayContaining([

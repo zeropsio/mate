@@ -751,9 +751,9 @@ describe("Zerops platform protocol decoding", () => {
 
   it("turns a validated Project mutation response into command-linked facets", () => {
     const command: PlatformCommand = {
-      kind: "name-project-agent",
+      kind: "update-project-tags",
       project,
-      name: "Ada",
+      patch: { kind: "agent-name", name: "Ada" },
       attemptId: ZeropsCommandAttemptId.make("name-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),
@@ -780,9 +780,9 @@ describe("Zerops platform protocol decoding", () => {
 
   it("rejects a Project mutation response for another project", () => {
     const command: PlatformCommand = {
-      kind: "update-project-group-tags",
+      kind: "update-project-tags",
       project,
-      next: {},
+      patch: { kind: "group-membership", next: {} },
       attemptId: ZeropsCommandAttemptId.make("tags-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),

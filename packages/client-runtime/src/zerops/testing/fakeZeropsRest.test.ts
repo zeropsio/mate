@@ -186,13 +186,14 @@ describe("FakeZeropsRest", () => {
       return [...tags, "elsewhere"];
     });
 
-    await clientOf(rest).updateProjectGroupTags("p1", { groupId: "g1", role: "dev" });
+    const client = clientOf(rest);
+    const read = await client.fetchProject("p1");
+    await client.writeProjectTags(read, ["mate:g:g1"]);
 
     // The whole-list PUT lands on the other writer's list and drops its tag.
     const tags = rest.project("p1")?.tagList ?? [];
     expect(seen).toEqual([[]]);
-    expect(tags).not.toContain("elsewhere");
-    expect(tags.length).toBeGreaterThan(0);
+    expect(tags).toEqual(["mate:g:g1"]);
     expect(rest.requests().map(({ route }) => route)).toEqual([
       "GET /project/p1",
       "PUT /project/p1",

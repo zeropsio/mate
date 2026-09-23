@@ -3061,18 +3061,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
-    nameProjectAgent: (project, name) =>
-      runCommand({ kind: "name-project-agent", project, name }).pipe(
+    updateProjectTags: (project, patch) =>
+      runCommand({ kind: "update-project-tags", project, patch }).pipe(
         Effect.flatMap(({ attempt, result }) =>
-          result.kind === "name-project-agent"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    updateProjectGroupTags: (project, next) =>
-      runCommand({ kind: "update-project-group-tags", project, next }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "update-project-group-tags"
+          result.kind === "update-project-tags"
             ? Effect.succeed({ attempt, value: result.value })
             : Effect.fail(missingCommandResult()),
         ),
