@@ -176,6 +176,31 @@ export function interimReachability(input: InterimTargetInput): Reachability | n
   );
 }
 
+/**
+ * The registered environment a candidate's Mate opens in: the one remembered for its target key,
+ * else the one registered at its origin. A Mate whose container is restarting has no origin in
+ * the inventory, so the record is what still finds it.
+ */
+export function interimCandidateEnvironment(
+  candidate: ZeropsCandidate,
+  registered: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly origin: string | null;
+  }>,
+  records: ReadonlyArray<{ readonly key: string; readonly environmentId: string }>,
+): EnvironmentId | undefined {
+  const remembered = records.find((record) => record.key === candidate.key)?.environmentId;
+  const origin =
+    candidate.containerOrigin === undefined ? null : normalizeOrigin(candidate.containerOrigin);
+  return (
+    registered.find((entry) => entry.environmentId === remembered) ??
+    registered.find(
+      (entry) =>
+        origin !== null && entry.origin !== null && normalizeOrigin(entry.origin) === origin,
+    )
+  )?.environmentId;
+}
+
 /** The gate's target for the route's environment. */
 export function interimRouteTarget(input: InterimRouteInput): RouteTarget {
   const reachability = interimReachability(input);

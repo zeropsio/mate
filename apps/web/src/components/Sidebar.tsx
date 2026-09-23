@@ -207,6 +207,7 @@ import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
 import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
+import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
@@ -1729,6 +1730,7 @@ export default function Sidebar() {
   // health probe is registered on the user's behalf; from then on its socket
   // and its thread status arrive like any other environment's.
   const { health: zeropsHealth } = useZeropsCandidateHealth(zeropsCandidates);
+  const zeropsLinks = useEnvironmentLinks();
   useZeropsAutoConnect({
     candidates: zeropsCandidates,
     health: zeropsHealth,
@@ -3920,10 +3922,12 @@ export default function Sidebar() {
                 if (isMobile) {
                   setOpenMobile(false);
                 }
-                // Not connected: hand off to the projects screen, which owns
+                // Registered here and not gone or replaced: open it, whatever
+                // its socket is doing — the route says what the Mate is up
+                // to. Otherwise hand off to the projects screen, which owns
                 // the connect flow — better than a row that looks clickable
                 // and quietly does nothing.
-                const environmentId = candidate.environmentId;
+                const environmentId = zeropsLinks.linkTarget(candidate);
                 if (environmentId === undefined) {
                   void router.navigate({ to: "/zerops" });
                   return;

@@ -84,6 +84,7 @@ import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells, waitForProject } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
+import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
@@ -644,7 +645,14 @@ function OpenCommandPaletteDialog(props: {
     useHandleNewThread();
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
-  const threads = useThreadShells();
+  const threadShells = useThreadShells();
+  // Every thread link the palette offers — a thread row, a project's latest
+  // thread — opens only into an environment the route gate would open.
+  const { linkable } = useEnvironmentLinks();
+  const threads = useMemo(
+    () => threadShells.filter((thread) => linkable(thread.environmentId)),
+    [linkable, threadShells],
+  );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const {
     theme,

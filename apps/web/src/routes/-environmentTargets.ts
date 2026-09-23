@@ -1,10 +1,15 @@
 /**
  * Today's shell read as the environment machine's regions (`interimRouteTarget`, the 0.9c
- * interim), for the route gate. Replaced by the exchange driver's machines once the web app runs
- * them.
+ * interim): the one source the route gate and every link producer read, so a route and the links
+ * into it agree on which environments are worth opening. Replaced by the exchange driver's
+ * machines once the web app runs them.
  */
 import { useAtomValue } from "@effect/atom-react";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  environmentLinkable,
+  interimCandidateEnvironment,
+  interimReachability,
   interimRouteTarget,
   type InterimTargetInput,
   type RouteTarget,
@@ -103,4 +108,44 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     mateName:
       environments.find((entry) => entry.environmentId === environmentId)?.label ?? "This Mate",
   };
+}
+
+export interface EnvironmentLinks {
+  /** Whether a link into the environment is worth offering: everything but gone and replaced. */
+  readonly linkable: (environmentId: EnvironmentId) => boolean;
+  /** The registered environment a candidate's Mate opens in, when a link into it is worth offering. */
+  readonly linkTarget: (candidate: ZeropsCandidate) => EnvironmentId | undefined;
+}
+
+/** The shared `environmentLinkable` rule for every producer of a link into an environment. */
+export function useEnvironmentLinks(): EnvironmentLinks {
+  const inputFor = useTargetInput();
+  const { environments } = useEnvironments();
+  const linkable = useCallback(
+    (environmentId: EnvironmentId) => {
+      const reachability = interimReachability(inputFor(environmentId));
+      return reachability !== null && environmentLinkable(reachability);
+    },
+    [inputFor],
+  );
+  const registered = useMemo(
+    () =>
+      environments.map((entry) => ({
+        environmentId: entry.environmentId,
+        origin: entry.displayUrl,
+      })),
+    [environments],
+  );
+  const linkTarget = useCallback(
+    (candidate: ZeropsCandidate) => {
+      const environmentId = interimCandidateEnvironment(
+        candidate,
+        registered,
+        readRememberedEnvironments(),
+      );
+      return environmentId !== undefined && linkable(environmentId) ? environmentId : undefined;
+    },
+    [linkable, registered],
+  );
+  return useMemo(() => ({ linkable, linkTarget }), [linkable, linkTarget]);
 }

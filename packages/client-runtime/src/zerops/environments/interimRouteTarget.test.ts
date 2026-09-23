@@ -4,7 +4,11 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsProject } from "../api.ts";
 import type { ZeropsCandidate } from "../candidates.ts";
 import { selectRouteGate, type RouteTarget } from "./gate.ts";
-import { interimRouteTarget, type InterimRouteInput } from "./interimRouteTarget.ts";
+import {
+  interimCandidateEnvironment,
+  interimRouteTarget,
+  type InterimRouteInput,
+} from "./interimRouteTarget.ts";
 
 const ORIGIN = "https://zcp-1-abc.prg1.zerops.app";
 const OTHER_ORIGIN = "https://zcp-2-abc.prg1.zerops.app";
@@ -196,6 +200,41 @@ const ROWS: ReadonlyArray<{
     target: { kind: "unresolved", discovery: "settled" },
   },
 ];
+
+describe("interimCandidateEnvironment", () => {
+  it.each([
+    {
+      name: "a RESTARTING Mate without an origin opens in its remembered, registered environment",
+      candidate: mate("RESTARTING", null),
+      registered: [{ environmentId: ENV_A, origin: ORIGIN }],
+      records: [{ key: "project-1:service-1", environmentId: "env-a" }],
+      environment: ENV_A,
+    },
+    {
+      name: "a Mate registered at its origin before its record is written opens there",
+      candidate: mate(),
+      registered: [{ environmentId: ENV_A, origin: `${ORIGIN}/` }],
+      records: [],
+      environment: ENV_A,
+    },
+    {
+      name: "a remembered environment the catalog no longer holds opens nothing",
+      candidate: mate("RESTARTING", null),
+      registered: [],
+      records: [{ key: "project-1:service-1", environmentId: "env-a" }],
+      environment: undefined,
+    },
+    {
+      name: "a Mate nothing registered opens nothing",
+      candidate: mate(),
+      registered: [{ environmentId: EnvironmentId.make("env-b"), origin: OTHER_ORIGIN }],
+      records: [],
+      environment: undefined,
+    },
+  ])("$name", ({ candidate, registered, records, environment }) => {
+    expect(interimCandidateEnvironment(candidate, registered, records)).toBe(environment);
+  });
+});
 
 describe("interimRouteTarget", () => {
   it.each(ROWS)("$name", ({ input: observed, target }) => {
