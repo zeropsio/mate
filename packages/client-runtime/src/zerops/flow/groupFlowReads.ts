@@ -1,0 +1,170 @@
+/**
+ * What one group's flow reads from the account's stores (DESIGN §4.7): the forge facts a view
+ * demands for it, and `groupFlow`'s inputs as the forge and the deployment store hold them now.
+ *
+ * What is demanded grows with what is known: the org's repositories name their open lists, a
+ * list names its pull requests' heads, whose checks are read, and the production's services name
+ * the repositories whose `main` a release would carry. A group read without a forge — before the
+ * Gitea is known, or on a host with none — waits for the Gitea session.
+ *
+ * @module flow/groupFlowReads
+ */
+import type { ProjectRef } from "../data/types.ts";
+import type { ForgeFact, ForgeStore } from "../forge/forgeStore.ts";
+import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
+import type { Shown } from "../knowledge/known.ts";
+import { GROUP_REPOSITORY } from "../projectFlow.ts";
+import type { StopService } from "./deployment.ts";
+import type { DeploymentStore } from "./deploymentStore.ts";
+import {
+  pullKey,
+  type GroupFlowInputs,
+  type GroupFlowMember,
+  type GroupFlowPull,
+} from "./groupFlow.ts";
+
+export interface GroupFlowStores {
+  /** `null` on a host that gave the forge no ports. */
+  readonly forge: ForgeStore | null;
+  readonly deployments: DeploymentStore;
+}
+
+/** What one group's flow is read from, beside the stores. */
+export interface GroupFlowSource {
+  readonly entry: ZeropsRegistryGroup;
+  /** The account's Gitea for the group's organization. */
+  readonly giteaOrigin: string | undefined;
+  /** The Zerops projects the tags make members of the group. */
+  readonly members: Shown<ReadonlyArray<GroupFlowMember & { readonly project: ProjectRef }>>;
+}
+
+const UNREAD: Shown<never> = { state: "unread", waitingFor: null };
+const WAITING_FOR_GITEA: Shown<never> = { state: "unread", waitingFor: "gitea-session" };
+
+/** The hostnames of the production stops' services, as the deployment store holds them. */
+function productionHostnames(
+  forge: ForgeStore,
+  origin: string,
+  deployments: DeploymentStore,
+  source: GroupFlowSource,
+): ReadonlyArray<string> {
+  const declarations = forge.read({
+    kind: "declarations",
+    origin,
+    owner: source.entry.slug,
+    repo: GROUP_REPOSITORY,
+  });
+  const hostnames = new Set<string>();
+  if (declarations.state !== "known" || source.members.state !== "known") return [...hostnames];
+  for (const declaration of declarations.value) {
+    if (declaration.tier !== "production") continue;
+    const member = source.members.value.find(({ projectId }) => projectId === declaration.project);
+    if (member === undefined) continue;
+    const stop = deployments.stop(member.project);
+    if (stop.state !== "known") continue;
+    for (const { hostname } of stop.value) hostnames.add(hostname);
+  }
+  return [...hostnames].sort();
+}
+
+/** The stops a group's flow demands of the deployment store: its members' projects. */
+export function groupFlowStops(source: GroupFlowSource): ReadonlyArray<ProjectRef> {
+  const projects: Array<ProjectRef> = [];
+  if (source.members.state !== "known") return projects;
+  for (const { project } of source.members.value) projects.push(project);
+  return projects;
+}
+
+/** Every forge fact the group's flow reads, as far as what is known so far names them. */
+export function groupFlowFacts(
+  stores: GroupFlowStores,
+  source: GroupFlowSource,
+): ReadonlyArray<ForgeFact> {
+  const { forge } = stores;
+  const origin = source.giteaOrigin;
+  const facts: Array<ForgeFact> = [];
+  if (forge === null || origin === undefined) return facts;
+  const repository = (repo: string) => ({ origin, owner: source.entry.slug, repo });
+  facts.push(
+    { kind: "repos", origin, org: source.entry.slug },
+    { kind: "declarations", ...repository(GROUP_REPOSITORY) },
+    { kind: "tags", ...repository(GROUP_REPOSITORY) },
+  );
+  for (const hostname of productionHostnames(forge, origin, stores.deployments, source)) {
+    facts.push({ kind: "branch", ...repository(hostname), branch: "main" });
+  }
+  const repos = forge.read({ kind: "repos", origin, org: source.entry.slug });
+  if (repos.state !== "known") return facts;
+  for (const { name } of repos.value) {
+    facts.push({ kind: "open-pulls", ...repository(name) });
+    const open = forge.read({ kind: "open-pulls", ...repository(name) });
+    if (open.state !== "known") continue;
+    for (const number of open.value) {
+      const pull = forge.read({ kind: "pull", ...repository(name), number });
+      if (pull.state !== "known" || pull.value.pull.head?.sha === undefined) continue;
+      facts.push({ kind: "statuses", ...repository(name), sha: pull.value.pull.head.sha });
+    }
+  }
+  return facts;
+}
+
+/** The group's flow inputs as the stores hold them now. */
+export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource): GroupFlowInputs {
+  const { forge, deployments } = stores;
+  const origin = source.giteaOrigin;
+  const slug = source.entry.slug;
+  const repository = (repo: string) => ({ origin: origin ?? "", owner: slug, repo });
+  const read = <F extends ForgeFact>(fact: F) =>
+    forge === null || origin === undefined ? WAITING_FOR_GITEA : forge.read(fact);
+
+  const repos = read({ kind: "repos", origin: origin ?? "", org: slug });
+  const openPulls = new Map<string, Shown<ReadonlyArray<number>>>();
+  const pulls = new Map<string, Shown<GroupFlowPull>>();
+  let repoNames: Shown<ReadonlyArray<string>> = repos as Shown<never>;
+  if (repos.state === "known") {
+    repoNames = { ...repos, value: repos.value.map(({ name }) => name) };
+    for (const { name } of repos.value) {
+      const open = read({ kind: "open-pulls", ...repository(name) });
+      openPulls.set(name, open);
+      if (open.state !== "known") continue;
+      for (const number of open.value) {
+        const key = { ...repository(name), number };
+        const pull = read({ kind: "pull", ...key });
+        // The MergeState is a projection over the same pull request entry: known together.
+        const state = forge === null ? UNREAD : forge.mergeState(key);
+        pulls.set(
+          pullKey(name, number),
+          pull.state === "known" && state.state === "known"
+            ? { ...state, value: { pull: pull.value.pull, state: state.value } }
+            : (state as Shown<never>),
+        );
+      }
+    }
+  }
+
+  const stops = new Map<string, Shown<ReadonlyArray<StopService>>>();
+  if (source.members.state === "known") {
+    for (const member of source.members.value) {
+      stops.set(member.projectId, deployments.stop(member.project));
+    }
+  }
+
+  const mainHeads = new Map<string, Shown<string>>();
+  if (forge !== null && origin !== undefined) {
+    for (const hostname of productionHostnames(forge, origin, deployments, source)) {
+      mainHeads.set(hostname, read({ kind: "branch", ...repository(hostname), branch: "main" }));
+    }
+  }
+
+  return {
+    entry: source.entry,
+    members: source.members,
+    declarations: read({ kind: "declarations", ...repository(GROUP_REPOSITORY) }),
+    repos: repoNames,
+    openPulls,
+    pulls,
+    tags: read({ kind: "tags", ...repository(GROUP_REPOSITORY) }),
+    mainHeads,
+    stops,
+  };
+}

@@ -30,7 +30,8 @@ import type { ServiceRef } from "../data/types.ts";
 import { GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import { flowVerbKey, GROUP_REPOSITORY } from "../projectFlow.ts";
-import { RELEASE_NOT_A_RELEASER, rollbackTo } from "../release.ts";
+import { RELEASE_NOT_A_RELEASER, releaseMessage, releaseTagName, rollbackTo } from "../release.ts";
+import type { GroupFlow } from "./groupFlow.ts";
 
 export type FlowCommand =
   | {
@@ -132,6 +133,37 @@ export function flowCommandInvalidations(command: FlowCommand): ReadonlyArray<In
         },
       ];
   }
+}
+
+/** Merging one of the group's pull requests, with the stages its repository feeds. */
+export function mergeCommand(
+  flow: GroupFlow,
+  origin: string,
+  repository: string,
+  number: number,
+): FlowCommand {
+  return {
+    kind: "merge",
+    origin,
+    slug: flow.slug,
+    repository,
+    number,
+    feeds: flow.feeds(repository),
+  };
+}
+
+/** Tagging what the release offer showed; `null` while the offer is not known. */
+export function releaseCommand(flow: GroupFlow, origin: string): FlowCommand | null {
+  if (flow.release.state !== "known") return null;
+  const offer = flow.release.value;
+  return {
+    kind: "release",
+    origin,
+    slug: flow.slug,
+    groupId: flow.groupId,
+    tag: releaseTagName(offer.suggestion.replace(/^v/u, "")),
+    message: releaseMessage(offer.entries),
+  };
 }
 
 type Refused = Extract<Capability, { readonly allowed: false }>;

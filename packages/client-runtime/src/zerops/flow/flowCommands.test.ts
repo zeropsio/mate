@@ -8,9 +8,12 @@ import { RELEASE_NOT_A_RELEASER } from "../release.ts";
 import {
   FLOW_COMMAND_UNCERTAIN,
   makeFlowCommands,
+  mergeCommand,
+  releaseCommand,
   type FlowCommand,
   type FlowCommandPorts,
 } from "./flowCommands.ts";
+import type { GroupFlow } from "./groupFlow.ts";
 
 const GITEA = "https://gitea-1-3000.prg1.zerops.app";
 const APPSTAGE = service("stage-appdev", project("p-stage"));
@@ -240,5 +243,41 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
     expect(await first).toEqual({ phase: "accepted" });
     expect(await second).toEqual({ phase: "accepted" });
     expect(calls).toEqual(["merge harbor/appdev#4"]);
+  });
+});
+
+describe("a group flow's commands", () => {
+  const flow = (release: GroupFlow["release"]): GroupFlow => ({
+    groupId: "g1",
+    slug: "harbor",
+    pullRequests: { state: "unread", waitingFor: null },
+    stops: { state: "unread", waitingFor: null },
+    release,
+    releaseGate: { allowed: true },
+    feeds: (repository) => (repository === "appdev" ? [APPSTAGE] : []),
+  });
+  const offer = {
+    gate: { allowed: true },
+    suggestion: "v1.0.1",
+    comparison: [],
+    entries: [{ service: "appdev", commit: HEAD }],
+  } as const;
+
+  it("a merge names the stages its repository feeds", () => {
+    expect(mergeCommand(flow({ state: "unread", waitingFor: null }), GITEA, "appdev", 4)).toEqual(
+      MERGE,
+    );
+  });
+
+  it("a release tags what the offer showed, and only a known offer", () => {
+    const known = flow({
+      state: "known",
+      value: offer,
+      asOf: { ordinal: 1, atMs: 1 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    });
+    expect(releaseCommand(known, GITEA)).toEqual(RELEASE);
+    expect(releaseCommand(flow({ state: "reading", sinceMs: 1, attempt: 1 }), GITEA)).toBeNull();
   });
 });
