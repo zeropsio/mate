@@ -255,6 +255,10 @@
       "types": "./src/zerops/doorThrowaway.ts",
       "default": "./src/zerops/doorThrowaway.ts"
     },
+    "./zerops/diagnostics": {
+      "types": "./src/zerops/diagnostics.ts",
+      "default": "./src/zerops/diagnostics.ts"
+    },
     "./zerops/candidates": {
       "types": "./src/zerops/candidates.ts",
       "default": "./src/zerops/candidates.ts"
