@@ -194,8 +194,6 @@ const mountInventory = Effect.fn(function* (
   });
   vi.setSystemTime(1788825600000);
   installTestDom();
-  // The signed-in session opens the account's lifetime; its intents belong to it.
-  openAccountLifetime("account");
   const registry = AtomRegistry.make();
   const account = {
     apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
@@ -247,6 +245,8 @@ const mountInventory = Effect.fn(function* (
     baseUrl: "https://api.example.test",
     setWritesAllowed: vi.fn(),
   };
+  // Signed in: the session opened the account's lifetime; its intents belong to it.
+  openAccountLifetime(user.id);
   session.current = {
     client,
     status: "signed-in",
@@ -357,6 +357,7 @@ const mountInventory = Effect.fn(function* (
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
       yield* Effect.promise(async () => act(async () => root.unmount()));
+      closeAccountLifetime();
       yield* actual.shutdown("application-close");
       stopRecording();
       registry.dispose();

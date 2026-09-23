@@ -33,6 +33,7 @@ import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNod
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import {
+  captureAccountLifetime,
   currentAccountEpoch,
   onAccountLifetimeClose,
   setAccountActionsAllowed,
@@ -102,24 +103,37 @@ export function browserPage(document: Document, window: Window): PagePort {
   };
 }
 
+/** The write window that last opened each client's writes. */
+const clientWriteOwners = new WeakMap<Pick<ZeropsApiClient, "setWritesAllowed">, WriteWindowPort>();
+
 /**
  * Account actions and the api's project writes, open for as long as the
  * grant's evidence authorizes them (G4, G5): the account's deadline on both of
  * this renderer's clocks, the api's on its own `timeOrigin + performance.now()`.
+ *
+ * Bound to the account lifetime it is made in: once that lifetime closed it
+ * opens nothing, and it closes only what it opened itself, never a newer
+ * account's window.
  */
 export function browserWriteWindow(
   client: Pick<ZeropsApiClient, "setWritesAllowed">,
 ): WriteWindowPort {
-  return {
+  const alive = captureAccountLifetime();
+  const window: WriteWindowPort = {
     open: (forMs) => {
+      if (!alive()) return;
       setAccountActionsAllowed({ wallMs: Date.now() + forMs, monoMs: performance.now() + forMs });
       client.setWritesAllowed(true, performance.timeOrigin + performance.now() + forMs);
+      clientWriteOwners.set(client, window);
     },
     close: () => {
-      setAccountActionsAllowed(null);
+      if (alive()) setAccountActionsAllowed(null);
+      if (clientWriteOwners.get(client) !== window) return;
+      clientWriteOwners.delete(client);
       client.setWritesAllowed(false);
     },
   };
+  return window;
 }
 
 /**

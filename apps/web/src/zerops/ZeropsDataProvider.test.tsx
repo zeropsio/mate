@@ -2,10 +2,18 @@ import * as Effect from "effect/Effect";
 import { act, Children, isValidElement, StrictMode, useContext, useEffect } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { closeAccountLifetime } from "./accountLifetime";
+import {
+  accountActionsAllowed,
+  closeAccountLifetime,
+  openAccountLifetime,
+} from "./accountLifetime";
 import { makeFakeRuntimeFactory } from "./__fixtures__/dataRuntimeFactory";
 import { ZeropsDataContext } from "./zeropsDataContext";
-import { ZeropsDataProvider, ZeropsDataStartupFailure } from "./ZeropsDataProvider";
+import {
+  browserWriteWindow,
+  ZeropsDataProvider,
+  ZeropsDataStartupFailure,
+} from "./ZeropsDataProvider";
 
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
@@ -108,6 +116,33 @@ async function flushEffects(): Promise<void> {
     await Promise.resolve();
   });
 }
+
+describe("browserWriteWindow", () => {
+  it("opens nothing for an account whose lifetime closed, and never closes a newer account's writes", () => {
+    const client = { setWritesAllowed: vi.fn() };
+    try {
+      openAccountLifetime("account-a");
+      const replaced = browserWriteWindow(client);
+      openAccountLifetime("account-b");
+      const current = browserWriteWindow(client);
+
+      replaced.open(60_000);
+      expect(accountActionsAllowed()).toBe(false);
+      expect(client.setWritesAllowed).not.toHaveBeenCalled();
+
+      current.open(60_000);
+      replaced.close();
+      expect(accountActionsAllowed()).toBe(true);
+      expect(client.setWritesAllowed).toHaveBeenLastCalledWith(true, expect.any(Number));
+
+      current.close();
+      expect(accountActionsAllowed()).toBe(false);
+      expect(client.setWritesAllowed).toHaveBeenLastCalledWith(false);
+    } finally {
+      closeAccountLifetime();
+    }
+  });
+});
 
 describe("ZeropsDataStartupFailure", () => {
   it("offers finite recovery when account runtime creation fails", () => {
