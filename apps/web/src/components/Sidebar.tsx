@@ -203,7 +203,7 @@ import { useAddMateIntent } from "../zerops/addMateIntent";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { useAskMate } from "../zerops/useAskMate";
 import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
-import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
+import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { useNowMs } from "../zerops/useNowMs";
@@ -1753,10 +1753,10 @@ export default function Sidebar() {
     [zeropsListing, zeropsNowMs, zeropsOrganizationStatus],
   );
   // The roster says what every agent is doing, and the only thing that knows
-  // is the environment's own server. So every container that answers the
-  // health probe is registered on the user's behalf; from then on its socket
+  // is the environment's own server. So every container the container store
+  // reads as ready is registered on the user's behalf; from then on its socket
   // and its thread status arrive like any other environment's.
-  const { health: zeropsHealth } = useZeropsCandidateHealth(zeropsCandidates);
+  const { health: zeropsHealth } = useZeropsContainers();
   const zeropsLinks = useEnvironmentLinks();
   useZeropsAutoConnect({
     candidates: zeropsCandidates,

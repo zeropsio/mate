@@ -61,15 +61,11 @@ import {
   rememberCreationHandoff,
 } from "~/zerops/creationHandoffStorage";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
+import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
-import {
-  useZeropsCandidateHealth,
-  useZeropsCandidateMateFlags,
-  useZeropsCandidateProcessRunning,
-} from "~/zerops/useZeropsCandidateHealth";
 import {
   integrationTokensFromGrantMetadata,
   useZeropsGroupReach,
@@ -831,24 +827,14 @@ function ZeropsProjectsContent() {
     finishedBirthProjectsRef.current.add(admitted.project.id);
     void finishBirth(admitted.environmentId);
   }, [candidates, connectingOrigin, finishBirth, provisioning.state?.projectId]);
-  // The same platform-process ground truth `provisioning.ts`'s wait reads,
-  // given to the row probes too (H7/R9) — a legitimately long restart must
-  // not read as `stalled` here while the provisioning machine, watching the
-  // same fact, knows it is still running.
-  const candidateProcessRunning = useZeropsCandidateProcessRunning(
-    candidates,
-    activeOrganization?.id,
-  );
-  const { health: candidateHealth, serverVersions } = useZeropsCandidateHealth(candidates, {
-    isProcessRunning: candidateProcessRunning,
-  });
-  // H9: the one read fact `predates-mate` is gated on — read only for a
-  // candidate the health probe has actually put there.
-  const candidateMateFlags = useZeropsCandidateMateFlags(
-    candidates,
-    candidateHealth,
-    activeOrganization?.id,
-  );
+  // Every row's container as the container store holds it (DESIGN §4.5): the
+  // platform's processes hold a boot's cap (H7/R9), and the Mate flag is read
+  // only for a container that predates Mate (H9).
+  const {
+    health: candidateHealth,
+    serverVersions,
+    mateFlags: candidateMateFlags,
+  } = useZeropsContainers();
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
   const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
   const [restartingCandidateKey, setRestartingCandidateKey] = useState<string | null>(null);
@@ -1449,6 +1435,7 @@ function ZeropsProjectsContent() {
           }),
         )
           .then(() => {
+            intendContainer(candidate.key, { kind: "enable" });
             startWaitFor(candidate);
           })
           .catch((cause: unknown) => {
@@ -1507,7 +1494,9 @@ function ZeropsProjectsContent() {
               project,
               serviceId: ZeropsServiceId.make(serviceId),
             }),
-          ),
+          ).then(() => {
+            intendContainer(candidate.key, { kind: "restart" });
+          }),
         )
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));

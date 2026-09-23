@@ -51,6 +51,7 @@ import { useProjectOrderPreference } from "./projectOrderPreference";
 import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
+import { intendContainer } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -89,7 +90,7 @@ export interface MateActions {
  */
 export interface MateActionsInput {
   readonly registry: RegistryState;
-  /** `candidate.key → "0.11.25"`, from `useZeropsCandidateHealth`. */
+  /** `candidate.key → "0.11.25"`, from `useZeropsContainers`. */
   readonly serverVersions: ReadonlyMap<string, string>;
 }
 
@@ -238,7 +239,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               project,
               serviceId: ZeropsServiceId.make(serviceId),
             }),
-          ),
+          ).then((value) => {
+            intendContainer(candidate.key, { kind: "restart" });
+            return value;
+          }),
         refresh,
       );
     },

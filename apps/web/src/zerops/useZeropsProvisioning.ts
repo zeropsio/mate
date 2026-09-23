@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
-import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import {
@@ -24,6 +23,7 @@ import {
 } from "@t3tools/client-runtime/zerops/provisioning";
 import { findInventoryProjectRef, useZeropsInventory } from "./inventoryContext";
 import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
+import { nextContainerReading } from "./zeropsContainers";
 import {
   runZeropsCommand,
   useZeropsAtomSelections,
@@ -221,7 +221,8 @@ export function useZeropsProvisioning(clientId: string | null): {
               ? undefined
               : liveInventory.projects.find((project) => project.id === live.projectId),
           services: services?.status === "resolved" ? services.services : undefined,
-          probeHealth: (origin) => probeZeropsContainerHealth(origin),
+          // Through the tab's one probe pool (DESIGN §4.5), never a probe of its own.
+          probeHealth: async (origin) => (await nextContainerReading(origin)).kind,
         });
         if (cancelled) return;
         if (event.kind === "health" && mateFlagRef.current === true) {

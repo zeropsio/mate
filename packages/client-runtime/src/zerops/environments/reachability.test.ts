@@ -1,18 +1,15 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsProject } from "../api.ts";
-import type { ZeropsCandidate } from "../candidates.ts";
-import type { ZeropsContainerHealth } from "../provisioning.ts";
 import {
   initialEnvironment,
   transitionEnvironment,
+  type ContainerVerdict,
   type DescriptorFacts,
   type EnvironmentEvent,
   type EnvironmentGuards,
   type EnvironmentMachine,
 } from "./environmentMachine.ts";
-import { interimContainerVerdict, type InterimMateFlag } from "./interimContainer.ts";
 import {
   environmentLinkable,
   isTerminalReachability,
@@ -47,26 +44,21 @@ const descriptor = (overrides: Partial<DescriptorFacts> = {}): DescriptorFacts =
   ...overrides,
 });
 
-/** Region C as 0.9a derives it: the candidate's statuses and the probe's verdict. */
-const interim = (
-  serviceStatus: string,
-  health?: ZeropsContainerHealth,
-  mateFlag?: InterimMateFlag,
-) => {
-  const candidate: ZeropsCandidate = {
-    key: "project-1:service-1",
-    project: { id: "project-1", name: "shop", status: "ACTIVE" } as ZeropsProject,
-    group: "ready",
-    service: { id: "service-1", name: "zcp", status: serviceStatus },
-  };
-  return interimContainerVerdict({ candidate, health, mateFlag });
+/** Region C as the container machine gives it (§4.5). */
+const READY: ContainerVerdict = { level: "ready" };
+const PLATFORM_RESTARTING: ContainerVerdict = {
+  level: "restarting",
+  by: "platform",
+  overdue: false,
 };
+/** Up, but Mate never answered: a boot past its cap. */
+const STALLED: ContainerVerdict = { level: "booting", overdue: true };
 
 const machine = (overrides: Partial<EnvironmentMachine>): EnvironmentMachine => ({
   ...initialEnvironment({ record: ENV_A }),
   guards: GUARDS,
   presence: { kind: "present", origin: ORIGIN },
-  container: interim("ACTIVE", "ready"),
+  container: READY,
   ...overrides,
 });
 
@@ -200,7 +192,7 @@ const ROWS: ReadonlyArray<{
   {
     row: 5,
     name: "held, connected, platform RESTARTING: ready with the restart as a notice",
-    machine: machine({ credential: HELD, link: CONNECTED, container: interim("RESTARTING") }),
+    machine: machine({ credential: HELD, link: CONNECTED, container: PLATFORM_RESTARTING }),
     verdict: {
       kind: "ready",
       notice: { level: "restarting", by: "platform", overdue: false },
@@ -212,7 +204,7 @@ const ROWS: ReadonlyArray<{
     machine: machine({
       credential: HELD,
       link: CONNECTED,
-      container: interim("ACTIVE", "stalled"),
+      container: STALLED,
     }),
     verdict: { kind: "ready", notice: null },
   },
@@ -225,7 +217,11 @@ const ROWS: ReadonlyArray<{
   {
     row: 7,
     name: "held and connected, but the service is STOPPED",
-    machine: machine({ credential: HELD, link: CONNECTED, container: interim("STOPPED") }),
+    machine: machine({
+      credential: HELD,
+      link: CONNECTED,
+      container: { level: "inactive", status: "STOPPED" },
+    }),
     verdict: { kind: "container", container: { level: "inactive", status: "STOPPED" } },
   },
   {
@@ -233,7 +229,7 @@ const ROWS: ReadonlyArray<{
     name: "booting past its cap",
     machine: machine({
       credential: { kind: "waiting", on: "container", reconnect: false },
-      container: interim("ACTIVE", "stalled"),
+      container: STALLED,
     }),
     verdict: { kind: "container", container: { level: "booting", overdue: true } },
   },
@@ -242,7 +238,7 @@ const ROWS: ReadonlyArray<{
     name: "the Mate flag reads off",
     machine: machine({
       credential: { kind: "waiting", on: "container", reconnect: false },
-      container: interim("ACTIVE", "predates-mate", false),
+      container: { level: "needs-enable" },
     }),
     verdict: { kind: "container", container: { level: "needs-enable" } },
   },
@@ -366,7 +362,7 @@ const TERMINAL = new Set<Reachability["kind"]>([
   "update-unavailable",
 ]);
 
-describe("selectReachability (DESIGN §4.4 table, over the interim container region)", () => {
+describe("selectReachability (DESIGN §4.4 table, over the container verdict)", () => {
   for (const row of ROWS) {
     it(`row ${row.row}: ${row.name}`, () => {
       const verdict = selectReachability(row.machine, row.asked ?? ENV_A);
@@ -400,7 +396,7 @@ const attemptOf = (current: EnvironmentMachine): number => {
 
 const OPENING: ReadonlyArray<EnvironmentEvent> = [
   { type: "GUARDS", guards: GUARDS },
-  { type: "CONTAINER", container: interim("ACTIVE", "ready") },
+  { type: "CONTAINER", container: READY },
   { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
 ];
 
@@ -420,7 +416,7 @@ const connectedMachine = (): EnvironmentMachine => {
 describe("reachability over the machine's own transitions", () => {
   it("connected link + non-terminal container → ready (T-L8)", () => {
     const restarting = drive(connectedMachine(), [
-      { type: "CONTAINER", container: interim("RESTARTING") },
+      { type: "CONTAINER", container: PLATFORM_RESTARTING },
     ]).machine;
     expect(selectReachability(restarting, ENV_A)).toEqual({
       kind: "ready",

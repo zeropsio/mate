@@ -51,10 +51,24 @@ vi.mock("./useZeropsIdentityExchange", async () => {
     }),
   };
 });
-vi.mock("./useZeropsCandidateHealth", () => {
-  const snapshot = { health: new Map() };
-  return { useZeropsCandidateHealth: () => snapshot };
-});
+// Every container answers as a running Mate; the processes feed needs no data runtime here.
+vi.mock("@t3tools/client-runtime/zerops/containerHealth", () => ({
+  readZeropsContainer: async () => ({
+    kind: "ready",
+    descriptor: {
+      environmentId: "environment",
+      serverVersion: "0.12.0",
+      update: null,
+      identity: "ok",
+      identityCheckedAt: null,
+    },
+    initAt: null,
+  }),
+}));
+vi.mock("./zeropsContainers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./zeropsContainers")>()),
+  useContainerProcesses: () => undefined,
+}));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ client: {}, activeOrganization: null }),
 }));

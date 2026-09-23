@@ -2,26 +2,28 @@
  * Hosts the exchange driver (DESIGN §4.4) inside today's account tree: one driver per account
  * epoch, fed the targets the inventory and the remembered records name, the account's guards
  * and the tab's visibility. Restore is the records' demand on it; auto-connect, repair and the
- * user's Connect are demand from their own emitters.
+ * user's Connect are demand from their own emitters. Region C of every target is the container
+ * store's verdict (§4.5), which this shell feeds the platform's statuses and processes.
  *
  * An interim shell: the account runtime replaces it (3.4).
  */
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  interimContainerVerdict,
+  bindContainerStore,
   makeExchangeDriver,
+  type ContainerStore,
   type ExchangeDriver,
   type ExchangeTarget,
   type Presence,
   type ServiceTransition,
 } from "@t3tools/client-runtime/zerops/environments";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { environmentCatalog } from "../connection/catalog";
 import { useEnvironments } from "../state/environments";
+import { onZeropsInvalidation } from "./accountInvalidations";
 import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { inventoryCandidates, type Inventory } from "./inventoryContext";
 import {
@@ -29,7 +31,6 @@ import {
   readRegistrationRecords,
   useRegistrationVersion,
 } from "./registrationRecords";
-import { useZeropsCandidateHealth } from "./useZeropsCandidateHealth";
 import {
   ExchangeDriverContext,
   webExchangePorts,
@@ -37,6 +38,12 @@ import {
 } from "./useZeropsIdentityExchange";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import {
+  bindContainerInputs,
+  containerTargetsOf,
+  hostContainerStore,
+  useContainerProcesses,
+} from "./zeropsContainers";
 import { useZeropsData } from "./zeropsDataContext";
 
 /** A tab hidden at least this long wakes its retries when it is shown again (§6.4). */
@@ -115,7 +122,7 @@ function candidatePresence(candidate: ZeropsCandidate): Presence {
 function targetsOf(input: {
   readonly inventory: Inventory;
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
+  readonly containers: ContainerStore;
 }): ReadonlyArray<ExchangeTarget> {
   const records = readRegistrationRecords();
   const unread = new Set(
@@ -147,14 +154,7 @@ function targetsOf(input: {
     return {
       key,
       presence,
-      container:
-        candidate === undefined
-          ? { level: "unknown" }
-          : interimContainerVerdict({
-              candidate,
-              health: input.health.get(key),
-              mateFlag: undefined,
-            }),
+      container: input.containers.verdict(key),
       record: record?.environmentId ?? null,
     };
   });
@@ -168,16 +168,31 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   const inventory = useZeropsInventory();
   const { environments } = useEnvironments();
   const { client, activeOrganization } = useZeropsSession();
-  const { organizationRef } = useZeropsData();
+  const { organizationRef, runtime } = useZeropsData();
   const registry = useContext(RegistryContext);
   const recordsVersion = useRegistrationVersion();
   const candidates = useMemo(
     () => inventoryCandidates(inventory),
     [inventory.projects, inventory.services],
   );
-  const { health } = useZeropsCandidateHealth(candidates);
-
   const [driver] = useState(hostExchangeDriver);
+  const [containers] = useState(hostContainerStore);
+  useEffect(() => bindContainerStore(containers, driver), [containers, driver]);
+  useEffect(() => {
+    bindContainerInputs({ runtime, inventory, clientId: activeOrganization?.id });
+  }, [activeOrganization?.id, inventory, runtime]);
+  useEffect(() => {
+    containers.setTargets(containerTargetsOf(candidates));
+  }, [candidates, containers]);
+  useContainerProcesses(containers, candidates, inventory, activeOrganization?.id);
+  // A container intent reads its target again (DESIGN §6.2).
+  useEffect(
+    () =>
+      onZeropsInvalidation((invalidation) => {
+        if (invalidation.topic === "container") containers.request(invalidation.target);
+      }),
+    [containers],
+  );
 
   useEffect(() => {
     bindExchangeInputs({
@@ -212,12 +227,14 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
     const visibility = () => {
       const visible = document.visibilityState === "visible";
       driver.setVisible(visible);
+      containers.setVisible(visible);
       if (!visible) {
         hiddenSince ??= performance.now();
         return;
       }
       if (hiddenSince !== null && performance.now() - hiddenSince >= WAKE_AFTER_HIDDEN_MS) {
         driver.wake(true);
+        containers.wake(true);
       }
       hiddenSince = null;
     };
@@ -229,15 +246,15 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
       document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("online", online);
     };
-  }, [driver]);
+  }, [containers, driver]);
 
   useEffect(() => {
-    driver.setTargets(targetsOf({ inventory, candidates, health }));
+    driver.setTargets(targetsOf({ inventory, candidates, containers }));
     driver.setDemand(
       "record",
       readRegistrationRecords().map((record) => record.targetKey),
     );
-  }, [candidates, driver, health, inventory, recordsVersion]);
+  }, [candidates, containers, driver, inventory, recordsVersion]);
 
   // A registration no target owns — nothing remembers it and no install is writing its record —
   // is released; a remembered one leaves only when its target retires.

@@ -117,7 +117,7 @@ import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
+import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -180,7 +180,7 @@ function useMateMenus(): {
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const inventory = useZeropsInventory();
-  const { serverVersions } = useZeropsCandidateHealth(candidates);
+  const { serverVersions } = useZeropsContainers();
   const giteaProjectId = useMemo(
     () => findAccountGitea(inventory, activeOrganization?.id)?.projectId,
     [activeOrganization?.id, inventory],
