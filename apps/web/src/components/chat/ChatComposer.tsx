@@ -323,6 +323,9 @@ const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
 /** Stable empty read of the data mention catalog, so a project without one never re-renders on identity. */
 const EMPTY_DATA_MENTIONS: ReadonlyArray<DataMentionEntry> = [];
+/** Stable empty skills and commands while no provider is selected, so the menu items keep their identity. */
+const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
+const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
 
 const runtimeModeConfig: Record<
   RuntimeMode,
@@ -1042,10 +1045,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
   const selectedProviderSkills = selectedProviderStatus
     ? resolveProviderSkillsForCwd(selectedProviderStatus, gitCwd)
-    : [];
+    : NO_PROVIDER_SKILLS;
   const selectedProviderSlashCommands = selectedProviderStatus
     ? resolveProviderSlashCommandsForCwd(selectedProviderStatus, gitCwd)
-    : [];
+    : NO_PROVIDER_SLASH_COMMANDS;
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });
