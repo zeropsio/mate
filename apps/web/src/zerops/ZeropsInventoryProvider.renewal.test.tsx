@@ -211,8 +211,48 @@ describe("ZeropsInventoryProvider renewal", () => {
 
     await pass(16 * MINUTE_MS);
 
-    expect(tab.text()).toContain("Project access verification expired.");
-    expect(tab.text().match(/Try again/g)).toHaveLength(1);
+    expect(tab.text().match(/Couldn't confirm your Zerops access\./g)).toHaveLength(1);
+    expect(tab.text().match(/Try now/g)).toHaveLength(1);
+  });
+
+  // `online` is a wake (DESIGN §6.4): the lapse ends as soon as Zerops answers again.
+  it("lapsed + offline → online → a round starts at once and the overlay clears when it verifies", async () => {
+    const { tab, pass, rounds } = await admittedProduct();
+    tab.tab.signals.offline();
+    await pass(16 * MINUTE_MS);
+    expect(tab.text()).toContain(CHILD);
+    expect(tab.readable()).not.toContain(CHILD);
+    const before = rounds();
+
+    tab.tab.signals.online();
+    await pass(0);
+
+    expect(rounds()).toBe(before + 1);
+    await pass(1_000);
+    expect(tab.readable()).toContain(CHILD);
+    expect(tab.text()).not.toContain("Couldn't confirm your Zerops access.");
+    expect(tab.text()).not.toMatch(/Try (again|now)/);
+  });
+
+  // One cause-only sentence for the whole lapse, beside its one affordance (DESIGN §3.4, R-K3).
+  it("the overlay copy does not change while the lapse reason is unchanged", async () => {
+    const { harness, tab, pass } = await admittedProduct();
+    tab.tab.signals.offline();
+    await pass(16 * MINUTE_MS);
+    const seen = [tab.readable()];
+    // Rounds keep failing offline, then one hangs once the network is back.
+    await pass(MINUTE_MS);
+    seen.push(tab.readable());
+    const round = harness.rest.hold("GET /user/info");
+    tab.tab.signals.online();
+    await pass(0);
+    expect(round.waiting()).toBeGreaterThan(0);
+    seen.push(tab.readable());
+
+    expect(new Set(seen).size).toBe(1);
+    expect(seen[0]).not.toContain(CHILD);
+    expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now"]);
+    await tab.run(() => round.release());
   });
 
   // One project's read failing is that project's problem, never the account's (DESIGN G1, C2b).

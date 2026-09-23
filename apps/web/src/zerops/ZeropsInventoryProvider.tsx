@@ -243,6 +243,13 @@ function makeInventorySnapshotSelector() {
 }
 
 /**
+ * The lapse's one sentence (DESIGN §3.4, R-K3): its cause, for the whole lapse.
+ * A round that runs, fails offline or fails again does not change why the
+ * product is covered, so the words stay put until the next grant ends it.
+ */
+const ACCESS_LAPSE = "Couldn't confirm your Zerops access.";
+
+/**
  * What a lapse of the account's access shows until the next grant: an opaque
  * layer over the product, which stays mounted beneath it and hidden from
  * every reader (DESIGN §4.2 G9, §9 C1; per-region withholding replaces it in
@@ -250,15 +257,7 @@ function makeInventorySnapshotSelector() {
  * gate closes every floating layer, the fallback context menu is dismissed,
  * and the document title names only the app.
  */
-function AccessLapse({
-  cause,
-  onRetry,
-  onSignOut,
-}: {
-  readonly cause: string;
-  readonly onRetry: () => void;
-  readonly onSignOut: () => void;
-}) {
+function AccessLapse({ onRetry }: { readonly onRetry: () => void }) {
   useEffect(() => {
     dismissContextMenu();
     const title = document.title;
@@ -270,12 +269,9 @@ function AccessLapse({
   }, []);
   return (
     <div role="alert" className="fixed inset-0 z-[200] bg-background p-8">
-      Could not load your Zerops projects. {cause}{" "}
+      {ACCESS_LAPSE}{" "}
       <button type="button" onClick={onRetry}>
-        Try again
-      </button>{" "}
-      <button type="button" onClick={onSignOut}>
-        Sign out
+        Try now
       </button>
     </div>
   );
@@ -555,10 +551,9 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       mateDiagnostics.record({ kind: "access-grant", round: grantedRound });
   }, [grantedRound]);
 
-  /** What the overlay names while the grant is lapsed, and nothing otherwise. */
-  const lapseCause =
-    ready && phase.phase === "lapsed" ? (error ?? "Project access verification expired.") : null;
-  const visibleError = lapseCause ?? error;
+  /** The mounted product's grant lapsed: the overlay covers it until the next grant. */
+  const lapsed = ready && phase.phase === "lapsed";
+  const visibleError = lapsed ? ACCESS_LAPSE : error;
   const retry = () => {
     const intents = retryInvalidations({
       granted: phase.phase === "granted",
@@ -612,7 +607,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         )
       ) : (
         <InventoryContext value={snapshot}>
-          {error !== null && lapseCause === null ? (
+          {error !== null && !lapsed ? (
             <div role="alert" className="fixed inset-x-0 top-0 z-50 bg-background p-4">
               Project access could not be verified.{" "}
               <button type="button" onClick={retry}>
@@ -623,18 +618,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               </button>
             </div>
           ) : null}
-          <PortalGate closed={lapseCause !== null}>
+          <PortalGate closed={lapsed}>
             <div
               inert={visibleError !== null}
-              aria-hidden={lapseCause !== null || undefined}
+              aria-hidden={lapsed || undefined}
               className="contents"
             >
               {children}
             </div>
           </PortalGate>
-          {lapseCause === null ? null : (
-            <AccessLapse cause={lapseCause} onRetry={retry} onSignOut={() => void signOut()} />
-          )}
+          {lapsed ? <AccessLapse onRetry={retry} /> : null}
         </InventoryContext>
       )}
     </>
