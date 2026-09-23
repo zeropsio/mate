@@ -13,6 +13,9 @@ import {
 import { mateDiagnostics } from "./diagnostics.ts";
 import {
   connectThroughThrowaway,
+  DOOR_MINTS_PER_MINUTE,
+  GITEA_MINTS_PER_MINUTE,
+  makeThrowawayMintBudgets,
   planThrowawaySweep,
   THROWAWAY_DELETE_RETRY_MS,
   THROWAWAY_SWEEP_AGE_MS,
@@ -224,7 +227,9 @@ function signedInTab(roleCode = "OWNER") {
   client.restoreSession(session);
   client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
   const mints = () => rest.requests().filter(({ route }) => route.startsWith("POST /client/"));
-  const throwaways = (signal?: AbortSignal) => zeropsThrowawayPlatform(client, signal);
+  // Budgets of its own, so one case's mints never wait on another's.
+  const budgets = makeThrowawayMintBudgets(() => Date.now());
+  const throwaways = (signal?: AbortSignal) => zeropsThrowawayPlatform(client, signal, budgets);
   return { rest, client, session, sessionChanges, mints, throwaways };
 }
 
@@ -405,6 +410,34 @@ describe("throwaway hygiene", () => {
       expect(tab.rest.orphanTokens()).toEqual([]);
     });
   }
+
+  it("11th exchange mint in a minute waits; Gitea mints do not consume it", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const platform = tab.throwaways();
+    const mint = (name: string) => platform.mint({ clientId: "org-1", name });
+    const minted = (prefix: string) =>
+      tab.mints().filter(({ body }) => (body as { name: string }).name.startsWith(prefix)).length;
+
+    for (let n = 1; n <= GITEA_MINTS_PER_MINUTE; n += 1)
+      await mint(`gitea-signin:git.example:${n}`);
+    for (let n = 1; n <= DOOR_MINTS_PER_MINUTE; n += 1) await mint(`mate-door:p1:${n}`);
+    expect(minted("mate-door:")).toBe(DOOR_MINTS_PER_MINUTE);
+    expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    const eleventh = mint("mate-door:p1:11");
+    const fifthGitea = mint("gitea-signin:git.example:5");
+    await vi.advanceTimersByTimeAsync(58_000);
+    expect(minted("mate-door:")).toBe(DOOR_MINTS_PER_MINUTE);
+    expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE);
+
+    // A minute after the first of each, a slot comes free for each.
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.all([eleventh, fifthGitea]);
+    expect(minted("mate-door:")).toBe(DOOR_MINTS_PER_MINUTE + 1);
+    expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE + 1);
+  });
 
   it("a delete Zerops could not answer is tried once more, 5 s later", async () => {
     vi.useFakeTimers();

@@ -61,21 +61,88 @@ function isTransientDeleteFailure(cause: unknown): boolean {
   );
 }
 
+/** Door exchanges this tab may mint for in any minute (DESIGN §4.4). */
+export const DOOR_MINTS_PER_MINUTE = 10;
+/** Gitea sign-ins this tab may mint for in any minute, apart from the doors'. */
+export const GITEA_MINTS_PER_MINUTE = 4;
+const MINT_BUDGET_WINDOW_MS = 60_000;
+
+/** Hands out mints at a bounded rate: past the budget, a mint waits for a slot. */
+export interface MintBudget {
+  readonly take: (signal?: AbortSignal) => Promise<void>;
+}
+
+function makeMintBudget(perMinute: number, now: () => number): MintBudget {
+  const taken: Array<number> = [];
+  const take = async (signal?: AbortSignal): Promise<void> => {
+    for (;;) {
+      signal?.throwIfAborted();
+      const at = now();
+      while (taken.length > 0 && at - taken[0]! >= MINT_BUDGET_WINDOW_MS) taken.shift();
+      if (taken.length < perMinute) {
+        taken.push(at);
+        return;
+      }
+      await slotFree(taken[0]! + MINT_BUDGET_WINDOW_MS - at, signal);
+    }
+  };
+  return { take };
+}
+
+function slotFree(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    // @effect-diagnostics-next-line globalTimers:off -- plain promises: a budget wait, no Effect runtime here.
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+/**
+ * One budget per kind of throwaway, so a Gitea that keeps asking never takes
+ * a door exchange's slot (DESIGN I12). Per tab: there is no leader to share
+ * one across tabs (D10).
+ */
+export interface ThrowawayMintBudgets {
+  readonly door: MintBudget;
+  readonly gitea: MintBudget;
+}
+
+export function makeThrowawayMintBudgets(
+  now: () => number = () => performance.now(),
+): ThrowawayMintBudgets {
+  return {
+    door: makeMintBudget(DOOR_MINTS_PER_MINUTE, now),
+    gitea: makeMintBudget(GITEA_MINTS_PER_MINUTE, now),
+  };
+}
+
+/** This tab's budgets, shared by every platform built here. */
+const tabMintBudgets = makeThrowawayMintBudgets();
+
 /**
  * The two platform calls a throwaway is, backed by the signed-in account's own
  * API client.
  *
  * `mintThrowaway` mints `NO_ACCESS` with no projects and refuses to set a
  * flag of any kind, which is what makes what it mints a throwaway rather than
- * something a door has to argue with. It waits for a closed account window
- * rather than refusing, and `signal` ends that wait and the mint — never the
- * delete, which runs on its own deadline with the token the mint carried and
- * is tried once more after {@link THROWAWAY_DELETE_RETRY_MS} when Zerops could
- * not answer.
+ * something a door has to argue with. A mint first takes a slot from this
+ * tab's budget for its kind, and waits for a closed account window rather
+ * than refusing; `signal` ends both waits and the mint — never the delete,
+ * which runs on its own deadline with the token the mint carried and is tried
+ * once more after {@link THROWAWAY_DELETE_RETRY_MS} when Zerops could not
+ * answer.
  */
 export function zeropsThrowawayPlatform(
   client: ZeropsApiClient,
   signal?: AbortSignal,
+  budgets: ThrowawayMintBudgets = tabMintBudgets,
 ): ZeropsThrowawayPlatform {
   /**
    * What each throwaway minted here is deleted with: its name, and the access
@@ -83,13 +150,15 @@ export function zeropsThrowawayPlatform(
    */
   const minted = new Map<string, { readonly name: string; readonly mintingToken: string }>();
   return {
-    mint: (input) => {
+    mint: async (input) => {
+      const purpose = input.name.startsWith(`${GITEA_THROWAWAY_PREFIX}:`) ? "gitea" : "door";
       const diagnostic = {
         kind: "throwaway",
         action: "mint",
-        purpose: input.name.startsWith(`${GITEA_THROWAWAY_PREFIX}:`) ? "gitea" : "door",
+        purpose,
         clientId: input.clientId,
       } as const;
+      await budgets[purpose].take(signal);
       return client.mintThrowaway({ clientId: input.clientId, name: input.name }, signal).then(
         (throwaway) => {
           minted.set(throwaway.id, { name: input.name, mintingToken: throwaway.mintingToken });
