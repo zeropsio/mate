@@ -128,3 +128,16 @@ const NO_MEMBERS: ReadonlyArray<never> = [];
 export function candidateMembers<Row>(listing: Known<ReadonlyArray<Row>>): ReadonlyArray<Row> {
   return listing.state === "known" ? listing.value : NO_MEMBERS;
 }
+
+/**
+ * Whether a surface may say the organization holds no project (M5): the listing is known and
+ * complete, and none of its rows is one `isProject` counts (a tool, say, is not).
+ */
+export function listsNoProject<Row>(
+  listing: Known<ReadonlyArray<Row>>,
+  isProject: (row: Row) => boolean,
+): boolean {
+  return (
+    listing.state === "known" && listing.coverage === "complete" && !listing.value.some(isProject)
+  );
+}
