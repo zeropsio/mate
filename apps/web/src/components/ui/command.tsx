@@ -17,10 +17,11 @@ import {
 } from "~/components/ui/autocomplete";
 import { DIALOG_BACKDROP_CLASS, DIALOG_POPUP_CLASS } from "~/components/ui/dialog-styles";
 import { Button } from "~/components/ui/button";
+import { gatedPortal } from "~/components/ui/portal-gate";
 
 const CommandDialog = CommandDialogPrimitive.Root;
 
-const CommandDialogPortal = CommandDialogPrimitive.Portal;
+const CommandDialogPortal = gatedPortal(CommandDialogPrimitive.Portal);
 
 const CommandCreateHandle = CommandDialogPrimitive.createHandle;
 

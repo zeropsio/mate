@@ -6,12 +6,13 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 import { buttonVariants } from "./button";
+import { gatedPortal } from "./portal-gate";
 
 const MenuCreateHandle = MenuPrimitive.createHandle;
 
 const Menu = MenuPrimitive.Root;
 
-const MenuPortal = MenuPrimitive.Portal;
+const MenuPortal = gatedPortal(MenuPrimitive.Portal);
 
 function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Props) {
   return (
@@ -45,7 +46,7 @@ function MenuPopup({
     });
 
   return (
-    <MenuPrimitive.Portal>
+    <MenuPortal>
       <MenuPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
@@ -67,7 +68,7 @@ function MenuPopup({
           <div className="max-h-(--available-height) w-full overflow-y-auto p-1">{children}</div>
         </MenuPrimitive.Popup>
       </MenuPrimitive.Positioner>
-    </MenuPrimitive.Portal>
+    </MenuPortal>
   );
 }
 

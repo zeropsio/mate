@@ -7,6 +7,9 @@ import * as React from "react";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { gatedPortal } from "~/components/ui/portal-gate";
+
+const ComboboxPortal = gatedPortal(ComboboxPrimitive.Portal);
 
 const ComboboxContext = React.createContext<{
   chipsRef: React.RefObject<Element | null> | null;
@@ -179,7 +182,7 @@ function ComboboxPopup({
   const anchor = anchorProp ?? (multiple ? chipsRef : undefined);
 
   return (
-    <ComboboxPrimitive.Portal>
+    <ComboboxPortal>
       <ComboboxPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
@@ -204,7 +207,7 @@ function ComboboxPopup({
           </ComboboxPrimitive.Popup>
         </span>
       </ComboboxPrimitive.Positioner>
-    </ComboboxPrimitive.Portal>
+    </ComboboxPortal>
   );
 }
 

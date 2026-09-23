@@ -8,6 +8,9 @@ import { ChevronDownIcon, ChevronsUpDownIcon, ChevronUpIcon } from "lucide-react
 import type * as React from "react";
 
 import { cn } from "~/lib/utils";
+import { gatedPortal } from "~/components/ui/portal-gate";
+
+const SelectPortal = gatedPortal(SelectPrimitive.Portal);
 
 const Select = SelectPrimitive.Root;
 
@@ -128,7 +131,7 @@ function SelectPopup({
   anchor?: SelectPrimitive.Positioner.Props["anchor"];
 }) {
   return (
-    <SelectPrimitive.Portal>
+    <SelectPortal>
       <SelectPrimitive.Positioner
         align={align}
         alignItemWithTrigger={alignItemWithTrigger}
@@ -172,7 +175,7 @@ function SelectPopup({
           </SelectPrimitive.ScrollDownArrow>
         </SelectPrimitive.Popup>
       </SelectPrimitive.Positioner>
-    </SelectPrimitive.Portal>
+    </SelectPortal>
   );
 }
 

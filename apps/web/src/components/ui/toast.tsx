@@ -37,6 +37,9 @@ import {
   shouldRenderThreadScopedToast,
 } from "./toast.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./tooltip";
+import { gatedPortal } from "./portal-gate";
+
+const ToastPortal = gatedPortal(Toast.Portal);
 
 export type ThreadToastData = {
   threadRef?: ScopedThreadRef | null;
@@ -556,7 +559,7 @@ function Toasts({ position }: { position: ToastPosition }) {
   }, [toasts]);
 
   return (
-    <Toast.Portal data-slot="toast-portal">
+    <ToastPortal data-slot="toast-portal">
       <Toast.Viewport
         className={cn(
           "fixed z-100 mx-auto flex w-[calc(100%-var(--toast-inset)*2)] max-w-90 [--toast-header-offset:var(--workspace-topbar-height)] [--toast-inset:--spacing(4)] sm:[--toast-inset:--spacing(8)]",
@@ -697,7 +700,7 @@ function Toasts({ position }: { position: ToastPosition }) {
           );
         })}
       </Toast.Viewport>
-    </Toast.Portal>
+    </ToastPortal>
   );
 }
 
@@ -715,7 +718,7 @@ function AnchoredToasts() {
   const activeThreadRef = useActiveThreadRefFromRoute();
 
   return (
-    <Toast.Portal data-slot="toast-portal-anchored">
+    <ToastPortal data-slot="toast-portal-anchored">
       <Toast.Viewport className="outline-none" data-slot="toast-viewport-anchored">
         {toasts
           .filter((toast) => shouldRenderThreadScopedToast(toast.data, activeThreadRef))
@@ -795,7 +798,7 @@ function AnchoredToasts() {
             );
           })}
       </Toast.Viewport>
-    </Toast.Portal>
+    </ToastPortal>
   );
 }
 

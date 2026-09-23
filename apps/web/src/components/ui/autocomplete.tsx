@@ -6,6 +6,9 @@ import { ChevronsUpDownIcon, XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { gatedPortal } from "~/components/ui/portal-gate";
+
+const AutocompletePortal = gatedPortal(AutocompletePrimitive.Portal);
 
 const Autocomplete = AutocompletePrimitive.Root;
 
@@ -92,7 +95,7 @@ function AutocompletePopup({
   anchor?: AutocompletePrimitive.Positioner.Props["anchor"];
 }) {
   return (
-    <AutocompletePrimitive.Portal>
+    <AutocompletePortal>
       <AutocompletePrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
@@ -117,7 +120,7 @@ function AutocompletePopup({
           </AutocompletePrimitive.Popup>
         </span>
       </AutocompletePrimitive.Positioner>
-    </AutocompletePrimitive.Portal>
+    </AutocompletePortal>
   );
 }
 

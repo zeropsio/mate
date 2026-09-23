@@ -8,12 +8,13 @@ import {
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
 } from "~/components/ui/dialog-styles";
+import { gatedPortal } from "~/components/ui/portal-gate";
 
 const AlertDialogCreateHandle = AlertDialogPrimitive.createHandle;
 
 const AlertDialog = AlertDialogPrimitive.Root;
 
-const AlertDialogPortal = AlertDialogPrimitive.Portal;
+const AlertDialogPortal = gatedPortal(AlertDialogPrimitive.Portal);
 
 function AlertDialogTrigger(props: AlertDialogPrimitive.Trigger.Props) {
   return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />;

@@ -3,6 +3,9 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import { cn } from "~/lib/utils";
+import { gatedPortal } from "~/components/ui/portal-gate";
+
+const PopoverPortal = gatedPortal(PopoverPrimitive.Portal);
 
 const PopoverCreateHandle = PopoverPrimitive.createHandle;
 
@@ -37,7 +40,7 @@ function PopoverPopup({
   anchor?: PopoverPrimitive.Positioner.Props["anchor"];
 }) {
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPortal>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
@@ -73,7 +76,7 @@ function PopoverPopup({
           </PopoverPrimitive.Viewport>
         </PopoverPrimitive.Popup>
       </PopoverPrimitive.Positioner>
-    </PopoverPrimitive.Portal>
+    </PopoverPortal>
   );
 }
 
