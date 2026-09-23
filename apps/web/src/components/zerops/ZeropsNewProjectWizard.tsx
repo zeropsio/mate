@@ -35,7 +35,7 @@ import {
   type OrganizationLocationsResourceRequest,
   type ProjectTagWrite,
 } from "@t3tools/client-runtime/zerops/data";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   generateBotName,
@@ -49,8 +49,7 @@ import {
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
-import { findAccountGitea } from "~/zerops/giteaProject";
-import { InventoryContext } from "~/zerops/inventoryContext";
+import { useAccountGitea } from "~/zerops/giteaProject";
 import { beginBirth } from "~/zerops/zeropsBirths";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 
@@ -220,7 +219,6 @@ function ZeropsNewProjectContent() {
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const navigate = useNavigate();
 
-  const inventory = useContext(InventoryContext);
   const [name, setName] = useState("");
   const [locationChoice, setLocationChoice] = useState<{
     readonly key: string;
@@ -234,10 +232,7 @@ function ZeropsNewProjectContent() {
   // The registry lives on the account's Gitea project, and only its owners and
   // admins may write it (D3) — a stricter gate than *can create projects*, and
   // the one the platform will actually apply.
-  const gitea = useMemo(
-    () => findAccountGitea(inventory, activeOrganization?.id),
-    [activeOrganization?.id, inventory],
-  );
+  const gitea = useAccountGitea(activeOrganization?.id);
   const addProject = resolveAddProjectVerb({
     viewer: {
       id: activeOrganization?.id ?? "",

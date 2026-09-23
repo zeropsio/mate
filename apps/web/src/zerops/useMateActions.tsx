@@ -45,11 +45,10 @@ import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
 import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
 import { projectTagsWrite, registerMateInGroup } from "./brokerGrant";
-import { findAccountGitea } from "./giteaProject";
+import { useAccountGitea } from "./giteaProject";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useProjectOrderPreference } from "./projectOrderPreference";
 import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
-import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
 import { intendContainer } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
@@ -104,7 +103,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { projectRef, runtime } = useZeropsData();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
-  const inventory = useZeropsInventory();
   const [dialog, setDialog] = useState<MateDialog | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -113,10 +111,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // their own list, not a fixed order of their own.
   const [projectOrder] = useProjectOrderPreference();
 
-  const giteaProjectId = useMemo(
-    () => findAccountGitea(inventory, activeOrganization?.id)?.projectId,
-    [activeOrganization?.id, inventory],
-  );
+  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {

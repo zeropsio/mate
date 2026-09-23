@@ -45,9 +45,9 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { findAccountGitea } from "./giteaProject";
+import { useAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
 import { useNowMs } from "./useNowMs";
 import {
@@ -74,7 +74,7 @@ import {
   useZeropsData,
   zeropsKnowledgeArraysEqual,
 } from "./zeropsDataContext";
-import { HeldInventoryContext, projectAuthority } from "./inventoryContext";
+import { projectAuthority } from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -228,8 +228,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const inventory = useZeropsInventory();
   const organization = session.activeOrganization;
   const clientId = organization?.id;
-  // Held, not shown: a lapse withholds the Gitea project and must not end its session (law 5).
-  const accountGitea = findAccountGitea(useContext(HeldInventoryContext), clientId);
+  const accountGitea = useAccountGitea(clientId);
   const giteaOrigin = accountGitea?.state.url;
   const brokerOrigin = accountGitea?.state.brokerUrl;
   const signedInToMate = session.status === "signed-in";

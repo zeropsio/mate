@@ -52,7 +52,7 @@ vi.mock("./zeropsDataContext", () => ({
 }));
 vi.mock("./useNowMs", () => ({ useNowMs: () => 0 }));
 vi.mock("./giteaProject", () => ({
-  findAccountGitea: () =>
+  useAccountGitea: () =>
     gitea.origin
       ? {
           projectId: "gitea-project",

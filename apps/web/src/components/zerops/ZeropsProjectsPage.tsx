@@ -146,7 +146,7 @@ import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { findAccountGitea } from "~/zerops/giteaProject";
+import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
@@ -1557,10 +1557,8 @@ function ZeropsProjectsContent() {
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  const accountGitea = useMemo(
-    () => findAccountGitea(inventory, activeOrganization?.id),
-    [activeOrganization?.id, inventory],
-  );
+  const accountGitea = useAccountGitea(activeOrganization?.id);
+  const holdsGitea = useAccountHoldsGitea(activeOrganization?.id);
   const giteaProjectId = accountGitea?.projectId;
   // Read exactly as the account's Gitea project states it: an account on a
   // devel region or behind a custom domain is read, never guessed.
@@ -2296,9 +2294,14 @@ function ZeropsProjectsContent() {
               }
             : undefined
         }
-        onCreateTool={() => {
-          void createTool();
-        }}
+        // A Gitea the grant withholds is still the account's: never offered a second.
+        {...(holdsGitea
+          ? {}
+          : {
+              onCreateTool: () => {
+                void createTool();
+              },
+            })}
         renderEnvironment={(candidate: ZeropsCandidatePresentation, role) => {
           const input = rowInput(candidate, role);
           const presentation = deriveZeropsRowPresentation(input);
