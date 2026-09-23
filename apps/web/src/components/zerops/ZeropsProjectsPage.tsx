@@ -47,7 +47,11 @@ import {
   type KnownPresentation,
   type KnownSurface,
 } from "@t3tools/client-runtime/zerops/knowledge";
-import { listsNoProject } from "@t3tools/client-runtime/zerops/projections";
+import {
+  heldCandidates,
+  listsNoProject,
+  takenBotNames,
+} from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
 import {
@@ -739,13 +743,13 @@ function ZeropsProjectsContent() {
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-  const {
-    candidates: observedCandidates,
-    listing,
-    isLoading,
-    error,
-    refresh: refreshCandidates,
-  } = useZeropsCandidates();
+  const { listing, isLoading, error, refresh: refreshCandidates } = useZeropsCandidates();
+  // The rows read so far; `listing` says whether they are all there are, and
+  // the page's notice says so while they are not (`projectsListingNotice`).
+  const observedCandidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  // An agent's name must be new on the account, not just in the group: it is
+  // what the left menu calls the row, and two Adas is two of nothing.
+  const taken = useMemo(() => takenBotNames(listing), [listing]);
   const nowMs = useNowMs();
   const {
     creatingIn,
@@ -1049,10 +1053,6 @@ function ZeropsProjectsContent() {
       setConnectError(null);
       try {
         const projectId = candidate.project.id;
-        const taken = candidates.flatMap((entry) => {
-          const bot = readZeropsGroupTags(entry.project.tagList).bot;
-          return bot === undefined ? [] : [bot];
-        });
         const group = groupTree.groups.find((candidate) =>
           candidate.environments.some(({ item }) => item.project.id === projectId),
         );
@@ -1068,7 +1068,7 @@ function ZeropsProjectsContent() {
             // named after it, and a fresh name leaves the two disagreeing.
             keptOrGeneratedBotName(
               readZeropsGroupTags(candidate.project.tagList).bot,
-              taken,
+              taken.names,
               (bytes) => crypto.getRandomValues(bytes),
             ),
           ),
@@ -1090,7 +1090,6 @@ function ZeropsProjectsContent() {
     },
     [
       activeOrganization,
-      candidates,
       groupTree.groups,
       projectRef,
       provisioning,
@@ -1100,6 +1099,7 @@ function ZeropsProjectsContent() {
       setCreatingIn,
       settingUpKey,
       runtime.commands,
+      taken,
     ],
   );
 
@@ -1528,17 +1528,6 @@ function ZeropsProjectsContent() {
    * the calls are `runEnvironmentCreation`, and this only chooses the inputs —
    * the name, whether it gets an agent, and what that agent is called.
    */
-  // An agent's name must be new on the account, not just in the group: it is
-  // what the left menu calls the row, and two Adas is two of nothing.
-  const takenBotNames = useMemo(
-    () =>
-      candidates.flatMap((candidate) => {
-        const bot = readZeropsGroupTags(candidate.project.tagList).bot;
-        return bot === undefined ? [] : [bot];
-      }),
-    [candidates],
-  );
-
   // A group is offered more once its first Mate is up — connected, or its
   // container answering ready — and not a minute before. Shared by the
   // group's foot and the rows that ask for a missing tier.
@@ -1767,10 +1756,10 @@ function ZeropsProjectsContent() {
       setCreationRequest({
         groupId,
         role,
-        botName: generateBotName(takenBotNames, (bytes) => crypto.getRandomValues(bytes)),
+        botName: generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
       });
     },
-    [creationRunning, takenBotNames],
+    [creationRunning, taken],
   );
 
   // An add asked for from the left menu, which has the project's name and the
@@ -2741,7 +2730,7 @@ function ZeropsProjectsContent() {
           }}
           open
           role={creationRequest.role}
-          takenBotNames={takenBotNames}
+          takenBotNames={taken.names}
         />
       )}
       {creation === null ? null : (
