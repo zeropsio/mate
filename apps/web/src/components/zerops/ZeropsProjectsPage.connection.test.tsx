@@ -47,9 +47,9 @@ vi.mock("~/zerops/zeropsContainers", async (importOriginal) => ({
     mateFlags: new Map(),
   }),
 }));
-vi.mock("~/zerops/useZeropsIdentityExchange", async (importOriginal) => ({
+vi.mock("~/zerops/accountEnvironments", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useZeropsIdentityExchange: () => async () => undefined,
+  useConnectMate: () => async () => undefined,
 }));
 vi.mock("~/zerops/useZeropsUpgradeRestart", () => ({ useZeropsUpgradeRestart: () => null }));
 

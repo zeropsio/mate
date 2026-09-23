@@ -6,13 +6,15 @@ import {
 } from "@t3tools/client-runtime/connection";
 import {
   makeExchangeDriver,
+  makeRegistrationRecords,
   type ExchangeClock,
   type ExchangeDriver,
 } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { linkPhaseOf } from "./ZeropsIdentityRepair";
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { linkPhaseOf, recordsStorage } from "./environmentPorts";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
@@ -178,5 +180,44 @@ describe("repair is the exchange driver's", () => {
     const gaps = exchanges.slice(1).map((at, index) => at - (10_000 * (index + 1) + 5_000 * index));
     expect(gaps.slice(0, 2)).toEqual([0, 0]);
     expect(gaps.slice(2).every((gap) => gap >= 2_000)).toBe(true);
+  });
+});
+
+describe("the records port: the account's own storage", () => {
+  afterEach(() => {
+    closeAccountLifetime();
+    vi.unstubAllGlobals();
+  });
+
+  it("another account's records are invisible", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          values.set(key, value);
+        },
+        removeItem: (key: string) => {
+          values.delete(key);
+        },
+      },
+    });
+    const records = makeRegistrationRecords(recordsStorage);
+    const record = (targetKey: string, environmentId: string) => ({
+      targetKey,
+      environmentId: EnvironmentId.make(environmentId),
+      origin: ORIGIN,
+      projectRef: { projectId: targetKey.split(":")[0] ?? targetKey, orgId: "org-1" },
+      name: "shop",
+    });
+
+    openAccountLifetime("user-a");
+    records.remember(record("project-a:service-a", "environment-a"));
+    openAccountLifetime("user-b");
+    expect(records.list()).toEqual([]);
+    records.remember(record("project-b:service-b", "environment-b"));
+
+    openAccountLifetime("user-a");
+    expect(records.list().map((entry) => entry.targetKey)).toEqual(["project-a:service-a"]);
   });
 });

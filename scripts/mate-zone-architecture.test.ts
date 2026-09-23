@@ -752,20 +752,21 @@ function collectOneWayViolations(
 }
 
 // Rule 6, its construction half: the account runtime's modules — its invalidation bus, which one
-// owner holds (§6.2), and the post-grant stage's, built on the epoch's first grant — are
+// owner holds (§6.2), and the post-grant stage's, built on the epoch's first grant: the
+// registration records, the container store (with its probe store) and the exchange driver — are
 // constructed by the account runtime only. A call of a constructor anywhere else is reported; its
-// declaration is not, nor a test's or a test fixture's. The exchange driver and the Gitea sessions
-// are still built in the web's React tree, each named below with its constructor, until 3.4 moves
-// them.
+// declaration is not, nor a test's or a test fixture's. The Gitea sessions are still built in the
+// web, named below with their constructor.
 const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
 const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeInvalidationBus",
   "connectCrossTabInvalidations",
+  "makeRegistrationRecords",
+  "makeContainerStore",
   "makeExchangeDriver",
   "makeGiteaSessions",
 ];
-const POST_GRANT_BUILT_IN_REACT_UNTIL_3_4: ReadonlyMap<string, string> = new Map([
-  ["apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx", "makeExchangeDriver"],
+const POST_GRANT_BUILT_IN_THE_WEB: ReadonlyMap<string, string> = new Map([
   ["apps/web/src/zerops/accountGiteaSessions.ts", "makeGiteaSessions"],
 ]);
 
@@ -798,7 +799,7 @@ function collectAccountRuntimeConstructionViolations(
         const code = scanSourceLiterals(yield* fs.readFileString(file)).jsxSource;
         for (const constructor of ACCOUNT_RUNTIME_CONSTRUCTORS) {
           const call = new RegExp(`(?<![\\w$])(?<!function\\s+)${constructor}\\s*\\(`, "u");
-          if (call.test(code) && POST_GRANT_BUILT_IN_REACT_UNTIL_3_4.get(label) !== constructor) {
+          if (call.test(code) && POST_GRANT_BUILT_IN_THE_WEB.get(label) !== constructor) {
             violations.push({
               file: label,
               reason: `constructs ${constructor}, a module of the account runtime, outside it`,
@@ -2685,9 +2686,14 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         [`${zerops}/environments/exchangeDriver.test.ts`]: "makeExchangeDriver(ports);\n",
         [`${zerops}/flow/groupFlow.ts`]: "const bus = makeInvalidationBus (options);\n",
         "apps/web/src/zerops/accountGiteaSessions.ts": "current = makeGiteaSessions(ports);\n",
-        "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx": [
+        "apps/web/src/zerops/AccountShell.tsx": [
           "const driver = makeExchangeDriver(ports);",
           "const sessions = makeGiteaSessions(ports);",
+          "",
+        ].join("\n"),
+        "apps/web/src/zerops/zeropsContainers.ts": [
+          "const store = makeContainerStore({ clock, probe, readMateFlag, intents });",
+          "const records = makeRegistrationRecords(storage);",
           "",
         ].join("\n"),
         "apps/mobile/src/features/zerops/account.ts":
@@ -2711,8 +2717,20 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           reason: "constructs makeInvalidationBus, a module of the account runtime, outside it",
         },
         {
-          file: "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx",
+          file: "apps/web/src/zerops/AccountShell.tsx",
+          reason: "constructs makeExchangeDriver, a module of the account runtime, outside it",
+        },
+        {
+          file: "apps/web/src/zerops/AccountShell.tsx",
           reason: "constructs makeGiteaSessions, a module of the account runtime, outside it",
+        },
+        {
+          file: "apps/web/src/zerops/zeropsContainers.ts",
+          reason: "constructs makeContainerStore, a module of the account runtime, outside it",
+        },
+        {
+          file: "apps/web/src/zerops/zeropsContainers.ts",
+          reason: "constructs makeRegistrationRecords, a module of the account runtime, outside it",
         },
         {
           file: `${zerops}/flow/groupFlow.ts`,

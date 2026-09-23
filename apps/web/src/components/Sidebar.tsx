@@ -202,8 +202,6 @@ import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrom
 import { useAddMateIntent } from "../zerops/addMateIntent";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { useAskMate } from "../zerops/useAskMate";
-import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
-import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { useNowMs } from "../zerops/useNowMs";
@@ -1752,17 +1750,7 @@ export default function Sidebar() {
         : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs),
     [zeropsListing, zeropsNowMs, zeropsOrganizationStatus],
   );
-  // The roster says what every agent is doing, and the only thing that knows
-  // is the environment's own server. So every container the container store
-  // reads as ready is registered on the user's behalf; from then on its socket
-  // and its thread status arrive like any other environment's.
-  const { health: zeropsHealth } = useZeropsContainers();
   const zeropsLinks = useEnvironmentLinks();
-  useZeropsAutoConnect({
-    candidates: zeropsCandidates,
-    health: zeropsHealth,
-    enabled: zeropsSignedIn,
-  });
   // Each project's flow — what its Mates have waiting, what its environments
   // run, whether there is something to release — read once for the account
   // (`ZeropsProjectFlowProvider`) and drawn under the project as a timeline.

@@ -33,7 +33,7 @@ import {
 import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
-import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
+import { exchangeZeropsContainerIdentity } from "@t3tools/client-runtime/zerops/identityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
@@ -306,14 +306,11 @@ describe("same-origin Zerops identity bootstrap", () => {
       .fn()
       .mockResolvedValue(AsyncResult.failure(Cause.fail(new Error("Session token expired."))));
 
-    const result = await exchangeZeropsContainerIdentity({
-      containerOrigin: APP_ORIGIN,
-      reason: "user",
-      appOrigin: APP_ORIGIN,
-      basePath: "/mate/",
-      throwaway: TEST_THROWAWAY,
-      connect,
-    });
+    const result = await exchangeZeropsContainerIdentity(
+      { throwaway: TEST_THROWAWAY, connect },
+      APP_ORIGIN,
+      { reason: "user", servedApp: { origin: APP_ORIGIN, basePath: "/mate/" } },
+    );
 
     expect(connect).toHaveBeenCalledWith({
       httpBaseUrl: `${APP_ORIGIN}/mate`,
@@ -329,13 +326,9 @@ describe("same-origin Zerops identity bootstrap", () => {
   it("does not attempt an exchange without the Zerops account token", async () => {
     const connect = vi.fn();
 
-    const result = await exchangeZeropsContainerIdentity({
-      containerOrigin: APP_ORIGIN,
+    const result = await exchangeZeropsContainerIdentity({ throwaway: null, connect }, APP_ORIGIN, {
       reason: "user",
-      appOrigin: APP_ORIGIN,
-      basePath: "/mate/",
-      throwaway: null,
-      connect,
+      servedApp: { origin: APP_ORIGIN, basePath: "/mate/" },
     });
 
     expect(connect).not.toHaveBeenCalled();
@@ -350,14 +343,11 @@ describe("same-origin Zerops identity bootstrap", () => {
     const environmentId = EnvironmentId.make("environment-1");
     const connect = vi.fn().mockResolvedValue(AsyncResult.success(environmentId));
 
-    const result = await exchangeZeropsContainerIdentity({
-      containerOrigin: APP_ORIGIN,
-      reason: "user",
-      appOrigin: APP_ORIGIN,
-      basePath: "/mate/",
-      throwaway: TEST_THROWAWAY,
-      connect,
-    });
+    const result = await exchangeZeropsContainerIdentity(
+      { throwaway: TEST_THROWAWAY, connect },
+      APP_ORIGIN,
+      { reason: "user", servedApp: { origin: APP_ORIGIN, basePath: "/mate/" } },
+    );
 
     expect(result).toEqual({ _tag: "Success", environmentId });
   });

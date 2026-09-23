@@ -68,7 +68,6 @@ import { environmentIdFromPathname } from "./-environmentRoute";
 import { useRouteGateInputs } from "./-environmentTargets";
 import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
-import { ZeropsIdentityRepair } from "~/zerops/ZeropsIdentityRepair";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -180,7 +179,6 @@ function SignedInRootRouteView() {
         <SlowRpcRequestToastCoordinator />
         <ProjectCloneToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
-        <ZeropsIdentityRepair />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
         {primaryEnvironmentAuthenticated ? <PlanAgentSelectionHeal /> : null}
         {primaryEnvironmentAuthenticated ? <ProviderUpdatePrimaryNotification /> : null}

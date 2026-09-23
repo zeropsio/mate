@@ -33,13 +33,16 @@ import { type AtomRegistry } from "effect/unstable/reactivity";
 import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
+import { bindAccountEnvironments, useAccountEnvironments } from "./accountEnvironments";
 import { bindAccountInvalidations } from "./accountInvalidations";
 import { bindGiteaSessionsSignals } from "./accountGiteaSessions";
 import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { browserPlatformSignals, signalsVisibility } from "./browserSignals";
 import { makeBrowserDataScheduler } from "./dataScheduler";
+import { webEnvironmentPorts } from "./environmentPorts";
 import { tabClock } from "./tabClock";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { bindBirthInputs } from "./zeropsBirths";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 export function connectZeropsDataSocket(url: string): PlatformWatchSocket {
@@ -149,11 +152,31 @@ export function ZeropsDataStartupFailure({
   );
 }
 
+/** The account's organization and project refs, keyed off the data runtime's account. */
+function accountRefs(
+  runtime: ManagedZeropsDataRuntime,
+): Pick<ZeropsDataContextValue, "organizationRef" | "projectRef"> {
+  const organizationRef = (organizationId: string) => ({
+    kind: "organization" as const,
+    account: runtime.scope.account,
+    organizationId: ZeropsOrganizationId.make(organizationId),
+  });
+  return {
+    organizationRef,
+    projectRef: (organizationId, projectId) => ({
+      kind: "project",
+      organization: organizationRef(organizationId),
+      projectId: ZeropsProjectId.make(projectId),
+    }),
+  };
+}
+
 /**
  * Owns exactly one account runtime for one verified account lifetime: the
  * platform-data runtime `makeRuntime` builds, its access grant verified
- * through the session's client, and its invalidation bus bound for the web's
- * surfaces.
+ * through the session's client, its invalidation bus bound for the web's
+ * surfaces, and — once the epoch's first grant built it — its post-grant
+ * stage: the Mate environments, and the births beside them.
  */
 export function ZeropsDataProvider({
   children,
@@ -163,7 +186,8 @@ export function ZeropsDataProvider({
   /** Test-only seam: substitutes the real adapter/runtime construction. */
   readonly makeRuntime?: MakeZeropsDataRuntime;
 }) {
-  const { client, signOut, status, updateVerifiedMemberships, user } = useZeropsSession();
+  const { activeOrganization, client, signOut, status, updateVerifiedMemberships, user } =
+    useZeropsSession();
   const verifiedMemberships = useEffectEvent((verified: ZeropsUser) =>
     updateVerifiedMemberships(verified),
   );
@@ -186,6 +210,7 @@ export function ZeropsDataProvider({
     let removeLifetimeClose: () => void = () => undefined;
     let unbindInvalidations: () => void = () => undefined;
     let unbindGiteaSignals: () => void = () => undefined;
+    let unbindEnvironments: () => void = () => undefined;
     setStartupFailure(null);
     const scope = {
       account: {
@@ -237,6 +262,7 @@ export function ZeropsDataProvider({
             }),
             signals,
             atomRegistry: registry,
+            environments: webEnvironmentPorts({ client, registry }),
           }),
         );
         void account.then(
@@ -250,6 +276,22 @@ export function ZeropsDataProvider({
             unbindInvalidations = bindAccountInvalidations(built.invalidations);
             unbindGiteaSignals = bindGiteaSessionsSignals(signals);
             setOpened({ runtime: created, signals });
+            // The post-grant stage stands on the epoch's first grant: surfaces read its Mate
+            // environments from then on, and the account's births start beside them.
+            void Effect.runPromise(built.postGrant).then(
+              (stage) => {
+                if (cancelled) return;
+                unbindEnvironments = bindAccountEnvironments(stage.environments);
+                bindBirthInputs({
+                  client,
+                  runtime: created,
+                  ...accountRefs(created),
+                  atoms: registry,
+                });
+              },
+              // An epoch that closed before its first grant never had a post-grant stage.
+              () => undefined,
+            );
           },
           (cause: unknown) => {
             void shutdown(created, "account-replaced");
@@ -272,6 +314,7 @@ export function ZeropsDataProvider({
       removeLifetimeClose();
       unbindInvalidations();
       unbindGiteaSignals();
+      unbindEnvironments();
       setOpened(null);
       if (current !== null) void shutdown(current, "account-replaced");
     };
@@ -280,22 +323,15 @@ export function ZeropsDataProvider({
   const value = useMemo<ZeropsDataContextValue | null>(() => {
     if (opened === null || opened.runtime.scope.account.accountId !== accountId) return null;
     const { runtime, signals } = opened;
-    const organizationRef = (organizationId: string) => ({
-      kind: "organization" as const,
-      account: runtime.scope.account,
-      organizationId: ZeropsOrganizationId.make(organizationId),
-    });
-    return {
-      runtime,
-      signals,
-      organizationRef,
-      projectRef: (organizationId, projectId) => ({
-        kind: "project",
-        organization: organizationRef(organizationId),
-        projectId: ZeropsProjectId.make(projectId),
-      }),
-    };
+    return { runtime, signals, ...accountRefs(runtime) };
   }, [accountId, opened]);
+
+  // Auto-connect wants the ready Mates of the organization this tab has open (D13).
+  const environments = useAccountEnvironments();
+  const activeOrganizationId = activeOrganization?.id ?? null;
+  useEffect(() => {
+    environments?.setActiveOrganization(activeOrganizationId);
+  }, [activeOrganizationId, environments]);
 
   const startupError = startupFailure?.accountId === accountId ? startupFailure.message : null;
   if (value === null)

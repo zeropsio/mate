@@ -1,13 +1,14 @@
 /**
- * Hosts the birth store and its worker (DESIGN §4.5, §2.C C9) in today's account tree: one per
- * account epoch, beside the container store. A creation begins a birth here the moment the
- * platform accepts it, and the worker brings the Mate up whatever page the person is on and
- * whichever organization their tab has open; the connect promotes the birth, and the chat reads
- * the opening job it left.
+ * Hosts the birth store and its worker (DESIGN §4.5, §2.C C9) in the web: one per account epoch,
+ * whose inputs the host binds once the account runtime's post-grant stage stands, beside the
+ * container store it reads through. A creation begins a birth here the moment the platform
+ * accepts it, and the worker brings the Mate up whatever page the person is on and whichever
+ * organization their tab has open; the connect promotes the birth, and the chat reads the
+ * opening job it left.
  *
  * Every port acts on the birth's own record — its organization, its Gitea project, its container
- * — never on what a tab has open now. An interim host: the account runtime's post-grant stage
- * constructs the store and the worker (3.4).
+ * — never on what a tab has open now. An interim host: the design has the account runtime's
+ * post-grant stage construct the store and the worker.
  */
 import {
   projectCreationOutcome,
@@ -30,6 +31,7 @@ import {
   type BirthStore,
   type BirthWorker,
   type BirthWorkerPorts,
+  unhardenedBirths,
 } from "@t3tools/client-runtime/zerops/birth";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
@@ -37,6 +39,7 @@ import {
   type ProjectRef,
   type ProjectActivityRead,
 } from "@t3tools/client-runtime/zerops/data";
+import type { AccountEnvironmentPorts } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   readServiceMateFlag,
   systemExchangeClock,
@@ -474,6 +477,17 @@ export function promoteBirth(projectId: string, environmentId: string): void {
 export function forgetBirth(projectId: string): void {
   host().store.forget(projectId);
 }
+
+/**
+ * The births as the account runtime's Mate environments read them: a Mate whose birth has not
+ * closed its project off yet is never auto-connected, and the connect that names its environment
+ * ends the birth.
+ */
+export const birthsForEnvironments: AccountEnvironmentPorts["births"] = {
+  unhardened: () => unhardenedBirths(host().store.ledger().births),
+  subscribe: (listener) => host().store.subscribe(listener),
+  promote: promoteBirth,
+};
 
 export function creationJobFor(environmentId: string): ZeropsCreationHandoff | undefined {
   return host().store.job(environmentId);

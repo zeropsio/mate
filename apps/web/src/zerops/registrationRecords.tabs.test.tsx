@@ -20,31 +20,38 @@ const record = (targetKey: string, environmentId: string) => ({
 });
 
 /**
- * A signed-in tab whose page reads the registration records through its own
- * module graph, and prints what it read.
+ * A signed-in tab whose page keeps the account's records over the web's records port, as the
+ * account runtime does, and prints what it read each time the port says another tab wrote them.
  */
 async function recordsTab(harness: ReturnType<typeof makeAccountHarness>) {
-  let records!: typeof import("./registrationRecords");
-  let lifetime!: typeof import("./accountLifetime");
+  let ports!: typeof import("./environmentPorts");
+  let environments!: typeof import("@t3tools/client-runtime/zerops/environments");
   const page = await mountTab(harness, harness.browser.openTab(), {
     page: async () => {
-      [records, lifetime] = await Promise.all([
-        import("./registrationRecords"),
-        import("./accountLifetime"),
+      [ports, environments] = await Promise.all([
+        import("./environmentPorts"),
+        import("@t3tools/client-runtime/zerops/environments"),
       ]);
-      const { createElement } = await import("react");
+      const { createElement, useEffect, useState } = await import("react");
       function Records() {
+        const [records] = useState(() =>
+          environments.makeRegistrationRecords(ports.recordsStorage),
+        );
+        const [heard, setHeard] = useState(0);
+        useEffect(() => ports.recordsStorage.listen(() => setHeard((count) => count + 1)), []);
         const keys = records
-          .useRegistrationRecords()
+          .list()
           .map((entry) => entry.targetKey)
           .join(",");
-        const version = records.useRegistrationVersion();
-        return createElement("p", null, `records:${keys} version:${version}`);
+        return createElement("p", null, `records:${keys} heard:${heard}`);
       }
       return createElement(Records);
     },
   });
-  return { page, records: () => records, lifetime: () => lifetime };
+  return {
+    page,
+    records: () => environments.makeRegistrationRecords(ports.recordsStorage),
+  };
 }
 
 async function twoSignedInTabs() {
@@ -64,12 +71,10 @@ afterEach(async () => {
 });
 
 describe("registration records across tabs", () => {
-  it("a Mate remembered in tab A appears in tab B without a reload", async () => {
+  it("a Mate remembered in tab A reaches tab B's records without a reload", async () => {
     const { a, b } = await twoSignedInTabs();
 
-    await a.page.run(() =>
-      a.records().rememberRegistration(record("project-1:service-1", "environment-1")),
-    );
+    await a.page.run(() => a.records().remember(record("project-1:service-1", "environment-1")));
     await settle();
 
     expect(b.page.text()).toContain("records:project-1:service-1 ");
@@ -87,21 +92,5 @@ describe("registration records across tabs", () => {
     await settle();
 
     expect(b.page.text()).toBe(before);
-  });
-
-  it("an account closed and opened again hears another tab's write once", async () => {
-    const { a, b } = await twoSignedInTabs();
-    await b.page.run(() => {
-      b.lifetime().closeAccountLifetime();
-      b.lifetime().openAccountLifetime("user-1");
-    });
-    const version = Number(/version:(\d+)/.exec(b.page.text())?.[1]);
-
-    await a.page.run(() =>
-      a.records().rememberRegistration(record("project-1:service-1", "environment-1")),
-    );
-    await settle();
-
-    expect(b.page.text()).toBe(`records:project-1:service-1 version:${version + 1}`);
   });
 });

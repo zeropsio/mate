@@ -1,14 +1,14 @@
 import { EnvironmentId } from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import type { ZeropsContainerHealth } from "../provisioning.ts";
 import {
   initialContainer,
   type ContainerLevel,
   type ContainerMachine,
-  type ProbeReading,
-} from "@t3tools/client-runtime/zerops/environments";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
-import { describe, expect, it } from "vite-plus/test";
-
-import { containerHealthOf, containerSnapshotOf } from "./zeropsContainers";
+} from "./containerMachine.ts";
+import { containerHealthOf, containerSnapshotOf } from "./containerRows.ts";
+import type { ProbeReading } from "./probeStore.ts";
 
 const SINCE = { wall: 1_800_000_000_000, mono: 0 };
 

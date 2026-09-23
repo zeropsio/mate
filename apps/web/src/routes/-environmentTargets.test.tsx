@@ -2,8 +2,10 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   environmentLinkable,
+  indexDescriptors,
   initialContainer,
   initialEnvironment,
   isTerminalReachability,
@@ -15,12 +17,13 @@ import {
   type ContainerMachine,
   type ContainerStore,
   type ContainerVerdict,
+  type DescriptorIndex,
   type EnvironmentMachine,
   type ExchangeDriver,
-  type ExchangeRequest,
   type Presence,
   type ProbeReading,
   type Reachability,
+  type RegistrationRecord,
   type RouteGate,
   type RouteTarget,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -30,10 +33,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import { TestNode } from "../zerops/__fixtures__/testDom";
-import { useEnvironmentLinks, useRouteGateInputs, useRouteTargetKey } from "./-environmentTargets";
+import { useEnvironmentLinks, useRouteGateInputs } from "./-environmentTargets";
 import { RouteGateView } from "./-routeGate";
+import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { InventoryContext, type Inventory } from "../zerops/inventoryContext";
-import { ZeropsIdentityRepair } from "../zerops/ZeropsIdentityRepair";
 import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
 /** Where the fixture's zcp service is served: `zcp`, subdomain host `abc`, port 8080, region `prg1`. */
@@ -51,17 +54,13 @@ const shell = vi.hoisted(() => ({
   organization: "selected" as ZeropsOrganizationStatus,
   driver: null as unknown,
   containers: null as unknown,
-  pathname: "/",
+  /** Every route the gate handed the account runtime, in order. */
+  routes: [] as Array<string | null>,
 }));
 
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: shell.environments }),
   useEnvironmentConnectionState: () => ({ data: null }),
-}));
-vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
-  useLocation: ({ select }: { readonly select: (location: { pathname: string }) => string }) =>
-    select({ pathname: shell.pathname }),
 }));
 vi.mock("../state/shell", async () => {
   const { Atom } = await import("effect/unstable/reactivity");
@@ -69,18 +68,48 @@ vi.mock("../state/shell", async () => {
   const cached = Atom.make({ snapshot: Option.none(), status: "cached", error: Option.none() });
   return { environmentShell: { stateValueAtom: () => cached } };
 });
-vi.mock("../zerops/registrationRecords", () => ({
-  useRegistrationRecords: () => shell.records,
-}));
-vi.mock("../zerops/useZeropsIdentityExchange", () => ({
-  useExchangeDriver: () => shell.driver,
-}));
 vi.mock("../zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ organizationStatus: shell.organization }),
 }));
-vi.mock("../zerops/zeropsContainers", () => ({
-  hostContainerStore: () => shell.containers,
-}));
+
+/**
+ * The account runtime's Mate environments as the hooks read them, over whichever driver, container
+ * store and records the test put in `shell`.
+ */
+function shellStage(): AccountEnvironments {
+  const driver = () => shell.driver as ExchangeDriver;
+  const containers = () => shell.containers as ContainerStore;
+  let indexed: {
+    readonly machines: ReadonlyMap<string, EnvironmentMachine>;
+    readonly containers: ReadonlyMap<string, ContainerMachine>;
+    readonly index: DescriptorIndex;
+  } | null = null;
+  return {
+    machines: () => driver().machines(),
+    containers: () => containers().machines(),
+    records: () => shell.records as unknown as ReadonlyArray<RegistrationRecord>,
+    index: () => {
+      const [machines, readings] = [driver().machines(), containers().machines()];
+      if (indexed?.machines !== machines || indexed.containers !== readings) {
+        indexed = { machines, containers: readings, index: indexDescriptors(machines, readings) };
+      }
+      return indexed.index;
+    },
+    subscribe: (listener) => {
+      const stops = [driver().subscribe(listener), containers().subscribe(listener)];
+      return () => {
+        for (const stop of stops) stop();
+      };
+    },
+    connect: () => new Promise(() => undefined),
+    intend: () => false,
+    next: () => new Promise(() => undefined),
+    setRoute: (environmentId) => {
+      shell.routes.push(environmentId);
+    },
+    setActiveOrganization: () => undefined,
+  };
+}
 
 const project = {
   id: "project-1",
@@ -128,14 +157,18 @@ beforeEach(() => {
   root = createRoot(container as unknown as Element);
   shell.environments = [];
   shell.records = [];
-  shell.pathname = "/";
+  shell.routes = [];
   shell.organization = "selected";
   shell.driver = publishing(new Map());
   shell.containers = descriptorRig([]).containers;
+  unbindStage = bindAccountEnvironments(shellStage());
 });
+
+let unbindStage: () => void = () => undefined;
 
 afterEach(() => {
   act(() => root.unmount());
+  unbindStage();
   vi.unstubAllGlobals();
 });
 
@@ -604,8 +637,7 @@ const answering = (environmentId: EnvironmentId, projectId: string): ProbeReadin
 
 /**
  * A real container store and exchange driver for present candidates, remembered by `records` or
- * not at all: every probe waits for the test to answer it, and every exchange started is kept,
- * unanswered.
+ * not at all: every probe waits for the test to answer it, and no exchange ever answers.
  */
 function descriptorRig(
   mates: ReadonlyArray<ReturnType<typeof mate>>,
@@ -613,7 +645,6 @@ function descriptorRig(
 ) {
   const pending = new Map<string, (reading: ProbeReading) => void>();
   const probed: Array<string> = [];
-  const exchanges: Array<ExchangeRequest> = [];
   const retired: Array<string> = [];
   const clock = {
     now: () => ({ wall: nowMs, mono: nowMs }),
@@ -638,10 +669,7 @@ function descriptorRig(
   });
   const driver = makeExchangeDriver<unknown>({
     clock,
-    exchange: (request) => {
-      exchanges.push(request);
-      return new Promise(() => undefined);
-    },
+    exchange: () => new Promise(() => undefined),
     install: async () => ({ ok: true }),
     readDescriptor: () => new Promise(() => undefined),
     retryLink: () => undefined,
@@ -676,7 +704,6 @@ function descriptorRig(
     containers,
     driver,
     probed,
-    exchanges,
     retired,
     /** Answers the probe in flight for this origin. */
     answer: async (origin: string, reading: ProbeReading) => {
@@ -692,27 +719,17 @@ function descriptorRig(
 interface Routed {
   readonly target: RouteTarget | null;
   readonly projectId: string | null;
-  readonly routeKey: string | null;
 }
 
-/**
- * Mounts what `__root` reads for a route to the environment, and the route's demand on its target
- * (`ZeropsIdentityRepair`); `read` looks again.
- */
+/** Mounts what `__root` reads for a route to the environment; `read` looks again. */
 function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACTIVE")) {
-  shell.pathname = `/${environmentId}/thread-1`;
   function Probe() {
     const inputs = useRouteGateInputs(environmentId);
-    return JSON.stringify({
-      target: inputs.target,
-      projectId: inputs.projectId,
-      routeKey: useRouteTargetKey(environmentId) ?? null,
-    });
+    return JSON.stringify({ target: inputs.target, projectId: inputs.projectId });
   }
   act(() =>
     root.render(
       <InventoryContext value={value}>
-        <ZeropsIdentityRepair />
         <Probe />
       </InventoryContext>,
     ),
@@ -729,18 +746,14 @@ describe("the descriptor index", () => {
     await settle();
     const routed = routeTo(ENV_A);
     expect(selectRouteGate(routed.read().target)).toEqual({ kind: "wait", reachability: null });
+    // The route is the account runtime's demand: it exchanges the route's target first.
+    expect(shell.routes).toEqual([ENV_A]);
 
     await rig.answer(one.origin, answering(ENV_A, one.projectId));
 
     const seen = routed.read();
     expect(seen.target?.kind).toBe("resolved");
     expect(seen.projectId).toBe(one.projectId);
-    expect(seen.routeKey).toBe(one.key);
-    // The route's demand on that target exchanges it, expecting no remembered environment.
-    await settle();
-    expect(rig.exchanges.map(({ key, expected }) => ({ key, expected }))).toEqual([
-      { key: one.key, expected: null },
-    ]);
     rig.driver.dispose();
     rig.containers.dispose();
   });
@@ -805,7 +818,6 @@ describe("the descriptor index", () => {
       return JSON.stringify({
         gate: selectRouteGate(inputs.target),
         linkable: useEnvironmentLinks().linkable(environmentId),
-        routeKey: useRouteTargetKey(environmentId) ?? null,
       });
     }
     const look = (environmentId: EnvironmentId) => {
@@ -816,11 +828,7 @@ describe("the descriptor index", () => {
           </InventoryContext>,
         ),
       );
-      return JSON.parse(container.textContent) as {
-        gate: RouteGate;
-        linkable: boolean;
-        routeKey: string | null;
-      };
+      return JSON.parse(container.textContent) as { gate: RouteGate; linkable: boolean };
     };
 
     // The Mate was redeployed with its data history: its descriptor now reports another environment.
@@ -829,52 +837,13 @@ describe("the descriptor index", () => {
     expect(look(ENV_A)).toEqual({
       gate: { kind: "unavailable", reachability: { kind: "replaced", by: ENV_B } },
       linkable: false,
-      routeKey: one.key,
     });
-    // The new environment is the same target's.
-    expect(look(ENV_B).routeKey).toBe(one.key);
     // Nothing retired the target: its record, and every draft keyed by the old environment, stay.
     expect(rig.retired).toEqual([]);
     expect(rig.driver.machine(one.key)?.record).toBe(ENV_A);
     expect(useComposerDraftStore.getState().draftsByThreadKey[scopedThreadKey(draft)]?.prompt).toBe(
       "keep me",
     );
-    rig.driver.dispose();
-    rig.containers.dispose();
-  });
-
-  it("a route nothing names reads each present Mate read without an answer once more", async () => {
-    const [down, coming] = [mate(1), mate(2)];
-    const rig = descriptorRig([down, coming]);
-    shell.driver = rig.driver;
-    shell.containers = rig.containers;
-    await settle();
-    // Unreachable, it boots: read at once, then on the poll's cadence, whose timer never fires here.
-    await rig.answer(down.origin, { kind: "unreachable" });
-    await rig.answer(down.origin, { kind: "unreachable" });
-    expect(rig.probed).toEqual([down.origin, coming.origin, down.origin]);
-
-    const routed = routeTo(ENV_A);
-    await settle();
-
-    // The unreachable one is read again at once; the unread one is already on its way.
-    expect(rig.probed).toEqual([down.origin, coming.origin, down.origin, down.origin]);
-    expect(selectRouteGate(routed.read().target)).toEqual({ kind: "wait", reachability: null });
-
-    // The other one fails too: it is swept once, and the first is not read again for this route.
-    await rig.answer(down.origin, { kind: "unreachable" });
-    await rig.answer(coming.origin, { kind: "unreachable" });
-    await rig.answer(coming.origin, { kind: "unreachable" });
-    routed.read();
-    await settle();
-    expect(rig.probed).toEqual([
-      down.origin,
-      coming.origin,
-      down.origin,
-      down.origin,
-      coming.origin,
-      coming.origin,
-    ]);
     rig.driver.dispose();
     rig.containers.dispose();
   });

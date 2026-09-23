@@ -12,6 +12,7 @@ import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
+import { EnvironmentId } from "@t3tools/contracts";
 
 import { ZeropsApiClient } from "../api.ts";
 import { account, organization, project, scope } from "../data/__fixtures__/index.ts";
@@ -19,13 +20,31 @@ import { makeRestAccessVerifier, type AccessVerifier } from "../data/access/veri
 import { grantPlatformWrite, type GrantFailure } from "../data/access/grant.ts";
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
 import { makeZeropsDataRuntime } from "../data/runtime.ts";
-import { ZeropsOrganizationId, type ZeropsDataAdapter } from "../data/types.ts";
+import {
+  decodeEntityDirectResponse,
+  decodeEntityQueryPages,
+  decodeRegistrationResponse,
+} from "../data/platformProtocol.ts";
+import {
+  ZeropsOrganizationId,
+  type EntityQueryDescriptor,
+  type ZeropsDataAdapter,
+} from "../data/types.ts";
+import type { ProbeReading } from "../environments/probeStore.ts";
+import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
+import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import { makePlatformSignals, type PageEvent } from "../knowledge/signals.ts";
 import { makeDeadlineClock, type DeadlineClock } from "../testing/deadlineClock.ts";
 import { makeFakeDatastream } from "../testing/fakeDatastream.ts";
 import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
-import { makeAccountRuntime } from "./accountRuntime.ts";
+import {
+  makeAccountRuntime,
+  type AccountEnvironmentPorts,
+  type CatalogListener,
+  type DoorCredential,
+  type DoorRequest,
+} from "./accountRuntime.ts";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -41,6 +60,227 @@ const inertAdapter: ZeropsDataAdapter = {
   read: () => unused,
   execute: () => unused,
   closeReceiver: () => Effect.void,
+};
+
+/** A Mate a platform project serves: its target, its origin and its rows. */
+const mate = (id: string) => {
+  const projectId = `project-${id}`;
+  return {
+    key: `${projectId}:service-${id}`,
+    origin: `https://zcp-${id}-8080.prg1.zerops.app`,
+    projectId,
+    project: {
+      id: projectId,
+      name: `shop ${id}`,
+      status: "ACTIVE",
+      publicZone: "x.prg1-zerops.zone",
+      zeropsSubdomainHost: id,
+    },
+    service: {
+      id: `service-${id}`,
+      projectId,
+      name: "zcp",
+      status: "ACTIVE",
+      serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+      subdomainAccess: true,
+      ports: [{ port: 8080 }],
+    },
+  };
+};
+type Mate = ReturnType<typeof mate>;
+
+/** Project A's Mate: the one most tests reach. */
+const A_MATE = mate("a");
+const MATE = A_MATE.key;
+const MATE_ORIGIN = A_MATE.origin;
+const ENV_A = EnvironmentId.make("env-a");
+
+/** The datastream over a platform whose one organization holds these Mates' projects. */
+const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
+  const rowsOf = (query: EntityQueryDescriptor): ReadonlyArray<unknown> => {
+    switch (query.kind) {
+      case "projects-of-organization":
+        return mates.map(({ project }) => project);
+      case "services-of-project":
+        return mates
+          .filter(({ projectId }) => projectId === query.project.projectId)
+          .map(({ service }) => service);
+      default:
+        return [];
+    }
+  };
+  return {
+    openReceiver: (_scope, receiving, identity) =>
+      Effect.succeed({
+        identity,
+        organization: receiving,
+        delivery: "hot-single-consumer-buffered-before-open-resolves",
+        events: Stream.never,
+      }),
+    register: (_receiver, request) =>
+      Effect.sync(() => {
+        if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
+        const items = rowsOf(request.descriptor.query);
+        return {
+          responseObservations: decodeRegistrationResponse(request, {
+            items,
+            total: items.length,
+          }).observations,
+        };
+      }),
+    read: (ticket) =>
+      Effect.sync(() => {
+        if (ticket.target.kind === "query") {
+          const descriptor = ticket.target.descriptor as EntityQueryDescriptor;
+          const rows = rowsOf(descriptor);
+          return {
+            observations: decodeEntityQueryPages(descriptor, ticket, [
+              { rows, totalCount: rows.length },
+            ]).observations,
+          };
+        }
+        const target = ticket.target;
+        const listed =
+          target.kind === "project"
+            ? mates.find(({ projectId }) => projectId === target.ref.projectId)
+            : undefined;
+        return listed === undefined
+          ? { observations: [] }
+          : { observations: decodeEntityDirectResponse(ticket, listed.project).observations };
+      }),
+    execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+    closeReceiver: () => Effect.void,
+  };
+};
+
+/** An op a port started: answered by the test, or ended by its signal. */
+interface Pending<Input, Answer> {
+  readonly input: Input;
+  readonly signal: AbortSignal;
+  readonly answer: (answer: Answer) => void;
+}
+
+const pending = <Input, Answer>(
+  started: Array<Pending<Input, Answer>>,
+  input: Input,
+  signal: AbortSignal,
+) =>
+  new Promise<Answer>((resolve, reject) => {
+    started.push({ input, signal, answer: resolve });
+    signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+  });
+
+/** A door that admits `environmentId`, and a credential the registry takes as `install` says. */
+const admitted = (
+  environmentId: EnvironmentId,
+  install: DoorCredential["install"],
+): ExchangeAnswer<DoorCredential> => ({
+  ok: true,
+  environmentId,
+  descriptor: {
+    environmentId,
+    serverVersion: "0.12.0",
+    update: null,
+    identity: "ok",
+    identityCheckedAt: null,
+  },
+  credential: { install },
+});
+
+/** A descriptor that answered as Mate for this environment, stating this project. */
+const answering = (environmentId: EnvironmentId, projectId: string): ProbeReading => ({
+  kind: "ready",
+  descriptor: {
+    environmentId,
+    serverVersion: "0.12.0",
+    update: null,
+    identity: "ok",
+    identityCheckedAt: null,
+  },
+  projectId,
+  initAt: null,
+});
+
+/**
+ * The Mate environments' ports as a tab hands them over, with no React: every exchange and probe
+ * is recorded and left for the test to answer, the records hold what `remembered` names, and the
+ * catalog, the births and the records' other tabs are the test's to drive.
+ */
+const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<RegistrationRecord>) => {
+  const exchanges: Array<Pending<DoorRequest, ExchangeAnswer<DoorCredential>>> = [];
+  const probes: Array<Pending<string, ProbeReading>> = [];
+  const removed: Array<EnvironmentId> = [];
+  const promoted: Array<readonly [string, EnvironmentId]> = [];
+  const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
+  /** What the stage listens to now, by port. */
+  const listening = { records: 0, catalog: 0, births: 0 };
+  let catalog: CatalogListener | null = null;
+  let unhardened: ReadonlySet<string> = new Set();
+  const ports: AccountEnvironmentPorts = {
+    clock: {
+      now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
+      random: () => 0.5,
+      setTimer: () => () => undefined,
+    },
+    door: {
+      exchange: (request) => pending(exchanges, request, request.signal),
+      readDescriptor: (_origin, signal) => pending([], null, signal),
+      retryLink: () => undefined,
+      remove: (environmentId) => void removed.push(environmentId),
+    },
+    probe: (origin, signal) => pending(probes, origin, signal),
+    intents: { read: () => null, write: () => undefined },
+    records: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => void storage.set(key, value),
+      listen: () => {
+        listening.records += 1;
+        return () => void (listening.records -= 1);
+      },
+    },
+    catalog: {
+      listen: (listener) => {
+        catalog = listener;
+        listening.catalog += 1;
+        return () => void (listening.catalog -= 1);
+      },
+    },
+    births: {
+      unhardened: () => unhardened,
+      subscribe: () => {
+        listening.births += 1;
+        return () => void (listening.births -= 1);
+      },
+      promote: (projectId, environmentId) => void promoted.push([projectId, environmentId]),
+    },
+  };
+  return {
+    ports,
+    exchanges,
+    probes,
+    removed,
+    promoted,
+    listening,
+    /** The records as they are stored now. */
+    records: () =>
+      JSON.parse(storage.get(REGISTRATION_RECORDS_KEY) ?? "[]") as Array<RegistrationRecord>,
+    /** The connection catalog as the stage hears it. */
+    catalog: () => catalog!,
+    setUnhardened: (next: ReadonlySet<string>) => {
+      unhardened = next;
+    },
+  };
+};
+
+/** The ports of a runtime whose Mates these tests never reach. */
+const inertEnvironments = (clock: DeadlineClock) => environmentRig(clock, []).ports;
+
+const REMEMBERED_A: RegistrationRecord = {
+  targetKey: MATE,
+  environmentId: ENV_A,
+  origin: MATE_ORIGIN,
+  projectRef: { projectId: A_MATE.projectId, orgId: "org-1" },
+  name: "shop a",
 };
 
 /** Lets every fiber the last step woke run to its next wait, on whichever scheduler it runs. */
@@ -154,6 +394,7 @@ describe("the account runtime", () => {
               verifier: grant.verifier,
               signals: page.signals,
               atomRegistry: registry,
+              environments: inertEnvironments(clock),
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -166,7 +407,7 @@ describe("the account runtime", () => {
 
           yield* grant.answer();
 
-          yield* Fiber.join(postGrant);
+          const stage = yield* Fiber.join(postGrant);
           const heard: Array<Invalidation> = [];
           const subscription = yield* built.invalidations.subscribe;
           yield* Stream.fromSubscription(subscription).pipe(
@@ -180,7 +421,7 @@ describe("the account runtime", () => {
           yield* clock.advance(SECOND);
           yield* settle;
 
-          expect(yield* Effect.exit(built.postGrant)).toEqual(Exit.void);
+          expect(yield* built.postGrant).toBe(stage);
           expect(heard).toEqual([{ topic: "access", change: "lapsed" }]);
         }),
       ),
@@ -207,6 +448,7 @@ describe("the account runtime", () => {
               verifier: grant.verifier,
               signals: page.signals,
               atomRegistry: registry,
+              environments: inertEnvironments(clock),
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -263,6 +505,7 @@ describe("the account runtime", () => {
             verifier: grant.verifier,
             signals: page.signals,
             atomRegistry: registry,
+            environments: inertEnvironments(clock),
           });
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -344,6 +587,7 @@ describe("the account runtime", () => {
             }),
             signals: page.signals,
             atomRegistry: registry,
+            environments: inertEnvironments(clock),
           });
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -400,6 +644,7 @@ describe("the account runtime", () => {
               verifier: grant.verifier,
               signals: page.signals,
               atomRegistry: registry,
+              environments: inertEnvironments(clock),
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -450,6 +695,7 @@ describe("the account runtime", () => {
             verifier: grant.verifier,
             signals: page.signals,
             atomRegistry: registry,
+            environments: inertEnvironments(clock),
           }).pipe(Effect.exit);
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* settle;
@@ -508,6 +754,7 @@ describe("the account runtime", () => {
               }),
               signals: page.signals,
               atomRegistry: registry,
+              environments: inertEnvironments(clock),
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -556,6 +803,362 @@ describe("the account runtime", () => {
           expect(yield* interest()).toBe("observing");
           // Renewed on schedule while hidden: at +12, +24 and +36 min.
           expect(rest.requests().filter(({ route }) => route === "GET /user/info").length).toBe(4);
+        }),
+      ),
+  );
+});
+
+describe("the post-grant stage's Mate environments", () => {
+  /** An account runtime over a platform holding these Mates' projects, with no React mounted. */
+  const openAccount = Effect.fnUntraced(function* (
+    remembered: ReadonlyArray<RegistrationRecord>,
+    mates: ReadonlyArray<Mate> = [A_MATE],
+  ) {
+    const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+    const registry = AtomRegistry.make();
+    const page = yield* makePage(clock);
+    const grant = heldVerifier();
+    const rig = environmentRig(clock, remembered);
+    const built = yield* Effect.gen(function* () {
+      const data = yield* makeZeropsDataRuntime({
+        scope: scope(),
+        adapter: platformAdapter(mates),
+        atomRegistry: registry,
+        makeOpaqueId: (() => {
+          let next = 0;
+          return () => `opaque-${++next}`;
+        })(),
+      });
+      return yield* makeAccountRuntime({
+        data,
+        verifier: grant.verifier,
+        signals: page.signals,
+        atomRegistry: registry,
+        environments: rig.ports,
+      });
+    }).pipe(Effect.provideService(Clock.Clock, clock));
+    yield* Effect.addFinalizer(() => built.close("application-close"));
+    // The account's views hold its inventory, as the inventory provider does.
+    yield* built.data
+      .acquire({ kind: "organization-inventory", organization })
+      .pipe(Effect.provideService(Clock.Clock, clock));
+    for (const { projectId } of mates)
+      yield* built.data
+        .acquire({ kind: "project-inventory", project: project(projectId) })
+        .pipe(Effect.provideService(Clock.Clock, clock));
+    return { clock, page, grant, rig, built };
+  });
+
+  /** `openAccount` past the epoch's first grant, with its post-grant stage. */
+  const granted = Effect.fnUntraced(function* (
+    remembered: ReadonlyArray<RegistrationRecord>,
+    mates: ReadonlyArray<Mate> = [A_MATE],
+  ) {
+    const opened = yield* openAccount(remembered, mates);
+    yield* opened.grant.answer();
+    yield* opened.clock.advance(SECOND);
+    yield* settle;
+    const stage = yield* opened.built.postGrant;
+    return { ...opened, environments: stage.environments };
+  });
+
+  it.effect("no exchange before the first grant (I10, AL-04), with no React", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, grant, rig, built } = yield* openAccount([REMEMBERED_A]);
+        const postGrant = yield* Effect.forkChild(built.postGrant);
+        yield* clock.advance(SECOND);
+        yield* settle;
+
+        // The remembered Mate is present on the platform, and the first round is still out.
+        expect(grant.rounds()).toBe(1);
+        expect(postGrant.pollUnsafe()).toBeUndefined();
+        expect(rig.exchanges).toEqual([]);
+
+        yield* grant.answer();
+        yield* clock.advance(SECOND);
+        yield* settle;
+
+        const stage = yield* Fiber.join(postGrant);
+        expect(
+          rig.exchanges.map(({ input: { key, origin, projectId, organizationId } }) => ({
+            key,
+            origin,
+            projectId,
+            organizationId,
+          })),
+        ).toEqual([
+          { key: MATE, origin: MATE_ORIGIN, projectId: "project-a", organizationId: "org-1" },
+        ]);
+        expect(stage.environments.machines().get(MATE)?.credential.kind).toBe("exchanging");
+      }),
+    ),
+  );
+
+  it.effect("a sign-out disposes every environment machine", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, page, rig, built, environments } = yield* granted([REMEMBERED_A]);
+        const connect = environments.connect(MATE, "user");
+        yield* settle;
+        expect(rig.exchanges).toHaveLength(1);
+        expect(rig.probes.length).toBeGreaterThan(0);
+        expect(rig.listening).toEqual({ records: 1, catalog: 1, births: 1 });
+        let heard = 0;
+        environments.subscribe(() => {
+          heard += 1;
+        });
+
+        yield* built.close("logout");
+
+        // Every exchange and probe in flight is aborted, and a waiting Connect answers Closed.
+        expect(rig.exchanges.map(({ signal }) => signal.aborted)).toEqual([true]);
+        expect(rig.probes.every(({ signal }) => signal.aborted)).toBe(true);
+        expect(yield* Effect.promise(() => connect)).toEqual({ _tag: "Closed" });
+        // The stage hears nothing more: no port, and nothing the tab does, reaches a machine.
+        expect(rig.listening).toEqual({ records: 0, catalog: 0, births: 0 });
+        yield* page.emit({ type: "visibility", hidden: true });
+        yield* clock.advance(MINUTE);
+        yield* page.emit({ type: "visibility", hidden: false });
+        yield* settle;
+        expect(rig.exchanges).toHaveLength(1);
+        expect(heard).toBe(0);
+      }),
+    ),
+  );
+
+  it.effect.each([
+    {
+      name: "the registry takes it: its target is remembered and its birth ends",
+      installed: true,
+      records: [REMEMBERED_A],
+      promoted: [[A_MATE.projectId, ENV_A]],
+    },
+    {
+      name: "the registry refuses it: nothing is written",
+      installed: false,
+      records: [],
+      promoted: [],
+    },
+  ])("an installed credential writes its target's record (H12): $name", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([]);
+        const connect = environments.connect(MATE, "user");
+        yield* settle;
+
+        rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: row.installed })));
+        yield* settle;
+
+        expect(rig.records()).toEqual(row.records);
+        expect(rig.promoted).toEqual(row.promoted);
+        if (row.installed) {
+          expect(yield* Effect.promise(() => connect)).toEqual({
+            _tag: "Connected",
+            environmentId: ENV_A,
+          });
+        }
+      }),
+    ),
+  );
+
+  const ENV_B = EnvironmentId.make("env-b");
+  const ELSEWHERE = EnvironmentId.make("env-elsewhere");
+  it.effect.each([
+    {
+      name: "one nothing remembers is released",
+      remembered: [],
+      install: null,
+      registered: [{ environmentId: ELSEWHERE, origin: "https://zcp-z-8080.prg1.zerops.app" }],
+      whileInstalling: [ELSEWHERE],
+      removed: [ELSEWHERE],
+    },
+    {
+      name: "one published while its install writes the record is kept",
+      remembered: [],
+      install: { environmentId: ENV_A, ok: true },
+      registered: [{ environmentId: ENV_A, origin: MATE_ORIGIN }],
+      whileInstalling: [],
+      removed: [],
+    },
+    {
+      name: "one whose install fails is released when it ends",
+      remembered: [],
+      install: { environmentId: ENV_A, ok: false },
+      registered: [{ environmentId: ENV_A, origin: MATE_ORIGIN }],
+      whileInstalling: [],
+      removed: [ENV_A],
+    },
+    {
+      name: "an older one at the same Mate is released once its replacement is remembered",
+      remembered: [REMEMBERED_A],
+      install: { environmentId: ENV_B, ok: true },
+      registered: [
+        { environmentId: ENV_A, origin: MATE_ORIGIN },
+        { environmentId: ENV_B, origin: MATE_ORIGIN },
+      ],
+      whileInstalling: [],
+      removed: [ENV_A],
+    },
+  ])("a registration: $name", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted(row.remembered);
+        let finish: (ok: boolean) => void = () => undefined;
+        if (row.install !== null) {
+          if (row.remembered.length === 0) void environments.connect(MATE, "user");
+          yield* settle;
+          rig.exchanges[0]!.answer(
+            admitted(
+              row.install.environmentId,
+              () =>
+                new Promise((resolve) => {
+                  finish = (ok) => resolve({ ok });
+                }),
+            ),
+          );
+          yield* settle;
+        }
+
+        // The catalog publishes a registration before its install writes the record.
+        rig.catalog().environments(row.registered);
+        yield* settle;
+        expect(rig.removed).toEqual(row.whileInstalling);
+
+        if (row.install !== null) finish(row.install.ok);
+        yield* settle;
+        expect([...new Set(rig.removed)]).toEqual(row.removed);
+      }),
+    ),
+  );
+
+  /** Answers the oldest probe of this origin still in flight. */
+  const answerProbe = (
+    rig: ReturnType<typeof environmentRig>,
+    origin: string,
+    reading: ProbeReading,
+  ) =>
+    Effect.gen(function* () {
+      const probe = rig.probes.find(
+        (entry) => entry.input === origin && !answeredProbes.has(entry),
+      );
+      if (probe === undefined) throw new Error(`No probe of ${origin} is in flight.`);
+      answeredProbes.add(probe);
+      probe.answer(reading);
+      yield* settle;
+    });
+  const answeredProbes = new WeakSet<object>();
+
+  it.effect(
+    "a deep link on a device with no record exchanges the Mate its descriptor names first",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { rig, environments } = yield* granted([]);
+          environments.setRoute(ENV_A);
+          yield* settle;
+          expect(rig.exchanges).toEqual([]);
+
+          yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+
+          expect(
+            rig.exchanges.map(({ input: { key, expected, reason } }) => ({
+              key,
+              expected,
+              reason,
+            })),
+          ).toEqual([{ key: MATE, expected: null, reason: "restore" }]);
+        }),
+      ),
+  );
+
+  it.effect("a route nothing names reads each present Mate read without an answer once more", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const [down, coming] = [mate("1"), mate("2")];
+        const { rig, environments } = yield* granted([], [down, coming]);
+        const probed = () => rig.probes.map(({ input }) => input);
+        // Unreachable, it boots: read at once, then on the poll's cadence, whose timer never fires here.
+        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        expect(probed()).toEqual([down.origin, coming.origin, down.origin]);
+
+        environments.setRoute(ENV_A);
+        yield* settle;
+
+        // The unreachable one is read again at once; the unread one is already on its way.
+        expect(probed()).toEqual([down.origin, coming.origin, down.origin, down.origin]);
+
+        // The other one fails too: it is swept once, and the first is not read again for this route.
+        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        yield* answerProbe(rig, coming.origin, { kind: "unreachable" });
+        yield* answerProbe(rig, coming.origin, { kind: "unreachable" });
+        expect(probed()).toEqual([
+          down.origin,
+          coming.origin,
+          down.origin,
+          down.origin,
+          coming.origin,
+          coming.origin,
+        ]);
+      }),
+    ),
+  );
+
+  it.effect.each([
+    {
+      name: "a ready Mate of the organization the tab has open",
+      open: "org-1",
+      born: [],
+      wanted: 1,
+    },
+    { name: "none while another organization is open", open: "org-2", born: [], wanted: 0 },
+    {
+      name: "none while its birth has not closed its project off",
+      open: "org-1",
+      born: [A_MATE.projectId],
+      wanted: 0,
+    },
+  ])("auto-connect wants $name (D13)", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([]);
+        rig.setUnhardened(new Set(row.born));
+        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+
+        environments.setActiveOrganization(row.open);
+        yield* settle;
+
+        expect(rig.exchanges.map(({ input: { key, reason } }) => ({ key, reason }))).toEqual(
+          Array.from({ length: row.wanted }, () => ({ key: MATE, reason: "auto-connect" })),
+        );
+      }),
+    ),
+  );
+
+  it.effect(
+    "a Mate whose door names another project has its organization's inventory read again",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { clock, rig, built } = yield* granted([REMEMBERED_A]);
+          const heard: Array<Invalidation> = [];
+          const subscription = yield* built.invalidations.subscribe;
+          yield* Stream.fromSubscription(subscription).pipe(
+            Stream.runForEach((invalidation) => Effect.sync(() => heard.push(invalidation))),
+            Effect.forkScoped,
+          );
+
+          rig.exchanges[0]!.answer({
+            ok: false,
+            failure: { class: "refusal", reason: { kind: "project-mismatch" } },
+            descriptor: null,
+          });
+          yield* settle;
+          yield* clock.advance(250);
+          yield* settle;
+
+          expect(heard).toEqual([{ topic: "inventory", organization }]);
         }),
       ),
   );

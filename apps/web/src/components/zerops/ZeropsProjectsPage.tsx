@@ -55,7 +55,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
-import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
+import { useConnectMate } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import {
   beginBirth,
@@ -563,7 +563,7 @@ export function useZeropsProjectConnection(): {
   const births = useZeropsBirths();
   const { health } = useZeropsContainers();
   const { organizationRef } = useZeropsData();
-  const exchangeZeropsIdentity = useZeropsIdentityExchange("user");
+  const exchangeZeropsIdentity = useConnectMate("user");
   const navigate = useNavigate();
   const [opening, setOpening] = useState<OpeningTarget | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -831,7 +831,7 @@ function ZeropsProjectsContent() {
       ),
     [creationVerdicts, observedCandidates],
   );
-  // A late success still ends the birth. Auto-connect (`useZeropsAutoConnect`)
+  // A late success still ends the birth. Auto-connect (the account runtime's)
   // can reach the door before this page's own connect does — it never
   // navigates by design — so this watches for a project this page saw being
   // born, or one it is opening, turning up connected, and finishes from here
