@@ -17,7 +17,7 @@ const GUARDED_ROOTS = [
   "packages/client-runtime/src/zerops/",
 ] as const;
 const HOOK_NAME_PATTERN = /^use[A-Z]/u;
-const EMPTY_CONSTANT_PATTERN = /^EMPTY_/u;
+const EMPTY_CONSTANT_PATTERN = /^(?:EMPTY_|NO_|NONE(?:_|$))/u;
 // React's own local-state hooks answer what the component holds, never a store's fact.
 const LOCAL_STATE_HOOKS = new Set([
   "useCallback",
@@ -122,14 +122,58 @@ const answersEmptyOnSuccess = (node: ESTree.Node): boolean => {
   );
 };
 
-/** `[]` or an `EMPTY_…` constant: the empties a store read is defaulted to. */
-const isEmptyDefault = (node: unknown): boolean => {
-  const expression = unwrapExpression(node);
-  if (Option.isNone(expression)) return false;
-  const value = expression.value;
-  if (value.type === "ArrayExpression") return value.elements.length === 0;
-  return value.type === "Identifier" && EMPTY_CONSTANT_PATTERN.test(value.name);
+const EMPTY_COLLECTIONS = new Set(["Map", "Set"]);
+
+/** `[]`, `{}`, `new Map()` or `new Set()` (an empty array argument included): an empty literal. */
+const isEmptyLiteral = (node: unknown): boolean => {
+  const expression = Option.getOrUndefined(unwrapExpression(node));
+  if (expression?.type === "TSSatisfiesExpression") return isEmptyLiteral(expression.expression);
+  if (expression?.type === "ArrayExpression") return expression.elements.length === 0;
+  if (expression?.type === "ObjectExpression") return expression.properties.length === 0;
+  if (expression?.type !== "NewExpression") return false;
+  const callee = Option.getOrUndefined(unwrapExpression(expression.callee));
+  if (callee?.type !== "Identifier" || !EMPTY_COLLECTIONS.has(callee.name)) return false;
+  const [entries, ...rest] = expression.arguments;
+  return rest.length === 0 && (entries === undefined || isEmptyLiteral(entries));
 };
+
+/**
+ * An identifier that names an empty constant. A binding this module declares is judged by what it
+ * is bound to: a `const` whose initializer is an empty literal or another empty constant. Any other
+ * binding (an import, a global) is judged by its name: `EMPTY_…`, `NO_…`, `NONE` or `NONE_…`.
+ */
+const isEmptyConstant = (context: Context, node: ESTree.Node, seen: Set<ESTree.Node>): boolean => {
+  if (node.type !== "Identifier" || seen.has(node)) return false;
+  seen.add(node);
+  const [definition, ...others] = resolveVariable(context, node)?.defs ?? [];
+  if (definition === undefined || definition.type === "ImportBinding") {
+    return EMPTY_CONSTANT_PATTERN.test(node.name);
+  }
+  if (
+    others.length > 0 ||
+    definition.type !== "Variable" ||
+    definition.node.type !== "VariableDeclarator" ||
+    definition.parent?.type !== "VariableDeclaration" ||
+    definition.parent.kind !== "const"
+  ) {
+    return false;
+  }
+  return isEmptyValueOrConstant(context, definition.node.init, seen);
+};
+
+const isEmptyValueOrConstant = (
+  context: Context,
+  node: unknown,
+  seen: Set<ESTree.Node>,
+): boolean => {
+  if (isEmptyLiteral(node)) return true;
+  const expression = Option.getOrUndefined(unwrapExpression(node));
+  return expression !== undefined && isEmptyConstant(context, expression, seen);
+};
+
+/** An empty literal or an empty constant: the empties a store read is defaulted to. */
+const isEmptyDefault = (context: Context, node: unknown): boolean =>
+  isEmptyValueOrConstant(context, node, new Set());
 
 const isStoreHookCall = (node: ESTree.Node): boolean => {
   if (node.type !== "CallExpression") return false;
@@ -318,12 +362,17 @@ const isDiscarded = (node: ESTree.Node): boolean => {
  * Guards the failure-to-empty shapes of the client state model
  * (`docs/internals/zerops/client-state-model.md`, "Negatives are earned") in the Zerops client
  * code: a rejected read turned into `[]`, `undefined` or `null` by `.catch` (a handler that
- * returns nothing or runs off its end answers `undefined`), a store read defaulted to `[]` or
- * an `EMPTY_…` constant with `??`, and a conditional that checks whether a Known or an
- * AsyncResult holds its value, reads that `.value` on one branch and answers `[]`, `undefined`,
- * `null` or an `EMPTY_…` constant on the other (`read.state === "known" ? read.value.rows : []`,
- * JSX that renders `null` included). Without types or inter-file data flow, these stay gaps: a
- * store read that reaches the default through a prop, a parameter or another module;
+ * returns nothing or runs off its end answers `undefined`), a store read defaulted to an empty
+ * with `??`, and a conditional that checks whether a Known or an AsyncResult holds its value,
+ * reads that `.value` on one branch and answers `undefined`, `null` or an empty on the other
+ * (`read.state === "known" ? read.value.rows : []`, JSX that renders `null` included). An empty is
+ * `[]`, `{}`, `new Map()` or `new Set()`, or an identifier that names an empty constant: a
+ * `const` this module binds to one of those (or to another empty constant) whatever its name,
+ * and an imported or global binding named `EMPTY_…`, `NO_…`, `NONE` or `NONE_…`. A binding this
+ * module declares is judged by its initializer only, so a `NO_…` constant holding a value is not
+ * an empty. Without types or inter-file data flow, these stay gaps: a store read that reaches
+ * the default through a prop, a parameter or another module; a held check written as an `if`
+ * that returns the value and otherwise the empty;
  * `.then(onFulfilled, () => [])`; Effect's `orElseSucceed` or `catch` into `Effect.succeed([])`;
  * a handler that stores the empty with a setter instead of returning it; a handler ending in a
  * `try`, `switch` or loop; and `|| []`. Not a finding: a caught empty that nobody reads
@@ -378,7 +427,7 @@ export default defineRule({
         const [held, otherwise] = check.heldInConsequent
           ? [node.consequent, node.alternate]
           : [node.alternate, node.consequent];
-        if (!isEmptyValue(otherwise) && !isEmptyDefault(otherwise)) return;
+        if (!isEmptyValue(otherwise) && !isEmptyDefault(context, otherwise)) return;
         if (!readsValueOf(context, held, check.subject)) return;
         report(
           node,
@@ -386,7 +435,7 @@ export default defineRule({
         );
       },
       LogicalExpression(node) {
-        if (node.operator !== "??" || !isEmptyDefault(node.right)) return;
+        if (node.operator !== "??" || !isEmptyDefault(context, node.right)) return;
         if (!isStoreRead(context, node.left, new Set())) return;
         report(
           node,

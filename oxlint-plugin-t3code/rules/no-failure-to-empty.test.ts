@@ -293,6 +293,93 @@ describe(RULE, () => {
 
   for (const [name, source] of [
     [
+      "a known value or a constant this module binds to []",
+      `const NO_CANDIDATES: ReadonlyArray<Row> = []; export function Rows({ listing }) { return listing.state === "known" ? listing.value : NO_CANDIDATES; }`,
+    ],
+    [
+      "a known value or a constant this module binds to an asserted []",
+      `const ROWS = [] as ReadonlyArray<Row>; export function Rows({ read }) { return read.state === "known" ? read.value : ROWS; }`,
+    ],
+    [
+      "a known value or a constant this module binds to {}",
+      `const BLANK = {}; export function Rows({ read }) { return read.state === "known" ? read.value : BLANK; }`,
+    ],
+    [
+      "a known value or a constant this module binds to an empty Map",
+      `const NO_MATES: ReadonlyMap<string, Mate> = new Map(); export function Rows({ read }) { return read.state === "known" ? read.value : NO_MATES; }`,
+    ],
+    [
+      "a known value or a constant this module binds to an empty Set",
+      `const SEEN = new Set<string>(); export function Rows({ read }) { return read.state === "known" ? read.value : SEEN; }`,
+    ],
+    [
+      "a known value or a constant this module binds to another empty constant",
+      `const NONE = new Map(); const NO_NAMES = NONE; export function Rows({ read }) { return read.state === "known" ? read.value : NO_NAMES; }`,
+    ],
+    [
+      "a known value or an empty object",
+      `export function Rows({ read }) { return read.state === "known" ? read.value : {}; }`,
+    ],
+    [
+      "a known value or an imported NO_ constant",
+      `import { NO_CANDIDATES } from "./rows"; export function Rows({ read }) { return read.state === "known" ? read.value : NO_CANDIDATES; }`,
+    ],
+    [
+      "a known value or an imported NONE constant",
+      `import { NONE } from "./rows"; export function Rows({ read }) { return read.state === "known" ? read.value : NONE; }`,
+    ],
+  ] as const) {
+    webComponent.invalid(`reports ${name}`, source, (output) =>
+      assert.match(output, /"kind":"ConditionalExpression"/u),
+    );
+  }
+
+  for (const [name, source] of [
+    [
+      "an atom read defaulted to a constant this module binds to an empty Map",
+      `const NO_MATES: ReadonlyMap<string, Mate> = new Map(); export function useMates() { return useAtomValue(matesAtom) ?? NO_MATES; }`,
+    ],
+    [
+      "an atom read defaulted to an empty Map",
+      `export function useMates() { return useAtomValue(matesAtom) ?? new Map(); }`,
+    ],
+    [
+      "a hook's field defaulted to an imported NO_ constant",
+      `import { NO_PULLS } from "./rows"; export function Rows({ id }) { const flow = useZeropsGroupFlow(id); return flow?.pullRequests ?? NO_PULLS; }`,
+    ],
+  ] as const) {
+    webComponent.invalid(`reports ${name}`, source, (output) =>
+      assert.match(output, /"kind":"LogicalExpression"/u),
+    );
+  }
+
+  for (const [name, source] of [
+    [
+      "a known value or a NO_ constant this module binds to a value",
+      `const NO_SERVICES = { hostnames: [] }; export function Rows({ read }) { return read.state === "known" ? read.value : NO_SERVICES; }`,
+    ],
+    [
+      "a known value or a constant this module binds to a non-empty Map",
+      `const NO_MATES = new Map([["a", mate]]); export function Rows({ read }) { return read.state === "known" ? read.value : NO_MATES; }`,
+    ],
+    [
+      "a known value or a variable, not a constant, bound to []",
+      `let rows = []; export function Rows({ read }) { return read.state === "known" ? read.value : rows; }`,
+    ],
+    [
+      "a known value or an imported constant named for something else",
+      `import { NOTES } from "./rows"; export function Rows({ read }) { return read.state === "known" ? read.value : NOTES; }`,
+    ],
+    [
+      "an atom read defaulted to a constant this module binds to a value",
+      `const FALLBACK = new Map([["a", mate]]); export function useMates() { return useAtomValue(matesAtom) ?? FALLBACK; }`,
+    ],
+  ] as const) {
+    webComponent.valid(`allows ${name}`, source);
+  }
+
+  for (const [name, source] of [
+    [
       "a known value or a placeholder",
       `export function Rows({ read }) { return read.state === "known" ? read.value : UNREAD_ROWS; }`,
     ],

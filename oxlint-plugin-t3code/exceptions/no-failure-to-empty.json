@@ -296,6 +296,14 @@
     "expires": "never"
   },
   {
+    "path": "apps/web/src/zerops/useZeropsMates.ts",
+    "kind": "LogicalExpression",
+    "fingerprint": "useAtomValue(zeropsMatesAtom) ?? NO_MATES",
+    "owner": "state-model 1.3b follow-up",
+    "reason": "an unread Mate list reads as nobody living anywhere; the chat header, timeline, draft headline, Zerops panel and new-thread handler each render their own placeholder while it is unread",
+    "expires": "never"
+  },
+  {
     "path": "apps/web/src/zerops/useZeropsRepositoryCommits.ts",
     "kind": "CallExpression",
     "fingerprint": "client.listTags(owner, GROUP_REPOSITORY).catch(() => [])",
@@ -325,6 +333,14 @@
     "fingerprint": "lifecycle?.state === \"known\" ? lifecycle.value.envelope : undefined",
     "owner": "karel",
     "reason": "an unknown lifecycle has no envelope, as a known one may not: the session has no phase and the strip says nothing, never a phase or a none",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/projections/candidates.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "listing.state === \"known\" ? listing.value : NO_MEMBERS",
+    "owner": "state-model 1.3b follow-up",
+    "reason": "an unread candidate listing holds no member; the sidebar, projects page, group detail, Gitea page, Mate actions, ask-Mate and change-landed events take the Known listing and render its unread state",
     "expires": "never"
   }
 ]
