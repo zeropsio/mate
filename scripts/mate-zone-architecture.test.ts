@@ -644,6 +644,78 @@ function collectPureZoneViolations(
   });
 }
 
+// Rule 6: dependencies run one way — data ← environments ← flow and
+// data ← forge ← flow — and nothing under `cr/zerops` depends on `account/`
+// except `account/` itself. Every import edge counts, type-only included: the
+// rule is about the module graph, not the emitted code. Test files are not
+// part of the graph.
+const FORBIDDEN_LAYER_EDGES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["data", new Set(["environments", "forge", "flow"])],
+  ["environments", new Set(["flow"])],
+  ["forge", new Set(["flow"])],
+]);
+
+interface OneWayViolation {
+  readonly file: string;
+  readonly specifier: string;
+  readonly reason: string;
+}
+
+function collectOneWayViolations(
+  root: string,
+): Effect.Effect<ReadonlyArray<OneWayViolation>, PlatformError, FileSystem.FileSystem | Path.Path> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const zeropsDir = path.join(root, CLIENT_RUNTIME_ZEROPS_DIR);
+    // The top-level directory of a path under `cr/zerops`, or undefined for a
+    // top-level file or a path outside it.
+    const layerOf = (file: string): string | undefined => {
+      const segments = path.relative(zeropsDir, file).split(path.sep);
+      const [first] = segments;
+      if (first === undefined || first === ".." || first === "") {
+        return undefined;
+      }
+      return segments.length > 1 || !TS_EXTENSIONS.has(path.extname(first)) ? first : undefined;
+    };
+
+    const violations: Array<OneWayViolation> = [];
+    for (const file of yield* collectTsFiles(zeropsDir)) {
+      if (isTestFile(file)) {
+        continue;
+      }
+      const fromLayer = layerOf(file);
+      const source = yield* fs.readFileString(file);
+      for (const { specifier } of collectImportStatements(source)) {
+        if (!specifier.startsWith(".")) {
+          continue;
+        }
+        const toLayer = layerOf(path.resolve(path.dirname(file), specifier));
+        const report = (reason: string) =>
+          violations.push({
+            file: path.relative(root, file).split(path.sep).join("/"),
+            specifier,
+            reason,
+          });
+        if (toLayer === "account" && fromLayer !== "account") {
+          report("only account/ may depend on account/");
+        } else if (
+          fromLayer !== undefined &&
+          toLayer !== undefined &&
+          FORBIDDEN_LAYER_EDGES.get(fromLayer)?.has(toLayer)
+        ) {
+          report(`${fromLayer}/ must not depend on ${toLayer}/`);
+        }
+      }
+    }
+
+    return violations.sort(
+      (left, right) =>
+        left.file.localeCompare(right.file) || left.specifier.localeCompare(right.specifier),
+    );
+  });
+}
+
 // Keep this list identical to t3code/no-infinite-motion's protected roots.
 const PROTECTED_ROOTS = [
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
@@ -2006,6 +2078,85 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     Effect.gen(function* () {
       const root = yield* repoRoot;
       assert.deepStrictEqual(yield* collectPureZoneViolations(root, PURE_PROJECTION_ZONE), []);
+    }),
+  );
+
+  it.effect("rule 6 fixture: dependencies run one way and only account/ depends on account/", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
+        "data/runtime.ts": 'import type { Reach } from "../environments/reachability.ts";\n',
+        "data/access/grant.ts": 'import { flow } from "../../flow/groupFlow.ts";\n',
+        "data/commands.ts": 'import { forge } from "../forge";\n',
+        "data/state.ts": 'import type { Known } from "../knowledge/known.ts";\n',
+        "environments/gate.ts": [
+          'import { runtime } from "../data/runtime.ts";',
+          'import { flow } from "../flow/groupFlow.ts";',
+          "",
+        ].join("\n"),
+        "forge/forgeStore.ts": 'export * from "../flow/release.ts";\n',
+        "flow/groupFlow.ts": [
+          'import { runtime } from "../data/runtime.ts";',
+          'import { gate } from "../environments/gate.ts";',
+          'import { store } from "../forge/forgeStore.ts";',
+          "",
+        ].join("\n"),
+        "knowledge/known.ts": 'import type { Session } from "../account/session.ts";\n',
+        "account/accountRuntime.ts": [
+          'import { session } from "./session.ts";',
+          'import { gate } from "../environments/gate.ts";',
+          "",
+        ].join("\n"),
+        "environments/gate.test.ts": 'import { session } from "../account/session.ts";\n',
+        "groupReach.ts": 'import { session } from "./account";\n',
+      });
+
+      const violations = yield* collectOneWayViolations(fixtureRoot);
+
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      assert.deepStrictEqual(violations, [
+        {
+          file: `${zerops}/data/access/grant.ts`,
+          specifier: "../../flow/groupFlow.ts",
+          reason: "data/ must not depend on flow/",
+        },
+        {
+          file: `${zerops}/data/commands.ts`,
+          specifier: "../forge",
+          reason: "data/ must not depend on forge/",
+        },
+        {
+          file: `${zerops}/data/runtime.ts`,
+          specifier: "../environments/reachability.ts",
+          reason: "data/ must not depend on environments/",
+        },
+        {
+          file: `${zerops}/environments/gate.ts`,
+          specifier: "../flow/groupFlow.ts",
+          reason: "environments/ must not depend on flow/",
+        },
+        {
+          file: `${zerops}/forge/forgeStore.ts`,
+          specifier: "../flow/release.ts",
+          reason: "forge/ must not depend on flow/",
+        },
+        {
+          file: `${zerops}/groupReach.ts`,
+          specifier: "./account",
+          reason: "only account/ may depend on account/",
+        },
+        {
+          file: `${zerops}/knowledge/known.ts`,
+          specifier: "../account/session.ts",
+          reason: "only account/ may depend on account/",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 6: dependencies run one way and only account/ depends on account/", () =>
+    Effect.gen(function* () {
+      const root = yield* repoRoot;
+      assert.deepStrictEqual(yield* collectOneWayViolations(root), []);
     }),
   );
 });
