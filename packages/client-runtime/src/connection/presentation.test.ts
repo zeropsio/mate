@@ -119,17 +119,6 @@ describe("connection presentation", () => {
     });
   });
 
-  it("combines reconnect progress with the latest failure", () => {
-    const connection = {
-      phase: "reconnecting",
-      error: "Relay request timed out.",
-      traceId: "trace-retry",
-    } as const;
-    expect(connectionStatusText(connection)).toBe(
-      "Failed to connect. Reconnecting... Reason: Relay request timed out.",
-    );
-  });
-
   it("presents the supervisor's offline state without consulting shell state", () => {
     expect(
       presentEnvironmentConnection(
@@ -276,6 +265,47 @@ describe("connection presentation", () => {
           supervisorState({ phase: "backoff", attempt: 2, lastFailure: transient("network") }),
         ),
       ).toMatchObject({ error: RAW_DETAIL, traceId: "trace-1" });
+    });
+
+    // The one status line every list reads (the command palette, provider
+    // settings, the projects screen, the mobile connection rows): the phase
+    // alone, whatever the failure said.
+    it.each([
+      {
+        name: "backoff after a transport failure",
+        state: supervisorState({
+          phase: "backoff",
+          attempt: 2,
+          retryAt: 1,
+          lastFailure: transient("transport"),
+        }),
+        text: "Reconnecting...",
+      },
+      {
+        name: "next attempt after a timeout",
+        state: supervisorState({
+          phase: "connecting",
+          attempt: 2,
+          lastFailure: transient("timeout"),
+        }),
+        text: "Reconnecting...",
+      },
+      {
+        name: "blocked by authentication",
+        state: supervisorState({ phase: "blocked", lastFailure: blocked("authentication") }),
+        text: "Connection failed",
+      },
+      {
+        name: "blocked as unsupported",
+        state: supervisorState({ phase: "blocked", lastFailure: blocked("unsupported") }),
+        text: "Connection failed",
+      },
+    ])("status line, $name: the phase, never the failure's words", ({ state, text }) => {
+      const rendered = connectionStatusText(presentConnectionState(state));
+      expect(rendered).toBe(text);
+      for (const leak of LEAKS) {
+        expect(rendered).not.toMatch(leak);
+      }
     });
 
     it("names no one when the Mate is not known", () => {

@@ -55,6 +55,11 @@ export function presentConnectionState(
   }
 }
 
+/**
+ * A connection's one-line status for a list: the phase alone. The failure's
+ * own detail names hosts, URLs and error classes; it stays on the
+ * presentation for diagnostics.
+ */
 export function connectionStatusText(connection: EnvironmentConnectionPresentation): string {
   switch (connection.phase) {
     case "available":
@@ -64,15 +69,11 @@ export function connectionStatusText(connection: EnvironmentConnectionPresentati
     case "connecting":
       return "Connecting...";
     case "reconnecting":
-      return connection.error
-        ? `Failed to connect. Reconnecting... Reason: ${connection.error}`
-        : "Reconnecting...";
+      return "Reconnecting...";
     case "connected":
       return "Connected";
     case "error":
-      return connection.error
-        ? `Connection failed. Reason: ${connection.error}`
-        : "Connection failed";
+      return "Connection failed";
   }
 }
 
