@@ -197,6 +197,30 @@ describe("the account's Gitea sessions", () => {
     expect(brokerPosts(w)).toHaveLength(1);
   });
 
+  it("a Gitea's forge capability follows its session (§4.3 forge(origin))", async () => {
+    const w = world();
+    const capability = () => w.sessions.capability(HARNESS_GITEA_ORIGIN);
+    expect(capability()).toEqual({ allowed: false, reason: "gitea-session", waitable: false });
+
+    const gate = brokerGate();
+    const held = world({ wrapFetch: gate.wrap });
+    gate.hold();
+    held.demand();
+    await held.time.advance(0);
+    expect(held.sessions.capability(HARNESS_GITEA_ORIGIN)).toEqual({
+      allowed: false,
+      reason: "gitea-session",
+      waitable: true,
+    });
+
+    w.demand();
+    await w.time.advance(0);
+    expect(capability()).toEqual({ allowed: true });
+
+    w.sessions.close();
+    expect(capability()).toEqual({ allowed: false, reason: "epoch-closed", waitable: false });
+  });
+
   it("a client made with a signal ends its requests on it", async () => {
     const w = world({
       wrapFetch: (fetch) =>

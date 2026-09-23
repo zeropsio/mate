@@ -30,6 +30,7 @@
 import { acquireGiteaPersonToken, MateCredentialError } from "../../authorization/giteaBroker.ts";
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
 import { ZeropsApiError } from "../api.ts";
+import { forge, type Capability } from "../data/access/capabilities.ts";
 import type { Instant } from "../data/access/grant.ts";
 import { createGiteaClient, GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import {
@@ -82,6 +83,11 @@ export interface GiteaSessions {
   readonly demand: (input: GiteaSessionDemand) => () => void;
   /** What surfaces show; the same object until something they show changes. */
   readonly view: (giteaOrigin: string) => GiteaSessionView;
+  /**
+   * Whether a forge command on that Gitea may run now (§4.3 `forge(origin)`), read at the instant
+   * it is asked: a view change is the moment to ask again.
+   */
+  readonly capability: (giteaOrigin: string) => Capability;
   /** Tells the listener whenever any session's view changes. */
   readonly subscribe: (listener: () => void) => () => void;
   /**
@@ -390,6 +396,10 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
       };
     },
     view: (giteaOrigin) => entries.get(normalize(giteaOrigin))?.view ?? GITEA_SIGNED_OUT,
+    capability: (giteaOrigin) => {
+      if (closing.signal.aborted) return forge("closed");
+      return forge(entries.get(normalize(giteaOrigin))?.machine.phase.kind ?? "idle");
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {

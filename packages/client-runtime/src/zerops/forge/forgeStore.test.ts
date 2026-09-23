@@ -116,6 +116,8 @@ function rig() {
       getPullRequest: (owner: string, repo: string, number: number) =>
         at(`pull ${owner}/${repo}#${String(number)}`),
       listAllTags: (owner: string, repo: string) => at(`tags ${owner}/${repo}`),
+      getBranch: (owner: string, repo: string, branch: string) =>
+        at(`branch ${owner}/${repo} ${branch}`),
       readFile: (owner: string, repo: string, path: string) => at(`file ${owner}/${repo} ${path}`),
       listCommitStatuses: (owner: string, repo: string, sha: string) =>
         at(`statuses ${owner}/${repo}@${sha}`),
@@ -566,5 +568,33 @@ describe("forge store backstops (DESIGN §6.3)", () => {
     expect(sent("file shop/group environments.yaml")).toHaveLength(1);
     await clock.advance(1);
     expect(sent("file shop/group environments.yaml")).toHaveLength(2);
+  });
+
+  it("a branch's head is its commit, read at the list backstop, and a missing branch is gone", async () => {
+    const { clock, store, sent, pending } = rig();
+    const main: ForgeFact = {
+      kind: "branch",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      branch: "main",
+    };
+    const next: ForgeFact = {
+      kind: "branch",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      branch: "next",
+    };
+    store.demand(main);
+    store.demand(next);
+    await clock.advance(0);
+    await pending("branch shop/app main").answer({ name: "main", commit: { id: "c1" } });
+    await pending("branch shop/app next").answer(undefined);
+
+    expect(store.read(main)).toMatchObject({ state: "known", value: "c1" });
+    expect(store.read(next)).toMatchObject({ state: "gone", evidence: "direct-not-found" });
+    await clock.advance(FORGE_LIST_BACKSTOP_MS);
+    expect(sent("branch shop/app main")).toHaveLength(2);
   });
 });

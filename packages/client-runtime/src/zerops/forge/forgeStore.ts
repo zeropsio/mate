@@ -1,8 +1,8 @@
 /**
  * The forge store (DESIGN §2.D D3–D5, §4.7): what Gitea says, as the person, one fact per key —
  * an org's repositories, a repository's open and recently merged pull requests, one pull request,
- * a repository's tags, the group repo's declarations (`environments.yaml`), and a commit's
- * statuses.
+ * a repository's tags, a branch's head, the group repo's declarations (`environments.yaml`), and a
+ * commit's statuses.
  *
  * ## Facts
  *
@@ -21,8 +21,8 @@
  *   go by the demand's priority, then in the order keys became due.
  * - Nothing aborts a read in flight except the store's end or the key's eviction: a backstop that
  *   comes due, an invalidation or a wake during a read is one more read after it (M3).
- * - Backstops, because Gitea pushes nothing to a browser (§6.3): lists, repositories and tags
- *   every {@link FORGE_LIST_BACKSTOP_MS}, declarations every
+ * - Backstops, because Gitea pushes nothing to a browser (§6.3): lists, repositories, tags and
+ *   branch heads every {@link FORGE_LIST_BACKSTOP_MS}, declarations every
  *   {@link FORGE_DECLARATIONS_BACKSTOP_MS}, a commit's statuses every
  *   {@link FORGE_PENDING_STATUS_MS} while one is pending, for at most
  *   {@link FORGE_PENDING_STATUS_LIMIT_MS}, and at the list backstop while CI has posted none. They
@@ -106,6 +106,7 @@ export type ForgeFact =
   | ({ readonly kind: "merged-pulls" } & Repository)
   | ({ readonly kind: "pull" } & PullKey)
   | ({ readonly kind: "tags" } & Repository)
+  | ({ readonly kind: "branch"; readonly branch: string } & Repository)
   | ({ readonly kind: "declarations" } & Repository)
   | ({ readonly kind: "statuses"; readonly sha: string } & Repository);
 
@@ -123,6 +124,8 @@ interface ForgeValues {
   readonly "merged-pulls": ReadonlyArray<GiteaPullRequest>;
   readonly pull: PullRequestFact;
   readonly tags: ReadonlyArray<GiteaTag>;
+  /** The commit the branch's head is. */
+  readonly branch: string;
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   readonly statuses: ReadonlyArray<GiteaCommitStatus>;
 }
@@ -219,6 +222,8 @@ function keyOf(fact: ForgeFact): string {
       return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.number]);
     case "statuses":
       return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.sha]);
+    case "branch":
+      return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.branch]);
     case "open-pulls":
     case "merged-pulls":
     case "tags":
@@ -296,6 +301,12 @@ async function readFact(client: GiteaClient, fact: ForgeFact): Promise<Outcome> 
         value: await client.listAllTags(fact.owner, fact.repo),
         coverage: "complete",
       };
+    case "branch": {
+      const head = (await client.getBranch(fact.owner, fact.repo, fact.branch))?.commit?.id;
+      return head === undefined
+        ? { kind: "absent" }
+        : { kind: "value", value: head, coverage: "complete" };
+    }
     case "declarations": {
       const file = await client.readFile(fact.owner, fact.repo, ENVIRONMENTS_DOCUMENT_PATH);
       return {
@@ -455,6 +466,7 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       case "open-pulls":
       case "merged-pulls":
       case "tags":
+      case "branch":
         return mono + FORGE_LIST_BACKSTOP_MS;
       case "declarations":
         return mono + FORGE_DECLARATIONS_BACKSTOP_MS;
