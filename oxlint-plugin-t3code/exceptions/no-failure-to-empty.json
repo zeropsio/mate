@@ -331,8 +331,8 @@
     "path": "packages/client-runtime/src/zerops/projections/candidates.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "listing.state === \"known\" ? listing.value : NO_MEMBERS",
-    "owner": "state-model unassigned",
-    "reason": "an unread candidate listing holds no member, and useZeropsCandidates hands that to the sidebar, projects page, group detail, Gitea page, Mate actions (taken bot names), ask-Mate and change-landed events, which read it as no candidates; no DESIGN slice rebuilds these consumers over the listing yet (3.7 covers only mobile, projectZeropsCandidates and the lease churn, §7.4), so the orchestrator assigns the one that removes it",
+    "owner": "state-model 3.10",
+    "reason": "an unread candidate listing holds no member, which the sidebar, projects page, group detail, Gitea page, Mate actions (taken bot names), ask-Mate and change-landed events read as no candidates; removed by 3.10 (A8)",
     "expires": "never"
   }
 ]
