@@ -172,6 +172,8 @@ const mountInventory = Effect.fn(function* (
     readonly holdFirstRound?: boolean;
     /** Projects whose own read answers 503 from the start. */
     readonly failing?: ReadonlyArray<string>;
+    /** Memberships the first `fetchUser` answers with. */
+    readonly firstMemberships?: ReadonlyArray<never>;
   } = {},
 ) {
   vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
@@ -206,13 +208,17 @@ const mountInventory = Effect.fn(function* (
     ],
   };
   let fetchGate: Promise<void> | null = null;
+  let firstMemberships = options.firstMemberships;
   let registrationGate: Deferred.Deferred<void> | null = null;
   const indexed = new Set(ids);
   const failing = new Set(options.failing);
   const client = {
     fetchUser: vi.fn(async () => {
       if (fetchGate !== null) await fetchGate;
-      return user;
+      if (firstMemberships === undefined) return user;
+      const first = { ...user, clientUserList: firstMemberships };
+      firstMemberships = undefined;
+      return first;
     }),
     listAccessibleClientProjects: vi.fn(async () =>
       [...projects.values()].filter(({ id }) => indexed.has(id)),
@@ -314,9 +320,11 @@ const mountInventory = Effect.fn(function* (
     }, [value]);
     return null;
   }
-  // A first round that never settles — not one that fails. `fetchUser` is
-  // simply left pending, which is the shape a dropped connection leaves.
-  if (options.holdFirstRound === true) fetchGate = new Promise<void>(() => undefined);
+  // A first round that does not settle until the test lets it — not one that
+  // fails. `fetchUser` is simply left pending, which is the shape a dropped
+  // connection leaves.
+  const firstRound = signal();
+  if (options.holdFirstRound === true) fetchGate = firstRound.promise;
   const { createRoot } = yield* Effect.promise(() => import("react-dom/client"));
   const container = document.createElement("div");
   const root = createRoot(container);
@@ -327,19 +335,16 @@ const mountInventory = Effect.fn(function* (
       registry.dispose();
     }),
   );
-  yield* Effect.promise(async () =>
-    act(async () =>
-      root.render(
-        <RegistryContext value={registry}>
-          <ZeropsDataContext value={{ runtime, organizationRef: () => organization, projectRef }}>
-            <ZeropsInventoryProvider>
-              <Consumer />
-            </ZeropsInventoryProvider>
-          </ZeropsDataContext>
-        </RegistryContext>,
-      ),
-    ),
+  const tree = () => (
+    <RegistryContext value={registry}>
+      <ZeropsDataContext value={{ runtime, organizationRef: () => organization, projectRef }}>
+        <ZeropsInventoryProvider>
+          <Consumer />
+        </ZeropsInventoryProvider>
+      </ZeropsDataContext>
+    </RegistryContext>
   );
+  yield* Effect.promise(async () => act(async () => root.render(tree())));
   yield* Effect.promise(async () =>
     act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -359,6 +364,19 @@ const mountInventory = Effect.fn(function* (
     projectRef,
     inventory: () => inventory,
     unmount: () => Effect.promise(async () => act(async () => root.unmount())),
+    /** The held first round's reads answer; resolves once a grant reached the runtime. */
+    verifyFirstRound: () =>
+      Effect.promise(async () =>
+        act(async () => {
+          firstRound.resolve();
+          await admitted.promise;
+        }),
+      ),
+    /** Re-renders with a new session callback, which tears the provider's effect down and runs it again. */
+    rerun: () => {
+      session.current = { ...(session.current as object), updateVerifiedMemberships: vi.fn() };
+      return Effect.promise(async () => act(async () => root.render(tree())));
+    },
     inventoryPublications: () => inventoryPublications,
     grantsWhenChildMounted: () => grantsWhenChildMounted,
     pushProject: (id: string, name: string) =>
@@ -599,6 +617,23 @@ it.live("a round cut off by sign-out is recorded as dropped", () =>
         .snapshot()
         .filter((entry) => entry.kind === "access-round" && entry.phase !== "start");
       expect(rounds.map((entry) => "phase" in entry && entry.phase)).toEqual(["dropped"]);
+    }),
+  ),
+);
+
+it.live("a round of a torn-down effect run never reaches the next run's grant", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      // Both runs start their own round 1; the torn-down run's reads no memberships.
+      const harness = yield* mountInventory(["kept"], {
+        holdFirstRound: true,
+        firstMemberships: [],
+      });
+      yield* harness.rerun();
+      expect(harness.client.fetchUser).toHaveBeenCalledTimes(2);
+      yield* harness.verifyFirstRound();
+
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
     }),
   ),
 );

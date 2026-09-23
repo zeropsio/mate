@@ -457,7 +457,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           onProject: (project) => {
             if (alive) readStatus(project);
           },
-          dispatch: (event) => dispatch.current(event),
+          dispatch: send,
         });
         reads = outcome.reads;
         span.end({ outcome: "verified", reads });
@@ -466,7 +466,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         const error = zeropsErrorMessage(cause);
         span.end({ outcome: "failed", reads, ...diagnosticFailure(cause) });
         setRoundFailure(error);
-        dispatch.current({ type: "ROUND_FAILED", round, failure: grantFailure(cause) });
+        send({ type: "ROUND_FAILED", round, failure: grantFailure(cause) });
         if (first) {
           void Effect.runPromise(
             runtime.observeAccess({
@@ -487,7 +487,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       void readProjectAccess(client, project, membership, (read) => {
         if (alive) readStatus(read);
       }).then((outcome) => {
-        dispatch.current({ type: "PROJECT_RESULT", attempt, project, outcome });
+        send({ type: "PROJECT_RESULT", attempt, project, outcome });
       });
     };
 
@@ -504,7 +504,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           window.clearTimeout(timer);
           const at = now();
           const delay = Math.min(effect.at.wall - at.wall, effect.at.mono - at.mono);
-          timer = window.setTimeout(() => dispatch.current({ type: "TICK" }), Math.max(0, delay));
+          timer = window.setTimeout(() => send({ type: "TICK" }), Math.max(0, delay));
           return;
         }
         case "cancel":
@@ -571,7 +571,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       }
     };
 
-    dispatch.current = (event) => {
+    const send = (event: GrantEvent) => {
       if (!alive) return;
       const { state, effects } = transitionGrant(machine, event, { now: now(), policy });
       machine = state;
@@ -579,6 +579,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       for (const effect of effects) interpret(effect);
       syncGrant();
     };
+    dispatch.current = send;
 
     let hiddenAt: number | null = hidden() ? performance.now() : null;
     let lastWake = Number.NEGATIVE_INFINITY;
@@ -586,10 +587,10 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       const at = performance.now();
       if (at - lastWake < WAKE_COALESCE_MS) return;
       lastWake = at;
-      dispatch.current({ type: "WAKE", visible: !hidden() });
+      send({ type: "WAKE", visible: !hidden() });
     };
     const onVisibility = () => {
-      dispatch.current({ type: "VISIBILITY", hidden: hidden() });
+      send({ type: "VISIBILITY", hidden: hidden() });
       if (hidden()) {
         hiddenAt ??= performance.now();
         return;
@@ -601,17 +602,17 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const onPageShow = (event: Event) => {
       if ((event as PageTransitionEvent).persisted) wake();
     };
-    const onOnline = () => dispatch.current({ type: "ONLINE" });
-    const onOffline = () => dispatch.current({ type: "OFFLINE" });
+    const onOnline = () => send({ type: "ONLINE" });
+    const onOffline = () => send({ type: "OFFLINE" });
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("resume", wake);
     window.addEventListener("pageshow", onPageShow);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
 
-    dispatch.current({ type: "START" });
+    send({ type: "START" });
     return () => {
-      dispatch.current({ type: "EPOCH_CLOSED" });
+      send({ type: "EPOCH_CLOSED" });
       alive = false;
       roundSpan?.drop();
       window.clearTimeout(timer);
