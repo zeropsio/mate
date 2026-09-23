@@ -108,6 +108,7 @@ import { COUNT_TONE_CLASS, ZeropsMateVerb } from "./ZeropsMateCard";
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
+  nextStepAwaitsSomebody,
   nextStepTone,
   productionAddable,
   type GroupFlowReads,
@@ -597,8 +598,8 @@ export function ProjectHeader({
   /**
    * The one thing the flow says is next for this project — `groupFlow`'s own
    * derivation, so a dot here never claims a step the page would not offer.
-   * Absent while the flow is unread, and drawn only once it says there is
-   * one (`kind !== "none"`).
+   * Absent while the flow is unread, and drawn only where it waits on somebody
+   * (`nextStepAwaitsSomebody`) — never for a first task, whose Mate is the way in.
    */
   readonly nextStep?: GroupNextStep | undefined;
   /** Records which project the add was asked for; absent in the harness. */
@@ -640,7 +641,7 @@ export function ProjectHeader({
       )}
       {/* Always on, unlike the verbs below: this says something is waiting on
           the person, which is not a fact that should hide until they hover. */}
-      {nextStep === undefined || nextStep.kind === "none" ? null : (
+      {nextStep === undefined || !nextStepAwaitsSomebody(nextStep.kind) ? null : (
         <Tooltip>
           <TooltipTrigger
             render={

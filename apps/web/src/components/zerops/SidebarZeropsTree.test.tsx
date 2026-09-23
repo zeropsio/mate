@@ -759,7 +759,7 @@ describe("the project's flow under it", () => {
   });
 
   describe("the group heading's next-step dot", () => {
-    it("carries a dot when groupFlow's own next step is not none", () => {
+    it("carries a dot when groupFlow's own next step waits on somebody", () => {
       const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
       expect(html).toContain('data-zerops-surface="sidebar-project-next-step"');
     });
@@ -787,16 +787,18 @@ describe("the project's flow under it", () => {
     });
 
     // Every kind, so a kind added to the flow cannot slip past the heading.
-    const KINDS: Record<GroupNextStepKind, true> = {
-      "answer-mate": true,
-      "fix-deploy": true,
-      merge: true,
-      unblock: true,
-      release: true,
-      "add-production": true,
-      "first-task": true,
-      none: true,
+    // A dot says somebody must act: a first task has none, the Mate is the way in.
+    const KINDS: Record<GroupNextStepKind, { readonly dot: boolean }> = {
+      "answer-mate": { dot: true },
+      "fix-deploy": { dot: true },
+      merge: { dot: true },
+      unblock: { dot: true },
+      release: { dot: true },
+      "add-production": { dot: true },
+      "first-task": { dot: false },
+      none: { dot: false },
     };
+    const kinds = Object.keys(KINDS) as ReadonlyArray<GroupNextStepKind>;
     const heading = (kind: GroupNextStepKind) =>
       renderToStaticMarkup(
         <ProjectHeader
@@ -808,9 +810,11 @@ describe("the project's flow under it", () => {
     const dotOf = (html: string) =>
       /data-zerops-surface="sidebar-project-next-step"[^>]*/u.exec(html)?.[0];
 
-    it.each(
-      (Object.keys(KINDS) as ReadonlyArray<GroupNextStepKind>).filter((kind) => kind !== "none"),
-    )("wears the page's tone for %s", (kind) => {
+    it.each(kinds)("wears a dot only where somebody must act: %s", (kind) => {
+      expect(dotOf(heading(kind)) !== undefined).toBe(KINDS[kind].dot);
+    });
+
+    it.each(kinds.filter((kind) => KINDS[kind].dot))("wears the page's tone for %s", (kind) => {
       expect(dotOf(heading(kind))).toContain(`data-zerops-status-tone="${nextStepTone(kind)}"`);
     });
   });

@@ -5,6 +5,7 @@ import {
   type FlowPullRequest,
   type GroupFlow,
   type GroupFlowInput,
+  type GroupNextStepKind,
 } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -19,6 +20,7 @@ import {
   stopLine,
   foldGroups,
   foldUngrouped,
+  nextStepAwaitsSomebody,
   nextStepCell,
   nextStepTone,
   orderByNextStep,
@@ -246,6 +248,24 @@ describe("where a group's next step sits", () => {
       expect(nextStepTone(flow.nextStep.kind)).toBe(tone);
     });
   }
+});
+
+describe("nextStepAwaitsSomebody", () => {
+  // Every kind, so a new one fails typecheck until it is placed.
+  const AWAITS: Record<GroupNextStepKind, boolean> = {
+    "answer-mate": true,
+    "fix-deploy": true,
+    merge: true,
+    unblock: true,
+    release: true,
+    "add-production": true,
+    // The Mate is the way in to a first task; nothing waits on anybody.
+    "first-task": false,
+    none: false,
+  };
+  it.each(Object.entries(AWAITS))("says %s awaits somebody: %s", (kind, awaits) => {
+    expect(nextStepAwaitsSomebody(kind as GroupNextStepKind)).toBe(awaits);
+  });
 });
 
 describe("the ungrouped containers' one line", () => {

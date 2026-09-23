@@ -97,7 +97,7 @@ export function orderByNextStep<E extends { readonly flow: GroupFlow }>(
     .map(({ entry }) => entry);
 }
 
-/** The steps the Overview's "Next steps" strip gathers: somebody has something to do. */
+/** The steps somebody has something to do for: the strip gathers them, the left menu dots them. */
 const STRIP_STEPS: ReadonlySet<GroupNextStepKind> = new Set([
   "answer-mate",
   "fix-deploy",
@@ -106,6 +106,11 @@ const STRIP_STEPS: ReadonlySet<GroupNextStepKind> = new Set([
   "release",
   "add-production",
 ]);
+
+/** Whether a next step waits on somebody — never a first task (the Mate is the way in) or none. */
+export function nextStepAwaitsSomebody(kind: GroupNextStepKind): boolean {
+  return STRIP_STEPS.has(kind);
+}
 
 /** A group the page lays out, with whether its project flow has been read at all. */
 export interface FoldedGroupInput {
@@ -144,7 +149,7 @@ export function foldGroups<E extends FoldedGroupInput>(entries: ReadonlyArray<E>
   return {
     active: entries.filter((entry) => !onlyAMate(entry)),
     early: entries.filter(onlyAMate),
-    nextSteps: entries.filter((entry) => STRIP_STEPS.has(entry.flow.nextStep.kind)),
+    nextSteps: entries.filter((entry) => nextStepAwaitsSomebody(entry.flow.nextStep.kind)),
   };
 }
 
