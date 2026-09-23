@@ -41,8 +41,16 @@ const ROWS: ReadonlyArray<{
   { name: "ready", machine: machine({ level: "ready" }, read(READY)), health: "ready" },
   {
     name: "ready, and a probe since went unanswered",
-    machine: machine({ level: "ready" }, read({ kind: "unreachable" })),
+    machine: machine({ level: "ready" }, { ...read({ kind: "unreachable" }), upAt: SINCE }),
     health: "unreachable",
+  },
+  {
+    name: "ready after its socket dropped, with only a probe from before it was up",
+    machine: machine(
+      { level: "ready" },
+      { ...read({ kind: "unreachable" }), upAt: { wall: SINCE.wall + 5_000, mono: 5_000 } },
+    ),
+    health: "ready",
   },
   {
     name: "ready on a live socket, whatever a probe said before it",

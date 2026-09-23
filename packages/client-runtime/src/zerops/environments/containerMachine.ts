@@ -14,8 +14,9 @@
  *   an update — a descriptor on another version.
  * - A live socket outranks every guess but `inactive`: a connect ends booting at once, and a
  *   connect since the platform began restarting ends that restart while its status still says
- *   RESTARTING. A ready container stays ready when a probe goes unanswered; a boot that only
- *   failed probes suggest is `guessed`, and read at the backing-off intervals.
+ *   RESTARTING. A ready container no socket holds stays ready through `READY_SILENCE_MS` of
+ *   unanswered probes, long enough for the platform to say why; silent past it, it is a boot
+ *   that only failed probes suggest — `guessed`, read at the backing-off intervals, and capped.
  */
 import type { Instant } from "../data/access/grant.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
@@ -96,6 +97,11 @@ export interface ContainerMachine {
   readonly reading: { readonly reading: ProbeReading; readonly sentAt: Instant } | null;
   /** When the link connected; null while it is not connected. */
   readonly connectedSince: Instant | null;
+  /**
+   * When the container was last known up outside a socket: the latest probe it answered ready
+   * left, or its socket dropped. Null before either.
+   */
+  readonly upAt: Instant | null;
   /** Read only for a container that predates Mate; null before the read. */
   readonly mateFlag: MateFlag | null;
   /** Our verb's expectation while its level holds; null once a read fact settled it. */
@@ -148,6 +154,12 @@ export const CONTAINER_CAPS_MS = {
   updating: 120_000,
 } as const;
 
+/**
+ * How long a ready container no socket holds may leave probes unanswered before it counts as
+ * booting: the platform's own restart push lands within it (gate F measured ~4 s).
+ */
+export const READY_SILENCE_MS = 15_000;
+
 export const initialContainer = (): ContainerMachine => ({
   state: { level: "unknown" },
   overdue: false,
@@ -157,6 +169,7 @@ export const initialContainer = (): ContainerMachine => ({
   processEndedAt: null,
   reading: null,
   connectedSince: null,
+  upAt: null,
   mateFlag: null,
   intent: null,
   restartTried: false,
@@ -189,8 +202,9 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
 
 /**
  * How often the probe store reads this container (§4.5 probes): every 2 s while it comes up,
- * backing off past its cap or while only failed probes say it is coming up, never while a socket
- * proves it up, and otherwise only when a push, a failure or a wake asks.
+ * backing off past its cap, while only failed probes say it is coming up or while a ready one
+ * leaves them unanswered, never while a socket proves it up, and otherwise only when a push, a
+ * failure or a wake asks.
  */
 export const probeCadence = (machine: ContainerMachine): ProbeCadence => {
   switch (machine.state.level) {
@@ -200,7 +214,8 @@ export const probeCadence = (machine: ContainerMachine): ProbeCadence => {
     case "updating":
       return { kind: "poll", overdue: machine.overdue };
     case "ready":
-      return machine.connectedSince === null ? { kind: "on-demand" } : { kind: "none" };
+      if (machine.connectedSince !== null) return { kind: "none" };
+      return unansweredSinceUp(machine) ? { kind: "poll", overdue: true } : { kind: "on-demand" };
     case "unknown":
     case "needs-enable":
     case "needs-update":
@@ -212,6 +227,11 @@ export const probeCadence = (machine: ContainerMachine): ProbeCadence => {
       return { kind: "none" };
   }
 };
+
+/** The held reading is an unanswered probe sent since the container was last known up. */
+export const unansweredSinceUp = (machine: ContainerMachine): boolean =>
+  machine.reading?.reading.kind === "unreachable" &&
+  (machine.upAt === null || notBefore(machine.reading.sentAt, machine.upAt));
 
 // ── Transition ────────────────────────────────────────────────────────────────────────────────
 
@@ -311,9 +331,9 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
     case "initializing":
       return booting(machine, false);
     case "unreachable":
-      // No answer is no news of a container that was up: the link says it reconnects (§4.4 row
-      // 10), and the platform's status says why.
-      return current.level === "ready" ? current : booting(machine, true);
+      // A container that was up is given `READY_SILENCE_MS` for the platform's status to say
+      // why; the link meanwhile says it reconnects (§4.4 row 10).
+      return current.level === "ready" && !silent(machine) ? current : booting(machine, true);
     case "predates-mate":
       // A restart of ours already came back to this: the zcp release there does not carry Mate.
       if (machine.restartTried) return { level: "not-yet-available" };
@@ -322,6 +342,11 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
       return machine.mateFlag === true ? { level: "needs-update" } : booting(machine, true);
   }
 };
+
+/** The held probe went unanswered `READY_SILENCE_MS` or more after the container was last up. */
+const silent = (machine: ContainerMachine): boolean =>
+  machine.upAt === null ||
+  notBefore(machine.reading!.sentAt, after(machine.upAt, READY_SILENCE_MS));
 
 /**
  * The boot a reading puts the container in, from when its probe was sent. `guessed` when the
@@ -538,15 +563,30 @@ const apply = (
         now,
       );
     }
-    case "PROBED":
+    case "PROBED": {
+      const up =
+        event.reading.kind === "ready" &&
+        (machine.upAt === null || notBefore(event.sentAt, machine.upAt));
       return settleLevel(
-        { ...machine, reading: { reading: event.reading, sentAt: event.sentAt } },
+        {
+          ...machine,
+          reading: { reading: event.reading, sentAt: event.sentAt },
+          upAt: up ? event.sentAt : machine.upAt,
+        },
         now,
       );
+    }
     case "LINK": {
       const connected = machine.connectedSince !== null;
       if (event.connected === connected) return machine;
-      return settleLevel({ ...machine, connectedSince: event.connected ? now : null }, now);
+      return settleLevel(
+        {
+          ...machine,
+          connectedSince: event.connected ? now : null,
+          upAt: event.connected ? machine.upAt : now,
+        },
+        now,
+      );
     }
     case "MATE_FLAG":
       return event.flag === machine.mateFlag

@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { Instant } from "../data/access/grant.ts";
 import {
+  CONTAINER_CAPS_MS,
   containerVerdict,
   initialContainer,
   probeCadence,
+  READY_SILENCE_MS,
   transitionContainer,
   type ContainerEvent,
   type ContainerMachine,
@@ -328,7 +330,6 @@ describe("container machine (DESIGN §4.5)", () => {
     const dropped = drive([{ type: "LINK", connected: false }], linked);
     const unanswered = drive([probed({ kind: "unreachable" }, dropped.nowMs)], dropped);
     expect(containerVerdict(unanswered.machine)).toEqual({ level: "ready" });
-    expect(probeCadence(unanswered.machine)).toEqual({ kind: "on-demand" });
 
     const pushed = drive(
       [{ type: "PLATFORM", status: { project: "ACTIVE", service: "RESTARTING" } }],
@@ -339,6 +340,27 @@ describe("container machine (DESIGN §4.5)", () => {
       by: "platform",
       overdue: false,
     });
+  });
+
+  it("a ready container silent past its grace is a guessed boot, and stalls at its cap", () => {
+    const linked = drive([{ type: "LINK", connected: true }], ready());
+    // The Mate process dies and the platform says nothing: the service stays ACTIVE.
+    const dropped = drive([{ type: "LINK", connected: false }], linked);
+    const unanswered = drive([probed({ kind: "unreachable" }, dropped.nowMs)], dropped);
+    expect(containerVerdict(unanswered.machine)).toEqual({ level: "ready" });
+    // An unanswered probe is read again at the backing-off intervals, link or no link.
+    expect(probeCadence(unanswered.machine)).toEqual({ kind: "poll", overdue: true });
+
+    const silent = drive(
+      [probed({ kind: "unreachable" }, dropped.nowMs + READY_SILENCE_MS)],
+      unanswered,
+    );
+    expect(containerVerdict(silent.machine)).toEqual({ level: "booting", overdue: false });
+    expect(probeCadence(silent.machine)).toEqual({ kind: "poll", overdue: true });
+
+    const stalled = drive([{ type: "TICK" }], silent);
+    expect(containerVerdict(stalled.machine)).toEqual({ level: "booting", overdue: true });
+    expect(stalled.nowMs).toBe(dropped.nowMs + READY_SILENCE_MS + CONTAINER_CAPS_MS.booting);
   });
 
   it("a socket connected since the platform's restart began ends it, whatever its status still says", () => {

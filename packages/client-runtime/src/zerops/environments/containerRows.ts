@@ -3,7 +3,7 @@
  * projects page and auto-connect read. Pure.
  */
 import type { ZeropsContainerHealth } from "../provisioning.ts";
-import type { ContainerMachine, MateFlag } from "./containerMachine.ts";
+import { unansweredSinceUp, type ContainerMachine, type MateFlag } from "./containerMachine.ts";
 import type { TargetKey } from "./exchangeDriver.ts";
 
 export interface ContainerSnapshot {
@@ -17,14 +17,16 @@ export interface ContainerSnapshot {
 
 /**
  * The container machine in the rows' words: `stalled` is a boot past its cap, a restart or an
- * update of ours is still coming up, a ready container no socket holds is as its last probe
- * found it, and a verdict that needs an action predates Mate.
+ * update of ours is still coming up, a ready container no socket holds is unreachable once a probe
+ * since it was last up went unanswered, and a verdict that needs an action predates Mate.
  */
 export function containerHealthOf(machine: ContainerMachine): ZeropsContainerHealth | undefined {
   const reading = machine.reading?.reading.kind;
   switch (machine.state.level) {
     case "ready":
-      return machine.connectedSince === null && reading === "unreachable" ? "unreachable" : "ready";
+      return machine.connectedSince === null && unansweredSinceUp(machine)
+        ? "unreachable"
+        : "ready";
     case "booting":
       if (machine.overdue) return "stalled";
       return reading === "unreachable" ? "unreachable" : "initializing";
