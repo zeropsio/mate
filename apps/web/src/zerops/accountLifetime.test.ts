@@ -6,6 +6,7 @@ import {
   closeAccountLifetime,
   currentAccountId,
   onAccountLifetimeClose,
+  onAccountLifetimeOpen,
   openAccountLifetime,
   setAccountActionsAllowed,
 } from "./accountLifetime";
@@ -47,6 +48,26 @@ describe("verified account lifetime", () => {
     } finally {
       removeWriter();
       removeBroken();
+      log.mockRestore();
+    }
+  });
+
+  it("a throwing open handler does not stop the next one", () => {
+    const opened: Array<string | null> = [];
+    const removeBroken = onAccountLifetimeOpen(() => {
+      throw new Error("store unavailable");
+    });
+    const removeNext = onAccountLifetimeOpen(() => {
+      opened.push(currentAccountId());
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      openAccountLifetime("user-a");
+      expect(opened).toEqual(["user-a"]);
+      expect(log).toHaveBeenCalledTimes(1);
+    } finally {
+      removeBroken();
+      removeNext();
       log.mockRestore();
     }
   });

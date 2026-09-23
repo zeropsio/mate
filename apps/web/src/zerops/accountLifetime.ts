@@ -41,7 +41,14 @@ export function openAccountLifetime(userId: string): void {
   closeAccountLifetime();
   accountId = userId;
   actionsDeadline = null;
-  for (const open of onOpen) open();
+  // Every opener must run even if one account-scoped store fails to start.
+  for (const open of onOpen) {
+    try {
+      open();
+    } catch (cause) {
+      console.error("Account open failed", cause);
+    }
+  }
 }
 
 export function closeAccountLifetime(): void {
