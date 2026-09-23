@@ -16,6 +16,7 @@ import { Fragment, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../../ui/button";
+import { Skeleton } from "../../ui/skeleton";
 import { FlatCard, MicroLabel, StatusDot } from "../primitives";
 import { ENVIRONMENT_ROW_GRID_CLASS } from "../ZeropsEnvironmentRow";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
@@ -78,10 +79,13 @@ const WIDE_STRIP_COLUMNS = {
  */
 export function NextStepsStrip<T>({
   entries,
+  pending,
 }: {
   readonly entries: ReadonlyArray<ProjectsFlowGroup<T>>;
+  /** A group's read is out: what waits is not known yet, so the strip holds its place. */
+  readonly pending: boolean;
 }) {
-  if (entries.length === 0) return null;
+  if (entries.length === 0 && !pending) return null;
   return (
     <FlatCard className="px-3 py-2">
       <section
@@ -90,46 +94,68 @@ export function NextStepsStrip<T>({
         data-zerops-surface="next-steps"
       >
         <h2 className="text-sm font-semibold text-foreground">
-          Next steps <span className="font-normal text-muted-foreground">{entries.length}</span>
-        </h2>
-        <ul
-          className={cn(
-            "grid grid-cols-1 gap-1",
-            entries.length > 1 && "@2xl/flow:grid-cols-2",
-            WIDE_STRIP_COLUMNS[stripColumns(entries.length)],
+          Next steps
+          {entries.length === 0 ? null : (
+            <>
+              {" "}
+              <span className="font-normal text-muted-foreground">{entries.length}</span>
+            </>
           )}
-        >
-          {entries.map((entry) => (
-            <li className="min-w-0" key={entry.group.groupId}>
-              <button
-                className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                data-zerops-next-step={entry.flow.nextStep.kind}
-                onClick={() => {
-                  jumpToRow(entry.group.groupId);
-                }}
-                type="button"
+        </h2>
+        {entries.length === 0 ? (
+          <ul aria-busy="true" className="grid grid-cols-1 gap-1 @2xl/flow:grid-cols-2">
+            {["first", "second"].map((key) => (
+              <li
+                className={cn(
+                  "flex h-8 min-w-0 items-center px-2",
+                  key === "second" && "hidden @2xl/flow:flex",
+                )}
+                key={key}
               >
-                {/* The step's words follow the name: the dot's own name would say them twice. */}
-                <StatusDot
-                  aria-hidden="true"
-                  className="shrink-0"
-                  dotOnly
-                  label={entry.flow.nextStep.text}
-                  tone={nextStepTone(entry.flow.nextStep.kind)}
-                />
-                <span className="max-w-[40%] shrink-0 truncate font-medium text-foreground">
-                  {entry.group.name}
-                </span>
-                <span aria-hidden="true" className="text-muted-foreground">
-                  ·
-                </span>
-                <span className="min-w-0 truncate text-muted-foreground">
-                  {entry.flow.nextStep.text}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+                <Skeleton className="h-3.5 w-48 max-w-full" />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ul
+            className={cn(
+              "grid grid-cols-1 gap-1",
+              entries.length > 1 && "@2xl/flow:grid-cols-2",
+              WIDE_STRIP_COLUMNS[stripColumns(entries.length)],
+            )}
+          >
+            {entries.map((entry) => (
+              <li className="min-w-0" key={entry.group.groupId}>
+                <button
+                  className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                  data-zerops-next-step={entry.flow.nextStep.kind}
+                  onClick={() => {
+                    jumpToRow(entry.group.groupId);
+                  }}
+                  type="button"
+                >
+                  {/* The step's words follow the name: the dot's own name would say them twice. */}
+                  <StatusDot
+                    aria-hidden="true"
+                    className="shrink-0"
+                    dotOnly
+                    label={entry.flow.nextStep.text}
+                    tone={nextStepTone(entry.flow.nextStep.kind)}
+                  />
+                  <span className="max-w-[40%] shrink-0 truncate font-medium text-foreground">
+                    {entry.group.name}
+                  </span>
+                  <span aria-hidden="true" className="text-muted-foreground">
+                    ·
+                  </span>
+                  <span className="min-w-0 truncate text-muted-foreground">
+                    {entry.flow.nextStep.text}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </FlatCard>
   );

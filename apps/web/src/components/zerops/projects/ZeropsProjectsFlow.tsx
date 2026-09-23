@@ -195,7 +195,10 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
       {view === "overview" ? (
         <>
-          <NextStepsStrip entries={folded.nextSteps} />
+          <NextStepsStrip
+            entries={folded.nextSteps}
+            pending={groups.some((entry) => entry.awaiting)}
+          />
           <Overview active={folded.active} props={props} />
           <OnlyAMate entries={folded.early} props={props} />
         </>

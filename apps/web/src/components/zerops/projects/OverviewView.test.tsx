@@ -94,6 +94,18 @@ describe("the Overview", () => {
     expect(render({ groups: [FRESH] })).not.toContain('data-zerops-surface="next-steps"');
   });
 
+  it("holds the strip's place while a group's read is out, so the rows do not drop under it", () => {
+    const strip = section(
+      render({ groups: [entry([UMA], {}, false)] }),
+      'data-zerops-surface="next-steps"',
+    );
+    expect(strip).toContain('aria-busy="true"');
+    expect(strip).toContain(">Next steps<");
+    expect(strip).toContain('data-slot="skeleton"');
+    const nobody = render({ groups: [{ ...entry([UMA], {}, false), awaiting: false }] });
+    expect(nobody).not.toContain('data-zerops-surface="next-steps"');
+  });
+
   it("draws one row per group with work on it, its steps in the flow's order", () => {
     const html = render({ groups: [MERGING] });
     const row = section(html, 'data-zerops-group="aaa"');
