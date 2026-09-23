@@ -33,6 +33,7 @@ import type {
   ReadContribution,
   ReadStartOrdinal,
   ReceiptOrdinal,
+  ServiceDeployInfo,
   ServiceDeploymentFields,
   ServiceFacetName,
   ServiceIdentityFields,
@@ -450,6 +451,51 @@ const serviceObservationFacet = (
   }
 };
 
+type ServiceDeploymentObservation = Extract<
+  EntityObservation,
+  { readonly kind: "service-deployment-observed" }
+>;
+
+/**
+ * A deploy observation's `null` fields are unstated, not negative (A14): a
+ * native frame names only the active version's id, status and times. For the
+ * version already held, what an earlier observation stated of it stays.
+ */
+function withHeldDeploy(
+  record: ServiceRecord,
+  observation: ServiceDeploymentObservation,
+): ServiceDeploymentObservation {
+  const observed = observation.observation.fields.activeDeploy;
+  const held = facetFields(record.deployment).activeDeploy;
+  if (
+    observed === null ||
+    observed === undefined ||
+    held === null ||
+    held === undefined ||
+    observed.id === null ||
+    observed.id !== held.id
+  )
+    return observation;
+  const activeDeploy: ServiceDeployInfo = {
+    id: observed.id,
+    status: observed.status ?? held.status,
+    source: observed.source ?? held.source,
+    activatedAt: observed.activatedAt ?? held.activatedAt,
+    name: observed.name ?? held.name,
+    branch: observed.branch ?? held.branch,
+    commit: observed.commit ?? held.commit,
+    tag: observed.tag ?? held.tag,
+    repository: observed.repository ?? held.repository,
+  };
+  return {
+    ...observation,
+    observation: {
+      ...observation.observation,
+      fields: { ...observation.observation.fields, activeDeploy },
+    },
+  };
+}
+
 function reduceEntityObservation(
   state: InventoryState,
   admitted: AdmittedObservation,
@@ -491,7 +537,9 @@ function reduceEntityObservation(
       facet.name,
       `service:${facet.name}`,
       facet.required,
-      observation.observation,
+      observation.kind === "service-deployment-observed"
+        ? withHeldDeploy(existing, observation).observation
+        : observation.observation,
       admitted,
     );
     const next = setService(state, reduced.record);

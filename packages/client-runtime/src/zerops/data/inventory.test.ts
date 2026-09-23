@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import { selectServicesOf } from "./projection.ts";
 import { makeInitialZeropsDataState, reduceZeropsDataState } from "./state.ts";
-import { queryKeyOf, serviceKeyOf } from "./types.ts";
+import { queryKeyOf, serviceKeyOf, type ServiceDeployInfo } from "./types.ts";
 import {
   desiredInterest,
   directTicket,
@@ -430,6 +430,115 @@ describe("Zerops inventory model", () => {
     expect(state.inventory.services.get(serviceKeyOf(ref))?.identity).toMatchObject({
       knowledge: "observed",
       fields: { hostname: "restored" },
+    });
+  });
+
+  describe("a pushed deploy states only what its frame carries (A14)", () => {
+    const READ: ServiceDeployInfo = {
+      id: "version-1",
+      status: "ACTIVE",
+      source: "GIT",
+      activatedAt: "2026-09-23T14:00:00Z",
+      name: "ec3d2cb v1.4.0 ada",
+      branch: "main",
+      commit: "ec3d2cb9ea02144b23300dd8cd16ae02bbcb321c",
+      tag: "v1.4.0",
+      repository: "zeropsio/app",
+    };
+    const NEVER_DEPLOYED: ServiceDeployInfo = {
+      ...READ,
+      source: "NONE",
+      name: null,
+      branch: null,
+      commit: null,
+      tag: null,
+      repository: null,
+    };
+    const pushedOf = (id: string): ServiceDeployInfo => ({
+      id,
+      status: "ACTIVE",
+      source: null,
+      activatedAt: "2026-09-23T14:05:00Z",
+      name: null,
+      branch: null,
+      commit: null,
+      tag: null,
+      repository: null,
+    });
+
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly read: ServiceDeployInfo;
+      readonly pushed: ServiceDeployInfo;
+      readonly expected: ServiceDeployInfo;
+    }> = [
+      {
+        name: "the same version keeps the source, name and commit the read stated",
+        read: READ,
+        pushed: pushedOf("version-1"),
+        expected: { ...READ, activatedAt: "2026-09-23T14:05:00Z" },
+      },
+      {
+        name: "a never-deployed runtime's version stays NONE",
+        read: NEVER_DEPLOYED,
+        pushed: pushedOf("version-1"),
+        expected: { ...NEVER_DEPLOYED, activatedAt: "2026-09-23T14:05:00Z" },
+      },
+      {
+        name: "another version inherits nothing of the one before",
+        read: READ,
+        pushed: pushedOf("version-2"),
+        expected: pushedOf("version-2"),
+      },
+    ];
+
+    it.each(cases)("$name", ({ read, pushed, expected }) => {
+      const id = identity();
+      const ref = service();
+      const ticket = directTicket({ kind: "service", ref }, id, 1, 1, 1);
+      let state = reduce(makeInitialZeropsDataState(scope()), {
+        kind: "interest-upserted",
+        interest: desiredInterest(id),
+      });
+      state = reduce(state, {
+        kind: "observation",
+        observation: {
+          stamp: stamp(2),
+          accessEvidence: null,
+          input: {
+            kind: "service-deployment-observed",
+            ref,
+            observation: {
+              source: "direct-read",
+              ticket,
+              fields: { activeDeploy: read },
+              metadata: {},
+            },
+          },
+        },
+      });
+      state = reduce(state, {
+        kind: "observation",
+        observation: {
+          stamp: stamp(3),
+          accessEvidence: null,
+          input: {
+            kind: "service-deployment-observed",
+            ref,
+            observation: {
+              source: "native-push",
+              registration: entityRegistration("service", id),
+              fields: { activeDeploy: pushed },
+              metadata: {},
+            },
+          },
+        },
+      });
+
+      expect(state.inventory.services.get(serviceKeyOf(ref))?.deployment).toMatchObject({
+        knowledge: "observed",
+        fields: { activeDeploy: expected },
+      });
     });
   });
 });
