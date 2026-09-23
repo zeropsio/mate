@@ -74,6 +74,14 @@ describe("ZeropsEnvironmentRow", () => {
     expect(classes).toContain("sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(9.5rem,auto)]");
   });
 
+  it("names its environment in the page's primary hand, on its four-size scale", () => {
+    const html = row();
+    const at = html.indexOf('data-zerops-surface="environment-name"');
+    const name = html.slice(html.lastIndexOf("<span", at), at);
+    expect(name).toContain("text-sm");
+    expect(name).not.toContain("text-[13px]");
+  });
+
   it("says when it is busy", () => {
     expect(row({ busy: true })).toContain('aria-busy="true"');
   });

@@ -56,14 +56,14 @@ export function ZeropsPullRequestRow({
       <span className="flex min-w-0 items-center gap-2.5">
         {onOpen === undefined ? (
           <span
-            className="min-w-0 truncate text-[13px] text-foreground"
+            className="min-w-0 truncate text-sm text-foreground"
             data-zerops-surface="pull-request-title"
           >
             {title}
           </span>
         ) : (
           <button
-            className="min-w-0 cursor-pointer truncate rounded-sm text-left text-[13px] text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0 cursor-pointer truncate rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             data-zerops-surface="pull-request-title"
             onClick={onOpen}
             type="button"
@@ -82,7 +82,7 @@ export function ZeropsPullRequestRow({
       <span className="col-start-2 row-start-1 flex shrink-0 items-center justify-end gap-3 sm:col-start-3">
         {/* The status word's hand is the row's, not each caller's: a
             `sentence` StatusDot has no size of its own and would inherit the
-            page's 16px here, next to a 13px name. */}
+            page's 16px here, next to a 14px name. */}
         {status === undefined ? null : (
           <span className="text-xs text-muted-foreground">{status}</span>
         )}

@@ -151,12 +151,12 @@ export function ZeropsGiteaOverview({
                     >
                       <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto] sm:py-0">
                         {repository.url === undefined ? (
-                          <span className="min-w-0 truncate text-[13px] text-foreground">
+                          <span className="min-w-0 truncate text-sm text-foreground">
                             {repository.name}
                           </span>
                         ) : (
                           <a
-                            className="min-w-0 truncate rounded-sm text-[13px] text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                            className="min-w-0 truncate rounded-sm text-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                             href={repository.url}
                             rel="noopener"
                             target="_blank"

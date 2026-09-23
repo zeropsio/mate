@@ -1865,7 +1865,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       return (
         <li className="flex min-w-0 flex-col items-start gap-0.5 py-1.5" key={key}>
           <button
-            className="min-w-0 max-w-full truncate rounded-sm text-left text-[13px] text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0 max-w-full truncate rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             data-zerops-surface="pull-request-title"
             onClick={open}
             type="button"
