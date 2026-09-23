@@ -1540,8 +1540,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     receiverLock.withPermit(
       Effect.gen(function* () {
         if (receiver.handle !== null) return receiver.handle;
-        // A failed login is the attempt of every establishment that reaches the receiver until
-        // its recovery cycle retries on its backoff: one login per rung, never a burst.
+        // A failed login, or one abandoned before it answered, is the attempt of every
+        // establishment that reaches the receiver until its recovery cycle retries on its
+        // backoff: one login per rung, never a burst.
         if (receiver.openFailure !== null) return yield* Effect.fail(receiver.openFailure);
         const handle = yield* context(policy.establishmentDeadlineMs, (requestContext) =>
           options.adapter
@@ -1551,6 +1552,17 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           Effect.tapError((error) =>
             Effect.sync(() => {
               receiver.openFailure = error;
+            }),
+          ),
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              receiver.openFailure = {
+                _tag: "ZeropsDataAdapterError",
+                kind: "timeout",
+                message: "The socket login was abandoned before it answered.",
+                retryable: true,
+                accountRevocationEvidence: false,
+              };
             }),
           ),
         );

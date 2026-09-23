@@ -281,10 +281,13 @@ const silentVerifier: AccessVerifier = {
 };
 
 /**
- * Counts socket logins (`openReceiver`): the first `failFirst` fail as a login sent offline
- * would; `closeSocket` closes the socket of the last one that succeeded.
+ * Counts socket logins (`openReceiver`): the first `failFirst` are refused as a login sent
+ * offline would be, or get no answer as on a black-holed network (`failure: "no-answer"`);
+ * `closeSocket` closes the socket of the last one that succeeded.
  */
-function socketLogins(options: { readonly failFirst?: number } = {}) {
+function socketLogins(
+  options: { readonly failFirst?: number; readonly failure?: "refused" | "no-answer" } = {},
+) {
   let logins = 0;
   let events: Queue.Queue<ReceiverEvent> | null = null;
   const adapter: ZeropsDataAdapter = {
@@ -293,6 +296,7 @@ function socketLogins(options: { readonly failFirst?: number } = {}) {
       Effect.gen(function* () {
         logins += 1;
         if (logins <= (options.failFirst ?? 0)) {
+          if (options.failure === "no-answer") return yield* Effect.never;
           return yield* Effect.fail({
             _tag: "ZeropsDataAdapterError",
             kind: "socket-open",
@@ -2694,40 +2698,46 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
-  it.effect("a failed socket login is the one attempt of every interest waiting on it", () =>
-    Effect.gen(function* () {
-      const registry = AtomRegistry.make();
-      const logins = socketLogins({ failFirst: 1 });
-      const runtime = yield* makeZeropsDataRuntime({
-        scope: runtimeScope,
-        adapter: logins.adapter,
-        atomRegistry: registry,
-        makeOpaqueId: makeIdFactory(),
-      });
-      const states = yield* Queue.unbounded<ZeropsDataState>();
-      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
-        Queue.offerUnsafe(states, state);
-      });
-      const leaseScope = yield* Scope.make();
-      const leases = yield* Effect.forEach(threeProjects, (descriptor) =>
-        runtime.acquire(descriptor).pipe(Scope.provide(leaseScope)),
-      );
-      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
-      expect(logins.count()).toBe(1);
+  it.effect.each([
+    ["is refused", "refused", "0 seconds"],
+    ["gets no answer before the establishment deadline", "no-answer", "60 seconds"],
+  ] as const)(
+    "a socket login that %s is the one attempt of every interest waiting on it",
+    ([, failure, abandonedAfter]) =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const logins = socketLogins({ failFirst: 1, failure });
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: logins.adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+          Queue.offerUnsafe(states, state);
+        });
+        const leaseScope = yield* Scope.make();
+        const leases = yield* Effect.forEach(threeProjects, (descriptor) =>
+          runtime.acquire(descriptor).pipe(Scope.provide(leaseScope)),
+        );
+        yield* TestClock.adjust(abandonedAfter);
+        for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+        expect(logins.count()).toBe(1);
 
-      yield* TestClock.adjust("1 second");
-      yield* waitForState(states, (state) =>
-        leases.every(
-          (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
-        ),
-      );
-      expect(logins.count()).toBe(2);
+        yield* TestClock.adjust("1 second");
+        yield* waitForState(states, (state) =>
+          leases.every(
+            (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
+          ),
+        );
+        expect(logins.count()).toBe(2);
 
-      yield* runtime.shutdown("application-close");
-      yield* Scope.close(leaseScope, Exit.void);
-      unsubscribe();
-      registry.dispose();
-    }),
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        unsubscribe();
+        registry.dispose();
+      }),
   );
 
   it.effect("exhausts repeated receiver failures into an explicit failed interest", () =>
