@@ -206,6 +206,7 @@ import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
 import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
+import { useNowMs } from "../zerops/useNowMs";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
@@ -216,7 +217,11 @@ import {
   type EnvironmentRow,
   resolvePrimaryConversation,
 } from "@t3tools/client-runtime/zerops";
-import { candidatesComplete } from "@t3tools/client-runtime/zerops/projections";
+import {
+  candidatesNotice,
+  findCandidate,
+  heldCandidates,
+} from "@t3tools/client-runtime/zerops/projections";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -1713,6 +1718,15 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   );
 });
 
+/** How the menu's Mate tree names the listing it is drawn from. */
+const ZEROPS_SIDEBAR_SURFACE = {
+  subject: "your projects",
+  entity: "project",
+  source: "zerops",
+  checking: "Reading your projects…",
+  negative: null,
+} as const;
+
 export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
@@ -1722,9 +1736,22 @@ export default function Sidebar() {
   // container's presence, not a live session, so a sleeping container changes
   // a dot rather than rearranging the menu (`mateEnvironments.ts`). Everything
   // else about the account is the projects screen's job.
-  const { status: zeropsStatus } = useZeropsSession();
+  const { status: zeropsStatus, organizationStatus: zeropsOrganizationStatus } = useZeropsSession();
   const zeropsSignedIn = zeropsStatus === "signed-in";
-  const { candidates: zeropsCandidates, listing: zeropsListing } = useZeropsCandidates();
+  const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
+  const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
+  const zeropsCandidates = zeropsHeld.rows;
+  // Until the listing may say "none", the tree says what it can instead. An
+  // account still to choose its organization is asked on the projects screen,
+  // and no listing is on its way to be waited on here.
+  const zeropsNowMs = useNowMs();
+  const zeropsNotice = useMemo(
+    () =>
+      zeropsOrganizationStatus === "needs-selection"
+        ? null
+        : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs),
+    [zeropsListing, zeropsNowMs, zeropsOrganizationStatus],
+  );
   // The roster says what every agent is doing, and the only thing that knows
   // is the environment's own server. So every container that answers the
   // health probe is registered on the user's behalf; from then on its socket
@@ -2219,11 +2246,12 @@ export default function Sidebar() {
   const activeZeropsProjectId = useMemo(() => {
     const environmentId = routeThreadRef?.environmentId ?? routeDraftThread?.environmentId;
     if (environmentId === undefined) return null;
-    return (
-      zeropsCandidates.find((candidate) => candidate.environmentId === environmentId)?.project.id ??
-      null
+    const open = findCandidate(
+      zeropsListing,
+      (candidate) => candidate.environmentId === environmentId,
     );
-  }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsCandidates]);
+    return open.kind === "found" ? open.row.project.id : null;
+  }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsListing]);
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -3908,7 +3936,12 @@ export default function Sidebar() {
               activeProjectId={activeZeropsProjectId}
               candidates={zeropsCandidates}
               className="mb-2"
-              complete={candidatesComplete(zeropsListing)}
+              complete={zeropsHeld.complete}
+              notice={zeropsNotice}
+              onNoticeAct={(affordance) => {
+                if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
+                else refreshZeropsCandidates();
+              }}
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}

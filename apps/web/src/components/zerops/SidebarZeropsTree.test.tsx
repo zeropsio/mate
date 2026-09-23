@@ -2,6 +2,7 @@ import type { EnvironmentRow, FlowPullRequest } from "@t3tools/client-runtime/ze
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -158,15 +159,54 @@ describe("SidebarZeropsTree", () => {
     expect(snippet).toContain("text-sidebar-muted-foreground/70");
   });
 
-  it('says nothing while the candidate list is on its first read, rather than "none"', () => {
-    expect(render([], { complete: false })).toBe("");
+  const READING: CandidatesNotice = {
+    region: "placeholder",
+    message: { text: "Reading your projects…", afterMs: 400, tone: "quiet" },
+    affordance: null,
+  };
+
+  it('an unread listing renders its placeholder, never nothing and never "none"', () => {
+    const html = render([], { complete: false, notice: READING });
+
+    expect(html).toContain("Reading your projects…");
+    expect(html).not.toContain("No environment has Mate yet");
     // Read and Mate-less: the empty state, as before.
     expect(render([CRM_STAGE], { complete: true })).toContain("sidebar-environments-empty");
   });
 
+  it("a failed listing names its cause once, with one Try again", () => {
+    const html = render([], {
+      complete: false,
+      notice: {
+        region: "message",
+        message: {
+          text: "Couldn't read your projects. Zerops didn't answer.",
+          afterMs: 0,
+          tone: "alert",
+        },
+        affordance: { kind: "retry", label: "Try again" },
+      },
+      onNoticeAct: () => {},
+    });
+
+    expect(html.match(/Zerops didn(?:&#x27;|')t answer\./g)).toHaveLength(1);
+    expect(html.match(/Try again/g)).toHaveLength(1);
+    expect(html).not.toContain("No environment has Mate yet");
+  });
+
   it('never says "No environment has Mate yet" while a project\'s presence is unknown', () => {
     // The project is listed, but whether a container runs in it is not read yet.
-    expect(render([CRM_STAGE], { complete: false })).toBe("");
+    const html = render([CRM_STAGE], {
+      complete: false,
+      notice: {
+        region: "value",
+        message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+        affordance: null,
+      },
+    });
+
+    expect(html).toContain("Still reading…");
+    expect(html).not.toContain("No environment has Mate yet");
   });
 
   it("lights the open Mate's row the way the menu lights its open thread", () => {

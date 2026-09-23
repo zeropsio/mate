@@ -61,7 +61,8 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { stopView, type Deployment, type StopView } from "@t3tools/client-runtime/zerops/flow";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
@@ -197,10 +198,19 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly className?: string;
   /**
    * The listing is known and complete, and every row's presence is read
-   * (`candidatesComplete`). Until then the tree says nothing rather than
+   * (`candidatesComplete`). Until then the tree says its notice rather than
    * "none". A re-read is not that — the list already read stays up.
    */
   readonly complete: boolean;
+  /**
+   * What the tree says while it has nothing to draw and the listing may not
+   * say "none" yet (`candidatesNotice`, DESIGN §3.4): a placeholder while it is
+   * unread, the read's cause when it failed, "Still reading…" while a
+   * project's presence is unread. Absent or `null`, it says nothing.
+   */
+  readonly notice?: CandidatesNotice | null;
+  /** The notice's one affordance, pressed. */
+  readonly onNoticeAct?: ((affordance: KnownAffordance) => void) | undefined;
   /** Opens the group's own page, in place of the thread. */
   readonly onOpenGroup?: ((groupId: string) => void) | undefined;
 }
@@ -215,6 +225,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getActivity,
   getFlow,
   complete,
+  notice = null,
+  onNoticeAct,
   className,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
@@ -228,6 +240,45 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // step without either one owning the other.
   const [projectOrder] = useProjectOrderPreference();
 
+  // Nothing to draw, and the listing may not say "none" yet: its notice, at
+  // the menu's own left edge, never an empty state it has not earned.
+  if (emptyReason !== undefined && !complete) {
+    if (notice === null) return null;
+    const { affordance, message } = notice;
+    return (
+      <div
+        className={cn(
+          "flex flex-col items-start gap-1.5 px-2.5 py-2",
+          message.afterMs > 0 && "animate-zerops-appear",
+          className,
+        )}
+        data-zerops-surface="sidebar-environments-notice"
+        role={notice.region === "message" ? "alert" : "status"}
+        style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
+      >
+        <span
+          className={cn(
+            "text-xs",
+            message.tone === "alert"
+              ? "text-[var(--zerops-status-failed-text)]"
+              : "text-sidebar-muted-foreground",
+          )}
+        >
+          {message.text}
+        </span>
+        {affordance === null || onNoticeAct === undefined ? null : (
+          <button
+            className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+            onClick={() => onNoticeAct(affordance)}
+            type="button"
+          >
+            {affordance.label}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   // No project at all: nothing to list and nothing to say — the header's
   // "+ New project" is the one affordance, and the projects screen already
   // makes the invitation. A second "New project" here would be the same verb
@@ -237,11 +288,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   }
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
-  // edge, where every other row starts, and the way to the projects screen.
-  // Only once the list is complete: unread is not none, and a line that shows
-  // for the first second of every reload sends the whole menu jumping.
+  // edge, where every other row starts, and the way to the projects screen —
+  // once the list is complete, above.
   if (emptyReason !== undefined) {
-    if (!complete) return null;
     return (
       <div
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
