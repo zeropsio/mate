@@ -33,6 +33,7 @@ import {
   type ProjectEffectiveAccess,
   type ProjectRef,
   type VerifiedAccessGrant,
+  type ZeropsProjectId,
 } from "../types.ts";
 import {
   grantRoundInFlight,
@@ -145,6 +146,13 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
   let failure: string | null = null;
   let verifier: AccessVerifier | null = null;
   let timer: Fiber.Fiber<void> | null = null;
+  /** The round the verifier runs for the machine, while the machine holds it in flight. */
+  let roundWork: { readonly round: number; readonly fiber: Fiber.Fiber<void> } | null = null;
+  /** Each read between rounds the verifier runs, by project id, while its attempt is current. */
+  const projectWork = new Map<
+    ZeropsProjectId,
+    { readonly attempt: number; readonly fiber: Fiber.Fiber<void> }
+  >();
   /** The evidence the runtime's grant was last built from, by `grantKey`. */
   let grantedKey: string | null = null;
   /** The projects the last grant carried from evidence, by `projectKeyOf`. */
@@ -268,7 +276,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
           return Effect.gen(function* () {
             // Projects a command established since are the grant's too: read them.
             const established = establishedProjects(yield* options.access);
-            yield* options.fork(
+            const fiber = yield* options.fork(
               port
                 .verifyRound({ round, carried: [...carried, ...established], report: send })
                 .pipe(
@@ -277,6 +285,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
                   ),
                 ),
             );
+            roundWork = { round, fiber };
           });
         }
         const project = effect.op.project;
@@ -291,7 +300,11 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
                 ),
               ),
           )
-          .pipe(Effect.asVoid);
+          .pipe(
+            Effect.map((fiber) => {
+              projectWork.set(project.projectId, { attempt, fiber });
+            }),
+          );
       }
       case "schedule":
         return Effect.gen(function* () {
@@ -337,6 +350,49 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
     return running === null ? Effect.void : Fiber.interrupt(running);
   });
 
+  /**
+   * The work the machine no longer holds: a round that is no longer in flight, a read whose
+   * attempt is no longer current. Work that ended on its own last answer is finishing by itself;
+   * a round whose deadline had come is not, whichever answer ended it.
+   */
+  const abandonedWork = (
+    event: GrantEvent,
+    before: GrantMachine,
+    at: Instant,
+  ): ReadonlyArray<Fiber.Fiber<void>> => {
+    const abandoned: Array<Fiber.Fiber<void>> = [];
+    if (roundWork !== null && grantRoundInFlight(machine)?.id !== roundWork.round) {
+      const deadline = grantRoundInFlight(before)?.deadline;
+      const ownAnswer =
+        (event.type === "ROUND_ACCOUNT" ||
+          event.type === "ROUND_PROJECT" ||
+          event.type === "ROUND_FAILED") &&
+        event.round === roundWork.round;
+      const due = deadline === undefined || at.wall >= deadline.wall || at.mono >= deadline.mono;
+      if (!ownAnswer || (due && event.type !== "ROUND_FAILED")) abandoned.push(roundWork.fiber);
+      roundWork = null;
+    }
+    for (const [id, work] of projectWork) {
+      if (machine.projectAttempts.get(id)?.attempt === work.attempt) continue;
+      const ownAnswer =
+        event.type === "PROJECT_RESULT" &&
+        event.project.projectId === id &&
+        event.attempt === work.attempt;
+      if (!ownAnswer) abandoned.push(work.fiber);
+      projectWork.delete(id);
+    }
+    return abandoned;
+  };
+
+  /**
+   * Interrupts abandoned work once the transition that abandoned it is done: under the lock, so
+   * no fiber is cut short inside a transition, even one of the abandoned work's own.
+   */
+  const interruptWork = (fibers: ReadonlyArray<Fiber.Fiber<void>>): Effect.Effect<void> =>
+    fibers.length === 0
+      ? Effect.void
+      : options.fork(lock.withPermit(Fiber.interruptAll(fibers))).pipe(Effect.asVoid);
+
   /** One event through the machine; `message` is a failed round's reason in the platform's words. */
   function send(event: GrantEvent, message?: string): Effect.Effect<void> {
     return lock.withPermit(
@@ -356,9 +412,11 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
         if (effects.some((effect) => effect.kind === "run" && effect.op.kind === "verify-round")) {
           failure = null;
         }
+        const abandoned = abandonedWork(event, before, at);
         yield* observeTransition(before, effects, at);
         yield* publish;
         for (const effect of effects) yield* interpret(effect);
+        yield* interruptWork(abandoned);
       }),
     );
   }
@@ -388,12 +446,13 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
     close: lock
       .withPermit(
         Effect.gen(function* () {
-          machine = transitionGrant(
-            machine,
-            { type: "EPOCH_CLOSED" },
-            { now: yield* now, policy },
-          ).state;
+          const at = yield* now;
+          const before = machine;
+          const event: GrantEvent = { type: "EPOCH_CLOSED" };
+          machine = transitionGrant(machine, event, { now: at, policy }).state;
+          const abandoned = abandonedWork(event, before, at);
           yield* publish;
+          yield* interruptWork(abandoned);
         }),
       )
       .pipe(Effect.andThen(cancelTimer)),

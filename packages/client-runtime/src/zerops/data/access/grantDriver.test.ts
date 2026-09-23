@@ -63,6 +63,8 @@ interface Platform {
   roundFailure: GrantFailure | null;
   readonly rounds: Array<{ readonly round: number; readonly startedAtMono: number }>;
   readonly reads: Array<{ readonly project: ProjectRef; readonly atMono: number }>;
+  /** Each round (by id) and project read (by project id) interrupted before it answered. */
+  readonly interrupted: Array<number | string>;
 }
 
 const healthy = (listed: ReadonlyArray<ProjectRef> = [A, B], roundMs = 2 * SECOND): Platform => ({
@@ -73,6 +75,7 @@ const healthy = (listed: ReadonlyArray<ProjectRef> = [A, B], roundMs = 2 * SECON
   roundFailure: null,
   rounds: [],
   reads: [],
+  interrupted: [],
 });
 
 /**
@@ -127,14 +130,16 @@ const fakeVerifier = (
         if (outcome !== null)
           yield* report({ type: "ROUND_PROJECT", round, project: target, outcome });
       }
-    }),
+    }).pipe(Effect.onInterrupt(() => Effect.sync(() => platform.interrupted.push(round)))),
   verifyProject: (target) =>
     Effect.gen(function* () {
       platform.reads.push({ project: target, atMono: clock.monoMs() });
       yield* network.wait(platform.projectMs);
       const outcome = platform.outcome(target, "read");
       return outcome === null ? yield* Effect.never : outcome;
-    }),
+    }).pipe(
+      Effect.onInterrupt(() => Effect.sync(() => platform.interrupted.push(target.projectId))),
+    ),
 });
 
 /** Lets every fiber the last step woke run to its next wait, on whichever scheduler it runs. */
@@ -609,6 +614,51 @@ describe("the access grant inside the data runtime", () => {
           expect(opened.write(listed[1]!)).toEqual({ allowed: true });
         }),
       ),
+  );
+
+  it.effect(
+    "interrupts a round its deadline abandons, and the round after it runs alone (G7)",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          // The account part never answers.
+          const platform: Platform = { ...healthy(), accountMs: Number.POSITIVE_INFINITY };
+          const opened = yield* tab(platform);
+
+          yield* opened.pass(30 * SECOND);
+          expect(opened.phase()).toBe("unverified-failed");
+          expect(platform.interrupted).toEqual([1]);
+
+          yield* opened.pass(2 * SECOND);
+          expect(platform.rounds).toHaveLength(2);
+          expect(platform.interrupted).toEqual([1]);
+        }),
+      ),
+  );
+
+  it.effect("interrupts a read between rounds its own deadline abandons (G1)", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // A's round read fails; its retry never answers.
+        const platform: Platform = {
+          ...healthy(),
+          outcome: (target, read) =>
+            target !== A
+              ? verified(target)
+              : read === "round"
+                ? { kind: "failed", failure: serverDown }
+                : null,
+        };
+        const opened = yield* grantedTab(platform);
+        yield* opened.pass(10 * SECOND);
+        expect(platform.reads.map(({ project: read }) => read.projectId)).toEqual(["project-a"]);
+        expect(platform.interrupted).toEqual([]);
+
+        yield* opened.pass(45 * SECOND);
+
+        expect(platform.interrupted).toEqual(["project-a"]);
+      }),
+    ),
   );
 
   it.effect(
