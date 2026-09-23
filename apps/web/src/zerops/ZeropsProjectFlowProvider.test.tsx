@@ -6,9 +6,14 @@ import { ZeropsProjectFlowProvider } from "./ZeropsProjectFlowProvider";
 
 const GITEA = "https://gitea.example.test";
 
-// The flows stand through a failed reacquire: signed in, and no token to act with.
+/**
+ * The flows stand through a failed reacquire: signed in, and no token to act with until
+ * `readable` turns. `origin` is whether the account has a Gitea at all.
+ */
+const gitea = vi.hoisted(() => ({ readable: false, origin: true }));
+
 vi.mock("./accountGiteaSessions", () => ({
-  useGiteaSession: () => ({ signedIn: true, readable: false, trouble: null }),
+  useGiteaSession: () => ({ signedIn: true, readable: gitea.readable, trouble: null }),
   giteaClientFor: () => null,
 }));
 vi.mock("./ZeropsSessionProvider", () => ({
@@ -29,10 +34,13 @@ vi.mock("./zeropsDataContext", () => ({
 }));
 vi.mock("./useNowMs", () => ({ useNowMs: () => 0 }));
 vi.mock("./giteaProject", () => ({
-  findAccountGitea: () => ({
-    projectId: "gitea-project",
-    state: { url: GITEA, brokerUrl: "https://broker.example.test" },
-  }),
+  findAccountGitea: () =>
+    gitea.origin
+      ? {
+          projectId: "gitea-project",
+          state: { url: GITEA, brokerUrl: "https://broker.example.test" },
+        }
+      : undefined,
 }));
 vi.mock("./useZeropsRegistry", () => ({
   useZeropsRegistry: () => ({ registry: { groups: [] } }),
@@ -113,6 +121,8 @@ function installTestDom(): void {
 
 describe("ZeropsProjectFlowProvider", () => {
   afterEach(() => {
+    gitea.readable = false;
+    gitea.origin = true;
     vi.unstubAllGlobals();
   });
 
@@ -137,6 +147,61 @@ describe("ZeropsProjectFlowProvider", () => {
       await seen.at(-1)?.mergePullRequest("harbor", { repository: "app", number: 7 });
     });
     expect(seen.at(-1)?.trouble).toBe("Signing in to Gitea again. Try it again in a moment.");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("stops saying it is signing in again once the token is back", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    await act(async () => {
+      await seen.at(-1)?.mergePullRequest("harbor", { repository: "app", number: 7 });
+    });
+    expect(seen.at(-1)?.trouble).toBe("Signing in to Gitea again. Try it again in a moment.");
+
+    gitea.readable = true;
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect(seen.at(-1)?.trouble).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("a verb pressed with no Gitea on the account claims no sign-in", async () => {
+    gitea.origin = false;
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    await act(async () => {
+      await seen.at(-1)?.mergePullRequest("harbor", { repository: "app", number: 7 });
+    });
+    expect(seen.at(-1)?.trouble).toBeNull();
 
     await act(async () => {
       root.unmount();

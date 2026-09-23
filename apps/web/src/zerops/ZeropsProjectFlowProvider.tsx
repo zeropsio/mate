@@ -312,6 +312,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   );
 
   const [trouble, setTrouble] = useState<string | null>(null);
+  // The token is back, so the verbs act again and the sentence saying they would not is gone.
+  const [troubleReadable, setTroubleReadable] = useState(readable);
+  if (troubleReadable !== readable) {
+    setTroubleReadable(readable);
+    if (readable && trouble === SIGNING_IN_AGAIN) setTrouble(null);
+  }
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const readVersion = useZeropsDeployedVersionReader();
   const enabled = signedInToMate && signedIn;
@@ -422,10 +428,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   /**
    * A client to act as the person with, or `null` with the reason said where the verbs are: the
    * flows stand through a failed reacquire while no token is held, and a verb pressed then
-   * would otherwise do nothing and say nothing.
+   * would otherwise do nothing and say nothing. With no Gitea on the account there is nothing
+   * to sign in to again, and no verb to press.
    */
   const actingClient = useCallback(() => {
-    const client = giteaOrigin === undefined ? null : giteaClientFor(giteaOrigin);
+    if (giteaOrigin === undefined) return null;
+    const client = giteaClientFor(giteaOrigin);
     if (client === null) setTrouble(SIGNING_IN_AGAIN);
     return client;
   }, [giteaOrigin]);
