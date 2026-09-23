@@ -52,9 +52,14 @@ export interface ComposerBannerStackItem {
 interface ComposerBannerStackProps {
   readonly className?: string;
   readonly items: ReadonlyArray<ComposerBannerStackItem>;
+  // Lets the caller measure the floating stack's real rendered height: the
+  // stack renders from a zero-height anchor and is absolutely positioned
+  // above whatever follows it in flow, so it never enlarges an ancestor's own
+  // measured box.
+  readonly stackRef?: (element: HTMLDivElement | null) => void;
 }
 
-export function ComposerBannerStack({ className, items }: ComposerBannerStackProps) {
+export function ComposerBannerStack({ className, items, stackRef }: ComposerBannerStackProps) {
   const [requestedExitingItemId, setExitingItemId] = useState<string | null>(null);
   const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exitingItemId =
@@ -104,6 +109,7 @@ export function ComposerBannerStack({ className, items }: ComposerBannerStackPro
   return (
     <div className="relative h-0" data-composer-banner-anchor="true">
       <div
+        ref={stackRef}
         className={cn(
           className,
           "group/banner-stack chat-composer-drawer-slot absolute inset-x-0 bottom-0",

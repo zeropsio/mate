@@ -49,6 +49,7 @@ import {
   rememberCheckoutIsRepo,
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
+  resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
@@ -1510,6 +1511,16 @@ describe("session branch mismatch dismissal", () => {
     expect(isBranchMismatchDismissedForSession("t1:a:b")).toBe(true);
     expect(isBranchMismatchDismissedForSession("t1:a:c")).toBe(false);
     expect(isBranchMismatchDismissedForSession(null)).toBe(false);
+  });
+});
+
+describe("resolveComposerOverlayHeight", () => {
+  it("reserves only the composer's own height when no banner is showing", () => {
+    expect(resolveComposerOverlayHeight({ composerHeight: 120, bannerStackHeight: 0 })).toBe(120);
+  });
+
+  it("adds the floating banner stack's height on top of the composer's own height", () => {
+    expect(resolveComposerOverlayHeight({ composerHeight: 120, bannerStackHeight: 64 })).toBe(184);
   });
 });
 

@@ -602,6 +602,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     margin-bottom: calc(-1 * var(--chat-composer-attachment-overlap));
   }
 
+  /* The composer's banner stack floats free above the transcript instead of
+     attaching to another drawer surface below it, so the inset that lets an
+     attached drawer step in from its neighbor's corner has nothing to hide
+     behind here — it only opens a gap at the composer's own width where the
+     scrolling transcript shows through beside the banner. Match the
+     composer's own full width instead. */
+  .chat-composer-drawer-slot[data-composer-banner-drawer] {
+    --chat-composer-drawer-inset: 0px;
+  }
+
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)::before {
     pointer-events: none;
     position: absolute;
