@@ -22,6 +22,7 @@ import {
   type InterestState,
   type ProjectRef,
   type RuntimeInterestDescriptor,
+  type ScopeAuthority,
   type VerifiedAccessGrant,
   type ViewObservation,
 } from "@t3tools/client-runtime/zerops/data";
@@ -254,6 +255,7 @@ function makeInventorySnapshotSelector() {
       next.projects,
       [...next.services],
       [...next.projectRefs.keys()],
+      [...next.authority],
       next.isLoading,
       next.error,
     ]);
@@ -289,6 +291,8 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   const dispatch = useRef<(event: GrantEvent) => void>(() => undefined);
   /** Each project's status as its last read gave it, until the runtime has read it. */
   const [readStatuses, setReadStatuses] = useState<ReadonlyMap<string, string>>(new Map());
+  /** Each project's authority, as the grant's withhold and restore effects last said (G12). */
+  const [authority, setAuthority] = useState<ReadonlyMap<string, ScopeAuthority>>(new Map());
   const selectSnapshot = useMemo(makeInventorySnapshotSelector, []);
 
   const organizationDescriptors = useMemo(
@@ -452,9 +456,17 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           }
           return;
         case "withhold":
-        case "restore-authority":
-          // No surface reads per-scope authority yet.
+        case "restore-authority": {
+          // A lapse is the account's; its gate is `readWindowExpired` until 0.10.
+          if (effect.scope.kind === "account") return;
+          const key = inventoryProjectRefKey(effect.scope.project);
+          const authority: ScopeAuthority =
+            effect.kind === "restore-authority"
+              ? { kind: "authorized" }
+              : { kind: "withheld", reason: effect.reason, cause: effect.cause };
+          setAuthority((current) => new Map(current).set(key, authority));
           return;
+        }
         case "invalidate":
           // No store subscribes to access invalidations yet (DESIGN §6.2).
           return;
@@ -780,6 +792,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     projects: projected.projects,
     services: projected.services,
     projectRefs: projected.projectRefs,
+    authority,
     isLoading: !projected.read && error === null,
     error: visibleError,
   });

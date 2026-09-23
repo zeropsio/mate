@@ -113,6 +113,7 @@ const inventory = (): Inventory => ({
   projects: [{ ...project }],
   services: new Map([[project.id, { status: "resolved", services: [{ ...service }] }]]),
   projectRefs: new Map(),
+  authority: new Map(),
   isLoading: false,
   error: null,
 });

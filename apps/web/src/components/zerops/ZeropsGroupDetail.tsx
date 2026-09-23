@@ -112,6 +112,7 @@ import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
+import { withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { findAccountGitea } from "~/zerops/giteaProject";
@@ -579,6 +580,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const names = useHistoryNames(groupName);
   const mates = useGroupMates(groupId);
   const openMate = useOpenMate();
+  const inventory = useZeropsInventory();
   const attention = useProjectAttention(groupId, mates, {
     environments,
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
@@ -621,6 +623,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       readDetail={readDetail}
       repo={repo}
       waiting={waiting}
+      withheldNotice={(projectId) => withheldProjectNotice(inventory, projectId)}
     />
   );
 }
@@ -653,6 +656,7 @@ export function ZeropsGroupPane({
   release,
   repo,
   waiting,
+  withheldNotice,
 }: {
   readonly commits: ZeropsCommitsState;
   readonly environments: ReadonlyArray<EnvironmentRow>;
@@ -681,6 +685,12 @@ export function ZeropsGroupPane({
   readonly trouble?: string | null;
   readonly onOpenMate: (projectId: string) => void;
   readonly waiting: ReleaseContentsSummary;
+  /**
+   * What an environment's line says instead of its content while its access
+   * is withheld (DESIGN G12); `null` while it may be shown. Absent, every
+   * environment is shown.
+   */
+  readonly withheldNotice?: (projectId: string) => string | null;
 }) {
   const deployed = useMemo(() => deployedShas(environments), [environments]);
   return (
@@ -720,6 +730,7 @@ export function ZeropsGroupPane({
                 key={mate.projectId}
                 mate={mate}
                 menu={menuForMate?.(mate.projectId)}
+                notice={withheldNotice?.(mate.projectId) ?? null}
                 onOpen={onOpenMate}
               />
             ))}
@@ -744,6 +755,7 @@ export function ZeropsGroupPane({
                 groupId={groupId}
                 groupName={name}
                 key={environment.projectId}
+                notice={withheldNotice?.(environment.projectId) ?? null}
               />
             ))
           )}
@@ -1673,13 +1685,29 @@ export interface GroupMate {
 function MateLine({
   mate,
   menu,
+  notice,
   onOpen,
 }: {
   readonly mate: GroupMate;
   /** This Mate's own quiet actions — the same set the projects screen offers. */
   readonly menu?: React.ReactNode;
+  /** Said in place of what it is on while its access is withheld; its name stays. */
+  readonly notice: string | null;
   readonly onOpen: (projectId: string) => void;
 }) {
+  if (notice !== null) {
+    return (
+      <li className="flex min-w-0 items-center gap-3 px-2 py-2">
+        <MateFace size="md" state="idle" tint={mate.tint} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
+            {mate.name}
+          </span>
+          <span className="truncate text-xs leading-4 text-muted-foreground">{notice}</span>
+        </span>
+      </li>
+    );
+  }
   return (
     // The row is a control and the menu is another: a button inside a button
     // is not a thing, so they sit side by side and the row keeps the hover.
@@ -1727,11 +1755,14 @@ function StopLine({
   environment,
   groupId,
   groupName,
+  notice,
 }: {
   readonly environment: EnvironmentRow;
   readonly groupId: string;
   /** The project's name, so a stop under it does not repeat it. */
   readonly groupName: string | undefined;
+  /** Said in place of its version and state while its access is withheld; its name stays. */
+  readonly notice: string | null;
 }) {
   const navigate = useNavigate();
   const word = deployWord(environment.tone);
@@ -1742,6 +1773,16 @@ function StopLine({
       params: { groupId, projectId: environment.projectId },
     });
   }, [environment.projectId, groupId, navigate]);
+  if (notice !== null) {
+    return (
+      <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          {environmentNameUnderGroup(groupName, environment.name)}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">{notice}</span>
+      </li>
+    );
+  }
   return (
     <li>
       <button

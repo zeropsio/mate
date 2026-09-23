@@ -1445,6 +1445,7 @@ describe("MessagesTimeline", () => {
       isLoading: false,
       error: null,
       projectRefs: new Map(),
+      authority: new Map(),
     };
     const zeropsData: ZeropsDataContextValue = {
       runtime: {} as ManagedZeropsDataRuntime,

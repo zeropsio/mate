@@ -233,6 +233,7 @@ function inventory(project: ProjectRef | null = PROJECT): Inventory {
     isLoading: false,
     error: null,
     projectRefs: project === null ? new Map() : new Map([[project.projectId, project]]),
+    authority: new Map(),
   };
 }
 

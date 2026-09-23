@@ -15,6 +15,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import { createElement, useEffect, useState, type ReactNode } from "react";
 
 import { ZeropsDataProvider } from "../ZeropsDataProvider";
+import { useZeropsInventory, withheldProjectNotice } from "../inventoryContext";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
 import { useZeropsData } from "../zeropsDataContext";
 import { harnessRuntime } from "./harnessRuntime";
@@ -53,4 +54,10 @@ export function ProductChild({
     onMount(Effect.runSync(runtime.state).access.status);
   }, [onMount, runtime]);
   return label;
+}
+
+/** What a project's region says while the grant withholds its content, as `id: notice`. */
+export function ProjectNotice({ projectId }: { readonly projectId: string }) {
+  const notice = withheldProjectNotice(useZeropsInventory(), projectId);
+  return notice === null ? null : `${projectId}: ${notice}`;
 }

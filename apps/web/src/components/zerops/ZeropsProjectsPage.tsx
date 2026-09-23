@@ -64,6 +64,7 @@ import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
+import { withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
@@ -2203,6 +2204,21 @@ function ZeropsProjectsContent() {
           void createTool();
         }}
         renderEnvironment={(candidate: ZeropsCandidatePresentation, role) => {
+          // Without fresh access evidence the row keeps its name and says why
+          // its content is not shown (DESIGN G12).
+          const withheld = withheldProjectNotice(inventory, candidate.project.id);
+          if (withheld !== null) {
+            return (
+              <ZeropsEnvironmentRow
+                name={environmentNameUnderGroup(
+                  readZeropsGroupTags(candidate.project.tagList).label,
+                  candidate.project.name,
+                )}
+                summary={withheld}
+                tag={environmentRoleTag(role)}
+              />
+            );
+          }
           const input = rowInput(candidate, role);
           const presentation = deriveZeropsRowPresentation(input);
           const action = deriveZeropsRowAction(input);
@@ -2376,6 +2392,18 @@ function ZeropsProjectsContent() {
           />
         )}
         renderMate={(candidate: ZeropsCandidatePresentation, role) => {
+          const withheld = withheldProjectNotice(inventory, candidate.project.id);
+          if (withheld !== null) {
+            const tags = readZeropsGroupTags(candidate.project.tagList);
+            return (
+              <ZeropsMateCard
+                face="idle"
+                line={withheld}
+                name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+                tint={tints.get(candidate.project.id) ?? "slate"}
+              />
+            );
+          }
           const input = rowInput(candidate, role);
           const presentation = deriveZeropsRowPresentation(input);
           const action = deriveZeropsRowAction(input);

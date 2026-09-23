@@ -5,7 +5,12 @@ import {
   deriveZeropsCandidates,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
+import {
+  projectKeyOf,
+  type ProjectRef,
+  type ScopeAuthority,
+} from "@t3tools/client-runtime/zerops/data";
+import { knownPresentation, type KnownSurface } from "@t3tools/client-runtime/zerops/knowledge";
 
 export type InventoryServiceOutcome =
   | { readonly status: "resolved"; readonly services: ReadonlyArray<ZeropsService> }
@@ -18,6 +23,12 @@ export interface Inventory {
   readonly error: string | null;
   /** Operable, account-scoped identities used to filter every shared projection. */
   readonly projectRefs: ReadonlyMap<string, ProjectRef>;
+  /**
+   * Each project's authority as the access grant last published it, by
+   * `inventoryProjectRefKey` (DESIGN G12). A withheld project stays in
+   * `projects`; its content is not shown.
+   */
+  readonly authority: ReadonlyMap<string, ScopeAuthority>;
 }
 
 export function inventoryProjectRefKey(ref: ProjectRef): string {
@@ -36,6 +47,31 @@ export function findInventoryProjectRef(
   );
   return matches.length === 1 ? (matches[0] ?? null) : null;
 }
+const PROJECT_SURFACE: KnownSurface<never> = {
+  subject: "this project",
+  entity: "project",
+  source: "zerops",
+  checking: null,
+  negative: null,
+};
+
+/**
+ * What a project's region says instead of its content while the grant
+ * withholds it, e.g. "Checking your access to this project…"; `null` while
+ * its content may be shown.
+ */
+export function withheldProjectNotice(inventory: Inventory, projectId: string): string | null {
+  const ref = findInventoryProjectRef(inventory, projectId);
+  const authority = ref === null ? undefined : inventory.authority.get(inventoryProjectRefKey(ref));
+  if (authority?.kind !== "withheld") return null;
+  const presentation = knownPresentation(
+    { state: "withheld", reason: authority.reason, cause: authority.cause },
+    PROJECT_SURFACE,
+    { nowMs: Date.now(), updateOffered: false },
+  );
+  return presentation.message?.text ?? presentation.banner?.message.text ?? null;
+}
+
 /**
  * Folds every inventory project against its resolved services into the flat
  * candidate list every consumer needs to find or classify an environment.

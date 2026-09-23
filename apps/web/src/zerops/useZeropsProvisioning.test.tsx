@@ -102,7 +102,14 @@ function inventory(
   projects: ReadonlyArray<ZeropsProject>,
   services: Inventory["services"],
 ): Inventory {
-  return { projects, services, isLoading: false, error: null, projectRefs: new Map() };
+  return {
+    projects,
+    services,
+    isLoading: false,
+    error: null,
+    projectRefs: new Map(),
+    authority: new Map(),
+  };
 }
 
 const PROJECT: ZeropsProject = { id: "project-1", name: "p", status: "ACTIVE" };

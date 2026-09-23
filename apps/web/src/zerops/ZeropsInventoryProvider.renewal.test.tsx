@@ -40,7 +40,8 @@ async function admittedProduct(
   let mounts = 0;
   const tab: MountedTab = await mountTab(harness, harness.browser.openTab(), {
     page: async () => {
-      const { AccountProduct, ProductChild } = await import("./__fixtures__/accountProduct");
+      const { AccountProduct, ProductChild, ProjectNotice } =
+        await import("./__fixtures__/accountProduct");
       return (
         <AccountProduct datastream={harness.datastream}>
           <ProductChild
@@ -49,6 +50,8 @@ async function admittedProduct(
               mounts++;
             }}
           />
+          <ProjectNotice projectId="p1" />
+          <ProjectNotice projectId="p2" />
         </AccountProduct>
       );
     },
@@ -178,6 +181,9 @@ describe("ZeropsInventoryProvider renewal", () => {
       expect(rounds()).toBeGreaterThanOrEqual(admitted + (renewAfterMs === 0 ? 0 : 1));
       expect(tab.text()).toContain(CHILD);
       expect(tab.text()).not.toContain("Could not load your Zerops projects.");
+      // The failing project keeps its place; its content waits for fresh evidence.
+      expect(tab.text()).toContain("p2: Checking your access to this project…");
+      expect(tab.text()).not.toContain("p1:");
       await expect(
         tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" })),
       ).resolves.toMatchObject({ id: "p1" });
