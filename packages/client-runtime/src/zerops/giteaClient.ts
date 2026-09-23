@@ -511,7 +511,8 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
 
   /**
    * Sends one request and reads its answer with `answer`, both inside a read's deadline — or, for
-   * a read whose `deadline` is `"headers"`, only until Gitea starts answering.
+   * a read whose `deadline` is `"idle"`, with the deadline starting over whenever `answer` says
+   * more of the answer arrived.
    */
   async function send<T>(
     input: {
@@ -521,9 +522,9 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       readonly body?: unknown;
       readonly accept?: string;
       readonly signal?: AbortSignal | undefined;
-      readonly deadline?: "answer" | "headers";
+      readonly deadline?: "answer" | "idle";
     },
-    answer: (response: Response) => Promise<T>,
+    answer: (response: Response, arrived: () => void) => Promise<T>,
   ): Promise<T> {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(input.query ?? {})) {
@@ -533,10 +534,11 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     const caller = input.signal ?? options.signal;
     // A write Gitea is slow to answer may still land: ending it would report a merge or a tag as
     // failed that then exists. Only a read has a deadline.
-    const { signal, started, done } =
+    const { signal, rearm, done } =
       input.method === "GET"
         ? withDeadline(caller)
-        : { signal: caller, started: () => undefined, done: () => undefined };
+        : { signal: caller, rearm: () => undefined, done: () => undefined };
+    const arrived = input.deadline === "idle" ? rearm : () => undefined;
     try {
       const response = await options.fetch(`${base}${input.path}${suffix}`, {
         method: input.method,
@@ -548,8 +550,8 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
         ...(signal === undefined ? {} : { signal }),
       });
-      if (input.deadline === "headers") started();
-      return await answer(response);
+      arrived();
+      return await answer(response, arrived);
     } finally {
       done();
     }
@@ -902,43 +904,63 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           method: "GET",
           path: `/repos/${enc(owner)}/${enc(repo)}/actions/jobs/${jobId}/logs`,
           accept: "text/plain",
-          // A job's log can run to megabytes; on a slow link its body alone outlasts the deadline.
-          deadline: "headers",
+          // A job's log can run to megabytes; on a slow link its body alone outlasts the deadline,
+          // so only a log that stops arriving ends.
+          deadline: "idle",
         },
-        async (response) => {
+        async (response, arrived) => {
           if (!response.ok) await fail(response, "hand over the logs");
-          return response.text();
+          return textOf(response, arrived);
         },
       ),
   };
 }
 
+/** The body as text, saying each time more of it arrived. */
+async function textOf(response: Response, arrived: () => void): Promise<string> {
+  if (response.body === null) return response.text();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    arrived();
+    text += decoder.decode(value, { stream: true });
+  }
+}
+
 /**
  * The caller's signal, ended as well by {@link GITEA_REQUEST_DEADLINE_MS} as a `TimeoutError`.
- * `started` lets the deadline go and keeps the caller's signal; `done` lets both go once the
- * answer has been read.
+ * `rearm` starts the deadline over; `done` lets it and the caller's signal go once the answer has
+ * been read.
  */
 function withDeadline(caller: AbortSignal | undefined): {
   readonly signal: AbortSignal;
-  readonly started: () => void;
+  readonly rearm: () => void;
   readonly done: () => void;
 } {
   const controller = new AbortController();
-  // @effect-diagnostics-next-line globalTimers:off -- plain promises: a read's deadline, no Effect runtime here.
-  const timer = setTimeout(() => {
+  const expire = () => {
     controller.abort(
       new DOMException(
         `Gitea did not answer within ${String(GITEA_REQUEST_DEADLINE_MS / 1000)} s.`,
         "TimeoutError",
       ),
     );
-  }, GITEA_REQUEST_DEADLINE_MS);
+  };
+  // @effect-diagnostics-next-line globalTimers:off -- plain promises: a read's deadline, no Effect runtime here.
+  let timer = setTimeout(expire, GITEA_REQUEST_DEADLINE_MS);
   const onCaller = () => controller.abort(caller?.reason);
   if (caller?.aborted === true) onCaller();
   else caller?.addEventListener("abort", onCaller, { once: true });
   return {
     signal: controller.signal,
-    started: () => clearTimeout(timer),
+    rearm: () => {
+      clearTimeout(timer);
+      // @effect-diagnostics-next-line globalTimers:off -- plain promises: a read's deadline, no Effect runtime here.
+      timer = setTimeout(expire, GITEA_REQUEST_DEADLINE_MS);
+    },
     done: () => {
       clearTimeout(timer);
       caller?.removeEventListener("abort", onCaller);
