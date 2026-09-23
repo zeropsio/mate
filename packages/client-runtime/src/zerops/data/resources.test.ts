@@ -260,6 +260,91 @@ describe("makeZeropsResourceBroker", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("an idle lease retains its value for the retention window", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      // Every read after the first waits for the test to let it answer.
+      const gates = [yield* Deferred.make<void>(), yield* Deferred.make<void>()];
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({
+          readOrganizationLocations: () =>
+            Effect.gen(function* () {
+              reads += 1;
+              const name = `Prague ${reads}`;
+              if (reads > 1) yield* Deferred.await(gates[reads - 2]!);
+              return [{ ...PRAGUE, name }];
+            }),
+        }),
+      });
+      const request = locationsRequest(scope);
+      const firstScope = yield* Scope.make();
+      const first = yield* broker.acquire(request).pipe(Scope.provide(firstScope));
+      expect(yield* first.awaitSettled).toMatchObject({ state: "known" });
+      yield* Scope.close(firstScope, Exit.void);
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 1, leases: 0, known: 1 });
+
+      // A demand inside the window shows the retained value at once, and reads again under it.
+      yield* TestClock.adjust(10 * MINUTE_MS - 1);
+      yield* Effect.yieldNow;
+      const secondScope = yield* Scope.make();
+      const second = yield* broker.acquire(request).pipe(Scope.provide(secondScope));
+      expect(yield* second.snapshot).toMatchObject({
+        state: "known",
+        value: [{ name: "Prague 1" }],
+        freshness: { kind: "revalidating" },
+      });
+      yield* Deferred.succeed(gates[0]!, undefined);
+      expect(yield* second.awaitSettled).toMatchObject({
+        state: "known",
+        value: [{ name: "Prague 2" }],
+        freshness: { kind: "settled" },
+      });
+      yield* Scope.close(secondScope, Exit.void);
+
+      // The window restarts at the last release; past it the entry is gone.
+      yield* TestClock.adjust(10 * MINUTE_MS - 1);
+      yield* Effect.yieldNow;
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 1 });
+      yield* TestClock.adjust(1);
+      yield* Effect.yieldNow;
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 0 });
+      const thirdScope = yield* Scope.make();
+      const third = yield* broker.acquire(request).pipe(Scope.provide(thirdScope));
+      expect(yield* third.snapshot).toMatchObject({ state: "reading", attempt: 1 });
+      yield* Deferred.succeed(gates[1]!, undefined);
+      expect(yield* third.awaitSettled).toMatchObject({ value: [{ name: "Prague 3" }] });
+      expect(reads).toBe(3);
+      yield* Scope.close(thirdScope, Exit.void);
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a lapse erases a value retained with no demand", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let access: AccessState = verifiedAccess(scope, 15 * MINUTE_MS);
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => access,
+        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed([PRAGUE]) }),
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      expect((yield* lease.awaitSettled).state).toBe("known");
+      yield* Scope.close(leaseScope, Exit.void);
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 1, known: 1 });
+
+      access = expiredAccess(scope, 15 * MINUTE_MS);
+      yield* broker.reconcileAccess;
+
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 0, known: 0 });
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("a non-retryable failure waits for a user retry", () =>
     Effect.gen(function* () {
       const scope = accountScope();

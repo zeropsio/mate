@@ -214,9 +214,13 @@ export interface ZeropsResourceBrokerOptions {
   /** Dynamic account access owned by the parent runtime. */
   readonly access: () => AccessState;
   readonly maxEntries?: number;
+  /** How long a resource no one demands keeps its value (DESIGN §5 L2). */
+  readonly idleRetentionMs?: number;
   /** The jitter source of the retry policy. */
   readonly random?: () => number;
 }
+
+export const RESOURCE_IDLE_RETENTION_MS = 10 * 60_000;
 
 type AnyResourceValue = ZeropsResourceValues[ZeropsResourceKind];
 type AnyShown = Shown<AnyResourceValue>;
@@ -243,6 +247,8 @@ interface ResourceEntry {
   backoff: Backoff;
   /** The wake at the failed read's `retryAt`, while demanded. */
   retryWake: Fiber.Fiber<void> | null;
+  /** The end of the idle retention window, while nothing demands the entry. */
+  evictionWake: Fiber.Fiber<void> | null;
 }
 
 /** What an open demand answers to its holder. */
@@ -471,6 +477,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   const clock = yield* Clock.Clock;
   const now = () => clock.currentTimeMillisUnsafe();
   const random = options.random ?? Math.random;
+  const idleRetentionMs = options.idleRetentionMs ?? RESOURCE_IDLE_RETENTION_MS;
   const entries = new Map<ZeropsResourceKey, ResourceEntry>();
   const atoms = new Map<ZeropsResourceKey, Atom.Atom<AnyShown>>();
   let nextDemandId = 0;
@@ -509,11 +516,53 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     inFlight.fiber?.interruptUnsafe();
   };
 
+  const cancelEviction = (entry: ResourceEntry): void => {
+    entry.evictionWake?.interruptUnsafe();
+    entry.evictionWake = null;
+  };
+
+  /** Ends the entry's identity: a later demand starts a new one at `unread`. */
   const dispose = (entry: ResourceEntry): void => {
     if (entries.get(entry.key) !== entry) return;
     entries.delete(entry.key);
     atoms.delete(entry.key);
+    cancelEviction(entry);
     abortRead(entry);
+  };
+
+  /**
+   * The last demand went: a held value stays for the retention window (and a
+   * revalidation in flight may still land in it), anything else goes now.
+   */
+  const idle = (entry: ResourceEntry): void => {
+    cancelRetry(entry);
+    if (entry.cell.held.state !== "known" || entry.cell.withheld !== null) {
+      dispose(entry);
+      return;
+    }
+    // Map order is idle order: the entry idle longest is evicted first at capacity.
+    entries.delete(entry.key);
+    entries.set(entry.key, entry);
+    entry.evictionWake = fork(
+      Effect.sleep(Duration.millis(idleRetentionMs)).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            entry.evictionWake = null;
+            if (entry.demands.size === 0) dispose(entry);
+          }),
+        ),
+      ),
+    );
+  };
+
+  /** Makes room for a new key by ending the identity idle longest; `false` when every entry is demanded. */
+  const evictIdle = (): boolean => {
+    for (const entry of entries.values()) {
+      if (entry.demands.size > 0) continue;
+      dispose(entry);
+      return true;
+    }
+    return false;
   };
 
   const completeRead = (
@@ -614,8 +663,16 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     );
   };
 
-  /** Brings one entry in line with the access: withheld, or admitted and read when it holds nothing. */
-  function reconcile(entry: ResourceEntry, access: AccessState, nowMs: number): void {
+  /**
+   * Brings one entry in line with the access: withheld, or admitted and read
+   * when it holds nothing. A new demand also revalidates a retained value.
+   */
+  function reconcile(
+    entry: ResourceEntry,
+    access: AccessState,
+    nowMs: number,
+    newlyDemanded = false,
+  ): void {
     const admission = resourceAdmission(options.scope, access, entry.request, nowMs);
     if (admission.kind === "withheld") {
       withhold(entry, admission.reason);
@@ -623,7 +680,10 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     }
     scheduleAccessDeadline(admission.deadlineMs);
     if (entry.cell.withheld !== null) apply(entry, { kind: "restore-authority" });
-    if (entry.inFlight === null && entry.cell.held.state === "unread") startRead(entry);
+    const held = entry.cell.held.state;
+    if (entry.inFlight === null && (held === "unread" || (newlyDemanded && held === "known"))) {
+      startRead(entry);
+    }
   }
 
   /** Reads a failed resource again, under the access that holds now. */
@@ -671,7 +731,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     const key = zeropsResourceKeyOf(request);
     let entry = entries.get(key);
     if (entry === undefined) {
-      if (entries.size >= maxEntries) return admissionError("account-capacity");
+      if (entries.size >= maxEntries && !evictIdle()) return admissionError("account-capacity");
       const cell = newCell<AnyResourceValue>(cellScopeOf(request));
       entry = {
         key,
@@ -682,13 +742,17 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
         inFlight: null,
         backoff: INITIAL_BACKOFF,
         retryWake: null,
+        evictionWake: null,
       };
       entries.set(key, entry);
     }
     const held = entry;
     const id = ++nextDemandId;
     held.demands.set(id, demand);
-    if (held.demands.size === 1) reconcile(held, options.access(), now());
+    if (held.demands.size === 1) {
+      cancelEviction(held);
+      reconcile(held, options.access(), now(), true);
+    }
     const active = () => !closed && held.demands.has(id);
     return {
       key,
@@ -700,7 +764,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
       },
       release: () => {
         if (!held.demands.delete(id) || held.demands.size > 0) return;
-        dispose(held);
+        idle(held);
       },
     };
   };
@@ -812,6 +876,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     entries.clear();
     atoms.clear();
     for (const entry of current) {
+      cancelEviction(entry);
       abortRead(entry);
       entry.cell = newCell(entry.cell.scope);
       entry.shown = ACCOUNT_CLOSED;
