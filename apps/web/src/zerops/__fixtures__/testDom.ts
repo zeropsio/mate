@@ -78,3 +78,28 @@ export class TestNode extends EventTarget {
   setAttribute() {}
   removeAttribute() {}
 }
+
+/** Every element under `root` with this tag, in document order. */
+export function elementsOf(root: TestNode, tagName: string): ReadonlyArray<TestNode> {
+  return root.childNodes.flatMap((child) => [
+    ...(child.tagName === tagName.toUpperCase() ? [child] : []),
+    ...elementsOf(child, tagName),
+  ]);
+}
+
+/** The buttons under `root` whose text is `label`. */
+export function buttonsLabelled(root: TestNode, label: string): ReadonlyArray<TestNode> {
+  return elementsOf(root, "button").filter((button) => button.textContent.trim() === label);
+}
+
+/**
+ * Presses a button the way React sees it: the node carries its current props
+ * under React's private key, and the test DOM dispatches no synthetic events.
+ */
+export function press(button: TestNode): void {
+  const propsKey = Object.keys(button).find((key) => key.startsWith("__reactProps$"));
+  const props = propsKey === undefined ? undefined : (button as never)[propsKey];
+  const onClick = (props as { readonly onClick?: () => void } | undefined)?.onClick;
+  if (onClick === undefined) throw new Error(`"${button.textContent}" has no click handler.`);
+  onClick();
+}

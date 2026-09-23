@@ -14,7 +14,7 @@ import type {
   BrowserSignal,
   HarnessTab,
 } from "@t3tools/client-runtime/zerops/testing";
-import { act, createElement, useEffect } from "react";
+import { act, createElement, Fragment, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { vi } from "vite-plus/test";
 
@@ -55,6 +55,10 @@ export interface MountedTab {
   readonly session: () => ZeropsSessionValue;
   /** The account lifetime this tab's page has open, or `null`. */
   readonly accountId: () => string | null;
+  /** What a person reads on the tab's page. */
+  readonly text: () => string;
+  /** The page's root node, to find a control on it. */
+  readonly container: () => TestNode;
   /** Runs page code (a session call, a click) in this tab, inside React's act. */
   readonly run: <T>(work: () => T | Promise<T>) => Promise<T>;
   readonly unmount: () => Promise<void>;
@@ -63,6 +67,11 @@ export interface MountedTab {
 export interface MountTabOptions {
   /** The path the page opens at. */
   readonly path?: string;
+  /**
+   * The page below the session provider. It is built on every open, after
+   * the tab's module graph is reset, so it imports what it renders itself.
+   */
+  readonly page?: () => Promise<ReactNode>;
 }
 
 function tabWindow(tab: HarnessTab, path: string, reload: () => void) {
@@ -86,7 +95,10 @@ function tabWindow(tab: HarnessTab, path: string, reload: () => void) {
   return window;
 }
 
-/** Opens `tab`'s page: a `ZeropsSessionProvider` over the tab's storage and the harness platform. */
+/**
+ * Opens `tab`'s page: a `ZeropsSessionProvider` over the tab's storage and the
+ * harness platform, with `page` below it.
+ */
 export async function mountTab(
   harness: AccountHarness,
   tab: HarnessTab,
@@ -95,6 +107,7 @@ export async function mountTab(
   let root: Root | null = null;
   let graph: TabGraph | null = null;
   let session: ZeropsSessionValue | null = null;
+  let container: TestNode | null = null;
   const window = tabWindow(tab, options.path ?? "/zerops", () => {
     if (tab.reloads >= RELOAD_LOOP) throw new Error(`${tab.id} reloads in a loop.`);
     const reload = reloadPage().finally(() => reloading.delete(reload));
@@ -121,6 +134,7 @@ export async function mountTab(
   async function openPage() {
     activate();
     graph = await loadTabGraph();
+    const below = options.page === undefined ? null : await options.page();
     const { ZeropsSessionProvider, useZeropsSession } = graph;
     function Probe() {
       const value = useZeropsSession();
@@ -131,12 +145,13 @@ export async function mountTab(
     }
     tab.signals.subscribe(deliver);
     activate();
-    root = createRoot(new TestNode("div", window.document) as never);
+    container = new TestNode("div", window.document);
+    root = createRoot(container as never);
     await act(async () => {
       root!.render(
         createElement(ZeropsSessionProvider, {
           storage: tab.zeropsStorage,
-          children: createElement(Probe),
+          children: createElement(Fragment, null, createElement(Probe), below),
         }),
       );
     });
@@ -166,6 +181,11 @@ export async function mountTab(
       return session;
     },
     accountId: () => graph?.currentAccountId() ?? null,
+    text: () => page.container().textContent,
+    container: () => {
+      if (container === null) throw new Error(`${tab.id} has no page.`);
+      return container;
+    },
     run: async (work) => {
       activate();
       let result!: Awaited<ReturnType<typeof work>>;
