@@ -5,8 +5,10 @@ import { initialContainer, type ContainerMachine } from "./containerMachine.ts";
 import {
   indexDescriptors,
   resolveEnvironment,
+  sweepRead,
   type DescriptorIndex,
   type ResolvedEnvironment,
+  type SweepRead,
 } from "./descriptorIndex.ts";
 import { initialEnvironment, type EnvironmentMachine } from "./environmentMachine.ts";
 import type { ProbeReading } from "./probeStore.ts";
@@ -152,6 +154,46 @@ describe("indexDescriptors", () => {
     const reread = new Map(row.rereadMs === undefined ? [] : [[KEY, at(row.rereadMs)]]);
 
     expect(indexDescriptors(new Map([[KEY, row.machine]]), containers, reread)).toEqual(row.index);
+  });
+});
+
+describe("sweepRead", () => {
+  const ASKED = at(3_000);
+  const ROWS: ReadonlyArray<{
+    readonly name: string;
+    readonly container: ContainerMachine;
+    readonly read: SweepRead;
+  }> = [
+    {
+      name: "a Mate coming up is read on its poll, a poll interval after the failure the sweep saw",
+      container: {
+        ...read({ kind: "unreachable" }, 2_500),
+        state: { level: "booting", since: at(0) },
+      },
+      read: { from: at(4_500), request: false },
+    },
+    {
+      name: "a Mate past its boot budget is read on its overdue poll, never sooner",
+      container: {
+        ...read({ kind: "unreachable" }, 2_500),
+        state: { level: "booting", since: at(0) },
+        overdue: true,
+      },
+      read: { from: at(4_500), request: false },
+    },
+    {
+      name: "a Mate no poll reads, its link up, is read once more now",
+      container: {
+        ...read({ kind: "unreachable" }, 2_500),
+        state: { level: "ready" },
+        connectedSince: at(1_000),
+      },
+      read: { from: ASKED, request: true },
+    },
+  ];
+
+  it.each(ROWS.map((row) => [row.name, row] as const))("%s", (_name, row) => {
+    expect(sweepRead(row.container, ASKED)).toEqual(row.read);
   });
 });
 

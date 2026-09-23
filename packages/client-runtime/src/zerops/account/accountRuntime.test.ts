@@ -1132,67 +1132,39 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  it.effect("a route nothing names reads each present Mate read without an answer once more", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const [down, coming] = [mate("1"), mate("2")];
-        const { rig, environments } = yield* granted([], [down, coming]);
-        const probed = () => rig.probes.map(({ input }) => input);
-        // Unreachable, it boots: read at once, then on the poll's cadence, whose timer never fires here.
-        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-        expect(probed()).toEqual([down.origin, coming.origin, down.origin]);
-
-        environments.setRoute(ENV_A);
-        yield* settle;
-
-        // The unreachable one is read again at once; the unread one is already on its way.
-        expect(probed()).toEqual([down.origin, coming.origin, down.origin, down.origin]);
-
-        // The other one fails too: it is swept once, and the first is not read again for this route.
-        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-        yield* answerProbe(rig, coming.origin, { kind: "unreachable" });
-        yield* answerProbe(rig, coming.origin, { kind: "unreachable" });
-        expect(probed()).toEqual([
-          down.origin,
-          coming.origin,
-          down.origin,
-          down.origin,
-          coming.origin,
-          coming.origin,
-        ]);
-      }),
-    ),
-  );
-
   it.effect(
-    "a route nothing names is answered once each unreachable Mate failed the sweep's read too, never while one comes up",
+    "a route nothing names waits for each unreachable Mate's next poll, and is answered once that read fails too",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
           const [named, down, coming] = [mate("1"), mate("2"), mate("3")];
           const { clock, rig, environments } = yield* granted([], [named, down, coming]);
+          const probed = () => rig.probes.length;
+          const unanswered = () => environments.index().unanswered;
           yield* answerProbe(rig, named.origin, answering(ENV_B, named.projectId));
           // Unreachable, it boots and is read again at once; a Mate still coming up answers /healthz only.
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-          yield* clock.advance(SECOND);
-          const unanswered = () => environments.index().unanswered;
+          const beforeSweep = probed();
 
           environments.setRoute(ENV_A);
           yield* settle;
-          const swept = unanswered();
-          // The read in flight left before the sweep asked: it does not answer for it.
+          const sweptAtOnce = probed() - beforeSweep;
+          // The read that left a moment after the first failure does not answer for the sweep.
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-          const olderRead = unanswered();
+          const aMomentApart = unanswered();
+          // A poll interval on, each landing lets the poll read the other Mate again.
+          yield* clock.advance(2 * SECOND);
+          yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
+          yield* clock.advance(2 * SECOND);
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-          const sweptRead = unanswered();
+          const polled = unanswered();
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
 
-          expect({ swept, olderRead, sweptRead, comingUp: unanswered() }).toEqual({
-            swept: [down.key, coming.key],
-            olderRead: [down.key, coming.key],
-            sweptRead: [coming.key],
+          expect({ sweptAtOnce, aMomentApart, polled, comingUp: unanswered() }).toEqual({
+            sweptAtOnce: 0,
+            aMomentApart: [down.key, coming.key],
+            polled: [coming.key],
             comingUp: [coming.key],
           });
           expect(environments.index().failed).toEqual([down.key, coming.key]);

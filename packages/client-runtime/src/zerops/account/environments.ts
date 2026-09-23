@@ -52,6 +52,7 @@ import {
 import {
   indexDescriptors,
   resolveEnvironment,
+  sweepRead,
   type DescriptorIndex,
 } from "../environments/descriptorIndex.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
@@ -255,7 +256,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const installing = new Map<string, number>();
   /** The origin each target's latest exchange ran at. */
   const exchangedAt = new Map<TargetKey, string>();
-  /** The route a sweep read targets for, and when it asked for each target it read. */
+  /** The route a sweep read targets for, and when each target's read counts from (`sweepRead`). */
   let swept: {
     readonly route: EnvironmentId | null;
     readonly keys: ReadonlyMap<TargetKey, Instant>;
@@ -470,8 +471,9 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /**
    * The route's target, wanted first: the one its record remembers, else the one the descriptor
    * index finds. While nothing names the route's environment, each present target read without
-   * an answer is read once more, once per route (§4.8's sweep): an unreachable one that fails
-   * that read too has answered for the index.
+   * an answer is read once more, once per route (§4.8's sweep, `sweepRead`): on its poll when one
+   * reads it, a poll interval after the failure the sweep saw, else at once. An unreachable one
+   * that fails that read too has answered for the index.
    */
   const updateRoute = () => {
     if (stores === null || closed) return;
@@ -490,12 +492,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (resolved !== undefined) return;
     const unswept = index.failed.filter((failed) => !swept.keys.has(failed));
     if (unswept.length === 0) return;
+    const { containers } = stores;
     const asked = ports.clock.now();
+    const reads = unswept.map((key) => [key, sweepRead(containers.machine(key), asked)] as const);
     swept = {
       route,
-      keys: new Map([...swept.keys, ...unswept.map((key) => [key, asked] as const)]),
+      keys: new Map([...swept.keys, ...reads.map(([key, read]) => [key, read.from] as const)]),
     };
-    for (const failed of unswept) stores.containers.request(failed);
+    for (const [key, read] of reads) if (read.request) containers.request(key);
   };
 
   /**

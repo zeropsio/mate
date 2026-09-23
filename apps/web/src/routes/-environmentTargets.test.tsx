@@ -14,6 +14,7 @@ import {
   routeGatePhrase,
   selectReachability,
   selectRouteGate,
+  sweepRead,
   type ContainerMachine,
   type ContainerStore,
   type ContainerVerdict,
@@ -700,10 +701,15 @@ function descriptorRig(
   >();
   const probed: Array<string> = [];
   const retired: Array<string> = [];
+  const timers = new Set<{ readonly atMs: number; readonly fire: () => void }>();
   const clock = {
     now: () => ({ wall: nowMs, mono: nowMs }),
     random: () => 0.5,
-    setTimer: () => () => undefined,
+    setTimer: (delayMs: number, fire: () => void) => {
+      const timer = { atMs: nowMs + delayMs, fire };
+      timers.add(timer);
+      return () => void timers.delete(timer);
+    },
   };
   let intents: string | null = null;
   const containers: ContainerStore = makeContainerStore({
@@ -769,12 +775,27 @@ function descriptorRig(
     },
     /**
      * Reads these targets again the way the account runtime's sweep does for a route nothing
-     * names: it records when it asked, then asks.
+     * names (`sweepRead`): it records when each read counts from, and asks only for a target no
+     * poll reads.
      */
     sweep: async (keys: ReadonlyArray<string>) => {
-      nowMs += 1_000;
-      shell.reread = new Map([...shell.reread, ...keys.map((key) => [key, clock.now()] as const)]);
-      for (const key of keys) containers.request(key);
+      const asked = clock.now();
+      const reads = keys.map((key) => [key, sweepRead(containers.machine(key), asked)] as const);
+      shell.reread = new Map([
+        ...shell.reread,
+        ...reads.map(([key, read]) => [key, read.from] as const),
+      ]);
+      for (const [key, read] of reads) if (read.request) containers.request(key);
+      await settle();
+    },
+    /** Time passes: every timer that comes due fires, in order. */
+    advance: async (ms: number) => {
+      nowMs += ms;
+      for (const timer of [...timers].toSorted((left, right) => left.atMs - right.atMs)) {
+        if (timer.atMs > nowMs || !timers.has(timer)) continue;
+        timers.delete(timer);
+        timer.fire();
+      }
       await settle();
     },
     /** Fails the probe in flight for this origin the way a dead origin's CORS refusal does. */
@@ -891,14 +912,18 @@ describe("the descriptor index", () => {
     await rig.fail(alsoDead.origin);
     look();
     await rig.sweep([dead.key, alsoDead.key]);
-    // The reads in flight left before the sweep asked: they do not answer for it.
+    const sweptAtOnce = rig.probed.length;
+    // Those reads left a moment after the first failures: they do not answer for the sweep.
     await rig.fail(dead.origin);
     await rig.fail(alsoDead.origin);
     look();
+    // The poll reads each again a poll interval on.
+    await rig.advance(2_000);
     await rig.fail(dead.origin);
     look();
     await rig.fail(alsoDead.origin);
 
+    expect(rig.probed.slice(sweptAtOnce)).toEqual([dead.origin, alsoDead.origin]);
     expect(gates).toEqual(["wait", "wait", "wait"]);
     expect(selectRouteGate(routed.read().target)).toEqual({
       kind: "unavailable",

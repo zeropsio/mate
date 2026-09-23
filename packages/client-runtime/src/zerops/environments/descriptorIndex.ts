@@ -17,18 +17,22 @@
  *   answered and serves nothing here.
  * - A present target's descriptor has answered once its origin was read as Mate (`ready`), as
  *   serving no Mate at all (`predates-mate`), or as failed: unreachable — a network or CORS
- *   failure included — on the read the sweep asked for as well as on the one before it. A Mate
- *   still coming up has not answered: it is there, and its descriptor is on its way. A failed read
- *   names no environment, and the sweep reads it again. An environment nothing names stays
- *   undecided while any present target has not answered: "not in your projects" is earned once
- *   every present target answered with another environment or failed.
+ *   failure, or the L7's answer while the container boots — on the sweep's read as well as on the
+ *   one before it. A failed read names no environment, and the sweep reads it again: on the
+ *   target's own poll, so the two failures lie at least a poll interval apart (`sweepRead`); at
+ *   once only for a target no poll reads. A Mate that answers `/healthz` and not its descriptor
+ *   (`initializing`) never answers the sweep: it is there, and its descriptor is on its way. An
+ *   environment nothing names stays undecided while any present target has not answered: "not in
+ *   your projects" is earned once every present target answered with another environment or
+ *   failed.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { Instant } from "../data/access/grant.ts";
-import type { ContainerMachine } from "./containerMachine.ts";
+import { probeCadence, type ContainerMachine } from "./containerMachine.ts";
 import type { EnvironmentMachine } from "./environmentMachine.ts";
 import type { TargetKey } from "./exchangeDriver.ts";
+import { POLL_INTERVAL_MS } from "./probeStore.ts";
 import { selectReachability, type Reachability } from "./reachability.ts";
 
 export interface DescriptorIndex {
@@ -38,7 +42,7 @@ export interface DescriptorIndex {
   readonly reported: ReadonlyMap<TargetKey, EnvironmentId>;
   /**
    * Present targets whose descriptor has not answered: unread — the container store reads every
-   * target it lists —, still coming up, or unreachable on a read older than the sweep's.
+   * target it lists —, initializing, or unreachable on a read that left before the sweep's.
    */
   readonly unanswered: ReadonlyArray<TargetKey>;
   /** Present targets whose last read failed, coming up or unreachable: the ones a sweep reads again. */
@@ -51,9 +55,38 @@ const projectOf = (key: TargetKey): string => key.split(":")[0] ?? key;
 const sentSince = (sentAt: Instant, since: Instant): boolean =>
   sentAt.wall >= since.wall && sentAt.mono >= since.mono;
 
+/** How the sweep reads a failed target again: the earliest read that counts, and whether to ask. */
+export interface SweepRead {
+  /** A failed read sent from this instant on is the sweep's. */
+  readonly from: Instant;
+  /** Ask the probe store now: nothing else reads this target again. */
+  readonly request: boolean;
+}
+
 /**
- * Every present target's descriptor as the container store last read it; `reread` holds when the
- * sweep asked for each target it reads again.
+ * The sweep's read of a target whose last read failed (§4.8), asked at `asked`. A target its
+ * container polls is read on that poll's ladder, never sooner than a poll interval after the
+ * failure the sweep saw: a Mate that fails fast while it boots is not answered by reads sent a
+ * moment apart. A target nothing polls — its link is up — is read once more now.
+ */
+export function sweepRead(container: ContainerMachine | undefined, asked: Instant): SweepRead {
+  const failedAt = container?.reading?.sentAt;
+  if (
+    container === undefined ||
+    failedAt === undefined ||
+    probeCadence(container).kind !== "poll"
+  ) {
+    return { from: asked, request: true };
+  }
+  return {
+    from: { wall: failedAt.wall + POLL_INTERVAL_MS, mono: failedAt.mono + POLL_INTERVAL_MS },
+    request: false,
+  };
+}
+
+/**
+ * Every present target's descriptor as the container store last read it; `reread` holds, for each
+ * target the sweep reads again, the instant its read counts from (`sweepRead`).
  */
 export function indexDescriptors(
   environments: ReadonlyMap<TargetKey, EnvironmentMachine>,
