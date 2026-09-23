@@ -42,6 +42,12 @@ interface FakeTerminalManager {
   >;
   /** Delivers one `output` chunk to whatever session is currently attached to (threadId, terminalId). A no-op if nothing is attached. */
   readonly emit: (threadId: string, terminalId: string, data: string) => Effect.Effect<void>;
+  /** Delivers the terminal's `exited` event, the way the manager does when its process ends. */
+  readonly exit: (
+    threadId: string,
+    terminalId: string,
+    ended: { readonly exitCode: number | null; readonly exitSignal: number | null },
+  ) => Effect.Effect<void>;
 }
 
 interface CloseRecord {
@@ -116,7 +122,15 @@ const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
         }
       });
 
-    return { service, writes, closed, opened, emit } satisfies FakeTerminalManager;
+    const exit: FakeTerminalManager["exit"] = (threadId, terminalId, ended) =>
+      Effect.gen(function* () {
+        const listener = listeners.get(sessionKey(threadId, terminalId));
+        if (listener !== undefined) {
+          yield* listener({ type: "exited", threadId, terminalId, ...ended });
+        }
+      });
+
+    return { service, writes, closed, opened, emit, exit } satisfies FakeTerminalManager;
   });
 
 interface FakeAuth {
@@ -164,7 +178,8 @@ it.effect("start opens a dedicated terminal, writes the login command, and reach
 
       const writes = yield* Ref.get(fakeTerminal.writes);
       assert.equal(writes.length, 1);
-      assert.equal(writes[0]?.data, "claude /login\r");
+      // The shell ends with the CLI, so the terminal's exit is the login's.
+      assert.equal(writes[0]?.data, "claude /login; exit\r");
 
       const logins = yield* feed.latest;
       assert.equal(loginOf(logins, "claude-code")?.phase, "menu");
@@ -485,6 +500,93 @@ it.effect("asks the auth feed to republish when a login succeeds", () =>
       );
 
       assert.deepEqual(yield* Ref.get(fakeAuth.calls), ["claude-code"]);
+    }),
+  ),
+);
+
+// A login whose CLI ended without the walker seeing success or failure (it
+// crashed, was killed, printed something unrecognized and quit) must not sit
+// in `menu` or `awaiting-browser` for ever: the terminal's exit ends it.
+it.effect("a login whose process ends before it finished is failed with how it ended", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const fakeAuth = yield* makeFakeAuth();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: fakeAuth,
+        isZeropsEnvironment: true,
+      });
+
+      yield* feed.start("codex", "thread-1", "user-test");
+      assert.equal(loginOf(yield* feed.latest, "codex")?.phase, "menu");
+
+      yield* fakeTerminal.exit("thread-1", "agent-login-codex", { exitCode: 1, exitSignal: null });
+
+      const login = loginOf(yield* feed.latest, "codex");
+      assert.equal(login?.phase, "failed");
+      assert.equal(
+        login?.message,
+        "The sign-in ended before it finished (exit code 1). Start it again.",
+      );
+      assert.deepEqual(yield* Ref.get(fakeAuth.calls), []);
+
+      // Over: a new start opens a fresh terminal rather than re-attaching.
+      yield* feed.start("codex", "thread-1", "user-test");
+      assert.equal((yield* Ref.get(fakeTerminal.opened)).length, 2);
+      assert.equal(loginOf(yield* feed.latest, "codex")?.phase, "menu");
+    }),
+  ),
+);
+
+it.effect("a login ended by a signal says so", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const fakeAuth = yield* makeFakeAuth();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: fakeAuth,
+        isZeropsEnvironment: true,
+      });
+
+      yield* feed.start("claude-code", "thread-1", "user-test");
+      yield* fakeTerminal.exit("thread-1", "agent-login-claude-code", {
+        exitCode: null,
+        exitSignal: 9,
+      });
+
+      assert.equal(
+        loginOf(yield* feed.latest, "claude-code")?.message,
+        "The sign-in ended before it finished (signal 9). Start it again.",
+      );
+    }),
+  ),
+);
+
+it.effect("an exit after the login succeeded changes nothing", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const fakeAuth = yield* makeFakeAuth();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: fakeAuth,
+        isZeropsEnvironment: true,
+      });
+
+      yield* feed.start("claude-code", "thread-1", "user-test");
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-claude-code",
+        "Login successful. Press Enter to continue…\n",
+      );
+      yield* fakeTerminal.exit("thread-1", "agent-login-claude-code", {
+        exitCode: 0,
+        exitSignal: null,
+      });
+
+      assert.equal(loginOf(yield* feed.latest, "claude-code")?.phase, "succeeded");
     }),
   ),
 );

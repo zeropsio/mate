@@ -18,7 +18,11 @@
  *
  * Every `start` begins in a fresh terminal: the previous attempt's CLI may
  * still be running (a wrong code leaves Claude at "Press Enter to retry"), and
- * a login command typed into it would land in its prompt.
+ * a login command typed into it would land in its prompt. The command is
+ * written as `<login command>; exit`, so the terminal's process ends with the
+ * CLI: an exit the walker has not already turned into `succeeded` or `failed`
+ * fails the login with how it ended, instead of leaving it at `menu` or
+ * `awaiting-browser` with nothing left to answer it.
  *
  * Each agent gets at most one active session at a time (`start` on an agent
  * with a session already running just re-attaches to it — same
@@ -208,6 +212,17 @@ interface ActiveSession {
   readonly startedBy: string;
 }
 
+/** How a login process ended, for the message a failed login carries. */
+const exitDetail = (ended: {
+  readonly exitCode: number | null;
+  readonly exitSignal: number | null;
+}): string =>
+  ended.exitCode !== null
+    ? `exit code ${ended.exitCode}`
+    : ended.exitSignal !== null
+      ? `signal ${ended.exitSignal}`
+      : "no exit status";
+
 const appendAndTrim = (buffer: string, chunk: string): string => {
   const next = buffer + chunk;
   return next.length > MAX_BUFFER_LENGTH ? next.slice(-BUFFER_TRIM_KEEP) : next;
@@ -360,6 +375,32 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
       });
 
+    /**
+     * The login's process ended while the walker still waited on it — it
+     * crashed, was killed, or quit on a screen the walker did not recognize.
+     * The login is over: nothing it printed later could move it on.
+     */
+    const handleExit = (
+      agentId: ZeropsAgentId,
+      token: symbol,
+      ended: { readonly exitCode: number | null; readonly exitSignal: number | null },
+    ): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const session = sessions.get(agentId);
+        if (session === undefined || session.token !== token) {
+          return;
+        }
+        disposeSession(agentId, token);
+        const before = (yield* Ref.get(state)).logins[agentId];
+        yield* setLoginState(agentId, {
+          phase: "failed",
+          message: `The sign-in ended before it finished (${exitDetail(ended)}). Start it again.`,
+          terminalId: session.terminalId,
+          startedAt: before?.startedAt ?? (yield* DateTime.now),
+          startedBy: session.startedBy,
+        });
+      });
+
     const attachTerminalListener = (
       agentId: ZeropsAgentId,
       token: symbol,
@@ -369,7 +410,11 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       terminalManager.attachStream(
         { threadId, terminalId } satisfies TerminalAttachInput,
         (event) =>
-          event.type === "output" ? handleOutputChunk(agentId, token, event.data) : Effect.void,
+          event.type === "output"
+            ? handleOutputChunk(agentId, token, event.data)
+            : event.type === "exited"
+              ? handleExit(agentId, token, event)
+              : Effect.void,
       );
 
     const start = (
@@ -400,10 +445,12 @@ export const make = (options: ZeropsAgentLoginOptions) =>
             terminalId,
             cwd: AGENT_LOGIN_CWD,
           } satisfies TerminalOpenInput);
+          // The shell exits with the CLI, so the terminal's own `exited`
+          // event is the end of the login process, however it ended.
           yield* terminalManager.write({
             threadId,
             terminalId,
-            data: `${ZEROPS_AGENT_LOGIN_COMMANDS[agentId]}\r`,
+            data: `${ZEROPS_AGENT_LOGIN_COMMANDS[agentId]}; exit\r`,
           } satisfies TerminalWriteInput);
 
           const bufferRef = yield* Ref.make("");
