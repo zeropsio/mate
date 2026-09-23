@@ -10,6 +10,7 @@ export * from "./platformProtocol.ts";
 export * from "./platformSocket.ts";
 export * from "./policy.ts";
 export * from "./projection.ts";
+export * from "./registry.ts";
 export * from "./resourceRestAdapter.ts";
 export * from "./resourceSelectors.ts";
 export * from "./resources.ts";
