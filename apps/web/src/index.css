@@ -1203,9 +1203,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      palette's amber "attention" (design-system.md, 2026-09-09). */
   --zerops-update-role: #0f8f83;
   /* Provider authorization keeps a console-like surface in both app themes;
-     naming the palette here prevents one-off dark colors in components. */
-  --zerops-auth-terminal-surface: #0b0c14;
-  --zerops-auth-terminal-header: #12131c;
+     naming the palette here prevents one-off dark colors in components. The
+     surfaces are the dark palette's canvas and card, not a navy of their own
+     that stood out against every teal-grey beside it. */
+  --zerops-auth-terminal-surface: #0c0f0e;
+  --zerops-auth-terminal-header: #141918;
   --zerops-auth-terminal-border: rgb(255 255 255 / 8%);
   --zerops-auth-terminal-text: #d4d4d8;
   --zerops-auth-terminal-muted: #a1a1aa;
