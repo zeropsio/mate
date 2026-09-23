@@ -509,7 +509,10 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
   const base = `${options.origin.trim().replace(/\/+$/u, "")}${API_PREFIX}`;
   const tokenOf = () => (typeof options.token === "function" ? options.token() : options.token);
 
-  /** Sends one request and reads its answer with `answer`, both inside a read's deadline. */
+  /**
+   * Sends one request and reads its answer with `answer`, both inside a read's deadline — or, for
+   * a read whose `deadline` is `"headers"`, only until Gitea starts answering.
+   */
   async function send<T>(
     input: {
       readonly method: string;
@@ -518,6 +521,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       readonly body?: unknown;
       readonly accept?: string;
       readonly signal?: AbortSignal | undefined;
+      readonly deadline?: "answer" | "headers";
     },
     answer: (response: Response) => Promise<T>,
   ): Promise<T> {
@@ -529,8 +533,10 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     const caller = input.signal ?? options.signal;
     // A write Gitea is slow to answer may still land: ending it would report a merge or a tag as
     // failed that then exists. Only a read has a deadline.
-    const { signal, done } =
-      input.method === "GET" ? withDeadline(caller) : { signal: caller, done: () => undefined };
+    const { signal, started, done } =
+      input.method === "GET"
+        ? withDeadline(caller)
+        : { signal: caller, started: () => undefined, done: () => undefined };
     try {
       const response = await options.fetch(`${base}${input.path}${suffix}`, {
         method: input.method,
@@ -542,6 +548,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
         ...(signal === undefined ? {} : { signal }),
       });
+      if (input.deadline === "headers") started();
       return await answer(response);
     } finally {
       done();
@@ -895,6 +902,8 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           method: "GET",
           path: `/repos/${enc(owner)}/${enc(repo)}/actions/jobs/${jobId}/logs`,
           accept: "text/plain",
+          // A job's log can run to megabytes; on a slow link its body alone outlasts the deadline.
+          deadline: "headers",
         },
         async (response) => {
           if (!response.ok) await fail(response, "hand over the logs");
@@ -906,10 +915,12 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
 
 /**
  * The caller's signal, ended as well by {@link GITEA_REQUEST_DEADLINE_MS} as a `TimeoutError`.
- * `done` lets both go once the answer has been read.
+ * `started` lets the deadline go and keeps the caller's signal; `done` lets both go once the
+ * answer has been read.
  */
 function withDeadline(caller: AbortSignal | undefined): {
   readonly signal: AbortSignal;
+  readonly started: () => void;
   readonly done: () => void;
 } {
   const controller = new AbortController();
@@ -927,6 +938,7 @@ function withDeadline(caller: AbortSignal | undefined): {
   else caller?.addEventListener("abort", onCaller, { once: true });
   return {
     signal: controller.signal,
+    started: () => clearTimeout(timer),
     done: () => {
       clearTimeout(timer);
       caller?.removeEventListener("abort", onCaller);

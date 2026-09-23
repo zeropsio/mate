@@ -339,9 +339,12 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     });
   }
 
-  it("a read Gitea has not answered in 15 s ends as a timeout", async () => {
+  it.each([
+    { what: "a read", read: (client: GiteaClient) => client.listTags("acme", "group") },
+    { what: "a job's log", read: (client: GiteaClient) => client.actionJobLogs("acme", "app", 7) },
+  ])("$what Gitea has not answered in 15 s ends as a timeout", async ({ read: send }) => {
     vi.useFakeTimers();
-    const read = silent().listTags("acme", "group");
+    const read = send(silent());
     const outcome = read.then(
       () => "answered",
       (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
@@ -371,6 +374,35 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     );
     await vi.advanceTimersByTimeAsync(GITEA_REQUEST_DEADLINE_MS * 4);
     expect(settled).toBe(false);
+  });
+
+  it("a job's log Gitea has begun sending may take longer than 15 s to arrive", async () => {
+    vi.useFakeTimers();
+    const client = createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      fetch: async (_input, init) =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(stream) {
+              init?.signal?.addEventListener("abort", () => stream.error(init.signal?.reason));
+              // @effect-diagnostics-next-line globalTimers:off -- the log's body, late on vitest's fake clock.
+              setTimeout(() => {
+                if (init?.signal?.aborted === true) return;
+                stream.enqueue(new TextEncoder().encode("step 1 done\n"));
+                stream.close();
+              }, GITEA_REQUEST_DEADLINE_MS * 3);
+            },
+          }),
+        ),
+    });
+    const logs = client.actionJobLogs("acme", "app", 7);
+    const outcome = logs.then(
+      (text) => text,
+      (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
+    );
+    await vi.advanceTimersByTimeAsync(GITEA_REQUEST_DEADLINE_MS * 3);
+    expect(await outcome).toBe("step 1 done\n");
   });
 
   it("the caller's signal still ends a request before its deadline", async () => {
