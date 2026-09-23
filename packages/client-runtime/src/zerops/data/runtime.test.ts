@@ -30,6 +30,7 @@ import {
   ZeropsServiceId,
   type AccountScope,
   type AdapterError,
+  type DesiredInterestState,
   type ProjectRef,
   type PlatformObservation,
   type ReceiverEvent,
@@ -3720,3 +3721,206 @@ it.effect("aborts an in-flight direct inventory baseline when its final lease is
     registry.dispose();
   }),
 );
+
+describe("I8: after resume every leased interest reaches observing or failed(retryAt)", () => {
+  const policy = makeZeropsDataPolicy({
+    hiddenReceiverPauseAfterMs: 50,
+    recoveryAttemptLimit: 2,
+    recoveryBackoffStartMs: 10,
+    recoveryBackoffMaxMs: 40,
+    establishmentDeadlineMs: 200,
+    httpDeadlineMs: 100,
+  });
+  // Each attempt waits at most its backoff and then its establishment deadline; past the
+  // attempt limit the interest is failed with a retry time. One more round covers the resume.
+  const boundMs =
+    (policy.recoveryAttemptLimit + 2) *
+    (policy.recoveryBackoffMaxMs + policy.establishmentDeadlineMs);
+  const stepMs = 10;
+  const descriptors: ReadonlyArray<RuntimeInterestDescriptor> = [
+    topologyDescriptor,
+    { kind: "project-activity", project: topologyDescriptor.project },
+    { kind: "project-current-metrics", project: topologyDescriptor.project },
+    {
+      kind: "project-process-history",
+      project: topologyDescriptor.project,
+      before: null,
+      limit: 20,
+    },
+  ];
+  const isActivityQuery = (request: RegistrationRequest) =>
+    request.descriptor.kind === "query-membership" &&
+    request.descriptor.query.kind === "running-processes-of-project";
+  const failure = (message: string): AdapterError => ({
+    _tag: "ZeropsDataAdapterError",
+    kind: "registration",
+    message,
+    retryable: true,
+    accountRevocationEvidence: false,
+  });
+
+  // Work sent before the tab hid and settled only after the pause, under the identity the
+  // pause left in place.
+  const inFlight = ["none", "fails after the pause", "succeeds after the pause"] as const;
+  // What the platform does to the attempts the foreground return starts.
+  const faults = [
+    "none",
+    "the receiver fails to open once",
+    "a required registration fails once",
+    "a required registration fails every time",
+    "an optional registration fails every time",
+    "a registration never answers once",
+    "a direct read fails once",
+  ] as const;
+  const hiddenFor = ["past the pause", "shorter than the pause"] as const;
+
+  const reached = (interest: DesiredInterestState["interest"] | undefined): boolean =>
+    interest?.status === "observing" ||
+    (interest?.status === "failed" && interest.retryAtMs !== null);
+
+  for (const pending of inFlight) {
+    for (const fault of faults) {
+      for (const hidden of hiddenFor) {
+        it.effect(`in-flight ${pending}, ${fault}, hidden ${hidden}`, () =>
+          Effect.gen(function* () {
+            const registry = AtomRegistry.make();
+            let resumed = false;
+            let opensAfterResume = 0;
+            let heldRegistration = false;
+            let requiredFailures = 0;
+            let hangs = 0;
+            let readFailures = 0;
+            const registering = yield* Deferred.make<void>();
+            const heldOutcome = yield* Deferred.make<void, AdapterError>();
+            const adapter: ZeropsDataAdapter = {
+              openReceiver: (_scope, organization, identity) => {
+                if (resumed && fault === "the receiver fails to open once") {
+                  opensAfterResume += 1;
+                  if (opensAfterResume === 1)
+                    return Effect.fail({ ...failure("offline"), kind: "socket-open" });
+                }
+                return Effect.succeed({
+                  identity,
+                  organization,
+                  delivery: "hot-single-consumer-buffered-before-open-resolves",
+                  events: Stream.never,
+                } satisfies ReceiverHandle);
+              },
+              register: (_receiver, request) => {
+                const ok = Effect.succeed({ responseObservations: [] });
+                if (!resumed) {
+                  if (pending === "none" || heldRegistration || !isActivityQuery(request))
+                    return ok;
+                  heldRegistration = true;
+                  return Deferred.succeed(registering, undefined).pipe(
+                    Effect.andThen(Deferred.await(heldOutcome)),
+                    Effect.andThen(ok),
+                  );
+                }
+                const isRequired =
+                  request.descriptor.kind === "entity-updates" &&
+                  request.descriptor.entity === "service";
+                if (fault === "a required registration fails once" && isRequired) {
+                  requiredFailures += 1;
+                  if (requiredFailures === 1) return Effect.fail(failure("service feed refused"));
+                }
+                if (fault === "a required registration fails every time" && isRequired)
+                  return Effect.fail(failure("service feed refused"));
+                if (
+                  fault === "an optional registration fails every time" &&
+                  request.descriptor.kind === "current-metrics"
+                )
+                  return Effect.fail(failure("metrics unavailable"));
+                if (fault === "a registration never answers once" && isRequired) {
+                  hangs += 1;
+                  if (hangs === 1) return Effect.never;
+                }
+                return ok;
+              },
+              read: (ticket) => {
+                if (
+                  resumed &&
+                  fault === "a direct read fails once" &&
+                  ticket.target.kind === "project"
+                ) {
+                  readFailures += 1;
+                  if (readFailures === 1)
+                    return Effect.fail({ ...failure("read refused"), kind: "server" });
+                }
+                return Effect.succeed({ observations: [] });
+              },
+              execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+              closeReceiver: () => Effect.void,
+            };
+            const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
+            const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
+            const runtime = yield* makeZeropsDataRuntime({
+              scope: runtimeScope,
+              adapter,
+              atomRegistry: registry,
+              makeOpaqueId: makeIdFactory(),
+              policy,
+              visibility: {
+                current: Ref.get(visibilityState),
+                changes: Stream.fromQueue(visibilityChanges),
+              },
+            });
+            const leaseScope = yield* Scope.make();
+            const leases = yield* Effect.forEach(descriptors, (descriptor) =>
+              runtime.acquire(descriptor).pipe(Scope.provide(leaseScope)),
+            );
+            const arrived = new Set<string>();
+            const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+              if (!resumed) return;
+              for (const lease of leases) {
+                if (reached(state.interests.get(lease.interest)?.interest)) {
+                  arrived.add(lease.interest);
+                }
+              }
+            });
+            if (pending !== "none") yield* Deferred.await(registering);
+            for (let index = 0; index < 20; index++) yield* Effect.yieldNow;
+
+            yield* Ref.set(visibilityState, "hidden");
+            yield* Queue.offer(visibilityChanges, "hidden");
+            if (hidden === "past the pause") {
+              yield* TestClock.adjust(`${policy.hiddenReceiverPauseAfterMs} millis`);
+              for (let index = 0; index < 20; index++) yield* Effect.yieldNow;
+            }
+            if (pending === "fails after the pause")
+              yield* Deferred.fail(heldOutcome, failure("socket closed"));
+            if (pending === "succeeds after the pause")
+              yield* Deferred.succeed(heldOutcome, undefined);
+            for (let index = 0; index < 20; index++) yield* Effect.yieldNow;
+
+            resumed = true;
+            yield* Ref.set(visibilityState, "visible");
+            yield* Queue.offer(visibilityChanges, "visible");
+            for (let elapsed = 0; elapsed <= boundMs; elapsed += stepMs) {
+              for (let index = 0; index < 20; index++) yield* Effect.yieldNow;
+              const state = yield* runtime.state;
+              for (const lease of leases) {
+                if (reached(state.interests.get(lease.interest)?.interest)) {
+                  arrived.add(lease.interest);
+                }
+              }
+              if (arrived.size === leases.length) break;
+              yield* TestClock.adjust(`${stepMs} millis`);
+            }
+
+            const final = yield* runtime.state;
+            const stranded = leases
+              .filter((lease) => !arrived.has(lease.interest))
+              .map((lease) => final.interests.get(lease.interest)?.interest);
+            expect(stranded).toEqual([]);
+
+            yield* runtime.shutdown("application-close");
+            yield* Scope.close(leaseScope, Exit.void);
+            unsubscribe();
+            registry.dispose();
+          }),
+        );
+      }
+    }
+  }
+});
