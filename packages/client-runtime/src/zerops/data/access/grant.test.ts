@@ -905,8 +905,8 @@ describe("access grant invariants over enumerated event sequences", () => {
 
   /**
    * Machines are invariant under a shift of both clocks and of the attempt counter: key nodes by
-   * time relative to `now` and by rounds and reads relative to the next attempt, which the machine
-   * compares only for equality.
+   * time relative to `now`, the published `retryAtMs` wall time included, and by rounds and reads
+   * relative to the next attempt, which the machine compares only for equality.
    */
   const nodeKey = ({ state, now }: GrantNode): string =>
     JSON.stringify(state, function (this: object, key, value: unknown) {
@@ -920,6 +920,8 @@ describe("access grant invariants over enumerated event sequences", () => {
             return state.nextAttempt - value;
           case "attempt":
             return "startedAt" in this ? state.nextAttempt - value : value;
+          case "retryAtMs":
+            return value - now.wall;
           default:
             return value;
         }
