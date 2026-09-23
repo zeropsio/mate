@@ -41,13 +41,13 @@ import { deployWord } from "../groupDeploys.ts";
 import {
   deployedCommit,
   deployedVersion,
-  shortCommit,
   type DeployedVersion,
   type EnvironmentRow,
   type GroupRowTone,
 } from "../groupRows.ts";
 import type { FailureReason, Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
 import { knownPresentation, type KnownSurface } from "../knowledge/presentation.ts";
+import { shortCommit } from "../release.ts";
 
 export type Deployment =
   /** The deployment facet is observed and names no active deploy. */

@@ -17,7 +17,7 @@ import type { GiteaCommit, GiteaCommitStatus, GiteaPullRequest } from "../giteaC
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Shown } from "../knowledge/known.ts";
-import { GROUP_REPOSITORY } from "../projectFlow.ts";
+import { GROUP_REPOSITORY } from "../release.ts";
 import { RECIPE_TIER_PATHS } from "../recipeTier.ts";
 import type { StopService } from "./deployment.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";

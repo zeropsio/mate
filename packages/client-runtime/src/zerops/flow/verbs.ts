@@ -7,7 +7,8 @@
  *
  * @module flow/verbs
  */
-import { GROUP_REPOSITORY, type FlowVerb } from "../projectFlow.ts";
+import type { FlowVerb } from "../projectFlow.ts";
+import { GROUP_REPOSITORY } from "../release.ts";
 
 /** One part of a group's Gitea half. */
 export type ForgeScope =

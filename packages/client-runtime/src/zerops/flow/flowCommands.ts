@@ -30,7 +30,8 @@ import type { GrantCapability } from "../data/access/grant.ts";
 import type { ServiceRef } from "../data/types.ts";
 import { GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
-import { flowVerbKey, GROUP_REPOSITORY } from "../projectFlow.ts";
+import { flowVerbKey } from "../projectFlow.ts";
+import { GROUP_REPOSITORY } from "../release.ts";
 import { RELEASE_NOT_A_RELEASER, releaseMessage, releaseTagName, rollbackTo } from "../release.ts";
 import type { GroupFlow } from "./groupFlow.ts";
 

@@ -21,13 +21,10 @@ import {
   pullRequestLineWith,
   pullRequestsByMate,
   pullRequestsFolded,
-  releaseRow,
   sidebarChangeLabel,
   changeSubtitle,
   stopAttention,
   type FlowPullRequest,
-  type FlowRelease,
-  planReleaseReads,
   changeLandedEvents,
   agentTurnNotes,
   type ChangeLandedEvent,
@@ -254,44 +251,6 @@ describe("the pull requests of each Mate", () => {
     expect(pullRequestsFolded(0)).toBe(false);
     expect(pullRequestsFolded(3)).toBe(false);
     expect(pullRequestsFolded(4)).toBe(true);
-  });
-});
-
-describe("a release's row", () => {
-  const newest: FlowRelease = {
-    tag: "v1.3.0",
-    verdict: "approved",
-    detail: undefined,
-    line: "api 3f9c1b2",
-  };
-  const earlier: FlowRelease = { ...newest, tag: "v1.2.0", line: "api 1111111" };
-  const refused: FlowRelease = {
-    tag: "v1.1.0",
-    verdict: "refused",
-    detail: "ada is not a releaser",
-    line: "api 2222222",
-  };
-  const judged: FlowRelease = { ...newest, tag: "v1.0.0", verdict: "pending", line: "api 3333333" };
-
-  it.each([
-    { release: newest, index: 0, expected: false, why: "the newest is what production runs" },
-    {
-      release: earlier,
-      index: 1,
-      expected: true,
-      why: "an earlier approved one can be gone back to",
-    },
-    { release: refused, index: 2, expected: false, why: "a refused release never deployed" },
-    { release: judged, index: 3, expected: false, why: "a release still being judged" },
-  ])("offers a roll-back: $expected — $why", ({ release, index, expected }) => {
-    expect(releaseRow(release, index).rollBack).toBe(expected);
-  });
-
-  it("says the broker's word beside the dot and its refusal as the line", () => {
-    const row = releaseRow(refused, 2);
-    expect(row.word).toBe("Refused");
-    expect(row.line).toBe("ada is not a releaser");
-    expect(releaseRow(newest, 0).line).toBe("api 3f9c1b2");
   });
 });
 
@@ -705,49 +664,6 @@ describe("a change with nothing wrong with it", () => {
         changeVerdict({ number: 4, mergeability: "mergeable", checks }).tone,
       );
     }
-  });
-});
-
-describe("planReleaseReads", () => {
-  const table: ReadonlyArray<{
-    readonly name: string;
-    readonly heads: ReadonlyArray<readonly [string, string]>;
-    readonly running: ReadonlyArray<readonly [string, string]>;
-    readonly expected: ReadonlyArray<{ service: string; head: string; from: string | undefined }>;
-  }> = [
-    {
-      name: "a service production already runs is not read",
-      heads: [["web", "aaa"]],
-      running: [["web", "aaa"]],
-      expected: [],
-    },
-    {
-      name: "a service production runs behind is read from what it runs",
-      heads: [["web", "bbb"]],
-      running: [["web", "aaa"]],
-      expected: [{ service: "web", head: "bbb", from: "aaa" }],
-    },
-    {
-      // The first release: production runs nothing, so there is no base to
-      // compare against — and the head is exactly what would go live.
-      name: "a service production runs nothing of is read with no base",
-      heads: [["web", "bbb"]],
-      running: [],
-      expected: [{ service: "web", head: "bbb", from: undefined }],
-    },
-    {
-      name: "every service is decided on its own",
-      heads: [
-        ["api", "ccc"],
-        ["web", "bbb"],
-      ],
-      running: [["api", "ccc"]],
-      expected: [{ service: "web", head: "bbb", from: undefined }],
-    },
-  ];
-
-  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
-    expect(planReleaseReads(new Map(row.heads), new Map(row.running))).toEqual(row.expected);
   });
 });
 

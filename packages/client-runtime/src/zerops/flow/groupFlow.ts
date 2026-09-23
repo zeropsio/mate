@@ -35,17 +35,13 @@ import type { MergeState } from "../forge/mergeState.ts";
 import type { GiteaCommit, GiteaCommitStatus, GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
 import {
   environmentTierForRole,
+  missingEnvironmentRows,
   type GroupEnvironment,
   type GroupEnvironmentTier,
+  type MissingEnvironmentRow,
 } from "../groupEnvironments.ts";
 import type { GroupEnvironmentRowInput } from "../groupDeploys.ts";
-import {
-  missingEnvironmentRows,
-  shortCommit,
-  type DeployedVersion,
-  type EnvironmentServiceState,
-  type MissingEnvironmentRow,
-} from "../groupRows.ts";
+import type { DeployedVersion, EnvironmentServiceState } from "../groupRows.ts";
 import type { ZeropsEnvironmentRole } from "../groups.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
@@ -54,20 +50,19 @@ import {
   type KnowledgeSource,
   type KnownAffordance,
 } from "../knowledge/presentation.ts";
-import {
-  GROUP_REPOSITORY,
-  planReleaseReads,
-  releaseRow,
-  type FlowRelease,
-  type FlowReleaseRow,
-} from "../projectFlow.ts";
 import { importReadyTier } from "../recipeTier.ts";
 import {
+  GROUP_REPOSITORY,
   isReleaseTag,
+  planReleaseReads,
   readReleaseMessage,
   readSemver,
   releaseOffer,
+  releaseRow,
   releaseVerdict,
+  shortCommit,
+  type FlowRelease,
+  type FlowReleaseRow,
   type ReleaseGate,
 } from "../release.ts";
 import type { Deployment, StopService } from "./deployment.ts";

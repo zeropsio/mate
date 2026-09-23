@@ -25,7 +25,8 @@
  */
 
 import type { GiteaCommit, GiteaTag } from "./giteaClient.ts";
-import { environmentNameUnderGroup, shortCommit } from "./groupRows.ts";
+import { environmentNameUnderGroup } from "./groupRows.ts";
+import { shortCommit } from "./release.ts";
 import { mateProjectOfLogin } from "./mateIdentity.ts";
 import { isReleaseTag, readReleaseMessage, readSemver } from "./release.ts";
 
