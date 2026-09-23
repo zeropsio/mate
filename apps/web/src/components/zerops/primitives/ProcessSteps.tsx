@@ -72,24 +72,70 @@ const REDUNDANT_STATE_LABELS: ReadonlySet<string> = new Set(["Done", "Waiting"])
 
 type ProcessStepsProps = Omit<React.ComponentProps<"ol">, "children"> & {
   readonly steps: ReadonlyArray<ProcessStep>;
+  /**
+   * `default` is a process timeline: ringed glyphs, the state on its own
+   * line. `compact` is a list of results inside a card: a bare glyph and the
+   * state in the same line, so five green rings do not outweigh the words.
+   */
+  readonly density?: "default" | "compact";
 };
 
 function ProcessSteps({
   "aria-label": ariaLabel = "Process steps",
   className,
+  density = "default",
   steps,
   ...props
 }: ProcessStepsProps) {
+  const compact = density === "compact";
   return (
     <ol
       {...props}
       aria-label={ariaLabel}
-      className={cn("space-y-2", className)}
+      className={cn(compact ? "space-y-1" : "space-y-2", className)}
       data-zerops-primitive="process-steps"
+      data-zerops-process-density={density}
     >
       {steps.map((step) => {
         const { icon, className: glyphClassName, tone } = PRESENTATION[step.state];
         const Icon = ICON_COMPONENT[icon];
+        const showStateLabel = !REDUNDANT_STATE_LABELS.has(step.stateLabel);
+
+        if (compact) {
+          return (
+            <li
+              aria-current={step.state === "running" ? "step" : undefined}
+              className="flex items-center gap-2"
+              data-zerops-process-state={step.state}
+              data-zerops-process-tone={tone}
+              key={step.id}
+            >
+              <Icon
+                aria-hidden="true"
+                className={cn(
+                  "size-3.5 shrink-0",
+                  glyphClassName,
+                  step.state === "running" && "animate-status-pulse motion-reduce:animate-none",
+                )}
+                data-zerops-process-icon={icon}
+              />
+              <span className="min-w-0 flex-1 text-[13px] leading-5 text-foreground">
+                {step.label}
+                {step.note !== undefined ? (
+                  <span className="text-muted-foreground"> · {step.note}</span>
+                ) : null}
+                {showStateLabel ? (
+                  <span className="ms-1.5 text-muted-foreground">{step.stateLabel}</span>
+                ) : null}
+              </span>
+              {step.durationMs !== undefined ? (
+                <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                  {formatStepDuration(step.durationMs)}
+                </span>
+              ) : null}
+            </li>
+          );
+        }
 
         return (
           <li
@@ -117,9 +163,7 @@ function ProcessSteps({
                     <span className="text-muted-foreground"> · {step.note}</span>
                   ) : null}
                 </span>
-                {REDUNDANT_STATE_LABELS.has(step.stateLabel) ? null : (
-                  <MicroLabel>{step.stateLabel}</MicroLabel>
-                )}
+                {showStateLabel ? <MicroLabel>{step.stateLabel}</MicroLabel> : null}
               </span>
               {step.durationMs !== undefined ? (
                 <span className="shrink-0 pt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">

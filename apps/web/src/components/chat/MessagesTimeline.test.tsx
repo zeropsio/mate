@@ -1476,7 +1476,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("data-zerops-card");
     expect(markup).toContain('data-zerops-card-kind="deploy"');
-    expect(markup).toContain("Deploy · kanbandev");
+    expect(markup).toContain("Deploying kanbandev.");
     expect(markup).toContain("kanbandev is live.");
   });
 
