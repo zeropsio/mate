@@ -1,5 +1,6 @@
 import {
   buildZeropsGroupTree,
+  environmentRow,
   groupFlow,
   type FlowPullRequest,
   type GroupFlowInput,
@@ -144,6 +145,7 @@ function render(props: Partial<ZeropsProjectsFlowProps<Item>> = {}) {
           </button>
         )
       }
+      renderReleaseVerb={() => <button data-test-release-verb="true" type="button" />}
       renderPullRequest={(_group, value, options) => (
         <li
           data-test-compact={String(options.compact)}
@@ -215,6 +217,54 @@ describe("the Overview", () => {
     expect(release.slice(release.indexOf('data-zerops-step="production"'))).toContain(
       'data-test-verb="release"',
     );
+  });
+
+  it("still offers the release beside a broken production, not just the build (D28)", () => {
+    const FAILED_PROD_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
+    const broken = entry([WREN, PROD], {
+      merged: [pull({ number: 4, merged: true })],
+      stops: [
+        {
+          ...PRODUCTION_STOP,
+          row: environmentRow({
+            projectId: "fixture-prod",
+            name: "production",
+            tier: "production",
+            sources: "release",
+            environment: "production",
+            services: [
+              {
+                hostname: "app",
+                appVersionName: FAILED_PROD_SHA,
+                statuses: [{ context: "mate/deploy/production/app", state: "failure" }],
+              },
+            ],
+          }),
+          deployment: {
+            state: "known",
+            value: {
+              kind: "running",
+              activatedAt: null,
+              version: {
+                name: undefined,
+                commit: "055a7e8",
+                sha: FAILED_PROD_SHA,
+                taggedBy: undefined,
+                label: "055a7e8",
+              },
+            },
+            asOf: { ordinal: 1, atMs: 0 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          },
+        },
+      ],
+      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+    });
+    const group = section(render({ groups: [broken] }), 'data-zerops-group="aaa"');
+    const production = group.slice(group.indexOf('data-zerops-step="production"'));
+    expect(production).toContain('data-test-verb="fix-deploy"');
+    expect(production).toContain('data-test-release-verb="true"');
   });
 
   it("draws a group stage under main only where one exists — never an empty slot", () => {

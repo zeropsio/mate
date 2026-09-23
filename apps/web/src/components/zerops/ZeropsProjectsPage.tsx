@@ -2952,6 +2952,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         )}
         renderNextStep={renderNextStep}
         renderPullRequest={pullRequestRowOf}
+        renderReleaseVerb={({ group, flow }) => {
+          const { production } = flow;
+          const candidate =
+            production.kind === "ready-to-release" || production.kind === "deploy-failed"
+              ? production.candidate
+              : undefined;
+          if (candidate === undefined) return null;
+          return (
+            <ZeropsReleaseVerb
+              groupId={group.groupId}
+              label={`${flowVerbLabel("release", false)} ${candidate.tag}`}
+            />
+          );
+        }}
         renderStopMenu={(candidate: ZeropsCandidatePresentation) =>
           renderEnvironmentMenu(candidate, readZeropsGroupTags(candidate.project.tagList), false)
         }

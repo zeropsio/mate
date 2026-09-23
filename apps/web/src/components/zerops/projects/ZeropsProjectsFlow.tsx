@@ -102,6 +102,14 @@ export interface ZeropsProjectsFlowProps<T> {
   ) => ReactNode;
   /** The verb of a group's next step (`flow.nextStep`); nothing for `none`. */
   readonly renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode;
+  /**
+   * *Release*, drawn in the production cell whenever one is offered — even
+   * where the ranked next step is something else, such as the production's
+   * own failed deploy (D28): the release that might clear it stays visible
+   * rather than only the build. Absent where the next step already is the
+   * release, so the cell never shows the same verb twice.
+   */
+  readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The group's releases, the release gate's reason and its recipe changes, as `<li>`s; `null` for none. */
   readonly renderGroupRows: (group: ZeropsGroup) => ReactNode;
   readonly renderGroupMenu: (group: ZeropsGroup) => ReactNode;
@@ -267,16 +275,28 @@ function ProductionStep<T>({
   renderStopMenu,
   compact,
   verb,
+  renderReleaseVerb,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly renderStopMenu: (item: T) => ReactNode;
   readonly compact: boolean;
   readonly verb: ReactNode;
+  readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
 }) {
   const cell = productionCell(entry.flow);
   const { production } = entry.flow;
   const item =
     production.kind === "absent" ? undefined : entry.stops.get(production.stop.projectId)?.item;
+  // A release is offered on either of two kinds; carried here where it does
+  // not already have the cell's own verb (D28) — the failure never hides it.
+  const candidate =
+    production.kind === "ready-to-release" || production.kind === "deploy-failed"
+      ? production.candidate
+      : undefined;
+  const releaseVerb =
+    candidate === undefined || entry.flow.nextStep.kind === "release"
+      ? null
+      : (renderReleaseVerb?.(entry) ?? null);
   return (
     <div
       className={cn(
@@ -299,6 +319,7 @@ function ProductionStep<T>({
         <span className="text-xs text-muted-foreground">{cell.detail}</span>
       )}
       {verb === null || verb === undefined ? null : <span className="flex">{verb}</span>}
+      {releaseVerb === null ? null : <span className="flex">{releaseVerb}</span>}
     </div>
   );
 }
@@ -533,6 +554,7 @@ function OverviewRow<T>({
         <ProductionStep
           compact
           entry={entry}
+          renderReleaseVerb={props.renderReleaseVerb}
           renderStopMenu={props.renderStopMenu}
           verb={verbIn("production")}
         />
