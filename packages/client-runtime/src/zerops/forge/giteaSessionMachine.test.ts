@@ -47,6 +47,7 @@ function play(steps: ReadonlyArray<Step>, from: GiteaSessionMachine = initialGit
 const DEMAND: GiteaSessionEvent = { type: "DEMAND", demanded: true };
 const UNDEMAND: GiteaSessionEvent = { type: "DEMAND", demanded: false };
 const TICK: GiteaSessionEvent = { type: "TICK" };
+const UNRECOVERED: GiteaSessionEvent = { type: "UNRECOVERED" };
 const acquired = (
   attempt: number,
   token: string,
@@ -421,6 +422,32 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
         login: "u-person",
         trouble: "Gitea isn't answering.",
       });
+    });
+
+    it("that a request's reader got as its answer makes nothing readable until the next token", () => {
+      const reacquiring = play(
+        [[{ type: "UNAUTHORIZED", token: "t1" }, 1 * MIN]],
+        signedIn().machine,
+      );
+      const unrecovered = play([[UNRECOVERED, 1 * MIN + 10 * S]], reacquiring.machine);
+      // The facts stand and the reacquire runs on, but no reader starts a read it would lose too.
+      expect(unrecovered.machine.phase.kind).toBe("reacquiring");
+      expect(unrecovered.last).toEqual([]);
+      expect(giteaSessionView(unrecovered.machine)).toEqual({
+        signedIn: true,
+        readable: false,
+        login: "u-person",
+        trouble: null,
+      });
+
+      // The token arrives: readable again, so every reader that lost its read reads again.
+      const back = play([[acquired(2, "t2"), 1 * MIN + 12 * S]], unrecovered.machine);
+      expect(giteaSessionView(back.machine).readable).toBe(true);
+      expect(giteaSessionToken(back.machine)).toBe("t2");
+
+      // With a token held, the reader's 401 belonged to one already replaced: nothing changes.
+      const held = signedIn().machine;
+      expect(play([[UNRECOVERED, 1 * MIN]], held).machine).toEqual(held);
     });
 
     it("for a token the session no longer holds is ignored", () => {

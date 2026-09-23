@@ -488,6 +488,69 @@ describe("the account's Gitea sessions", () => {
       expect(unauthorized).toBe(1);
     });
 
+    it("that the recovered token met too is told to the session: it reacquires, readable again when the next token arrives", async () => {
+      const w = world();
+      w.gitea.setTags("acme", "group", ["v1.0.0"]);
+      w.demand();
+      await w.time.advance(0);
+      w.gitea.revoke("gitea-token-1");
+      w.gitea.revoke("gitea-token-2");
+      w.views.length = 0;
+
+      const failure = await readTags(w.sessions).catch((cause: unknown) => cause);
+      await w.time.advance(0);
+
+      expect((failure as GiteaApiError).status).toBe(401);
+      // The refused retry reached the session: a third token, and a reader that lost its read is
+      // told nothing could be read until it arrived.
+      expect(w.broker.personTokens()).toBe(3);
+      expect(w.views.map((view) => view.readable)).toEqual([false, true]);
+      await expect(readTags(w.sessions)).resolves.toEqual([{ name: "v1.0.0" }]);
+      expect(w.gitea.requests().at(-1)?.bearer).toBe("gitea-token-3");
+    });
+
+    it("whose reacquire outlasts the request's wait makes nothing readable until the token arrives", async () => {
+      let answerBroker: (() => void) | null = null;
+      let brokerSlow = false;
+      const w = world({
+        wrapFetch: (fetch) =>
+          (async (input: string | URL | Request, init?: RequestInit) => {
+            if (brokerSlow && String(input).endsWith("/person/token")) {
+              await new Promise<void>((resolve) => {
+                answerBroker = resolve;
+              });
+            }
+            return fetch(input, init);
+          }) as Fetch,
+      });
+      w.gitea.setTags("acme", "group", ["v1.0.0"]);
+      w.demand();
+      await w.time.advance(0);
+      w.gitea.revoke("gitea-token-1");
+      brokerSlow = true;
+      w.views.length = 0;
+
+      const read = readTags(w.sessions).catch((cause: unknown) => cause);
+      await w.time.advance(REQUEST_QUEUE_MS);
+      expect(((await read) as GiteaApiError).status).toBe(401);
+      // The facts stand, and no reader starts a read that would meet the same wait.
+      expect(w.view()).toEqual({
+        signedIn: true,
+        readable: false,
+        login: "u-person",
+        trouble: null,
+      });
+      expect(w.sessions.clientFor(HARNESS_GITEA_ORIGIN)).toBeNull();
+
+      // The broker answers inside its own deadline: readable again, so the reader reads again.
+      brokerSlow = false;
+      (answerBroker as (() => void) | null)?.();
+      await w.time.advance(2 * S);
+      expect(w.views.map((view) => view.readable)).toEqual([false, true]);
+      await expect(readTags(w.sessions)).resolves.toEqual([{ name: "v1.0.0" }]);
+      expect(w.gitea.requests().at(-1)?.bearer).toBe("gitea-token-2");
+    });
+
     it("whose reacquire fails tells the surfaces when nothing can be read, and when it can again", async () => {
       let brokerDown = false;
       const w = world({

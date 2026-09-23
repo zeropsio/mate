@@ -13,7 +13,8 @@
  * preceded by a credential-less liveness check, so nothing is minted while the broker is down. A
  * Gitea 401 reacquires without dropping what was read, and what was read stands, stale, while the
  * session gets another token — the cause named beside it after two failed acquisitions; the third
- * 401 in 10 minutes refuses. A refusal is asked again every 5 minutes while the tab is visible.
+ * 401 in 10 minutes refuses. Once a request's reader got the 401 as its answer, nothing is readable
+ * until the next token arrives, so every such reader reads again then. A refusal is asked again every 5 minutes while the tab is visible.
  * `expiresIn` is honoured, and the token renewed only while a surface wants it.
  */
 import type { Instant } from "../data/access/grant.ts";
@@ -84,8 +85,12 @@ export type GiteaSessionPhase =
       readonly retrying: GiteaRetrying | null;
     }
   | { readonly kind: "signed-in"; readonly session: GiteaToken; readonly renewal: GiteaRenewal }
-  /** A Gitea 401 ended the token; requests wait for the next one, and the facts stay. */
-  | { readonly kind: "reacquiring"; readonly attempt: number }
+  /**
+   * A Gitea 401 ended the token; requests wait for the next one, and the facts stay. `unrecovered`
+   * once a request's reader got the 401 as its answer: nothing is readable until the token arrives,
+   * so that reader reads again then.
+   */
+  | { readonly kind: "reacquiring"; readonly attempt: number; readonly unrecovered: boolean }
   | { readonly kind: "pending"; readonly retryAt: Instant }
   | {
       readonly kind: "unavailable";
@@ -148,6 +153,8 @@ export type GiteaSessionEvent =
     }
   /** Gitea answered 401 to a request that carried `token`. */
   | { readonly type: "UNAUTHORIZED"; readonly token: string }
+  /** A request's 401 went unrecovered: its reader got the 401 as its answer. */
+  | { readonly type: "UNRECOVERED" }
   | { readonly type: "TICK" }
   /** §6.4's visible wake. */
   | { readonly type: "WAKE" }
@@ -381,7 +388,7 @@ function apply(
         return {
           ...machine,
           unauthorized,
-          phase: { kind: "reacquiring", attempt: phase.renewal.attempt },
+          phase: { kind: "reacquiring", attempt: phase.renewal.attempt, unrecovered: false },
         };
       }
       const attempt = machine.nextAttempt;
@@ -390,9 +397,13 @@ function apply(
         ...machine,
         unauthorized,
         nextAttempt: attempt + 1,
-        phase: { kind: "reacquiring", attempt },
+        phase: { kind: "reacquiring", attempt, unrecovered: false },
       };
     }
+    case "UNRECOVERED":
+      return phase.kind === "reacquiring" && !phase.unrecovered
+        ? { ...machine, phase: { ...phase, unrecovered: true } }
+        : machine;
     case "WAKE":
     case "ONLINE": {
       if (!machine.demanded) return machine;
@@ -430,7 +441,10 @@ function settle(
       const { session, renewal } = phase;
       if (expired(session, ctx.now)) {
         if (renewal.kind === "renewing") {
-          return { ...machine, phase: { kind: "reacquiring", attempt: renewal.attempt } };
+          return {
+            ...machine,
+            phase: { kind: "reacquiring", attempt: renewal.attempt, unrecovered: false },
+          };
         }
         if (!machine.demanded) return { ...machine, lastLogin: null, phase: { kind: "idle" } };
         if (renewal.kind === "failed") return failed(machine, renewal.failure, ctx);
@@ -439,7 +453,7 @@ function settle(
         return {
           ...machine,
           nextAttempt: attempt + 1,
-          phase: { kind: "reacquiring", attempt },
+          phase: { kind: "reacquiring", attempt, unrecovered: false },
         };
       }
       if (machine.demanded && renewal.kind === "none" && renewDue(session, ctx.now)) {
@@ -532,7 +546,9 @@ export interface GiteaSessionView {
   readonly signedIn: boolean;
   /**
    * A request can go out now ({@link giteaSessionReadable}). False while the facts stand with no
-   * token held or on its way: a surface keeps what it read, starts no read and offers no verb.
+   * token held or on its way, or with one on its way after a request's reader already got the 401
+   * as its answer: a surface keeps what it read, starts no read and offers no verb, and reads again
+   * when this turns true.
    */
   readonly readable: boolean;
   /** The person's login on that Gitea, `u-…`, while signed in. */
@@ -608,9 +624,13 @@ export function giteaSessionView(machine: GiteaSessionMachine): GiteaSessionView
   }
 }
 
-/** A request can go out now, or wait for the token a 401's reacquire brings back. */
+/**
+ * A request can go out now, or wait for the token a 401's reacquire brings back — until a request's
+ * reader got that 401 as its answer.
+ */
 export function giteaSessionReadable(machine: GiteaSessionMachine): boolean {
-  return machine.phase.kind === "signed-in" || machine.phase.kind === "reacquiring";
+  const phase = machine.phase;
+  return phase.kind === "signed-in" || (phase.kind === "reacquiring" && !phase.unrecovered);
 }
 
 /** The token a request carries now, if one is held. */
