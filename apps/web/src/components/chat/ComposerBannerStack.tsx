@@ -106,17 +106,15 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
   // anchor above the composer: a banner that comes and goes (an environment
   // reconnecting, a version notice) must never move the conversation or the
   // composer under it. The caller's classes come first so the float wins.
-  // Every banner is a whole rounded card at the composer's width, a gap above
-  // it — the gap is padding, so a measured height already includes it.
   return (
     <div className="relative h-0" data-composer-banner-anchor="true">
       <div
         ref={stackRef}
         className={cn(
           className,
-          "group/banner-stack absolute inset-x-0 bottom-0 mx-auto max-w-3xl pb-2",
+          "group/banner-stack chat-composer-drawer-slot absolute inset-x-0 bottom-0",
         )}
-        data-composer-banner-stack="true"
+        data-composer-banner-drawer="true"
       >
         <div
           className={cn(
@@ -149,6 +147,7 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
           >
             <ComposerBannerStackAlert
               item={frontItem}
+              attached
               exiting={exitingItemId === frontItem.id}
               onDismissRequest={() => requestDismiss(frontItem)}
             />
@@ -181,6 +180,7 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
                     >
                       <ComposerBannerStackAlert
                         item={item}
+                        attached={false}
                         exiting={exitingItemId === item.id}
                         onDismissRequest={() => requestDismiss(item)}
                       />
@@ -198,10 +198,12 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
 
 function ComposerBannerStackAlert({
   item,
+  attached,
   exiting,
   onDismissRequest,
 }: {
   readonly item: ComposerBannerStackItem;
+  readonly attached: boolean;
   readonly exiting: boolean;
   readonly onDismissRequest: () => void;
 }) {
@@ -210,7 +212,12 @@ function ComposerBannerStackAlert({
   return (
     <Alert
       variant={item.variant}
-      className={cn("alert-glass rounded-[22px]", item.className)}
+      className={cn(
+        attached
+          ? "chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4"
+          : "alert-glass rounded-[22px]",
+        item.className,
+      )}
       data-variant={item.variant}
     >
       {item.icon}
