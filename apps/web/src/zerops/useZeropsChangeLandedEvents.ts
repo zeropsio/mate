@@ -11,7 +11,13 @@
  * looked up here. Outside a Zerops session there is no flow and no Mate, and it
  * takes nothing.
  */
-import { changeLandedEvents, type ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
+import {
+  changeLandedEvents,
+  type ChangeLandedEvent,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
 import { useZeropsProjectFlowOptional } from "./projectFlowContext";
@@ -19,20 +25,34 @@ import { useZeropsCandidates } from "./useZeropsCandidates";
 
 const NONE: ReadonlyArray<ChangeLandedEvent> = [];
 
+/**
+ * The landings of the Mate that lives in `environmentId`. Which Mate that is comes from the
+ * listing; until it names one, no landing is placed — a timeline without them says nothing, where
+ * one with another Mate's would say something false.
+ */
+export function changeLandedEventsFor(
+  listing: Known<ReadonlyArray<CandidateRow>>,
+  environmentId: string,
+  flows: ReadonlyMap<string, { readonly merged: ReadonlyArray<FlowPullRequest> }>,
+): ReadonlyArray<ChangeLandedEvent> {
+  const mate = findCandidate(
+    listing,
+    (candidate) => String(candidate.environmentId) === environmentId,
+  );
+  if (mate.kind !== "found") return NONE;
+  const merged = [...flows.values()].flatMap((flow) => [...flow.merged]);
+  const events = changeLandedEvents(merged, mate.row.project.id);
+  return events.length === 0 ? NONE : events;
+}
+
 export function useZeropsChangeLandedEvents(
   environmentId: string | null | undefined,
 ): ReadonlyArray<ChangeLandedEvent> {
   const flowValue = useZeropsProjectFlowOptional();
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
   const flows = flowValue?.flows;
   return useMemo(() => {
     if (environmentId === null || environmentId === undefined || flows === undefined) return NONE;
-    const mateProjectId = candidates.find(
-      (candidate) => String(candidate.environmentId) === String(environmentId),
-    )?.project.id;
-    if (mateProjectId === undefined) return NONE;
-    const merged = [...flows.values()].flatMap((flow) => [...flow.merged]);
-    const events = changeLandedEvents(merged, mateProjectId);
-    return events.length === 0 ? NONE : events;
-  }, [candidates, environmentId, flows]);
+    return changeLandedEventsFor(listing, String(environmentId), flows);
+  }, [environmentId, flows, listing]);
 }
