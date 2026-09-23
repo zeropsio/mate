@@ -28,6 +28,7 @@ import {
 import {
   ZeropsOrganizationId,
   type EntityQueryDescriptor,
+  type ProjectRef,
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { ProbeReading } from "../environments/probeStore.ts";
@@ -53,12 +54,12 @@ const policy = DEFAULT_ZEROPS_GRANT_POLICY;
 const organizations = [{ organization, mutationsAllowed: true }];
 const A = project("project-a");
 
-const unused = Effect.die("these tests lease no interest on this adapter");
+/** A datastream that never answers: the account's inventory leases wait on it for good. */
 const inertAdapter: ZeropsDataAdapter = {
-  openReceiver: () => unused,
-  register: () => unused,
-  read: () => unused,
-  execute: () => unused,
+  openReceiver: () => Effect.never,
+  register: () => Effect.never,
+  read: () => Effect.never,
+  execute: () => Effect.never,
   closeReceiver: () => Effect.void,
 };
 
@@ -326,8 +327,8 @@ const makePage = Effect.fnUntraced(function* (clock: DeadlineClock) {
   };
 });
 
-/** A grant whose rounds each wait for the test to answer them, then verify `A`. */
-const heldVerifier = () => {
+/** A grant whose rounds each wait for the test to answer them, then verify `projects`. */
+const heldVerifier = (projects: ReadonlyArray<ProjectRef> = [A]) => {
   const answers: Array<Deferred.Deferred<GrantFailure | null>> = [];
   const verifier: AccessVerifier = {
     verifyRound: ({ round, report }) =>
@@ -336,16 +337,17 @@ const heldVerifier = () => {
         answers.push(answer);
         const failure = yield* Deferred.await(answer);
         if (failure !== null) return yield* Effect.fail({ failure, message: "Zerops is down." });
-        yield* report({ type: "ROUND_ACCOUNT", round, organizations, projects: [A] });
-        yield* report({
-          type: "ROUND_PROJECT",
-          round,
-          project: A,
-          outcome: {
-            kind: "verified",
-            access: { project: A, role: "OWNER", mutationsAllowed: true },
-          },
-        });
+        yield* report({ type: "ROUND_ACCOUNT", round, organizations, projects });
+        for (const verified of projects)
+          yield* report({
+            type: "ROUND_PROJECT",
+            round,
+            project: verified,
+            outcome: {
+              kind: "verified",
+              access: { project: verified, role: "OWNER", mutationsAllowed: true },
+            },
+          });
       }),
     verifyProject: () => Effect.never,
   };
@@ -423,6 +425,73 @@ describe("the account runtime", () => {
 
           expect(yield* built.postGrant).toBe(stage);
           expect(heard).toEqual([{ topic: "access", change: "lapsed" }]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "holds the account's inventory with no view: its organizations from the first round's listing, its projects from the grant (L7)",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const registry = AtomRegistry.make();
+          const page = yield* makePage(clock);
+          const projectAnswered = yield* Deferred.make<void>();
+          const verifier: AccessVerifier = {
+            verifyRound: ({ round, report }) =>
+              Effect.gen(function* () {
+                yield* report({ type: "ROUND_ACCOUNT", round, organizations, projects: [A] });
+                yield* Deferred.await(projectAnswered);
+                yield* report({
+                  type: "ROUND_PROJECT",
+                  round,
+                  project: A,
+                  outcome: {
+                    kind: "verified",
+                    access: { project: A, role: "OWNER", mutationsAllowed: true },
+                  },
+                });
+              }),
+            verifyProject: () => Effect.never,
+          };
+          const built = yield* Effect.gen(function* () {
+            const data = yield* makeZeropsDataRuntime({
+              scope: scope(),
+              adapter: platformAdapter([A_MATE]),
+              atomRegistry: registry,
+              makeOpaqueId: (() => {
+                let next = 0;
+                return () => `opaque-${++next}`;
+              })(),
+            });
+            return yield* makeAccountRuntime({
+              data,
+              verifier,
+              signals: page.signals,
+              atomRegistry: registry,
+              environments: inertEnvironments(clock),
+            });
+          }).pipe(Effect.provideService(Clock.Clock, clock));
+          const demanded = () =>
+            Effect.map(built.data.state, ({ interests }) =>
+              [...interests.values()]
+                .filter(({ leases }) => leases > 0)
+                .map(({ descriptor }) => descriptor.kind),
+            );
+          yield* clock.advance(SECOND);
+          yield* settle;
+
+          // The round listed the organization; its project is still being read.
+          expect(yield* demanded()).toEqual(["organization-inventory"]);
+
+          yield* Deferred.succeed(projectAnswered, undefined);
+          yield* clock.advance(SECOND);
+          yield* settle;
+          expect(yield* demanded()).toEqual(["organization-inventory", "project-inventory"]);
+
+          yield* built.close("logout");
+          expect(yield* demanded()).toEqual([]);
         }),
       ),
   );
@@ -592,18 +661,17 @@ describe("the account runtime", () => {
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* Effect.addFinalizer(() => built.close("application-close"));
         const data = built.data;
-        for (const held of [organization, other])
-          yield* data
-            .acquire({ kind: "organization-inventory", organization: held })
-            .pipe(Effect.provideService(Clock.Clock, clock));
         const statuses = () =>
           Effect.map(data.state, (state) =>
             [...state.interests.values()].map(({ interest }) => interest.status),
           );
         const rounds = () => rest.requests().filter(({ route }) => route === "GET /user/info");
+        // The projects' inventories are held a step after the organizations': once the grant names them.
         yield* clock.advance(SECOND);
         yield* settle;
-        expect(yield* statuses()).toEqual(["observing", "observing"]);
+        yield* settle;
+        // The account holds both organizations' inventories and their projects'.
+        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
         expect(opened.toSorted()).toEqual(["org-1", "org-2"]);
         const roundsBefore = rounds().length;
 
@@ -617,7 +685,7 @@ describe("the account runtime", () => {
         yield* settle;
 
         expect(opened.slice(2)).toEqual(["org-1"]);
-        expect(yield* statuses()).toEqual(["observing", "observing"]);
+        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
         expect(rounds()).toHaveLength(roundsBefore);
       }),
     ),
@@ -817,7 +885,7 @@ describe("the post-grant stage's Mate environments", () => {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
     const page = yield* makePage(clock);
-    const grant = heldVerifier();
+    const grant = heldVerifier(mates.map(({ projectId }) => project(projectId)));
     const rig = environmentRig(clock, remembered);
     const built = yield* Effect.gen(function* () {
       const data = yield* makeZeropsDataRuntime({
@@ -838,14 +906,6 @@ describe("the post-grant stage's Mate environments", () => {
       });
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
-    // The account's views hold its inventory, as the inventory provider does.
-    yield* built.data
-      .acquire({ kind: "organization-inventory", organization })
-      .pipe(Effect.provideService(Clock.Clock, clock));
-    for (const { projectId } of mates)
-      yield* built.data
-        .acquire({ kind: "project-inventory", project: project(projectId) })
-        .pipe(Effect.provideService(Clock.Clock, clock));
     return { clock, page, grant, rig, built };
   });
 

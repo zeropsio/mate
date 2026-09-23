@@ -6,7 +6,9 @@
  *   account's one invalidation bus (§6.2) with the account's `shown()`. The bus carries the
  *   grant's own invalidations and the intents surfaces send; it stands before the first grant
  *   because the grant and the data runtime subscribe to it and hear `access` and `inventory` from
- *   the start — a person's "Try again" on a first round that failed is one.
+ *   the start — a person's "Try again" on a first round that failed is one. The account's
+ *   inventory demand stands here too (§5 L7): the runtime, not a view, holds its organizations'
+ *   and projects' inventories, from the first round's listing on (`inventoryDemand.ts`).
  * - **Post-grant stage**, built on the epoch's first `granted` and kept for the epoch — a later
  *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate environments —
@@ -43,6 +45,7 @@ import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
 import { makeContainerStore } from "../environments/containerStore.ts";
 import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
 import { makeRegistrationRecords } from "../environments/records.ts";
+import { holdInventoryDemand } from "./inventoryDemand.ts";
 import {
   makeEnvironmentWiring,
   type AccountEnvironmentPorts,
@@ -85,7 +88,10 @@ export interface AccountRuntime {
    * that closes before its first grant interrupts it.
    */
   readonly postGrant: Effect.Effect<PostGrantStage>;
-  /** Ends the epoch: the bus first, then the post-grant stage, then the data runtime (§5 L9). */
+  /**
+   * Ends the epoch: the bus first, then the post-grant stage and the inventory demand, then the
+   * data runtime (§5 L9).
+   */
   readonly close: (
     reason: "logout" | "account-replaced" | "application-close",
   ) => Effect.Effect<void>;
@@ -109,6 +115,8 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const busScope = yield* Scope.make();
   /** The post-grant stage's scope: it closes before the data runtime shuts down. */
   const postGrantScope = yield* Scope.make();
+  /** The inventory demand's scope: its leases are released before the data runtime shuts down. */
+  const demandScope = yield* Scope.make();
   const postGrant = yield* Deferred.make<PostGrantStage>();
   const services = yield* Effect.context<never>();
   let stage: EnvironmentStage | null = null;
@@ -226,6 +234,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     );
     yield* data.access.listen(invalidations).pipe(Scope.provide(busScope));
     yield* data.listen(invalidations).pipe(Scope.provide(busScope));
+    yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
+      Scope.provide(demandScope),
+    );
     yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
     // The views stream replays the latest, so it misses nothing the start publishes.
     yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));
@@ -239,6 +250,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     Effect.onError(() =>
       Scope.close(busScope, Exit.void).pipe(
         Effect.andThen(Scope.close(postGrantScope, Exit.void)),
+        Effect.andThen(Scope.close(demandScope, Exit.void)),
         Effect.andThen(Scope.close(epoch, Exit.void)),
       ),
     ),
@@ -256,6 +268,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
         Effect.andThen(Deferred.interrupt(postGrant)),
         Effect.andThen(Scope.close(busScope, Exit.void)),
         Effect.andThen(Scope.close(postGrantScope, Exit.void)),
+        Effect.andThen(Scope.close(demandScope, Exit.void)),
         Effect.andThen(data.shutdown(reason)),
         Effect.andThen(Scope.close(epoch, Exit.void)),
       ),
