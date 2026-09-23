@@ -247,7 +247,8 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         // Held before it is followed: a demand refused as it is taken reaches the entry.
         entries.set(key, created);
         follow(created);
-        read(created);
+        // Its listings may be read already: the stop is known as it is first demanded.
+        publish(created);
         entry = created;
       }
       const held = entry;

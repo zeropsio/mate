@@ -175,13 +175,27 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     store.demand(STAGE);
     platform.publish(STAGE, app(STAGE));
 
-    expect(heard).toEqual(["project-stage"]);
+    expect(heard).toEqual(["project-stage", "project-stage"]);
     const stop = store.stop(STAGE);
     expect(stop.state === "known" ? stop.value.map(({ hostname }) => hostname) : []).toEqual([
       "app",
     ]);
     // The same object until the listing changes.
     expect(store.stop(STAGE)).toBe(stop);
+  });
+
+  it("publishes a stop as it is first demanded: its listings may already be read", () => {
+    const platform = listings();
+    platform.publish(STAGE, app(STAGE));
+    const store = makeDeploymentStore(platform.ports);
+    const heard: Array<string> = [];
+    store.subscribe((ref) => heard.push(ref.projectId));
+
+    store.demand(STAGE);
+    store.demand(STAGE);
+
+    expect(heard).toEqual(["project-stage"]);
+    expect(store.stop(STAGE).state).toBe("known");
   });
 
   it("shows only what a view demands, and hears nothing once the last demand is released", () => {
