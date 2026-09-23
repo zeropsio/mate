@@ -55,11 +55,14 @@ export interface ProbeStorePorts {
 }
 
 export interface ProbeStore {
-  /** Every origin's cadence as its container stands now; an origin left out is forgotten. */
+  /**
+   * Every origin's cadence as its container stands now; an origin left out is forgotten once no
+   * `next` caller waits on it.
+   */
   readonly setCadences: (cadences: ReadonlyMap<string, ProbeCadence>) => void;
   /** Reads the origin once more, as soon as the pool gives it a slot. */
   readonly request: (origin: string) => void;
-  /** The reading of a probe of this origin started from now on. */
+  /** The reading of a probe of this origin started from now on, held by a target or not. */
   readonly next: (origin: string) => Promise<ProbeReading>;
   readonly fact: (origin: string) => ProbeFact;
   readonly setVisible: (visible: boolean) => void;
@@ -223,6 +226,12 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
       if (disposed) return;
       for (const [origin, entry] of origins) {
         if (cadences.has(origin)) continue;
+        // A `next` caller still waits on it: it stays, uncadenced, until its probe answers.
+        if (entry.waiting.length > 0 || entry.answering.length > 0) {
+          entry.cadence = { kind: "none" };
+          entry.pollAt = null;
+          continue;
+        }
         entry.inFlight?.controller.abort();
         origins.delete(origin);
       }

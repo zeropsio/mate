@@ -200,4 +200,41 @@ describe("probe store (DESIGN §4.5 probes)", () => {
     expect(await answer).toEqual(READY);
     store.dispose();
   });
+
+  it("next on an origin no target holds is answered across a change of targets", async () => {
+    const clock = manualClock();
+    const answers = new Map<string, (reading: ProbeReading) => void>();
+    const store = makeProbeStore({
+      clock,
+      probe: (origin) => new Promise((resolve) => answers.set(origin, resolve)),
+    });
+    const targets = new Map<string, ProbeCadence>([["a", { kind: "on-demand" }]]);
+    const settled = new Map<string, ProbeReading>();
+    const track = (origin: string) => {
+      void store.next(origin).then((reading) => settled.set(origin, reading));
+    };
+
+    // In flight when the targets change: its own reading answers it.
+    track("b");
+    await clock.advance(0);
+    store.setCadences(targets);
+    answers.get("b")?.(READY);
+    await clock.advance(0);
+    expect(settled.get("b")).toEqual(READY);
+
+    // Nobody waits on it any more: the next change of targets lets it go.
+    store.setCadences(targets);
+    expect(store.fact("b")).toEqual({ status: "unread" });
+
+    // Not started yet (the tab is hidden) when the targets change: the account closing answers it.
+    store.setVisible(false);
+    await clock.advance(60_000);
+    track("c");
+    store.setCadences(targets);
+    await clock.advance(0);
+    expect(settled.has("c")).toBe(false);
+    store.dispose();
+    await clock.advance(0);
+    expect(settled.get("c")).toEqual({ kind: "unreachable" });
+  });
 });
