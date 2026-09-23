@@ -829,4 +829,25 @@ describe("forge store facts the flow's surfaces read (DESIGN §2.D D3)", () => {
     await clock.advance(0);
     expect(sent("commit shop/app@h2")).toHaveLength(1);
   });
+
+  it("a pull request first read as landed long ago puts no open one back to checking", async () => {
+    const { clock, store, sent, pending } = rig();
+    store.demand(openPulls("shop", "app"));
+    store.demand({
+      kind: "branch-pulls",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      branch: "mate/ada",
+    });
+    await clock.advance(0);
+    await pending("pulls shop/app open").answer([pull(5)]);
+    await pending("pulls shop/app all").answer([
+      pull(3, { head: { ref: "mate/ada", sha: "h3" }, state: "closed", merged: true }),
+    ]);
+
+    expect(mergeability(store.mergeState(pullKey(5)))).toBe("mergeable");
+    await clock.advance(0);
+    expect(sent("pull shop/app#5")).toHaveLength(0);
+  });
 });

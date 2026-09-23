@@ -697,10 +697,11 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
   const admitPull = (entry: Entry, readOrdinal: number, at: Instant, pull: GiteaPullRequest) => {
     const held = entry.cell.held;
     let prior: MergeabilityTrack | null = null;
-    let landed = false;
+    // Only a pull request read open before lands now: one first read landed moved no base today.
+    let wasOpen = false;
     if (held.state === "known") {
       const before = held.value as PullRequestFact;
-      landed = before.pull.merged === true;
+      wasOpen = before.pull.merged !== true;
       if (entry.cell.lastInvalidation <= held.asOf.ordinal) prior = before.merge;
     }
     const merge = mergeabilityAfter(prior, mergeReadOf(pull, at.wall));
@@ -716,7 +717,7 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
     if (entry.cell.held === applied.held) return;
     const now = ports.now();
     entry.pollAt = backstopAfter(entry, value, now.mono, now.wall);
-    if (!landed && pull.merged === true && entry.fact.kind === "pull") {
+    if (wasOpen && pull.merged === true && entry.fact.kind === "pull") {
       // Its base moved: every other open pull request there is checking again (§4.7).
       const { number } = entry.fact;
       for (const sibling of entries.values()) {
