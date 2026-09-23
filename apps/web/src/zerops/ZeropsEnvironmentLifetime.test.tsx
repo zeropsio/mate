@@ -1,6 +1,9 @@
 import { act, StrictMode, useEffect } from "react";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
+import type { ExchangeAnswer } from "@t3tools/client-runtime/zerops/identityExchange";
+import type { ExchangeRequest } from "@t3tools/client-runtime/zerops/environments";
+
 import {
   ZeropsEnvironmentLifetime,
   useEnvironmentRestorePending,
@@ -8,14 +11,43 @@ import {
 import { InventoryContext, type Inventory } from "./inventoryContext";
 import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
 import { beginEnvironmentIdentityExchange, rememberEnvironment } from "./rememberedEnvironments";
-import { refreshZeropsCandidates } from "./candidatesRefresh";
 
 const mock = vi.hoisted(() => ({
   exchange: vi.fn(),
+  install: vi.fn(),
+  retire: vi.fn(),
   remove: vi.fn(),
   environments: [] as { environmentId: string; displayUrl: string }[],
 }));
-vi.mock("./useZeropsIdentityExchange", () => ({ useZeropsIdentityExchange: () => mock.exchange }));
+
+// The door and the registry stand behind the driver's ports; the driver itself is real.
+vi.mock("./useZeropsIdentityExchange", async () => {
+  const { createContext } = await import("react");
+  const { systemExchangeClock } = await import("@t3tools/client-runtime/zerops/environments");
+  const { rememberEnvironment: remember } = await import("./rememberedEnvironments");
+  return {
+    ExchangeDriverContext: createContext(null),
+    webExchangePorts: () => ({
+      clock: systemExchangeClock,
+      exchange: (request: ExchangeRequest) => mock.exchange(request),
+      install: async (input: { key: string; environmentId: EnvironmentId }) => {
+        mock.install(input);
+        remember({ key: input.key, environmentId: String(input.environmentId) });
+      },
+      readDescriptor: () => new Promise(() => undefined),
+      retryLink: () => undefined,
+      refreshPresence: () => undefined,
+      retire: (key: string, environmentId: EnvironmentId | null) => mock.retire(key, environmentId),
+    }),
+  };
+});
+vi.mock("./useZeropsCandidateHealth", () => {
+  const snapshot = { health: new Map() };
+  return { useZeropsCandidateHealth: () => snapshot };
+});
+vi.mock("./ZeropsSessionProvider", () => ({
+  useZeropsSession: () => ({ client: {}, activeOrganization: null }),
+}));
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: mock.environments }),
 }));
@@ -31,6 +63,7 @@ class TestNode {
   readonly tagName: string;
   readonly namespaceURI = "http://www.w3.org/1999/xhtml";
   readonly style = {};
+  readonly visibilityState = "visible";
 
   constructor(
     name: string,
@@ -117,6 +150,30 @@ const inventory = (): Inventory => ({
   isLoading: false,
   error: null,
 });
+
+const admitted = (id: EnvironmentId = environmentId): ExchangeAnswer<unknown> => ({
+  ok: true,
+  environmentId: id,
+  descriptor: {
+    environmentId: id,
+    serverVersion: "0.12.0",
+    update: null,
+    identity: "ok",
+    identityCheckedAt: null,
+  },
+  credential: {},
+});
+const doorFailed = (status: number): ExchangeAnswer<unknown> => ({
+  ok: false,
+  failure: { class: "retryable", cause: { kind: "server", status } },
+  descriptor: null,
+});
+const roleRefused: ExchangeAnswer<unknown> = {
+  ok: false,
+  failure: { class: "refusal", reason: { kind: "role" } },
+  descriptor: null,
+};
+
 /** Mutated by a test that needs `render()` to pick up a new inventory snapshot. */
 let liveInventory: Inventory = inventory();
 let unmount: (() => Promise<void>) | undefined;
@@ -145,13 +202,16 @@ beforeEach(() => {
   openAccountLifetime("account");
   liveInventory = inventory();
   mock.environments = [];
-  mock.exchange.mockReset().mockResolvedValue({ _tag: "Failure", error: "Unavailable" });
+  mock.exchange.mockReset().mockResolvedValue(doorFailed(503));
+  mock.install.mockReset();
+  mock.retire.mockReset();
   mock.remove.mockReset();
 });
 afterEach(async () => {
   await unmount?.();
   unmount = undefined;
   closeAccountLifetime();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 async function mount() {
@@ -173,19 +233,55 @@ async function mount() {
   await render();
   return render;
 }
-it("does not retry a failed restore on inventory changes, and permits an explicit refresh", async () => {
-  rememberEnvironment({ key: "project:service", environmentId });
-  const render = await mount();
-  await render();
-  await render();
-  await render();
-  expect(mock.exchange).toHaveBeenCalledTimes(1);
-  await act(async () => refreshZeropsCandidates());
-  expect(mock.exchange).toHaveBeenCalledTimes(2);
+const advance = (ms: number) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+
+describe("restore is the records' demand on the exchange driver", () => {
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    readonly answers: ReadonlyArray<ExchangeAnswer<unknown>>;
+    readonly exchanges: number;
+    readonly installed: boolean;
+  }> = [
+    {
+      name: "a door 500 on reload retries on its own and connects",
+      answers: [doorFailed(500), doorFailed(500), admitted()],
+      exchanges: 3,
+      installed: true,
+    },
+    {
+      name: "a refusal is not retried by time, renders or wakes",
+      answers: [roleRefused],
+      exchanges: 1,
+      installed: false,
+    },
+  ];
+
+  it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    vi.useFakeTimers();
+    for (const answer of row.answers) mock.exchange.mockResolvedValueOnce(answer);
+    mock.exchange.mockResolvedValue(roleRefused);
+    rememberEnvironment({ key: "project:service", environmentId });
+    const render = await mount();
+    await render();
+    await render();
+    await advance(2_000);
+    await advance(4_000);
+    await advance(10 * 60_000);
+    await render();
+
+    expect(mock.exchange).toHaveBeenCalledTimes(row.exchanges);
+    expect(mock.install).toHaveBeenCalledTimes(row.installed ? 1 : 0);
+    expect(restorePending).toBe(false);
+    expect(mock.exchange.mock.calls.every(([request]) => request.reason === "restore")).toBe(true);
+  });
 });
+
 it("does not repeat an in-flight restore when another inventory snapshot arrives", async () => {
   rememberEnvironment({ key: "project:service", environmentId });
-  let complete!: (result: { _tag: "Success"; environmentId: typeof environmentId }) => void;
+  let complete!: (answer: ExchangeAnswer<unknown>) => void;
   mock.exchange.mockImplementation(
     () =>
       new Promise((resolve) => {
@@ -195,12 +291,13 @@ it("does not repeat an in-flight restore when another inventory snapshot arrives
   const render = await mount();
   await render();
   await render();
-  const attempts = mock.exchange.mock.calls.length;
+  expect(mock.exchange).toHaveBeenCalledTimes(1);
   expect(restorePending).toBe(true);
-  await act(async () => complete({ _tag: "Success", environmentId }));
-  expect(attempts).toBe(1);
+  await act(async () => complete(admitted()));
+  expect(mock.exchange).toHaveBeenCalledTimes(1);
   expect(restorePending).toBe(false);
 });
+
 it("retains a registration published before its remembered identity is written", async () => {
   const finish = beginEnvironmentIdentityExchange(origin);
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
@@ -211,17 +308,17 @@ it("retains a registration published before its remembered identity is written",
     finish();
   });
   await render();
-  expect(mock.exchange).not.toHaveBeenCalled();
   expect(mock.remove).not.toHaveBeenCalled();
 });
-it("still disposes an old service identity replaced at the same origin", async () => {
+
+it("retires an old service identity replaced at the same origin", async () => {
   rememberEnvironment({ key: "project:old-service", environmentId });
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   await mount();
-  expect(mock.remove).toHaveBeenCalled();
+  expect(mock.retire).toHaveBeenCalledWith("project:old-service", environmentId);
 });
 
-it("disposes an obsolete server history once a replacement is remembered at its address", async () => {
+it("releases an obsolete server history once a replacement is remembered at its address", async () => {
   const replacement = EnvironmentId.make("replacement");
   rememberEnvironment({ key: "project:service", environmentId });
   const finish = beginEnvironmentIdentityExchange(origin);
@@ -243,11 +340,9 @@ it("a Mate restarting keeps its environment", async () => {
   rememberEnvironment({ key: "project:service", environmentId });
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   const render = await mount();
-  expect(mock.remove).not.toHaveBeenCalled();
 
-  // A fresh inventory push landing the service as RESTARTING: the row is no
-  // longer `allowed`, but the candidate is still there under the same
-  // `project:service` key (candidates.ts).
+  // A fresh inventory push landing the service as RESTARTING: the target is still there under
+  // the same `project:service` key (candidates.ts), transitioning.
   liveInventory = {
     ...inventory(),
     services: new Map([
@@ -259,6 +354,7 @@ it("a Mate restarting keeps its environment", async () => {
   };
   await render();
 
+  expect(mock.retire).not.toHaveBeenCalled();
   expect(mock.remove).not.toHaveBeenCalled();
 });
 
@@ -266,28 +362,41 @@ it("services not yet read keep the environment", async () => {
   rememberEnvironment({ key: "project:service", environmentId });
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   const render = await mount();
-  expect(mock.remove).not.toHaveBeenCalled();
 
-  // Inventory carries the project forward but its services outcome is
-  // absent — the momentarily-unread window H10 describes.
+  // Inventory carries the project forward but its services outcome is absent — the
+  // momentarily-unread window H10 describes: presence is unknown, never gone.
   liveInventory = { ...inventory(), services: new Map() };
   await render();
 
+  expect(mock.retire).not.toHaveBeenCalled();
   expect(mock.remove).not.toHaveBeenCalled();
+});
+
+it("an inventory read in flight or failed keeps the environment", async () => {
+  rememberEnvironment({ key: "project:service", environmentId });
+  mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
+  const render = await mount();
+
+  liveInventory = { ...inventory(), projects: [], services: new Map(), isLoading: true };
+  await render();
+  liveInventory = { ...inventory(), projects: [], services: new Map(), error: "unavailable" };
+  await render();
+
+  expect(mock.retire).not.toHaveBeenCalled();
 });
 
 it("a deleted project loses it", async () => {
   rememberEnvironment({ key: "project:service", environmentId });
   mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
   const render = await mount();
-  expect(mock.remove).not.toHaveBeenCalled();
+  expect(mock.retire).not.toHaveBeenCalled();
 
-  // A settled read (not loading, no error) whose project list no longer has
-  // the project at all — the platform actually deleted it.
+  // A settled read (not loading, no error) whose project list no longer has the project at
+  // all — the platform actually deleted it.
   liveInventory = { ...inventory(), projects: [], services: new Map() };
   await render();
 
-  expect(mock.remove.mock.calls.map((call) => call[2])).toContain(environmentId);
+  expect(mock.retire).toHaveBeenCalledWith("project:service", environmentId);
 });
 
 it("releases an unremembered registration when its identity exchange ends unsuccessfully", async () => {

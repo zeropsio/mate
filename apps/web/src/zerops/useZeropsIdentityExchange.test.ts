@@ -3,7 +3,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
 
-import { rememberExchangedProjectRef } from "./useZeropsIdentityExchange";
+import { connectResult, rememberExchangedProjectRef } from "./useZeropsIdentityExchange";
 
 function fakeStorage(): ZeropsStorageAdapter & { readonly raw: Map<string, string> } {
   const raw = new Map<string, string>();
@@ -24,13 +24,11 @@ function fakeStorage(): ZeropsStorageAdapter & { readonly raw: Map<string, strin
 const ENV = "env-1" as EnvironmentId;
 const CANDIDATE = { project: { id: "project-1" } };
 
-// `rememberExchangedProjectRef` is the one call `useZeropsIdentityExchange`'s
-// successful branch makes (`useZeropsIdentityExchange.ts`) — the same hook
-// every path that can land an environment uses: `ZeropsProjectsPage.tsx`'s
-// `connectContainer` and auto-connect, `ZeropsEnvironmentLifetime.tsx`'s
-// restore effect, and `ZeropsIdentityRepair.ts`'s repair. Proving this
-// function writes the ref correctly proves every one of those paths does,
-// since none of them can reach a `Success` result without going through it.
+// `rememberExchangedProjectRef` is the one call the exchange driver's install
+// port makes (`webExchangePorts`) for every environment it installs — and every
+// path that can land an environment is demand on that one driver: the projects
+// page's Connect, auto-connect, restore and repair. Proving this function
+// writes the ref correctly proves every one of those paths does.
 describe("rememberExchangedProjectRef (H12: connect, restore and repair share one write)", () => {
   it("a restored or repaired environment remembers its project", async () => {
     const storage = fakeStorage();
@@ -65,5 +63,72 @@ describe("rememberExchangedProjectRef (H12: connect, restore and repair share on
       rememberExchangedProjectRef(storage, ENV, CANDIDATE, "org-1").catch(onRejection),
     ).resolves.toBeUndefined();
     expect(onRejection).not.toHaveBeenCalled();
+  });
+});
+
+describe("connectResult: the user's Connect as the projects page reads it", () => {
+  const descriptor = {
+    environmentId: ENV,
+    serverVersion: "0.10.4",
+    update: null,
+    identity: "ok" as const,
+    identityCheckedAt: null,
+  };
+
+  it.each([
+    {
+      name: "installed",
+      outcome: { _tag: "Connected", environmentId: ENV } as const,
+      result: { _tag: "Success", environmentId: ENV },
+    },
+    {
+      name: "the role is refused: not worth trying again",
+      outcome: {
+        _tag: "NotConnected",
+        reachability: { kind: "refused-role" },
+        descriptor: null,
+      } as const,
+      result: {
+        _tag: "Failure",
+        error:
+          "Could not connect to this container. You can see this project in Zerops but can't operate its Mate.",
+        retryable: false,
+      },
+    },
+    {
+      name: "below the floor: the upgrade path, with the server's version",
+      outcome: {
+        _tag: "NotConnected",
+        reachability: { kind: "update-unavailable" },
+        descriptor,
+      } as const,
+      result: {
+        _tag: "Failure",
+        retryable: false,
+        upgradeRequired: true,
+        serverVersion: "0.10.4",
+      },
+    },
+    {
+      name: "backing off: the machine retries, and so may the page",
+      outcome: {
+        _tag: "NotConnected",
+        reachability: {
+          kind: "retrying",
+          retryAtMs: Date.now() + 4_000,
+          last: { kind: "server", status: 500 },
+          restart: false,
+        },
+        descriptor: null,
+      } as const,
+      result: { _tag: "Failure", retryable: true },
+    },
+    {
+      name: "the account closed",
+      outcome: { _tag: "Closed" } as const,
+      result: { _tag: "Failure", retryable: false },
+    },
+  ])("$name", ({ outcome, result }) => {
+    expect(connectResult(outcome)).toMatchObject(result);
   });
 });

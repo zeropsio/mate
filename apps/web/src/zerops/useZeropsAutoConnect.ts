@@ -2,84 +2,42 @@
  * Registers ready containers on the user's behalf, so the roster can say
  * what every agent is doing (`autoConnect.ts` decides which).
  *
- * This is the identity exchange the Connect button runs, minus everything
- * that button does afterwards: no navigation, no composed first prompt, no
- * provisioning wait. An environment simply becomes one of ours, its socket
- * comes up, and its row lights up. Failures are kept, not shown here — the
- * projects screen is where a person reads why a container would not connect.
+ * Demand on the exchange driver, nothing more: the selected targets are
+ * wanted, and each target's machine runs the exchange, retries it with
+ * backoff and waits for an input change after a refusal. No navigation, no
+ * composed first prompt, no provisioning wait — an environment simply becomes
+ * one of ours, its socket comes up, and its row lights up. Why a container
+ * would not connect is its reachability, which the projects screen reads.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { selectAutoConnectTargets } from "@t3tools/client-runtime/zerops";
-import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 
-import { browserZeropsStorage } from "./storage";
 import { pendingCreationProjects } from "./creationHandoffStorage";
-import { useZeropsIdentityExchange } from "./useZeropsIdentityExchange";
+import { useExchangeDriver } from "./useZeropsIdentityExchange";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
-
-const CONNECT_CONCURRENCY = 2;
 
 export function useZeropsAutoConnect(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
   readonly enabled: boolean;
-}): { readonly failures: ReadonlyMap<string, string> } {
-  const exchange = useZeropsIdentityExchange("auto-connect");
-  // Once per origin per session, success or failure: a container that refused
-  // us is not asked again until the page reloads, and a registered one is
-  // recognised by its candidate, not by this set.
-  const attemptedRef = useRef(new Set<string>());
-  const [failures, setFailures] = useState<ReadonlyMap<string, string>>(new Map());
+}): void {
+  const driver = useExchangeDriver();
 
   useEffect(() => {
-    if (!input.enabled) return;
-    const targets = selectAutoConnectTargets({
-      candidates: input.candidates,
-      health: input.health,
-      attempted: attemptedRef.current,
-      // The projects screen's own connect owns a birth end to end — its
-      // retry loop, its `connectError`, its navigate to the conversation.
-      // This connector never navigates, so racing it in would either waste
-      // an attempt or spend the birth's hand-off with nobody there to catch
-      // the environment it lands on.
-      birthProjectIds: new Set(pendingCreationProjects()),
-    });
-    if (targets.length === 0) return;
-
-    let cancelled = false;
-    let cursor = 0;
-    const worker = async (): Promise<void> => {
-      for (;;) {
-        const target = targets[cursor];
-        cursor += 1;
-        if (!target || cancelled) return;
-        attemptedRef.current.add(target.containerOrigin);
-        const result = await exchange(target.containerOrigin);
-        if (result._tag === "Failure") {
-          if (!cancelled) {
-            setFailures((current) => new Map(current).set(target.containerOrigin, result.error));
-          }
-          continue;
-        }
-        if (target.clientId !== undefined) {
-          await rememberEnvironmentProjectRef(browserZeropsStorage, result.environmentId, {
-            projectId: target.projectId,
-            orgId: target.clientId,
-            source: "connect",
-          });
-        }
-      }
-    };
-    void Promise.all(
-      Array.from({ length: Math.min(CONNECT_CONCURRENCY, targets.length) }, () => worker()),
+    driver.setDemand(
+      "auto-connect",
+      input.enabled
+        ? selectAutoConnectTargets({
+            candidates: input.candidates,
+            health: input.health,
+            birthProjectIds: new Set(pendingCreationProjects()),
+          })
+        : [],
     );
-    return () => {
-      cancelled = true;
-    };
-  }, [exchange, input.candidates, input.enabled, input.health]);
+  }, [driver, input.candidates, input.enabled, input.health]);
 
-  return { failures };
+  useEffect(() => () => driver.setDemand("auto-connect", []), [driver]);
 }

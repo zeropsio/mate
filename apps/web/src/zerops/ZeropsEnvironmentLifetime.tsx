@@ -1,49 +1,283 @@
+/**
+ * Hosts the exchange driver (DESIGN §4.4) inside today's account tree: one driver per account
+ * epoch, fed the targets the inventory and the remembered records name, the account's guards
+ * and the tab's visibility. Restore is the records' demand on it; auto-connect, repair and the
+ * user's Connect are demand from their own emitters.
+ *
+ * An interim shell: the account runtime replaces it (3.4).
+ */
+import { RegistryContext } from "@effect/atom-react";
+import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  interimContainerVerdict,
+  makeExchangeDriver,
+  type ExchangeDriver,
+  type ExchangeTarget,
+  type EnvironmentMachine,
+  type Presence,
+  type ServiceTransition,
+} from "@t3tools/client-runtime/zerops/environments";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
+import { EnvironmentId } from "@t3tools/contracts";
 import {
   createContext,
   useContext,
   useEffect,
   useMemo,
   useState,
-  useRef,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
+
 import { environmentCatalog } from "../connection/catalog";
-import { RegistryContext } from "@effect/atom-react";
-import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { useEnvironments } from "../state/environments";
-import { captureAccountLifetime } from "./accountLifetime";
+import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
+import { inventoryCandidates, type Inventory } from "./inventoryContext";
 import {
+  hasPendingEnvironmentIdentityExchange,
   isCurrentEnvironmentTarget,
   readRememberedEnvironments,
-  hasPendingEnvironmentIdentityExchange,
   useEnvironmentIdentityVersion,
 } from "./rememberedEnvironments";
-import { useZeropsIdentityExchange } from "./useZeropsIdentityExchange";
-import { inventoryCandidates } from "./inventoryContext";
+import { useZeropsCandidateHealth } from "./useZeropsCandidateHealth";
+import {
+  ExchangeDriverContext,
+  webExchangePorts,
+  type ExchangeInputs,
+} from "./useZeropsIdentityExchange";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
-import { useZeropsCandidatesVersion } from "./candidatesRefresh";
+import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const RestoreContext = createContext(false);
 const AvailableContext = createContext<ReadonlySet<string>>(new Set());
 export const useEnvironmentRestorePending = () => useContext(RestoreContext);
 export const useAvailableEnvironmentIds = () => useContext(AvailableContext);
 
+/** A tab hidden at least this long wakes its retries when it is shown again (§6.4). */
+const WAKE_AFTER_HIDDEN_MS = 30_000;
+
+// ── One driver per account epoch ─────────────────────────────────────────────────────────────
+
+/**
+ * The epoch's driver outlives this shell's mounts: a lapse unmounts the tree until the next
+ * grant, and the machines it holds — a credential held, a retry scheduled — must be there when
+ * it comes back. Its ports read the inputs the newest mount committed.
+ */
+let hosted: {
+  readonly epoch: number;
+  readonly driver: ExchangeDriver;
+  inputs: ExchangeInputs | null;
+} | null = null;
+
+onAccountLifetimeClose(() => {
+  hosted?.driver.dispose();
+  hosted = null;
+});
+
+function hostExchangeDriver(): ExchangeDriver {
+  const epoch = currentAccountEpoch();
+  if (hosted !== null && hosted.epoch === epoch) return hosted.driver;
+  hosted?.driver.dispose();
+  const host: NonNullable<typeof hosted> = {
+    epoch,
+    inputs: null,
+    driver: makeExchangeDriver(
+      webExchangePorts(() => {
+        // Bound by the mount's first effect, before any event reaches the driver.
+        if (host.inputs === null) throw new Error("The exchange driver has no account inputs.");
+        return host.inputs;
+      }),
+    ),
+  };
+  hosted = host;
+  return host.driver;
+}
+
+function bindExchangeInputs(inputs: ExchangeInputs): void {
+  if (hosted !== null) hosted.inputs = inputs;
+}
+
+// ── Targets from the inventory and the records ───────────────────────────────────────────────
+
+const SERVICE_TRANSITIONS: ReadonlySet<string> = new Set<ServiceTransition>([
+  "NEW",
+  "CREATING",
+  "STARTING",
+  "RESTARTING",
+  "UPGRADING",
+]);
+
+/** Region P for a target the inventory names (§4.4). */
+function candidatePresence(candidate: ZeropsCandidate): Presence {
+  if (candidate.containerOrigin !== undefined) {
+    return { kind: "present", origin: candidate.containerOrigin };
+  }
+  const status = candidate.service?.status ?? candidate.project.status;
+  if (SERVICE_TRANSITIONS.has(status)) {
+    return { kind: "transitioning", status: status as ServiceTransition };
+  }
+  if (status === "ACTIVE") return { kind: "no-origin", reason: "no-subdomain" };
+  return { kind: "inactive", status };
+}
+
+/**
+ * Region P for every target: what the inventory names now; for a target it no longer names,
+ * `unknown` while its project's services are unread, the last value while the inventory is
+ * loading or failing, and `gone` once a settled read lacks it (the confirming direct read of
+ * C19 arrives in 3.9).
+ */
+function targetsOf(input: {
+  readonly inventory: Inventory;
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
+}): ReadonlyArray<ExchangeTarget> {
+  const records = readRememberedEnvironments();
+  const unread = new Set(
+    input.candidates
+      .filter(
+        (candidate) =>
+          candidate.group === "unavailable" &&
+          candidate.reason === "this project's services could not be read",
+      )
+      .map((candidate) => candidate.project.id),
+  );
+  const settled = !input.inventory.isLoading && input.inventory.error === null;
+  const keys = new Set([
+    ...input.candidates.map((candidate) => candidate.key),
+    ...records.map((record) => record.key),
+  ]);
+  return [...keys].map((key) => {
+    const candidate = input.candidates.find((entry) => entry.key === key);
+    const record = records.find((entry) => entry.key === key);
+    const projectId = key.split(":")[0] ?? key;
+    const presence: Presence | null =
+      candidate !== undefined
+        ? candidatePresence(candidate)
+        : unread.has(projectId)
+          ? { kind: "unknown" }
+          : settled
+            ? { kind: "gone", evidence: "complete-scope-omits-verified" }
+            : null;
+    return {
+      key,
+      presence,
+      container:
+        candidate === undefined
+          ? { level: "unknown" }
+          : interimContainerVerdict({
+              candidate,
+              health: input.health.get(key),
+              mateFlag: undefined,
+            }),
+      record: record === undefined ? null : EnvironmentId.make(record.environmentId),
+    };
+  });
+}
+
+/** A remembered target whose credential is still on its way. */
+const restoring = (machine: EnvironmentMachine | undefined): boolean => {
+  if (machine === undefined) return true;
+  const kind = machine.credential.kind;
+  return kind === "none" || kind === "waiting" || kind === "exchanging" || kind === "backoff";
+};
+
+// ── The shell ────────────────────────────────────────────────────────────────────────────────
+
 /** Only stable project/service records validated by today's inventory can be
  * reconnected. URL and server identity are observations, never project IDs. */
 export function ZeropsEnvironmentLifetime({ children }: { readonly children: ReactNode }) {
   const inventory = useZeropsInventory();
   const { environments } = useEnvironments();
-  const exchange = useZeropsIdentityExchange("restore");
+  const { client, activeOrganization } = useZeropsSession();
   const registry = useContext(RegistryContext);
-  const [restoring, setRestoring] = useState(true);
-  const restoreAttempts = useRef(new Map<string, string>());
-  const pendingRestores = useRef(0);
-  const refreshVersion = useZeropsCandidatesVersion();
   const identityVersion = useEnvironmentIdentityVersion();
   const candidates = useMemo(
     () => inventoryCandidates(inventory),
     [inventory.projects, inventory.services],
+  );
+  const { health } = useZeropsCandidateHealth(candidates);
+
+  const [driver] = useState(hostExchangeDriver);
+
+  useEffect(() => {
+    bindExchangeInputs({
+      registry,
+      client,
+      activeOrganizationId: activeOrganization?.id,
+      candidates,
+    });
+  }, [activeOrganization?.id, candidates, client, registry]);
+
+  // Mounted means granted: this tree renders only inside an admitted grant, and a lapse
+  // unmounts it until the next one. Exchanges wait on access meanwhile, and resume on their own.
+  useEffect(() => {
+    driver.setAccount({
+      postGrant: true,
+      identityMint: { allowed: true },
+      zeropsFailing: false,
+      grantVerifiedAtMs: null,
+    });
+    return () =>
+      driver.setAccount({
+        postGrant: true,
+        identityMint: { allowed: false, reason: "access-lapsed", waitable: true },
+        zeropsFailing: false,
+        grantVerifiedAtMs: null,
+      });
+  }, [driver]);
+
+  useEffect(() => {
+    let hiddenSince: number | null = null;
+    const visibility = () => {
+      const visible = document.visibilityState === "visible";
+      driver.setVisible(visible);
+      if (!visible) {
+        hiddenSince ??= performance.now();
+        return;
+      }
+      if (hiddenSince !== null && performance.now() - hiddenSince >= WAKE_AFTER_HIDDEN_MS) {
+        driver.wake(true);
+      }
+      hiddenSince = null;
+    };
+    const online = () => driver.online();
+    visibility();
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("online", online);
+    return () => {
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("online", online);
+    };
+  }, [driver]);
+
+  useEffect(() => {
+    driver.setTargets(targetsOf({ inventory, candidates, health }));
+    driver.setDemand(
+      "record",
+      readRememberedEnvironments().map((record) => record.key),
+    );
+  }, [candidates, driver, health, identityVersion, inventory]);
+
+  // A registration no target owns — nothing remembers it and no install is writing its record —
+  // is released; a remembered one leaves only when its target retires.
+  useEffect(() => {
+    const remembered = new Set(readRememberedEnvironments().map((record) => record.environmentId));
+    for (const environment of environments) {
+      if (remembered.has(String(environment.environmentId))) continue;
+      if (environment.displayUrl && hasPendingEnvironmentIdentityExchange(environment.displayUrl)) {
+        continue;
+      }
+      void runAtomCommand(registry, environmentCatalog.remove, environment.environmentId, {
+        reportFailure: false,
+      });
+    }
+  }, [environments, identityVersion, registry]);
+
+  const machines = useSyncExternalStore(driver.subscribe, driver.machines);
+  const restorePending = useMemo(
+    () => readRememberedEnvironments().some((record) => restoring(machines.get(record.key))),
+    [machines, identityVersion],
   );
 
   const allowed = useMemo(
@@ -74,123 +308,11 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
     [allowed, candidates, environments, identityVersion],
   );
 
-  // The exact candidate keys a fresh inventory read still produces — a zcp
-  // service reporting `RESTARTING`, or any other still-provisioning status,
-  // keeps the same `project:service` key, so this alone already answers "is
-  // this remembered registration's container still there" without reading
-  // its group.
-  const candidateKeys = useMemo(
-    () => new Set(candidates.map((candidate) => candidate.key)),
-    [candidates],
-  );
-  // A project whose services could not be read at all falls back to a
-  // project-level candidate with no service in its key (candidates.ts), so a
-  // remembered `project:service` key never matches it by equality — that is
-  // exactly the transient read H10 warns about, not proof the service is
-  // gone, so it is checked by project id instead.
-  const projectsWithUnreadServices = useMemo(
-    () =>
-      new Set(
-        candidates
-          .filter(
-            (candidate) =>
-              candidate.group === "unavailable" &&
-              candidate.reason === "this project's services could not be read",
-          )
-          .map((candidate) => candidate.project.id),
-      ),
-    [candidates],
-  );
-
-  useEffect(() => {
-    const alive = captureAccountLifetime();
-    let cancelled = false;
-    void (async () => {
-      for (const remembered of readRememberedEnvironments()) {
-        if (cancelled || !alive()) return;
-        const candidate = candidates.find((entry) => entry.key === remembered.key);
-        if (
-          !candidate?.containerOrigin ||
-          candidate.group === "unavailable" ||
-          candidate.group === "provisioning"
-        )
-          continue;
-        // Registration may already belong to auto-connect or an explicit Connect.
-        if (availableEnvironmentIds.has(remembered.environmentId)) continue;
-        const attempt = `${refreshVersion}:${candidate.containerOrigin}`;
-        if (restoreAttempts.current.get(candidate.key) === attempt) continue;
-        // Claim before awaiting: inventory updates and StrictMode can restart
-        // this effect while the exchange is pending, or after it has failed.
-        restoreAttempts.current.set(candidate.key, attempt);
-        pendingRestores.current += 1;
-        setRestoring(true);
-        try {
-          await exchange(candidate.containerOrigin);
-        } finally {
-          pendingRestores.current -= 1;
-          if (alive()) setRestoring(pendingRestores.current > 0);
-        }
-      }
-      if (!cancelled && alive()) setRestoring(pendingRestores.current > 0);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [availableEnvironmentIds, candidates, exchange, refreshVersion]);
-
-  useEffect(() => {
-    if (inventory.isLoading) return;
-    for (const key of restoreAttempts.current.keys()) {
-      if (!candidates.some((candidate) => candidate.key === key))
-        restoreAttempts.current.delete(key);
-    }
-    for (const environment of environments) {
-      if (availableEnvironmentIds.has(String(environment.environmentId))) continue;
-      // The catalog publishes registration before the exchange caller can
-      // remember its identity. Keep that new target while its origin is still
-      // allowed; it is not exposed to routes until the identity is remembered.
-      if (
-        environment.displayUrl &&
-        allowed.has(normalizeOrigin(environment.displayUrl)) &&
-        hasPendingEnvironmentIdentityExchange(environment.displayUrl)
-      )
-        continue;
-      const remembered = readRememberedEnvironments().find(
-        (entry) => entry.environmentId === String(environment.environmentId),
-      );
-      if (remembered) {
-        // E12/H10: a restarting container, or services the inventory has
-        // not read yet, must not eject a working registration — and a read
-        // still in flight, or one that failed, proves nothing about
-        // whether the project is actually gone.
-        const projectId = remembered.key.split(":")[0];
-        const stillThere =
-          candidateKeys.has(remembered.key) ||
-          (projectId !== undefined && projectsWithUnreadServices.has(projectId));
-        if (stillThere) continue;
-        if (inventory.isLoading || inventory.error !== null) continue;
-      }
-      // Local disposal must run even when an unrelated scope has blocked writes.
-      void runAtomCommand(registry, environmentCatalog.remove, environment.environmentId, {
-        reportFailure: false,
-      });
-    }
-  }, [
-    allowed,
-    availableEnvironmentIds,
-    candidateKeys,
-    candidates,
-    environments,
-    inventory.error,
-    inventory.isLoading,
-    identityVersion,
-    projectsWithUnreadServices,
-    registry,
-  ]);
-
   return (
-    <RestoreContext value={restoring}>
-      <AvailableContext value={availableEnvironmentIds}>{children}</AvailableContext>
-    </RestoreContext>
+    <ExchangeDriverContext value={driver}>
+      <RestoreContext value={restorePending}>
+        <AvailableContext value={availableEnvironmentIds}>{children}</AvailableContext>
+      </RestoreContext>
+    </ExchangeDriverContext>
   );
 }

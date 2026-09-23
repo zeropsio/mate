@@ -86,6 +86,19 @@ export interface ExchangeClock {
   readonly setTimer: (delayMs: number, fire: () => void) => () => void;
 }
 
+/** The tab's own clocks and timers. */
+export const systemExchangeClock: ExchangeClock = {
+  // @effect-diagnostics-next-line globalDate:off -- the driver's one clock port; plain promises, no Effect runtime.
+  now: () => ({ wall: Date.now(), mono: performance.now() }),
+  // @effect-diagnostics-next-line globalRandom:off -- the backoff jitter's one source, behind the same port.
+  random: () => Math.random(),
+  setTimer: (delayMs, fire) => {
+    // @effect-diagnostics-next-line globalTimers:off -- the driver's one timer port; plain promises, no Effect runtime.
+    const handle = setTimeout(fire, delayMs);
+    return () => clearTimeout(handle);
+  },
+};
+
 export interface ExchangeDriverPorts<C> {
   readonly clock: ExchangeClock;
   /** The descriptor, the mint, the door and the token exchange; installs nothing. */
@@ -140,6 +153,7 @@ export interface ExchangeDriver {
   /** "Try now". */
   readonly retry: (key: TargetKey) => void;
   readonly machine: (key: TargetKey) => EnvironmentMachine | undefined;
+  /** Every target's machine as last published; the same map until the next publication. */
   readonly machines: () => ReadonlyMap<TargetKey, EnvironmentMachine>;
   /** Told after every batch of events, once the machines are published. */
   readonly subscribe: (listener: () => void) => () => void;
@@ -184,6 +198,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     PRIORITY.map((reason) => [reason, new Set<TargetKey>()]),
   );
   const listeners = new Set<() => void>();
+  let published: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
   const connects = new Map<TargetKey, Array<(outcome: ConnectOutcome) => void>>();
   /** Monotonic times of the exchanges started in the last minute. */
   const minted: Array<number> = [];
@@ -466,6 +481,10 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   };
 
   const publish = (): void => {
+    const changed =
+      published.size !== entries.size ||
+      [...entries].some(([key, entry]) => published.get(key) !== entry.machine);
+    if (changed) published = new Map([...entries].map(([key, entry]) => [key, entry.machine]));
     for (const [key, resolvers] of connects) {
       const entry = entries.get(key);
       const outcome = entry === undefined ? null : outcomeOf(entry);
@@ -473,6 +492,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       connects.delete(key);
       for (const resolve of resolvers) resolve(outcome);
     }
+    if (!changed) return;
     for (const listener of listeners) listener();
   };
 
@@ -555,7 +575,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       }),
     retry: (key) => enqueue(() => step(key, { type: "USER_RETRY" })),
     machine: (key) => entries.get(key)?.machine,
-    machines: () => new Map([...entries].map(([key, entry]) => [key, entry.machine])),
+    machines: () => published,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {

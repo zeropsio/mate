@@ -1,100 +1,88 @@
-import type { SupervisorConnectionState } from "@t3tools/client-runtime/connection";
-import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
+/**
+ * Feeds the exchange driver what only the router and the connection runtime know: the
+ * route's target, as demand, and each registered environment's link.
+ *
+ * Repair is the driver's: a link blocked on authentication leaves the target's machine without
+ * a credential, and it exchanges again — on every rejection, backing off inside the loop
+ * guard's window, for as long as the target is wanted (DESIGN §4.4).
+ */
+import {
+  ConnectionBlockedError,
+  type SupervisorConnectionState,
+} from "@t3tools/client-runtime/connection";
+import type { LinkPhase } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { createElement, useEffect, useRef } from "react";
+import { useLocation } from "@tanstack/react-router";
+import * as Schema from "effect/Schema";
+import { createElement, useEffect } from "react";
 
-import { toastManager } from "~/components/ui/toast";
-import { useEnvironments, useEnvironmentConnectionState } from "~/state/environments";
+import { environmentIdFromPathname } from "~/routes/-environmentRoute";
+import { useEnvironmentConnectionState, useEnvironments } from "~/state/environments";
 
-import { connectionOriginFor } from "./firstPromptStorage";
-import { useZeropsIdentityExchange } from "./useZeropsIdentityExchange";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import {
+  readRememberedEnvironments,
+  useEnvironmentIdentityVersion,
+} from "./rememberedEnvironments";
+import { useExchangeDriver } from "./useZeropsIdentityExchange";
 
-export function repairSettledZeropsAuthentication(input: {
-  readonly attemptedEnvironmentIds: Set<string>;
-  readonly environmentId: EnvironmentId;
-  readonly state: SupervisorConnectionState;
-  readonly hasZeropsToken: boolean;
-  readonly isZeropsEnvironment: boolean;
-  readonly repair: (environmentId: EnvironmentId) => void;
-}): void {
-  const key = String(input.environmentId);
-  const isSettledAuthenticationFailure =
-    input.state.phase === "blocked" && input.state.lastFailure?.reason === "authentication";
+const isConnectionBlockedError = Schema.is(ConnectionBlockedError);
 
-  if (!isSettledAuthenticationFailure) {
-    if (input.state.phase === "connected") {
-      input.attemptedEnvironmentIds.delete(key);
-    }
-    return;
+/** Region L as the supervisor publishes it; null for a block that names no reason. */
+export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null {
+  switch (state.phase) {
+    case "available":
+      return { phase: "idle" };
+    case "offline":
+      return { phase: "offline" };
+    case "connecting":
+      return { phase: "connecting" };
+    case "connected":
+      return { phase: "connected" };
+    case "backoff":
+      return { phase: "backoff", retryAtMs: state.retryAt };
+    case "blocked":
+      return isConnectionBlockedError(state.lastFailure)
+        ? { phase: "blocked", reason: state.lastFailure.reason }
+        : null;
   }
-  if (
-    !input.hasZeropsToken ||
-    !input.isZeropsEnvironment ||
-    input.attemptedEnvironmentIds.has(key)
-  ) {
-    return;
-  }
-
-  input.attemptedEnvironmentIds.add(key);
-  input.repair(input.environmentId);
 }
 
-interface RepairableEnvironment {
-  readonly environmentId: EnvironmentId;
-  readonly displayUrl: string | null;
-}
+function ZeropsLinkMirror({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const { data: state } = useEnvironmentConnectionState(environmentId);
+  const driver = useExchangeDriver();
 
-function ZeropsIdentityRepairEnvironment({
-  environment,
-  attemptedEnvironmentIds,
-}: {
-  readonly environment: RepairableEnvironment;
-  readonly attemptedEnvironmentIds: Set<string>;
-}) {
-  const { data: state } = useEnvironmentConnectionState(environment.environmentId);
-  const { client } = useZeropsSession();
-  const exchange = useZeropsIdentityExchange("repair");
-  const origin = environment.displayUrl === null ? null : normalizeOrigin(environment.displayUrl);
-
+  // Every publication is one observation: a repeated rejection is counted, never coalesced.
   useEffect(() => {
     if (state === null) return;
-    repairSettledZeropsAuthentication({
-      attemptedEnvironmentIds,
-      environmentId: environment.environmentId,
-      state,
-      hasZeropsToken: Boolean(client.session?.accessToken),
-      isZeropsEnvironment:
-        origin !== null &&
-        connectionOriginFor(String(environment.environmentId)) === "zerops-identity",
-      repair: () => {
-        if (origin === null) return;
-        void exchange(origin).then((result) => {
-          if (result._tag === "Failure") {
-            toastManager.add({
-              type: "error",
-              title: "Could not repair the Zerops session",
-              description: result.error,
-            });
-          }
-        });
-      },
-    });
-  }, [attemptedEnvironmentIds, client, environment.environmentId, exchange, origin, state]);
+    const phase = linkPhaseOf(state);
+    if (phase !== null) driver.link(environmentId, phase);
+  }, [driver, environmentId, state]);
 
   return null;
 }
 
-/** Repairs expired Zerops environment sessions from every route that uses the app shell. */
 export function ZeropsIdentityRepair() {
   const { environments } = useEnvironments();
-  const attemptedEnvironmentIds = useRef(new Set<string>()).current;
+  const driver = useExchangeDriver();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const identityVersion = useEnvironmentIdentityVersion();
+
+  // The route's target is exchanged first (§4.4 priority); only a remembered target has a key.
+  useEffect(() => {
+    const environmentId = environmentIdFromPathname(pathname);
+    const record =
+      environmentId === null
+        ? undefined
+        : readRememberedEnvironments().find((entry) => entry.environmentId === environmentId);
+    driver.setDemand("route", record === undefined ? [] : [record.key]);
+  }, [driver, identityVersion, pathname]);
+
+  useEffect(() => () => driver.setDemand("route", []), [driver]);
 
   return environments.map((environment) =>
-    createElement(ZeropsIdentityRepairEnvironment, {
+    createElement(ZeropsLinkMirror, {
       key: environment.environmentId,
-      environment,
-      attemptedEnvironmentIds,
+      environmentId: environment.environmentId,
     }),
   );
 }

@@ -9,8 +9,10 @@
  * container has answered the health probe, so a sleeping or half-installed
  * container is never woken or hammered on the user's behalf.
  *
- * Pure: the decision is testable without a network, and the hook that acts on
- * it owns nothing but the attempt set.
+ * Pure: the decision is testable without a network. What it selects is demand
+ * on the exchange driver (`environments/exchangeDriver.ts`): each target's own
+ * machine decides when an exchange runs, retries it with backoff, and waits
+ * for an input change after a refusal — nothing here remembers an attempt.
  *
  * @module autoConnect
  */
@@ -32,31 +34,22 @@ export interface AutoConnectCandidate extends ZeropsCandidate {
   readonly connection?: EnvironmentConnectionPresentation;
 }
 
-export interface AutoConnectTarget {
-  readonly key: string;
-  readonly containerOrigin: string;
-  readonly projectId: string;
-  readonly clientId: string | undefined;
-}
-
+/** The candidate keys auto-connect wants, in the roster's order. */
 export function selectAutoConnectTargets(input: {
   readonly candidates: ReadonlyArray<AutoConnectCandidate>;
   /** What each container answered, by candidate key; absent = still asking. */
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
-  /** Origins this session already tried, successfully or not. */
-  readonly attempted: ReadonlySet<string>;
   /**
    * Projects a birth is watching (the page's own provisioning wait, or a
    * hand-off this browser wrote — `creationHandoffStorage.ts`). Skipped here
-   * so exactly one connector runs on a birth: the page's own, which schedules
-   * a retry, sets a `connectError`, and lands the person in the conversation
-   * on success. This connector never navigates by design; racing it against
-   * the birth's own connect either wastes an attempt or, worse, spends the
+   * so a birth is wanted only through the page's own Connect, once its wait
+   * has settled: that Connect is what lands the person in the conversation,
+   * and an exchange started earlier on auto-connect's behalf would spend the
    * hand-off out from under a card still waiting for it.
    */
   readonly birthProjectIds?: ReadonlySet<string>;
   readonly limit?: number;
-}): ReadonlyArray<AutoConnectTarget> {
+}): ReadonlyArray<string> {
   const limit = input.limit ?? ZEROPS_AUTO_CONNECT_LIMIT;
   const birthProjectIds = input.birthProjectIds ?? new Set<string>();
 
@@ -69,7 +62,7 @@ export function selectAutoConnectTargets(input: {
     }
   }
 
-  const targets: Array<AutoConnectTarget> = [];
+  const targets: Array<string> = [];
   const seen = new Set<string>();
   for (const candidate of input.candidates) {
     if (registered.size + targets.length >= limit) break;
@@ -78,15 +71,10 @@ export function selectAutoConnectTargets(input: {
     if (candidate.group !== "ready") continue;
     if (candidate.connection !== undefined || candidate.environmentId !== undefined) continue;
     if (input.health.get(candidate.key) !== "ready") continue;
-    if (input.attempted.has(origin) || seen.has(origin)) continue;
+    if (seen.has(origin)) continue;
     if (birthProjectIds.has(candidate.project.id)) continue;
     seen.add(origin);
-    targets.push({
-      key: candidate.key,
-      containerOrigin: origin,
-      projectId: candidate.project.id,
-      clientId: candidate.project.clientId,
-    });
+    targets.push(candidate.key);
   }
   return targets;
 }

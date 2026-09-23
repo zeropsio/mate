@@ -1,6 +1,14 @@
-import { ConnectionBlockedError } from "../connection/model.ts";
+import {
+  BearerConnectionCredential,
+  BearerConnectionProfile,
+  BearerConnectionRegistration,
+} from "../connection/catalog.ts";
+import { BearerConnectionTarget, ConnectionBlockedError } from "../connection/model.ts";
+import { EnvironmentNotRegisteredError, EnvironmentRegistry } from "../connection/registry.ts";
 import { RemoteEnvironmentAuthFetchError, RemoteEnvironmentAuthTimeoutError } from "../rpc/http.ts";
 import * as Cause from "effect/Cause";
+import { it as effectIt } from "@effect/vitest";
+import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -11,6 +19,7 @@ import { mateDiagnostics } from "./diagnostics.ts";
 import {
   exchangeAtDoor,
   exchangeZeropsContainerIdentity,
+  installDoorRegistration,
   type ZeropsDoorThrowaway,
 } from "./identityExchange.ts";
 import { makeFakeMate, type FakeMate } from "./testing/fakeMate.ts";
@@ -571,4 +580,58 @@ describe("exchangeAtDoor: every answer read into the machine's failure classes (
     expect(mate.doorCalls().length > 0).toBe(row.minted && row.platform === undefined);
     expect(recording.minted.length > 0).toBe(row.minted && row.platform === undefined);
   });
+});
+
+describe("installDoorRegistration", () => {
+  const ENV = "env-install" as EnvironmentId;
+  const registration = new BearerConnectionRegistration({
+    target: new BearerConnectionTarget({
+      environmentId: ENV,
+      label: "zcp",
+      connectionId: "bearer:env",
+    }),
+    profile: new BearerConnectionProfile({
+      connectionId: "bearer:env",
+      environmentId: ENV,
+      label: "zcp",
+      httpBaseUrl: `${CONTAINER_ORIGIN}/mate`,
+      wsBaseUrl: "wss://zcp-demo-8080.prg1.zerops.app/mate",
+    }),
+    credential: new BearerConnectionCredential({ token: "bearer", origin: "zerops-identity" }),
+  });
+
+  const install = (registered: boolean) =>
+    Effect.gen(function* () {
+      const calls: Array<string> = [];
+      const registry = {
+        rotateCredential: (environmentId: EnvironmentId) => {
+          calls.push(`rotate:${environmentId}`);
+          return registered
+            ? Effect.void
+            : Effect.fail(new EnvironmentNotRegisteredError({ environmentId }));
+        },
+        register: (value: BearerConnectionRegistration) => {
+          calls.push(`register:${value.target.environmentId}`);
+          return Effect.void;
+        },
+      } as unknown as EnvironmentRegistry["Service"];
+      yield* installDoorRegistration(registration).pipe(
+        Effect.provideService(EnvironmentRegistry, registry),
+      );
+      return calls;
+    });
+
+  effectIt.effect(
+    "rotates the credential of a registered environment and never re-registers it",
+    () =>
+      Effect.gen(function* () {
+        expect(yield* install(true)).toEqual([`rotate:${ENV}`]);
+      }),
+  );
+
+  effectIt.effect("registers an environment the registry does not hold", () =>
+    Effect.gen(function* () {
+      expect(yield* install(false)).toEqual([`rotate:${ENV}`, `register:${ENV}`]);
+    }),
+  );
 });

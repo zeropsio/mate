@@ -21,58 +21,78 @@ function health(entries: ReadonlyArray<readonly [string, ZeropsContainerHealth]>
   return new Map(entries.map(([id, verdict]) => [`${id}:zcp`, verdict] as const));
 }
 
-describe("selectAutoConnectTargets", () => {
-  it("connects a ready container that answered ready and is not registered", () => {
+describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    readonly candidate: AutoConnectCandidate;
+    readonly health?: ZeropsContainerHealth;
+    readonly birth?: boolean;
+    readonly wanted: boolean;
+  }> = [
+    {
+      name: "a ready container that answered ready and is not registered",
+      candidate: candidate("a"),
+      health: "ready",
+      wanted: true,
+    },
+    {
+      name: "a container the health probe has not answered for",
+      candidate: candidate("a"),
+      wanted: false,
+    },
+    {
+      name: "a container that predates Mate",
+      candidate: candidate("a"),
+      health: "predates-mate",
+      wanted: false,
+    },
+    {
+      name: "a container that does not answer",
+      candidate: candidate("a"),
+      health: "unreachable",
+      wanted: false,
+    },
+    {
+      name: "a registered environment, whatever its socket is doing",
+      candidate: candidate("a", {
+        connection: { phase: "reconnecting", error: "boom", traceId: null },
+      }),
+      health: "ready",
+      wanted: false,
+    },
+    {
+      name: "a project a birth is watching: the page's own Connect owns it",
+      candidate: candidate("a"),
+      health: "ready",
+      birth: true,
+      wanted: false,
+    },
+    {
+      name: "a container with no address",
+      candidate: (({ containerOrigin: _origin, ...noAddress }) => noAddress)(candidate("a")),
+      health: "ready",
+      wanted: false,
+    },
+  ];
+
+  it.each(rows.map((row) => [row.name, row] as const))("%s", (_name, row) => {
     const targets = selectAutoConnectTargets({
-      candidates: [candidate("a")],
-      health: health([["a", "ready"]]),
-      attempted: new Set(),
+      candidates: [row.candidate],
+      health: health(row.health === undefined ? [] : [["a", row.health]]),
+      birthProjectIds: new Set(row.birth ? ["a"] : []),
     });
-    expect(targets.map((target) => target.projectId)).toEqual(["a"]);
-    expect(targets[0]?.clientId).toBe("org-1");
+    expect(targets).toEqual(row.wanted ? ["a:zcp"] : []);
   });
 
-  it("waits for the health probe rather than waking a container", () => {
-    // A container that has not answered, or answered anything but ready, is
-    // left alone: half-installed and sleeping containers are not ours to poke.
-    const targets = selectAutoConnectTargets({
-      candidates: [candidate("silent"), candidate("old"), candidate("away")],
-      health: health([
-        ["old", "predates-mate"],
-        ["away", "unreachable"],
-      ]),
-      attempted: new Set(),
-    });
-    expect(targets).toEqual([]);
-  });
-
-  it("skips environments that are registered already, whatever their socket is doing", () => {
-    const targets = selectAutoConnectTargets({
-      candidates: [
-        candidate("live", { group: "connected", environmentId: "env-1" as never }),
-        candidate("flaky", {
-          connection: { phase: "reconnecting", error: "boom", traceId: null },
-        }),
-        candidate("fresh"),
-      ],
-      health: health([
-        ["live", "ready"],
-        ["flaky", "ready"],
-        ["fresh", "ready"],
-      ]),
-      attempted: new Set(),
-    });
-    expect(targets.map((target) => target.projectId)).toEqual(["fresh"]);
-  });
-
-  it("never retries an origin this session already tried", () => {
-    const fresh = candidate("fresh");
-    const targets = selectAutoConnectTargets({
-      candidates: [fresh],
+  it("keeps wanting a target it selected, however its exchange went", () => {
+    // Attempts are the target machine's to remember: a failed exchange backs off and retries,
+    // a refused one waits for an input change. The selection itself never shrinks on its own.
+    const input = {
+      candidates: [candidate("fresh")],
       health: health([["fresh", "ready"]]),
-      attempted: new Set([fresh.containerOrigin!]),
-    });
-    expect(targets).toEqual([]);
+    };
+    expect(selectAutoConnectTargets(input)).toEqual(["fresh:zcp"]);
+    expect(selectAutoConnectTargets(input)).toEqual(["fresh:zcp"]);
   });
 
   it("stops at the ceiling, counting what is registered already", () => {
@@ -86,33 +106,9 @@ describe("selectAutoConnectTargets", () => {
         ["two", "ready"],
         ["three", "ready"],
       ]),
-      attempted: new Set(),
       limit: 2,
     });
-    expect(targets.map((target) => target.projectId)).toEqual(["two"]);
-  });
-
-  it("skips a project a birth is watching, leaving the birth's own connect as the only one", () => {
-    const targets = selectAutoConnectTargets({
-      candidates: [candidate("born"), candidate("other")],
-      health: health([
-        ["born", "ready"],
-        ["other", "ready"],
-      ]),
-      attempted: new Set(),
-      birthProjectIds: new Set(["born"]),
-    });
-    expect(targets.map((target) => target.projectId)).toEqual(["other"]);
-  });
-
-  it("connects normally when no project is a birth", () => {
-    const targets = selectAutoConnectTargets({
-      candidates: [candidate("a")],
-      health: health([["a", "ready"]]),
-      attempted: new Set(),
-      birthProjectIds: new Set(),
-    });
-    expect(targets.map((target) => target.projectId)).toEqual(["a"]);
+    expect(targets).toEqual(["two:zcp"]);
   });
 
   it("targets an origin once even when a project has two containers", () => {
@@ -125,8 +121,7 @@ describe("selectAutoConnectTargets", () => {
         ["p:zcp", "ready"],
         ["p:zcp2", "ready"],
       ]),
-      attempted: new Set(),
     });
-    expect(targets).toHaveLength(1);
+    expect(targets).toEqual(["p:zcp"]);
   });
 });

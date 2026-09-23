@@ -143,7 +143,6 @@ export {
   selectAutoConnectTargets,
   ZEROPS_AUTO_CONNECT_LIMIT,
   type AutoConnectCandidate,
-  type AutoConnectTarget,
 } from "./autoConnect.ts";
 export {
   deriveGiteaState,

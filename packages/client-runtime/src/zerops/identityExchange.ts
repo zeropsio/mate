@@ -1,5 +1,10 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import type { BearerConnectionRegistration } from "../connection/catalog.ts";
 import { ConnectionBlockedError, ConnectionTransientError } from "../connection/model.ts";
+import { prepareZeropsIdentityRegistration } from "../connection/onboarding.ts";
+import * as EnvironmentRegistry from "../connection/registry.ts";
+import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 /**
  * The container's `/mate` door, shared by every client.
  *
@@ -367,3 +372,28 @@ export async function exchangeAtDoor<C, E>(
     credential: result.value,
   };
 }
+
+// ── The door's steps as the connection runtime runs them ─────────────────────────────────────
+
+/** `/.well-known/t3/environment` at a Mate's base URL. */
+export const readDoorDescriptor = (input: { readonly httpBaseUrl: string }) =>
+  fetchRemoteEnvironmentDescriptor(input);
+
+/** The door and the token exchange: a registration for the Mate, installed nowhere yet. */
+export const prepareDoorRegistration = prepareZeropsIdentityRegistration;
+
+/**
+ * Installs a registration the exchange driver accepted. An environment already registered keeps
+ * its supervisor, its install generation and its shell: only its credential rotates
+ * (`registry.rotateCredential`, DESIGN §4.4). Anything else is registered.
+ */
+export const installDoorRegistration = Effect.fn("zerops.identityExchange.installDoorRegistration")(
+  function* (registration: BearerConnectionRegistration) {
+    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+    yield* registry
+      .rotateCredential(registration.target.environmentId, registration.credential)
+      .pipe(
+        Effect.catchTag("EnvironmentNotRegisteredError", () => registry.register(registration)),
+      );
+  },
+);
