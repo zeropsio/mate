@@ -42,10 +42,15 @@ import {
 import { Atom } from "effect/unstable/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
-import { writeCachedZeropsMates } from "./mateIdentitiesCache";
+import { forgetCachedZeropsMates, writeCachedZeropsMates } from "./mateIdentitiesCache";
 import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
-import { zeropsMateDecisions, zeropsMatesOf, type ZeropsMateDirectory } from "./mateIdentities";
+import {
+  MATES_UNREAD,
+  zeropsMateDecisions,
+  zeropsMatesOf,
+  type ZeropsMateDirectory,
+} from "./mateIdentities";
 import { inventoryProjectRefKey } from "./inventoryContext";
 import { useZeropsSession, type ZeropsSessionStatus } from "./ZeropsSessionProvider";
 import {
@@ -207,11 +212,12 @@ const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
 /**
  * What `useZeropsCandidates` publishes for the readers that never load
- * candidates (`useZeropsEnvironmentNames`, `useZeropsMate`): nothing, or each
- * environment's name and who lives in it.
+ * candidates (`useZeropsEnvironmentNames`, `useZeropsMate`): nothing, each
+ * environment's name and who lives in it, or that none of it is known any more.
  */
 export type CandidatesPublication =
   | { readonly kind: "hold" }
+  | { readonly kind: "forget" }
   | {
       readonly kind: "publish";
       readonly names: ReadonlyMap<EnvironmentId, string>;
@@ -225,8 +231,7 @@ export interface PublishedCandidates {
 }
 
 const HOLD: CandidatesPublication = { kind: "hold" };
-
-const NOBODY_ANYWHERE: ZeropsMateDirectory = { decided: new Map(), complete: true };
+const FORGET: CandidatesPublication = { kind: "forget" };
 
 /**
  * Names and Mates are read off a known listing only. One that is unread,
@@ -238,9 +243,11 @@ const NOBODY_ANYWHERE: ZeropsMateDirectory = { decided: new Map(), complete: tru
  * every other environment keeps its answer, since this list cannot say nobody
  * lives where it has not read (M5). That answer is the last word given
  * (`ZeropsMateDirectory.complete`): unknown before any, nobody after a list
- * read in full, its cache, or a signed-out session.
- * A session still being checked publishes nothing either; one with no Zerops
- * account holds no environment and no Mate.
+ * read in full or its cache.
+ * A session still being checked, or one the API could not verify
+ * (`unavailable`), publishes nothing either: the account behind it is not
+ * known to be gone. A signed-out session forgets every name and Mate — they
+ * belonged to the account that left — and the next list starts from unknown.
  */
 export function candidatesPublication(input: {
   readonly status: ZeropsSessionStatus;
@@ -248,9 +255,7 @@ export function candidatesPublication(input: {
   readonly registeredOrigins: ReadonlyMap<string, EnvironmentId>;
   readonly published: PublishedCandidates;
 }): CandidatesPublication {
-  if (input.status === "signed-out" || input.status === "unavailable") {
-    return { kind: "publish", names: new Map(), mates: NOBODY_ANYWHERE };
-  }
+  if (input.status === "signed-out") return FORGET;
   if (input.status !== "signed-in" || input.listing.state !== "known") return HOLD;
   const candidates = candidateMembers(input.listing);
   const names = zeropsEnvironmentNames(candidates);
@@ -395,6 +400,12 @@ export function useZeropsCandidates(): {
       },
     });
     if (publication.kind === "hold") return;
+    if (publication.kind === "forget") {
+      appAtomRegistry.set(zeropsEnvironmentNamesAtom, null);
+      appAtomRegistry.set(zeropsMatesAtom, MATES_UNREAD);
+      forgetCachedZeropsMates();
+      return;
+    }
     appAtomRegistry.set(zeropsEnvironmentNamesAtom, publication.names);
     appAtomRegistry.set(zeropsMatesAtom, publication.mates);
     // Remembered across reloads, so the next one knows who lives where from

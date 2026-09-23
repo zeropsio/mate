@@ -57,7 +57,7 @@ export function projectTopologyViewAtom(environmentId: EnvironmentId) {
  * published by `useZeropsCandidates` from whichever host mounts it and read
  * by anything that must call an environment by name — the draft headline's
  * picker, where six containers would otherwise all be "www". Null until the
- * candidate list has been read.
+ * candidate list has been read, and again once the account signs out.
  */
 export const zeropsEnvironmentNamesAtom = Atom.make<ReadonlyMap<EnvironmentId, string> | null>(
   null,

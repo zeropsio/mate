@@ -9,7 +9,11 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { MATE_TINT_IDS } from "@t3tools/shared/brand";
 import * as Schema from "effect/Schema";
 
-import { getLocalStorageItem, setLocalStorageItem } from "../hooks/useLocalStorage";
+import {
+  getLocalStorageItem,
+  removeLocalStorageItem,
+  setLocalStorageItem,
+} from "../hooks/useLocalStorage";
 import type { ZeropsMateIdentity } from "./mateIdentities";
 
 export const ZEROPS_MATES_STORAGE_KEY = "zerops:mates";
@@ -67,5 +71,14 @@ export function writeCachedZeropsMates(
     setLocalStorageItem(ZEROPS_MATES_STORAGE_KEY, cached, CachedZeropsMates);
   } catch {
     // Storage full or unavailable: the next reload learns the slow way.
+  }
+}
+
+/** Nothing remembered: the next reload starts with every Zerops environment unknown. */
+export function forgetCachedZeropsMates(): void {
+  try {
+    removeLocalStorageItem(ZEROPS_MATES_STORAGE_KEY);
+  } catch {
+    // Storage unavailable: the next list read in full overwrites what is left.
   }
 }

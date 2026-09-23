@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { removeLocalStorageItem, setLocalStorageItem } from "../hooks/useLocalStorage";
 import type { ZeropsMateIdentity } from "./mateIdentities";
 import {
+  forgetCachedZeropsMates,
   readCachedZeropsMates,
   writeCachedZeropsMates,
   ZEROPS_MATES_STORAGE_KEY,
@@ -110,5 +111,13 @@ describe("mateIdentitiesCache", () => {
       new Map([[NOVA, mate({ name: "Nova", tint: "rose", project: undefined })]]),
     );
     expect(readCachedZeropsMates()?.has(FEN)).toBe(false);
+  });
+
+  it("is forgotten on sign-out, so the next reload knows of nobody rather than that nobody lives anywhere", () => {
+    writeCachedZeropsMates(
+      new Map([[FEN, mate({ name: "Fen", tint: "coral", project: undefined })]]),
+    );
+    forgetCachedZeropsMates();
+    expect(readCachedZeropsMates()).toBeNull();
   });
 });

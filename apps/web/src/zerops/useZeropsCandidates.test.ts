@@ -277,20 +277,15 @@ describe("candidatesPublication", () => {
     expect(whoLivesAt(published, otherEnvironmentId)).toBe("nobody");
   });
 
-  it.each(["loading", "totp-required"] as const)(
-    "a session that is %s publishes nothing",
+  it.each(["loading", "totp-required", "unavailable"] as const)(
+    "a session that is %s publishes nothing, whatever the listing holds",
     (status) => {
       expect(publication({ status })).toEqual({ kind: "hold" });
+      expect(publication({ status, listing: known([]) })).toEqual({ kind: "hold" });
     },
   );
 
-  it.each(["signed-out", "unavailable"] as const)(
-    "a session that is %s holds no environment and no Mate",
-    (status) => {
-      const published = publication({ status });
-
-      expect(published).toMatchObject({ kind: "publish", names: new Map() });
-      expect(whoLivesAt(published, environmentId)).toBe("nobody");
-    },
-  );
+  it("a signed-out session forgets every name and Mate rather than saying nobody lives anywhere", () => {
+    expect(publication({ status: "signed-out", listing: known([]) })).toEqual({ kind: "forget" });
+  });
 });

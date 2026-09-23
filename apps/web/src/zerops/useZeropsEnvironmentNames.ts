@@ -1,7 +1,7 @@
 /**
  * The read side of `zeropsEnvironmentNamesAtom`: the Zerops project's name
- * per environment, as the last candidate load left it, or null before the
- * list has been read. Imports nothing that loads — `useZeropsCandidates` is
+ * per environment, as the last candidate load left it, or null while the
+ * list is unread (before its first read, and after a sign-out). Imports nothing that loads — `useZeropsCandidates` is
  * the writer, wherever it is mounted.
  */
 import { useAtomValue } from "@effect/atom-react";

@@ -85,10 +85,10 @@ export interface ZeropsMateDirectory {
   readonly decided: ReadonlyMap<EnvironmentId, ZeropsMateIdentity | null>;
   /**
    * Every environment `decided` leaves out holds nobody; otherwise it is not
-   * known yet. The word is the last one given — a list read in full, the
-   * reload cache of one, or a session with no account — and a list read in
-   * part since keeps it: an environment that list has not reached reads
-   * nobody on that older word until a list is read in full again.
+   * known yet. The word is the last one given — a list read in full, or the
+   * reload cache of one — and a list read in part since keeps it: an
+   * environment that list has not reached reads nobody on that older word
+   * until a list is read in full again. Signing out takes the word back.
    */
   readonly complete: boolean;
 }
