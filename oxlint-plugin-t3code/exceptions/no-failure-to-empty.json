@@ -58,31 +58,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "LogicalExpression",
-    "fingerprint": "flow?.environments ?? []",
-    "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
     "fingerprint": "flow?.pullRequests ?? EMPTY_PULLS",
-    "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "flow?.pullRequests ?? EMPTY_PULLS",
-    "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "flow?.release.contents ?? []",
     "owner": "state-model 4.5",
     "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
     "expires": "never"
@@ -125,30 +101,6 @@
     "fingerprint": "mateNames ?? EMPTY_MATE_NAMES",
     "owner": "state-model 4.5",
     "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "groupDeploys.get(group.groupId)?.missing ?? []",
-    "owner": "state-model 4.5",
-    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "groupDeploys.get(group.groupId)?.missing ?? []",
-    "owner": "state-model 4.5",
-    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "groupDeploys.get(group.groupId)?.pullRequests ?? []",
-    "owner": "state-model 4.5",
-    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
     "expires": "never"
   },
   {
