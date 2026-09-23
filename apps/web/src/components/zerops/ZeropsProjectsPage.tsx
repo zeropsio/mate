@@ -127,7 +127,7 @@ import {
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { creationRefreshWanted, useCreationInventoryRefresh } from "~/zerops/creationRefresh";
 
-import { MateFace, StatusDot } from "./primitives";
+import { MateFace, MicroLabel, StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
@@ -1760,16 +1760,23 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     if (flow === undefined || !flow.release.gate.allowed) return null;
     const commits = flow.release.contents.flatMap((entry) => entry.commits);
     if (commits.length === 0) return null;
-    return commits.map((commit) => (
-      <li
-        className="flex gap-2 py-0.5 text-xs text-muted-foreground"
-        data-zerops-surface="release-content"
-        key={`release-content-${group.groupId}-${commit.sha}`}
-      >
-        <span className="font-mono tabular-nums">{commit.sha.slice(0, 7)}</span>
-        <span className="truncate">{commit.subject}</span>
+    // Led in by what they are, one entry of the list: a sha and a subject
+    // alone read as a stray commit.
+    return (
+      <li className="flex min-w-0 flex-col gap-0.5 py-1.5" key={`release-content-${group.groupId}`}>
+        <MicroLabel className="text-muted-foreground">Release carries</MicroLabel>
+        {commits.map((commit) => (
+          <span
+            className="flex min-w-0 gap-2 text-xs text-muted-foreground"
+            data-zerops-surface="release-content"
+            key={commit.sha}
+          >
+            <span className="font-mono tabular-nums">{commit.sha.slice(0, 7)}</span>
+            <span className="truncate">{commit.subject}</span>
+          </span>
+        ))}
       </li>
-    ));
+    );
   };
 
   /**
