@@ -83,7 +83,8 @@ interface ImportStatement {
 // clauses never contain a semicolon, so this cannot run past the statement.
 const STATIC_IMPORT_PATTERN = /import\s+(type\s+)?([^;]*?)\s+from\s+["']([^"']+)["']/g;
 const SIDE_EFFECT_IMPORT_PATTERN = /import\s*["']([^"']+)["']/g;
-const REEXPORT_PATTERN = /export\s+(type\s+)?(\*|\{[^;]*?\})\s+from\s+["']([^"']+)["']/g;
+const REEXPORT_PATTERN =
+  /export\s+(type\s+)?(\*(?:\s+as\s+[A-Za-z_$][\w$]*)?|\{[^;]*?\})\s+from\s+["']([^"']+)["']/g;
 const DYNAMIC_IMPORT_CALL_PATTERN = /\bimport\s*\(\s*([^)]*?)\s*\)/gs;
 const IMPORT_ASSIGNMENT_PATTERN = /\bimport\s+(?:type\s+)?[A-Za-z_$][\w$]*\s*=\s*require\s*\(/g;
 
@@ -751,10 +752,16 @@ function collectOneWayViolations(
 // (docs/internals/zerops/client-state-model.md, "Module boundaries"). A store is
 // the knowledge kernel itself, the store kit, the data runtime (one store whose
 // internals hold its cells) or a module named `…Store`. Every edge counts, a
-// type-only `Cell` included, and a namespace, star or dynamic import of the
-// module counts as importing all of it. Test files are not part of the graph.
+// type-only `Cell` included, and a namespace, star or dynamic import of
+// `knowledge/known` counts as importing all of it. A re-export of a private name
+// or of the whole module is reported in every file, a store included: it is how
+// a name leaves its store, and so the knowledge barrel (the only route the
+// package exports to web and mobile) carries none of them. Naming a private name
+// through the barrel is reported too; importing the barrel whole is not. Test
+// files are not part of the graph.
 const KNOWN_MODULE = "knowledge/known";
-const KNOWN_PACKAGE_SPECIFIER = "@t3tools/client-runtime/zerops/knowledge/known";
+const KNOWLEDGE_DIRECTORY = "knowledge";
+const KNOWLEDGE_PACKAGE_SPECIFIER = "@t3tools/client-runtime/zerops/knowledge";
 const STORE_PRIVATE_KNOWLEDGE: ReadonlySet<string> = new Set([
   "Cell",
   "newCell",
@@ -804,23 +811,31 @@ function collectCellImportViolations(
     const path = yield* Path.Path;
     const zeropsDir = path.join(root, CLIENT_RUNTIME_ZEROPS_DIR);
     const knownModule = path.join(zeropsDir, KNOWN_MODULE);
+    const knowledgeDirectory = path.join(zeropsDir, KNOWLEDGE_DIRECTORY);
     const withoutExtension = (specifier: string): string =>
       specifier.replace(/\.(?:[cm]?[jt]sx?)$/u, "");
-    const namesKnownModule = (file: string, specifier: string): boolean =>
-      specifier.startsWith(".")
-        ? withoutExtension(path.resolve(path.dirname(file), specifier)) === knownModule
-        : withoutExtension(specifier) === KNOWN_PACKAGE_SPECIFIER;
+    // `known` for the kernel module, `barrel` for the knowledge index.
+    const knowledgeTarget = (file: string, specifier: string): "known" | "barrel" | undefined => {
+      if (!specifier.startsWith(".")) {
+        return specifier === KNOWLEDGE_PACKAGE_SPECIFIER ? "barrel" : undefined;
+      }
+      const resolved = withoutExtension(path.resolve(path.dirname(file), specifier));
+      if (resolved === knownModule) {
+        return "known";
+      }
+      return resolved === knowledgeDirectory || resolved === path.join(knowledgeDirectory, "index")
+        ? "barrel"
+        : undefined;
+    };
 
     const violations: Array<CellImportViolation> = [];
     for (const scanRoot of CELL_IMPORT_SCAN_ROOTS) {
       for (const file of yield* collectTsFiles(path.join(root, scanRoot))) {
-        const zeropsRelative = path.relative(zeropsDir, file).split(path.sep).join("/");
-        if (
-          isTestFile(file) ||
-          (!zeropsRelative.startsWith("..") && isStoreModule(zeropsRelative))
-        ) {
+        if (isTestFile(file)) {
           continue;
         }
+        const zeropsRelative = path.relative(zeropsDir, file).split(path.sep).join("/");
+        const inStore = !zeropsRelative.startsWith("..") && isStoreModule(zeropsRelative);
         const source = yield* fs.readFileString(file);
         const report = (specifier: string, reason: string) =>
           violations.push({
@@ -828,31 +843,53 @@ function collectCellImportViolations(
             specifier,
             reason,
           });
-        const whole = "imports the whole knowledge/known module outside a store";
 
         for (const statement of collectImportStatements(source)) {
-          if (!namesKnownModule(file, statement.specifier)) {
-            continue;
-          }
+          const target = knowledgeTarget(file, statement.specifier);
           // A side-effect or dynamic import has no clause; dynamic ones are
           // reported below, side-effect ones bind nothing.
-          if (statement.clause === "" && !statement.reexport) {
+          if (
+            target === undefined ||
+            (inStore && !statement.reexport) ||
+            (statement.clause === "" && !statement.reexport)
+          ) {
             continue;
           }
           const names = importedNames(statement.clause);
           if (names === undefined) {
-            report(statement.specifier, whole);
+            if (target === "known") {
+              report(
+                statement.specifier,
+                statement.reexport
+                  ? "re-exports the whole knowledge/known module"
+                  : "imports the whole knowledge/known module outside a store",
+              );
+            }
             continue;
           }
           for (const name of names) {
             if (STORE_PRIVATE_KNOWLEDGE.has(name)) {
-              report(statement.specifier, `imports ${name} outside a store`);
+              report(
+                statement.specifier,
+                statement.reexport
+                  ? `re-exports ${name} out of its store`
+                  : `imports ${name} outside a store`,
+              );
             }
           }
         }
+        if (inStore) {
+          continue;
+        }
         for (const argument of collectDynamicImportArguments(source)) {
-          if (isPlainStringLiteral(argument) && namesKnownModule(file, argument.slice(1, -1))) {
-            report(argument.slice(1, -1), whole);
+          if (
+            isPlainStringLiteral(argument) &&
+            knowledgeTarget(file, argument.slice(1, -1)) === "known"
+          ) {
+            report(
+              argument.slice(1, -1),
+              "imports the whole knowledge/known module outside a store",
+            );
           }
         }
       }
@@ -2561,25 +2598,11 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         [`${zerops}/flow/release.ts`]: 'export { read } from "../knowledge/known.ts";\n',
         [`${zerops}/flow/groupFlow.ts`]:
           'export const load = () => import("../knowledge/known.ts");\n',
-        "apps/web/src/zerops/useThing.ts":
-          'import { newCell } from "@t3tools/client-runtime/zerops/knowledge/known";\n',
-        "apps/mobile/src/features/zerops/thing.ts":
-          'import { advance as step } from "@t3tools/client-runtime/zerops/knowledge/known.ts";\n',
       });
 
       const violations = yield* collectCellImportViolations(fixtureRoot);
 
       assert.deepStrictEqual(violations, [
-        {
-          file: "apps/mobile/src/features/zerops/thing.ts",
-          specifier: "@t3tools/client-runtime/zerops/knowledge/known.ts",
-          reason: "imports advance outside a store",
-        },
-        {
-          file: "apps/web/src/zerops/useThing.ts",
-          specifier: "@t3tools/client-runtime/zerops/knowledge/known",
-          reason: "imports newCell outside a store",
-        },
         {
           file: `${zerops}/environments/gate.ts`,
           specifier: "../knowledge/known.ts",
@@ -2598,7 +2621,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         {
           file: `${zerops}/flow/release.ts`,
           specifier: "../knowledge/known.ts",
-          reason: "imports read outside a store",
+          reason: "re-exports read out of its store",
         },
         {
           file: `${zerops}/projections/banner.ts`,
@@ -2607,6 +2630,92 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         },
       ]);
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "rule 5 fixture: the knowledge barrel carries none of Cell, newCell, advance and read",
+    () =>
+      Effect.gen(function* () {
+        const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+        const fixtureRoot = yield* makeRepoFixture({
+          [`${zerops}/knowledge/index.ts`]: [
+            'export type { Known, Shown } from "./known.ts";',
+            'export { advance, type Cell } from "./known.ts";',
+            'export * from "./known.ts";',
+            'export * from "./presentation.ts";',
+            "",
+          ].join("\n"),
+          [`${zerops}/store/kit.ts`]: [
+            'export { newCell } from "../knowledge/known.ts";',
+            'export * as Kernel from "../knowledge/known.ts";',
+            "",
+          ].join("\n"),
+          [`${zerops}/flow/deployment.ts`]: [
+            'import { knownPresentation } from "../knowledge";',
+            'import * as Knowledge from "../knowledge/index.ts";',
+            'import { read } from "../knowledge";',
+            'import type { Cell } from "../knowledge/index.ts";',
+            "",
+          ].join("\n"),
+          "apps/web/src/zerops/useThing.ts": [
+            'import { knownPresentation, type Shown } from "@t3tools/client-runtime/zerops/knowledge";',
+            'import { newCell } from "@t3tools/client-runtime/zerops/knowledge";',
+            "",
+          ].join("\n"),
+          "apps/mobile/src/features/zerops/thing.ts":
+            'import { advance as step } from "@t3tools/client-runtime/zerops/knowledge";\n',
+        });
+
+        const violations = yield* collectCellImportViolations(fixtureRoot);
+
+        assert.deepStrictEqual(violations, [
+          {
+            file: "apps/mobile/src/features/zerops/thing.ts",
+            specifier: "@t3tools/client-runtime/zerops/knowledge",
+            reason: "imports advance outside a store",
+          },
+          {
+            file: "apps/web/src/zerops/useThing.ts",
+            specifier: "@t3tools/client-runtime/zerops/knowledge",
+            reason: "imports newCell outside a store",
+          },
+          {
+            file: `${zerops}/flow/deployment.ts`,
+            specifier: "../knowledge",
+            reason: "imports read outside a store",
+          },
+          {
+            file: `${zerops}/flow/deployment.ts`,
+            specifier: "../knowledge/index.ts",
+            reason: "imports Cell outside a store",
+          },
+          {
+            file: `${zerops}/knowledge/index.ts`,
+            specifier: "./known.ts",
+            reason: "re-exports advance out of its store",
+          },
+          {
+            file: `${zerops}/knowledge/index.ts`,
+            specifier: "./known.ts",
+            reason: "re-exports Cell out of its store",
+          },
+          {
+            file: `${zerops}/knowledge/index.ts`,
+            specifier: "./known.ts",
+            reason: "re-exports the whole knowledge/known module",
+          },
+          {
+            file: `${zerops}/store/kit.ts`,
+            specifier: "../knowledge/known.ts",
+            reason: "re-exports newCell out of its store",
+          },
+          {
+            file: `${zerops}/store/kit.ts`,
+            specifier: "../knowledge/known.ts",
+            reason: "re-exports the whole knowledge/known module",
+          },
+        ]);
+      }).pipe(Effect.scoped),
   );
 
   it.effect("rule 5: Cell, newCell, advance and read stay inside their store", () =>
