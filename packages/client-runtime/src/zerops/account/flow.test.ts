@@ -1,11 +1,19 @@
+import { it as effectIt } from "@effect/vitest";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as TestClock from "effect/testing/TestClock";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { project, service } from "../data/__fixtures__/index.ts";
+import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
+import type { LeaseAdmissionError } from "../data/types.ts";
 import type { FlowCommands } from "../flow/flowCommands.ts";
 import type { ForgeStore } from "../forge/forgeStore.ts";
 import type { GiteaSessions } from "../forge/giteaSession.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
-import { makeForgeWiring } from "./flow.ts";
+import { deploymentStorePorts, makeForgeWiring } from "./flow.ts";
 
 /** The forge's stores, as spies. */
 function forge() {
@@ -107,4 +115,80 @@ describe("the post-grant stage's forge and the tab (DESIGN §6.4)", () => {
 
     expect(order).toEqual(["sessions", "commands", "store"]);
   });
+});
+
+describe("the deployment store's ports (DESIGN §2.D D6)", () => {
+  it("tells the store why the platform took no demand for a stop's processes", () => {
+    const refusal: LeaseAdmissionError = {
+      _tag: "ZeropsLeaseAdmissionError",
+      reason: "account-capacity",
+      message: "too many interests",
+    };
+    const listing = Atom.make(null);
+    const data = {
+      reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
+      acquire: () => Effect.fail(refusal),
+    } as unknown as ManagedZeropsDataRuntime;
+    const ports = deploymentStorePorts(data, AtomRegistry.make(), Context.empty());
+    const refused: Array<string> = [];
+
+    const unfollow = ports.follow(
+      project("project-stage"),
+      () => undefined,
+      (reason) => refused.push(reason),
+    );
+
+    expect(refused).toEqual(["account-capacity"]);
+    unfollow();
+  });
+
+  it("reads a service directly through the account's resource broker while the store holds it", () => {
+    const shown = Atom.make({ state: "reading", sinceMs: 0, attempt: 1 });
+    const requests: Array<unknown> = [];
+    const scope = { epoch: 1 };
+    const data = {
+      scope,
+      resources: {
+        known: (request: unknown) => {
+          requests.push(request);
+          return shown;
+        },
+      },
+    } as unknown as ManagedZeropsDataRuntime;
+    const registry = AtomRegistry.make();
+    const ports = deploymentStorePorts(data, registry, Context.empty());
+    const told: Array<string> = [];
+    const target = service("app-id", project("project-stage"));
+
+    const release = ports.deployedVersion(target, (next) => told.push(next.state));
+
+    expect(requests).toEqual([
+      { kind: "service-deployed-version", account: scope, service: target },
+    ]);
+    expect(told).toEqual(["reading"]);
+    registry.set(shown, { state: "reading", sinceMs: 0, attempt: 2 });
+    expect(told).toEqual(["reading", "reading"]);
+    release();
+    registry.set(shown, { state: "reading", sinceMs: 0, attempt: 3 });
+    expect(told).toHaveLength(2);
+  });
+
+  effectIt.effect("arms the store's timers on the account's clock, and disarms them", () =>
+    Effect.gen(function* () {
+      const listing = Atom.make(null);
+      const data = {
+        reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
+      } as unknown as ManagedZeropsDataRuntime;
+      const ports = deploymentStorePorts(data, AtomRegistry.make(), yield* Effect.context<never>());
+      const fired: Array<string> = [];
+      ports.setTimer(2_000, () => fired.push("kept"));
+      const disarm = ports.setTimer(2_000, () => fired.push("disarmed"));
+
+      disarm();
+      yield* TestClock.adjust(1_999);
+      expect(fired).toEqual([]);
+      yield* TestClock.adjust(1);
+      expect(fired).toEqual(["kept"]);
+    }),
+  );
 });

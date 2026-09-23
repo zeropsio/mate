@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 
 import { ZeropsApiClient } from "../api.ts";
 import { makeZeropsResourceRestAdapter } from "./resourceRestAdapter.ts";
+import type { ZeropsResourceValues } from "./resources.ts";
 import {
   AccountEpoch,
   ZeropsAccountId,
@@ -102,6 +103,57 @@ describe("makeZeropsResourceRestAdapter", () => {
       );
 
       expect(value).toEqual({ enabled: "unknown" });
+    }),
+  );
+});
+
+describe("the service-deployed-version reader (A14)", () => {
+  const ACTIVE = { id: "version-2", status: "ACTIVE", source: "GIT" };
+  const userData = (id: string | undefined, name: string) => [
+    ...(id === undefined ? [] : [{ key: "appVersionId", content: id }]),
+    { key: "appVersionName", content: name },
+  ];
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly body: unknown;
+    readonly expected: ZeropsResourceValues["service-deployed-version"];
+  }> = [
+    {
+      name: "the name the newest deploy gave, while that deploy is the active one",
+      body: { activeAppVersion: ACTIVE, userData: userData("version-2", "3f9c1b2 v1.4.0 ada") },
+      expected: { activeId: "version-2", source: "GIT", name: "3f9c1b2 v1.4.0 ada" },
+    },
+    {
+      name: "no name while the newest deploy started is another version",
+      body: { activeAppVersion: ACTIVE, userData: userData("version-3", "9d8e7f6") },
+      expected: { activeId: "version-2", source: "GIT", name: null },
+    },
+    {
+      name: "no name the service does not tie to a version",
+      body: { activeAppVersion: ACTIVE, userData: userData(undefined, "9d8e7f6") },
+      expected: { activeId: "version-2", source: "GIT", name: null },
+    },
+    {
+      name: "a never-deployed runtime's NONE version",
+      body: { activeAppVersion: { id: "version-1", status: "ACTIVE", source: "NONE" } },
+      expected: { activeId: "version-1", source: "NONE", name: null },
+    },
+    {
+      name: "a service with no active version",
+      body: { activeAppVersion: null, userData: userData("version-2", "3f9c1b2") },
+      expected: { activeId: null, source: null, name: null },
+    },
+  ];
+
+  it.effect.each(cases)("$name", ({ body, expected }) =>
+    Effect.gen(function* () {
+      const adapter = makeZeropsResourceRestAdapter(clientFor(body));
+      const value = yield* adapter.readServiceDeployedVersion(
+        { kind: "service-deployed-version", account: scope, service },
+        { abortSignal: new AbortController().signal },
+      );
+
+      expect(value).toEqual(expected);
     }),
   );
 });

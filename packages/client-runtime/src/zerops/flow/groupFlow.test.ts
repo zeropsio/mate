@@ -3,10 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
 import type { GroupEnvironment } from "../groupEnvironments.ts";
+import { deployedVersion } from "../groupRows.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { FailureReason, Known, Shown } from "../knowledge/known.ts";
+import { RELEASE_NOTHING_NEW_ON_MAIN } from "../release.ts";
 import { CHECKING_RELEASE } from "./release.ts";
-import type { Deployment, StopService } from "./deployment.ts";
+import type { Deployment, SettledDeployment, StopService } from "./deployment.ts";
 import {
   groupFlow,
   pullKey,
@@ -58,10 +60,24 @@ const MEMBERS: ReadonlyArray<GroupFlowMember> = [
   { projectId: "p-prod", name: "harbor production" },
 ];
 
-const running = (sha: string): Deployment => ({
+const version = (sha: string) => ({
+  name: sha,
+  commit: sha.slice(0, 7),
+  sha,
+  taggedBy: undefined,
+  label: sha.slice(0, 7),
+});
+
+const running = (sha: string): SettledDeployment => ({
   kind: "running",
   activatedAt: "2026-09-23T09:00:00Z",
-  version: { name: sha, commit: sha.slice(0, 7), sha, taggedBy: undefined, label: sha.slice(0, 7) },
+  version: version(sha),
+});
+
+const deploying = (sha: string, previous: SettledDeployment | null = null): Deployment => ({
+  kind: "deploying",
+  version: version(sha),
+  previous,
 });
 
 const stopService = (
@@ -318,6 +334,82 @@ describe("groupFlow (DESIGN §4.7)", () => {
     const stops = flow.stops.state === "known" ? flow.stops.value : [];
     expect(stops.map(({ deployment }) => deployment?.state)).toEqual(["known", "reading"]);
     expect(stops[0]?.deployment).toMatchObject({ value: { kind: "running" } });
+  });
+
+  it("a stop deploys while any of its services does", () => {
+    const flow = groupFlow(
+      inputs({
+        stops: new Map([
+          [
+            "p-stage",
+            known([
+              stopService("p-stage", "apidev", known(running(PRODUCTION_SHA))),
+              stopService("p-stage", "appdev", known(deploying(MAIN_SHA))),
+            ]),
+          ],
+          ["p-prod", known([stopService("p-prod", "appdev", known(running(PRODUCTION_SHA)))])],
+        ]),
+      }),
+      RELEASER,
+      NOW,
+    );
+
+    const stops = flow.stops.state === "known" ? flow.stops.value : [];
+    expect(stops[0]?.deployment).toMatchObject({
+      value: { kind: "deploying", version: { sha: MAIN_SHA } },
+    });
+  });
+
+  it("a production mid-deploy is measured against what it runs until its build activates", () => {
+    const midDeploy = (previous: SettledDeployment | null) =>
+      groupFlow(
+        inputs({
+          stops: new Map([
+            ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
+            [
+              "p-prod",
+              known([stopService("p-prod", "appdev", known(deploying(MAIN_SHA, previous)))]),
+            ],
+          ]),
+        }),
+        RELEASER,
+        NOW,
+      );
+
+    // The build may fail: what production runs is still the release's other side.
+    expect(midDeploy(running(PRODUCTION_SHA)).releaseGate).toEqual({ allowed: true });
+    expect(midDeploy(running(MAIN_SHA)).releaseGate).toEqual({
+      allowed: false,
+      reason: RELEASE_NOTHING_NEW_ON_MAIN,
+    });
+  });
+
+  it("a production mid-deploy whose running version nothing names holds the release", () => {
+    const midDeploy = (previous: SettledDeployment | null) =>
+      groupFlow(
+        inputs({
+          stops: new Map([
+            ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
+            [
+              "p-prod",
+              known([stopService("p-prod", "appdev", known(deploying(MAIN_SHA, previous)))]),
+            ],
+          ]),
+        }),
+        RELEASER,
+        NOW,
+      );
+    const unnamed: SettledDeployment = {
+      kind: "running",
+      activatedAt: "2026-09-23T09:00:00Z",
+      version: deployedVersion(undefined),
+    };
+
+    // What runs is not stated yet: it is no proof production runs something older than main.
+    expect(midDeploy(null).releaseGate).toEqual({ allowed: false, reason: CHECKING_RELEASE });
+    expect(midDeploy(unnamed).releaseGate).toEqual({ allowed: false, reason: CHECKING_RELEASE });
+    // A production that ran nothing before its first build has nothing to hold.
+    expect(midDeploy({ kind: "none" }).releaseGate).toEqual({ allowed: true });
   });
 
   it("a merge into a repository feeds the stages that run it, never production", () => {

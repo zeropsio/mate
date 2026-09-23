@@ -973,13 +973,26 @@ describe("the post-grant stage's Mate environments", () => {
         Effect.gen(function* () {
           const { clock, built } = yield* granted([]);
           const { deployments, forge, services } = yield* built.postGrant;
+          /** Whether a lease holds project A's running processes. */
+          const followsActivity = built.data.state.pipe(
+            Effect.map((state) =>
+              [...state.interests.values()].some(
+                ({ leases, descriptor }) =>
+                  leases > 0 &&
+                  descriptor.kind === "project-activity" &&
+                  descriptor.project.projectId === A_MATE.projectId,
+              ),
+            ),
+          );
           // The Mate's own container is the one service there: a stop that runs nothing.
           const projectA = project(A_MATE.projectId);
-          deployments.demand(projectA);
+          const release = deployments.demand(projectA);
           yield* clock.advance(SECOND);
           yield* settle;
           expect(deployments.stop(projectA)).toMatchObject({ state: "known", value: [] });
           expect(forge).toBeNull();
+          // A shown stop reads what builds run in its project, and only while it is shown.
+          expect(yield* followsActivity).toBe(true);
 
           const zcp = services.serviceOf(A_MATE.projectId, "zcp");
           if (zcp === null) throw new Error("the account holds project A's zcp service");
@@ -993,6 +1006,11 @@ describe("the post-grant stage's Mate environments", () => {
           yield* clock.advance(SECOND);
           yield* settle;
           expect(heard).toEqual([A_MATE.projectId]);
+
+          release();
+          yield* clock.advance(SECOND);
+          yield* settle;
+          expect(yield* followsActivity).toBe(false);
         }),
       ),
   );

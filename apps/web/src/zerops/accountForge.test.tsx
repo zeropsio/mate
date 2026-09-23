@@ -1,6 +1,12 @@
 import type { AccountForge } from "@t3tools/client-runtime/zerops/account/runtime";
 import type { ProjectRef, ServiceRef } from "@t3tools/client-runtime/zerops/data";
-import type { DeploymentStore, FlowCommands, GroupFlow } from "@t3tools/client-runtime/zerops/flow";
+import type {
+  Deployment,
+  DeploymentStore,
+  FlowCommands,
+  GroupFlow,
+  StopService,
+} from "@t3tools/client-runtime/zerops/flow";
 import type { ForgeFact, ForgeStore, GiteaSessions } from "@t3tools/client-runtime/zerops/forge";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { GitCheckoutState } from "@t3tools/client-runtime/zerops";
@@ -82,9 +88,13 @@ function stage() {
   } as unknown as ForgeStore;
   const sessions = { subscribe, close: vi.fn() } as unknown as GiteaSessions;
   const stopDemands: Array<string> = [];
+  let stopDemandCalls = 0;
+  const stops = new Map<string, Shown<ReadonlyArray<StopService>>>();
   const deployments = {
-    stop: () => ({ state: "unread", waitingFor: null }),
+    stop: (project: ProjectRef) =>
+      stops.get(project.projectId) ?? { state: "unread", waitingFor: null },
     demand: (project: ProjectRef) => {
+      stopDemandCalls += 1;
       stopDemands.push(project.projectId);
       return () => stopDemands.splice(stopDemands.indexOf(project.projectId), 1);
     },
@@ -111,8 +121,13 @@ function stage() {
         .filter(([, leases]) => leases > 0)
         .map(([key]) => (JSON.parse(key) as ForgeFact).kind),
     stopDemands,
+    stopDemandCalls: () => stopDemandCalls,
     hold: (fact: ForgeFact, shown: Shown<unknown>) => {
       held.set(JSON.stringify(fact), shown);
+      publish();
+    },
+    holdStop: (projectId: string, shown: Shown<ReadonlyArray<StopService>>) => {
+      stops.set(projectId, shown);
       publish();
     },
   };
@@ -215,6 +230,89 @@ describe("the account's project flow in the web", () => {
     } finally {
       root.unmount();
     }
+  });
+
+  it("the stop rows read what each stop deploys from the account's store while they are shown", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStopDeployments } = await import("./accountForge");
+    const rig = stage();
+    const unbind = bindAccountFlow(rig.stage);
+    const deploying: Deployment = {
+      kind: "deploying",
+      version: {
+        name: undefined,
+        commit: "3f9c1b2",
+        sha: "3f9c1b2".padEnd(40, "0"),
+        taggedBy: undefined,
+        label: "3f9c1b2",
+      },
+      previous: null,
+    };
+    /** Every answer the rows rendered, the latest last. */
+    const answers: Array<ReadonlyMap<string, Shown<Deployment>>> = [];
+    const latest = () => answers.at(-1)?.get("p-stage");
+
+    function Rows({ stops }: { readonly stops: ReadonlyArray<ProjectRef> }) {
+      answers.push(useStopDeployments(stops));
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      root.render(<Rows stops={[PROJECT]} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      expect(latest()?.state).toBe("unread");
+      // A surface that draws the same stops again in a new array keeps what it demanded.
+      const rendered = answers.length;
+      root.render(<Rows stops={[PROJECT]} />);
+      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
+      expect(rig.stopDemandCalls()).toBe(1);
+
+      rig.holdStop(
+        "p-stage",
+        known([{ service: APPSTAGE, hostname: "appstage", deployment: known(deploying) }]),
+      );
+      await vi.waitFor(() =>
+        expect(latest()).toMatchObject({ state: "known", value: { kind: "deploying" } }),
+      );
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+    expect(rig.stopDemands).toEqual([]);
+  });
+
+  it("a stop joining or leaving the rows keeps every other stop's demand", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStopDeployments } = await import("./accountForge");
+    const rig = stage();
+    const unbind = bindAccountFlow(rig.stage);
+    const production = { ...PROJECT, projectId: "p-prod" } as ProjectRef;
+
+    function Rows({ stops }: { readonly stops: ReadonlyArray<ProjectRef> }) {
+      useStopDeployments(stops);
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      root.render(<Rows stops={[PROJECT]} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      root.render(<Rows stops={[PROJECT, production]} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage", "p-prod"]));
+      expect(rig.stopDemandCalls()).toBe(2);
+      root.render(<Rows stops={[production]} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
+      expect(rig.stopDemandCalls()).toBe(2);
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+    expect(rig.stopDemands).toEqual([]);
   });
 
   it("a group's flow demands what it reads as it learns more, and lets it all go at unmount", async () => {

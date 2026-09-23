@@ -8,15 +8,19 @@
  *   again and re-reads what is old, and the network coming back tries the sessions again.
  * - The forge answers `forge-*` invalidations and the deployment store `deployment` ones (§6.2);
  *   a verb's settlement sends its own through the account's bus.
- * - The deployment store follows the data runtime's service listings; a Mate's envelope names a
- *   service by hostname, which the account's inventory resolves.
+ * - The deployment store follows the data runtime's service listings and, holding the project's
+ *   activity demand while a stop is shown, its running processes; it reads a service directly
+ *   through the account's resource broker when a push leaves its active version unstated (A14). A
+ *   Mate's envelope names a service by hostname, which the account's inventory resolves.
  *
  * The stores are constructed by the account runtime alone (§7.2 rule 6); this module only wires
  * them. The forge stands on a host that gives it ports — the web; a host without Gitea surfaces
  * builds none.
  */
 import type * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { Instant } from "../data/access/grant.ts";
@@ -131,15 +135,53 @@ export function makeForgeWiring(options: {
   };
 }
 
-/** The deployment store's ports over the data runtime's service listings. */
+/** The deployment store's ports over the data runtime's service and process listings. */
 export function deploymentStorePorts(
   data: ManagedZeropsDataRuntime,
   atomRegistry: AtomRegistry.AtomRegistry,
+  /** The account's services, which the activity demand runs with. */
+  services: Context.Context<never>,
 ): DeploymentStorePorts {
+  const run = Effect.runForkWith(services);
   return {
     services: (project: ProjectRef) => atomRegistry.get(data.reads.servicesOf(project)),
-    watch: (project, changed) => atomRegistry.subscribe(data.reads.servicesOf(project), changed),
+    processes: (project: ProjectRef) => atomRegistry.get(data.reads.runningProcessesOf(project)),
+    follow: (project, changed, refused) => {
+      // The running processes are read only while their demand is held; the services are the
+      // account's inventory demand's. A demand the platform refuses is never read: the store
+      // hears why, so the stop fails what it could not prove.
+      const lease = run(
+        Effect.scoped(
+          data.acquire({ kind: "project-activity", project }).pipe(Effect.andThen(Effect.never)),
+        ).pipe(Effect.catch((error) => Effect.sync(() => refused(error.reason)))),
+      );
+      const unsubscribes = [
+        atomRegistry.subscribe(data.reads.servicesOf(project), changed),
+        atomRegistry.subscribe(data.reads.runningProcessesOf(project), changed),
+      ];
+      return () => {
+        for (const unsubscribe of unsubscribes) unsubscribe();
+        run(Fiber.interrupt(lease));
+      };
+    },
+    // Subscribing is the demand: the broker reads the service while it is held, and tries a failed
+    // read again on the retry ladder (§4.0).
+    deployedVersion: (service, changed) =>
+      atomRegistry.subscribe(
+        data.resources.known({ kind: "service-deployed-version", account: data.scope, service }),
+        changed,
+        { immediate: true },
+      ),
     nowMs: () => data.access.clock.currentTimeMillisUnsafe(),
+    random: Math.random,
+    setTimer: (delayMs, fire) => {
+      const timer = run(
+        Effect.sleep(Duration.millis(delayMs)).pipe(Effect.andThen(Effect.sync(fire))),
+      );
+      return () => {
+        timer.interruptUnsafe();
+      };
+    },
   };
 }
 

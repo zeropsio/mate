@@ -21,6 +21,8 @@ import {
   groupFlowFacts,
   groupFlowInputs,
   groupFlowStops,
+  stopDeploymentOf,
+  type Deployment,
   type DeploymentStore,
   type EnvelopeServices,
   type FlowAttempt,
@@ -29,6 +31,7 @@ import {
   type GroupFlow,
   type GroupFlowSource,
 } from "@t3tools/client-runtime/zerops/flow";
+import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { ForgeFact, ForgePriority } from "@t3tools/client-runtime/zerops/forge";
 import type { GitCheckoutState } from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -248,6 +251,65 @@ export function useGroupFlow(source: UseGroupFlowSource): GroupFlow {
       ),
     [entry, mayRelease, members, nowMs, read],
   );
+}
+
+/**
+ * What each stop runs (§4.7), by project id: demands the stops of the deployment store for as long
+ * as the calling surface is mounted, and reads each again once per task however often it publishes.
+ * A stop keeps its demand, and with it what its builds named, for as long as the surface draws it:
+ * another stop joining or leaving the rows, or the same stops in a new array, never lets it go.
+ */
+export function useStopDeployments(
+  projects: ReadonlyArray<ProjectRef>,
+): ReadonlyMap<string, Shown<Deployment>> {
+  const flow = useAccountFlow();
+  const version = useFlowVersion(flow);
+
+  // Each stop's release, by project key, while the surface draws it from this flow.
+  const demanded = useRef(new Map<string, () => void>());
+  useEffect(() => {
+    if (flow === null) return;
+    const releases = demanded.current;
+    return () => {
+      for (const release of releases.values()) release();
+      releases.clear();
+    };
+  }, [flow]);
+
+  const stopKeys = JSON.stringify(projects);
+  useEffect(() => {
+    if (flow === null) return;
+    const drawn = new Map<string, ProjectRef>(
+      (JSON.parse(stopKeys) as ReadonlyArray<ProjectRef>).map((project) => [
+        projectKeyOf(project),
+        project,
+      ]),
+    );
+    const releases = demanded.current;
+    for (const [key, release] of releases) {
+      if (drawn.has(key)) continue;
+      release();
+      releases.delete(key);
+    }
+    for (const [key, project] of drawn) {
+      if (!releases.has(key)) releases.set(key, flow.deployments.demand(project));
+    }
+  }, [flow, stopKeys]);
+
+  // The store's answers as of `version`.
+  const read = useMemo(
+    () => ({
+      version,
+      stops: new Map(
+        projects.map((project) => [
+          project.projectId,
+          flow === null ? UNBOUND : stopDeploymentOf(flow.deployments.stop(project)),
+        ]),
+      ),
+    }),
+    [flow, projects, version],
+  );
+  return read.stops;
 }
 
 /**

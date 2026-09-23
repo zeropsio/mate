@@ -13,8 +13,8 @@
  *
  * Signed in to Mate is signed in to Gitea (D21): the provider signs the tab
  * in by itself, and until that lands every flow is empty and the surfaces
- * say so where they stand. What each stop runs is the platform's pushed
- * answer (`flow/deployment.ts`) and needs no Gitea at all.
+ * say so where they stand. What each stop runs is the account's deployment
+ * store's answer (`flow/deploymentStore.ts`) and needs no Gitea at all.
  */
 import {
   botDisplayName,
@@ -33,11 +33,9 @@ import {
   type FlowVerb,
   type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
-import type { CollectionRead, ServiceRecord } from "@t3tools/client-runtime/zerops/data";
 import {
   flowReleaseGate,
   flowVerbInvalidations,
-  stopDeployment,
   type Deployment,
   type FlowHalf,
 } from "@t3tools/client-runtime/zerops/flow";
@@ -47,9 +45,9 @@ import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThro
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { useStopDeployments } from "./accountForge";
 import { useAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
-import { useNowMs } from "./useNowMs";
 import {
   ZeropsProjectFlowContext,
   type ZeropsProjectFlow,
@@ -69,12 +67,11 @@ import {
 } from "./useZeropsGroupForge";
 import { useZeropsRegistry } from "./useZeropsRegistry";
 import {
-  stabilizeZeropsAtom,
-  useZeropsAtomSelections,
-  useZeropsData,
-  zeropsKnowledgeArraysEqual,
-} from "./zeropsDataContext";
-import { HeldInventoryContext, projectAuthority, withheldProjectNotice } from "./inventoryContext";
+  HeldInventoryContext,
+  inventoryProjectRefKey,
+  projectAuthority,
+  withheldProjectNotice,
+} from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -83,21 +80,6 @@ const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
 const EMPTY_SLUGS: ReadonlyMap<string, string> = new Map();
 /** What a verb says when it is pressed while the flows stand and no Gitea token is held. */
 const SIGNING_IN_AGAIN = "Signing in to Gitea again. Try it again in a moment.";
-
-/** A service listing whose members, membership and sources did not change. */
-function sameServiceListing(
-  left: CollectionRead<ServiceRecord>,
-  right: CollectionRead<ServiceRecord>,
-): boolean {
-  return (
-    left.query === right.query &&
-    zeropsKnowledgeArraysEqual(left.value, right.value) &&
-    left.observation.required.length === right.observation.required.length &&
-    left.observation.required.every(
-      (interest, index) => interest.status === right.observation.required[index]?.status,
-    )
-  );
-}
 
 /** What the platform pushed as a service's active deploy: when it was activated, and its name. */
 function activeDeployOf(service: ZeropsService | undefined): string | undefined {
@@ -311,39 +293,43 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   );
 
   /**
-   * What each project's stops run, from the platform's own service listing:
-   * the same reads the inventory holds demand for, selected here without a
-   * second lease.
+   * What each project the account holds runs, from the account's deployment store
+   * (`flow/deploymentStore.ts`): the platform's own service listing and the builds running in the
+   * project. Every project is a stop wherever it is drawn — in a group by its tags, or in none —
+   * and none of this waits on Gitea or its registry. As with the inventory's own demand, a project
+   * refused to the account (G6) or not ACTIVE holds nothing open.
    */
-  const { runtime } = useZeropsData();
-  const serviceReadEntries = useMemo(
-    () =>
-      [...inventory.projectRefs.values()].map(
-        (ref) =>
-          [
-            ref.projectId,
-            stabilizeZeropsAtom(runtime.reads.servicesOf(ref), sameServiceListing),
-          ] as const,
-      ),
-    [inventory.projectRefs, runtime],
-  );
-  const serviceReads = useZeropsAtomSelections<CollectionRead<ServiceRecord>>(serviceReadEntries);
-  const nowMs = useNowMs();
-  // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12).
+  const stops = useMemo(() => {
+    const inactive = new Set(
+      inventory.projects.filter(({ status }) => status !== "ACTIVE").map(({ id }) => id),
+    );
+    return [...inventory.projectRefs.values()].flatMap((ref) => {
+      const authority = inventory.authority.get(inventoryProjectRefKey(ref));
+      const refused = authority?.kind === "withheld" && authority.reason === "access-denied";
+      return refused || inactive.has(ref.projectId) ? [] : [ref];
+    });
+  }, [inventory.authority, inventory.projectRefs, inventory.projects]);
+  const stopDeployments = useStopDeployments(stops);
+  // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12), demanded
+  // or not.
   const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(
     () =>
       new Map(
-        [...serviceReads].map(([projectId, read]) => {
+        [...inventory.projectRefs.values()].flatMap(({ projectId }) => {
           const authority = projectAuthority(inventory, projectId);
-          return [
-            projectId,
-            authority.kind === "withheld"
-              ? { state: "withheld", reason: authority.reason, cause: authority.cause }
-              : stopDeployment(read, nowMs),
-          ];
+          if (authority.kind === "withheld") {
+            return [
+              [
+                projectId,
+                { state: "withheld", reason: authority.reason, cause: authority.cause },
+              ] as const,
+            ];
+          }
+          const deployment = stopDeployments.get(projectId);
+          return deployment === undefined ? [] : [[projectId, deployment] as const];
         }),
       ),
-    [inventory, nowMs, serviceReads],
+    [inventory, stopDeployments],
   );
 
   const [trouble, setTrouble] = useState<string | null>(null);

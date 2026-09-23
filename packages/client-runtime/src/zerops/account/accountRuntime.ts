@@ -213,7 +213,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       containers: makeContainerStore(wiring.containerPorts),
       driver: makeExchangeDriver(wiring.driverPorts),
     });
-    const deployments = makeDeploymentStore(deploymentStorePorts(data, ports.atomRegistry));
+    const deployments = makeDeploymentStore(
+      deploymentStorePorts(data, ports.atomRegistry, services),
+    );
     const forge =
       ports.forge === undefined
         ? null
