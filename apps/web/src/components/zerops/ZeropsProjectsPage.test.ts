@@ -18,6 +18,7 @@ import {
   autoConnectServedZeropsEnvironment,
   hasNoZeropsProject,
   isZeropsBirthConnectTarget,
+  mateOpener,
   nextZeropsBirthRetryDelayMs,
   projectsListingNotice,
   projectsPageError,
@@ -816,6 +817,38 @@ describe("a project's next step on the projects page", () => {
     );
     expect(projectsPageSource).toContain('creatableRoles(group).includes("prod")');
     expect(projectsPageSource).not.toContain("?.missing ??");
+  });
+});
+
+describe("opening a Mate from the projects page", () => {
+  it.each([
+    { name: "a connected Mate opens", withheld: false, busy: false, action: "open", opens: true },
+    {
+      name: "a Mate coming up is still",
+      withheld: false,
+      busy: false,
+      action: "pending",
+      opens: false,
+    },
+    {
+      name: "a Mate whose verb runs is still",
+      withheld: false,
+      busy: true,
+      action: "open",
+      opens: false,
+    },
+    { name: "a withheld Mate is still", withheld: true, busy: false, action: "open", opens: false },
+  ] as const)("$name", ({ withheld, busy, action, opens }) => {
+    const open = vi.fn();
+    const opener = mateOpener({ withheld, busy, action, open });
+    expect(opener !== undefined).toBe(opens);
+    opener?.();
+    expect(open).toHaveBeenCalledTimes(opens ? 1 : 0);
+  });
+
+  it("is one opener for a Mate's card and for the flow's names and tiles", () => {
+    expect(projectsPageSource).toContain("const select = mateOpenerOf(candidate);");
+    expect(projectsPageSource.match(/mateOpener\(\{/gu)).toHaveLength(1);
   });
 });
 

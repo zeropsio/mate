@@ -386,6 +386,22 @@ export function hasNoZeropsProject(input: {
   );
 }
 
+/**
+ * Whether a Mate opens where the page draws it — its card, its name in a
+ * project's row, its tile — and how. A ready one opens (connecting first when
+ * it is not connected yet); one coming up, one whose verb is already running
+ * and one the inventory withholds are still: nothing a click could do that
+ * the page is not already doing.
+ */
+export function mateOpener(input: {
+  readonly withheld: boolean;
+  readonly busy: boolean;
+  readonly action: ZeropsRowAction["kind"];
+  readonly open: () => void;
+}): (() => void) | undefined {
+  return !input.withheld && !input.busy && input.action === "open" ? input.open : undefined;
+}
+
 const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
   subject: "your projects",
   entity: "project",
@@ -2371,6 +2387,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     ),
   );
 
+  const mateOpenerOf = (candidate: ZeropsCandidatePresentation): (() => void) | undefined =>
+    mateOpener({
+      withheld: withheldProjectNotice(inventory, candidate.project.id) !== null,
+      busy: busyKeys.has(candidate.key),
+      action: deriveZeropsRowAction(rowInput(candidate, roleOf.get(candidate.project.id))).kind,
+      open: () => {
+        runRowAction(candidate, "open");
+      },
+    });
+
   const renderEnvironment = (
     candidate: ZeropsCandidatePresentation,
     role: ZeropsEnvironmentRole | undefined,
@@ -2490,15 +2516,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       connected && candidate.environmentId !== undefined
         ? activity.get(candidate.environmentId)
         : undefined;
-    // Clicking a Mate opens it: a connected one straight away, a ready
-    // one by connecting first. Coming up, it is not clickable — nothing
-    // a click could do that the page is not already doing.
-    const select =
-      action.kind === "open" && !busy
-        ? () => {
-            runRowAction(candidate, "open");
-          }
-        : undefined;
+    const select = mateOpenerOf(candidate);
     // Not a hover-only verb on the line: a real, always-visible button
     // at the card's trailing edge, next to where the menu sits.
     const startAction =
