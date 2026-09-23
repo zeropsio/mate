@@ -71,9 +71,10 @@ const cachedZeropsMates = readCachedZeropsMates();
  * draft's headline. Published by `useZeropsCandidates` next to the names.
  * Starts from what the last session learned (`mateIdentitiesCache`), so a
  * reload knows who lives where from its first frame; on a first visit every
- * environment is unknown until the list reaches it, so a surface that looks
- * different for a Mate (the git toolbar has nothing to say to one) can wait
- * rather than paint its other look meanwhile.
+ * Zerops environment is unknown until the list reaches it (one whose server
+ * runs outside Zerops holds nobody: `useZeropsMateDirectory`), so a surface
+ * that looks different for a Mate (the git toolbar has nothing to say to one)
+ * can wait rather than paint its other look meanwhile.
  */
 export const zeropsMatesAtom = Atom.make<ZeropsMateDirectory>(
   cachedZeropsMates === null ? MATES_UNREAD : { decided: cachedZeropsMates, complete: true },

@@ -103,6 +103,28 @@ export function zeropsMateAt(
 }
 
 /**
+ * The directory with every environment whose own server says it runs outside
+ * Zerops (its descriptor carries no `zerops`) decided: no Mate lives there,
+ * whether or not the candidate list has been read. Only a Zerops environment,
+ * or one whose server has not answered yet, waits on the list.
+ */
+export function withEnvironmentsOutsideZerops(
+  directory: ZeropsMateDirectory,
+  servers: ReadonlyMap<EnvironmentId, { readonly environment: { readonly zerops?: unknown } }>,
+): ZeropsMateDirectory {
+  if (directory.complete) return directory;
+  const outside = [...servers].flatMap(([environmentId, server]) =>
+    server.environment.zerops === undefined && !directory.decided.has(environmentId)
+      ? [environmentId]
+      : [],
+  );
+  if (outside.length === 0) return directory;
+  const decided = new Map(directory.decided);
+  for (const environmentId of outside) decided.set(environmentId, null);
+  return { decided, complete: false };
+}
+
+/**
  * The environments these rows decide: each Mate `zeropsMateIdentities` finds,
  * and nobody in every other environment a row whose presence is read reaches.
  * A row whose presence is not read decides nothing.

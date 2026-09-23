@@ -132,8 +132,12 @@ export function useNewThreadHandler() {
       // already has — typed content following when the caller carries it, zcp's
       // introduction composed into it when nobody has spoken there yet — and
       // creates nothing, because a second thread would be a second Mate.
-      // Where that is not known yet, a conversation already there opens too:
-      // opening one is undone by a click, a second Mate is not.
+      // Where that is not known yet — a Zerops environment the candidate list
+      // has not reached, or one whose server has not said where it runs — a
+      // conversation already there opens too: opening one is undone by a
+      // click, a second Mate is not. An environment whose server runs outside
+      // Zerops is nobody's (`withEnvironmentsOutsideZerops`) and gets its
+      // new thread.
       const mateConversation =
         options?.fresh !== true && zeropsMateAt(mates, projectRef.environmentId).kind !== "nobody"
           ? resolvePrimaryConversation(
