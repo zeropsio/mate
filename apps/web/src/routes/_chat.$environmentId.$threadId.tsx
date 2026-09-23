@@ -1,6 +1,6 @@
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import ChatView from "../components/ChatView";
 import { threadHasStarted } from "../components/ChatView.logic";
@@ -48,13 +48,19 @@ function ChatThreadRouteView() {
     }
     finalizePromotedDraftThreadByRef(threadRef);
   }, [draftThread, serverThreadStarted, threadRef]);
-  // Once per thread this route shows: `t` after a reload is the reload's latency.
+  // Once per arrival at a thread: a resync that briefly takes the content away
+  // records nothing again, so `t` after a reload is the reload's latency.
   const contentReady = renderState === "ready";
   const environmentId = threadRef?.environmentId;
   const threadId = threadRef?.threadId;
+  const arrivalRef = useRef<{ thread: string; marked: boolean } | null>(null);
   useEffect(() => {
-    if (contentReady && environmentId !== undefined && threadId !== undefined)
-      mateDiagnostics.record({ kind: "thread-content", environmentId, threadId });
+    if (environmentId === undefined || threadId === undefined) return;
+    const thread = `${environmentId}/${threadId}`;
+    if (arrivalRef.current?.thread !== thread) arrivalRef.current = { thread, marked: false };
+    if (!contentReady || arrivalRef.current.marked) return;
+    arrivalRef.current.marked = true;
+    mateDiagnostics.record({ kind: "thread-content", environmentId, threadId });
   }, [contentReady, environmentId, threadId]);
 
   if (!threadRef) {
