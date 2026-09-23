@@ -16,7 +16,6 @@ import {
   buildNames,
   CHECKING_WHAT_RUNS,
   NOTHING_DEPLOYED,
-  stopDeployment,
   stopServices,
   stopView,
   type Deployment,
@@ -241,103 +240,18 @@ const UNSTATED: ServiceDeployInfo = {
   repository: null,
 };
 
-describe("stopDeployment", () => {
-  const cases: ReadonlyArray<{
-    readonly name: string;
-    readonly read: CollectionRead<ServiceRecord> | undefined;
-    readonly expected: Shown<Deployment>["state"] | "none" | "running";
-  }> = [
-    { name: "nothing read for the project", read: undefined, expected: "unread" },
-    {
-      name: "the service list still being read",
-      read: servicesRead([], { coverage: { kind: "none" } }),
-      expected: "unread",
-    },
-    {
-      name: "a service whose deployment facet is unresolved",
-      read: servicesRead([record("s1", "app", UNRESOLVED_DEPLOYMENT)]),
-      expected: "unread",
-    },
-    {
-      name: "a service listed but not yet read",
-      read: servicesRead([record("s1", "app", deployed(null)), "unresolved"]),
-      expected: "unread",
-    },
-    {
-      name: "every service observed with no active deploy",
-      read: servicesRead([record("s1", "app", deployed(null))]),
-      expected: "none",
-    },
-    {
-      name: "a never-deployed runtime's NONE version",
-      read: servicesRead([
-        record("s1", "app", deployed({ ...PUSHED, source: "NONE", name: null })),
-      ]),
-      expected: "none",
-    },
-    {
-      // A pushed frame states no source (A14): the deploy may be a NONE one.
-      name: "an active version whose source nobody stated",
-      read: servicesRead([record("s1", "app", deployed(UNSTATED))]),
-      expected: "unread",
-    },
-    {
-      name: "no services at all, completely listed",
-      read: servicesRead([]),
-      expected: "none",
-    },
-    {
-      name: "a running service beside one still unread",
-      read: servicesRead([record("s1", "app", deployed(PUSHED)), "unresolved"]),
-      expected: "running",
-    },
-    {
-      name: "the Mate's container and a system service are not what the stop runs",
-      read: servicesRead([
-        record("s1", "zcp", deployed(PUSHED), { type: "zcp@1" }),
-        record("s2", "core", deployed(PUSHED), { isSystem: true }),
-        record("s3", "app", deployed(null)),
-      ]),
-      expected: "none",
-    },
-    {
-      // The platform refused to say what the service runs: that is no answer, not a none.
-      name: "a service whose deployment the platform will not show",
-      read: servicesRead([record("s1", "app", UNAVAILABLE_DEPLOYMENT)]),
-      expected: "failed",
-    },
-    {
-      name: "a running service beside one whose deployment the platform will not show",
-      read: servicesRead([
-        record("s1", "app", deployed(PUSHED)),
-        record("s2", "api", UNAVAILABLE_DEPLOYMENT),
-      ]),
-      expected: "running",
-    },
-    {
-      name: "a partial listing never proves none",
-      read: servicesRead([record("s1", "app", deployed(null))], {
-        coverage: {
-          kind: "partial-window",
-          offset: 0,
-          limit: 1,
-          traversedPages: 1,
-          observedTotal: 2,
-        },
-      }),
-      expected: "unread",
-    },
-  ];
+/** The one listed service's deployment, its processes read and none of them a build. */
+function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deployment> | undefined {
+  const stops = stopServices(
+    { services: read, processes: processesRead([]), names: new Map() },
+    NOW,
+  );
+  return stops.state === "known" ? stops.value[0]?.deployment : stops;
+}
 
-  it.each(cases)("$name", ({ read, expected }) => {
-    const deployment = stopDeployment(read, NOW);
-    const got = deployment.state === "known" ? deployment.value.kind : deployment.state;
-    expect(got === "reading" ? "unread" : got).toBe(expected);
-  });
-
+describe("a service's deployment", () => {
   it("carries what the platform pushed: when, and the version it names", () => {
-    const deployment = stopDeployment(servicesRead([record("s1", "app", deployed(PUSHED))]), NOW);
-    expect(deployment).toMatchObject({
+    expect(serviceDeployment(servicesRead([record("s1", "app", deployed(PUSHED))]))).toMatchObject({
       state: "known",
       coverage: "complete",
       freshness: { kind: "live" },
@@ -345,17 +259,23 @@ describe("stopDeployment", () => {
       value: {
         kind: "running",
         activatedAt: "2026-09-20T10:00:00Z",
-        version: { name: "v1.4.0", commit: "3f9c1b2", sha: SHA, taggedBy: "ada", label: "v1.4.0" },
+        version: {
+          name: "v1.4.0",
+          commit: "3f9c1b2",
+          sha: SHA,
+          taggedBy: "ada",
+          label: "v1.4.0",
+        },
       },
     });
   });
 
   it("names a deploy by its commit when the platform pushed no name", () => {
-    const deployment = stopDeployment(
-      servicesRead([record("s1", "app", deployed({ ...PUSHED, name: null, commit: SHA }))]),
-      NOW,
-    );
-    expect(deployment).toMatchObject({
+    expect(
+      serviceDeployment(
+        servicesRead([record("s1", "app", deployed({ ...PUSHED, name: null, commit: SHA }))]),
+      ),
+    ).toMatchObject({
       state: "known",
       value: { kind: "running", version: { commit: "3f9c1b2", sha: SHA, label: "3f9c1b2" } },
     });
@@ -390,30 +310,29 @@ describe("stopDeployment", () => {
 
     it.each(cases)("$name", ({ deploy, stop, topologySource }) => {
       const stated = record("s1", "app", deployed(deploy));
-      const deployment = stopDeployment(servicesRead([stated]), NOW);
+      const deployment = serviceDeployment(servicesRead([stated]));
       const topology = projectTopology(
         { id: "project-1", name: "project", status: "ACTIVE" },
         [serviceRecordToZeropsService(stated)!],
         [],
       );
 
-      expect(deployment.state === "known" ? deployment.value.kind : deployment.state).toBe(stop);
+      expect(deployment?.state === "known" ? deployment.value.kind : deployment?.state).toBe(stop);
       expect(topology.services[0]?.deploy?.source).toBe(topologySource);
     });
   });
 
   it("marks a value the paused or recovering source no longer vouches for", () => {
-    const paused = stopDeployment(
+    const paused = serviceDeployment(
       servicesRead([record("s1", "app", deployed(null))], {
         interest: { status: "paused", identity: identity(), reason: "background" },
       }),
-      NOW,
     );
     expect(paused).toMatchObject({
       state: "known",
       freshness: { kind: "paused", by: "background" },
     });
-    const recovering = stopDeployment(
+    const recovering = serviceDeployment(
       servicesRead([record("s1", "app", deployed(null))], {
         interest: {
           status: "recovering",
@@ -430,7 +349,6 @@ describe("stopDeployment", () => {
           },
         },
       }),
-      NOW,
     );
     expect(recovering).toMatchObject({
       state: "known",
@@ -439,7 +357,7 @@ describe("stopDeployment", () => {
   });
 
   it("fails what was never read when the source gave up", () => {
-    const deployment = stopDeployment(
+    const deployment = serviceDeployment(
       servicesRead([], {
         coverage: { kind: "none" },
         interest: {
@@ -451,7 +369,6 @@ describe("stopDeployment", () => {
           retryAtMs: NOW + 8_000,
         },
       }),
-      NOW,
     );
     expect(deployment).toMatchObject({ state: "failed", attempt: 3, retryAtMs: NOW + 8_000 });
   });
@@ -503,6 +420,24 @@ describe("stopServices", () => {
         ["web", "unread"],
         ["worker", "none"],
       ],
+    },
+    {
+      name: "a never-deployed runtime's NONE version runs nothing",
+      read: listed([record("s1", "app", deployed({ ...PUSHED, source: "NONE", name: null }))]),
+      expected: [["app", "none"]],
+    },
+    {
+      name: "a partial listing is no list",
+      read: listed([record("s1", "app", deployed(null))], {
+        coverage: {
+          kind: "partial-window",
+          offset: 0,
+          limit: 1,
+          traversedPages: 1,
+          observedTotal: 2,
+        },
+      }),
+      expected: "unread",
     },
     {
       name: "the Mate's container and a system service are no stop",

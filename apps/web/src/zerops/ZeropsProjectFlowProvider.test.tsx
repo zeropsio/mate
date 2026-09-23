@@ -46,12 +46,6 @@ vi.mock("./ZeropsInventoryProvider", () => ({
     account: access.account,
   }),
 }));
-vi.mock("./zeropsDataContext", () => ({
-  useZeropsData: () => ({ runtime: { reads: { servicesOf: () => null } } }),
-  useZeropsAtomSelections: () => new Map(),
-  stabilizeZeropsAtom: (atom: unknown) => atom,
-  zeropsKnowledgeArraysEqual: () => true,
-}));
 vi.mock("./useNowMs", () => ({ useNowMs: () => 0 }));
 vi.mock("./giteaProject", () => ({
   useAccountGitea: () =>

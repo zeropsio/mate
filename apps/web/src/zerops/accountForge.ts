@@ -21,6 +21,8 @@ import {
   groupFlowFacts,
   groupFlowInputs,
   groupFlowStops,
+  stopDeploymentOf,
+  type Deployment,
   type DeploymentStore,
   type EnvelopeServices,
   type FlowAttempt,
@@ -29,6 +31,7 @@ import {
   type GroupFlow,
   type GroupFlowSource,
 } from "@t3tools/client-runtime/zerops/flow";
+import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { ForgeFact, ForgePriority } from "@t3tools/client-runtime/zerops/forge";
 import type { GitCheckoutState } from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -248,6 +251,44 @@ export function useGroupFlow(source: UseGroupFlowSource): GroupFlow {
       ),
     [entry, mayRelease, members, nowMs, read],
   );
+}
+
+/**
+ * What each stop runs (§4.7), by project id: demands the stops of the deployment store for as long
+ * as the calling surface is mounted, and reads each again once per task however often it publishes.
+ * The same stops drawn again in a new array keep their demand, and with it what their builds named.
+ */
+export function useStopDeployments(
+  projects: ReadonlyArray<ProjectRef>,
+): ReadonlyMap<string, Shown<Deployment>> {
+  const flow = useAccountFlow();
+  const version = useFlowVersion(flow);
+
+  const stopKeys = JSON.stringify(projects);
+  useEffect(() => {
+    if (flow === null) return;
+    const releases = (JSON.parse(stopKeys) as ReadonlyArray<ProjectRef>).map((project) =>
+      flow.deployments.demand(project),
+    );
+    return () => {
+      for (const release of releases) release();
+    };
+  }, [flow, stopKeys]);
+
+  // The store's answers as of `version`.
+  const read = useMemo(
+    () => ({
+      version,
+      stops: new Map(
+        projects.map((project) => [
+          project.projectId,
+          flow === null ? UNBOUND : stopDeploymentOf(flow.deployments.stop(project)),
+        ]),
+      ),
+    }),
+    [flow, projects, version],
+  );
+  return read.stops;
 }
 
 /**

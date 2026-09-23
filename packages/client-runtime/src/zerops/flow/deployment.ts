@@ -93,9 +93,6 @@ const toStamp = (stamp: IngestionStamp): Stamp => ({
   atMs: stamp.observedAtMs,
 });
 
-const newer = (left: Stamp | null, right: Stamp): Stamp =>
-  left === null || right.ordinal > left.ordinal ? right : left;
-
 /** What one service contributes to its stop. */
 type ServiceAnswer =
   | { readonly kind: "not-a-stop" }
@@ -105,12 +102,7 @@ type ServiceAnswer =
   | { readonly kind: "none"; readonly asOf: Stamp }
   /** An active version whose source nobody stated (A14): only a build's name can say it runs. */
   | { readonly kind: "unstated"; readonly deploy: ServiceDeployInfo; readonly asOf: Stamp }
-  | {
-      readonly kind: "running";
-      readonly hostname: string;
-      readonly deploy: ServiceDeployInfo;
-      readonly asOf: Stamp;
-    };
+  | { readonly kind: "running"; readonly deploy: ServiceDeployInfo; readonly asOf: Stamp };
 
 function serviceAnswer(knowledge: CollectionRead<ServiceRecord>["value"][number]): ServiceAnswer {
   // A service the platform no longer shows is not what the stop runs.
@@ -132,7 +124,7 @@ function serviceAnswer(knowledge: CollectionRead<ServiceRecord>["value"][number]
   // A version whose source nobody stated may be that `NONE` one: a native
   // frame names only its id, status and times (A14). Neither running nor none.
   if (deploy.source === null) return { kind: "unstated", deploy, asOf };
-  return { kind: "running", hostname: service.name, deploy, asOf };
+  return { kind: "running", deploy, asOf };
 }
 
 /** The worst of the interests the listing needs, which is what vouches for it. */
@@ -242,60 +234,6 @@ function notYetKnown<T>(source: SourceState, nowMs: number): Known<T> {
         retryAtMs: source.retryAtMs,
       };
   }
-}
-
-/**
- * One stop's deployment, from its project's service listing.
- *
- * The first runtime service with an active deploy, by hostname, names the
- * stop — the same rule `environmentRow` follows. `none` needs a complete
- * listing and every runtime service observed with nothing deployed.
- */
-export function stopDeployment(
-  read: CollectionRead<ServiceRecord> | undefined,
-  nowMs: number,
-): Known<Deployment> {
-  if (read === undefined) return { state: "unread", waitingFor: null };
-  const source = worstSource(read.observation.required);
-  const answers = read.value.map(serviceAnswer);
-  // Filtered into a fresh array, so the sort touches nothing else (`toSorted` is not in Hermes).
-  const running = answers
-    .filter((answer) => answer.kind === "running")
-    .sort((left, right) => left.hostname.localeCompare(right.hostname))[0];
-  if (running !== undefined)
-    return {
-      state: "known",
-      value: {
-        kind: "running",
-        activatedAt: running.deploy.activatedAt,
-        version: pushedVersion(running.deploy),
-      },
-      asOf: running.asOf,
-      coverage: "complete",
-      freshness: freshnessOf(source, nowMs),
-    };
-  const listed =
-    read.query.status === "observed" && read.query.coverage.kind === "exhausted-traversal";
-  if (!listed || answers.some((answer) => answer.kind === "pending" || answer.kind === "unstated"))
-    return notYetKnown(source, nowMs);
-  const withheld = answers.find((answer) => answer.kind === "withheld");
-  if (withheld !== undefined)
-    return {
-      state: "failed",
-      failure: { kind: "refused", code: withheld.reason, words: "" },
-      atMs: withheld.atMs,
-      attempt: 1,
-      retryAtMs: null,
-    };
-  let asOf: Stamp | null = read.query.status === "observed" ? toStamp(read.query.stamp) : null;
-  for (const answer of answers) if (answer.kind === "none") asOf = newer(asOf, answer.asOf);
-  return {
-    state: "known",
-    value: { kind: "none" },
-    asOf: asOf ?? { ordinal: 0, atMs: 0 },
-    coverage: "complete",
-    freshness: freshnessOf(source, nowMs),
-  };
 }
 
 /** One runtime service of a stop, and what it runs: the deployment is a fact per service (D6). */

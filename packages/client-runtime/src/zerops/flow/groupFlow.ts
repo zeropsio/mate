@@ -224,7 +224,7 @@ function pullRequestsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowP
  * running one, else the first that is not known, else none — which only services that each run
  * none prove.
  */
-function stopDeploymentOf(services: Shown<ReadonlyArray<StopService>>): Shown<Deployment> {
+export function stopDeploymentOf(services: Shown<ReadonlyArray<StopService>>): Shown<Deployment> {
   if (!isKnown(services)) return services as Shown<never>;
   const first = (kind: Deployment["kind"]) =>
     services.value.find(
