@@ -1,4 +1,5 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
@@ -27,10 +28,12 @@ import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { useComposerDraftStore } from "../composerDraftStore";
 import { TestNode } from "../zerops/__fixtures__/testDom";
 import { useEnvironmentLinks, useRouteGateInputs, useRouteTargetKey } from "./-environmentTargets";
 import { RouteGateView } from "./-routeGate";
 import { InventoryContext, type Inventory } from "../zerops/inventoryContext";
+import { ZeropsIdentityRepair } from "../zerops/ZeropsIdentityRepair";
 import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
 /** Where the fixture's zcp service is served: `zcp`, subdomain host `abc`, port 8080, region `prg1`. */
@@ -48,10 +51,17 @@ const shell = vi.hoisted(() => ({
   organization: "selected" as ZeropsOrganizationStatus,
   driver: null as unknown,
   containers: null as unknown,
+  pathname: "/",
 }));
 
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: shell.environments }),
+  useEnvironmentConnectionState: () => ({ data: null }),
+}));
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useLocation: ({ select }: { readonly select: (location: { pathname: string }) => string }) =>
+    select({ pathname: shell.pathname }),
 }));
 vi.mock("../state/shell", async () => {
   const { Atom } = await import("effect/unstable/reactivity");
@@ -118,6 +128,7 @@ beforeEach(() => {
   root = createRoot(container as unknown as Element);
   shell.environments = [];
   shell.records = [];
+  shell.pathname = "/";
   shell.organization = "selected";
   shell.driver = publishing(new Map());
   shell.containers = descriptorRig([]).containers;
@@ -684,8 +695,12 @@ interface Routed {
   readonly routeKey: string | null;
 }
 
-/** Mounts what `__root` and the route's demand read for a route to `env-a`; `read` looks again. */
+/**
+ * Mounts what `__root` reads for a route to the environment, and the route's demand on its target
+ * (`ZeropsIdentityRepair`); `read` looks again.
+ */
 function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACTIVE")) {
+  shell.pathname = `/${environmentId}/thread-1`;
   function Probe() {
     const inputs = useRouteGateInputs(environmentId);
     return JSON.stringify({
@@ -697,6 +712,7 @@ function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACT
   act(() =>
     root.render(
       <InventoryContext value={value}>
+        <ZeropsIdentityRepair />
         <Probe />
       </InventoryContext>,
     ),
@@ -721,7 +737,6 @@ describe("the descriptor index", () => {
     expect(seen.projectId).toBe(one.projectId);
     expect(seen.routeKey).toBe(one.key);
     // The route's demand on that target exchanges it, expecting no remembered environment.
-    rig.driver.setDemand("route", [one.key]);
     await settle();
     expect(rig.exchanges.map(({ key, expected }) => ({ key, expected }))).toEqual([
       { key: one.key, expected: null },
@@ -782,6 +797,8 @@ describe("the descriptor index", () => {
     shell.containers = rig.containers;
     shell.records = [{ targetKey: one.key, environmentId: ENV_A }];
     rig.driver.setDemand("record", [one.key]);
+    const draft = scopeThreadRef(ENV_A, ThreadId.make("thread-1"));
+    useComposerDraftStore.getState().setPrompt(draft, "keep me");
     await settle();
     function Probe({ environmentId }: { readonly environmentId: EnvironmentId }) {
       const inputs = useRouteGateInputs(environmentId);
@@ -819,6 +836,9 @@ describe("the descriptor index", () => {
     // Nothing retired the target: its record, and every draft keyed by the old environment, stay.
     expect(rig.retired).toEqual([]);
     expect(rig.driver.machine(one.key)?.record).toBe(ENV_A);
+    expect(useComposerDraftStore.getState().draftsByThreadKey[scopedThreadKey(draft)]?.prompt).toBe(
+      "keep me",
+    );
     rig.driver.dispose();
     rig.containers.dispose();
   });
