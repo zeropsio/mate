@@ -515,6 +515,60 @@ it.live("a renewal withholds a deleted project until a second read confirms it i
   ),
 );
 
+it.live("a round back from a lapse withholds a denied project and restores the others", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory(["kept", "revoked"]);
+      const readUser = harness.client.fetchUser.getMockImplementation()!;
+      const readProject = harness.client.fetchProject.getMockImplementation()!;
+      harness.client.fetchUser.mockImplementation(async () => {
+        throw new ZeropsApiError("Unavailable", "server", 503);
+      });
+      // Every renewal fails until the evidence runs out 15 min after the first round.
+      yield* harness.advance(15 * 60_000 + 1_000);
+      expect((yield* harness.runtime.state).access.status).toBe("expired");
+      expect(harness.container.textContent).toContain("Could not load your Zerops projects.");
+
+      harness.client.fetchUser.mockImplementation(readUser);
+      harness.client.fetchProject.mockImplementation(async (id: string) => {
+        if (id === "revoked") throw new ZeropsApiError("Forbidden", "forbidden");
+        return readProject(id);
+      });
+      const recovery = harness.holdRenewal();
+      const calls = harness.client.fetchUser.mock.calls.length;
+      for (
+        let second = 0;
+        second < 120 && harness.client.fetchUser.mock.calls.length === calls;
+        second++
+      )
+        yield* harness.advance(1_000);
+      yield* recovery.verify();
+      const refs = () =>
+        [...harness.inventory()!.projectRefs.values()].map(({ projectId }) => projectId);
+      const authority = (id: string) =>
+        harness.inventory()?.authority.get(inventoryProjectRefKey(harness.projectRef("org", id)));
+
+      // The account is granted again; the project that answered 403 is not (T-L20).
+      expect((yield* harness.runtime.state).access.status).toBe("verified");
+      expect(harness.container.textContent).not.toContain("Could not load");
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+      expect(authority("kept")).toEqual({ kind: "authorized" });
+      expect(authority("revoked")).toEqual({
+        kind: "withheld",
+        reason: "access-denied",
+        cause: null,
+      });
+      expect(refs()).toEqual(["kept", "revoked"]);
+
+      // The confirming read, 5 s after the denial, answers the same: it is gone.
+      yield* harness.advance(5_000);
+      expect(refs()).toEqual(["kept"]);
+      expect(authority("kept")).toEqual({ kind: "authorized" });
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+    }),
+  ),
+);
+
 const grantedProjects = (grant: VerifiedAccessGrant | undefined) =>
   grant?.projects.map(({ project }) => project.projectId);
 
