@@ -210,7 +210,7 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
       // The user read, then each organization's listing and each project read.
       let reads = 1;
       return Effect.gen(function* () {
-        const user = yield* readPlatform(() => client.fetchUser());
+        const user = yield* readPlatform((signal) => client.fetchUser(signal));
         options.onUser(user);
         const organizations = zeropsClientsFromUser(user);
         memberships = organizations;
@@ -218,9 +218,9 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
           organizations,
           (organization) => {
             reads++;
-            return readPlatform(() => client.listAccessibleClientProjects(organization.id)).pipe(
-              Effect.map((projects) => ({ organization, projects })),
-            );
+            return readPlatform((signal) =>
+              client.listAccessibleClientProjects(organization.id, { signal }),
+            ).pipe(Effect.map((projects) => ({ organization, projects })));
           },
           { concurrency: "unbounded" },
         );

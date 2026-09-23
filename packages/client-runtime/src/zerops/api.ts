@@ -710,6 +710,8 @@ function waitForPromiseOrAbort<T>(
 export interface ListProjectsOptions {
   readonly statuses?: ReadonlyArray<string>;
   readonly limit?: number;
+  /** Stops every page read of the listing. */
+  readonly signal?: AbortSignal;
 }
 
 /** Offset pagination is shared by the direct list and permission-filtered
@@ -987,8 +989,8 @@ export class ZeropsApiClient {
     }
   }
 
-  fetchUser(): Promise<ZeropsUser> {
-    return this.#request<ZeropsUser>("/user/info");
+  fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
+    return this.#request<ZeropsUser>("/user/info", { signal: signal ?? null });
   }
 
   /**
@@ -1013,7 +1015,7 @@ export class ZeropsApiClient {
         // cut short read as the end of the account rather than as a failure.
         readonly total?: number;
         readonly totalCount?: number;
-      }>(`/client/${clientId}/project?${query.toString()}`);
+      }>(`/client/${clientId}/project?${query.toString()}`, { signal: options.signal ?? null });
       return { items: response.list, total: response.total ?? response.totalCount };
     });
   }
@@ -1045,6 +1047,7 @@ export class ZeropsApiClient {
         "/project/search",
         {
           method: "POST",
+          signal: options.signal ?? null,
           body: JSON.stringify({
             limit,
             ...(offset ? { offset } : {}),

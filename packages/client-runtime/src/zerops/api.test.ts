@@ -546,6 +546,28 @@ describe("ZeropsApiClient project reads", () => {
     expect(stub.requests.every((request) => !request.url.includes("/search"))).toBe(true);
   });
 
+  it("sends the caller's signal with the user read and every project listing read, the search fallback's too", async () => {
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const client = new ZeropsApiClient({
+      fetch: async (input, init) => {
+        signals.push(init?.signal);
+        if (input.endsWith("/user/info")) return jsonResponse(200, { id: "user-1" });
+        return input.includes("/client/org-dev/project")
+          ? jsonResponse(403, {
+              error: { code: "insufficientPermissions", message: "Insufficient permissions" },
+            })
+          : jsonResponse(200, { items: [], totalHits: 0 });
+      },
+    });
+    client.restoreSession(SESSION);
+    const { signal } = new AbortController();
+
+    await client.fetchUser(signal);
+    await client.listAccessibleClientProjects("org-dev", { signal });
+
+    expect(signals).toEqual([signal, signal, signal]);
+  });
+
   it("falls back to the permission-filtered project search for a restricted membership", async () => {
     const stub = recordingFetch((request) =>
       request.url.includes("/client/org-dev/project")
