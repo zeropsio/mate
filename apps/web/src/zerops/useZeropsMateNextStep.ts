@@ -3,8 +3,7 @@
  * than from what the agent said (the owner, 2026-09-23 — "extremely important
  * findings the whole UI should be built around").
  *
- * `useZeropsMateReview` only ever offered a merge; the flow can also ask for
- * a release of what is already merged, or for the production that has
+ * Beside the Mate's own merge, the flow can also ask for a release of what is already merged, or for the production that has
  * nowhere to go yet. `mateNextStep` (`client-runtime`) picks the one step
  * from the project's `GroupFlow`, so "put it on production" gets the right
  * button beside the answer even where the agent's own answer is wrong about
