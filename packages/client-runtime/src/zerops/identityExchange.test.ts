@@ -221,6 +221,8 @@ describe("exchangeZeropsContainerIdentity", () => {
     ["expired-session", false],
     ["forbidden", false],
     ["uncertain", true],
+    // The mint waited out the account window (DESIGN §4.4: retryable past the 30 s wait).
+    ["access-unverified", true],
   ] as const)("marks a door-mint failure of kind %s as retryable: %s", async (kind, retryable) => {
     const platform: ZeropsThrowawayPlatform = {
       mint: async () => {
