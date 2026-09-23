@@ -20,6 +20,12 @@ import {
   type Shown,
   type WithheldReason,
 } from "../knowledge/known.ts";
+import {
+  backoffOn,
+  INITIAL_BACKOFF,
+  scheduleRetry,
+  type Backoff,
+} from "../knowledge/retryPolicy.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import type {
@@ -208,6 +214,8 @@ export interface ZeropsResourceBrokerOptions {
   /** Dynamic account access owned by the parent runtime. */
   readonly access: () => AccessState;
   readonly maxEntries?: number;
+  /** The jitter source of the retry policy. */
+  readonly random?: () => number;
 }
 
 type AnyResourceValue = ZeropsResourceValues[ZeropsResourceKind];
@@ -232,6 +240,9 @@ interface ResourceEntry {
   shown: AnyShown;
   readonly demands: Map<number, Demand>;
   inFlight: ResourceRead | null;
+  backoff: Backoff;
+  /** The wake at the failed read's `retryAt`, while demanded. */
+  retryWake: Fiber.Fiber<void> | null;
 }
 
 /** What an open demand answers to its holder. */
@@ -459,6 +470,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   const fork = Effect.runForkWith(yield* Effect.context<never>());
   const clock = yield* Clock.Clock;
   const now = () => clock.currentTimeMillisUnsafe();
+  const random = options.random ?? Math.random;
   const entries = new Map<ZeropsResourceKey, ResourceEntry>();
   const atoms = new Map<ZeropsResourceKey, Atom.Atom<AnyShown>>();
   let nextDemandId = 0;
@@ -483,7 +495,13 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   const apply = (entry: ResourceEntry, event: KnownEvent<AnyResourceValue>): void =>
     setCell(entry, advance(entry.cell, event, now()));
 
+  const cancelRetry = (entry: ResourceEntry): void => {
+    entry.retryWake?.interruptUnsafe();
+    entry.retryWake = null;
+  };
+
   const abortRead = (entry: ResourceEntry): void => {
+    cancelRetry(entry);
     const inFlight = entry.inFlight;
     if (inFlight === null) return;
     entry.inFlight = null;
@@ -507,6 +525,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     if (closed || entries.get(entry.key) !== entry || entry.inFlight !== inFlight) return;
     entry.inFlight = null;
     if (Exit.isSuccess(exit)) {
+      entry.backoff = INITIAL_BACKOFF;
       apply(entry, {
         kind: "read-succeeded",
         ordinal: inFlight.ordinal,
@@ -516,11 +535,20 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
       });
       return;
     }
-    const { failure } = failureOf(exit.cause);
-    apply(entry, { kind: "read-failed", ordinal: inFlight.ordinal, failure, retryAtMs: null });
+    const { failure, retryable } = failureOf(exit.cause);
+    const scheduled = retryable ? scheduleRetry(entry.backoff, now(), random) : null;
+    if (scheduled !== null) entry.backoff = scheduled.backoff;
+    apply(entry, {
+      kind: "read-failed",
+      ordinal: inFlight.ordinal,
+      failure,
+      retryAtMs: scheduled?.retryAtMs ?? null,
+    });
+    if (scheduled !== null) scheduleRetryWake(entry, scheduled.retryAtMs);
   };
 
   const startRead = (entry: ResourceEntry): void => {
+    cancelRetry(entry);
     const inFlight: ResourceRead = {
       ordinal: ++ordinal,
       controller: new AbortController(),
@@ -598,7 +626,8 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     if (entry.inFlight === null && entry.cell.held.state === "unread") startRead(entry);
   }
 
-  const retry = (entry: ResourceEntry): boolean => {
+  /** Reads a failed resource again, under the access that holds now. */
+  const readAgain = (entry: ResourceEntry): boolean => {
     if (!readFailed(entry.cell) || entry.inFlight !== null) return false;
     const admission = resourceAdmission(options.scope, options.access(), entry.request, now());
     if (admission.kind === "withheld") {
@@ -608,6 +637,29 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     scheduleAccessDeadline(admission.deadlineMs);
     startRead(entry);
     return true;
+  };
+
+  /** Timers are hints (§4.0): the wake re-checks the entry before it reads. */
+  function scheduleRetryWake(entry: ResourceEntry, retryAtMs: number): void {
+    cancelRetry(entry);
+    if (entry.demands.size === 0) return;
+    entry.retryWake = fork(
+      Effect.sleep(Duration.millis(Math.max(0, retryAtMs - now()))).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            entry.retryWake = null;
+            if (closed || entries.get(entry.key) !== entry || entry.demands.size === 0) return;
+            readAgain(entry);
+          }),
+        ),
+      ),
+    );
+  }
+
+  /** A user's "Try again" starts from the first rung. */
+  const retry = (entry: ResourceEntry): boolean => {
+    entry.backoff = backoffOn(entry.backoff, "user-retry");
+    return readAgain(entry);
   };
 
   const open = (
@@ -621,7 +673,16 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     if (entry === undefined) {
       if (entries.size >= maxEntries) return admissionError("account-capacity");
       const cell = newCell<AnyResourceValue>(cellScopeOf(request));
-      entry = { key, request, cell, shown: read(cell), demands: new Map(), inFlight: null };
+      entry = {
+        key,
+        request,
+        cell,
+        shown: read(cell),
+        demands: new Map(),
+        inFlight: null,
+        backoff: INITIAL_BACKOFF,
+        retryWake: null,
+      };
       entries.set(key, entry);
     }
     const held = entry;

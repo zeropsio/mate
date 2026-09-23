@@ -210,6 +210,84 @@ describe("makeZeropsResourceBroker", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("a failed lease carries retryAt and retries", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const outcomes: Array<"fail" | "answer"> = ["fail", "fail", "answer"];
+      let reads = 0;
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => verifiedAccess(scope),
+        // No jitter: every retry lands on its rung.
+        random: () => 0.5,
+        adapter: unusedAdapter({
+          readOrganizationLocations: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              return outcomes[reads - 1] === "answer"
+                ? Effect.succeed([PRAGUE])
+                : Effect.fail(transportFailure());
+            }),
+        }),
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+
+      expect(yield* lease.awaitSettled).toMatchObject({
+        state: "failed",
+        attempt: 1,
+        retryAtMs: 2_000,
+      });
+      yield* TestClock.adjust("2 seconds");
+      yield* Effect.yieldNow;
+      expect(reads).toBe(2);
+      expect(yield* lease.snapshot).toMatchObject({
+        state: "failed",
+        attempt: 2,
+        retryAtMs: 6_000,
+      });
+      yield* TestClock.adjust("4 seconds");
+      yield* Effect.yieldNow;
+      expect(yield* lease.snapshot).toMatchObject({ state: "known", value: [PRAGUE] });
+
+      // An answered read has nothing left to retry.
+      expect(yield* lease.retry).toBe(false);
+      yield* TestClock.adjust("1 minute");
+      yield* Effect.yieldNow;
+      expect(reads).toBe(3);
+      yield* Scope.close(leaseScope, Exit.void);
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a non-retryable failure waits for a user retry", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => verifiedAccess(scope),
+        random: () => 0.5,
+        adapter: unusedAdapter({
+          readOrganizationLocations: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              return Effect.fail(transportFailure(false));
+            }),
+        }),
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+
+      expect(yield* lease.awaitSettled).toMatchObject({ state: "failed", retryAtMs: null });
+      yield* TestClock.adjust("10 minutes");
+      yield* Effect.yieldNow;
+      expect(reads).toBe(1);
+      yield* Scope.close(leaseScope, Exit.void);
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("a grant that stops covering one project withholds only that project's resources", () =>
     Effect.gen(function* () {
       const scope = accountScope();
