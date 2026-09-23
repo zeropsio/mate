@@ -51,7 +51,7 @@ export type Reachability =
       readonly kind: "retrying";
       readonly retryAtMs: number;
       readonly last: ExchangeCause;
-      /** Restart is offered only under the identity rule (`identityRestartOffered`). */
+      /** Restart is offered only for identity `failed`, under its rule (`identityRestartOffered`). */
       readonly restart: boolean;
     }
   | { readonly kind: "reconnecting" }
@@ -156,7 +156,7 @@ export function selectReachability(
       kind: "retrying",
       retryAtMs: credential.retryAt.wall,
       last: credential.last,
-      restart: identityRestartOffered(machine),
+      restart: credential.last.kind === "identity-failed" && identityRestartOffered(machine),
     };
   }
   // 10

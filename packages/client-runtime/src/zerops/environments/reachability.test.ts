@@ -252,6 +252,54 @@ const ROWS: ReadonlyArray<{
     },
   },
   {
+    row: 9,
+    name: "a network failure after two identity failures offers no Restart",
+    machine: machine({
+      guards: { ...GUARDS, grantVerifiedAtMs: NOW - 10_000 },
+      identityFailures: {
+        reads: 2,
+        lastCheckedAt: "2026-09-23T10:00:20.000Z",
+        sinceMs: NOW - 30_000,
+      },
+      credential: {
+        kind: "backoff",
+        retryAt: at(NOW + 60_000),
+        last: { kind: "network" },
+        reconnect: false,
+      },
+    }),
+    verdict: {
+      kind: "retrying",
+      retryAtMs: NOW + 60_000,
+      last: { kind: "network" },
+      restart: false,
+    },
+  },
+  {
+    row: 9,
+    name: "identity failed twice with a fresh grant offers Restart",
+    machine: machine({
+      guards: { ...GUARDS, grantVerifiedAtMs: NOW - 10_000 },
+      identityFailures: {
+        reads: 2,
+        lastCheckedAt: "2026-09-23T10:00:20.000Z",
+        sinceMs: NOW - 30_000,
+      },
+      credential: {
+        kind: "backoff",
+        retryAt: at(NOW + 60_000),
+        last: { kind: "identity-failed" },
+        reconnect: false,
+      },
+    }),
+    verdict: {
+      kind: "retrying",
+      retryAtMs: NOW + 60_000,
+      last: { kind: "identity-failed" },
+      restart: true,
+    },
+  },
+  {
     row: 10,
     name: "held, link in backoff",
     machine: machine({ credential: HELD, link: { phase: "backoff", retryAtMs: NOW + 2_000 } }),
