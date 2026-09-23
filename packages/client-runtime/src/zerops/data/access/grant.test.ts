@@ -488,22 +488,26 @@ describe("access grant reducer", () => {
   });
 
   it.each([
-    ["a 200", verified(A)],
-    ["a 5xx", failed],
+    ["a 200", "before the other project's", verified(A)],
+    ["a 5xx", "before the other project's", failed],
+    ["a 200", "last", verified(A)],
+    ["a 5xx", "last", failed],
   ] as const)(
-    "keeps a denial seen mid-first-round over that round's own later answer of %s (G6)",
-    (_label, answer) => {
+    "keeps a denial seen mid-first-round over that round's own later answer of %s, arriving %s, and admits the round at once (G6)",
+    (_label, order, answer) => {
       const sim = new GrantSim();
       sim.send({ type: "START" });
       const round = sim.round();
       sim.elapse(SECOND);
       sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
       sim.elapse(SECOND);
+      const before = sim.effects.length;
+      const answerB = { type: "ROUND_PROJECT", round, project: B, outcome: verified(B) } as const;
+      if (order === "last") sim.send(answerB);
       sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
       sim.elapse(SECOND);
-      const before = sim.effects.length;
       sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: answer });
-      sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+      if (order !== "last") sim.send(answerB);
       expect(sim.state.phase.phase).toBe("granted");
       expect(sim.write(A)).toEqual({ allowed: false, reason: "project-closed", waitable: false });
       expect(sim.write(B)).toEqual({ allowed: true });
@@ -948,8 +952,9 @@ describe("access grant invariants over enumerated event sequences", () => {
       );
     }
     if (round !== null && round.targets !== null) {
-      const unanswered = round.targets.find((target) => !round.outcomes.has(target.projectId));
-      if (unanswered !== undefined) {
+      // Any unanswered target may answer next, so a denied project can be the last to answer.
+      for (const unanswered of round.targets) {
+        if (round.outcomes.has(unanswered.projectId)) continue;
         for (const outcome of [verified(unanswered), failed, forbidden]) {
           steps.push({
             now,
@@ -1111,6 +1116,14 @@ describe("access grant invariants over enumerated event sequences", () => {
       );
     }
 
+    // Liveness — a round every target has answered is decided at once, never left to its deadline.
+    invariant(
+      roundAfter === null ||
+        roundAfter.targets === null ||
+        !roundAfter.targets.every((target) => roundAfter.outcomes.has(target.projectId)),
+      "liveness: an answered round is still in flight",
+    );
+
     // I11 — authority is restored only to scopes positively present in admitted, fresh evidence.
     for (const effect of effects) {
       if (effect.kind !== "restore-authority") continue;
@@ -1179,7 +1192,7 @@ describe("access grant invariants over enumerated event sequences", () => {
     }
   };
 
-  it("holds I3, I4, I6, I11, G2, G6 and G12 after every step of every sequence to depth 6", () => {
+  it("holds I3, I4, I6, I11, G2, G6, G12 and round liveness after every step of every sequence to depth 6", () => {
     const roots: Array<{ state: GrantMachine; now: Instant }> = [
       { state: initialGrant({ hidden: false, online: true }, T0), now: T0 },
     ];

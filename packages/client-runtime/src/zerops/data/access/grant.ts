@@ -897,13 +897,16 @@ const apply = (
       }
       const round = grantRoundInFlight(machine);
       if (round === null) return machine;
-      return withRound(machine, {
+      const denied: GrantRound = {
         ...round,
         outcomes: new Map(round.outcomes).set(event.project.projectId, {
           outcome: { kind: "denied", evidence: event.evidence },
           at: ctx.now,
         }),
-      });
+      };
+      // The denial may be the last outcome the round waited for: the round is complete now.
+      const next = withRound(machine, denied);
+      return roundComplete(denied) ? completeRound(next, denied, ctx, out) : next;
     }
     case "EPOCH_CLOSED":
       return machine;
