@@ -450,12 +450,15 @@ const release = (machine: EnvironmentMachine, trigger: RetryTrigger): Environmen
     : { ...machine, ladder };
 };
 
-/** A user retry or an input change: the ladder and the cap start over, a refusal re-evaluates. */
+/**
+ * A user retry or an input change: the ladder, the cap and the permission retry start over, a
+ * refusal re-evaluates.
+ */
 const inputChanged = (
   machine: EnvironmentMachine,
   trigger: "user-retry" | "input-change",
 ): EnvironmentMachine => {
-  const reset = { ...machine, failures: 0 };
+  const reset = { ...machine, failures: 0, permissionRetried: false };
   return machine.credential.kind === "refused"
     ? { ...reset, ladder: INITIAL_BACKOFF, credential: { kind: "none", reconnect: false } }
     : release(reset, trigger);

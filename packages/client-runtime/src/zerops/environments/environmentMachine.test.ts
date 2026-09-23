@@ -135,6 +135,39 @@ describe("environment machine (DESIGN §4.4)", () => {
     });
   });
 
+  it("after a role change, the first permission block re-exchanges once before refusing the role", () => {
+    const blockAndRotate = (machine: EnvironmentMachine): EnvironmentMachine => {
+      const blocked = drive(machine, [
+        { type: "LINK", link: { phase: "blocked", reason: "permission" } },
+      ]).machine;
+      expect(blocked.credential).toMatchObject({ kind: "exchanging", reconnect: true });
+      return drive(blocked, [
+        {
+          type: "EXCHANGE_SUCCEEDED",
+          attempt: lastExchange(blocked),
+          environmentId: ENV_A,
+          descriptor: null,
+        },
+      ]).machine;
+    };
+    const refused = drive(blockAndRotate(connected()), [
+      { type: "LINK", link: { phase: "blocked", reason: "permission" } },
+    ]).machine;
+    expect(refused.credential).toEqual({ kind: "refused", reason: { kind: "role" } });
+
+    const raised = drive(refused, [{ type: "ROLE_CHANGED" }]).machine;
+    const rotated = drive(raised, [
+      {
+        type: "EXCHANGE_SUCCEEDED",
+        attempt: lastExchange(raised),
+        environmentId: ENV_A,
+        descriptor: null,
+      },
+    ]).machine;
+    // The server re-checks roles on a timer: its first verdict on the raised role may be stale.
+    expect(blockAndRotate(rotated).credential.kind).toBe("held");
+  });
+
   it("counts one auth rejection per rotated credential and backs off on the third within two minutes", () => {
     /** The link rejects the held credential; the re-exchange succeeds and installs a new one. */
     const rejectAndRotate = (machine: EnvironmentMachine, nowMs: number): Run => {
