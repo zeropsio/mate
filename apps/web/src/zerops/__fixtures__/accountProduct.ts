@@ -9,26 +9,30 @@
  * the tab's own.
  */
 import { RegistryContext } from "@effect/atom-react";
+import type { ZeropsResourceAdapter } from "@t3tools/client-runtime/zerops/data";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
-import { createElement, useEffect, useState, type ReactNode } from "react";
+import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ZeropsDataProvider } from "../ZeropsDataProvider";
 import { useZeropsInventory, withheldProjectNotice } from "../inventoryContext";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
-import { useZeropsData } from "../zeropsDataContext";
+import { useZeropsData, useZeropsResource } from "../zeropsDataContext";
 import { harnessRuntime } from "./harnessRuntime";
 
 export function AccountProduct({
   datastream,
+  resourceAdapter,
   children,
 }: {
   readonly datastream: FakeDatastream;
+  /** Where the runtime's resource broker reads; every resource is unavailable without one. */
+  readonly resourceAdapter?: ZeropsResourceAdapter;
   readonly children: ReactNode;
 }) {
   const [registry] = useState(() => AtomRegistry.make());
-  const [makeRuntime] = useState(() => harnessRuntime(datastream));
+  const [makeRuntime] = useState(() => harnessRuntime(datastream, resourceAdapter));
   return createElement(RegistryContext, {
     value: registry,
     children: createElement(ZeropsDataProvider, {
@@ -60,4 +64,29 @@ export function ProductChild({
 export function ProjectNotice({ projectId }: { readonly projectId: string }) {
   const notice = withheldProjectNotice(useZeropsInventory(), projectId);
   return notice === null ? null : `${projectId}: ${notice}`;
+}
+
+/** The names of the projects the inventory holds: platform text. */
+export function ProjectNames() {
+  const names = useZeropsInventory()
+    .projects.map(({ name }) => name)
+    .join(", ");
+  return `projects: ${names}`;
+}
+
+/** What the organization's locations lease holds, as `locations: <status>[ <names>]`. */
+export function OrganizationLocations({ organizationId }: { readonly organizationId: string }) {
+  const { runtime, organizationRef } = useZeropsData();
+  const request = useMemo(
+    () => ({
+      kind: "organization-locations" as const,
+      account: runtime.scope,
+      organization: organizationRef(organizationId),
+    }),
+    [organizationId, organizationRef, runtime.scope],
+  );
+  const snapshot = useZeropsResource(request);
+  return snapshot.status === "success"
+    ? `locations: success ${snapshot.value.map(({ name }) => name).join(", ")}`
+    : `locations: ${snapshot.status}`;
 }

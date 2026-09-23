@@ -38,7 +38,10 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import * as Effect from "effect/Effect";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { APP_DISPLAY_NAME } from "../branding";
+import { PortalGate } from "../components/ui/portal-gate";
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
+import { dismissContextMenu } from "../contextMenuFallback";
 import { grantFailure, readProjectAccess, runAccessRound } from "./accessRounds";
 import { setAccountActionsAllowed } from "./accountLifetime";
 import { refreshZeropsCandidates, useZeropsCandidatesVersion } from "./candidatesRefresh";
@@ -332,6 +335,45 @@ function makeInventorySnapshotSelector() {
 }
 
 /**
+ * What a lapse of the account's access shows until the next grant: an opaque
+ * layer over the product, which stays mounted beneath it and hidden from
+ * every reader (DESIGN §4.2 G9, §9 C1; per-region withholding replaces it in
+ * Phase 5). Nothing platform-derived shows beside it meanwhile: the portal
+ * gate closes every floating layer, the fallback context menu is dismissed,
+ * and the document title names only the app.
+ */
+function AccessLapse({
+  cause,
+  onRetry,
+  onSignOut,
+}: {
+  readonly cause: string;
+  readonly onRetry: () => void;
+  readonly onSignOut: () => void;
+}) {
+  useEffect(() => {
+    dismissContextMenu();
+    const title = document.title;
+    document.title = APP_DISPLAY_NAME;
+    return () => {
+      // A title set while the lapse lasted is newer than the one it hid.
+      if (document.title === APP_DISPLAY_NAME) document.title = title;
+    };
+  }, []);
+  return (
+    <div role="alert" className="fixed inset-0 z-[200] bg-background p-8">
+      Could not load your Zerops projects. {cause}{" "}
+      <button type="button" onClick={onRetry}>
+        Try again
+      </button>{" "}
+      <button type="button" onClick={onSignOut}>
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+/**
  * One account inventory consumes central state while the access grant renews
  * on its own: the grant reducer (DESIGN §4.2) holds the evidence, this
  * component runs its reads, timers and signals and hands its grants to the
@@ -563,7 +605,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           return;
         case "withhold":
         case "restore-authority": {
-          // A lapse is the account's; its gate is `readWindowExpired` until 0.10.
+          // A lapse is the account's: the overlay shows it until Phase 5 withholds per region.
           if (effect.scope.kind === "account") return;
           const key = inventoryProjectRefKey(effect.scope.project);
           const authority: ScopeAuthority =
@@ -891,12 +933,14 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   // the same wait rather than the leftovers of the last one.
   useEffect(() => {
     setWaitedTooLong(false);
-    if (ready && !readWindowExpired) return;
+    if (ready) return;
     const timeout = window.setTimeout(() => setWaitedTooLong(true), WAIT_PATIENCE_MS);
     return () => window.clearTimeout(timeout);
-  }, [readWindowExpired, ready, round]);
+  }, [ready, round]);
 
-  const visibleError = error ?? (readWindowExpired ? "Project access verification expired." : null);
+  /** What the overlay names while the grant is lapsed, and nothing otherwise. */
+  const lapseCause = readWindowExpired ? (error ?? "Project access verification expired.") : null;
+  const visibleError = lapseCause ?? error;
   // "Try again" retries the grant (joining a round in flight) and the data.
   const retry = () => {
     dispatch.current({ type: "USER_RETRY" });
@@ -920,7 +964,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       {projectDescriptors.map((descriptor) => (
         <InterestDemand key={interestKeyOf(descriptor)} descriptor={descriptor} />
       ))}
-      {!ready || readWindowExpired ? (
+      {!ready ? (
         visibleError !== null ? (
           <div role="alert" className="p-8">
             Could not load your Zerops projects. {visibleError}{" "}
@@ -948,7 +992,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         )
       ) : (
         <InventoryContext value={snapshot}>
-          {visibleError !== null ? (
+          {error !== null && lapseCause === null ? (
             <div role="alert" className="fixed inset-x-0 top-0 z-50 bg-background p-4">
               Project access could not be verified.{" "}
               <button type="button" onClick={retry}>
@@ -959,9 +1003,18 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               </button>
             </div>
           ) : null}
-          <div inert={visibleError !== null} className="contents">
-            {children}
-          </div>
+          <PortalGate closed={lapseCause !== null}>
+            <div
+              inert={visibleError !== null}
+              aria-hidden={lapseCause !== null || undefined}
+              className="contents"
+            >
+              {children}
+            </div>
+          </PortalGate>
+          {lapseCause === null ? null : (
+            <AccessLapse cause={lapseCause} onRetry={retry} onSignOut={() => void signOut()} />
+          )}
         </InventoryContext>
       )}
     </>

@@ -6,7 +6,10 @@
  * `no-manual-effect-runtime-in-tests` forbids in test files. A harness tab
  * imports it after its module graph is reset, so the runtime is the tab's own.
  */
-import { makeZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import {
+  makeZeropsDataRuntime,
+  type ZeropsResourceAdapter,
+} from "@t3tools/client-runtime/zerops/data";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
@@ -14,13 +17,17 @@ import * as Stream from "effect/Stream";
 
 import type { MakeZeropsDataRuntime } from "../ZeropsDataProvider";
 
-export function harnessRuntime(datastream: FakeDatastream): MakeZeropsDataRuntime {
+export function harnessRuntime(
+  datastream: FakeDatastream,
+  resourceAdapter?: ZeropsResourceAdapter,
+): MakeZeropsDataRuntime {
   let opaque = 0;
   return ({ scope, registry, scheduler, signal }) =>
     Effect.runPromise(
       makeZeropsDataRuntime({
         scope,
         adapter: datastream.adapter,
+        ...(resourceAdapter === undefined ? {} : { resourceAdapter }),
         atomRegistry: registry,
         makeOpaqueId: () => `opaque-${++opaque}`,
         // The tab's visibility, as the browser runtime reads it: a hidden tab pauses its push half.

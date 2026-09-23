@@ -12,6 +12,7 @@ export class TestNode extends EventTarget {
   readonly style = {};
   readonly ownerDocument: TestNode | null;
   readonly nodeType: number;
+  readonly attributes = new Map<string, string>();
   #text = "";
 
   constructor(name: string, ownerDocument: TestNode | null = null, nodeType = 1) {
@@ -75,8 +76,32 @@ export class TestNode extends EventTarget {
     return null;
   }
 
-  setAttribute() {}
-  removeAttribute() {}
+  setAttribute(name: string, value: string) {
+    this.attributes.set(name, String(value));
+  }
+
+  removeAttribute(name: string) {
+    this.attributes.delete(name);
+  }
+
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
+  }
+
+  hasAttribute(name: string): boolean {
+    return this.attributes.has(name);
+  }
+}
+
+/**
+ * What a person can read under `root`: its text, less every subtree that
+ * `aria-hidden` or `inert` takes away from them.
+ */
+export function readableText(root: TestNode): string {
+  if (root.nodeType === 3) return root.textContent;
+  if (root.getAttribute("aria-hidden") === "true" || root.hasAttribute("inert")) return "";
+  if (root.childNodes.length === 0) return root.textContent;
+  return root.childNodes.map(readableText).join("");
 }
 
 /** Every element under `root` with this tag, in document order. */

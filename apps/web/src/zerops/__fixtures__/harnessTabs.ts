@@ -28,7 +28,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { vi } from "vite-plus/test";
 
 import type { ZeropsSessionValue } from "../ZeropsSessionProvider";
-import { TestNode } from "./testDom";
+import { readableText, TestNode } from "./testDom";
 
 /** Real task boundaries, even when a test fakes the timers. */
 const nextTask = () => new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
@@ -71,6 +71,13 @@ export interface MountedTab {
   readonly accountId: () => string | null;
   /** What a person reads on the tab's page. */
   readonly text: () => string;
+  /**
+   * What a person can read anywhere in the tab's document — the page and
+   * every portal beside it — less what `aria-hidden` or `inert` takes away.
+   */
+  readonly readable: () => string;
+  /** The tab's document title. */
+  readonly title: () => string;
   /** The page's root node, to find a control on it. */
   readonly container: () => TestNode;
   /** Where the tab's page is. */
@@ -139,7 +146,12 @@ function tabWindow(
   reload: () => void,
   navigations: TabNavigation[],
 ) {
-  const document = new TestNode("#document", null, 9);
+  const node = new TestNode("#document", null, 9);
+  // The page mounts into the body, and a portal renders beside it there.
+  const document = Object.assign(node, {
+    title: "",
+    body: node.appendChild(new TestNode("body", node)),
+  });
   Object.defineProperty(document, "visibilityState", {
     get: () => tab.signals.state().visibilityState,
   });
@@ -275,7 +287,7 @@ export async function mountTab(
         : await options.app(Probe);
     tab.signals.subscribe(deliver);
     activate();
-    container = new TestNode("div", window.document);
+    container = window.document.body.appendChild(new TestNode("div", window.document));
     root = createRoot(container as never);
     await act(async () => {
       root!.render(content);
@@ -287,6 +299,7 @@ export async function mountTab(
     root = null;
     session = null;
     if (closing !== null) await act(async () => closing.unmount());
+    container?.parentNode?.removeChild(container);
   }
 
   async function reloadPage() {
@@ -309,6 +322,8 @@ export async function mountTab(
     },
     accountId: () => graph?.currentAccountId() ?? null,
     text: () => page.container().textContent,
+    readable: () => readableText(window.document),
+    title: () => window.document.title,
     container: () => {
       if (container === null) throw new Error(`${tab.id} has no page.`);
       return container;
