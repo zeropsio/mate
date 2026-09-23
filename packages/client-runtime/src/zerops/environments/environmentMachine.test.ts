@@ -643,12 +643,23 @@ describe("a remembered target (A16)", () => {
     );
   });
 
-  it("a descriptor read at an origin the presence moved from is dropped, and the Mate is exchanged where it is listed", () => {
+  it("a probe at an origin the presence moved from is dropped at once, and the Mate is exchanged where it is listed", () => {
     const moved = "https://zcp-2-abc.prg1.zerops.app";
     const started = probing();
-    const listed = drive(started.machine, [
-      { type: "PRESENCE", presence: { kind: "present", origin: moved } },
-    ]);
+    const listed = drive(
+      started.machine,
+      [{ type: "PRESENCE", presence: { kind: "present", origin: moved } }],
+      started.nowMs,
+    );
+
+    // The move is judged in its own step: nothing waits for the recorded origin's answer.
+    expect(listed.effects).toContainEqual(
+      expect.objectContaining({
+        kind: "run",
+        op: { kind: "exchange", origin: moved, expected: ENV_A },
+      }),
+    );
+
     const read = drive(
       listed.machine,
       [
@@ -664,11 +675,25 @@ describe("a remembered target (A16)", () => {
     // The server at the recorded origin says nothing of the Mate listed elsewhere.
     expect(read.machine.descriptor).toBeNull();
     expect(read.machine.identityAnswered).toBe(false);
-    expect(read.effects).toContainEqual(
-      expect.objectContaining({
-        kind: "run",
-        op: { kind: "exchange", origin: moved, expected: ENV_A },
-      }),
+    expect(read.machine.credential).toEqual(listed.machine.credential);
+    expect(read.effects).toContainEqual({
+      kind: "log",
+      diagnostic: { kind: "stale-result", attempt: probeOf(started).attempt },
+    });
+  });
+
+  it("a probe whose Mate is no longer remembered anywhere is dropped at once, and waits for presence", () => {
+    const started = probing();
+    const unknown = drive(
+      started.machine,
+      [{ type: "PRESENCE", presence: { kind: "unknown" } }],
+      started.nowMs,
     );
+
+    expect(unknown.machine.credential).toEqual({
+      kind: "waiting",
+      on: "presence",
+      reconnect: false,
+    });
   });
 });

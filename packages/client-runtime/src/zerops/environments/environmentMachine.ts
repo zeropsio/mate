@@ -626,23 +626,19 @@ const supersede = (
 };
 
 /**
- * A remembered Mate's descriptor probe at `origin` answered (A16). The exchange runs, inside the
- * same attempt's deadline, when the guards still admit it: the Mate at the recorded origin is the
- * one the record names, or the inventory listed the target there meanwhile. A read at an origin
- * the presence has moved from says nothing of the Mate and is dropped. Otherwise the guards judge
- * it again, and a Mate that serves another environment waits for its project's services.
+ * A remembered Mate's descriptor probe answered (A16); a presence that moves off the probed origin
+ * drops the probe before it answers. The exchange runs, inside the same attempt's deadline, when
+ * the guards still admit it: the Mate at the recorded origin is the one the record names, or the
+ * inventory listed the target there meanwhile. Otherwise the guards judge it again, and a Mate
+ * that serves another environment waits for its project's services.
  */
 const probed = (
   machine: EnvironmentMachine,
-  origin: string,
   credential: Extract<Credential, { readonly kind: "exchanging" }>,
   result: Extract<EnvironmentEvent, { readonly type: "DESCRIPTOR_READ" }>["result"],
   ctx: EnvironmentContext,
   out: Effects,
 ): EnvironmentMachine => {
-  if (originOf(machine.presence) !== origin) {
-    return { ...machine, credential: { kind: "none", reconnect: credential.reconnect } };
-  }
   if (!result.ok) {
     return backoff(machine, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
   }
@@ -835,7 +831,20 @@ const apply = (
       if (event.presence.kind === "gone") {
         return retire({ ...machine, presence: event.presence }, event.presence.evidence, out);
       }
-      return inputChanged({ ...machine, presence: event.presence }, "input-change");
+      const next: EnvironmentMachine = { ...machine, presence: event.presence };
+      // A probe of the origin the presence moved from says nothing of the Mate: its answer is not
+      // waited for, and the guards judge the new presence now.
+      if (
+        credential.kind === "exchanging" &&
+        machine.probing?.attempt === credential.attempt &&
+        originOf(event.presence) !== machine.probing.origin
+      ) {
+        return inputChanged(
+          { ...next, credential: { kind: "none", reconnect: credential.reconnect } },
+          "input-change",
+        );
+      }
+      return inputChanged(next, "input-change");
     }
     case "CONTAINER": {
       if (sameJson(machine.container, event.container)) return machine;
@@ -865,7 +874,7 @@ const apply = (
         credential.attempt === event.attempt &&
         machine.probing?.attempt === event.attempt
       ) {
-        return probed(machine, machine.probing.origin, credential, event.result, ctx, out);
+        return probed(machine, credential, event.result, ctx, out);
       }
       if (credential.kind !== "held" || credential.rereading?.attempt !== event.attempt) {
         return stale(machine, event.attempt, out);
