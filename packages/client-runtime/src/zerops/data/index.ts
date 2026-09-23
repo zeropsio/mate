@@ -1,5 +1,6 @@
 export * from "./access/grant.ts";
 export * from "./dto.ts";
+export * from "./known.ts";
 export * from "./atoms.ts";
 export * from "./commands.ts";
 export * from "./platformProtocol.ts";
