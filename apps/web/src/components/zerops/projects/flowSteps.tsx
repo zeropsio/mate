@@ -19,6 +19,7 @@ import { ExternalLinkIcon } from "lucide-react";
 import { Children, Fragment, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Skeleton } from "../../ui/skeleton";
 import { StatusDot } from "../primitives";
 import {
   mainCell,
@@ -74,6 +75,32 @@ export function VerbSlot({
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * A step whose read has not answered: a skeleton where its first line will
+ * be. Unread is not empty, so it says nothing — "None yet" before the feed
+ * answers is a claim the page then takes back.
+ */
+export function PendingStep({
+  step,
+  density,
+}: {
+  readonly step: FlowCell;
+  readonly density: Density;
+}) {
+  return (
+    <div
+      aria-busy="true"
+      className={density === "box" ? STEP_CELL_CLASS : "min-w-0"}
+      data-zerops-step={step}
+      data-zerops-step-pending="true"
+    >
+      <span className="flex h-5 min-w-0 items-center">
+        <Skeleton className="h-3.5 w-24 max-w-full" />
+      </span>
+    </div>
   );
 }
 

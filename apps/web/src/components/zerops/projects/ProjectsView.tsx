@@ -13,6 +13,7 @@ import {
   MainStep,
   matesOf,
   mergesHere,
+  PendingStep,
   ProductionStep,
   releaseVerbFor,
   STEP_CELL_CLASS,
@@ -201,26 +202,31 @@ export function ProjectCard<T>({
           </OwnCell>
         </Step>
         <Arrow placement="@5xl/flow:col-start-2" />
+        {/* Until the group's read answers, its steps hold their place and claim nothing. */}
         <Step label="Pull requests" name="pull-requests" placement="@5xl/flow:col-start-3">
-          <OwnCell
-            name="pull-requests"
-            verb={verbFor(entry, "pull-requests", props.renderNextStep)}
-          >
-            {flow.pullRequests.length === 0 ? (
-              <EmptyStep>{pullRequestsLine(flow)}</EmptyStep>
-            ) : (
-              <ul className="flex min-w-0 flex-col divide-y divide-border/50">
-                {flow.pullRequests.map(({ pull }) => (
-                  <Fragment key={`${pull.repository}#${String(pull.number)}`}>
-                    {props.renderPullRequest(group, pull, {
-                      withMerge: !mergesHere(flow, pull),
-                      compact: true,
-                    })}
-                  </Fragment>
-                ))}
-              </ul>
-            )}
-          </OwnCell>
+          {entry.awaiting ? (
+            <PendingStep density="box" step="pull-requests" />
+          ) : (
+            <OwnCell
+              name="pull-requests"
+              verb={verbFor(entry, "pull-requests", props.renderNextStep)}
+            >
+              {flow.pullRequests.length === 0 ? (
+                <EmptyStep>{pullRequestsLine(flow)}</EmptyStep>
+              ) : (
+                <ul className="flex min-w-0 flex-col divide-y divide-border/50">
+                  {flow.pullRequests.map(({ pull }) => (
+                    <Fragment key={`${pull.repository}#${String(pull.number)}`}>
+                      {props.renderPullRequest(group, pull, {
+                        withMerge: !mergesHere(flow, pull),
+                        compact: true,
+                      })}
+                    </Fragment>
+                  ))}
+                </ul>
+              )}
+            </OwnCell>
+          )}
         </Step>
         <Arrow placement="@5xl/flow:col-start-4" />
         <Step
@@ -228,12 +234,16 @@ export function ProjectCard<T>({
           name="main"
           placement="@2xl/flow:mt-2 @5xl/flow:col-start-5 @5xl/flow:mt-0"
         >
-          <MainStep
-            density="box"
-            entry={entry}
-            menuFor={stopMenu}
-            verb={verbFor(entry, "main", props.renderNextStep)}
-          />
+          {entry.awaiting ? (
+            <PendingStep density="box" step="main" />
+          ) : (
+            <MainStep
+              density="box"
+              entry={entry}
+              menuFor={stopMenu}
+              verb={verbFor(entry, "main", props.renderNextStep)}
+            />
+          )}
         </Step>
         <Arrow placement="@5xl/flow:col-start-6" />
         <Step
@@ -241,13 +251,17 @@ export function ProjectCard<T>({
           name="production"
           placement="@2xl/flow:mt-2 @5xl/flow:col-start-7 @5xl/flow:mt-0"
         >
-          <ProductionStep
-            density="box"
-            entry={entry}
-            menu={production.kind === "absent" ? null : stopMenu(production.stop.projectId)}
-            releaseVerb={releaseVerbFor(entry, props.renderReleaseVerb)}
-            verb={verbFor(entry, "production", props.renderNextStep)}
-          />
+          {entry.awaiting ? (
+            <PendingStep density="box" step="production" />
+          ) : (
+            <ProductionStep
+              density="box"
+              entry={entry}
+              menu={production.kind === "absent" ? null : stopMenu(production.stop.projectId)}
+              releaseVerb={releaseVerbFor(entry, props.renderReleaseVerb)}
+              verb={verbFor(entry, "production", props.renderNextStep)}
+            />
+          )}
         </Step>
       </div>
       {/* The steps' own rows: the other environments, then what a release

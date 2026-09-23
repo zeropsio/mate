@@ -187,6 +187,19 @@ describe("the Projects card", () => {
     expect(card(RELEASING)).not.toContain('data-zerops-surface="environment-rows"');
   });
 
+  it("holds an unread group's pull requests, main and production as pending, claiming nothing", () => {
+    const html = card(entry([WREN], {}, false));
+    for (const name of ["pull-requests", "main", "production"]) {
+      const cell = step(html, name);
+      expect(cell).toContain('data-zerops-step-pending="true"');
+      expect(cell).toContain('data-slot="skeleton"');
+      expect(cell).toContain(STEP_CELL_CLASS);
+    }
+    expect(step(html, "mates")).not.toContain("data-zerops-step-pending");
+    for (const word of ["None yet", "Nothing merged", "Not set up", "After the first merge"])
+      expect(html).not.toContain(word);
+  });
+
   it("is a flat card the page can scroll to", () => {
     const html = card(MERGING);
     const open = html.slice(0, html.indexOf(">"));

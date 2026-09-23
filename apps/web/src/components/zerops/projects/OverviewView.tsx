@@ -28,6 +28,7 @@ import {
   matesOf,
   mergesHere,
   OVERVIEW_GRID_CLASS,
+  PendingStep,
   PreviewLink,
   ProductionStep,
   PullRequestsStep,
@@ -267,19 +268,32 @@ function OverviewRow<T>({
           </span>
         </button>
         <MatesCell entry={entry} props={props} verb={verbIn("mates")} />
+        {/* Until the group's read answers, its steps hold their place and claim nothing. */}
         <StepPlace label="Pull requests">
-          <PullRequestsStep entry={entry} verb={verbIn("pull-requests")} />
+          {entry.awaiting ? (
+            <PendingStep density="line" step="pull-requests" />
+          ) : (
+            <PullRequestsStep entry={entry} verb={verbIn("pull-requests")} />
+          )}
         </StepPlace>
         <StepPlace label="main">
-          <MainStep density="line" entry={entry} verb={verbIn("main")} />
+          {entry.awaiting ? (
+            <PendingStep density="line" step="main" />
+          ) : (
+            <MainStep density="line" entry={entry} verb={verbIn("main")} />
+          )}
         </StepPlace>
         <StepPlace label="Production">
-          <ProductionStep
-            density="line"
-            entry={entry}
-            releaseVerb={releaseVerbFor(entry, props.renderReleaseVerb)}
-            verb={verbIn("production")}
-          />
+          {entry.awaiting ? (
+            <PendingStep density="line" step="production" />
+          ) : (
+            <ProductionStep
+              density="line"
+              entry={entry}
+              releaseVerb={releaseVerbFor(entry, props.renderReleaseVerb)}
+              verb={verbIn("production")}
+            />
+          )}
         </StepPlace>
         <span className="col-start-2 row-start-1 flex justify-end @2xl/flow:col-start-auto @2xl/flow:row-span-2 @5xl/flow:row-span-1">
           {props.renderGroupMenu(group)}

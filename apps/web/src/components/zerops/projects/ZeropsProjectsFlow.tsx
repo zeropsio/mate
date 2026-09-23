@@ -41,6 +41,12 @@ export interface ProjectsFlowGroup<T> {
   readonly flow: GroupFlow;
   /** Its project flow was read. Unread is not empty. */
   readonly read: boolean;
+  /**
+   * Unread, and its read is out: the steps it would fill hold a skeleton
+   * rather than an empty word. False for a group nobody will read (no Gitea
+   * org, no session), whose steps say what is known.
+   */
+  readonly awaiting: boolean;
   /** The Mates' environments, in the tree's order. */
   readonly mates: ReadonlyArray<T>;
   /** Its stages and its production, by project id. */

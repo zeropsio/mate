@@ -2910,6 +2910,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           }),
         ),
         read: reads !== undefined,
+        // Out and expected back: a Gitea session is held or coming, and the
+        // group has an org to read (or the registry has not answered yet).
+        awaiting:
+          reads === undefined &&
+          projectFlow.signInTrouble === null &&
+          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
         mates: environments.filter(({ item }) => hasMate(item)).map(({ item }) => item),
         stops: new Map(
           environments

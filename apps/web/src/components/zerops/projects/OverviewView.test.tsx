@@ -283,6 +283,29 @@ describe("the Overview", () => {
     expect(html).not.toContain('data-zerops-surface="only-a-mate"');
     expect(html).toContain('data-zerops-surface="flow-rows"');
   });
+
+  it("holds an unread group's pull requests, main and production as pending, claiming nothing", () => {
+    const row = section(render({ groups: [entry([UMA], {}, false)] }), 'data-zerops-group="bbb"');
+    for (const step of ["pull-requests", "main", "production"])
+      expect(row).toMatch(
+        new RegExp(`data-zerops-step="${step}"[^>]*data-zerops-step-pending="true"`, "u"),
+      );
+    expect(row.match(/data-slot="skeleton"/gu)).toHaveLength(3);
+    for (const word of ["None yet", "Nothing merged", "Not set up", "After the first merge"])
+      expect(row).not.toContain(word);
+    // The Mate is known: it is the tree's, not the read's.
+    expect(row).toContain('data-zerops-step="mates"');
+    expect(row).not.toMatch(/data-zerops-step="mates"[^>]*data-zerops-step-pending/u);
+  });
+
+  it("draws an unread group nobody is reading with its words: a skeleton would wait forever", () => {
+    const row = section(
+      render({ groups: [{ ...entry([UMA], {}, false), awaiting: false }] }),
+      'data-zerops-group="bbb"',
+    );
+    expect(row).not.toContain("data-zerops-step-pending");
+    expect(row).toContain("Nothing merged");
+  });
 });
 
 describe("the quiet end", () => {

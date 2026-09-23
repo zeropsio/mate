@@ -120,6 +120,7 @@ export function entry(
       ...over,
     }),
     read,
+    awaiting: !read,
     mates,
     stops: new Map(
       members
