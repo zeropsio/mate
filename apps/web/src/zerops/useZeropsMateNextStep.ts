@@ -12,46 +12,46 @@
  * the projects page; the Mate's part ends at the pull request and the
  * recipe.
  *
- * `GroupFlow` wants more than this conversation reads today
- * (`groupFlow.ts`'s `GroupFlowInput`): a group stage's platform state, a
- * default-branch read of `main`, and whether this viewer may still add a
- * production. Only what this step actually consults is supplied:
+ * The `GroupFlow` input is the projects page's own (`groupFlowInputOf`),
+ * from the same group of the same account's projects, so the conversation
+ * and the page cannot disagree about a project's production. Three facts the
+ * page holds and this conversation does not are left out; none reaches
+ * `mateNextStep`:
  *
- * - `mates: []` — `mateNextStep` never reads `GroupFlow.mates` or
- *   `GroupFlow.nextStep`; only `pullRequests` and `production` feed it, so
- *   the flow's own next-step ranking (which does read `mates`) is left
- *   unused here rather than approximated.
- * - `mainHasCode: undefined` — the default-branch read
- *   (`planMainHeadReads`) runs only for a group that already has a
- *   production, so this conversation cannot tell "no code" from "not read".
- *   `groupFlow` falls back to a merged code pull request as proof either
- *   way, which is what `mateNextStep.test.ts`'s fixtures rely on.
- * - `productionAddable` — the full gate (`ZeropsProjectsPage.tsx`'s
- *   `groupAddsOffered`, unexported, and `ZeropsGroupTree.logic.ts`'s
- *   `creatableRoles`, which needs a `ZeropsGroup` this hook does not build)
- *   is not reproduced. This only checks the viewer's own
- *   `canCreateProjects`: the tier being already taken is already excluded
- *   through `flow.missing` (`missingEnvironmentRows` drops a tier once a
- *   declared environment fills it), so the one gate left out is "some Mate
- *   in the group is up" — moot in practice, since *Add production* only
- *   shows once a code change has merged, which took a Mate being up to
- *   begin with.
+ * - no Mate facts (`GroupMemberFacts.mate`) and no routes or hostnames:
+ *   they come from the candidates and the agent activity, and feed only
+ *   `GroupFlow.mates`, a Mate's preview and a stop's link, while
+ *   `mateNextStep` reads `pullRequests` and `production`.
+ * - `mainHasCode` stays unread, as on the page: a merged code change is the
+ *   proof either way.
+ * - `productionAddable` is the page's gate (`canCreateProjectsInOrganization`
+ *   and `creatableRoles`) less `groupAddsOffered` ("some Mate in the group
+ *   is up"), which needs the candidates' health probes.
+ *   It is moot here: *Add production* follows a merged code change, which
+ *   took a Mate being up to begin with.
  */
 import {
+  buildZeropsGroupTree,
+  canCreateProjectsInOrganization,
+  environmentNameUnderGroup,
   flowVerbKey,
   groupFlow,
   mateNextStep,
   readZeropsGroupTags,
-  releaseContentsSummary,
   type FlowVerb,
   type GroupFlow,
-  type GroupFlowStopInput,
   type MateNextStep,
+  type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { creatableRoles } from "../components/zerops/ZeropsGroupTree.logic";
+import {
+  groupFlowInputOf,
+  type GroupMemberFacts,
+} from "../components/zerops/projects/projectsView.logic";
 import {
   useZeropsProjectFlowOptional,
   type ZeropsProjectFlow,
@@ -94,36 +94,43 @@ const NOTHING: ZeropsMateNextStep = {
  * `groupFlow.ts` itself is, rather than only through the hook that wires it
  * to React state.
  */
-export function zeropsMateGroupFlow(
-  groupId: string,
-  projectFlow: ZeropsProjectFlow,
-  deployments: ZeropsProjectFlowValue["deployments"],
-  productionAddable: boolean,
-): GroupFlow {
-  const stops: ReadonlyArray<GroupFlowStopInput> = projectFlow.environments.map((row) => ({
-    projectId: row.projectId,
-    name: row.name,
-    tier: row.tier,
-    row,
-    deployment: deployments.get(row.projectId),
-    route: undefined,
-  }));
-  return groupFlow({
-    groupId,
-    mates: [],
-    pullRequests: projectFlow.pullRequests,
-    merged: projectFlow.merged,
-    stops,
-    missing: projectFlow.missing,
-    release: {
-      gate: projectFlow.release.gate,
-      suggestion: projectFlow.release.suggestion,
-      waiting: releaseContentsSummary(projectFlow.release.contents).total,
-    },
-    mainHasCode: undefined,
-    mainHead: undefined,
-    productionAddable,
-  });
+export function zeropsMateGroupFlow(input: {
+  readonly groupId: string;
+  /** The account's projects, as the inventory lists them. */
+  readonly projects: ReadonlyArray<ZeropsProject>;
+  readonly projectFlow: ZeropsProjectFlow;
+  readonly deployments: ZeropsProjectFlowValue["deployments"];
+  /** Whether this viewer may create a project (`canCreateProjectsInOrganization`). */
+  readonly mayCreate: boolean;
+}): GroupFlow {
+  const tree = buildZeropsGroupTree(
+    input.projects.map((project) => ({ project })),
+    { order: "name" },
+  );
+  const group = tree.groups.find((entry) => entry.group.groupId === input.groupId);
+  const members: ReadonlyArray<GroupMemberFacts> = (group?.environments ?? []).map(
+    ({ item, role }) => ({
+      projectId: item.project.id,
+      role,
+      name: environmentNameUnderGroup(
+        readZeropsGroupTags(item.project.tagList).label,
+        item.project.name,
+      ),
+      mate: undefined,
+      routes: [],
+      hostnames: [],
+    }),
+  );
+  return groupFlow(
+    groupFlowInputOf({
+      groupId: input.groupId,
+      members,
+      flow: input.projectFlow,
+      deployments: input.deployments,
+      productionAddable:
+        input.mayCreate && group !== undefined && creatableRoles(group.group).includes("prod"),
+    }),
+  );
 }
 
 export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): ZeropsMateNextStep {
@@ -153,12 +160,22 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
   const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;
   const slug = groupId === undefined ? undefined : flow?.slugs.get(groupId);
   const projectFlow = groupId === undefined ? undefined : flow?.flows.get(groupId);
-  const canCreateProjects = session?.activeOrganization?.canCreateProjects ?? false;
+  const activeOrganization = session?.activeOrganization;
+  const mayCreate =
+    activeOrganization === undefined || activeOrganization === null
+      ? false
+      : canCreateProjectsInOrganization(activeOrganization);
 
   const group = useMemo(() => {
     if (flow === null || groupId === undefined || projectFlow === undefined) return undefined;
-    return zeropsMateGroupFlow(groupId, projectFlow, flow.deployments, canCreateProjects);
-  }, [flow, groupId, projectFlow, canCreateProjects]);
+    return zeropsMateGroupFlow({
+      groupId,
+      projects: inventory.projects,
+      projectFlow,
+      deployments: flow.deployments,
+      mayCreate,
+    });
+  }, [flow, groupId, inventory.projects, projectFlow, mayCreate]);
 
   const step = mateNextStep({
     group,

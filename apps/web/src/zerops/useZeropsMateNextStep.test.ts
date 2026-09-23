@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mateNextStep, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  formatGroupTag,
+  formatRoleTag,
+  mateNextStep,
+  type FlowPullRequest,
+  type ZeropsEnvironmentRole,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 
@@ -76,10 +83,33 @@ function projectFlow(over: Partial<ZeropsProjectFlow> = {}): ZeropsProjectFlow {
 
 const DEPLOYMENTS = new Map<string, Shown<Deployment>>();
 
+function project(id: string, role: ZeropsEnvironmentRole): ZeropsProject {
+  return {
+    id,
+    name: `Links - ${role}`,
+    status: "ACTIVE",
+    tagList: [formatGroupTag("g"), formatRoleTag(role)],
+  };
+}
+
+function mateGroupFlow(
+  flow: ZeropsProjectFlow,
+  projects: ReadonlyArray<ZeropsProject>,
+  mayCreate: boolean,
+) {
+  return zeropsMateGroupFlow({
+    groupId: "g",
+    projects,
+    projectFlow: flow,
+    deployments: DEPLOYMENTS,
+    mayCreate,
+  });
+}
+
 describe("zeropsMateGroupFlow", () => {
   it("offers this Mate's own mergeable pull request first", () => {
     const flow = projectFlow({ pullRequests: [pull()] });
-    const group = zeropsMateGroupFlow("g", flow, DEPLOYMENTS, false);
+    const group = mateGroupFlow(flow, [project("p-wren", "dev")], false);
     expect(mateNextStep({ group, mateProjectId: "p-wren", mateName: "Wren" })).toMatchObject({
       kind: "merge",
       title: "Wren is waiting on you to merge #1.",
@@ -98,7 +128,7 @@ describe("zeropsMateGroupFlow", () => {
         contents: [{ service: "app", commits: [{ sha: "a".repeat(40), subject: "Add a field" }] }],
       },
     });
-    const group = zeropsMateGroupFlow("g", flow, DEPLOYMENTS, false);
+    const group = mateGroupFlow(flow, [project("p-wren", "dev"), project("p-prod", "prod")], false);
     expect(mateNextStep({ group, mateProjectId: "p-wren", mateName: "Wren" })).toEqual({
       kind: "release",
       tag: "v0.2.0",
@@ -121,7 +151,7 @@ describe("zeropsMateGroupFlow", () => {
         },
       ],
     });
-    const group = zeropsMateGroupFlow("g", flow, DEPLOYMENTS, true);
+    const group = mateGroupFlow(flow, [project("p-wren", "dev")], true);
     expect(mateNextStep({ group, mateProjectId: "p-wren", mateName: "Wren" })).toEqual({
       kind: "add-production",
       title: "main has code, no production yet",
@@ -142,7 +172,30 @@ describe("zeropsMateGroupFlow", () => {
         },
       ],
     });
-    const group = zeropsMateGroupFlow("g", flow, DEPLOYMENTS, false);
+    const group = mateGroupFlow(flow, [project("p-wren", "dev")], false);
+    expect(mateNextStep({ group, mateProjectId: "p-wren", mateName: "Wren" })).toEqual({
+      kind: "none",
+    });
+  });
+
+  it("agrees with the page: a production nobody declared still stops Add production", () => {
+    // The recipe on `main` offers a production and no declared environment
+    // fills it, so `missing` still lists the tier; but the group already has
+    // a project tagged prod, so the page neither offers the role nor treats
+    // production as absent. The thread reads the same projects.
+    const flow = projectFlow({
+      merged: [pull({ merged: true })],
+      missing: [
+        {
+          kind: "missing-environment",
+          tier: "production",
+          name: "Production",
+          line: "not set up yet",
+        },
+      ],
+    });
+    const group = mateGroupFlow(flow, [project("p-wren", "dev"), project("p-prod", "prod")], true);
+    expect(group.production.kind).not.toBe("absent");
     expect(mateNextStep({ group, mateProjectId: "p-wren", mateName: "Wren" })).toEqual({
       kind: "none",
     });
