@@ -152,6 +152,43 @@ describe("GiteaClient request shapes", () => {
     await expect(call(client)).resolves.toBeUndefined();
   });
 
+  it("a 404 on a contents read is not re-requested and aborted", async () => {
+    // A browser logs a cancelled body as its own aborted request of the same URL.
+    let cancelled = false;
+    let drained = false;
+    const signals: Array<AbortSignal | undefined> = [];
+    const client = createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      fetch: (_input, init) => {
+        signals.push(init?.signal ?? undefined);
+        const chunks = [new TextEncoder().encode('{"message":"Not found"}')];
+        const body = new ReadableStream<Uint8Array>({
+          pull: (controller) => {
+            const chunk = chunks.shift();
+            if (chunk === undefined) {
+              drained = true;
+              controller.close();
+            } else controller.enqueue(chunk);
+          },
+          cancel: () => {
+            cancelled = true;
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 404 }));
+      },
+    });
+
+    await expect(
+      client.readFile("acme", "group", "3 — Stage/import.yaml", "main"),
+    ).resolves.toBeUndefined();
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(cancelled).toBe(false);
+    expect(drained).toBe(true);
+  });
+
   it("throws Gitea's own status and message on anything else", async () => {
     const { client } = fake([{ status: 403, body: { message: "user does not have push access" } }]);
     const failure = await client.listBranches("acme", "group").catch((cause: unknown) => cause);

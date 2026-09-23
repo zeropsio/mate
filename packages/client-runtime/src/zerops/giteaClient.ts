@@ -586,7 +586,8 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
   const optional = <T>(input: Request, what: string): Promise<T | undefined> =>
     send(input, async (response) => {
       if (response.status === 404) {
-        await response.body?.cancel().catch(() => undefined);
+        // Read to its end: a browser logs a cancelled body as an aborted request of the same URL.
+        await response.arrayBuffer().catch(() => undefined);
         return undefined;
       }
       if (!response.ok) return fail(response, what);
