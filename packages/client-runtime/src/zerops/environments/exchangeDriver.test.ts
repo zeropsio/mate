@@ -641,6 +641,33 @@ describe("exchange driver (DESIGN §4.4)", () => {
     });
   });
 
+  it("connect on a key no target names answers NotConnected(resolving) and exchanges once setTargets names it present", async () => {
+    const shop = mate("shop");
+    const { driver, exchanges, installs, reach } = rig([shop]);
+    driver.setAccount(GRANTED);
+    driver.setVisible(true);
+    await flush();
+
+    await expect(driver.connect(keyOf(shop), "user")).resolves.toMatchObject({
+      _tag: "NotConnected",
+      reachability: { kind: "resolving" },
+    });
+    expect(exchanges).toEqual([]);
+
+    driver.setTargets([
+      {
+        key: keyOf(shop),
+        presence: { kind: "present", origin: shop.origin },
+        container: { level: "ready" },
+        record: null,
+      },
+    ]);
+    await flush();
+    expect(exchanges).toHaveLength(1);
+    expect(installs).toHaveLength(1);
+    expect(reach(shop)).toEqual({ kind: "ready", notice: null });
+  });
+
   describe("a credential this tab could not install backs off, and the user's Connect says why", () => {
     it.each(["answers", "throws"] as const)("the install %s", async (failure) => {
       const shop = mate("shop");
