@@ -323,7 +323,7 @@ container import that failed, ends it (spec MB-24).
 | `renewing`                            | The old token stays in use                          | OK → `signed-in`; failure → `signed-in` until expiry, then `unavailable`                                                     |
 | `reacquiring`                         | Requests queue up to 10 s, then retry once          | OK → `signed-in`; a third 401 in 10 minutes → `refused`                                                                      |
 | `pending(setting-up, retryAt)`        | Gitea is still setting up (5 s rising to 60 s)      | Retry after a credential-less liveness request to the broker origin; no answer → next rung, no mint                          |
-| `unavailable(cause, retryAt, n)`      | Broker unreachable (10 s rising to 60 s)            | Same as `pending`                                                                                                            |
+| `unavailable(cause, retryAt, n)`      | Broker unreachable (2, 4, 8, 15, 30, 60 s)          | Same as `pending`                                                                                                            |
 | `refused(reason, retryAt)`            | Gitea or the broker said no                         | Every 5 minutes while visible, or a user retry or role change → `acquiring`                                                  |
 | `closed`                              | Epoch closed; token forgotten                       | —                                                                                                                            |
 
