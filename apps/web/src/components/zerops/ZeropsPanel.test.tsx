@@ -97,7 +97,7 @@ const mateState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../zerops/useZeropsMates", () => ({
-  useZeropsMates: () => mateState.mates,
+  useZeropsMateDirectory: () => ({ decided: mateState.mates, complete: true }),
 }));
 
 vi.mock("../../zerops/useZeropsAgentActivity", () => ({

@@ -6,7 +6,7 @@
  * doing its one job; a line above the timeline asking the same was a second
  * voice.
  *
- * Who the Mate is comes from `useZeropsMates` (the caller resolves it, so a
+ * Who the Mate is comes from `useZeropsMate` (the caller resolves it, so a
  * conversation nobody lives in keeps upstream's empty line); whether a
  * sign-in is required is `zeropsAgentSignInRequired` over the environment's
  * agent-auth feed once it is known, and until then the place says it is

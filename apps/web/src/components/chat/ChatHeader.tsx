@@ -45,7 +45,8 @@ import { MateFace } from "../zerops/primitives";
 import { useThreadShell } from "../../state/entities";
 import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
-import { useZeropsMates } from "~/zerops/useZeropsMates";
+import type { ZeropsMateAt } from "~/zerops/mateIdentities";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
 import { ZeropsMateUpdateControl } from "../zerops/ZeropsMateUpdateControl";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
@@ -116,13 +117,14 @@ export function shouldShowOpenInPicker(input: {
   readonly primaryEnvironmentId: EnvironmentId | null;
   readonly remoteOpenMode: RemoteOpenMode;
   /** Where a Mate lives, the way in is Zerops — see `ZeropsProjectLink`. */
-  readonly mateLivesHere: boolean;
+  readonly whoLivesHere: ZeropsMateAt["kind"];
 }): boolean {
   if (!input.activeProjectName) return false;
   // A Zerops container is nobody's SSH host: the editor picker would hand the
   // OS a deep link to a machine the person cannot reach. Its place in the
-  // header goes to the project on the dashboard.
-  if (input.mateLivesHere) return false;
+  // header goes to the project on the dashboard. While who lives here is not
+  // known, neither is shown.
+  if (input.whoLivesHere !== "nobody") return false;
   if (
     input.primaryEnvironmentId !== null &&
     input.activeThreadEnvironmentId === input.primaryEnvironmentId
@@ -222,13 +224,16 @@ export const ChatHeader = memo(function ChatHeader({
   // conversation's state, its name — not by the folder it runs in, and it
   // carries a title only once somebody has spoken into it. Elsewhere the
   // header is upstream's: the project, then the thread.
-  const mate = useZeropsMates().get(activeThreadEnvironmentId);
+  // While who lives here is not known, the header shows what both looks
+  // share and leaves out what only one of them has.
+  const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
+  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,
     activeThreadEnvironmentId,
     primaryEnvironmentId,
     remoteOpenMode: remoteOpenState.mode,
-    mateLivesHere: mate !== undefined,
+    whoLivesHere: whoLivesHere.kind,
   });
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
@@ -409,7 +414,7 @@ export const ChatHeader = memo(function ChatHeader({
             </WorkspaceBreadcrumbItem>
             {spoken ? <WorkspaceBreadcrumbSeparator /> : null}
           </>
-        ) : activeProjectName ? (
+        ) : whoLivesHere.kind === "nobody" && activeProjectName ? (
           <>
             <WorkspaceBreadcrumbItem>
               <Tooltip>
@@ -437,7 +442,7 @@ export const ChatHeader = memo(function ChatHeader({
             <WorkspaceBreadcrumbSeparator />
           </>
         ) : null}
-        {mate !== undefined && !spoken ? null : (
+        {whoLivesHere.kind !== "nobody" && !spoken ? null : (
           <WorkspaceBreadcrumbItem current className="flex-1">
             {renamingTitle !== null ? (
               <input

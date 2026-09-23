@@ -45,7 +45,7 @@ import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
 import { writeCachedZeropsMates } from "./mateIdentitiesCache";
 import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
-import { zeropsMateIdentities, type ZeropsMateIdentity } from "./mateIdentities";
+import { zeropsMateDecisions, zeropsMatesOf, type ZeropsMateDirectory } from "./mateIdentities";
 import { inventoryProjectRefKey } from "./inventoryContext";
 import { useZeropsSession, type ZeropsSessionStatus } from "./ZeropsSessionProvider";
 import {
@@ -207,7 +207,7 @@ const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
 /**
  * What `useZeropsCandidates` publishes for the readers that never load
- * candidates (`useZeropsEnvironmentNames`, `useZeropsMates`): nothing, or each
+ * candidates (`useZeropsEnvironmentNames`, `useZeropsMate`): nothing, or each
  * environment's name and who lives in it.
  */
 export type CandidatesPublication =
@@ -215,26 +215,30 @@ export type CandidatesPublication =
   | {
       readonly kind: "publish";
       readonly names: ReadonlyMap<EnvironmentId, string>;
-      readonly mates: ReadonlyMap<EnvironmentId, ZeropsMateIdentity>;
+      readonly mates: ZeropsMateDirectory;
     };
 
-/** The names and Mates the readers hold now; Mates are `null` until first known. */
+/** The names and Mates the readers hold now; names are `null` until first read. */
 export interface PublishedCandidates {
-  readonly names: ReadonlyMap<EnvironmentId, string>;
-  readonly mates: ReadonlyMap<EnvironmentId, ZeropsMateIdentity> | null;
+  readonly names: ReadonlyMap<EnvironmentId, string> | null;
+  readonly mates: ZeropsMateDirectory;
 }
 
 const HOLD: CandidatesPublication = { kind: "hold" };
 
+const NOBODY_ANYWHERE: ZeropsMateDirectory = { decided: new Map(), complete: true };
+
 /**
  * Names and Mates are read off a known listing only. One that is unread,
- * being read or failed publishes nothing, so what the readers had stays up: an
- * empty answer then is a guess, and the surfaces that wait on `zeropsMatesAtom`
- * would paint their other look. A listing known in full (`candidatesComplete`)
- * replaces what was published; one known in part adds the names and Mates it
- * has read and drops none, since it cannot say nobody lives where it has not
- * read. A session still being checked publishes nothing either; one with no
- * Zerops account holds no environment and no Mate.
+ * being read or failed publishes nothing, so what the readers had stays up.
+ * A listing known in full (`candidatesComplete`) replaces what was published
+ * and says nobody lives anywhere it found no Mate. One known in part adds the
+ * names it has read and decides only the environments its read rows reach
+ * (M4): a Mate there is added, one that no longer lives there is dropped, and
+ * every other environment keeps its answer — unknown until a list has been
+ * read in full, since it cannot say nobody lives where it has not read (M5).
+ * A session still being checked publishes nothing either; one with no Zerops
+ * account holds no environment and no Mate.
  */
 export function candidatesPublication(input: {
   readonly status: ZeropsSessionStatus;
@@ -243,18 +247,24 @@ export function candidatesPublication(input: {
   readonly published: PublishedCandidates;
 }): CandidatesPublication {
   if (input.status === "signed-out" || input.status === "unavailable") {
-    return { kind: "publish", names: new Map(), mates: new Map() };
+    return { kind: "publish", names: new Map(), mates: NOBODY_ANYWHERE };
   }
   if (input.status !== "signed-in" || input.listing.state !== "known") return HOLD;
   const candidates = candidateMembers(input.listing);
   const names = zeropsEnvironmentNames(candidates);
-  const mates = zeropsMateIdentities(candidates, input.registeredOrigins);
-  if (candidatesComplete(input.listing)) return { kind: "publish", names, mates };
-  if (names.size === 0 && mates.size === 0) return HOLD;
+  const decided = zeropsMateDecisions(candidates, input.registeredOrigins);
+  if (candidatesComplete(input.listing)) {
+    return { kind: "publish", names, mates: { decided, complete: true } };
+  }
+  if (names.size === 0 && decided.size === 0) return HOLD;
+  const { published } = input;
   return {
     kind: "publish",
-    names: new Map([...input.published.names, ...names]),
-    mates: new Map([...(input.published.mates ?? []), ...mates]),
+    names: published.names === null ? names : new Map([...published.names, ...names]),
+    mates: {
+      decided: new Map([...published.mates.decided, ...decided]),
+      complete: published.mates.complete,
+    },
   };
 }
 
@@ -386,8 +396,10 @@ export function useZeropsCandidates(): {
     appAtomRegistry.set(zeropsEnvironmentNamesAtom, publication.names);
     appAtomRegistry.set(zeropsMatesAtom, publication.mates);
     // Remembered across reloads, so the next one knows who lives where from
-    // its first frame (`zeropsMatesAtom` starts from this).
-    writeCachedZeropsMates(publication.mates);
+    // its first frame (`zeropsMatesAtom` starts from this). The cache says
+    // nobody lives where it names no Mate, so only a directory that can say
+    // so is remembered.
+    if (publication.mates.complete) writeCachedZeropsMates(zeropsMatesOf(publication.mates));
   }, [listing, registeredOrigins, status]);
 
   const refresh = useCallback(() => {

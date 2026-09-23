@@ -32,7 +32,8 @@ import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsAgentSignerRecordState } from "../../zerops/useZeropsAgentSigner";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
-import { useZeropsMates } from "../../zerops/useZeropsMates";
+import { zeropsMateAt } from "../../zerops/mateIdentities";
+import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
@@ -78,10 +79,13 @@ export function ZeropsPanel({
   const authorizationAgent = authorizationSnapshot?.agents.find(
     (agent) => agent.agentId === authorizationAgentId,
   );
-  const mates = useZeropsMates();
+  const mates = useZeropsMateDirectory();
   const activity = useZeropsAgentActivity();
   const environmentId = threadRef?.environmentId;
-  const mateIdentity = environmentId === undefined ? undefined : mates.get(environmentId);
+  // An environment the Mate list has not reached shows the panel without a
+  // Mate, and no service is marked as its container until one is known.
+  const whoLivesHere = environmentId === undefined ? null : zeropsMateAt(mates, environmentId);
+  const mateIdentity = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
   const mate =
     mateIdentity === undefined || environmentId === undefined
       ? undefined

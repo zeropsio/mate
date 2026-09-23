@@ -136,7 +136,7 @@ import {
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
-import { useZeropsMates } from "~/zerops/useZeropsMates";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
@@ -1741,12 +1741,16 @@ const ReasoningTimelineRow = memo(function ReasoningTimelineRow({
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
-  const mateName = useZeropsMates().get(ctx.activeThreadEnvironmentId)?.name;
+  // Named for its Mate once the list says one lives here; "Assistant" holds
+  // true either way until then.
+  const author = useZeropsMate(ctx.activeThreadEnvironmentId);
 
   return (
     <>
       <div className="relative min-w-0 px-1 py-0.5">
-        <MessageAuthorHeading>{mateName ?? "Assistant"}</MessageAuthorHeading>
+        <MessageAuthorHeading>
+          {author.kind === "mate" ? author.mate.name : "Assistant"}
+        </MessageAuthorHeading>
         <ChatMarkdown
           text={messageText}
           cwd={ctx.markdownCwd}
@@ -3686,8 +3690,10 @@ function TimelineEmptyState({
   readonly environmentId: EnvironmentId;
   readonly threadKey: string;
 }) {
-  const mate = useZeropsMates().get(environmentId);
-  if (mate === undefined) {
+  const whoLivesHere = useZeropsMate(environmentId);
+  // Neither opening while that is not known: the region stays, empty.
+  if (whoLivesHere.kind === "unknown") return <div className="h-full" />;
+  if (whoLivesHere.kind === "nobody") {
     return (
       <div className="flex h-full items-center justify-center">
         <p className="text-placeholder text-sm">Send a message to start the conversation.</p>
@@ -3697,7 +3703,7 @@ function TimelineEmptyState({
   return (
     <ZeropsMateEmptyState
       environmentId={environmentId}
-      mate={mate}
+      mate={whoLivesHere.mate}
       threadRef={parseScopedThreadKey(threadKey)}
     />
   );

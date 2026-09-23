@@ -13,7 +13,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: primaryEnvironmentId,
         primaryEnvironmentId,
         remoteOpenMode: "local-exec",
-        mateLivesHere: false,
+        whoLivesHere: "nobody",
       }),
     ).toBe(true);
   });
@@ -25,7 +25,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: EnvironmentId.make("environment-remote"),
         primaryEnvironmentId,
         remoteOpenMode: "remote-links",
-        mateLivesHere: false,
+        whoLivesHere: "nobody",
       }),
     ).toBe(true);
   });
@@ -37,7 +37,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: EnvironmentId.make("environment-remote"),
         primaryEnvironmentId: null,
         remoteOpenMode: "remote-unavailable",
-        mateLivesHere: false,
+        whoLivesHere: "nobody",
       }),
     ).toBe(true);
   });
@@ -49,7 +49,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: EnvironmentId.make("environment-remote"),
         primaryEnvironmentId,
         remoteOpenMode: "local-exec",
-        mateLivesHere: false,
+        whoLivesHere: "nobody",
       }),
     ).toBe(false);
   });
@@ -61,7 +61,19 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: primaryEnvironmentId,
         primaryEnvironmentId,
         remoteOpenMode: "remote-links",
-        mateLivesHere: true,
+        whoLivesHere: "mate",
+      }),
+    ).toBe(false);
+  });
+
+  it("hides the picker while who lives here is not known: neither look is painted before the list says", () => {
+    expect(
+      shouldShowOpenInPicker({
+        activeProjectName: "codething-mvp",
+        activeThreadEnvironmentId: primaryEnvironmentId,
+        primaryEnvironmentId,
+        remoteOpenMode: "local-exec",
+        whoLivesHere: "unknown",
       }),
     ).toBe(false);
   });
@@ -73,7 +85,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: primaryEnvironmentId,
         primaryEnvironmentId,
         remoteOpenMode: "remote-links",
-        mateLivesHere: false,
+        whoLivesHere: "nobody",
       }),
     ).toBe(false);
   });

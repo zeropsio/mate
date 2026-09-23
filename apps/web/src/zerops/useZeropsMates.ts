@@ -1,26 +1,30 @@
 /**
- * The read side of `zeropsMatesAtom`: who lives in each connected environment
- * (`mateIdentities.ts`), for the chat header, an empty conversation and a
- * draft's headline. Empty until the candidate list has been read once;
- * `useZeropsMateEnvironment` tells "not yet known" apart from "nobody".
+ * The read side of `zeropsMatesAtom`: who lives in each environment
+ * (`mateIdentities.ts`), for the chat header, the timeline, a draft's headline
+ * and the Zerops panel. Each answer is a Mate, nobody, or unknown — an
+ * environment the candidate list has not reached yet — and a surface renders
+ * the unknown one as a placeholder, never as nobody.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { zeropsMatesAtom } from "../state/zerops";
-import type { ZeropsMateIdentity } from "./mateIdentities";
+import { zeropsMateAt, type ZeropsMateAt, type ZeropsMateDirectory } from "./mateIdentities";
 
-const NO_MATES: ReadonlyMap<EnvironmentId, ZeropsMateIdentity> = new Map();
+/** Every environment's answer, for a surface that names several (a picker). */
+export function useZeropsMateDirectory(): ZeropsMateDirectory {
+  return useAtomValue(zeropsMatesAtom);
+}
 
-export function useZeropsMates(): ReadonlyMap<EnvironmentId, ZeropsMateIdentity> {
-  return useAtomValue(zeropsMatesAtom) ?? NO_MATES;
+export function useZeropsMate(environmentId: EnvironmentId): ZeropsMateAt {
+  return zeropsMateAt(useAtomValue(zeropsMatesAtom), environmentId);
 }
 
 /**
- * Whether a Mate lives in `environmentId`: null while the candidate list is
- * still being read, for a surface that must not guess either way meanwhile.
+ * Whether a Mate lives in `environmentId`: null while that is not known, for
+ * a surface that must not guess either way meanwhile.
  */
 export function useZeropsMateEnvironment(environmentId: EnvironmentId): boolean | null {
-  const mates = useAtomValue(zeropsMatesAtom);
-  return mates === null ? null : mates.has(environmentId);
+  const mate = useZeropsMate(environmentId);
+  return mate.kind === "unknown" ? null : mate.kind === "mate";
 }

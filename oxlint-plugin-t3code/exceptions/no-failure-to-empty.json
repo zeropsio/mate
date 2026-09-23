@@ -296,14 +296,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsMates.ts",
-    "kind": "LogicalExpression",
-    "fingerprint": "useAtomValue(zeropsMatesAtom) ?? NO_MATES",
-    "owner": "state-model 1.3b follow-up",
-    "reason": "an unread Mate list reads as nobody living anywhere; the chat header, timeline, draft headline, Zerops panel and new-thread handler each render their own placeholder while it is unread",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsRepositoryCommits.ts",
     "kind": "CallExpression",
     "fingerprint": "client.listTags(owner, GROUP_REPOSITORY).catch(() => [])",

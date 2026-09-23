@@ -3,7 +3,7 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
-import type { ZeropsMateIdentity } from "../zerops/mateIdentities";
+import { MATES_UNREAD, type ZeropsMateDirectory } from "../zerops/mateIdentities";
 import { readCachedZeropsMates } from "../zerops/mateIdentitiesCache";
 import type { ProjectTopologySnapshot } from "../zerops/useProjectTopology";
 
@@ -56,22 +56,25 @@ export function projectTopologyViewAtom(environmentId: EnvironmentId) {
  * The Zerops project's name per environment (`zeropsEnvironmentNames`),
  * published by `useZeropsCandidates` from whichever host mounts it and read
  * by anything that must call an environment by name — the draft headline's
- * picker, where six containers would otherwise all be "www".
+ * picker, where six containers would otherwise all be "www". Null until the
+ * candidate list has been read.
  */
-export const zeropsEnvironmentNamesAtom = Atom.make<ReadonlyMap<EnvironmentId, string>>(
-  new Map(),
+export const zeropsEnvironmentNamesAtom = Atom.make<ReadonlyMap<EnvironmentId, string> | null>(
+  null,
 ).pipe(Atom.withLabel("zerops:environment-names"));
 
+const cachedZeropsMates = readCachedZeropsMates();
+
 /**
- * Who lives in each connected environment — the Mate's name, colour and
- * project (`mateIdentities.ts`) — for the chat header, an empty conversation
- * and a draft's headline. Published by `useZeropsCandidates` next to the
- * names. Starts from what the last session learned (`mateIdentitiesCache`),
- * so a reload knows who lives where from its first frame; null on a first
- * visit until the list has been read once, so a surface that looks different
- * for a Mate (the git toolbar has nothing to say to one) can wait rather than
- * paint its other look meanwhile.
+ * Who lives in each environment — the Mate's name, colour and project
+ * (`mateIdentities.ts`) — for the chat header, an empty conversation and a
+ * draft's headline. Published by `useZeropsCandidates` next to the names.
+ * Starts from what the last session learned (`mateIdentitiesCache`), so a
+ * reload knows who lives where from its first frame; on a first visit every
+ * environment is unknown until the list reaches it, so a surface that looks
+ * different for a Mate (the git toolbar has nothing to say to one) can wait
+ * rather than paint its other look meanwhile.
  */
-export const zeropsMatesAtom = Atom.make<ReadonlyMap<EnvironmentId, ZeropsMateIdentity> | null>(
-  readCachedZeropsMates(),
+export const zeropsMatesAtom = Atom.make<ZeropsMateDirectory>(
+  cachedZeropsMates === null ? MATES_UNREAD : { decided: cachedZeropsMates, complete: true },
 ).pipe(Atom.withLabel("zerops:mates"));

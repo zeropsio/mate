@@ -13,7 +13,8 @@ import {
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useZeropsEnvironmentNames } from "~/zerops/useZeropsEnvironmentNames";
-import { useZeropsMates } from "~/zerops/useZeropsMates";
+import { zeropsMateAt } from "~/zerops/mateIdentities";
+import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
 import {
@@ -49,8 +50,10 @@ export function DraftHeroHeadline({
   const zeropsEnvironmentNames = useZeropsEnvironmentNames();
   // Where a Mate lives, the draft is the Mate's: its mark in its colour, and
   // the question is what it should do on its project.
-  const mates = useZeropsMates();
-  const mate = activeProjectRef === null ? undefined : mates.get(activeProjectRef.environmentId);
+  const mates = useZeropsMateDirectory();
+  const whoLivesHere =
+    activeProjectRef === null ? null : zeropsMateAt(mates, activeProjectRef.environmentId);
+  const mate = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
 
   const environmentLabelById = useMemo(
@@ -149,10 +152,11 @@ export function DraftHeroHeadline({
           }}
         >
           {projectPickerEntries.map(({ group, targetProject }) => {
+            const target = zeropsMateAt(mates, targetProject.environmentId);
             const label =
-              mates.get(targetProject.environmentId)?.name ??
-              zeropsEnvironmentNames.get(targetProject.environmentId) ??
-              group.displayName;
+              target.kind === "mate"
+                ? target.mate.name
+                : (zeropsEnvironmentNames?.get(targetProject.environmentId) ?? group.displayName);
             return (
               <MenuRadioItem key={group.projectKey} value={group.projectKey} closeOnClick>
                 <Tooltip>
@@ -189,7 +193,11 @@ export function DraftHeroHeadline({
       <MateMark playful className="h-16 w-auto sm:h-[72px]" tint={mate?.tint} />
       <h1 className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
         {hasResolvedProject ? (
-          mate === undefined ? (
+          whoLivesHere?.kind === "unknown" ? (
+            // Neither question while who lives here is not known: the
+            // project alone, which both of them name.
+            projectSelector
+          ) : mate === undefined ? (
             <>What should we build in {projectSelector}?</>
           ) : mate.project === undefined ? (
             <>What should {mate.name} do?</>

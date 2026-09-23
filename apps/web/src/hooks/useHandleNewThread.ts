@@ -39,7 +39,8 @@ import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefau
 import { primaryServerSettingsAtom } from "../state/server";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
-import { useZeropsMates } from "../zerops/useZeropsMates";
+import { zeropsMateAt } from "../zerops/mateIdentities";
+import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
 
@@ -79,7 +80,7 @@ export function useNewThreadHandler() {
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   // Which environments a Mate lives in: there, a request for a new thread
   // opens the one conversation instead.
-  const mates = useZeropsMates();
+  const mates = useZeropsMateDirectory();
   const router = useRouter();
   const getCurrentRouteTarget = useCallback(() => {
     const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
@@ -131,8 +132,10 @@ export function useNewThreadHandler() {
       // already has — typed content following when the caller carries it, zcp's
       // introduction composed into it when nobody has spoken there yet — and
       // creates nothing, because a second thread would be a second Mate.
+      // Where that is not known yet, a conversation already there opens too:
+      // opening one is undone by a click, a second Mate is not.
       const mateConversation =
-        options?.fresh !== true && mates.has(projectRef.environmentId)
+        options?.fresh !== true && zeropsMateAt(mates, projectRef.environmentId).kind !== "nobody"
           ? resolvePrimaryConversation(
               readThreadShells().filter(
                 (thread) => thread.environmentId === projectRef.environmentId,

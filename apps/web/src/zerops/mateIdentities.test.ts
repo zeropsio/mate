@@ -2,7 +2,15 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { mateQuestion, zeropsMateIdentities } from "./mateIdentities";
+import {
+  mateQuestion,
+  zeropsMateAt,
+  zeropsMateDecisions,
+  zeropsMateIdentities,
+  zeropsMatesOf,
+  type ZeropsMateDirectory,
+  type ZeropsMateIdentity,
+} from "./mateIdentities";
 
 const FEN = EnvironmentId.make("env-fen");
 const JUNO = EnvironmentId.make("env-juno");
@@ -70,6 +78,73 @@ describe("zeropsMateIdentities", () => {
     expect(mates.get(FEN)).toMatchObject({ name: "Fen", project: "Acme Docs" });
     // The way into Zerops for this Mate: its project on the dashboard.
     expect(mates.get(FEN)?.projectUrl).toBe("https://app.zerops.io/project/acme-docs-dev");
+  });
+});
+
+describe("zeropsMateDecisions", () => {
+  const known = (row: ZeropsCandidate) => ({ ...row, presence: "known" as const });
+
+  it("decides each environment a read row reaches: its Mate, or nobody", () => {
+    const decided = zeropsMateDecisions([known(FEN_DEV), known(ACME_STAGE)]);
+    expect(decided.get(FEN)).toMatchObject({ name: "Fen" });
+    expect(decided.get(STAGE)).toBeNull();
+  });
+
+  it("decides nothing for a row whose presence is not read", () => {
+    const decided = zeropsMateDecisions([{ ...ACME_STAGE, presence: "unknown" }]);
+    expect(decided.has(STAGE)).toBe(false);
+  });
+});
+
+describe("zeropsMateAt", () => {
+  const FEN_MATE: ZeropsMateIdentity = {
+    name: "Fen",
+    tint: "coral",
+    project: undefined,
+    projectUrl: "https://app.zerops.io/project/acme-docs-dev",
+    connected: false,
+  };
+  const decided = new Map<EnvironmentId, ZeropsMateIdentity | null>([
+    [FEN, FEN_MATE],
+    [STAGE, null],
+  ]);
+
+  it.each<{
+    readonly name: string;
+    readonly directory: ZeropsMateDirectory;
+    readonly environmentId: EnvironmentId;
+    readonly kind: "mate" | "nobody" | "unknown";
+  }>([
+    {
+      name: "a decided Mate",
+      directory: { decided, complete: false },
+      environmentId: FEN,
+      kind: "mate",
+    },
+    {
+      name: "a decided nobody",
+      directory: { decided, complete: false },
+      environmentId: STAGE,
+      kind: "nobody",
+    },
+    {
+      name: "an environment no read row reaches, the list read in part",
+      directory: { decided, complete: false },
+      environmentId: JUNO,
+      kind: "unknown",
+    },
+    {
+      name: "an environment no read row reaches, the list read in full",
+      directory: { decided, complete: true },
+      environmentId: JUNO,
+      kind: "nobody",
+    },
+  ])("answers $name as $kind", ({ directory, environmentId, kind }) => {
+    expect(zeropsMateAt(directory, environmentId).kind).toBe(kind);
+  });
+
+  it("remembers the Mates alone: the cache names nobody", () => {
+    expect([...zeropsMatesOf({ decided, complete: true }).keys()]).toEqual([FEN]);
   });
 });
 

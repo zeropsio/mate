@@ -14,6 +14,7 @@ import {
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { identity, organization, project, scope } from "./__fixtures__/platformData";
+import { MATES_UNREAD, zeropsMateAt, type ZeropsMateIdentity } from "./mateIdentities";
 import {
   authenticatedZeropsOrigins,
   candidatesPublication,
@@ -138,6 +139,17 @@ describe("candidatesPublication", () => {
     group: "connected",
     environmentId,
   };
+  const CONNECTED_NOBODY: ZeropsCandidatePresentation = {
+    ...READY,
+    project: {
+      ...PROJECT,
+      id: "project-3",
+      name: "api",
+      tagList: ["mate:g:aaa", "mate:role:stage"],
+    },
+    group: "connected",
+    environmentId: otherEnvironmentId,
+  };
   const PRESENCE_UNKNOWN: ZeropsCandidatePresentation = {
     key: "project-2",
     project: { ...PROJECT, id: "project-2", name: "docs" },
@@ -158,21 +170,25 @@ describe("candidatesPublication", () => {
     state: "unread",
     waitingFor: null,
   };
-  const FEN = {
+  const FEN: ZeropsMateIdentity = {
     name: "Fen",
     tint: "slate",
     project: undefined,
     projectUrl: "https://app.zerops.io/project/project-9",
     connected: false,
-  } as const;
+  };
   const publication = (input: Partial<Parameters<typeof candidatesPublication>[0]>) =>
     candidatesPublication({
       status: "signed-in",
       listing: unread,
       registeredOrigins: new Map(),
-      published: { names: new Map(), mates: null },
+      published: { names: null, mates: MATES_UNREAD },
       ...input,
     });
+  const whoLivesAt = (
+    published: ReturnType<typeof candidatesPublication>,
+    at: EnvironmentId,
+  ): string => (published.kind === "publish" ? zeropsMateAt(published.mates, at).kind : "held");
 
   it.each<{
     readonly name: string;
@@ -202,28 +218,30 @@ describe("candidatesPublication", () => {
     expect(published).toMatchObject({
       kind: "publish",
       names: new Map([[environmentId, "kanban"]]),
+      mates: { complete: true },
     });
-    expect(published.kind === "publish" && [...published.mates.keys()]).toEqual([environmentId]);
+    expect(whoLivesAt(published, environmentId)).toBe("mate");
   });
 
   it("a known, complete listing of no Mate publishes that nobody lives anywhere", () => {
-    expect(
-      publication({
-        listing: known([]),
-        published: {
-          names: new Map([[otherEnvironmentId, "docs"]]),
-          mates: new Map([[otherEnvironmentId, FEN]]),
-        },
-      }),
-    ).toEqual({ kind: "publish", names: new Map(), mates: new Map() });
+    const published = publication({
+      listing: known([]),
+      published: {
+        names: new Map([[otherEnvironmentId, "docs"]]),
+        mates: { decided: new Map([[otherEnvironmentId, FEN]]), complete: true },
+      },
+    });
+
+    expect(published).toMatchObject({ kind: "publish", names: new Map() });
+    expect(whoLivesAt(published, otherEnvironmentId)).toBe("nobody");
   });
 
-  it("a listing not read in full adds who it has read to what was published, and drops nobody", () => {
+  it("a listing not read in full adds who it has read to what was published, and drops nobody it has not read", () => {
     const published = publication({
       listing: known([CONNECTED_MATE, PRESENCE_UNKNOWN]),
       published: {
         names: new Map([[otherEnvironmentId, "docs"]]),
-        mates: new Map([[otherEnvironmentId, FEN]]),
+        mates: { decided: new Map([[otherEnvironmentId, FEN]]), complete: true },
       },
     });
 
@@ -233,11 +251,30 @@ describe("candidatesPublication", () => {
         [otherEnvironmentId, "docs"],
         [environmentId, "kanban"],
       ]),
+      mates: { complete: true },
     });
-    expect(published.kind === "publish" && [...published.mates.keys()]).toEqual([
-      otherEnvironmentId,
-      environmentId,
-    ]);
+    expect(whoLivesAt(published, otherEnvironmentId)).toBe("mate");
+    expect(whoLivesAt(published, environmentId)).toBe("mate");
+  });
+
+  it("a listing not read in full, over a Mate list never read, leaves every environment it has not read unknown", () => {
+    const published = publication({ listing: known([CONNECTED_NOBODY, PRESENCE_UNKNOWN]) });
+
+    expect(published).toMatchObject({ kind: "publish", mates: { complete: false } });
+    expect(whoLivesAt(published, otherEnvironmentId)).toBe("nobody");
+    expect(whoLivesAt(published, environmentId)).toBe("unknown");
+  });
+
+  it("a listing not read in full drops a Mate whose read row no longer holds one", () => {
+    const published = publication({
+      listing: known([CONNECTED_NOBODY, PRESENCE_UNKNOWN]),
+      published: {
+        names: null,
+        mates: { decided: new Map([[otherEnvironmentId, FEN]]), complete: false },
+      },
+    });
+
+    expect(whoLivesAt(published, otherEnvironmentId)).toBe("nobody");
   });
 
   it.each(["loading", "totp-required"] as const)(
@@ -250,11 +287,10 @@ describe("candidatesPublication", () => {
   it.each(["signed-out", "unavailable"] as const)(
     "a session that is %s holds no environment and no Mate",
     (status) => {
-      expect(publication({ status })).toEqual({
-        kind: "publish",
-        names: new Map(),
-        mates: new Map(),
-      });
+      const published = publication({ status });
+
+      expect(published).toMatchObject({ kind: "publish", names: new Map() });
+      expect(whoLivesAt(published, environmentId)).toBe("nobody");
     },
   );
 });
