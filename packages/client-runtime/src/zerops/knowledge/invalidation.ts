@@ -1,10 +1,12 @@
 /**
  * The invalidation bus (DESIGN §6.2): a closed, typed set of revalidation requests that carries no
- * data and has no merge semantics. Only owners of pull-based facts subscribe.
+ * data and has no merge semantics. Only owners of pull-based facts subscribe. Other tabs of the same
+ * login reach it over one `BroadcastChannel` (§6.7).
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -211,5 +213,91 @@ export const makeInvalidationBus = Effect.fnUntraced(function* (
         );
       }),
     subscribe: PubSub.subscribe(pubsub),
+  };
+});
+
+// ── Across tabs ──────────────────────────────────────────────────────────────────────────────
+
+/** One login of one person: the cross-tab epoch (§1.1 owner record). */
+export interface AccountLogin {
+  readonly userId: string;
+  readonly loginGeneration: string;
+}
+
+export const CrossTabInvalidation = Schema.Struct({
+  userId: Schema.String,
+  loginGeneration: Schema.String,
+  invalidation: Invalidation,
+});
+export type CrossTabInvalidation = typeof CrossTabInvalidation.Type;
+
+const isCrossTabInvalidation = Schema.is(CrossTabInvalidation);
+
+/** The `BroadcastChannel` members the transport uses. */
+export interface InvalidationChannel {
+  postMessage(message: CrossTabInvalidation): void;
+  addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
+  /** Stops delivery to this tab. */
+  close(): void;
+}
+
+export interface CrossTabInvalidationsOptions {
+  readonly bus: InvalidationBus;
+  /** Opens the channel the account's tabs share; the transport closes it with its scope. */
+  readonly openChannel: () => InvalidationChannel;
+  /** The login this tab has open, or `null` while it has none: its messages go nowhere. */
+  readonly owner: () => AccountLogin | null;
+}
+
+export interface CrossTabInvalidations {
+  /** Invalidates here and in the other tabs of this tab's login, after an account-level write. */
+  readonly broadcast: (invalidation: Invalidation) => Effect.Effect<void>;
+}
+
+/**
+ * Carries invalidations between the tabs of one login. A message reaches this tab's bus only when
+ * its `{userId, loginGeneration}` is the login this tab has open; anything else — another account,
+ * an older login, a shape this build cannot read — is dropped.
+ */
+export const connectCrossTabInvalidations = Effect.fnUntraced(function* (
+  options: CrossTabInvalidationsOptions,
+): Effect.fn.Return<CrossTabInvalidations, never, Scope.Scope> {
+  const scope = yield* Effect.scope;
+  const inbox = yield* Queue.unbounded<unknown>();
+  // The listener is on before the transport returns, so no message waits for a fiber to start.
+  const channel = yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      const opened = options.openChannel();
+      opened.addEventListener("message", (event) => {
+        Queue.offerUnsafe(inbox, event.data);
+      });
+      return opened;
+    }),
+    (opened) => Effect.sync(() => opened.close()),
+  );
+  const receive = (data: unknown) =>
+    Effect.suspend(() => {
+      const owner = options.owner();
+      return isCrossTabInvalidation(data) &&
+        owner !== null &&
+        data.userId === owner.userId &&
+        data.loginGeneration === owner.loginGeneration
+        ? options.bus.invalidate(data.invalidation)
+        : Effect.void;
+    });
+  yield* Queue.take(inbox).pipe(Effect.flatMap(receive), Effect.forever, Effect.forkIn(scope));
+
+  return {
+    broadcast: (invalidation) =>
+      Effect.andThen(
+        Effect.sync(() => {
+          const owner = options.owner();
+          if (owner === null) return;
+          const { userId, loginGeneration } = owner;
+          // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel stays within its origin
+          channel.postMessage({ userId, loginGeneration, invalidation });
+        }),
+        options.bus.invalidate(invalidation),
+      ),
   };
 });

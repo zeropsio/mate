@@ -17,10 +17,15 @@ export type {
 // The invalidation bus is a driver (§7.2 rule 2): this pure barrel carries its types, and the
 // account runtime imports the bus from `./invalidation.ts`.
 export type {
+  AccountLogin,
+  CrossTabInvalidation,
+  CrossTabInvalidations,
+  CrossTabInvalidationsOptions,
   GiteaOrigin,
   Invalidation,
   InvalidationBus,
   InvalidationBusOptions,
+  InvalidationChannel,
   InvalidationSignal,
   TargetKey,
 } from "./invalidation.ts";

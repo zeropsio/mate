@@ -12,7 +12,9 @@ import {
   makeZeropsApiOrigin,
   type ProjectRef,
 } from "../data/types.ts";
+import { makeHarnessBrowser } from "../testing/browserTabs.ts";
 import {
+  connectCrossTabInvalidations,
   makeInvalidationBus,
   type Invalidation,
   type InvalidationBusOptions,
@@ -42,6 +44,24 @@ const repo = (name: string): Invalidation => ({
   owner: "team",
   repo: name,
 });
+
+/**
+ * The browser delivers a channel message as a later task: a task queued after the post runs after
+ * that delivery.
+ */
+const nextTask = Effect.promise(
+  () =>
+    // @effect-diagnostics-next-line globalTimers:off -- a real task boundary, behind the harness's delivery.
+    new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0)),
+);
+
+/** Lets the fibers a delivered message woke run up to their next timer. */
+const settle = Effect.gen(function* () {
+  for (let turn = 0; turn < 5; turn += 1) yield* Effect.yieldNow;
+});
+
+/** The login the receiving tab has open. */
+const OPEN_LOGIN = { userId: "user-1", loginGeneration: "generation-2" };
 
 /** A bus under test: the signals it hears, and everything a subscriber received so far. */
 const openBus = (options: Partial<Pick<InvalidationBusOptions, "shown">> = {}) =>
@@ -151,6 +171,83 @@ describe("the invalidation bus (DESIGN §6.2)", () => {
         yield* bus.invalidate(tags("b"));
         yield* TestClock.adjust(250);
         expect(yield* drain).toEqual([tags("a"), tags("b")]);
+      }),
+    ),
+  );
+});
+
+describe("cross-tab invalidations (DESIGN §6.7)", () => {
+  it.effect.each<{
+    readonly name: string;
+    readonly message: unknown;
+    readonly delivered: boolean;
+  }>([
+    {
+      name: "a message from the same login is delivered",
+      message: { ...OPEN_LOGIN, invalidation: tags("a") },
+      delivered: true,
+    },
+    {
+      name: "a message from another account is dropped",
+      message: { ...OPEN_LOGIN, userId: "user-2", invalidation: tags("a") },
+      delivered: false,
+    },
+    {
+      name: "a message from an older login generation is dropped",
+      message: { ...OPEN_LOGIN, loginGeneration: "generation-1", invalidation: tags("a") },
+      delivered: false,
+    },
+    {
+      name: "a message outside the closed union is dropped",
+      message: { ...OPEN_LOGIN, invalidation: { topic: "thread", thread: "t-1" } },
+      delivered: false,
+    },
+  ])("$name", ({ message, delivered }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const browser = makeHarnessBrowser();
+        const [sender, receiver] = [browser.openTab(), browser.openTab()];
+        const { bus, drain } = yield* openBus();
+        yield* connectCrossTabInvalidations({
+          bus,
+          openChannel: () => new receiver.BroadcastChannel("mate:account"),
+          owner: () => OPEN_LOGIN,
+        });
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel stays within its origin
+        new sender.BroadcastChannel("mate:account").postMessage(message);
+        yield* nextTask;
+        yield* settle;
+        yield* TestClock.adjust(250);
+        expect(yield* drain).toEqual(delivered ? [tags("a")] : []);
+      }),
+    ),
+  );
+
+  it.effect("broadcast invalidates here and in the other tabs of the same login", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const browser = makeHarnessBrowser();
+        const openTab = (login: { readonly userId: string; readonly loginGeneration: string }) =>
+          Effect.gen(function* () {
+            const tab = browser.openTab();
+            const opened = yield* openBus();
+            const crossTab = yield* connectCrossTabInvalidations({
+              bus: opened.bus,
+              openChannel: () => new tab.BroadcastChannel("mate:account"),
+              owner: () => login,
+            });
+            return { ...opened, crossTab };
+          });
+        const writer = yield* openTab(OPEN_LOGIN);
+        const sibling = yield* openTab(OPEN_LOGIN);
+        const stranger = yield* openTab({ ...OPEN_LOGIN, loginGeneration: "generation-3" });
+        yield* writer.crossTab.broadcast(tags("a"));
+        yield* nextTask;
+        yield* settle;
+        yield* TestClock.adjust(250);
+        expect(yield* writer.drain).toEqual([tags("a")]);
+        expect(yield* sibling.drain).toEqual([tags("a")]);
+        expect(yield* stranger.drain).toEqual([]);
       }),
     ),
   );
