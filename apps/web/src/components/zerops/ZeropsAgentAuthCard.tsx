@@ -271,7 +271,7 @@ function AgentLogo({ agentId }: { readonly agentId: ZeropsAgentId }) {
   return (
     <span
       aria-hidden="true"
-      className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background shadow-xs"
+      className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-accent shadow-xs"
       data-zerops-agent-logo={agentId}
     >
       {agentId === "claude-code" ? (
