@@ -94,6 +94,16 @@ describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7)", () => {
     expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 1_000, falseReads: 0 });
   });
 
+  it("a new head or base starts checking over from the read that saw it", () => {
+    let track = mergeabilityAfter(null, read(null, 0));
+    track = mergeabilityAfter(track, read(null, 10_000));
+    expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 0, falseReads: 0 });
+    track = mergeabilityAfter(track, read(false, 10_500, { head: "h2", base: "b1" }));
+    expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 10_500, falseReads: 1 });
+    track = mergeabilityAfter(track, read(null, 11_000, { head: "h2", base: "b2" }));
+    expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 11_000, falseReads: 0 });
+  });
+
   it("a landed pull request says when and as what, a closed one only that it closed", () => {
     const pull = (over: Partial<GiteaPullRequest>): GiteaPullRequest => ({
       number: 4,
@@ -101,7 +111,7 @@ describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7)", () => {
       state: "open",
       ...over,
     });
-    const track = mergeabilityAfter(null, read(true, 0));
+    const { mergeability } = mergeabilityAfter(null, read(true, 0));
     const checks = { state: "unread", waitingFor: null } as const;
     expect(
       mergeStateOf(
@@ -111,17 +121,19 @@ describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7)", () => {
           merged_at: "2026-09-20T10:00:00Z",
           merge_commit_sha: "m1",
         }),
-        track,
+        mergeability,
         checks,
       ),
     ).toEqual({ kind: "merged", atMs: Date.parse("2026-09-20T10:00:00Z"), sha: "m1" });
-    expect(mergeStateOf(pull({ state: "closed", merged: true }), track, checks)).toEqual({
+    expect(mergeStateOf(pull({ state: "closed", merged: true }), mergeability, checks)).toEqual({
       kind: "merged",
       atMs: null,
       sha: null,
     });
-    expect(mergeStateOf(pull({ state: "closed" }), track, checks)).toEqual({ kind: "closed" });
-    expect(mergeStateOf(pull({}), track, checks)).toEqual({
+    expect(mergeStateOf(pull({ state: "closed" }), mergeability, checks)).toEqual({
+      kind: "closed",
+    });
+    expect(mergeStateOf(pull({}), mergeability, checks)).toEqual({
       kind: "open",
       mergeability: { kind: "mergeable" },
       checks,

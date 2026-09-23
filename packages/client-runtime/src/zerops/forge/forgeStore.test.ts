@@ -354,6 +354,33 @@ describe("forge store MergeState (DESIGN §4.7, A7)", () => {
     expect(sent("pull shop/app#4")).toHaveLength(2);
   });
 
+  it("a new head on the last recheck starts the 2, 5 and 10 s rechecks over", async () => {
+    const { clock, store, sent, pending } = rig();
+    store.demand({ kind: "pull", ...pullKey(4) });
+    await clock.advance(0);
+    await pending("pull shop/app#4").answer(pull(4, { mergeable: null }));
+    for (const rung of [2_000, 3_000]) {
+      await clock.advance(rung);
+      await pending("pull shop/app#4").answer(pull(4, { mergeable: null }));
+    }
+    // The last rung, 10 s in: pushed to meanwhile, Gitea is working the new head out.
+    await clock.advance(5_000);
+    await pending("pull shop/app#4").answer(
+      pull(4, { mergeable: false, head: { ref: "mate/x4", sha: "h2" } }),
+    );
+    expect(sent("pull shop/app#4")).toHaveLength(4);
+
+    await clock.advance(2_000);
+    await pending("pull shop/app#4").answer(
+      pull(4, { mergeable: false, head: { ref: "mate/x4", sha: "h2" } }),
+    );
+    await clock.advance(3_000);
+    await pending("pull shop/app#4").answer(
+      pull(4, { mergeable: false, head: { ref: "mate/x4", sha: "h2" } }),
+    );
+    expect(mergeability(store.mergeState(pullKey(4)))).toBe("conflicting");
+  });
+
   it("false then true within 5 s is never conflicting, and nothing is read once it merges", async () => {
     const { clock, store, sent, pending } = rig();
     store.demand(openPulls("shop", "app"));

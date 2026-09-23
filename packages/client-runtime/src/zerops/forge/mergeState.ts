@@ -59,64 +59,60 @@ export interface MergeRead {
 /** What one pull request's reads have shown so far. */
 export interface MergeabilityTrack {
   readonly mergeability: Mergeability;
-  /** The first `false` of the current run, with the shas it was about; `null` outside one. */
-  readonly firstFalse: {
-    readonly atMs: number;
-    readonly headSha: string;
-    readonly baseSha: string;
-  } | null;
+  /** When the current run of `false` reads began; `null` outside one. */
+  readonly firstFalseAtMs: number | null;
+  /** The shas the last read was about: a read about others starts over. */
+  readonly headSha: string | undefined;
+  readonly baseSha: string | undefined;
 }
 
-/** What a pull request whose shas are unknown, or whose run was interrupted, starts from. */
+/** Checking, from when the prior track started checking or else from `atMs`. */
 const checkingFrom = (
-  track: MergeabilityTrack | null,
+  prior: MergeabilityTrack | null,
   atMs: number,
 ): Extract<Mergeability, { kind: "checking" }> =>
-  track?.mergeability.kind === "checking"
-    ? { ...track.mergeability, falseReads: 0 }
+  prior?.mergeability.kind === "checking"
+    ? { ...prior.mergeability, falseReads: 0 }
     : { kind: "checking", sinceMs: atMs, falseReads: 0 };
 
 /**
  * The mergeability after one more read. `track` is `null` for a pull request not read before, or
- * one whose earlier reads no longer count — its base moved, say.
+ * one whose earlier reads no longer count — its base moved, say. A read about another head or
+ * base than the last one is a new question, so the earlier reads do not count for it either, and
+ * its checking — with the rechecks keyed on when that began — starts at that read.
  */
 export function mergeabilityAfter(
   track: MergeabilityTrack | null,
   read: MergeRead,
 ): MergeabilityTrack {
-  if (read.mergeable === true) return { mergeability: { kind: "mergeable" }, firstFalse: null };
+  const shas = { headSha: read.headSha, baseSha: read.baseSha };
+  const prior =
+    track !== null && track.headSha === read.headSha && track.baseSha === read.baseSha
+      ? track
+      : null;
+  if (read.mergeable === true) {
+    return { mergeability: { kind: "mergeable" }, firstFalseAtMs: null, ...shas };
+  }
   if (read.mergeable !== false || read.headSha === undefined || read.baseSha === undefined) {
-    return { mergeability: checkingFrom(track, read.atMs), firstFalse: null };
+    return { mergeability: checkingFrom(prior, read.atMs), firstFalseAtMs: null, ...shas };
   }
-  const first = track?.firstFalse ?? null;
-  const same = first !== null && first.headSha === read.headSha && first.baseSha === read.baseSha;
-  if (!same) {
-    const checking = checkingFrom(
-      track?.mergeability.kind === "conflicting" ? null : track,
-      read.atMs,
-    );
-    return {
-      mergeability: { ...checking, falseReads: 1 },
-      firstFalse: { atMs: read.atMs, headSha: read.headSha, baseSha: read.baseSha },
-    };
+  const firstFalseAtMs = prior?.firstFalseAtMs ?? null;
+  if (firstFalseAtMs === null) {
+    const checking = checkingFrom(prior, read.atMs);
+    return { mergeability: { ...checking, falseReads: 1 }, firstFalseAtMs: read.atMs, ...shas };
   }
-  if (read.atMs - first.atMs >= MERGE_CONFLICT_CONFIRM_MS) {
-    return { mergeability: { kind: "conflicting" }, firstFalse: first };
+  if (read.atMs - firstFalseAtMs >= MERGE_CONFLICT_CONFIRM_MS) {
+    return { mergeability: { kind: "conflicting" }, firstFalseAtMs, ...shas };
   }
-  const checking = checkingFrom(track, first.atMs);
-  return {
-    mergeability: {
-      ...checking,
-      falseReads: track?.mergeability.kind === "checking" ? track.mergeability.falseReads + 1 : 1,
-    },
-    firstFalse: first,
-  };
+  const checking = checkingFrom(prior, firstFalseAtMs);
+  const falseReads = prior?.mergeability.kind === "checking" ? prior.mergeability.falseReads : 0;
+  return { mergeability: { ...checking, falseReads: falseReads + 1 }, firstFalseAtMs, ...shas };
 }
 
 /** The pull request as every surface sees it: landed, closed, or open and how it merges. */
 export function mergeStateOf(
   pull: GiteaPullRequest,
-  track: MergeabilityTrack,
+  mergeability: Mergeability,
   checks: Shown<GitCheckTone>,
 ): MergeState {
   if (pull.merged === true) {
@@ -128,5 +124,5 @@ export function mergeStateOf(
     };
   }
   if (pull.state !== "open") return { kind: "closed" };
-  return { kind: "open", mergeability: track.mergeability, checks };
+  return { kind: "open", mergeability, checks };
 }

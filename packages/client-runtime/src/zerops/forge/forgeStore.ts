@@ -784,11 +784,8 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
         return mergeStateOf(
           pull,
           recomputing
-            ? {
-                mergeability: { kind: "checking", sinceMs: entry.invalidatedAtMs, falseReads: 0 },
-                firstFalse: null,
-              }
-            : merge,
+            ? { kind: "checking", sinceMs: entry.invalidatedAtMs, falseReads: 0 }
+            : merge.mergeability,
           checks,
         );
       });
