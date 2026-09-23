@@ -106,7 +106,7 @@ export function ZeropsEnvironmentCreationForm({
 
   return (
     <form
-      className="flex flex-col gap-5"
+      className="flex min-h-0 flex-col"
       data-zerops-surface="environment-creation-form"
       onSubmit={(event) => {
         event.preventDefault();
@@ -122,97 +122,110 @@ export function ZeropsEnvironmentCreationForm({
         });
       }}
     >
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-name`}>Environment</Label>
-        <Input
-          aria-invalid={showErrors && errors.name !== undefined ? true : undefined}
-          id={`${id}-name`}
-          onChange={(event) => {
-            setName(event.target.value);
-            setNameTouched(true);
-          }}
-          value={name}
-        />
-        {showErrors && errors.name !== undefined ? <FieldError>{errors.name}</FieldError> : null}
-      </div>
-
-      <div className="space-y-3">
-        <label className="flex items-center justify-between gap-3 text-sm" htmlFor={`${id}-agent`}>
-          <span className="flex flex-col gap-0.5">
-            <span>Runs an agent</span>
-            <span className="text-xs text-muted-foreground">{agentSwitchNote(role)}</span>
-          </span>
-          <Switch
-            checked={withAgent}
-            id={`${id}-agent`}
-            onCheckedChange={(checked) => {
-              setWithAgent(checked);
+      <DialogHeader>
+        {/* The title names the thing, the button names what happens to it.
+            Carrying one string in both said nothing twice. */}
+        <DialogTitle>{role === "dev" ? "New Mate" : `New ${what} environment`}</DialogTitle>
+        <DialogDescription>
+          A new Zerops project in {groupName}. It takes a couple of minutes to come up.
+        </DialogDescription>
+      </DialogHeader>
+      <DialogPanel className="flex flex-col gap-5">
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-name`}>Environment</Label>
+          <Input
+            aria-invalid={showErrors && errors.name !== undefined ? true : undefined}
+            id={`${id}-name`}
+            onChange={(event) => {
+              setName(event.target.value);
+              setNameTouched(true);
             }}
+            value={name}
           />
-        </label>
-        {withAgent ? (
-          <div className="space-y-1.5">
-            <Label htmlFor={`${id}-bot`}>Agent's name</Label>
-            <Input
-              aria-invalid={showErrors && errors.botName !== undefined ? true : undefined}
-              id={`${id}-bot`}
-              onChange={(event) => {
-                setBotName(event.target.value);
-                if (!nameTouched && proposeName !== undefined) {
-                  setName(proposeName(event.target.value.replace(/\s+/g, " ").trim()));
-                }
-              }}
-              value={botName}
-            />
-            {showErrors && errors.botName !== undefined ? (
-              <FieldError>{errors.botName}</FieldError>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+          {showErrors && errors.name !== undefined ? <FieldError>{errors.name}</FieldError> : null}
+        </div>
 
-      <div className="space-y-2">
-        <span className="text-sm">Application</span>
-        <RadioGroup
-          aria-label="Application"
-          className="gap-2"
-          onValueChange={(value) => {
-            setChosenRecipeId(String(value));
-          }}
-          value={recipeId}
-        >
-          {options.map((option) => (
-            <label
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 px-3 py-2.5 text-sm transition-colors",
-                option.id === recipeId ? "border-primary/40 bg-primary/5" : "hover:bg-accent/50",
-              )}
-              key={option.id}
-            >
-              <Radio className="mt-0.5" value={option.id} />
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span>{option.label}</span>
-                <span className="text-xs text-muted-foreground">{option.detail}</span>
-              </span>
-            </label>
-          ))}
-          {tierLoading ? (
-            <div
-              aria-label="Reading the project's recipe"
-              className="flex items-center gap-3 px-3 py-2.5"
-              role="status"
-            >
-              <Skeleton className="size-4 rounded-full" />
-              <Skeleton className="h-3.5 w-48" />
+        <div className="space-y-3">
+          <label
+            className="flex items-center justify-between gap-3 text-sm"
+            htmlFor={`${id}-agent`}
+          >
+            <span className="flex flex-col gap-0.5">
+              <span>Runs an agent</span>
+              <span className="text-xs text-muted-foreground">{agentSwitchNote(role)}</span>
+            </span>
+            <Switch
+              checked={withAgent}
+              id={`${id}-agent`}
+              onCheckedChange={(checked) => {
+                setWithAgent(checked);
+              }}
+            />
+          </label>
+          {withAgent ? (
+            <div className="space-y-1.5">
+              <Label htmlFor={`${id}-bot`}>Agent's name</Label>
+              <Input
+                aria-invalid={showErrors && errors.botName !== undefined ? true : undefined}
+                id={`${id}-bot`}
+                onChange={(event) => {
+                  setBotName(event.target.value);
+                  if (!nameTouched && proposeName !== undefined) {
+                    setName(proposeName(event.target.value.replace(/\s+/g, " ").trim()));
+                  }
+                }}
+                value={botName}
+              />
+              {showErrors && errors.botName !== undefined ? (
+                <FieldError>{errors.botName}</FieldError>
+              ) : null}
             </div>
           ) : null}
-        </RadioGroup>
-        {showErrors && errors.recipe !== undefined ? (
-          <FieldError>{errors.recipe}</FieldError>
-        ) : null}
-      </div>
+        </div>
 
-      <DialogFooter className="px-0 pb-0">
+        <div className="space-y-2">
+          <span className="text-sm">Application</span>
+          <RadioGroup
+            aria-label="Application"
+            className="gap-2"
+            onValueChange={(value) => {
+              setChosenRecipeId(String(value));
+            }}
+            value={recipeId}
+          >
+            {options.map((option) => (
+              <label
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 px-3 py-2.5 text-sm transition-colors",
+                  option.id === recipeId ? "border-primary/40 bg-primary/5" : "hover:bg-accent/50",
+                )}
+                key={option.id}
+              >
+                <Radio className="mt-0.5" value={option.id} />
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span>{option.label}</span>
+                  <span className="text-xs text-muted-foreground">{option.detail}</span>
+                </span>
+              </label>
+            ))}
+            {tierLoading ? (
+              <div
+                aria-label="Reading the project's recipe"
+                className="flex items-center gap-3 px-3 py-2.5"
+                role="status"
+              >
+                <Skeleton className="size-4 rounded-full" />
+                <Skeleton className="h-3.5 w-48" />
+              </div>
+            ) : null}
+          </RadioGroup>
+          {showErrors && errors.recipe !== undefined ? (
+            <FieldError>{errors.recipe}</FieldError>
+          ) : null}
+        </div>
+      </DialogPanel>
+
+      <DialogFooter>
         <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
@@ -264,21 +277,10 @@ export function ZeropsEnvironmentCreationDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const what = environmentWord(form.role);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup className="max-w-lg">
-        <DialogHeader>
-          {/* The title names the thing, the button names what happens to it.
-              Carrying one string in both said nothing twice. */}
-          <DialogTitle>{form.role === "dev" ? "New Mate" : `New ${what} environment`}</DialogTitle>
-          <DialogDescription>
-            A new Zerops project in {form.groupName}. It takes a couple of minutes to come up.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogPanel>
-          <ZeropsEnvironmentCreationForm {...form} />
-        </DialogPanel>
+        <ZeropsEnvironmentCreationForm {...form} />
       </DialogPopup>
     </Dialog>
   );

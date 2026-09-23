@@ -51,23 +51,25 @@ export function ZeropsAskConfirm({
 }) {
   const who = mateName ?? "the Mate";
   return (
-    <DialogPanel>
+    <>
       <DialogHeader>
         <DialogTitle>{changeAskLabel(mateName)}</DialogTitle>
         <DialogDescription>
           {what} Nobody reading this is going to do it by hand, so {who} is asked to.
         </DialogDescription>
       </DialogHeader>
-      <div className="my-2 flex min-w-0 items-start gap-3" data-zerops-surface="ask-confirm">
-        {tint === undefined ? null : <MateFace size="md" state="idle" tint={tint} />}
-        {/* Quoted, not paraphrased: this is the text being authorised. */}
-        <p className="min-w-0 flex-1 rounded-md bg-muted px-3 py-2 text-sm wrap-anywhere text-foreground">
-          {ask}
+      <DialogPanel>
+        <div className="my-2 flex min-w-0 items-start gap-3" data-zerops-surface="ask-confirm">
+          {tint === undefined ? null : <MateFace size="md" state="idle" tint={tint} />}
+          {/* Quoted, not paraphrased: this is the text being authorised. */}
+          <p className="min-w-0 flex-1 rounded-md bg-muted px-3 py-2 text-sm wrap-anywhere text-foreground">
+            {ask}
+          </p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          It is sent straight away and {who} starts working; you can stop it in the conversation.
         </p>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        It is sent straight away and {who} starts working; you can stop it in the conversation.
-      </p>
+      </DialogPanel>
       <DialogFooter>
         <DialogClose
           render={
@@ -80,7 +82,7 @@ export function ZeropsAskConfirm({
           {sending ? "Sending…" : "Send"}
         </Button>
       </DialogFooter>
-    </DialogPanel>
+    </>
   );
 }
 
