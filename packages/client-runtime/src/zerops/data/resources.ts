@@ -29,14 +29,16 @@ import {
 import type { ZeropsAgentType } from "../newProject.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import type {
+  AccessDenialScope,
   AccessState,
   AccountRef,
   AccountScope,
   OrganizationRef,
+  ProjectRef,
   ServiceRef,
   VerifiedAccessGrant,
 } from "./types.ts";
-import { organizationKeyOf, projectRoleGrantsAccess } from "./types.ts";
+import { organizationKeyOf, projectKeyOf, projectRoleGrantsAccess } from "./types.ts";
 
 export interface OrganizationLocationsResourceRequest {
   readonly kind: "organization-locations";
@@ -283,9 +285,12 @@ const accountRefsEqual = (left: AccountRef, right: AccountRef): boolean =>
 const accountScopesEqual = (left: AccountScope, right: AccountScope): boolean =>
   left.epoch === right.epoch && accountRefsEqual(left.account, right.account);
 
+/** The grant a resource outside any denial stands on. */
 const usableGrant = (access: AccessState): VerifiedAccessGrant | null => {
   if (access.status === "verified") return access;
-  if (access.status === "verifying" || access.status === "failed") return access.previous;
+  if (access.status === "verifying" || access.status === "failed" || access.status === "denied") {
+    return access.previous;
+  }
   return null;
 };
 
@@ -301,17 +306,28 @@ const organizationOf = (request: ZeropsResourceRequest): OrganizationRef => {
   }
 };
 
-/** The access scope that withholds a resource: its project, or the account for an organization's. */
-const cellScopeOf = (request: ZeropsResourceRequest): Cell<AnyResourceValue>["scope"] => {
+/** The project a resource belongs to; an organization's resource belongs to none. */
+const projectOf = (request: ZeropsResourceRequest): ProjectRef | null => {
   switch (request.kind) {
     case "organization-locations":
     case "organization-integration-token-grants":
-      return "account";
+      return null;
     case "service-authorized-agents":
     case "service-deployed-version":
     case "service-mate-flag":
-      return request.service.project.projectId;
+      return request.service.project;
   }
+};
+
+/** The access scope that withholds a resource: its project, or the account for an organization's. */
+const cellScopeOf = (request: ZeropsResourceRequest): Cell<AnyResourceValue>["scope"] =>
+  projectOf(request)?.projectId ?? "account";
+
+/** A denial of the account covers every resource; a project's covers only that project's. */
+const denialCovers = (scope: AccessDenialScope, request: ZeropsResourceRequest): boolean => {
+  if (scope.kind === "account") return true;
+  const project = projectOf(request);
+  return project !== null && projectKeyOf(project) === projectKeyOf(scope.project);
 };
 
 export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResourceKey {
@@ -386,7 +402,9 @@ function resourceAdmission(
   nowMs: number,
 ): Admission {
   const withheld = (reason: WithheldReason): Admission => ({ kind: "withheld", reason });
-  if (access.status === "denied") return withheld("access-denied");
+  if (access.status === "denied" && denialCovers(access.scope, request)) {
+    return withheld("access-denied");
+  }
   if (access.status === "expired") return withheld("access-lapsed");
   const grant = usableGrant(access);
   if (grant === null) return withheld("access-unverified");
@@ -405,12 +423,8 @@ function resourceAdmission(
   ) {
     return withheld("access-denied");
   }
-  if (
-    (request.kind === "service-authorized-agents" ||
-      request.kind === "service-deployed-version" ||
-      request.kind === "service-mate-flag") &&
-    !projectRoleGrantsAccess(grant, request.service.project, "any-role")
-  ) {
+  const project = projectOf(request);
+  if (project !== null && !projectRoleGrantsAccess(grant, project, "any-role")) {
     return withheld("access-denied");
   }
   return { kind: "admitted", deadlineMs: grant.deadlineMs };

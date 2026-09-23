@@ -427,6 +427,66 @@ describe("makeZeropsResourceBroker", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("a denial scoped to one project withholds only that project's resources", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const both: Extract<AccessState, { readonly status: "verified" }> = {
+        ...verifiedAccess(scope),
+        projects: [
+          { project: project(scope), role: "OWNER", mutationsAllowed: true },
+          { project: project(scope, "project-b"), role: "OWNER", mutationsAllowed: true },
+        ],
+      };
+      let access: AccessState = both;
+      let reads = 0;
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => access,
+        adapter: unusedAdapter({
+          readServiceAuthorizedAgents: () =>
+            Effect.sync(() => {
+              reads += 1;
+              return ["codex"] as const;
+            }),
+        }),
+      });
+      const registry = AtomRegistry.make();
+      const kept = broker.known(authorizedAgentsRequest(scope, "service-a", "project-a"));
+      const lost = broker.known(authorizedAgentsRequest(scope, "service-b", "project-b"));
+      const locations = broker.known(locationsRequest(scope));
+      const unmounts = [registry.mount(kept), registry.mount(lost), registry.mount(locations)];
+      yield* Effect.yieldNow;
+
+      const { status: _status, ...previous } = both;
+      access = {
+        status: "denied",
+        accountEpoch: scope.epoch,
+        scope: { kind: "project", project: project(scope, "project-b") },
+        deniedAtMs: 1,
+        previous,
+      };
+      yield* broker.reconcileAccess;
+
+      expect(registry.get(kept)).toMatchObject({ state: "known", value: ["codex"] });
+      expect(registry.get(locations)).toMatchObject({ state: "known" });
+      expect(registry.get(lost)).toEqual({
+        state: "withheld",
+        reason: "access-denied",
+        cause: null,
+      });
+      expect(reads).toBe(2);
+
+      // With no earlier grant to stand on, nothing outside the project is admitted either.
+      access = { ...access, previous: null };
+      yield* broker.reconcileAccess;
+      expect(registry.get(kept)).toMatchObject({ state: "withheld", reason: "access-unverified" });
+
+      for (const unmount of unmounts) unmount();
+      registry.dispose();
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("shares one in-flight read while each lease has an independent release fence", () =>
     Effect.gen(function* () {
       const scope = accountScope();
