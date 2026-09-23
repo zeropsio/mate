@@ -15,10 +15,9 @@ import * as Cause from "effect/Cause";
 import * as Stream from "effect/Stream";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { tabClock } from "../zerops/tabClock";
-
 import type { AtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { closeAccountLifetime, openAccountLifetime } from "../zerops/accountLifetime";
+import { tabClock } from "../zerops/tabClock";
 import type { ZeropsDataContextValue } from "../zerops/zeropsDataContext";
 
 /** What each context holds for the hook under test; set once the contexts are loaded. */
@@ -49,11 +48,14 @@ const provide = (data: ZeropsDataContextValue | null) => {
     context === RegistryContext ? registry : context === ZeropsDataContext ? data : undefined;
 };
 
-/** The account runtime's data context over a grant that stays at `view`. */
-const dataOver = (view: AccessGrantView): ZeropsDataContextValue =>
+/** The account runtime's data context over a grant that goes through `views`, then stays. */
+const dataOver = (...views: ReadonlyArray<AccessGrantView>): ZeropsDataContextValue =>
   ({
     runtime: {
-      access: { changes: Stream.make(view), clock: tabClock },
+      access: {
+        changes: Stream.concat(Stream.fromIterable(views), Stream.never),
+        clock: tabClock,
+      },
     } as unknown as ManagedZeropsDataRuntime,
     organizationRef: () => {
       throw new Error("unused");
@@ -71,6 +73,26 @@ const closedView: AccessGrantView = {
   failure: null,
   overdue: false,
 };
+
+/** The tab's clock now, as the grant reads it. */
+const nowCtx = () => ({
+  now: {
+    wall: tabClock.currentTimeMillisUnsafe(),
+    mono: Number(tabClock.monotonicTimeNanosUnsafe()) / 1_000_000,
+  },
+  policy: DEFAULT_ZEROPS_GRANT_POLICY,
+});
+
+/** A grant whose first round is in flight: nothing is verified yet. */
+const verifyingNow = (): AccessGrantView => ({
+  machine: transitionGrant(
+    initialGrant({ hidden: false, online: true }, nowCtx().now),
+    { type: "START" },
+    nowCtx(),
+  ).state,
+  failure: null,
+  overdue: false,
+});
 
 /** A grant whose first round was admitted just now, on the clock the hook reads. */
 const grantedNow = (): AccessGrantView => {
@@ -99,6 +121,8 @@ const grantedNow = (): AccessGrantView => {
 afterEach(() => {
   closeAccountLifetime();
   reactHookHarness.reset();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("useAtomCommand", () => {
@@ -162,5 +186,38 @@ describe("useAtomCommand", () => {
 
     expect(run).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ _tag: "Success", value: "done" });
+  });
+
+  it("waits for a refusal the grant can still change, and runs the command once it is admitted", async () => {
+    openAccountLifetime("account-1");
+    provide(dataOver(verifyingNow(), grantedNow()));
+    const run = vi.fn(async () => AsyncResult.success("done"));
+
+    reactHookHarness.beginRender();
+    const result = await useAtomCommand({ label: "send", run })("hello");
+
+    expect(run).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ _tag: "Success", value: "done" });
+  });
+
+  it("returns a refusal still waitable after 30 s as the command's failure, and reports it", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    openAccountLifetime("account-1");
+    provide(dataOver(verifyingNow()));
+    const run = vi.fn(async () => AsyncResult.success("done"));
+
+    reactHookHarness.beginRender();
+    const pending = useAtomCommand({ label: "send", run })("hello");
+    await vi.advanceTimersByTimeAsync(30_000);
+    const result = await pending;
+
+    expect(run).not.toHaveBeenCalled();
+    expect(result._tag === "Failure" && Cause.squash(result.cause)).toMatchObject({
+      _tag: "CapabilityRefusal",
+      reason: "access-unverified",
+      waitable: true,
+    });
+    expect(warn).toHaveBeenCalledWith("[atom-command] send failed", expect.anything());
   });
 });

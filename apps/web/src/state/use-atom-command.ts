@@ -8,6 +8,7 @@ import {
   type AtomCommand,
   type AtomCommandOptions,
   type AtomCommandResult,
+  reportAtomCommandResult,
   runAtomCommand,
 } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -26,8 +27,9 @@ const SIGN_IN_ENDED = new CapabilityRefusal({
 /**
  * Runs a command once the account's own evidence admits it, waiting for a
  * waitable refusal as long as a command waits (DESIGN §4.3, D4(b)). A refusal
- * comes back as the command's typed failure, for its caller to show; a result
- * that arrives after its account closed is interrupted, never shown.
+ * comes back as the command's typed failure, for its caller to show, and is
+ * reported as any failure of the command is; a result that arrives after its
+ * account closed is interrupted, never shown.
  */
 export function useAtomCommand<A, E, W>(
   command: AtomCommand<W, A, E>,
@@ -56,12 +58,15 @@ export function useAtomCommand<A, E, W>(
                 .pipe(Effect.match({ onFailure: (refused) => refused, onSuccess: () => null })),
             );
       if (!alive()) return AsyncResult.failure(Cause.interrupt(0));
-      if (refusal !== null) return AsyncResult.failure(Cause.fail(refusal));
-      const result = await runAtomCommand(registry, command, value, {
-        label,
-        reportFailure,
-        reportDefect,
-      });
+      const reporting = { label, reportFailure, reportDefect };
+      if (refusal !== null) {
+        const refused: AtomCommandResult<A, E | CapabilityRefusal> = AsyncResult.failure(
+          Cause.fail(refusal),
+        );
+        reportAtomCommandResult(refused, reporting);
+        return refused;
+      }
+      const result = await runAtomCommand(registry, command, value, reporting);
       return alive() ? result : AsyncResult.failure(Cause.interrupt(0));
     },
     [capabilities, command, label, registry, reportDefect, reportFailure],
