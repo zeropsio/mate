@@ -121,6 +121,9 @@ const keyOf = ({ machine, nowMs }: ModelState): string =>
 
 const CAPPED: ReadonlySet<string> = new Set(Object.keys(CONTAINER_CAPS_MS));
 
+const sinceOf = (state: ContainerMachine["state"]): Instant | null =>
+  "since" in state ? state.since : null;
+
 const violations = (before: ModelState, event: ModelEvent, after: ModelState): Array<string> => {
   const found: Array<string> = [];
   const was = before.machine;
@@ -134,8 +137,15 @@ const violations = (before: ModelState, event: ModelEvent, after: ModelState): A
       found.push(`I13: ${event.type} changed the intent`);
     }
   }
-  if (was.state.level === is.state.level && was.overdue && !is.overdue) {
-    found.push(`I13: ${is.state.level} lost overdue without a level change`);
+  // A level begins on another level kind, or on the same one from a new `since` (a fresh intent).
+  const begins =
+    was.state.level !== is.state.level ||
+    JSON.stringify(sinceOf(was.state)) !== JSON.stringify(sinceOf(is.state));
+  if (!begins && was.overdue && !is.overdue) {
+    found.push(`I13: ${is.state.level} lost overdue without a new level`);
+  }
+  if (begins && is.overdue) {
+    found.push(`I13: ${is.state.level} began overdue`);
   }
   if (is.overdue && !CAPPED.has(is.state.level)) {
     found.push(`overdue on ${is.state.level}, which has no cap`);

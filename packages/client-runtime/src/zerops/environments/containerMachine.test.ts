@@ -157,6 +157,56 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(answered.machine.overdue).toBe(false);
   });
 
+  it("a new intent on the level the container is already on starts on time", () => {
+    // The platform's restart ran past its budget; the user restarts it again.
+    const stalled = drive(
+      [
+        { type: "PLATFORM", status: { project: "ACTIVE", service: "RESTARTING" } },
+        { type: "TICK" },
+      ],
+      ready(),
+    );
+    expect(containerVerdict(stalled.machine)).toEqual({
+      level: "restarting",
+      by: "platform",
+      overdue: true,
+    });
+    const restart = drive(
+      [{ type: "INTENT", intent: { kind: "restart", since: instant(stalled.nowMs + 1_000) } }],
+      stalled,
+    );
+    expect(containerVerdict(restart.machine)).toEqual({
+      level: "restarting",
+      by: "you",
+      overdue: false,
+    });
+    expect(restart.machine.timer).toEqual(instant(restart.nowMs + 180_000));
+
+    // An update ran past its budget; the user retries it.
+    const late = drive(
+      [
+        {
+          type: "INTENT",
+          intent: { kind: "update", since: instant(START_MS + 3_000), from: "0.11.40" },
+        },
+        { type: "TICK" },
+      ],
+      ready(),
+    );
+    expect(containerVerdict(late.machine)).toEqual({ level: "updating", overdue: true });
+    const retried = drive(
+      [
+        {
+          type: "INTENT",
+          intent: { kind: "update", since: instant(late.nowMs + 1_000), from: "0.11.40" },
+        },
+      ],
+      late,
+    );
+    expect(containerVerdict(retried.machine)).toEqual({ level: "updating", overdue: false });
+    expect(retried.machine.timer).toEqual(instant(retried.nowMs + 120_000));
+  });
+
   const PLATFORM_ROWS: ReadonlyArray<{
     readonly project: string;
     readonly service: string | null;

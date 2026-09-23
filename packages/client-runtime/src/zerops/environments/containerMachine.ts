@@ -62,7 +62,7 @@ export type ContainerLevel =
 
 export interface ContainerMachine {
   readonly state: ContainerLevel;
-  /** The current level's cap ran out; only a level change clears it. */
+  /** The current level's cap ran out; only a new level (or a new `since` on it) clears it. */
   readonly overdue: boolean;
   readonly platform: PlatformStatus | null;
   /** A platform process (a start, a restart) is running against the container. */
@@ -243,11 +243,17 @@ const withTimer = (machine: ContainerMachine): ContainerMachine => {
   return sameJson(timer, machine.timer) ? machine : { ...machine, timer };
 };
 
-/** Moves to `next`, clearing `overdue` when the level itself changes. */
+const sinceOf = (state: ContainerLevel): Instant | null => ("since" in state ? state.since : null);
+
+/**
+ * Moves to `next`, clearing `overdue` when a new level begins: another level, or the same one
+ * from a new `since` (an intent of ours on the level the container is already on).
+ */
 const moveTo = (machine: ContainerMachine, next: ContainerLevel): ContainerMachine => {
   if (sameJson(machine.state, next)) return machine;
-  const sameLevel = machine.state.level === next.level;
-  return { ...machine, state: next, overdue: sameLevel ? machine.overdue : false };
+  const begins =
+    machine.state.level !== next.level || !sameJson(sinceOf(machine.state), sinceOf(next));
+  return { ...machine, state: next, overdue: begins ? false : machine.overdue };
 };
 
 /** A reading counts for the current level only if its probe left after the level began. */
