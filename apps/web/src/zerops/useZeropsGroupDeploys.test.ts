@@ -112,11 +112,75 @@ environments:
 }
 
 describe("readGroupDeploys", () => {
+  it("Merge re-reads only that repository's main on the deploy side", async () => {
+    const calls: string[] = [];
+    const client = {
+      getBranch: async (owner: string, repo: string, branch: string) => {
+        calls.push(`branch ${owner}/${repo} ${branch}`);
+        return { commit: { id: "c0ffee0000000000000000000000000000000000" } };
+      },
+      commitDetail: async (owner: string, repo: string, sha: string) => {
+        calls.push(`commit ${owner}/${repo}@${sha.slice(0, 7)}`);
+        return { sha, subject: "Add the cart" };
+      },
+      compareCommits: async () => {
+        calls.push("compare");
+        return [];
+      },
+    } as unknown as GiteaClient;
+    const apiContents = { service: "api", commits: [{ sha: "a1", subject: "Earlier" }] };
+    const held: ZeropsGroupDeployState = {
+      declarations: [],
+      environments: [],
+      pullRequests: [],
+      missing: [],
+      mainHeadRepositories: new Map([
+        ["app", "appdev"],
+        ["api", "apidev"],
+      ]),
+      mainHeads: new Map([
+        ["app", SHA],
+        ["api", "a1"],
+      ]),
+      releaseContents: [
+        { service: "app", commits: [{ sha: SHA, subject: "Before the merge" }] },
+        apiContents,
+      ],
+    };
+    const update = await readGroupDeploys({
+      client,
+      group: GROUP,
+      scope: { kind: "main-head", repository: "appdev" },
+      readVersion: () => Promise.reject(new Error("not read on a merge")),
+      held,
+      signal: new AbortController().signal,
+    });
+    expect(calls).toEqual(["branch harbor/appdev main", "commit harbor/appdev@c0ffee0"]);
+    const next = update(held);
+    expect(next?.mainHeads).toEqual(
+      new Map([
+        ["app", "c0ffee0000000000000000000000000000000000"],
+        ["api", "a1"],
+      ]),
+    );
+    // The other repository's release contents are the ones already held.
+    expect(next?.releaseContents).toEqual([
+      {
+        service: "app",
+        commits: [{ sha: "c0ffee0000000000000000000000000000000000", subject: "Add the cart" }],
+      },
+      apiContents,
+    ]);
+    expect(next?.releaseContents[1]).toBe(apiContents);
+    expect(next?.environments).toBe(held.environments);
+  });
+
   it("keeps the version the group last read when reading it again fails", async () => {
     const client = groupRepo();
     const first = await readGroupDeploys({
       client,
       group: GROUP,
+      scope: "group",
       readVersion: async () => SHA,
       held: undefined,
       signal: new AbortController().signal,
@@ -127,6 +191,7 @@ describe("readGroupDeploys", () => {
     const again = await readGroupDeploys({
       client,
       group: GROUP,
+      scope: "group",
       readVersion: () => Promise.reject(new Error("the platform refused the read")),
       held,
       signal: new AbortController().signal,
@@ -139,6 +204,7 @@ describe("readGroupDeploys", () => {
     const update = await readGroupDeploys({
       client,
       group: GROUP,
+      scope: "group",
       readVersion: async () => SHA,
       held: undefined,
       signal: new AbortController().signal,
@@ -155,6 +221,7 @@ describe("readGroupDeploys", () => {
       readGroupDeploys({
         client,
         group: GROUP,
+        scope: "group",
         readVersion: async () => SHA,
         held: undefined,
         signal: new AbortController().signal,

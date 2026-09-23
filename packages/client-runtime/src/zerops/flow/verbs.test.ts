@@ -10,10 +10,13 @@ describe("flowVerbInvalidations", () => {
     readonly expected: FlowInvalidation;
   }> = [
     {
-      // The pull request and its repository's lists, and `main`, whose head
-      // the deploy half reads for what a release would carry.
+      // The pull request and its repository's lists, and that repository's
+      // `main`, whose head the deploy half reads for what a release would carry.
       verb: { kind: "merge", slug: "harbor", repository: "appdev", number: 4 },
-      expected: { forge: { kind: "repository", repository: "appdev" }, deploys: "group" },
+      expected: {
+        forge: { kind: "repository", repository: "appdev" },
+        deploys: { kind: "main-head", repository: "appdev" },
+      },
     },
     {
       verb: { kind: "open", slug: "harbor", repository: "appdev", head: "mate/ada" },

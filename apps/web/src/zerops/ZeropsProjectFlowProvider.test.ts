@@ -15,6 +15,7 @@ const deployState = (): ZeropsGroupDeployState => ({
   environments: [],
   pullRequests: [],
   missing: [],
+  mainHeadRepositories: new Map([["app", "appdev"]]),
   mainHeads: new Map([["app", "3f9c1b2000000000000000000000000000000000"]]),
   releaseContents: [],
 });

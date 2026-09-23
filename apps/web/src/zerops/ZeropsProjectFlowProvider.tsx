@@ -370,7 +370,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (groupId === undefined) return;
       const changed = flowVerbInvalidations(verb);
       if (changed.forge !== null) invalidateForge(groupId, changed.forge);
-      if (changed.deploys !== null) invalidateDeploys(groupId);
+      if (changed.deploys !== null) invalidateDeploys(groupId, changed.deploys);
     },
     [invalidateDeploys, invalidateForge],
   );
