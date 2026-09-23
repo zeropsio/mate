@@ -145,7 +145,7 @@ function installTestDom(): void {
 }
 
 /** A document and a window that record which listeners are held on them. */
-function installListenerDom() {
+function installListenerDom(visibility: DocumentVisibilityState = "visible") {
   const held = { document: new Map<string, unknown>(), window: new Map<string, unknown>() };
   const target = (on: Map<string, unknown>) => ({
     addEventListener: (type: string, listener: unknown) => {
@@ -155,9 +155,15 @@ function installListenerDom() {
       if (on.get(type) === listener) on.delete(type);
     },
   });
-  vi.stubGlobal("document", { visibilityState: "visible", ...target(held.document) });
+  const document = { visibilityState: visibility, ...target(held.document) };
+  vi.stubGlobal("document", document);
   vi.stubGlobal("window", target(held.window));
-  return held;
+  /** Shows or hides the tab, as the browser tells the document. */
+  const show = (next: DocumentVisibilityState) => {
+    document.visibilityState = next;
+    (held.document.get("visibilitychange") as () => void)();
+  };
+  return { held, show };
 }
 
 describe("the account's Gitea sessions and the tab's signals", () => {
@@ -167,7 +173,7 @@ describe("the account's Gitea sessions and the tab's signals", () => {
   });
 
   it("loading the module listens for neither visibility nor online", async () => {
-    const held = installListenerDom();
+    const { held } = installListenerDom();
     vi.resetModules();
     await import("./accountGiteaSessions");
 
@@ -176,7 +182,7 @@ describe("the account's Gitea sessions and the tab's signals", () => {
   });
 
   it("an open account listens for visibility and online, and its close lets both go", () => {
-    const held = installListenerDom();
+    const { held } = installListenerDom();
 
     signIn("person-a");
     expect(held.document.has("visibilitychange")).toBe(true);
@@ -185,6 +191,26 @@ describe("the account's Gitea sessions and the tab's signals", () => {
     closeAccountLifetime();
     expect(held.document.has("visibilitychange")).toBe(false);
     expect(held.window.has("online")).toBe(false);
+  });
+
+  it("an account opened while the tab is hidden wakes its Gitea sessions when shown after 30 s", () => {
+    vi.useFakeTimers({ toFake: ["performance"] });
+    try {
+      const { show } = installListenerDom("hidden");
+      signIn("person-a");
+      const sessions = accountGiteaSessions();
+      if (sessions === null) throw new Error("no account open");
+      const wake = vi.spyOn(sessions, "wake");
+      const resume = vi.spyOn(sessions, "resume");
+
+      vi.advanceTimersByTime(30_000);
+      show("visible");
+
+      expect(wake).toHaveBeenCalledTimes(1);
+      expect(resume).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

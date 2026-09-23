@@ -59,7 +59,8 @@ function changed(): void {
  */
 function bindTabSignals(sessions: GiteaSessions): () => void {
   if (typeof document === "undefined") return () => undefined;
-  let hiddenSinceMs: number | null = null;
+  // An account opened on a hidden tab has been hidden since it opened.
+  let hiddenSinceMs: number | null = tabVisible() ? null : performance.now();
   const onVisibility = () => {
     if (!tabVisible()) {
       hiddenSinceMs = performance.now();
