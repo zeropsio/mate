@@ -436,16 +436,16 @@ describe("a stop's line", () => {
     ...over,
   });
   it.each([
-    [{ state: "deployed" }, { text: "Deployed e014b0e", tone: "ok" }],
-    [{ state: "deploying" }, { text: "Deploying e014b0e", tone: "busy" }],
-    [{ state: "failed" }, { text: "Failed e014b0e", tone: "failed" }],
+    [{ state: "deployed" }, { word: "Deployed", version: "e014b0e", tone: "ok" }],
+    [{ state: "deploying" }, { word: "Deploying", version: "e014b0e", tone: "busy" }],
+    [{ state: "failed" }, { word: "Failed", version: "e014b0e", tone: "failed" }],
     [
       { state: "empty", version: undefined },
-      { text: "Nothing deployed yet", tone: "off" },
+      { word: "Nothing deployed yet", version: undefined, tone: "off" },
     ],
     [
       { state: "checking", version: undefined },
-      { text: "Checking what runs here…", tone: "off" },
+      { word: "Checking what runs here…", version: undefined, tone: "off" },
     ],
   ] as const)("reads %j as %j", (over, expected) => {
     expect(stopLine(stop(over))).toEqual(expected);

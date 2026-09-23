@@ -199,7 +199,7 @@ describe("the Overview", () => {
   it("draws a group stage under main only where one exists — never an empty slot", () => {
     const withStage = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
     expect(withStage).toContain('data-zerops-surface="flow-stage"');
-    expect(withStage).toContain(">stage · Checking what runs here…<");
+    expect(withStage).toContain(">Checking what runs here…<");
     expect(withStage).not.toContain("follows main");
     const without = section(render({ groups: [RELEASING] }), 'data-zerops-group="aaa"');
     expect(without).not.toContain('data-zerops-surface="flow-stage"');

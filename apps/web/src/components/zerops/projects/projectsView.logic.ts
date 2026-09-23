@@ -359,22 +359,28 @@ const STOP_ROW_TONE: Record<"deploying" | "deployed" | "failed", GroupRowTone> =
   failed: "bad",
 };
 
-/** What a stop runs, as its line and the tone of its dot: `Deployed e014b0e`. */
+/**
+ * What a stop runs, as its state word, the version it names and the tone of
+ * its dot: `Deployed` · `e014b0e`. The word is the fact; the version may give
+ * way where the line is short.
+ */
 export function stopLine(stop: GroupFlowStop): {
-  readonly text: string;
+  readonly word: string;
+  readonly version: string | undefined;
   readonly tone: ServiceStatusToneId;
 } {
   const tone = STOP_TONE[stop.state];
   switch (stop.state) {
     case "checking":
-      return { text: CHECKING_WHAT_RUNS, tone };
+      return { word: CHECKING_WHAT_RUNS, version: undefined, tone };
     case "empty":
-      return { text: NOTHING_DEPLOYED, tone };
-    default: {
-      const word = deployWord(STOP_ROW_TONE[stop.state]) ?? "";
-      const label = stop.version?.label;
-      return { text: label === undefined ? word : `${word} ${label}`, tone };
-    }
+      return { word: NOTHING_DEPLOYED, version: undefined, tone };
+    default:
+      return {
+        word: deployWord(STOP_ROW_TONE[stop.state]) ?? "",
+        version: stop.version?.label,
+        tone,
+      };
   }
 }
 

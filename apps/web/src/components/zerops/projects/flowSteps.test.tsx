@@ -69,19 +69,36 @@ describe("a stage line", () => {
     ...over,
   });
 
-  it("reads stage · Deployed … on one line, with no route", () => {
+  it.each(["line", "box"] as ReadonlyArray<Density>)(
+    "reads ↳ Deployed … on one line where the group has one stage, with no name and no route: %s",
+    (density) => {
+      const html = renderToStaticMarkup(<StageLines density={density} stages={[stop()]} />);
+      expect(html.match(/data-zerops-surface="flow-stage"/gu)).toHaveLength(1);
+      expect(html).toContain("↳");
+      expect(html).not.toContain("stage ·");
+      expect(html).not.toContain("follows main");
+      expect(html).not.toContain("stage.example.test");
+    },
+  );
+
+  it("keeps the state word whole: only the version gives way", () => {
     const html = renderToStaticMarkup(<StageLines density="line" stages={[stop()]} />);
-    expect(html.match(/data-zerops-surface="flow-stage"/gu)).toHaveLength(1);
-    expect(html).toContain("↳");
-    expect(html).toContain(">stage · Deployed e014b0e<");
-    expect(html).not.toContain("follows main");
-    expect(html).not.toContain("stage.example.test");
+    expect(html).toMatch(
+      /class="inline-flex min-w-0 items-center gap-1\.5 shrink-0"[^>]*>.*?<span class="min-w-0 truncate">Deployed<\/span>/u,
+    );
+    expect(html).toContain('<span class="min-w-0 truncate tabular-nums">e014b0e</span>');
+    const empty = renderToStaticMarkup(
+      <StageLines density="line" stages={[stop({ state: "empty", version: undefined })]} />,
+    );
+    expect(empty).toContain(">Nothing deployed yet<");
+    expect(empty).not.toContain("tabular-nums");
   });
 
   it("names each stage where there are two, and a row counts the rest", () => {
     const two = [stop({ name: "stage-eu" }), stop({ projectId: "second", name: "stage-us" })];
     const line = renderToStaticMarkup(<StageLines density="line" stages={two} />);
-    expect(line).toContain(">stage-eu · Deployed e014b0e<");
+    expect(line).toContain(">stage-eu ·<");
+    expect(line).toContain(">Deployed<");
     expect(line).toContain("· +1");
     expect(line).not.toContain("stage-us");
     const box = renderToStaticMarkup(

@@ -235,9 +235,11 @@ export function MateChip({
 }
 
 /**
- * A group stage, as one line under `main`: `↳ ● stage · Deployed e014b0e`.
- * It says what the stage runs and nothing else — where it lives is its menu's.
- * A row draws the first and counts the rest; a box draws each, with its menu.
+ * A group stage, as one line under `main`: `↳ ● Deployed e014b0e`. The `↳`
+ * places it under `main`, so a lone stage needs no name; where there are two,
+ * each says its own. It says what the stage runs and nothing else — where it
+ * lives is its menu's. The state word stays whole; the version gives way. A
+ * row draws the first and counts the rest; a box draws each, with its menu.
  */
 export function StageLines({
   stages,
@@ -252,7 +254,6 @@ export function StageLines({
   const more = stages.length - shown.length;
   return shown.map((stop) => {
     const line = stopLine(stop);
-    const word = stages.length > 1 ? stop.name : "stage";
     const menu = menuFor?.(stop.projectId);
     return (
       <span
@@ -261,7 +262,11 @@ export function StageLines({
         key={stop.projectId}
       >
         <span aria-hidden="true">↳</span>
-        <StatusDot className="min-w-0" label={`${word} · ${line.text}`} sentence tone={line.tone} />
+        {stages.length > 1 ? <span className="min-w-0 truncate">{stop.name} ·</span> : null}
+        <StatusDot className="shrink-0" label={line.word} sentence tone={line.tone} />
+        {line.version === undefined ? null : (
+          <span className="min-w-0 truncate tabular-nums">{line.version}</span>
+        )}
         {more > 0 ? <span className="shrink-0">· +{more}</span> : null}
         {drawn(menu) ? <span className="ms-auto flex shrink-0">{menu}</span> : null}
       </span>
