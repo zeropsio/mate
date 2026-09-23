@@ -15,12 +15,7 @@
  * The rule itself is `mateAccess.ts` → `@t3tools/shared/zeropsRoles`, the same
  * function the Mate's door runs before it refuses.
  */
-import {
-  ZeropsApiError,
-  type ZeropsApiClient,
-  type ZeropsOrganization,
-  type ZeropsProject,
-} from "@t3tools/client-runtime/zerops";
+import type { ZeropsOrganization, ZeropsProject } from "@t3tools/client-runtime/zerops";
 import {
   resolveMateVisibility,
   type RoleMateVisibility,
@@ -71,43 +66,4 @@ export function operableProjectAccess(
   return role === "OWNER" || role === "ADMIN" || role === "BASIC_USER"
     ? { project, role, visibility }
     : null;
-}
-
-/** Access verification reads are admission evidence only; platform records are
- * published exclusively by ZeropsDataRuntime. */
-export async function verifyOperableProjects(
-  client: Pick<ZeropsApiClient, "listAccessibleClientProjects" | "fetchProject">,
-  membership: ZeropsOrganization,
-  previouslyVerified: ReadonlyArray<Pick<ZeropsProject, "id" | "clientId">> = [],
-): Promise<ReadonlyArray<OperableProjectAccess>> {
-  const listed = await client.listAccessibleClientProjects(membership.id);
-  const targets = [
-    ...new Map(
-      [
-        ...listed,
-        ...previouslyVerified.filter((project) => project.clientId === membership.id),
-      ].map((project) => [project.id, project]),
-    ).values(),
-  ];
-  const projects: Array<OperableProjectAccess | null> = new Array(targets.length);
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(4, targets.length) }, async () => {
-      while (cursor < targets.length) {
-        const index = cursor++;
-        try {
-          const project = await client.fetchProject(targets[index]!.id);
-          projects[index] = operableProjectAccess(project, membership);
-        } catch (cause) {
-          if (
-            !(cause instanceof ZeropsApiError) ||
-            !["forbidden", "not-found"].includes(cause.kind)
-          )
-            throw cause;
-          projects[index] = null;
-        }
-      }
-    }),
-  );
-  return projects.filter((project): project is OperableProjectAccess => project !== null);
 }

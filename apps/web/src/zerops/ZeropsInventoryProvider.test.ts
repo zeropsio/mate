@@ -17,7 +17,6 @@ import {
   inventoryProjectRefs,
   isInterestBlocked,
   isPausedOnlyRound,
-  supplementalAccessFor,
 } from "./ZeropsInventoryProvider";
 
 const account = {
@@ -54,7 +53,7 @@ describe("inventoryProjectRefs", () => {
       ],
     };
 
-    expect(inventoryProjectRefs([{ ref: existing }], access)).toEqual([existing, created]);
+    expect(inventoryProjectRefs([existing], access)).toEqual([existing, created]);
   });
 });
 
@@ -205,58 +204,6 @@ describe("isPausedOnlyRound", () => {
   it("is false when any demanded interest is stuck for a reason other than background pause", () => {
     expect(isPausedOnlyRound([paused, recovering])).toBe(false);
     expect(isPausedOnlyRound([paused, undefined])).toBe(false);
-  });
-});
-
-describe("supplementalAccessFor", () => {
-  const epoch = AccountEpoch.make(1);
-  const verifiedAccess: AccessState = {
-    status: "verified",
-    account,
-    accountEpoch: epoch,
-    verifiedAtMs: 0,
-    deadlineMs: 10_000,
-    mutationsAllowed: true,
-    organizations: [{ organization, mutationsAllowed: true }],
-    projects: [{ project: project("created"), role: "OWNER", mutationsAllowed: true }],
-  };
-
-  it("passes access through as-is while verification has not completed a round yet", () => {
-    expect(
-      supplementalAccessFor({ verificationStatus: "loading", access: verifiedAccess, epoch }),
-    ).toBe(verifiedAccess);
-    expect(supplementalAccessFor({ verificationStatus: "loading", access: undefined, epoch })).toBe(
-      undefined,
-    );
-  });
-
-  it("keeps a verified access grant once verification is done, regardless of which verification revision produced it (H6)", () => {
-    // No `revision`/`admission` field in the input at all: a later
-    // verification round elsewhere (e.g. an unrelated candidates refresh)
-    // must not drop a command-established project's access mid-flight.
-    expect(
-      supplementalAccessFor({ verificationStatus: "verified", access: verifiedAccess, epoch }),
-    ).toBe(verifiedAccess);
-  });
-
-  it("drops access from a different account epoch even once verification is done", () => {
-    const otherEpochAccess: AccessState = { ...verifiedAccess, accountEpoch: AccountEpoch.make(2) };
-    expect(
-      supplementalAccessFor({ verificationStatus: "verified", access: otherEpochAccess, epoch }),
-    ).toBeUndefined();
-  });
-
-  it("drops non-verified access once verification is done", () => {
-    expect(
-      supplementalAccessFor({
-        verificationStatus: "verified",
-        access: { status: "verifying", accountEpoch: epoch, previous: null },
-        epoch,
-      }),
-    ).toBeUndefined();
-    expect(
-      supplementalAccessFor({ verificationStatus: "verified", access: undefined, epoch }),
-    ).toBeUndefined();
   });
 });
 

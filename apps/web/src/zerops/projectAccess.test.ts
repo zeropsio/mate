@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ZeropsApiError, type ZeropsProject } from "@t3tools/client-runtime/zerops";
-import {
-  canOperateProject,
-  operableProjectAccess,
-  projectVisibility,
-  verifyOperableProjects,
-} from "./projectAccess";
+import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
+import { canOperateProject, operableProjectAccess, projectVisibility } from "./projectAccess";
 const membership = {
   id: "org",
   membershipId: "membership",
@@ -37,40 +32,6 @@ describe("AL-08 / AL-10 authoritative project access", () => {
     ).toBe(visibility);
   });
 
-  it("keeps a READ_ONLY project in the tree, not openable", async () => {
-    const readOnly: ZeropsProject = {
-      ...project,
-      userRoles: [{ clientUserId: membership.membershipId, roleCode: "READ_ONLY" }],
-    };
-    const result = await verifyOperableProjects(
-      {
-        listAccessibleClientProjects: async () => [readOnly],
-        fetchProject: async () => readOnly,
-      },
-      membership,
-    );
-
-    expect(result).toEqual([{ project: readOnly, role: "READ_ONLY", visibility: "listed" }]);
-  });
-
-  it("drops a NO_ACCESS project — that Mate is not theirs to know about", async () => {
-    const hidden: ZeropsProject = {
-      ...project,
-      userRoles: [{ clientUserId: membership.membershipId, roleCode: "NO_ACCESS" }],
-    };
-    const result = await verifyOperableProjects(
-      {
-        listAccessibleClientProjects: async () => [hidden],
-        fetchProject: async () => hidden,
-      },
-      membership,
-    );
-
-    expect(result).toEqual([]);
-  });
-
-  // One project's read, classified on its own: a round turns each answer into
-  // that project's evidence without waiting for the others.
   it.each([
     ["OWNER", { role: "OWNER", visibility: "open" }],
     ["BASIC_USER", { role: "BASIC_USER", visibility: "open" }],
@@ -98,63 +59,6 @@ describe("AL-08 / AL-10 authoritative project access", () => {
         membership,
       ),
     ).toBe(allowed);
-  });
-  it.each(["forbidden", "not-found"] as const)(
-    "removes a project that becomes %s between list and detail",
-    async (kind) => {
-      const result = await verifyOperableProjects(
-        {
-          listAccessibleClientProjects: async () => [project],
-          fetchProject: async () => {
-            throw new ZeropsApiError("Gone", kind);
-          },
-        },
-        membership,
-      );
-      expect(result).toEqual([]);
-    },
-  );
-  it("fails an unavailable read instead of manufacturing a deletion", async () => {
-    await expect(
-      verifyOperableProjects(
-        {
-          listAccessibleClientProjects: async () => [project],
-          fetchProject: async () => {
-            throw new ZeropsApiError("Offline", "network");
-          },
-        },
-        membership,
-      ),
-    ).rejects.toMatchObject({ kind: "network" });
-  });
-  it("directly verifies a previously known project omitted by indexed search", async () => {
-    const requested: string[] = [];
-    const result = await verifyOperableProjects(
-      {
-        listAccessibleClientProjects: async () => [],
-        fetchProject: async (projectId) => {
-          requested.push(projectId);
-          return project;
-        },
-      },
-      membership,
-    );
-    expect(result).toEqual([]);
-    expect(requested).toEqual([]);
-
-    const verified = await verifyOperableProjects(
-      {
-        listAccessibleClientProjects: async () => [],
-        fetchProject: async (projectId) => {
-          requested.push(projectId);
-          return project;
-        },
-      },
-      membership,
-      [project],
-    );
-    expect(verified.map((entry) => entry.project.id)).toEqual([project.id]);
-    expect(requested).toEqual([project.id]);
   });
   it("does not accept an unrelated organization or a lowering override without a membership ID", () => {
     expect(canOperateProject(project, { ...membership, id: "different" })).toBe(false);
