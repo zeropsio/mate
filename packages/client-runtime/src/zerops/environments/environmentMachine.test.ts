@@ -561,3 +561,33 @@ describe("environment machine (DESIGN §4.4)", () => {
     });
   });
 });
+
+// DESIGN §9 C1b bounds a conversation shown without verified access by the moment its link dropped.
+describe("the link's drop (C1b)", () => {
+  it("a link that stops being connected is stamped with the moment it dropped", () => {
+    const live = connected();
+    expect(live.linkLostAt).toBeNull();
+
+    const dropped = drive(live, [{ type: "LINK", link: { phase: "backoff", retryAtMs: null } }]);
+    const lostAt = { wall: dropped.nowMs, mono: dropped.nowMs };
+    expect(dropped.machine.linkLostAt).toEqual(lostAt);
+
+    // Still down, whatever it says next: the drop keeps its first moment.
+    const reconnecting = drive(dropped.machine, [
+      { type: "LINK", link: { phase: "connecting" } },
+      { type: "LINK", link: { phase: "offline" } },
+    ]);
+    expect(reconnecting.machine.linkLostAt).toEqual(lostAt);
+
+    const back = drive(reconnecting.machine, [{ type: "LINK", link: { phase: "connected" } }]);
+    expect(back.machine.linkLostAt).toBeNull();
+  });
+
+  it("a link that never connected has no drop", () => {
+    const never = drive(initialEnvironment({ record: ENV_A }), [
+      { type: "LINK", link: { phase: "connecting" } },
+      { type: "LINK", link: { phase: "backoff", retryAtMs: null } },
+    ]);
+    expect(never.machine.linkLostAt).toBeNull();
+  });
+});

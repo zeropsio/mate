@@ -216,6 +216,11 @@ export interface EnvironmentMachine {
   readonly presence: Presence;
   readonly credential: Credential;
   readonly link: Link;
+  /**
+   * When the link last stopped being connected; null while it is connected, or before it first
+   * was. DESIGN §9 C1b bounds a conversation shown without verified access by it.
+   */
+  readonly linkLostAt: Instant | null;
   readonly container: ContainerVerdict;
   readonly guards: EnvironmentGuards;
   /** The registration record's environment (C1); null when nothing is remembered here. */
@@ -358,6 +363,7 @@ export const initialEnvironment = (input: {
   presence: { kind: "unknown" },
   credential: { kind: "none", reconnect: false },
   link: { phase: "idle" },
+  linkLostAt: null,
   container: { level: "unknown" },
   guards: IDLE_GUARDS,
   record: input.record,
@@ -687,6 +693,7 @@ const onLink = (
     const next: EnvironmentMachine = {
       ...machine,
       link: { phase: "connected", since: ctx.now },
+      linkLostAt: null,
       credential,
       permissionRetried: false,
       configurationBlocks: 0,
@@ -696,7 +703,12 @@ const onLink = (
       ? { ...next, failures: 0, ladder: INITIAL_BACKOFF }
       : next;
   }
-  const next: EnvironmentMachine = { ...machine, link: phase, credential };
+  const next: EnvironmentMachine = {
+    ...machine,
+    link: phase,
+    linkLostAt: machine.link.phase === "connected" ? ctx.now : machine.linkLostAt,
+    credential,
+  };
   return phase.phase === "blocked" ? onBlocked(next, phase.reason, ctx, out) : next;
 };
 
