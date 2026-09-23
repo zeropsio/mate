@@ -24,6 +24,8 @@ import {
   knownProjectsOf,
   knownServicesOf,
   projectKeyOf,
+  projectsSourceOf,
+  servicesSourceOf,
   type CollectionRead,
   type ProjectRecord,
   type ServiceRecord,
@@ -38,10 +40,8 @@ import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
 import { zeropsMateIdentities } from "./mateIdentities";
 import { inventoryProjectRefKey } from "./inventoryContext";
-import { useNowMs } from "./useNowMs";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
-  stabilizeZeropsAtom,
   useZeropsAtomSelections,
   useZeropsData,
   zeropsKnowledgeArraysEqual,
@@ -98,6 +98,79 @@ export function withZeropsConnection(
   return environmentId === undefined ? row : { ...row, group: "connected", environmentId };
 }
 
+/**
+ * The listing's items the account's grant admits. Dropping one leaves the
+ * listing partial: the organization holds a project this list does not show,
+ * so no surface may read "none" off it (M5).
+ */
+export function admittedOnly<T>(
+  listing: Known<ReadonlyArray<T>>,
+  admits: (item: T) => boolean,
+): Known<ReadonlyArray<T>> {
+  if (listing.state !== "known") return listing;
+  const value = listing.value.filter(admits);
+  return value.length === listing.value.length
+    ? listing
+    : { ...listing, value, coverage: "partial" };
+}
+
+function sameMembers<Record extends ProjectRecord | ServiceRecord>(
+  left: CollectionRead<Record>,
+  right: CollectionRead<Record>,
+): boolean {
+  return (
+    left.query === right.query &&
+    zeropsKnowledgeArraysEqual(left.value, right.value) &&
+    left.observation.access === right.observation.access
+  );
+}
+
+/**
+ * Whether two reads of the organization's projects are the same knowledge:
+ * the same query, members and access, and the same interest they are as
+ * current as. That interest failing leaves the query as it was, and is a new
+ * read; any other interest the account holds changing is not.
+ */
+export function sameProjectsRead(
+  left: CollectionRead<ProjectRecord>,
+  right: CollectionRead<ProjectRecord>,
+): boolean {
+  return sameMembers(left, right) && projectsSourceOf(left) === projectsSourceOf(right);
+}
+
+/** Whether two reads of a project's services are the same knowledge, like `sameProjectsRead`. */
+export function sameServicesRead(
+  left: CollectionRead<ServiceRecord>,
+  right: CollectionRead<ServiceRecord>,
+): boolean {
+  return sameMembers(left, right) && servicesSourceOf(left) === servicesSourceOf(right);
+}
+
+/** A read, and the moment this client saw it change. */
+interface StampedRead<Read> {
+  readonly read: Read;
+  readonly atMs: number;
+}
+
+/**
+ * Holds a read until it changes, stamped with the moment it did. The stamp is
+ * what `known.ts` dates a read with no value yet by (when it failed, or began
+ * to recover); taken here, it never ticks, so no clock re-derives the rows and
+ * hands every consumer a new array of the same candidates.
+ */
+function stampedReadAtom<Read>(
+  source: Atom.Atom<Read>,
+  same: (left: Read, right: Read) => boolean,
+): Atom.Atom<StampedRead<Read>> {
+  let previous: StampedRead<Read> | undefined;
+  return Atom.make((get) => {
+    const read = get(source);
+    if (previous !== undefined && same(previous.read, read)) return previous;
+    previous = { read, atMs: Date.now() };
+    return previous;
+  });
+}
+
 /** Every registered environment keyed by origin, socket up or not — who lives where is known before it connects. */
 function registeredZeropsOrigins(
   environments: ReadonlyArray<{
@@ -135,9 +208,9 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
   deployedAt: undefined,
   deployable: [],
 };
-const EMPTY_PROJECTS_READ_ATOM = Atom.make<CollectionRead<ProjectRecord> | null>(null).pipe(
-  Atom.withLabel("zerops:candidates-projects-empty"),
-);
+const EMPTY_PROJECTS_READ_ATOM = Atom.make<StampedRead<CollectionRead<ProjectRecord>> | null>(
+  null,
+).pipe(Atom.withLabel("zerops:candidates-projects-empty"));
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 const NO_CANDIDATES: ReadonlyArray<ZeropsCandidatePresentation> = [];
@@ -171,17 +244,10 @@ export function useZeropsCandidates(): {
     () =>
       activeOrganizationRef === null
         ? EMPTY_PROJECTS_READ_ATOM
-        : stabilizeZeropsAtom(
-            runtime.reads.projectsOf(activeOrganizationRef),
-            (left, right) =>
-              left.query === right.query &&
-              zeropsKnowledgeArraysEqual(left.value, right.value) &&
-              left.observation.access === right.observation.access,
-          ),
+        : stampedReadAtom(runtime.reads.projectsOf(activeOrganizationRef), sameProjectsRead),
     [activeOrganizationRef, runtime],
   );
   const rawProjects = useAtomValue(projectsReadAtom);
-  const nowMs = useNowMs();
   const serviceReadEntries = useMemo(
     () =>
       activeOrganizationRef === null
@@ -191,20 +257,15 @@ export function useZeropsCandidates(): {
               ? ([
                   [
                     projectKeyOf(ref),
-                    stabilizeZeropsAtom(
-                      runtime.reads.servicesOf(ref),
-                      (left, right) =>
-                        left.query === right.query &&
-                        zeropsKnowledgeArraysEqual(left.value, right.value) &&
-                        left.observation.access === right.observation.access,
-                    ),
+                    stampedReadAtom(runtime.reads.servicesOf(ref), sameServicesRead),
                   ],
                 ] as const)
               : [],
           ),
     [activeOrganizationRef, inventory.projectRefs, runtime],
   );
-  const serviceReads = useZeropsAtomSelections<CollectionRead<ServiceRecord>>(serviceReadEntries);
+  const serviceReads =
+    useZeropsAtomSelections<StampedRead<CollectionRead<ServiceRecord>>>(serviceReadEntries);
 
   const connectedOrigins = useMemo(() => authenticatedZeropsOrigins(environments), [environments]);
   const connectionsByOrigin = useMemo(
@@ -215,24 +276,18 @@ export function useZeropsCandidates(): {
 
   const listing = useMemo((): Known<ReadonlyArray<ZeropsCandidatePresentation>> => {
     if (!canLoad || activeOrganization === null || rawProjects === null) return UNREAD;
-    const projects = knownProjectsOf(rawProjects, nowMs);
-    const allowedProjects: Known<ReadonlyArray<ProjectRecord>> =
-      projects.state !== "known"
-        ? projects
-        : {
-            ...projects,
-            value: projects.value.filter((record) => {
-              const allowed = inventory.projectRefs.get(inventoryProjectRefKey(record.ref));
-              return (
-                allowed !== undefined &&
-                projectKeyOf(allowed) === projectKeyOf(record.ref) &&
-                serviceReads.has(projectKeyOf(record.ref))
-              );
-            }),
-          };
+    const projects = knownProjectsOf(rawProjects.read, rawProjects.atMs);
+    const allowedProjects = admittedOnly(projects, (record) => {
+      const allowed = inventory.projectRefs.get(inventoryProjectRefKey(record.ref));
+      return (
+        allowed !== undefined &&
+        projectKeyOf(allowed) === projectKeyOf(record.ref) &&
+        serviceReads.has(projectKeyOf(record.ref))
+      );
+    });
     const selected = selectCandidates(allowedProjects, (ref) => {
       const read = serviceReads.get(projectKeyOf(ref));
-      return read === undefined ? UNREAD : knownServicesOf(read, nowMs);
+      return read === undefined ? UNREAD : knownServicesOf(read.read, read.atMs);
     });
     if (selected.state !== "known") return selected;
     return {
@@ -270,7 +325,6 @@ export function useZeropsCandidates(): {
     connectionsByOrigin,
     inventory.projectRefs,
     inventory.projects,
-    nowMs,
     rawProjects,
     serviceReads,
     services,

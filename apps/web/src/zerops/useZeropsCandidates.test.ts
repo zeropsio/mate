@@ -3,8 +3,24 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  interestKeyOf,
+  makeInitialZeropsDataState,
+  selectProjectsOf,
+  ReceiptOrdinal,
+  selectServicesOf,
+  type InterestState,
+} from "@t3tools/client-runtime/zerops/data";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 
-import { authenticatedZeropsOrigins, withZeropsConnection } from "./useZeropsCandidates";
+import { identity, organization, project, scope } from "./__fixtures__/platformData";
+import {
+  admittedOnly,
+  authenticatedZeropsOrigins,
+  sameProjectsRead,
+  sameServicesRead,
+  withZeropsConnection,
+} from "./useZeropsCandidates";
 
 const PROJECT: ZeropsProject = {
   id: "project-1",
@@ -56,5 +72,85 @@ describe("authenticatedZeropsOrigins", () => {
       group: "connected",
       environmentId,
     });
+  });
+});
+
+describe("admittedOnly", () => {
+  const listing = (value: ReadonlyArray<string>): Known<ReadonlyArray<string>> => ({
+    state: "known",
+    value,
+    asOf: { ordinal: 3, atMs: 30 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+
+  it("leaves a listing partial when it drops a project the grant has not admitted, never a complete none", () => {
+    expect(admittedOnly(listing(["created-in-another-tab"]), () => false)).toEqual({
+      ...listing([]),
+      coverage: "partial",
+    });
+  });
+
+  it("keeps a listing whose every project is admitted as it was", () => {
+    const whole = listing(["a", "b"]);
+    expect(admittedOnly(whole, () => true)).toEqual(whole);
+  });
+
+  it("passes a listing it does not hold through", () => {
+    const unread: Known<ReadonlyArray<string>> = { state: "unread", waitingFor: "access-grant" };
+    expect(admittedOnly(unread, () => false)).toBe(unread);
+  });
+});
+
+describe("a held read", () => {
+  const establishing = (key: InterestState["identity"]["key"]): InterestState => ({
+    status: "establishing",
+    identity: { ...identity(), key },
+    startedAtMs: 0,
+    deadlineMs: 60_000,
+    progress: {
+      requiredRegistrations: 1,
+      completedRegistrations: 0,
+      requiredReads: 1,
+      completedReads: 0,
+      crossedReceiptOrdinal: ReceiptOrdinal.make(0),
+    },
+  });
+  const failed = (from: InterestState): InterestState => ({
+    status: "failed",
+    identity: from.identity,
+    reason: "gateway",
+    retryable: true,
+    attempts: 1,
+    retryAtMs: 90_000,
+  });
+
+  it("changes when its projects' interest fails, though the query did not", () => {
+    const read = selectProjectsOf(makeInitialZeropsDataState(scope()), organization);
+    const feeder = establishing(interestKeyOf({ kind: "organization-inventory", organization }));
+    const before = { ...read, observation: { ...read.observation, required: [feeder] } };
+    const after = { ...read, observation: { ...read.observation, required: [failed(feeder)] } };
+
+    expect(sameProjectsRead(before, after)).toBe(false);
+  });
+
+  it("holds when only an interest that does not feed it changes", () => {
+    const read = selectProjectsOf(makeInitialZeropsDataState(scope()), organization);
+    const other = establishing(
+      interestKeyOf({ kind: "project-topology", project: project(), includeCurrentMetrics: false }),
+    );
+    const before = { ...read, observation: { ...read.observation, required: [other] } };
+    const after = { ...read, observation: { ...read.observation, required: [failed(other)] } };
+
+    expect(sameProjectsRead(before, after)).toBe(true);
+  });
+
+  it("changes when its services' interest fails, though the query did not", () => {
+    const read = selectServicesOf(makeInitialZeropsDataState(scope()), project());
+    const feeder = establishing(interestKeyOf({ kind: "project-inventory", project: project() }));
+    const before = { ...read, observation: { ...read.observation, required: [feeder] } };
+    const after = { ...read, observation: { ...read.observation, required: [failed(feeder)] } };
+
+    expect(sameServicesRead(before, after)).toBe(false);
   });
 });
