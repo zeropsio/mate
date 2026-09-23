@@ -186,7 +186,24 @@ describe("inventory knowledge", () => {
       readonly interests: ReadonlyArray<InterestState>;
       readonly freshness: unknown;
     }>([
-      { name: "nobody leases it: as read", interests: [], freshness: { kind: "settled" } },
+      {
+        name: "no interest feeds it: not current, and nothing retries it",
+        interests: [],
+        freshness: {
+          kind: "stale",
+          reason: { kind: "source-recovering", retryAtMs: null },
+          sinceMs: 40,
+        },
+      },
+      {
+        name: "paused because nobody leases it: not current, and nothing retries it",
+        interests: [{ status: "paused", identity: id, reason: "no-leases" }],
+        freshness: {
+          kind: "stale",
+          reason: { kind: "source-recovering", retryAtMs: null },
+          sinceMs: 40,
+        },
+      },
       {
         name: "observing: live",
         interests: [
@@ -207,7 +224,7 @@ describe("inventory knowledge", () => {
         freshness: { kind: "revalidating", sinceMs: 40 },
       },
       {
-        name: "recovering: stale until its retry",
+        name: "recovering: stale since its value was read, until its retry",
         interests: [
           {
             status: "recovering",
@@ -221,7 +238,7 @@ describe("inventory knowledge", () => {
         freshness: {
           kind: "stale",
           reason: { kind: "source-recovering", retryAtMs: 7_000 },
-          sinceMs: NOW,
+          sinceMs: 40,
         },
       },
       {
@@ -230,7 +247,7 @@ describe("inventory knowledge", () => {
         freshness: { kind: "paused", by: "background" },
       },
       {
-        name: "failed: the value kept, stale with the retry",
+        name: "failed: the value kept, stale since it was read, with the retry",
         interests: [
           {
             status: "failed",
@@ -249,7 +266,7 @@ describe("inventory knowledge", () => {
             attempt: 2,
             retryAtMs: 8_000,
           },
-          sinceMs: NOW,
+          sinceMs: 40,
         },
       },
       {
@@ -302,7 +319,7 @@ describe("inventory knowledge", () => {
 
       expect(knownServicesOf(listing([failed]), NOW)).toMatchObject({
         state: "known",
-        freshness: { kind: "settled" },
+        freshness: { kind: "stale", reason: { kind: "source-recovering", retryAtMs: null } },
       });
     });
 

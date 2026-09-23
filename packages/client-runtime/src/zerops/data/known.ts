@@ -6,8 +6,11 @@
  * current a value is comes from the interests that feed the read, not from every interest the
  * account holds: one project's failing topology says nothing about the organization's list.
  *
- * Pure over its inputs: the caller passes the wall time a failure or a stale marker is stamped
- * with.
+ * No I/O, but not in the pure zone: it value-imports `interestKeyOf` from the runtime, so a
+ * projection takes these `Known` values as inputs and never imports this module. A stale value is
+ * stale since it was read. A read with no value yet takes the caller's `nowMs` for a recovering
+ * feeder's `reading.sinceMs` and a failed one's `failed.atMs`, because the runtime keeps no time
+ * for either transition.
  */
 import type { AbsenceEvidence, Freshness, Known, Stamp } from "../knowledge/known.ts";
 import { interestKeyOf } from "./runtime.ts";
@@ -83,10 +86,23 @@ function notYetKnown<T>(source: InterestState | null, nowMs: number): Known<T> {
   }
 }
 
-/** How current a held value is, by the source that feeds it (§3.5). */
-function freshnessOf(source: InterestState | null, nowMs: number): Freshness {
-  // Nothing pushes into a read nobody leases: its last answer stands as read.
-  if (source === null) return { kind: "settled" };
+/**
+ * A read no interest observes: its source pushes, but to nobody, so the value is not current and
+ * nothing is scheduled to bring it back (§3.5: never current unless its interest observes).
+ */
+const unobserved = (sinceMs: number): Freshness => ({
+  kind: "stale",
+  reason: { kind: "source-recovering", retryAtMs: null },
+  sinceMs,
+});
+
+/**
+ * How current a held value is, by the source that feeds it (§3.5). The runtime keeps no time for
+ * a feeder's failure, so a stale value is stale since it was read: the last moment it is known to
+ * have been current, and the same on every evaluation.
+ */
+function freshnessOf(source: InterestState | null, asOf: Stamp): Freshness {
+  if (source === null) return unobserved(asOf.atMs);
   switch (source.status) {
     case "observing":
       return { kind: "live" };
@@ -96,11 +112,11 @@ function freshnessOf(source: InterestState | null, nowMs: number): Freshness {
       return {
         kind: "stale",
         reason: { kind: "source-recovering", retryAtMs: source.nextRetryAtMs },
-        sinceMs: nowMs,
+        sinceMs: asOf.atMs,
       };
     case "paused":
       return source.reason === "no-leases"
-        ? { kind: "settled" }
+        ? unobserved(asOf.atMs)
         : { kind: "paused", by: source.reason };
     case "failed":
       return {
@@ -111,7 +127,7 @@ function freshnessOf(source: InterestState | null, nowMs: number): Freshness {
           attempt: source.attempts,
           retryAtMs: source.retryAtMs,
         },
-        sinceMs: nowMs,
+        sinceMs: asOf.atMs,
       };
   }
 }
@@ -130,12 +146,13 @@ function knownCollection<Record extends ProjectRecord | ServiceRecord>(
     if (member.knowledge === "observed") records.push(member.record);
     else if (member.knowledge === "unresolved") pending = true;
   }
+  const asOf = stampOf(query.stamp);
   return {
     state: "known",
     value: records,
-    asOf: stampOf(query.stamp),
+    asOf,
     coverage: query.coverage.kind === "exhausted-traversal" && !pending ? "complete" : "partial",
-    freshness: freshnessOf(source, nowMs),
+    freshness: freshnessOf(source, asOf),
   };
 }
 
@@ -202,11 +219,12 @@ export function knownProjectTags(
     return { state: "gone", evidence: ABSENCE[facet.reason], asOf: stampOf(facet.stamp) };
   if (facet.knowledge === "unresolved" || facet.fields.tags === undefined)
     return notYetKnown(source, nowMs);
+  const asOf = stampOf(facet.stamp);
   return {
     state: "known",
     value: facet.fields.tags,
-    asOf: stampOf(facet.stamp),
+    asOf,
     coverage: "complete",
-    freshness: freshnessOf(source, nowMs),
+    freshness: freshnessOf(source, asOf),
   };
 }
