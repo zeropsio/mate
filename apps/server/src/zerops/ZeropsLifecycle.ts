@@ -19,16 +19,17 @@
  *   envelope, a failed one carries none by design, and the strip still has to
  *   read "deploying". A log, not a state machine.
  */
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -103,11 +104,9 @@ const withRecentTool = (
   return next.slice(-ZEROPS_RECENT_TOOLS_LIMIT);
 };
 
-const INGEST_RESTART_SCHEDULE = Schedule.exponential("1 second").pipe(
-  Schedule.modifyDelay(({ duration }) =>
-    Effect.succeed(Duration.min(duration, Duration.seconds(30))),
-  ),
-);
+const INGEST_RESTART_FIRST = Duration.seconds(1);
+/** The longest wait between two restarts, and the run length that counts as healthy. */
+const INGEST_RESTART_CAP = Duration.seconds(30);
 
 export interface ZeropsLifecycleOptions {
   readonly toolEvents: Stream.Stream<SpiEvent>;
@@ -267,16 +266,28 @@ export const make = (options: ZeropsLifecycleOptions) =>
 
     // The ingest is the feed's only writer, so it must not end quietly: a
     // defect in the event stream or in the reducer is logged and the stream
-    // resubscribed, backing off to one attempt every 30 s.
-    yield* toolEvents.pipe(
-      Stream.runForEach(ingest),
-      Effect.sandbox,
-      Effect.tapError((cause) =>
-        Effect.logError("Zerops lifecycle ingest failed; restarting it", { cause }),
-      ),
-      Effect.retry(INGEST_RESTART_SCHEDULE),
-      Effect.forkScoped,
-    );
+    // resubscribed, backing off to one attempt every 30 s. A run that lasted
+    // longer than that was healthy, so the failure that ended it starts the
+    // backoff from the first rung again.
+    yield* Effect.gen(function* () {
+      let delay = INGEST_RESTART_FIRST;
+      while (true) {
+        const startedAt = yield* Clock.currentTimeMillis;
+        const exit = yield* Effect.exit(Stream.runForEach(toolEvents, ingest));
+        if (Exit.isSuccess(exit)) {
+          return;
+        }
+        const ranFor = Duration.millis((yield* Clock.currentTimeMillis) - startedAt);
+        if (Duration.isGreaterThan(ranFor, INGEST_RESTART_CAP)) {
+          delay = INGEST_RESTART_FIRST;
+        }
+        yield* Effect.logError("Zerops lifecycle ingest failed; restarting it", {
+          cause: exit.cause,
+        });
+        yield* Effect.sleep(delay);
+        delay = Duration.min(Duration.times(delay, 2), INGEST_RESTART_CAP);
+      }
+    }).pipe(Effect.forkScoped);
 
     return {
       get: (threadId) => writeMutex.withPermits(1)(loadOrEmpty(threadId)),

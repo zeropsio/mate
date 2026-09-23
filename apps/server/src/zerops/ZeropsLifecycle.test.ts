@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -428,6 +429,43 @@ describe("ZeropsLifecycle", () => {
         expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
           Option.some("develop-active"),
         );
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect("after a healthy run the restart backoff starts from the first rung again", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const starts = yield* Ref.make<ReadonlyArray<number>>([]);
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        yield* ZeropsLifecycle.make({
+          // Six runs die at once and climb the backoff to its cap; the seventh
+          // runs healthily for two minutes before it dies; the eighth stays up.
+          toolEvents: Stream.unwrap(
+            Effect.gen(function* () {
+              const now = yield* Clock.currentTimeMillis;
+              const run = (yield* Ref.getAndUpdate(starts, (seen) => [...seen, now])).length;
+              if (run < 6) {
+                return Stream.die("provider stream defect");
+              }
+              if (run === 6) {
+                return Stream.fromEffect(
+                  Effect.andThen(Effect.sleep("2 minutes"), Effect.die("provider stream defect")),
+                );
+              }
+              return Stream.never;
+            }),
+          ),
+          repository,
+        });
+
+        for (let second = 0; second < 300; second += 1) {
+          yield* TestClock.adjust("1 second");
+        }
+
+        expect((yield* Ref.get(starts)).map((at) => at / 1000)).toEqual([
+          0, 1, 3, 7, 15, 31, 61, 182,
+        ]);
       }),
     ).pipe(Effect.provide(persistence)),
   );
