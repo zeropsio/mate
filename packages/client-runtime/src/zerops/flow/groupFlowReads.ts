@@ -13,6 +13,7 @@
  */
 import type { ProjectRef } from "../data/types.ts";
 import type { ForgeFact, ForgeStore } from "../forge/forgeStore.ts";
+import type { GiteaCommit } from "../giteaClient.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Shown } from "../knowledge/known.ts";
@@ -22,11 +23,14 @@ import type { StopService } from "./deployment.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";
 import {
   pullKey,
+  releaseContentKey,
+  releaseContentReads,
   tiersOnMain,
   TIERS_ON_MAIN,
   type GroupFlowInputs,
   type GroupFlowMember,
   type GroupFlowPull,
+  type ReleaseContentRead,
   type TiersOnMain,
 } from "./groupFlow.ts";
 
@@ -47,6 +51,8 @@ export interface GroupFlowSource {
 
 const UNREAD: Shown<never> = { state: "unread", waitingFor: null };
 const WAITING_FOR_GITEA: Shown<never> = { state: "unread", waitingFor: "gitea-session" };
+/** Nothing is read before the epoch's first grant built the stores. */
+const UNBOUND: Shown<never> = { state: "unread", waitingFor: "access-grant" };
 
 /** Each tier's `import.yaml` on the group repo's `main`, as a forge fact. */
 const tierFile = (origin: string, slug: string, tier: GroupEnvironmentTier): ForgeFact => ({
@@ -108,6 +114,34 @@ function productionRepositories(
   return [...repositories].sort();
 }
 
+/**
+ * The forge fact a release content read is: a comparison with what production runs, or for a
+ * first release the head commit itself.
+ */
+function contentFact(origin: string, slug: string, read: ReleaseContentRead): ForgeFact {
+  const repository = { origin, owner: slug, repo: read.repository };
+  return read.from === undefined
+    ? { kind: "commit", ...repository, sha: read.head }
+    : { kind: "compare", ...repository, base: read.from, head: read.head };
+}
+
+/** What a release content read answered, as the commits it names. */
+function contentOf(
+  forge: ForgeStore,
+  origin: string,
+  slug: string,
+  read: ReleaseContentRead,
+): Shown<ReadonlyArray<GiteaCommit>> {
+  const repository = { origin, owner: slug, repo: read.repository };
+  if (read.from !== undefined) {
+    return forge.read({ kind: "compare", ...repository, base: read.from, head: read.head });
+  }
+  const detail = forge.read({ kind: "commit", ...repository, sha: read.head });
+  return detail.state === "known"
+    ? { ...detail, value: [{ sha: detail.value.sha, subject: detail.value.subject }] }
+    : detail;
+}
+
 /** The stops a group's flow demands of the deployment store: its members' projects. */
 export function groupFlowStops(source: GroupFlowSource): ReadonlyArray<ProjectRef> {
   const projects: Array<ProjectRef> = [];
@@ -146,6 +180,10 @@ export function groupFlowFacts(
       if (pull.state !== "known" || pull.value.pull.head?.sha === undefined) continue;
       facts.push({ kind: "statuses", ...repository(name), sha: pull.value.pull.head.sha });
     }
+  }
+  const inputs = groupFlowInputs(stores, source);
+  for (const read of releaseContentReads(inputs)) {
+    facts.push(contentFact(origin, source.entry.slug, read));
   }
   return facts;
 }
@@ -198,7 +236,7 @@ export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource
     }
   }
 
-  return {
+  const inputs: GroupFlowInputs = {
     entry: source.entry,
     members: source.members,
     declarations: read({ kind: "declarations", ...repository(GROUP_REPOSITORY) }),
@@ -209,6 +247,33 @@ export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource
     tiers:
       forge === null || origin === undefined ? WAITING_FOR_GITEA : readTiers(forge, origin, slug),
     mainHeads,
+    contents: new Map(),
     stops,
+  };
+  if (forge === null || origin === undefined) return inputs;
+  // What the release reads is named by what the rest answered.
+  const contents = new Map<string, Shown<ReadonlyArray<GiteaCommit>>>();
+  for (const content of releaseContentReads(inputs)) {
+    contents.set(releaseContentKey(content), contentOf(forge, origin, slug, content));
+  }
+  return { ...inputs, contents };
+}
+
+/** A group's flow inputs before the epoch's first grant built the stores: nothing is read yet. */
+export function unboundGroupFlowInputs(
+  source: Pick<GroupFlowSource, "entry" | "members">,
+): GroupFlowInputs {
+  return {
+    entry: source.entry,
+    members: source.members,
+    declarations: UNBOUND,
+    repos: UNBOUND,
+    openPulls: new Map(),
+    pulls: new Map(),
+    tags: UNBOUND,
+    tiers: UNBOUND,
+    mainHeads: new Map(),
+    contents: new Map(),
+    stops: new Map(),
   };
 }

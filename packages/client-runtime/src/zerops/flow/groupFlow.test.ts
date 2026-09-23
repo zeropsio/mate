@@ -12,6 +12,8 @@ import type { Deployment, SettledDeployment, StopService } from "./deployment.ts
 import {
   groupFlow,
   pullKey,
+  releaseContentKey,
+  releaseContentReads,
   tiersOnMain,
   type GroupFlowInputs,
   type GroupFlowMember,
@@ -126,6 +128,7 @@ const inputs = (overrides: Partial<GroupFlowInputs> = {}): GroupFlowInputs => ({
   tags: known(TAGS),
   tiers: known({ tiers: ["stage", "production"], repositories: new Map([["appdev", "appdev"]]) }),
   mainHeads: new Map([["appdev", known(MAIN_SHA)]]),
+  contents: new Map(),
   stops: new Map([
     ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
     ["p-prod", known([stopService("p-prod", "appdev", known(running(PRODUCTION_SHA)))])],
@@ -480,5 +483,83 @@ describe("groupFlow (DESIGN §4.7)", () => {
       value: { tiers: ["production"], repositories: new Map([["app", "appdev"]]) },
     });
     expect(tiersOnMain(new Map([["production", known(production)]])).state).toBe("unread");
+  });
+
+  it("missing tier rows come from the tiers on main", () => {
+    const stageOnly = known(DECLARATIONS.filter(({ tier }) => tier === "stage"));
+    const missing = (overrides: Partial<GroupFlowInputs>) =>
+      groupFlow(inputs({ declarations: stageOnly, ...overrides }), RELEASER, NOW).missing;
+
+    expect(missing({})).toMatchObject({
+      state: "known",
+      value: [{ kind: "missing-environment", tier: "production", name: "Production" }],
+    });
+    // A tier main does not offer is not asked for.
+    expect(missing({ tiers: known({ tiers: ["stage"], repositories: new Map() }) })).toMatchObject({
+      state: "known",
+      value: [],
+    });
+    // A project the tags already make the production fills it before its declaration lands.
+    expect(
+      missing({
+        members: known([...MEMBERS, { projectId: "p-new", name: "harbor prod", role: "prod" }]),
+      }),
+    ).toMatchObject({ state: "known", value: [] });
+    // Nothing is asked for while the tiers on main are being read.
+    expect(missing({ tiers: READING }).state).toBe("reading");
+  });
+
+  it("release contents come from compare + commit detail", () => {
+    const shipped = [{ sha: MAIN_SHA, subject: "Add cart" }];
+    const ahead = { service: "appdev", repository: "appdev", from: PRODUCTION_SHA, head: MAIN_SHA };
+    expect(releaseContentReads(inputs())).toEqual([ahead]);
+    const flow = groupFlow(
+      inputs({ contents: new Map([[releaseContentKey(ahead), known(shipped)]]) }),
+      RELEASER,
+      NOW,
+    );
+    expect(flow.releaseContents).toMatchObject({
+      state: "known",
+      value: [{ service: "appdev", commits: shipped }],
+    });
+
+    // A production that runs nothing yet puts the head itself live: its one commit is read.
+    const first = inputs({
+      stops: new Map([
+        ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
+        ["p-prod", known([stopService("p-prod", "appdev", known({ kind: "none" }))])],
+      ]),
+    });
+    const firstRead = { ...ahead, from: undefined };
+    expect(releaseContentReads(first)).toEqual([firstRead]);
+    expect(
+      groupFlow(
+        { ...first, contents: new Map([[releaseContentKey(firstRead), known(shipped)]]) },
+        RELEASER,
+        NOW,
+      ).releaseContents,
+    ).toMatchObject({ state: "known", value: [{ service: "appdev", commits: shipped }] });
+
+    // Still reading what `main` carries: the offer stands, its contents are being checked.
+    const reading = groupFlow(
+      inputs({ contents: new Map([[releaseContentKey(ahead), READING]]) }),
+      RELEASER,
+      NOW,
+    );
+    expect(reading.release.state).toBe("known");
+    expect(reading.releaseContents.state).toBe("reading");
+
+    // Production already runs main: nothing to read, nothing it would carry.
+    const current = inputs({
+      stops: new Map([
+        ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
+        ["p-prod", known([stopService("p-prod", "appdev", known(running(MAIN_SHA)))])],
+      ]),
+    });
+    expect(releaseContentReads(current)).toEqual([]);
+    expect(groupFlow(current, RELEASER, NOW).releaseContents).toMatchObject({
+      state: "known",
+      value: [],
+    });
   });
 });

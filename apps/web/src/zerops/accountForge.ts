@@ -22,6 +22,7 @@ import {
   groupFlowInputs,
   groupFlowStops,
   stopDeploymentOf,
+  unboundGroupFlowInputs,
   type Deployment,
   type DeploymentStore,
   type EnvelopeServices,
@@ -234,22 +235,7 @@ export function useGroupFlow(source: UseGroupFlowSource): GroupFlow {
 
   return useMemo(
     () =>
-      groupFlow(
-        read?.inputs ?? {
-          entry,
-          members,
-          declarations: UNBOUND,
-          repos: UNBOUND,
-          openPulls: new Map(),
-          pulls: new Map(),
-          tags: UNBOUND,
-          tiers: UNBOUND,
-          mainHeads: new Map(),
-          stops: new Map(),
-        },
-        { mayRelease },
-        nowMs,
-      ),
+      groupFlow(read?.inputs ?? unboundGroupFlowInputs({ entry, members }), { mayRelease }, nowMs),
     [entry, mayRelease, members, nowMs, read],
   );
 }

@@ -8,9 +8,13 @@
  *   declarations, the group repo's tags, the tiers on `main`, each production service's
  *   deployment (what it runs, or what it deploys while a build runs) and the head of `main` of the
  *   repository its tier builds it from, where it has one — and is offered only while all of them
- *   are current. A service's repository is the tier's `buildFromGit`, never its hostname. Until then the gate
- *   says why in the one phrase producer's words (`knownPresentation`, §3.4): checking, or the
- *   cause of the input that failed.
+ *   are current. A service's repository is the tier's `buildFromGit`, never its hostname. Until
+ *   then the gate says why in the one phrase producer's words (`knownPresentation`, §3.4):
+ *   checking, or the cause of the input that failed. What a release would put live is read on
+ *   top of a known offer: what `main` has over the commit production runs, or `main`'s head for a
+ *   first release.
+ * - **What the recipe offers:** a tier whose import is on the group repo's `main` and that no
+ *   declaration and no member's role fills is a row that asks for it.
  * - **What a stop is (D7):** `environments.yaml` declares which stops exist and in what order,
  *   the project tags which Zerops projects are members. A declared stop without a member project
  *   is missing its project; a member without a declaration is not declared yet. Either takes
@@ -22,8 +26,14 @@
  */
 import type { ServiceRef } from "../data/types.ts";
 import type { MergeState } from "../forge/mergeState.ts";
-import type { GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
-import type { GroupEnvironment, GroupEnvironmentTier } from "../groupEnvironments.ts";
+import type { GiteaCommit, GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
+import {
+  environmentTierForRole,
+  type GroupEnvironment,
+  type GroupEnvironmentTier,
+} from "../groupEnvironments.ts";
+import { missingEnvironmentRows, type MissingEnvironmentRow } from "../groupRows.ts";
+import type { ZeropsEnvironmentRole } from "../groups.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
 import {
@@ -31,6 +41,7 @@ import {
   type KnowledgeSource,
   type KnownAffordance,
 } from "../knowledge/presentation.ts";
+import { planReleaseReads } from "../projectFlow.ts";
 import { importReadyTier } from "../recipeTier.ts";
 import { isReleaseTag, releaseOffer, type ReleaseGate } from "../release.ts";
 import type { Deployment, StopService } from "./deployment.ts";
@@ -40,6 +51,8 @@ import { CHECKING_RELEASE } from "./release.ts";
 export interface GroupFlowMember {
   readonly projectId: string;
   readonly name: string;
+  /** Its role tag, which says which tier it fills before any declaration does. */
+  readonly role?: ZeropsEnvironmentRole | undefined;
 }
 
 /** A pull request as the forge holds it, and how it merges. */
@@ -85,6 +98,8 @@ export interface GroupFlowInputs {
   readonly tiers: Shown<TiersOnMain>;
   /** The sha each repository's `main` holds, by repository. */
   readonly mainHeads: ReadonlyMap<string, Shown<string>>;
+  /** What each release content read answered, by {@link releaseContentKey}. */
+  readonly contents: ReadonlyMap<string, Shown<ReadonlyArray<GiteaCommit>>>;
   /** Each stop's runtime services and what each runs, by Zerops project id. */
   readonly stops: ReadonlyMap<string, Shown<ReadonlyArray<StopService>>>;
 }
@@ -116,6 +131,12 @@ export type StopRow = {
 
 export type ReleaseOffer = ReturnType<typeof releaseOffer>;
 
+/** One production service's share of what a release would carry. */
+export interface ReleaseContent {
+  readonly service: string;
+  readonly commits: ReadonlyArray<GiteaCommit>;
+}
+
 export interface GroupFlow {
   readonly groupId: string;
   readonly slug: string;
@@ -123,7 +144,11 @@ export interface GroupFlow {
   readonly pullRequests: Shown<ReadonlyArray<GroupFlowPullRequest>>;
   /** Declared stops in the file's order, then members not declared yet. */
   readonly stops: Shown<ReadonlyArray<StopRow>>;
+  /** The tiers the recipe on `main` offers and the group has not added: the rows that ask. */
+  readonly missing: Shown<ReadonlyArray<MissingEnvironmentRow>>;
   readonly release: Shown<ReleaseOffer>;
+  /** What pressing *Release* would put live: per service, the commits production does not run. */
+  readonly releaseContents: Shown<ReadonlyArray<ReleaseContent>>;
   /** Whether *Release* is offered now, and why not. */
   readonly releaseGate: ReleaseGate;
   /** What the person can do about a gate an input holds shut: *Try again* after a failed read. */
@@ -340,6 +365,33 @@ function stopsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<StopRow>> {
 }
 
 /**
+ * The tiers the recipe offers on `main` that no declaration and no member's role fills: a
+ * declaration lands minutes after its project is made, and the row that asks must not stand under
+ * the environment coming up.
+ */
+function missingOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<MissingEnvironmentRow>> {
+  const { declarations, members, tiers } = inputs;
+  const combined = combine([
+    { shown: tiers, source: "gitea" },
+    { shown: declarations, source: "gitea" },
+    { shown: members, source: "zerops" },
+  ]);
+  if (!isKnown(tiers) || !isKnown(declarations) || !isKnown(members)) {
+    return combined.shown as Shown<never>;
+  }
+  return withValue(combined.shown, () =>
+    missingEnvironmentRows({
+      tiersOnMain: tiers.value.tiers,
+      declarations: declarations.value,
+      filledTiers: members.value.flatMap(({ role }) => {
+        const tier = environmentTierForRole(role);
+        return tier === undefined ? [] : [tier];
+      }),
+    }),
+  );
+}
+
+/**
  * The version a service runs now, a build of it running or not; `null` while it runs none, and
  * `undefined` while a build runs and nothing states or names what ran before it.
  */
@@ -355,14 +407,24 @@ function runningOf(
   return previous.kind === "running" ? previous : null;
 }
 
+/** What a release is measured from, and per production service what runs and what would. */
+interface ReleaseSides {
+  readonly parts: ReadonlyArray<Part>;
+  /** The commit each production service runs, by hostname. */
+  readonly production: ReadonlyMap<string, string>;
+  /** The commit `main` of each production service's repository holds, by hostname. */
+  readonly candidate: ReadonlyMap<string, string>;
+  /** Each service with a candidate's repository, by hostname. */
+  readonly repositories: ReadonlyMap<string, string>;
+  /** The services whose running version nothing states yet. */
+  readonly unstated: ReadonlySet<string>;
+}
+
 /**
- * The release offer, and what it is measured from: the declarations name the production, each of
- * its services runs a commit, and `main` of the repository it is built from holds the candidate.
+ * The declarations name the production, each of its services runs a commit, and `main` of the
+ * repository its tier builds it from holds the candidate.
  */
-function releaseOf(
-  inputs: GroupFlowInputs,
-  capabilities: GroupFlowCapabilities,
-): { readonly release: Shown<ReleaseOffer>; readonly source: KnowledgeSource } {
+function releaseSides(inputs: GroupFlowInputs): ReleaseSides {
   const { declarations, members, tags, tiers } = inputs;
   const parts: Array<Part> = [
     { shown: declarations, source: "gitea" },
@@ -372,6 +434,8 @@ function releaseOf(
   if (!isKnown(members)) parts.push({ shown: members, source: "zerops" });
   const production = new Map<string, string>();
   const candidate = new Map<string, string>();
+  const repositories = new Map<string, string>();
+  const unstated = new Set<string>();
   for (const { tier, project } of isKnown(declarations) ? declarations.value : []) {
     // A production with no member project runs nothing anybody can read.
     if (
@@ -393,11 +457,27 @@ function releaseOf(
       // A production mid-deploy is measured against what it runs: its build may yet fail. Until
       // something states that, nothing proves production runs anything older than `main`.
       const runs = isKnown(deployment) ? runningOf(deployment.value) : null;
-      if (runs === undefined) parts.push({ shown: UNREAD, source: "zerops" });
+      if (runs === undefined) {
+        parts.push({ shown: UNREAD, source: "zerops" });
+        unstated.add(hostname);
+      }
       if (runs?.version.sha !== undefined) production.set(hostname, runs.version.sha);
-      if (head !== null && isKnown(head)) candidate.set(hostname, head.value);
+      if (repository !== undefined && head !== null && isKnown(head)) {
+        candidate.set(hostname, head.value);
+        repositories.set(hostname, repository);
+      }
     }
   }
+  return { parts, production, candidate, repositories, unstated };
+}
+
+/** The release offer, known once everything it is measured from is. */
+function releaseOf(
+  inputs: GroupFlowInputs,
+  capabilities: GroupFlowCapabilities,
+): { readonly release: Shown<ReleaseOffer>; readonly source: KnowledgeSource } {
+  const { tags } = inputs;
+  const { parts, production, candidate } = releaseSides(inputs);
   const combined = combine(parts);
   return {
     source: combined.source,
@@ -412,6 +492,60 @@ function releaseOf(
         )
       : (combined.shown as Shown<never>),
   };
+}
+
+/**
+ * One service's read of what a release would put live: what `main` of its repository has over
+ * the commit production runs, or the head commit itself where production runs nothing yet.
+ */
+export interface ReleaseContentRead {
+  readonly service: string;
+  readonly repository: string;
+  readonly head: string;
+  /** What production runs; `undefined` for a first release. */
+  readonly from: string | undefined;
+}
+
+/** A release content read's key in {@link GroupFlowInputs.contents}. */
+export const releaseContentKey = (
+  read: Pick<ReleaseContentRead, "repository" | "from" | "head">,
+): string => `${read.repository} ${read.from ?? ""}...${read.head}`;
+
+/**
+ * The reads a release's contents take, as far as what is known names them: every production
+ * service whose `main` holds a commit it does not run. A service whose running version nothing
+ * states yet is not read — nobody knows what it would be compared with.
+ */
+export function releaseContentReads(inputs: GroupFlowInputs): ReadonlyArray<ReleaseContentRead> {
+  const { production, candidate, repositories, unstated } = releaseSides(inputs);
+  return planReleaseReads(candidate, production).flatMap(({ service, head, from }) => {
+    const repository = repositories.get(service);
+    return repository === undefined || unstated.has(service)
+      ? []
+      : [{ service, repository, head, from }];
+  });
+}
+
+/**
+ * What a release would put live, service by service — with squash merges, one commit per task
+ * delivered. Known once the offer is and every read is; a commit Gitea does not have adds nothing.
+ */
+function releaseContentsOf(
+  inputs: GroupFlowInputs,
+  release: Shown<ReleaseOffer>,
+): Shown<ReadonlyArray<ReleaseContent>> {
+  if (!isKnown(release)) return release as Shown<never>;
+  const parts: Array<Part> = [{ shown: release, source: "gitea" }];
+  const contents: Array<ReleaseContent> = [];
+  for (const read of releaseContentReads(inputs)) {
+    const shown = inputs.contents.get(releaseContentKey(read)) ?? UNREAD;
+    if (shown.state === "gone") continue;
+    parts.push({ shown, source: "gitea" });
+    if (isKnown(shown) && shown.value.length > 0) {
+      contents.push({ service: read.service, commits: shown.value });
+    }
+  }
+  return withValue(combine(parts).shown, () => contents);
 }
 
 /**
@@ -471,7 +605,9 @@ export function groupFlow(
     slug: inputs.entry.slug,
     pullRequests: pullRequestsOf(inputs),
     stops,
+    missing: missingOf(inputs),
     release,
+    releaseContents: releaseContentsOf(inputs, release),
     releaseGate: gate,
     releaseAffordance: affordance,
     feeds: (repository) => fed.get(repository) ?? [],

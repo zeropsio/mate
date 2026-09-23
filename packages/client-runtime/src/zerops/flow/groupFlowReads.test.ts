@@ -4,14 +4,16 @@ import { project, service } from "../data/__fixtures__/index.ts";
 import type { ProjectRef } from "../data/types.ts";
 import type { ForgeFact, ForgeStore, PullKey } from "../forge/forgeStore.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
+import { deployedVersion } from "../groupRows.ts";
 import { RECIPE_TIER_PATHS } from "../recipeTier.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";
-import type { StopService } from "./deployment.ts";
-import { pullKey } from "./groupFlow.ts";
+import type { Deployment, StopService } from "./deployment.ts";
+import { pullKey, releaseContentKey } from "./groupFlow.ts";
 import {
   groupFlowFacts,
   groupFlowInputs,
   groupFlowStops,
+  unboundGroupFlowInputs,
   type GroupFlowSource,
 } from "./groupFlowReads.ts";
 
@@ -161,5 +163,74 @@ describe("a group flow's reads", () => {
       value: { tiers: ["production"], repositories: new Map([["app", "appdev"]]) },
     });
     expect([...inputs.mainHeads.keys()]).toEqual(["appdev"]);
+  });
+
+  it("reads a release's contents: what main has over production, or main's head for a first release", () => {
+    const MAIN = "a".repeat(40);
+    const RUNS = "b".repeat(40);
+    const withProduction = (deployment: Shown<Deployment>) => ({
+      forge: forge([
+        ...HELD,
+        [{ kind: "tags", ...repo("group") }, known([])],
+        [{ kind: "branch", ...repo("appdev"), branch: "main" }, known(MAIN)],
+        [
+          { kind: "compare", ...repo("appdev"), base: RUNS, head: MAIN },
+          known([{ sha: MAIN, subject: "Add cart" }]),
+        ],
+        [
+          { kind: "commit", ...repo("appdev"), sha: MAIN },
+          known({ sha: MAIN, subject: "First", files: [], additions: 1, deletions: 0 }),
+        ],
+      ]),
+      deployments: deployments(
+        new Map([
+          [
+            "p-prod",
+            known([
+              { service: service("prod-app", PROD), hostname: "appdev", deployment },
+            ] satisfies ReadonlyArray<StopService>),
+          ],
+        ]),
+      ),
+    });
+    const running = withProduction(
+      known({
+        kind: "running",
+        activatedAt: null,
+        version: { ...deployedVersion(RUNS), label: "v1" },
+      }),
+    );
+    expect(groupFlowFacts(running, SOURCE)).toContainEqual({
+      kind: "compare",
+      ...repo("appdev"),
+      base: RUNS,
+      head: MAIN,
+    });
+    const ahead = { repository: "appdev", from: RUNS, head: MAIN };
+    expect(groupFlowInputs(running, SOURCE).contents.get(releaseContentKey(ahead))).toMatchObject({
+      state: "known",
+      value: [{ sha: MAIN, subject: "Add cart" }],
+    });
+
+    const first = withProduction(known({ kind: "none" }));
+    expect(groupFlowFacts(first, SOURCE)).toContainEqual({
+      kind: "commit",
+      ...repo("appdev"),
+      sha: MAIN,
+    });
+    const head = { repository: "appdev", from: undefined, head: MAIN };
+    expect(groupFlowInputs(first, SOURCE).contents.get(releaseContentKey(head))).toMatchObject({
+      state: "known",
+      value: [{ sha: MAIN, subject: "First" }],
+    });
+  });
+
+  it("before the epoch's first grant every input of a group waits for the grant", () => {
+    const inputs = unboundGroupFlowInputs(SOURCE);
+    const waiting = { state: "unread", waitingFor: "access-grant" };
+    expect(inputs.members).toBe(SOURCE.members);
+    for (const shown of [inputs.declarations, inputs.repos, inputs.tags, inputs.tiers]) {
+      expect(shown).toEqual(waiting);
+    }
   });
 });
