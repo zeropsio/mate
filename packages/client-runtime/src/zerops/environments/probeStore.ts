@@ -256,9 +256,14 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
           continue;
         }
         if (!polls(before)) {
-          // A container that starts coming up is read at once.
+          // A container that starts coming up is read at once; one only failed probes say is,
+          // at the backing-off intervals from the probe that said so.
           entry.overdueRung = 0;
-          entry.pollAt = clock.now();
+          const fact = entry.fact;
+          entry.pollAt =
+            cadence.overdue && fact.status === "read" && entry.inFlight === null
+              ? nextPollAt(entry, fact.sentAt)
+              : clock.now();
         } else if (cadence.overdue !== before.overdue) {
           entry.overdueRung = 0;
         }

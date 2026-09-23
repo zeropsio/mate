@@ -907,17 +907,15 @@ describe("the descriptor index", () => {
     const look = () => gates.push(selectRouteGate(routed.read().target).kind);
 
     await rig.answer(named.origin, answering(ENV_B, named.projectId));
-    // Two dead origins: their descriptor reads fail on CORS, and each is read again at once.
+    // Two dead origins: their descriptor reads fail on CORS. A boot only failed reads suggest is
+    // read again at the backing-off intervals, not at once.
     await rig.fail(dead.origin);
     await rig.fail(alsoDead.origin);
     look();
     await rig.sweep([dead.key, alsoDead.key]);
     const sweptAtOnce = rig.probed.length;
-    // Those reads left a moment after the first failures: they do not answer for the sweep.
-    await rig.fail(dead.origin);
-    await rig.fail(alsoDead.origin);
     look();
-    // A boot only failed reads suggest: the poll reads each again at its first backed-off interval.
+    // The poll reads each again at its first backed-off interval.
     await rig.advance(10_000);
     await rig.fail(dead.origin);
     look();

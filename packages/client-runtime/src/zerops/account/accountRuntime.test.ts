@@ -1142,8 +1142,8 @@ describe("the post-grant stage's Mate environments", () => {
           const probed = () => rig.probes.length;
           const unanswered = () => environments.index().unanswered;
           yield* answerProbe(rig, named.origin, answering(ENV_B, named.projectId));
-          // Unreachable, it boots on a guess and is read again at once; a Mate still coming up
-          // answers /healthz only.
+          // Unreachable, it boots on a guess, read again at the backing-off intervals; a Mate still
+          // coming up answers /healthz only, read every poll interval.
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
           const beforeSweep = probed();
@@ -1151,18 +1151,16 @@ describe("the post-grant stage's Mate environments", () => {
           environments.setRoute(ENV_A);
           yield* settle;
           const sweptAtOnce = probed() - beforeSweep;
-          // The read that left a moment after the first failure does not answer for the sweep.
-          yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-          const aMomentApart = unanswered();
-          // Its first backed-off poll is 10 s on; a landing lets the poll read it.
+          const beforeItsPoll = unanswered();
+          // Its first backed-off poll is 10 s after its failure; a landing lets the poll read it.
           yield* clock.advance(10 * SECOND);
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
 
           // The Mate coming up read again on the sweep's watch has still not answered.
-          expect({ sweptAtOnce, aMomentApart, polled: unanswered() }).toEqual({
+          expect({ sweptAtOnce, beforeItsPoll, polled: unanswered() }).toEqual({
             sweptAtOnce: 0,
-            aMomentApart: [down.key, coming.key],
+            beforeItsPoll: [down.key, coming.key],
             polled: [coming.key],
           });
           expect(environments.index().failed).toEqual([down.key, coming.key]);

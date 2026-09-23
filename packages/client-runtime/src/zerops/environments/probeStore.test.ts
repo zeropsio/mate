@@ -175,6 +175,31 @@ describe("probe store (DESIGN §4.5 probes)", () => {
     store.dispose();
   });
 
+  it("an overdue poll that begins on a fresh reading backs off from that reading", async () => {
+    const { clock, store, started } = rig({});
+    store.setCadences(new Map([["a", { kind: "on-demand" }]]));
+    store.request("a");
+    await clock.advance(0);
+    expect(started).toEqual(["a"]);
+
+    // The reading just landed turns the container's cadence to an overdue poll: no second probe.
+    store.setCadences(new Map([["a", poll(true)]]));
+    await clock.advance(10_000 - 1);
+    expect(started).toEqual(["a"]);
+    await clock.advance(1 + 20_000);
+    expect(started).toEqual(["a", "a", "a"]);
+
+    // A timely poll still reads at once.
+    started.length = 0;
+    store.setCadences(new Map([["b", { kind: "on-demand" }]]));
+    store.request("b");
+    await clock.advance(0);
+    store.setCadences(new Map([["b", poll(false)]]));
+    await clock.advance(0);
+    expect(started).toEqual(["b", "b"]);
+    store.dispose();
+  });
+
   it("a tab hidden for a minute probes nothing until it is shown", async () => {
     const { clock, store, started } = rig({});
     store.setCadences(new Map([["a", poll(false)]]));
