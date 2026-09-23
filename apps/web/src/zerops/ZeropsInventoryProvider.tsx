@@ -10,6 +10,8 @@ import {
   grantRoundInFlight,
   initialGrant,
   interestKeyOf,
+  organizationKeyOf,
+  projectKeyOf,
   projectRecordToZeropsProject,
   serviceRecordToZeropsService,
   transitionGrant,
@@ -20,6 +22,7 @@ import {
   type GrantMachine,
   type Instant,
   type InterestState,
+  type ProjectEffectiveAccess,
   type ProjectRef,
   type RuntimeInterestDescriptor,
   type ScopeAuthority,
@@ -90,20 +93,33 @@ function openWrites(client: Pick<ZeropsApiClient, "setWritesAllowed">, evidence:
 
 /**
  * The data runtime's grant for held evidence: every project whose own evidence
- * is fresh, and those a command established that the evidence does not name
- * yet. A project the evidence holds unverified or denied is out of it.
+ * is fresh, and those a command established that no evidence has named yet —
+ * in an organization the evidence still holds. A project the evidence holds
+ * unverified or denied is out of it, and so is one the last grant carried from
+ * evidence that no longer names it.
  */
 function runtimeGrant(
   runtime: ReturnType<typeof useZeropsData>["runtime"],
   evidence: Evidence,
   current: AccessState,
+  fromEvidence: ReadonlySet<string>,
 ): VerifiedAccessGrant {
   const named = (project: ProjectRef) =>
     evidence.projects.has(project.projectId) ||
     evidence.unverified.has(project.projectId) ||
     evidence.closedProjects.has(project.projectId);
+  const organizations = new Set(
+    evidence.account.organizations.map(({ organization }) => organizationKeyOf(organization)),
+  );
   const established =
-    current.status === "verified" ? current.projects.filter(({ project }) => !named(project)) : [];
+    current.status === "verified"
+      ? current.projects.filter(
+          ({ project }) =>
+            !named(project) &&
+            !fromEvidence.has(projectKeyOf(project)) &&
+            organizations.has(organizationKeyOf(project.organization)),
+        )
+      : [];
   return {
     account: runtime.scope.account,
     accountEpoch: runtime.scope.epoch,
@@ -112,14 +128,15 @@ function runtimeGrant(
     deadlineMs: Date.now() + remainingMs(evidence.account.startedAt),
     mutationsAllowed: true,
     organizations: evidence.account.organizations,
-    projects: [
-      ...[...evidence.projects.values()]
-        .map(({ access }) => access)
-        .filter(({ role }) => role !== "NO_ACCESS"),
-      ...established,
-    ],
+    projects: [...evidenceGrantProjects(evidence), ...established],
   };
 }
+
+/** The projects a grant carries from the evidence itself. */
+const evidenceGrantProjects = (evidence: Evidence): ReadonlyArray<ProjectEffectiveAccess> =>
+  [...evidence.projects.values()]
+    .map(({ access }) => access)
+    .filter(({ role }) => role !== "NO_ACCESS");
 
 /** What of the evidence the runtime's grant is built from; a change is a new grant. */
 const grantKey = (evidence: Evidence): string =>
@@ -375,17 +392,18 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     };
     /** The evidence the runtime's grant was last built from, by `grantKey`. */
     let grantedKey: string | null = null;
+    /** The projects the last grant carried from evidence, by `projectKeyOf`. */
+    let fromEvidence: ReadonlySet<string> = new Set();
     publishGrant.current = () => {
       if (machine.phase.phase === "granted") grantedKey = grantKey(machine.phase.evidence);
       return inOrder(async () => {
         const phase = machine.phase;
         if (!alive || phase.phase !== "granted") return null;
         const { access } = await Effect.runPromise(runtime.state);
-        await Effect.runPromise(
-          runtime.observeAccess({
-            kind: "access-verified",
-            grant: runtimeGrant(runtime, phase.evidence, access),
-          }),
+        const grant = runtimeGrant(runtime, phase.evidence, access, fromEvidence);
+        await Effect.runPromise(runtime.observeAccess({ kind: "access-verified", grant }));
+        fromEvidence = new Set(
+          evidenceGrantProjects(phase.evidence).map(({ project }) => projectKeyOf(project)),
         );
         return phase.evidence;
       });

@@ -351,6 +351,7 @@ const mountInventory = Effect.fn(function* (
     container,
     runtime,
     client,
+    user,
     projects,
     indexed,
     failing,
@@ -516,6 +517,40 @@ it.live("a project whose evidence runs out leaves the runtime's grant at its own
       ).toEqual(["kept"]);
     }),
   ),
+);
+
+it.live(
+  "a renewal that no longer reads an organization drops its projects from the runtime's grant",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* mountInventory();
+        harness.projects.set("created", {
+          id: "created",
+          clientId: "org",
+          name: "Created",
+          status: "ACTIVE",
+        });
+        yield* actEffect(
+          harness.runtime.observeAccess({
+            kind: "project-access-established",
+            accountEpoch: harness.grants.at(-1)!.accountEpoch,
+            project: harness.projectRef("org", "created"),
+          }),
+        );
+        // The account is removed from the organization before the renewal.
+        harness.user.clientUserList = [];
+        const renewal = harness.holdRenewal();
+        yield* harness.advance(RENEWAL_DUE_MS);
+        yield* renewal.verify();
+
+        // Neither the project the evidence held nor the one a command established stays (G2).
+        expect(grantedProjects(harness.grants.at(-1))).toEqual([]);
+        const access = (yield* harness.runtime.state).access;
+        expect(access.status === "verified" && access.projects).toEqual([]);
+        expect(harness.inventory()?.projectRefs.size).toBe(0);
+      }),
+    ),
 );
 
 it.live("a project its own retry verifies joins the runtime's grant before the next round", () =>
