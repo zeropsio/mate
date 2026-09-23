@@ -142,7 +142,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     // no sentence sits under the title — the projects below say what it is.
     expect(markup).not.toContain("micro-label");
     expect(markup).not.toContain(">Zerops<");
-    expect(markup).not.toContain("<p");
+    expect(markup).not.toMatch(/<p[\s>]/);
     // No creating action in the title row: the left menu's "New project" is
     // the entry, and the reload glyph is the row's only action.
     expect(markup).not.toContain("New project");
