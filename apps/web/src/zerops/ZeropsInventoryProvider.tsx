@@ -107,7 +107,11 @@ function runtimeGrant(
   };
 }
 
-/** The projects admitted evidence names: verified ones, then those whose latest read failed. */
+/**
+ * The projects admitted evidence names: verified ones, those whose latest
+ * read failed, and those a denial withholds until a confirming read (G6).
+ * A confirmed denial is the only way a project leaves.
+ */
 function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRef> {
   if (evidence === null) return [];
   const refs = new Map<string, ProjectRef>();
@@ -116,8 +120,11 @@ function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRe
       refs.set(inventoryProjectRefKey(access.project), access.project);
   }
   for (const { project } of evidence.unverified.values()) {
-    const key = inventoryProjectRefKey(project);
-    if (!evidence.projects.has(project.projectId)) refs.set(key, project);
+    if (!evidence.projects.has(project.projectId))
+      refs.set(inventoryProjectRefKey(project), project);
+  }
+  for (const { project, confirmation } of evidence.closedProjects.values()) {
+    if (confirmation.status === "due") refs.set(inventoryProjectRefKey(project), project);
   }
   return [...refs.values()];
 }
@@ -460,7 +467,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               );
               return;
             case "project-gone":
-              // The project leaves the runtime's grant with the next admitted round.
+              // The confirmed denial is in the evidence, which no longer names the project.
               return;
           }
           return;

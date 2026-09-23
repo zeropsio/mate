@@ -32,7 +32,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { ZeropsDataContext } from "./zeropsDataContext";
-import { useZeropsInventory, type Inventory } from "./inventoryContext";
+import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
@@ -449,7 +449,7 @@ it.live("renews from REST alone while the push half still establishes", () =>
   ),
 );
 
-it.live("a renewal drops a deleted project without blocking the remaining project", () =>
+it.live("a renewal withholds a deleted project until a second read confirms it is gone", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const harness = yield* mountInventory(["kept", "revoked"]);
@@ -457,18 +457,36 @@ it.live("a renewal drops a deleted project without blocking the remaining projec
       harness.projects.delete("revoked");
       yield* harness.advance(RENEWAL_DUE_MS);
       yield* renewal.verify();
+      const refs = () =>
+        [...harness.inventory()!.projectRefs.values()].map(({ projectId }) => projectId);
+
+      // One 403/404 closes the project's writes and withholds it; it stays listed (G6).
+      expect(refs()).toEqual(["kept", "revoked"]);
       expect(
-        [...harness.inventory()!.projectRefs.values()].map(({ projectId }) => projectId),
-      ).toEqual(["kept"]);
-      expect(harness.grants.at(-1)?.projects.map(({ project }) => project.projectId)).toEqual([
-        "kept",
-      ]);
+        harness
+          .inventory()
+          ?.authority.get(inventoryProjectRefKey(harness.projectRef("org", "revoked"))),
+      ).toEqual({ kind: "withheld", reason: "access-denied", cause: null });
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
       yield* renewal.establish();
+      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept", "revoked"]);
+      expect(harness.inventory()?.isLoading).toBe(false);
+      expect(harness.inventory()?.error).toBeNull();
+
+      // The confirming read, 5 s after the denial, answers the same: it is gone.
+      yield* harness.advance(5_000);
+      expect(
+        harness.client.fetchProject.mock.calls.filter(([id]) => id === "revoked"),
+      ).toHaveLength(3);
+      expect(refs()).toEqual(["kept"]);
       expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
       expect(harness.inventory()?.error).toBeNull();
     }),
   ),
 );
+
+const grantedProjects = (grant: VerifiedAccessGrant | undefined) =>
+  grant?.projects.map(({ project }) => project.projectId);
 
 it.live("closes the api's writes at the evidence deadline on the api's own clock", () =>
   Effect.scoped(
@@ -551,6 +569,14 @@ it.live(
         yield* harness.advance(RENEWAL_DUE_MS);
         yield* renewal.verify();
         yield* renewal.establish();
+        expect(harness.inventory()?.isLoading).toBe(false);
+        // Withheld until the confirming read, then gone (G6).
+        expect(
+          harness
+            .inventory()
+            ?.authority.get(inventoryProjectRefKey(harness.projectRef("org", "vanishing"))),
+        ).toEqual({ kind: "withheld", reason: "access-denied", cause: null });
+        yield* harness.advance(5_000);
         expect(harness.inventory()?.isLoading).toBe(false);
         expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
       }),
