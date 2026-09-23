@@ -250,8 +250,18 @@ export interface ServiceTypeInfo {
   readonly category: string | null;
 }
 
+/**
+ * A service's active app version. `null` is "not stated by this observation":
+ * a native service frame carries only `{base, created, id, lastUpdate, os,
+ * status}` (measured 2026-09-23), so its source and name stay unknown while
+ * the deploy itself is known to exist.
+ */
 export interface ServiceDeployInfo {
-  readonly source: string;
+  /** The app version's id — what a build process's `appVersion.id` names. */
+  readonly id: string | null;
+  readonly status: string | null;
+  /** `CLI`, `GIT`, `GITHUB`, `GITLAB`, `GUI` or `NONE` (a runtime never deployed). */
+  readonly source: string | null;
   readonly activatedAt: string | null;
   readonly name: string | null;
   readonly branch: string | null;

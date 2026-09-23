@@ -1020,3 +1020,65 @@ describe("Zerops platform protocol decoding", () => {
     ]);
   });
 });
+
+describe("the datastream's deploy frames", () => {
+  const updates = (entity: "service" | "process"): RegistrationRequest => ({
+    identity: interest,
+    subscriptionName: ZeropsWireSubscriptionName.make(`${entity}-update`),
+    descriptor: { kind: "entity-updates", entity, organization },
+    baselineTicket: null,
+  });
+  const decodeUpdate = (entity: "service" | "process", row: Record<string, unknown>) => {
+    const request = updates(entity);
+    const decoded = decodeNativeFrame(
+      JSON.stringify({
+        type: "search",
+        subscriptionName: request.subscriptionName,
+        data: { update: [row] },
+      }),
+      new Map([[request.subscriptionName, request]]),
+    );
+    if (decoded.kind !== "observations") throw new Error("expected observations");
+    return decoded.observations;
+  };
+
+  it("a pushed service frame without source keeps the active deploy known", () => {
+    // The measured shape: a native service frame's activeAppVersion is
+    // {base, created, id, lastUpdate, os, status} — no source, no name.
+    const observations = decodeUpdate("service", {
+      id: "service",
+      projectId: "project",
+      name: "app",
+      status: "ACTIVE",
+      activeAppVersion: {
+        base: "alpine/nodejs@22",
+        created: "2026-09-23T13:59:24Z",
+        id: "app-version",
+        lastUpdate: "2026-09-23T14:01:27Z",
+        os: null,
+        status: "ACTIVE",
+      },
+    });
+
+    expect(observations).toContainEqual(
+      expect.objectContaining({
+        kind: "service-deployment-observed",
+        observation: expect.objectContaining({
+          fields: {
+            activeDeploy: {
+              id: "app-version",
+              status: "ACTIVE",
+              source: null,
+              activatedAt: "2026-09-23T14:01:27Z",
+              name: null,
+              branch: null,
+              commit: null,
+              tag: null,
+              repository: null,
+            },
+          },
+        }),
+      }),
+    );
+  });
+});

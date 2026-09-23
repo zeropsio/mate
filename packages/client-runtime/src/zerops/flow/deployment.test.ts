@@ -317,6 +317,8 @@ function servicesRead(
 }
 
 const PUSHED: ServiceDeployInfo = {
+  id: "app-version",
+  status: "ACTIVE",
   source: "GIT",
   activatedAt: "2026-09-20T10:00:00Z",
   name: `${SHA} v1.4.0 ada`,

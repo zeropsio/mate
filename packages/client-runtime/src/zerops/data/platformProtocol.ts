@@ -80,6 +80,8 @@ const GitIntegrationRow = Schema.Struct({
 });
 
 const AppVersionRow = Schema.Struct({
+  id: OptionalNullableString,
+  status: OptionalNullableString,
   source: OptionalString,
   created: OptionalNullableString,
   lastUpdate: OptionalNullableString,
@@ -586,10 +588,12 @@ function serviceObservations(
             ? {}
             : {
                 activeDeploy:
-                  raw.activeAppVersion === null || raw.activeAppVersion.source === undefined
+                  raw.activeAppVersion === null
                     ? null
                     : {
-                        source: raw.activeAppVersion.source,
+                        id: raw.activeAppVersion.id ?? null,
+                        status: raw.activeAppVersion.status ?? null,
+                        source: raw.activeAppVersion.source ?? null,
                         activatedAt:
                           raw.activeAppVersion.lastUpdate || raw.activeAppVersion.created || null,
                         name: raw.activeAppVersion.name ?? null,
