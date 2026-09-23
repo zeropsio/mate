@@ -303,24 +303,29 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       readonly answer: Shown<ZeropsServiceDeployedVersion>;
       readonly deployment: object;
       readonly held: boolean;
+      /** When the store asks for the read again itself. */
+      readonly asksAgain: ReadonlyArray<number>;
     }> = [
       {
         name: "a version the service does not name runs, unnamed",
         answer: stated({ activeId: "version-2", source: "GIT", name: null }),
         deployment: { state: "known", value: { kind: "running", version: { label: undefined } } },
         held: false,
+        asksAgain: [],
       },
       {
         name: "a never-deployed runtime's NONE version runs nothing",
         answer: stated({ activeId: "version-2", source: "NONE", name: null }),
         deployment: { state: "known", value: { kind: "none" } },
         held: false,
+        asksAgain: [],
       },
       {
-        name: "an answer for another version names nothing",
+        name: "an answer for another version names nothing, and is asked for again",
         answer: stated({ activeId: "version-1", source: "GIT", name: SHA }),
         deployment: { state: "unread" },
         held: false,
+        asksAgain: [2_000],
       },
       {
         name: "a read that failed says so, and is tried again",
@@ -333,16 +338,18 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
         },
         deployment: { state: "failed", retryAtMs: NOW + 2_000 },
         held: true,
+        asksAgain: [],
       },
       {
         name: "a read still under way holds the line",
         answer: { state: "reading", sinceMs: NOW, attempt: 1 },
         deployment: { state: "unread" },
         held: true,
+        asksAgain: [],
       },
     ];
 
-    it.each(cases)("$name", ({ answer, deployment, held }) => {
+    it.each(cases)("$name", ({ answer, deployment, held, asksAgain }) => {
       const platform = listings();
       const store = makeDeploymentStore(platform.ports);
       store.demand(STAGE);
@@ -353,7 +360,49 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
 
       expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject(deployment);
       expect(platform.directReads().map(({ released }) => !released)).toEqual([held]);
+      expect(platform.armed()).toEqual(asksAgain);
     });
+  });
+
+  it("asks again on the retry ladder while the direct read answers for another version", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    platform.publishProcesses(STAGE, building());
+    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
+
+    // The read joined one taken before version-2 activated: it answers for version-1.
+    platform.answer(stated({ activeId: "version-1", source: "GIT", name: SHA }));
+    expect(deploymentOf(store.stop(STAGE), "app")?.state).toBe("unread");
+    expect(platform.directReads().map(({ released }) => released)).toEqual([true]);
+    expect(platform.armed()).toEqual([2_000]);
+
+    platform.fire();
+    expect(platform.directReads().map(({ released }) => released)).toEqual([true, false]);
+    platform.answer(stated({ activeId: "version-1", source: "GIT", name: SHA }));
+    expect(platform.armed()).toEqual([4_000]);
+
+    platform.fire();
+    platform.answer(stated({ activeId: "version-2", source: "GIT", name: `${SHA} v1.1.0 ada` }));
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: { kind: "running", version: { sha: SHA, name: "v1.1.0" } },
+    });
+    expect(platform.directReads().map(({ released }) => released)).toEqual([true, true, true]);
+    expect(platform.armed()).toEqual([]);
+  });
+
+  it("a stop let go no longer asks again for a read that answered for another version", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    const release = store.demand(STAGE);
+    platform.publishProcesses(STAGE, building());
+    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
+    platform.answer(stated({ activeId: "version-1", source: "GIT", name: SHA }));
+
+    release();
+
+    expect(platform.armed()).toEqual([]);
   });
 
   it("lets go of a direct read once the stop is let go, or its version is named otherwise", () => {

@@ -9,8 +9,8 @@
  * listing changes, with each service's deployment beside it (`stopServices`). The names the
  * builds gave are kept while the stop is demanded: a version that activates after its build
  * ended is still named by it. A version a push left unstated that no build named is read from the
- * service directly (A14), once: the read is held until it answers, tried again on the retry
- * ladder while it fails, then let go. A process demand the platform refuses fails what it could
+ * service directly (A14), once: the read is held until it answers for that version, tried again
+ * on the retry ladder while it fails or answers for another one, then let go. A process demand the platform refuses fails what it could
  * not prove, rather than checking forever, and is asked for again on the retry ladder (§4.0)
  * while the stop is demanded. A stop nobody demands shows `unread`.
  *
@@ -88,17 +88,25 @@ export interface DeploymentStore {
 
 /** A direct read of one service, for the active version a push left unstated. */
 interface DirectRead {
+  readonly service: ServiceRef;
   readonly versionId: string;
   shown: Shown<ZeropsServiceDeployedVersion>;
-  /** Lets the read go; a no-op once it answered. */
+  /** Lets the read go, or disarms the next ask for it; a no-op once it answered. */
   release: () => void;
+  /** Where the next ask sits on the ladder while the service answers for another version. */
+  backoff: Backoff;
 }
 
-/** A read that answered for good: known, gone, or failed with nothing more to try. */
-const answered = (shown: Shown<ZeropsServiceDeployedVersion>): boolean =>
-  (shown.state === "known" && shown.freshness.kind !== "revalidating") ||
-  shown.state === "gone" ||
-  (shown.state === "failed" && shown.retryAtMs === null);
+/** What the read's answer means for its version: settled for good, not for it yet, or neither. */
+const outcomeOf = (direct: DirectRead): "answered" | "another-version" | "waiting" => {
+  const { shown } = direct;
+  if (shown.state === "known" && shown.freshness.kind !== "revalidating") {
+    return shown.value.activeId === direct.versionId ? "answered" : "another-version";
+  }
+  return shown.state === "gone" || (shown.state === "failed" && shown.retryAtMs === null)
+    ? "answered"
+    : "waiting";
+};
 
 interface Entry {
   readonly project: ProjectRef;
@@ -164,24 +172,53 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
     }
     for (const [serviceId, { service, versionId }] of wanted) {
       if (entry.direct.has(serviceId)) continue;
-      const direct: DirectRead = { versionId, shown: UNREAD, release: () => undefined };
+      const direct: DirectRead = {
+        service,
+        versionId,
+        shown: UNREAD,
+        release: () => undefined,
+        backoff: INITIAL_BACKOFF,
+      };
       entry.direct.set(serviceId, direct);
-      let taking = true;
-      const release = ports.deployedVersion(service, (shown) => {
-        direct.shown = shown;
-        if (taking || entry.direct.get(serviceId) !== direct) return;
-        if (answered(shown)) letGo(direct);
-        publish(entry);
-      });
-      taking = false;
-      direct.release = release;
-      if (answered(direct.shown)) letGo(direct);
+      take(entry, direct);
     }
   };
 
-  const letGo = (direct: DirectRead): void => {
+  /** Holds the read until it answers for its version; what it said before says nothing now. */
+  const take = (entry: Entry, direct: DirectRead): void => {
+    direct.shown = UNREAD;
+    let taking = true;
+    const release = ports.deployedVersion(direct.service, (shown) => {
+      direct.shown = shown;
+      if (taking || entry.direct.get(direct.service.serviceId) !== direct) return;
+      settle(entry, direct);
+      publish(entry);
+    });
+    taking = false;
+    direct.release = release;
+    settle(entry, direct);
+  };
+
+  /**
+   * Lets go of a read that answered. One that answered for another version — it joined a read
+   * taken before this version activated — is let go and asked for again on the retry ladder: a
+   * new demand reads the service again.
+   */
+  const settle = (entry: Entry, direct: DirectRead): void => {
+    const outcome = outcomeOf(direct);
+    if (outcome === "waiting") return;
     direct.release();
     direct.release = () => undefined;
+    if (outcome === "answered") return;
+    const nowMs = ports.nowMs();
+    const scheduled = scheduleRetry(direct.backoff, nowMs, ports.random);
+    direct.backoff = scheduled.backoff;
+    direct.release = ports.setTimer(scheduled.retryAtMs - nowMs, () => {
+      direct.release = () => undefined;
+      if (entry.direct.get(direct.service.serviceId) !== direct) return;
+      take(entry, direct);
+      publish(entry);
+    });
   };
 
   const publish = (entry: Entry): void => {
