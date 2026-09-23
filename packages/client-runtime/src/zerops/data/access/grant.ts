@@ -819,14 +819,24 @@ const apply = (
       };
     case "TICK":
       return machine;
-    case "VISIBILITY":
-      return {
+    case "VISIBILITY": {
+      const next = {
         ...machine,
         signals: {
           ...machine.signals,
           hiddenSince: event.hidden ? (machine.signals.hiddenSince ?? ctx.now) : null,
         },
       };
+      // Dormancy is a hidden tab's state: it ends with visibility itself, so a wake the §6.4
+      // coalescer suppressed cannot leave a visible tab without a round (D5).
+      const phase = next.phase;
+      const dormantRenewal =
+        (phase.phase === "granted" || phase.phase === "lapsed") &&
+        phase.renewal.status === "dormant";
+      return !event.hidden && dormantRenewal
+        ? withRenewal(next, { status: "idle", dueAt: ctx.now })
+        : next;
+    }
     case "WAKE":
       return event.visible ? wake(machine, ctx, out) : machine;
     case "ONLINE": {

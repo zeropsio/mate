@@ -783,6 +783,15 @@ describe("access grant reducer", () => {
     expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
   });
 
+  it("ends dormancy when the tab becomes visible, even when the coalesced wake is suppressed (D5, §6.4)", () => {
+    const sim = grantedSim();
+    sim.send({ type: "VISIBILITY", hidden: true });
+    play(sim, 90 * MINUTE, healthyPlatform(2 * SECOND));
+    expect(sim.state.phase).toMatchObject({ phase: "lapsed", renewal: { status: "dormant" } });
+    sim.send({ type: "VISIBILITY", hidden: false });
+    expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
+  });
+
   it("pauses rounds offline and starts one when the tab is back online", () => {
     const sim = grantedSim();
     sim.elapse(MINUTE);
