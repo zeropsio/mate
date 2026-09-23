@@ -57,7 +57,8 @@ export interface OperableProjectAccess {
   readonly visibility: Exclude<RoleMateVisibility, "hidden">;
 }
 
-function projectAccess(
+/** One project's read, classified against the viewer's membership; `null` when it is hidden. */
+export function operableProjectAccess(
   project: ZeropsProject,
   membership: ZeropsOrganization,
 ): OperableProjectAccess | null {
@@ -96,7 +97,7 @@ export async function verifyOperableProjects(
         const index = cursor++;
         try {
           const project = await client.fetchProject(targets[index]!.id);
-          projects[index] = projectAccess(project, membership);
+          projects[index] = operableProjectAccess(project, membership);
         } catch (cause) {
           if (
             !(cause instanceof ZeropsApiError) ||

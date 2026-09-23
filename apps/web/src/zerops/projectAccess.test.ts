@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ZeropsApiError, type ZeropsProject } from "@t3tools/client-runtime/zerops";
-import { canOperateProject, projectVisibility, verifyOperableProjects } from "./projectAccess";
+import {
+  canOperateProject,
+  operableProjectAccess,
+  projectVisibility,
+  verifyOperableProjects,
+} from "./projectAccess";
 const membership = {
   id: "org",
   membershipId: "membership",
@@ -62,6 +67,23 @@ describe("AL-08 / AL-10 authoritative project access", () => {
     );
 
     expect(result).toEqual([]);
+  });
+
+  // One project's read, classified on its own: a round turns each answer into
+  // that project's evidence without waiting for the others.
+  it.each([
+    ["OWNER", { role: "OWNER", visibility: "open" }],
+    ["BASIC_USER", { role: "BASIC_USER", visibility: "open" }],
+    ["READ_ONLY", { role: "READ_ONLY", visibility: "listed" }],
+    ["NO_ACCESS", null],
+  ] as const)("classifies one project read with a %s override", (roleCode, expected) => {
+    const read: ZeropsProject = {
+      ...project,
+      userRoles: [{ clientUserId: membership.membershipId, roleCode }],
+    };
+    expect(operableProjectAccess(read, membership)).toEqual(
+      expected === null ? null : { project: read, ...expected },
+    );
   });
 
   it.each([
