@@ -8,9 +8,9 @@
  *   up, 10 s rising to 60 s once that is overdue or while only failed probes say it is coming
  *   up), and once more whenever a push, a connect failure or a wake asks (`request`).
  * - The pool runs at most `PROBE_POOL_SIZE` probes at once, each ending by its
- *   `PROBE_DEADLINE_MS` as `unreachable`. Slots go by priority and, within one, round-robin to
- *   the origin started least recently; overdue origins share at most `OVERDUE_PROBE_SLOTS`, so
- *   one that never answers cannot starve the others.
+ *   `PROBE_DEADLINE_MS` as `unreachable`. A request or a timely poll goes before an overdue poll
+ *   and, within one, slots round-robin to the origin started least recently; overdue origins
+ *   share at most `OVERDUE_PROBE_SLOTS`, so one that never answers cannot starve the others.
  * - A tab hidden for `HIDDEN_PROBE_PAUSE_MS` probes nothing until it is shown again.
  */
 import type { Instant } from "../data/access/grant.ts";
