@@ -803,6 +803,14 @@ describe("a project's next step on the projects page", () => {
     expect(groupDetailSource).toContain("export function ZeropsReleaseVerb(");
   });
 
+  it("releases at the height of every other verb on the page, the project's own page keeping its own", () => {
+    expect(groupDetailSource).toContain(
+      '<ReleaseAction label={label} release={release} size="compact" />',
+    );
+    expect(groupDetailSource).toContain('readonly size?: "sm" | "compact";');
+    expect(groupDetailSource).toContain("<ReleaseAction release={release} />");
+  });
+
   it("says whose production is in the Add production verb's tooltip, and to assistive technology", () => {
     // Not a line in the cell: the verb explains itself where it is pressed.
     expect(projectsPageSource).toContain("<TooltipPopup>{PRODUCTION_ADDED_HERE}</TooltipPopup>");

@@ -522,7 +522,8 @@ export function ZeropsReleaseVerb({
   readonly label: string;
 }) {
   const release = useReleaseOffer(groupId);
-  return <ReleaseAction label={label} release={release} />;
+  // The projects page's verbs are all one height; this one is theirs.
+  return <ReleaseAction label={label} release={release} size="compact" />;
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
@@ -1417,10 +1418,13 @@ export interface ReleaseOffer {
 function ReleaseAction({
   release,
   label,
+  size = "sm",
 }: {
   readonly release: ReleaseOffer;
   /** The verb's words where the caller has them; *Release* otherwise. */
   readonly label?: string;
+  /** `compact` where it stands among the projects page's verbs. */
+  readonly size?: "sm" | "compact";
 }) {
   const [confirming, setConfirming] = useState(false);
   if (!release.offered) return null;
@@ -1432,7 +1436,7 @@ function ReleaseAction({
         onClick={() => {
           setConfirming(true);
         }}
-        size="sm"
+        size={size}
       >
         {release.releasing
           ? flowVerbLabel("release", true)
