@@ -286,12 +286,20 @@ function stopsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<StopRow>> {
   ]);
 }
 
-/** The version a service runs now, a build of it running or not; `null` while it runs none. */
+/**
+ * The version a service runs now, a build of it running or not; `null` while it runs none, and
+ * `undefined` while a build runs and nothing states or names what ran before it.
+ */
 function runningOf(
   deployment: Deployment,
-): Extract<Deployment, { readonly kind: "running" }> | null {
-  const runs = deployment.kind === "deploying" ? deployment.previous : deployment;
-  return runs?.kind === "running" ? runs : null;
+): Extract<Deployment, { readonly kind: "running" }> | null | undefined {
+  if (deployment.kind !== "deploying") return deployment.kind === "running" ? deployment : null;
+  const { previous } = deployment;
+  // Mid-build the service names the version it builds (A14): what ran with no name is unstated.
+  if (previous === null || (previous.kind === "running" && previous.version.label === undefined)) {
+    return undefined;
+  }
+  return previous.kind === "running" ? previous : null;
 }
 
 /**
@@ -327,8 +335,10 @@ function releaseOf(
       // A service with no repository of its name (or none on Gitea at all) has no candidate:
       // it is left out of the release, never a reason to hold the others.
       if (head.state !== "gone") parts.push({ shown: head, source: "gitea" });
-      // A production mid-deploy is measured against what it runs: its build may yet fail.
+      // A production mid-deploy is measured against what it runs: its build may yet fail. Until
+      // something states that, nothing proves production runs anything older than `main`.
       const runs = isKnown(deployment) ? runningOf(deployment.value) : null;
+      if (runs === undefined) parts.push({ shown: UNREAD, source: "zerops" });
       if (runs?.version.sha !== undefined) production.set(hostname, runs.version.sha);
       if (isKnown(head)) candidate.set(hostname, head.value);
     }

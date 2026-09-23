@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
 import type { GroupEnvironment } from "../groupEnvironments.ts";
+import { deployedVersion } from "../groupRows.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { FailureReason, Known, Shown } from "../knowledge/known.ts";
 import { RELEASE_NOTHING_NEW_ON_MAIN } from "../release.ts";
@@ -381,6 +382,34 @@ describe("groupFlow (DESIGN §4.7)", () => {
       allowed: false,
       reason: RELEASE_NOTHING_NEW_ON_MAIN,
     });
+  });
+
+  it("a production mid-deploy whose running version nothing names holds the release", () => {
+    const midDeploy = (previous: SettledDeployment | null) =>
+      groupFlow(
+        inputs({
+          stops: new Map([
+            ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
+            [
+              "p-prod",
+              known([stopService("p-prod", "appdev", known(deploying(MAIN_SHA, previous)))]),
+            ],
+          ]),
+        }),
+        RELEASER,
+        NOW,
+      );
+    const unnamed: SettledDeployment = {
+      kind: "running",
+      activatedAt: "2026-09-23T09:00:00Z",
+      version: deployedVersion(undefined),
+    };
+
+    // What runs is not stated yet: it is no proof production runs something older than main.
+    expect(midDeploy(null).releaseGate).toEqual({ allowed: false, reason: CHECKING_RELEASE });
+    expect(midDeploy(unnamed).releaseGate).toEqual({ allowed: false, reason: CHECKING_RELEASE });
+    // A production that ran nothing before its first build has nothing to hold.
+    expect(midDeploy({ kind: "none" }).releaseGate).toEqual({ allowed: true });
   });
 
   it("a merge into a repository feeds the stages that run it, never production", () => {
