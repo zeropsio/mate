@@ -1828,8 +1828,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           >
             <span className="text-muted-foreground">#{pull.number}</span> {pull.title}
           </button>
+          {/* The check's word is never cut; only what the change is gives way. */}
           <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted-foreground">
-            {status}
+            {status === undefined ? null : <span className="flex shrink-0">{status}</span>}
             <span className="min-w-0 truncate">{line}</span>
           </span>
           {action}
