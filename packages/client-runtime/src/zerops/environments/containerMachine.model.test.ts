@@ -32,6 +32,7 @@ const ready = (serverVersion: string, initAt: string | null): ProbeReading => ({
     identity: "ok",
     identityCheckedAt: null,
   },
+  projectId: "project-1",
   initAt,
 });
 

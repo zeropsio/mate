@@ -242,6 +242,8 @@ describe("readZeropsContainer", () => {
         identity: "unknown",
         identityCheckedAt: null,
       },
+      // A descriptor outside Zerops mode states no project.
+      projectId: null,
       initAt: LIVE_HEALTHZ.initAt,
     });
     expect(read.calls.every((call) => call.init?.signal === signal)).toBe(true);
@@ -264,6 +266,7 @@ describe("readZeropsContainer", () => {
     expect(reading).toMatchObject({
       kind: "ready",
       descriptor: { identity: "failed", identityCheckedAt: "2026-09-23T10:00:00Z" },
+      projectId: "project-1",
       initAt: null,
     });
   });

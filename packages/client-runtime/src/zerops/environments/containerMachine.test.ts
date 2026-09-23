@@ -24,7 +24,12 @@ const descriptor = (serverVersion: string): DescriptorFacts => ({
   identityCheckedAt: null,
 });
 
-const READY: ProbeReading = { kind: "ready", descriptor: descriptor("0.11.40"), initAt: null };
+const READY: ProbeReading = {
+  kind: "ready",
+  descriptor: descriptor("0.11.40"),
+  projectId: "project-1",
+  initAt: null,
+};
 
 interface Run {
   readonly machine: ContainerMachine;

@@ -21,6 +21,7 @@ const READY: ProbeReading = {
     identity: "ok",
     identityCheckedAt: null,
   },
+  projectId: "project-1",
   initAt: null,
 };
 

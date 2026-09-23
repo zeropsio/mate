@@ -65,6 +65,7 @@ const READY: ProbeReading = {
     identity: "unknown",
     identityCheckedAt: null,
   },
+  projectId: "project-1",
   initAt: null,
 };
 

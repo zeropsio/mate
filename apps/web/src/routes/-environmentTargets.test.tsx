@@ -539,7 +539,13 @@ describe("useRouteGateInputs", () => {
         reconnect: false,
       }),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
-      readings: new Map([[OTHER, answering(ENV_B)]]),
+      readings: new Map([[OTHER, answering(ENV_B, "project-1")]]),
+      gate: { kind: "unavailable", reachability: null },
+    },
+    {
+      name: "the only present Mate's descriptor names it for another project",
+      machines: other({ kind: "none", reconnect: false }),
+      readings: new Map([[OTHER, answering(ENV_A, "project-2")]]),
       gate: { kind: "unavailable", reachability: null },
     },
     {
@@ -571,7 +577,8 @@ const mate = (index: number) => ({
   projectId: `project-${index}`,
 });
 
-const answering = (environmentId: EnvironmentId): ProbeReading => ({
+/** A descriptor that answered as Mate for this environment, stating this project. */
+const answering = (environmentId: EnvironmentId, projectId: string): ProbeReading => ({
   kind: "ready",
   descriptor: {
     environmentId,
@@ -580,6 +587,7 @@ const answering = (environmentId: EnvironmentId): ProbeReading => ({
     identity: "ok",
     identityCheckedAt: null,
   },
+  projectId,
   initAt: null,
 });
 
@@ -706,7 +714,7 @@ describe("the descriptor index", () => {
     const routed = routeTo(ENV_A);
     expect(selectRouteGate(routed.read().target)).toEqual({ kind: "wait", reachability: null });
 
-    await rig.answer(one.origin, answering(ENV_A));
+    await rig.answer(one.origin, answering(ENV_A, one.projectId));
 
     const seen = routed.read();
     expect(seen.target?.kind).toBe("resolved");
@@ -747,7 +755,10 @@ describe("the descriptor index", () => {
     for (const [position, each] of mates.entries()) {
       await rig.answer(
         each.origin,
-        answering(position === 8 ? ENV_A : EnvironmentId.make(`env-${position + 1}`)),
+        answering(
+          position === 8 ? ENV_A : EnvironmentId.make(`env-${position + 1}`),
+          each.projectId,
+        ),
       );
       seen.push({ answered: position + 1, gate: look().gate.kind, projectId: look().projectId });
     }
@@ -796,7 +807,7 @@ describe("the descriptor index", () => {
     };
 
     // The Mate was redeployed with its data history: its descriptor now reports another environment.
-    await rig.answer(one.origin, answering(ENV_B));
+    await rig.answer(one.origin, answering(ENV_B, one.projectId));
 
     expect(look(ENV_A)).toEqual({
       gate: { kind: "unavailable", reachability: { kind: "replaced", by: ENV_B } },

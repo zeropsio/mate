@@ -19,8 +19,16 @@ import type { ExchangeClock } from "./exchangeDriver.ts";
 
 /** What one probe of an origin concluded (`containerHealth.ts` reads it). */
 export type ProbeReading =
-  /** The descriptor answered: Mate is up. `initAt` is `/healthz`'s, read beside it. */
-  | { readonly kind: "ready"; readonly descriptor: DescriptorFacts; readonly initAt: string | null }
+  /**
+   * The descriptor answered: Mate is up. `projectId` is the project it states, null outside
+   * Zerops mode; `initAt` is `/healthz`'s, read beside it.
+   */
+  | {
+      readonly kind: "ready";
+      readonly descriptor: DescriptorFacts;
+      readonly projectId: string | null;
+      readonly initAt: string | null;
+    }
   /** `/healthz` answered and the descriptor did not: Mate is still coming up. */
   | { readonly kind: "initializing"; readonly initAt: string | null }
   /** Neither route is served: an older zcp, or one with `ZCP_MATE_ENABLED` off. */

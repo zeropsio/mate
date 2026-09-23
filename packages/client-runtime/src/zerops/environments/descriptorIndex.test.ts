@@ -23,7 +23,11 @@ const present = (key: string, overrides: Partial<EnvironmentMachine> = {}): Envi
   ...overrides,
 });
 
-const ready = (environmentId: EnvironmentId): ProbeReading => ({
+/** A descriptor that answered as Mate, stating `KEY`'s project unless told otherwise. */
+const ready = (
+  environmentId: EnvironmentId,
+  projectId: string | null = "project-1",
+): ProbeReading => ({
   kind: "ready",
   descriptor: {
     environmentId,
@@ -32,6 +36,7 @@ const ready = (environmentId: EnvironmentId): ProbeReading => ({
     identity: "ok",
     identityCheckedAt: null,
   },
+  projectId,
   initAt: null,
 });
 
@@ -65,6 +70,18 @@ describe("indexDescriptors", () => {
         unanswered: [],
         failed: [],
       },
+    },
+    {
+      name: "a descriptor stating another project answered, and serves nothing for this target",
+      machine: present(KEY),
+      container: read(ready(ENV_A, "project-2")),
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+    },
+    {
+      name: "a descriptor stating no project answered, and serves nothing for this target",
+      machine: present(KEY),
+      container: read(ready(ENV_A, null)),
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
     },
     {
       name: "an origin serving no Mate answered: it holds no environment",

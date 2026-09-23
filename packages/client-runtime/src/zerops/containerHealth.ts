@@ -204,6 +204,14 @@ function descriptorFactsOf(body: Record<string, unknown>): DescriptorFacts | nul
   };
 }
 
+/** The Zerops project the descriptor states (`zerops.projectId`); null outside Zerops mode. */
+function projectIdOf(body: Record<string, unknown>): string | null {
+  const zerops = body.zerops;
+  if (zerops === null || typeof zerops !== "object") return null;
+  const projectId = (zerops as Record<string, unknown>).projectId;
+  return typeof projectId === "string" && projectId !== "" ? projectId : null;
+}
+
 const initAtOf = (health: Reading): string | null =>
   health.kind === "json" && typeof health.body.initAt === "string" ? health.body.initAt : null;
 
@@ -221,11 +229,17 @@ export async function readZeropsContainer(
     read(`${base}/.well-known/t3/environment`, fetchImpl, signal),
     read(`${base}/healthz`, fetchImpl, signal),
   ]);
-  const facts =
-    descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)
-      ? descriptorFactsOf(descriptor.body)
-      : null;
-  if (facts !== null) return { kind: "ready", descriptor: facts, initAt: initAtOf(health) };
+  if (descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)) {
+    const facts = descriptorFactsOf(descriptor.body);
+    if (facts !== null) {
+      return {
+        kind: "ready",
+        descriptor: facts,
+        projectId: projectIdOf(descriptor.body),
+        initAt: initAtOf(health),
+      };
+    }
+  }
   const concluded = concludeWithoutDescriptor(descriptor, health);
   return concluded === "initializing"
     ? { kind: "initializing", initAt: initAtOf(health) }

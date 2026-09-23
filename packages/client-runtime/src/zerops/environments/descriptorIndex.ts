@@ -10,6 +10,9 @@
  *   a redeploy that dropped the Mate's data history. A credential held for it is left to its link,
  *   whose block re-reads the descriptor (§4.4), so a reading older than the credential never
  *   ends a live route. Nothing is retired for it: drafts keep their keys (AL-13).
+ * - A descriptor serves an environment only for the target whose project it states
+ *   (`zerops.projectId`): an origin answering for another project's Mate, or for no project, has
+ *   answered and serves nothing here.
  * - A present target's descriptor has answered once its origin was read as Mate (`ready`) or as
  *   serving no Mate at all (`predates-mate`). Unread, still coming up or unreachable, it has not,
  *   and an environment nothing names stays undecided until it has: "not in your projects" is
@@ -36,6 +39,9 @@ export interface DescriptorIndex {
   readonly failed: ReadonlyArray<TargetKey>;
 }
 
+/** The Zerops project of a `projectId:serviceId` target. */
+const projectOf = (key: TargetKey): string => key.split(":")[0] ?? key;
+
 /** Every present target's descriptor as the container store last read it. */
 export function indexDescriptors(
   environments: ReadonlyMap<TargetKey, EnvironmentMachine>,
@@ -49,6 +55,7 @@ export function indexDescriptors(
     if (machine.presence.kind !== "present") continue;
     const reading = containers.get(key)?.reading?.reading;
     if (reading?.kind === "ready") {
+      if (reading.projectId !== projectOf(key)) continue;
       serving.set(reading.descriptor.environmentId, key);
       reported.set(key, reading.descriptor.environmentId);
       continue;
