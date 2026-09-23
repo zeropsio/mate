@@ -90,7 +90,12 @@ export interface PollTimers {
   readonly clearTimeout: (handle: ReturnType<typeof setTimeout>) => void;
 }
 
-const REAL_TIMERS: PollTimers = { setTimeout, clearTimeout };
+// Browsers throw "Illegal invocation" when their timer functions are called
+// as a method of any object but the global one, so each is called unbound.
+const REAL_TIMERS: PollTimers = {
+  setTimeout: (callback, ms) => setTimeout(callback, ms),
+  clearTimeout: (handle) => clearTimeout(handle),
+};
 
 function delay(
   ms: number,

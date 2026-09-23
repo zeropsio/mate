@@ -16,6 +16,7 @@ vi.mock("@t3tools/client-runtime/zerops/containerHealth", () => ({
 afterEach(() => {
   closeAccountLifetime();
   probe.mockReset();
+  vi.unstubAllGlobals();
 });
 it("shares a probe across sidebar, picker and incremental candidate snapshots", async () => {
   openAccountLifetime("account");
@@ -343,4 +344,81 @@ it("stops re-probing once cancelled", async () => {
   cancelled = true;
   await clock.advance(5_000);
   expect(reprobeCalls).toBe(0);
+});
+
+async function flushMicrotasks(): Promise<void> {
+  for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+}
+
+/**
+ * Installs a global `setTimeout`/`clearTimeout` that enforce their receiver
+ * the way browsers do (`TypeError: Illegal invocation` for any `this` other
+ * than the global object or `undefined`), then evaluates a fresh copy of the
+ * module so its default timers are taken from these globals.
+ */
+async function withBrowserTimerGlobals() {
+  const scheduled: Array<{ readonly callback: () => void; readonly ms: number }> = [];
+  const cleared: Array<unknown> = [];
+  const enforceReceiver = (receiver: unknown) => {
+    if (receiver !== undefined && receiver !== globalThis) {
+      throw new TypeError("Illegal invocation");
+    }
+  };
+  vi.stubGlobal("setTimeout", function (this: unknown, callback: () => void, ms: number) {
+    enforceReceiver(this);
+    scheduled.push({ callback, ms });
+    return scheduled.length;
+  });
+  vi.stubGlobal("clearTimeout", function (this: unknown, handle: unknown) {
+    enforceReceiver(this);
+    cleared.push(handle);
+  });
+  vi.resetModules();
+  const module = await import("./useZeropsCandidateHealth");
+  return { pollCandidateHealth: module.pollCandidateHealth, scheduled, cleared };
+}
+
+it("waits between re-probes on the default timers where setTimeout enforces its receiver", async () => {
+  const browser = await withBrowserTimerGlobals();
+  const verdicts: ZeropsContainerHealth[] = [];
+  const done = browser.pollCandidateHealth({
+    firstProbe: () => Promise.resolve({ health: "initializing" }),
+    reprobe: () => Promise.resolve({ health: "ready" }),
+    isProcessRunning: () => false,
+    now: () => 0,
+    isCancelled: () => false,
+    onVerdict: (health) => {
+      verdicts.push(health);
+    },
+  });
+  let failure: unknown;
+  done.catch((error: unknown) => {
+    failure = error;
+  });
+  await flushMicrotasks();
+  expect(failure).toBeUndefined();
+  expect(browser.scheduled.map((entry) => entry.ms)).toEqual([5_000]);
+
+  browser.scheduled[0]!.callback();
+  await done;
+  expect(verdicts).toEqual(["initializing", "ready"]);
+});
+
+it("cancels a pending wait on the default timers where clearTimeout enforces its receiver", async () => {
+  const browser = await withBrowserTimerGlobals();
+  let cancelChecks = 0;
+  // Cancelled between scheduling the wait and awaiting it: the poll clears
+  // the timer it just set.
+  await browser.pollCandidateHealth({
+    firstProbe: () => Promise.resolve({ health: "initializing" }),
+    reprobe: () => Promise.resolve({ health: "ready" }),
+    isProcessRunning: () => false,
+    now: () => 0,
+    isCancelled: () => {
+      cancelChecks += 1;
+      return cancelChecks > 1;
+    },
+    onVerdict: () => {},
+  });
+  expect(browser.cleared).toEqual([1]);
 });
