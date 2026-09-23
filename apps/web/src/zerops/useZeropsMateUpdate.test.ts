@@ -190,7 +190,7 @@ describe("useZeropsMateUpdate", () => {
     expect(hook.state.phase).toBe("failed");
   });
 
-  it("an update no container can follow says so", async () => {
+  it("an update no container follows waits for another version, within the update's budget", async () => {
     container.takes = false;
     commandSpy.mockResolvedValue({
       _tag: "Success",
@@ -208,7 +208,17 @@ describe("useZeropsMateUpdate", () => {
     hook.confirm();
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
+    expect(hook.state).toEqual({ phase: "updating" });
+
+    // Past the update's budget with the version unchanged, it says the server has not come back.
+    await vi.advanceTimersByTimeAsync(120_000);
+    hook = render("0.8.0");
     expect(hook.state.phase).toBe("failed");
+
+    // Coming back later on the new version, it has still updated.
+    render("0.8.1");
+    hook = render("0.8.1");
+    expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
   });
 
   it("the RPC's own ZeropsMateUpdateResult.error: fails with that message, never a transport error", async () => {

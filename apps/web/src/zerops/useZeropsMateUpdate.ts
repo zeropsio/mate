@@ -4,7 +4,9 @@
  * `updating` (DESIGN §4.5, C8) until a read fact proves it back — a connect
  * after the update began, or its descriptor on another version. The container
  * machine owns that wait and its budget; this hook only says where the verb
- * stands.
+ * stands. A Mate no container of this account follows (its project is not in
+ * the organization's inventory) is followed by its own `serverVersion`
+ * instead, within the same budget.
  *
  * `idle → confirm → updating → updated/already-current → idle`, or
  * `→ failed` from an `exec:operate` refusal, the RPC's own
@@ -29,7 +31,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
-import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
+import { CONTAINER_CAPS_MS, type TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { zeropsCommands } from "../state/zeropsCommands";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -65,12 +67,16 @@ interface MateUpdateEntry {
   readonly state: MateUpdateState;
   readonly checked: ExecutionEnvironmentUpdate | null | undefined;
   /**
-   * The container carrying this update's intent; null while no accepted
-   * update is being followed. Kept beside the phase rather than inside it,
+   * What an accepted update is followed by: the container carrying its
+   * intent, or — when no container takes it — the version it started on;
+   * null while none is followed. Kept beside the phase rather than inside it,
    * because the following outlives what the line says — a Mate that comes
    * back after its budget ran out has still updated, and says so.
    */
-  readonly following: TargetKey | null;
+  readonly following:
+    | { readonly kind: "container"; readonly key: TargetKey }
+    | { readonly kind: "version"; readonly from: string }
+    | null;
   /** Bumped by every action, so an answer from an abandoned one is dropped. */
   readonly generation: number;
 }
@@ -102,7 +108,9 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/** The one timer a Mate has at a time: the display settling back to idle. */
+const NOT_BACK = "The server has not come back yet. Check the connection again.";
+
+/** The one timer a Mate has at a time: the display settling back to idle, or a budget. */
 function schedule(environmentId: EnvironmentId, ms: number, run: () => void): void {
   clearTimer(environmentId);
   timers.set(
@@ -175,17 +183,17 @@ export function useZeropsMateUpdate(
   const overdue = updating && verdict.overdue;
   useEffect(() => {
     const current = entryFor(environmentId);
-    if (current.following === null || current.following !== container.key) return;
-    if (updating) {
-      if (overdue && current.state.phase === "updating") {
-        write(environmentId, {
-          ...current,
-          state: {
-            phase: "failed",
-            message: "The server has not come back yet. Check the connection again.",
-          },
-        });
+    const following = current.following;
+    if (following === null) return;
+    if (following.kind === "container") {
+      if (following.key !== container.key) return;
+      if (updating) {
+        if (overdue && current.state.phase === "updating") {
+          write(environmentId, { ...current, state: { phase: "failed", message: NOT_BACK } });
+        }
+        return;
       }
+    } else if (serverVersion === following.from) {
       return;
     }
     if (serverVersion === undefined) return;
@@ -243,14 +251,23 @@ export function useZeropsMateUpdate(
       const accepted = entryFor(environmentId);
       if (accepted.generation !== generation) return;
       const key = container.key;
-      if (key === null || !intendContainer(key, { kind: "update", from: serverVersion ?? null })) {
+      if (key !== null && intendContainer(key, { kind: "update", from: serverVersion ?? null })) {
+        write(environmentId, { ...accepted, following: { kind: "container", key } });
+        return;
+      }
+      if (serverVersion === undefined) {
         settle(environmentId, generation, {
           phase: "failed",
           message: "This Mate cannot be followed from here. Check the connection again.",
         });
         return;
       }
-      write(environmentId, { ...accepted, following: key });
+      write(environmentId, { ...accepted, following: { kind: "version", from: serverVersion } });
+      schedule(environmentId, CONTAINER_CAPS_MS.updating, () => {
+        const waited = entryFor(environmentId);
+        if (waited.generation !== generation || waited.state.phase !== "updating") return;
+        write(environmentId, { ...waited, state: { phase: "failed", message: NOT_BACK } });
+      });
     };
 
     void (async () => {
