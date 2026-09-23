@@ -812,9 +812,14 @@ const apply = (
       }
       const next =
         event.descriptor === null ? machine : ingestDescriptor(machine, event.descriptor, ctx);
-      return event.failure.class === "retryable"
-        ? backoff(next, event.failure.cause, credential.reconnect, ctx)
-        : refuse(next, event.failure.reason, out);
+      if (event.failure.class === "retryable") {
+        return backoff(next, event.failure.cause, credential.reconnect, ctx);
+      }
+      // A version is refused on the descriptor it was judged on; without one it is read again.
+      if (event.failure.reason.kind === "version" && next.descriptor === null) {
+        return backoff(next, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
+      }
+      return refuse(next, event.failure.reason, out);
     }
     case "ROLE_CHANGED":
       return inputChanged(machine, "input-change");

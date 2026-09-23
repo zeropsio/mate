@@ -501,6 +501,22 @@ describe("reachability over the machine's own transitions", () => {
     });
   });
 
+  it("a version refusal with no descriptor behind it is retried, never update-unavailable", () => {
+    const opened = drive(initialEnvironment({ record: null }), OPENING).machine;
+    const refused = drive(opened, [
+      {
+        type: "EXCHANGE_FAILED",
+        attempt: attemptOf(opened),
+        failure: { class: "refusal", reason: { kind: "version" } },
+        descriptor: null,
+      },
+    ]).machine;
+    expect(selectReachability(refused, ENV_A)).toMatchObject({
+      kind: "retrying",
+      last: { kind: "descriptor-unreachable" },
+    });
+  });
+
   it("blocked(permission) twice → refused(role) (T-L22)", () => {
     const once = drive(connectedMachine(), [
       { type: "LINK", link: { phase: "blocked", reason: "permission" } },

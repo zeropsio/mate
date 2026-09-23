@@ -115,6 +115,12 @@ const answers = (attempt: number): ReadonlyArray<EnvironmentEvent> => [
     failure: { class: "refusal", reason: { kind: "project-mismatch" } },
     descriptor: null,
   },
+  {
+    type: "EXCHANGE_FAILED",
+    attempt,
+    failure: { class: "refusal", reason: { kind: "version" } },
+    descriptor: null,
+  },
   { type: "DESCRIPTOR_READ", attempt, result: { ok: true, descriptor: descriptor() } },
   {
     type: "DESCRIPTOR_READ",
@@ -238,8 +244,11 @@ const violations = (
           ? machine.presence.kind === "gone" || credential.kind === "retired"
           : verdict.kind === "replaced"
             ? superseded
-            : credential.kind === "refused" &&
-              credential.reason.kind === (verdict.kind === "refused-role" ? "role" : "version");
+            : verdict.kind === "refused-role"
+              ? credential.kind === "refused" && credential.reason.kind === "role"
+              : credential.kind === "refused" &&
+                credential.reason.kind === "version" &&
+                machine.descriptor !== null;
       if (!evidenced) found.push(`I9: terminal ${verdict.kind} for ${asked} without evidence`);
     }
     if (

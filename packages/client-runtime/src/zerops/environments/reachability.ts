@@ -78,11 +78,9 @@ export const environmentLinkable = (verdict: Reachability): boolean =>
  * comparison against the floor.
  */
 export const floorVerdict = (
-  descriptor: DescriptorFacts | null,
+  descriptor: DescriptorFacts,
 ): Extract<Reachability, { readonly kind: "update-required" | "update-unavailable" }> =>
-  descriptor?.update !== null &&
-  descriptor?.update !== undefined &&
-  mateServerCompatibility(descriptor.update.latest) === "supported"
+  descriptor.update !== null && mateServerCompatibility(descriptor.update.latest) === "supported"
     ? {
         kind: "update-required",
         actual: descriptor.serverVersion,
@@ -126,7 +124,10 @@ export function selectReachability(
       case "role":
         return { kind: "refused-role" };
       case "version":
-        return floorVerdict(machine.descriptor);
+        // The machine refuses a version only on a descriptor it has read.
+        return machine.descriptor === null
+          ? { kind: "connecting", waitingOn: "descriptor" }
+          : floorVerdict(machine.descriptor);
       case "project-mismatch":
         return { kind: "connecting", waitingOn: "presence" };
       case "access":
