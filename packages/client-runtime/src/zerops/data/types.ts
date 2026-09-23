@@ -136,12 +136,29 @@ export type InterestKey = typeof InterestKey.Type;
 
 const scopedKey = (parts: ReadonlyArray<string>): string => JSON.stringify(parts);
 
-export const organizationKeyOf = (ref: OrganizationRef): OrganizationKey =>
+/**
+ * A ref's key, computed once per ref object. Refs are immutable, and every publication keys the
+ * account's refs again, so a key is serialized once rather than on every read.
+ */
+function keyedOnce<Ref extends object, Key>(keyOf: (ref: Ref) => Key): (ref: Ref) => Key {
+  const keys = new WeakMap<Ref, Key>();
+  return (ref) => {
+    let key = keys.get(ref);
+    if (key === undefined) {
+      key = keyOf(ref);
+      keys.set(ref, key);
+    }
+    return key;
+  };
+}
+
+export const organizationKeyOf = keyedOnce((ref: OrganizationRef): OrganizationKey =>
   OrganizationKey.make(
     scopedKey(["organization", ref.account.apiOrigin, ref.account.accountId, ref.organizationId]),
-  );
+  ),
+);
 
-export const projectKeyOf = (ref: ProjectRef): ProjectKey =>
+export const projectKeyOf = keyedOnce((ref: ProjectRef): ProjectKey =>
   ProjectKey.make(
     scopedKey([
       "project",
@@ -150,7 +167,8 @@ export const projectKeyOf = (ref: ProjectRef): ProjectKey =>
       ref.organization.organizationId,
       ref.projectId,
     ]),
-  );
+  ),
+);
 
 export const serviceKeyOf = (ref: ServiceRef): ServiceKey =>
   ServiceKey.make(

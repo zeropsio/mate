@@ -124,8 +124,22 @@ function organizationOfEntityRef(ref: EntityRef): OrganizationRef {
   return ref.kind === "project" ? ref.organization : ref.project.organization;
 }
 
-/** Stable desired-work identity. Disposable receiver/interest epochs stay out of this key. */
+const interestKeys = new WeakMap<RuntimeInterestDescriptor, InterestKey>();
+
+/**
+ * Stable desired-work identity. Disposable receiver/interest epochs stay out of this key. It is
+ * serialized once per descriptor object: descriptors are immutable.
+ */
 export function interestKeyOf(descriptor: RuntimeInterestDescriptor): InterestKey {
+  let key = interestKeys.get(descriptor);
+  if (key === undefined) {
+    key = serializedInterestKey(descriptor);
+    interestKeys.set(descriptor, key);
+  }
+  return key;
+}
+
+function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestKey {
   switch (descriptor.kind) {
     case "organization-inventory":
       return InterestKeySchema.make(
