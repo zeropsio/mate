@@ -541,6 +541,20 @@ describe("forge store backstops (DESIGN §6.3)", () => {
     expect(sent("statuses shop/app@h4")).toHaveLength(1);
   });
 
+  it("a commit CI has posted nothing on yet is read again at the list backstop and on a wake", async () => {
+    const { clock, store, sent, pending } = rig();
+    store.demand({ kind: "statuses", origin: ORIGIN, owner: "shop", repo: "app", sha: "h4" });
+    await clock.advance(0);
+    await pending("statuses shop/app@h4").answer([]);
+    await clock.advance(FORGE_LIST_BACKSTOP_MS);
+    await pending("statuses shop/app@h4").answer([]);
+
+    await clock.advance(FORGE_WAKE_REVALIDATE_MS);
+    store.wake();
+    await clock.advance(0);
+    expect(sent("statuses shop/app@h4")).toHaveLength(3);
+  });
+
   it("the group repo's declarations come from environments.yaml, and no file declares none", async () => {
     const { clock, store, sent, pending } = rig();
     const fact: ForgeFact = { kind: "declarations", origin: ORIGIN, owner: "shop", repo: "group" };

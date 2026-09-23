@@ -25,14 +25,14 @@
  *   every {@link FORGE_LIST_BACKSTOP_MS}, declarations every
  *   {@link FORGE_DECLARATIONS_BACKSTOP_MS}, a commit's statuses every
  *   {@link FORGE_PENDING_STATUS_MS} while one is pending, for at most
- *   {@link FORGE_PENDING_STATUS_LIMIT_MS}. They run only while the key is demanded and the tab is
- *   visible.
+ *   {@link FORGE_PENDING_STATUS_LIMIT_MS}, and at the list backstop while CI has posted none. They
+ *   run only while the key is demanded and the tab is visible.
  * - A failed read retries on the backoff ladder (`retryPolicy.ts`), keeping the value it had. A
  *   read whose Gitea 401 no token recovered is no answer: the key waits for the session to be
  *   readable again and reads then.
  * - While the tab is hidden nothing starts. A visible wake resets the backoff and reads again
  *   every demanded key read more than {@link FORGE_WAKE_REVALIDATE_MS} ago, except what no read
- *   changes: a key proved absent, a pull request that landed, statuses none of which is pending.
+ *   changes: a key proved absent, a pull request that landed, statuses that are all done.
  *
  * ## Retention
  *
@@ -226,6 +226,13 @@ function keyOf(fact: ForgeFact): string {
   }
 }
 
+/**
+ * Statuses no read changes: at least one, none pending. A commit read before CI posted anything
+ * has none yet, and its first pending status is still to come.
+ */
+const statusesDone = (statuses: ReadonlyArray<GiteaCommitStatus>): boolean =>
+  statuses.length > 0 && !statuses.some((status) => status.state === "pending");
+
 const sameRepository = (fact: ForgeFact, repository: Repository): boolean =>
   fact.kind !== "repos" &&
   fact.origin === repository.origin &&
@@ -388,8 +395,8 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
   const reached = (at: number | null, mono: number): boolean => at !== null && mono >= at;
 
   /**
-   * What no read changes: a key proved absent (M6), a pull request that landed, statuses none of
-   * which is pending (D5). Only an invalidation reads it again.
+   * What no read changes: a key proved absent (M6), a pull request that landed, statuses that are
+   * all done (D5). Only an invalidation reads it again.
    */
   const final = (entry: Entry): boolean => {
     if (entry.cell.held.state === "gone") return true;
@@ -397,10 +404,7 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       case "pull":
         return holds<"pull">(entry, (fact) => fact.pull.merged === true);
       case "statuses":
-        return holds<"statuses">(
-          entry,
-          (statuses) => !statuses.some((status) => status.state === "pending"),
-        );
+        return holds<"statuses">(entry, statusesDone);
       default:
         return false;
     }
@@ -454,10 +458,9 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       case "declarations":
         return mono + FORGE_DECLARATIONS_BACKSTOP_MS;
       case "statuses": {
-        const pending = (value as ReadonlyArray<GiteaCommitStatus>).some(
-          (status) => status.state === "pending",
-        );
-        if (!pending) {
+        const statuses = value as ReadonlyArray<GiteaCommitStatus>;
+        if (statuses.length === 0) return mono + FORGE_LIST_BACKSTOP_MS;
+        if (statusesDone(statuses)) {
           entry.pendingSince = null;
           return null;
         }
