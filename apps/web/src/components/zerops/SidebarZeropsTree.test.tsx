@@ -175,15 +175,22 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain("bg-sidebar-row-active");
   });
 
-  it("lists the other environments after the Mates as the timeline's stops, the Mate's own left out", () => {
+  it("lists production then its stage after the Mates, the Mate's own left out", () => {
     const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).toContain('data-zerops-surface="sidebar-environment-rows"');
-    expect(html.match(/data-zerops-surface="sidebar-environment"/gu)).toHaveLength(2);
-    // Stage before production — the order the code travels — and after the Mate.
+    // Production keeps the full stop treatment; the stage is a muted line of
+    // its own, a different surface entirely (`groupFlow`'s own order, the
+    // owner, 2026-09-23).
+    expect(html.match(/data-zerops-surface="sidebar-environment"/gu)).toHaveLength(1);
+    expect(html.match(/data-zerops-surface="sidebar-group-stage"/gu)).toHaveLength(1);
+    // Production first — the order the code travels — after the Mate, and the
+    // stage after production, never before it.
     expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(
-      html.indexOf("crm-stage"),
+      html.indexOf('data-zerops-project="crm-prod"'),
     );
-    expect(html.indexOf("crm-stage")).toBeLessThan(html.indexOf("crm-prod"));
+    expect(html.indexOf('data-zerops-project="crm-prod"')).toBeLessThan(
+      html.indexOf('data-zerops-project="crm-stage"'),
+    );
     // The stops are open, and they are not a count to click open: the fold is
     // an exception a person asks for, never the state they are handed.
     expect(html).not.toContain("2 environments");
@@ -193,12 +200,35 @@ describe("SidebarZeropsTree", () => {
     expect(render([CRM_DEV])).not.toContain("sidebar-environment-rows");
   });
 
+  it("never draws a stage row where the group has none — no empty or add slot", () => {
+    const html = render([CRM_DEV, CRM_PROD]);
+    expect(html).not.toContain("follows main");
+    expect(html).not.toContain('data-zerops-surface="sidebar-group-stage"');
+  });
+
+  it("draws every group stage after production, each a muted line by its own name", () => {
+    const secondStage = named(
+      "links-stage-2",
+      "Links - stage 2",
+      [...LINKS_TAGS, "mate:role:stage"],
+      false,
+    );
+    const html = render([LINKS_MATE, LINKS_STAGE, secondStage, LINKS_PROD]);
+    const prodAt = html.indexOf('data-zerops-project="links-prod"');
+    const stage1At = html.indexOf('data-zerops-project="links-stage"');
+    const stage2At = html.indexOf('data-zerops-project="links-stage-2"');
+    expect(prodAt).toBeLessThan(stage1At);
+    expect(stage1At).toBeLessThan(stage2At);
+    expect(html).toContain("↳ stage · follows main");
+    expect(html).toContain("↳ stage 2 · follows main");
+  });
+
   it("says a stop's own name, not the project's name a third time", () => {
     const html = render([LINKS_MATE, LINKS_STAGE, LINKS_PROD]);
     // The heading already says Links; the rows say what tells them apart.
-    expect(html).toContain(">stage<");
+    expect(html).toContain("↳ stage · follows main");
     expect(html).toContain(">production<");
-    expect(html).not.toContain(">Links - stage<");
+    expect(html).not.toContain("Links - stage");
     expect(html).not.toContain(">Links - production<");
   });
 
@@ -580,13 +610,22 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain('data-zerops-surface="sidebar-pull-requests"');
   });
 
-  it("gives each environment its last deploy as a dot, and the production Release when offered", () => {
+  it("gives production its last deploy as a dot and Release when offered; the stage stays a muted line", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-    const stage = html.slice(html.indexOf("crm-stage"), html.indexOf("crm-prod"));
-    expect(stage).toContain('aria-label="Deployed"');
-    expect(stage).not.toContain("Release");
-    const production = html.slice(html.indexOf("crm-prod"));
+    // Production first, the stage after it.
+    expect(html.indexOf('data-zerops-project="crm-prod"')).toBeLessThan(
+      html.indexOf('data-zerops-project="crm-stage"'),
+    );
+    const production = html.slice(
+      html.indexOf('data-zerops-project="crm-prod"'),
+      html.indexOf('data-zerops-project="crm-stage"'),
+    );
+    expect(production).toContain('aria-label="Running"');
     expect(production).toContain('data-zerops-primary-action="Release"');
+    const stage = html.slice(html.indexOf('data-zerops-project="crm-stage"'));
+    expect(stage).toContain("↳ crm-stage · follows main");
+    expect(stage).not.toContain("Release");
+    expect(stage).not.toContain('data-zerops-surface="sidebar-stop-badge"');
     expect(withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], flow({ releaseOffered: false }))).not.toContain(
       "Release",
     );
@@ -615,6 +654,7 @@ describe("the project's flow under it", () => {
     const rows =
       count('data-zerops-surface="sidebar-mate"') +
       count('data-zerops-surface="sidebar-environment"') +
+      count('data-zerops-surface="sidebar-group-stage"') +
       count('data-zerops-surface="sidebar-pull-request"') +
       count('data-zerops-surface="sidebar-stops-fold"');
     const changes = count('data-zerops-surface="sidebar-pull-request"');
@@ -633,6 +673,46 @@ describe("the project's flow under it", () => {
     // A change is not a node on the line — it branches off one. Drawn as a
     // node it read as one more Mate however small its dot.
     expect(count('data-zerops-rail="fork"')).toBe(changes);
+  });
+
+  it("keeps a recipe change out of the Mate's own pull-request list — only code moves through the shared flow", () => {
+    // The `fsadfdasfsa`-class bug is two surfaces reading the pull requests
+    // two different ways; this tree now reads them the one way `groupFlow`
+    // does, which counts a recipe change as the group repo's, not a Mate's.
+    const html = withFlow(
+      [CRM_DEV, CRM_STAGE],
+      flow({ pullRequests: [pull(4, { kind: "recipe" })] }),
+    );
+    expect(html).not.toContain('data-zerops-surface="sidebar-pull-request"');
+  });
+
+  describe("the group heading's next-step dot", () => {
+    it("carries a dot when groupFlow's own next step is not none", () => {
+      const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+      expect(html).toContain('data-zerops-surface="sidebar-project-next-step"');
+    });
+
+    it("carries no dot once the flow says nothing is left to do", () => {
+      const talked: ZeropsAgentActivity = {
+        threadId: "thread-x" as ZeropsAgentActivity["threadId"],
+        kind: "idle",
+        status: null,
+        face: "idle",
+        subject: "Ship it",
+        at: new Date().toISOString(),
+        snippet: undefined,
+      };
+      const html = render([CRM_DEV, CRM_STAGE, CRM_PROD], {
+        getActivity: () => talked,
+        getFlow: () => flow({ pullRequests: [], releaseOffered: false }),
+      });
+      expect(html).not.toContain('data-zerops-surface="sidebar-project-next-step"');
+    });
+
+    it("carries no dot while the flow is unread", () => {
+      const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
+      expect(html).not.toContain('data-zerops-surface="sidebar-project-next-step"');
+    });
   });
 });
 
@@ -665,23 +745,47 @@ describe("a stop's deployment", () => {
   it("never says nothing is deployed while it has not read what runs there", () => {
     const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html.toLowerCase()).not.toContain("nothing deployed yet");
-    expect(stop(html, "crm-stage")).toContain("Checking what runs here…");
+    expect(stop(html, "crm-prod")).toContain("Checking what runs here…");
   });
 
   it("says nothing is deployed where the platform says a stop runs nothing", () => {
     const html = withDeployments(
       deploymentsOnly(
         new Map([
-          ["crm-stage", known({ kind: "none" })],
-          ["crm-prod", { state: "unread", waitingFor: null }],
+          ["crm-prod", known({ kind: "none" })],
+          ["crm-stage", { state: "unread", waitingFor: null }],
         ]),
       ),
     );
-    expect(stop(html, "crm-stage")).toContain("Nothing deployed yet");
-    expect(stop(html, "crm-prod")).not.toContain("Nothing deployed yet");
+    expect(stop(html, "crm-prod")).toContain("Nothing deployed yet");
   });
 
   it("names what the platform says a stop runs before Gitea has answered", () => {
+    const html = withDeployments(
+      deploymentsOnly(
+        new Map([
+          [
+            "crm-prod",
+            known({
+              kind: "running",
+              activatedAt: null,
+              version: {
+                name: "v1.4.0",
+                commit: "3f9c1b2",
+                sha: "3f9c1b2000000000000000000000000000000000",
+                taggedBy: undefined,
+                label: "v1.4.0",
+              },
+            }),
+          ],
+        ]),
+      ),
+    );
+    expect(stop(html, "crm-prod")).toContain("v1.4.0");
+    expect(stop(html, "crm-prod")).toContain('aria-label="Running"');
+  });
+
+  it("never shows deployment detail on a group stage — it stays the muted line that follows main", () => {
     const html = withDeployments(
       deploymentsOnly(
         new Map([
@@ -702,8 +806,9 @@ describe("a stop's deployment", () => {
         ]),
       ),
     );
-    expect(stop(html, "crm-stage")).toContain("v1.4.0");
-    expect(stop(html, "crm-stage")).toContain('aria-label="Running"');
+    expect(stop(html, "crm-stage")).toContain("↳ crm-stage · follows main");
+    expect(stop(html, "crm-stage")).not.toContain("v1.4.0");
+    expect(stop(html, "crm-stage")).not.toContain("Checking what runs here");
   });
 });
 

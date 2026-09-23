@@ -1,6 +1,8 @@
 /**
- * The left menu's projects, each as a timeline: the Mates, what each has
- * waiting to land, and the environments the code travels to (D26).
+ * The left menu's projects, each drawn in the one order `groupFlow` draws
+ * every surface in: the Mates, what each has waiting to land, `main`, then
+ * production, a group stage a muted side branch of it (the owner,
+ * 2026-09-23).
  *
  * A project reads top to bottom the way its code moves. First its Mates —
  * the menu's own kind of row, lit on hover and when it is the one open, and
@@ -11,11 +13,12 @@
  * its open pull requests: one row each, the number and the title, the checks
  * as a dot, and *Merge* where Gitea allows it — folded behind a count once
  * there are more than a handful (`pullRequestsFolded`). Then the pull
- * requests that are nobody's Mate's, a person's own branch. Then the
- * project's other environments, stage before production: the name, its tag
- * as a pill, the last deploy as a dot, *Release* on the production when
- * there is something to release, and the one glyph that opens the public
- * route (or offers them).
+ * requests that are nobody's Mate's, a person's own branch. Then production —
+ * the name, its tag as a pill, the last deploy as a dot, *Release* when there
+ * is something to release, and the one glyph that opens the public route (or
+ * offers them) — and, only where the group has one, a group stage after it as
+ * one muted line, `↳ stage · follows main`: an optional side branch of
+ * `main`, never a gate before production and never an empty "add" row.
  *
  * Membership is `hasMate` — the project declares a Mate or a container backs
  * one, and never stage or production — not the live connection, so a
@@ -23,8 +26,11 @@
  * Grouping is `buildZeropsGroupTree`, the same derivation the projects screen
  * uses, so the two surfaces can never disagree about which project an
  * environment is in; the colours are `assignCandidateMateTints`, likewise
- * shared; whose pull request a change is, and whether a list folds, is
- * `projectFlow.ts`, so the projects screen agrees on that too (R5).
+ * shared. Which pull requests are a Mate's to answer for, and the one next
+ * step on the group's own heading, are read from `groupFlow` — the same
+ * derivation the projects page draws from — so a recipe change never counts
+ * as a Mate's own work here, and the dot on a heading never claims a step the
+ * page would not offer.
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -36,6 +42,8 @@ import {
   flowVerbLabel,
   buildZeropsGroupTree,
   environmentNameUnderGroup,
+  environmentTierForRole,
+  groupFlow,
   hasMate,
   mateEnvironmentsEmptyReason,
   pullRequestsByMate,
@@ -51,6 +59,12 @@ import {
   stopAttention,
   type EnvironmentRow,
   type FlowPullRequest,
+  type GroupEnvironmentTier,
+  type GroupFlow,
+  type GroupFlowMate,
+  type GroupFlowStopInput,
+  type GroupNextStep,
+  type GroupNextStepKind,
   type GroupRowTone,
   type ReleaseContentsSummary,
   type MissingEnvironmentRow,
@@ -106,6 +120,65 @@ type RosterCandidate = ZeropsCandidate & {
 
 type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined };
 
+/** An {@link Entry} resolved to its `groupFlow` tier — `undefined` for neither. */
+type StopEntry<T> = Entry<T> & { readonly tier: GroupEnvironmentTier | undefined };
+
+/** Production first, then a stage, then anything the tag scheme has no tier for. */
+function stopTierRank(tier: GroupEnvironmentTier | undefined): number {
+  return tier === "production" ? 0 : tier === "stage" ? 1 : 2;
+}
+
+/** One Mate, as `groupFlow`'s own next step needs it. */
+function groupFlowMateFor<T extends RosterCandidate>(
+  item: T,
+  activity: ZeropsAgentActivity | undefined,
+): GroupFlowMate {
+  const tags = readZeropsGroupTags(item.project.tagList);
+  return {
+    projectId: item.project.id,
+    name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+    // Not drawn by this tree today, and nothing `groupFlow` reads decides on it.
+    preview: undefined,
+    waiting: mateFaceFor(item.group === "connected", activity) === "needs",
+    talked: activity?.subject !== undefined,
+  };
+}
+
+/** One stop, as `groupFlow` needs it — `undefined` where the tag names neither tier. */
+function stopInputFor<T extends RosterCandidate>(
+  entry: Entry<T>,
+  flow: SidebarProjectFlow,
+  deployments: ReadonlyMap<string, Shown<Deployment>> | undefined,
+): GroupFlowStopInput | undefined {
+  const tier = environmentTierForRole(entry.role);
+  if (tier === undefined) return undefined;
+  return {
+    projectId: entry.item.project.id,
+    name: entry.item.project.name,
+    tier,
+    row: flow.environments.get(entry.item.project.id),
+    deployment: deployments?.get(entry.item.project.id),
+    route: entry.item.routes?.[0]?.url,
+  };
+}
+
+/** The tone a next-step dot wears — worst first, the same order `groupFlow` picks in. */
+function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
+  switch (kind) {
+    case "answer-mate":
+    case "fix-deploy":
+    case "unblock":
+      return "attention";
+    case "merge":
+    case "release":
+    case "add-production":
+    case "first-task":
+      return "busy";
+    default:
+      return "off";
+  }
+}
+
 /**
  * One project's flow, as the menu needs it: the open pull requests, each
  * declared environment's row by its Zerops project, whether the production
@@ -116,6 +189,30 @@ export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly environments: ReadonlyMap<string, EnvironmentRow>;
   readonly releaseOffered: boolean;
+  /**
+   * The pull requests that have landed on `main`, for `groupFlow`'s own next
+   * step — a Mate nobody has spoken to still reads as fresh once something of
+   * its has already merged. Absent where the caller has not wired it yet;
+   * `groupFlow` then falls back to a merged *code* pull request as its only
+   * proof that `main` has code.
+   */
+  readonly merged?: ReadonlyArray<FlowPullRequest> | undefined;
+  /**
+   * Whether any of the project's code repositories has a commit on `main`
+   * (`GET /repos/{org}/{repo}/branches/main`), read only for a project with a
+   * production today — `undefined` elsewhere, where `groupFlow` relies on
+   * `merged` instead.
+   */
+  readonly mainHasCode?: boolean | undefined;
+  /** The commit `main` is at, from the same read; `undefined` unread. */
+  readonly mainHead?: string | undefined;
+  /**
+   * Whether this person may add a production to this project now
+   * (`creatableRoles`, the project's adds offered, the account may create).
+   * Defaults to `false` until a caller wires it, so *Add production* is never
+   * offered on a guess.
+   */
+  readonly productionAddable?: boolean | undefined;
   /**
    * What a release would carry, per production service. Rendered as the
    * verb's hover: "Release" names the mechanism, and the tasks name the
@@ -227,6 +324,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // (`projectOrderPreference.ts`) — read here too so the two surfaces stay in
   // step without either one owning the other.
   const [projectOrder] = useProjectOrderPreference();
+  // What each stop runs, read once per render and handed to `groupFlow` and
+  // to every stop's own row, so the two can never read two different answers
+  // for the same project.
+  const deployments = useZeropsProjectFlowOptional()?.deployments;
 
   // No project at all: nothing to list and nothing to say — the header's
   // "+ New project" is the one affordance, and the projects screen already
@@ -302,15 +403,44 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const section = (
     id: string,
     entries: ReadonlyArray<Entry<T>>,
-    header: ReactNode,
+    renderHeader: (nextStep: GroupNextStep | undefined) => ReactNode,
     flow: SidebarProjectFlow | undefined,
     groupName: string | undefined,
   ) => {
     const mateEntries = entries.filter(({ item }) => hasMate(item));
     if (mateEntries.length === 0) return null;
     const others = entries.filter(({ item }) => !hasMate(item));
+    // The one derivation the projects page draws from too (`groupFlow.ts`):
+    // read once here, so the pull requests this tree hangs under a Mate, the
+    // recipe changes it leaves out, and the heading's own next-step dot can
+    // never disagree with what the page says about the same project.
+    const projectFlow: GroupFlow | undefined =
+      flow === undefined
+        ? undefined
+        : groupFlow({
+            groupId: id,
+            mates: mateEntries.map(({ item }) => groupFlowMateFor(item, getActivity?.(item))),
+            pullRequests: flow.pullRequests,
+            merged: flow.merged ?? [],
+            stops: others
+              .map((entry) => stopInputFor(entry, flow, deployments))
+              .filter((stop): stop is GroupFlowStopInput => stop !== undefined),
+            missing: flow.missing ?? [],
+            release: {
+              gate: flow.releaseOffered ? { allowed: true } : { allowed: false, reason: "" },
+              suggestion: flow.releaseTag ?? "",
+              waiting: releaseContentsSummary(flow.releaseContents ?? []).total,
+            },
+            mainHasCode: flow.mainHasCode,
+            mainHead: flow.mainHead,
+            productionAddable: flow.productionAddable ?? false,
+          });
+    // Code only — a recipe change is the group's document, left to the
+    // projects page, and is never one more thing a Mate's row here answers
+    // for.
+    const flowPulls = projectFlow?.pullRequests.map((entry) => entry.pull) ?? [];
     const grouped = pullRequestsByMate(
-      flow?.pullRequests ?? [],
+      flowPulls,
       mateEntries.map(({ item }) => item.project.id),
     );
     // Which row the spine ends on: the last stop where a project has one,
@@ -319,9 +449,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // that got cut off rather than as work arriving somewhere.
     const otherPulls = flow === undefined ? [] : grouped.others;
     const endsOnMates = others.length === 0 && otherPulls.length === 0;
+    // Production first, then a stage as its side branch, never before it
+    // (the owner, 2026-09-23) — the order the code travels, not the order the
+    // tags happen to list.
+    const stopEntries: ReadonlyArray<StopEntry<T>> = others
+      .map((entry) => ({ ...entry, tier: environmentTierForRole(entry.role) }))
+      .sort((a, b) => stopTierRank(a.tier) - stopTierRank(b.tier));
     return (
       <>
-        {header}
+        {renderHeader(projectFlow?.nextStep)}
         {mateEntries.map(({ item }, index) => {
           const pulls = grouped.byMate.get(item.project.id) ?? [];
           const listKey = `${id}:${item.project.id}`;
@@ -376,16 +512,17 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             ))}
           </ul>
         )}
-        {others.length > 0 ? (
+        {stopEntries.length > 0 ? (
           <EnvironmentRows
             collapsed={collapsedStops.has(id)}
-            environments={others}
+            deployments={deployments}
             flow={flow}
             groupName={groupName}
             onOpenProject={onBrowseProjects}
             onToggle={() => {
               toggleStops(id);
             }}
+            stops={stopEntries}
           />
         ) : null}
       </>
@@ -409,19 +546,22 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           {section(
             group.groupId,
             environments,
-            <ProjectHeader
-              group={group}
-              missing={getFlow?.(group.groupId)?.missing ?? []}
-              onAddMate={onAddMate}
-              onBrowseProjects={onBrowseProjects}
-              onOpen={
-                onOpenGroup === undefined
-                  ? undefined
-                  : () => {
-                      onOpenGroup(group.groupId);
-                    }
-              }
-            />,
+            (nextStep) => (
+              <ProjectHeader
+                group={group}
+                missing={getFlow?.(group.groupId)?.missing ?? []}
+                nextStep={nextStep}
+                onAddMate={onAddMate}
+                onBrowseProjects={onBrowseProjects}
+                onOpen={
+                  onOpenGroup === undefined
+                    ? undefined
+                    : () => {
+                        onOpenGroup(group.groupId);
+                      }
+                }
+              />
+            ),
             getFlow?.(group.groupId),
             groupNameIsPlaceholder(group) ? undefined : group.name,
           )}
@@ -433,9 +573,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           {section(
             "ungrouped",
             ungrouped,
-            groups.length > 0 ? (
-              <ProjectHeader muted name="Ungrouped" onBrowseProjects={onBrowseProjects} />
-            ) : null,
+            () =>
+              groups.length > 0 ? (
+                <ProjectHeader muted name="Ungrouped" onBrowseProjects={onBrowseProjects} />
+              ) : null,
             undefined,
             // Nothing groups these, so nothing above a row repeats its name.
             undefined,
@@ -463,6 +604,7 @@ function ProjectHeader({
   name,
   muted = false,
   missing = NO_MISSING_TIERS,
+  nextStep,
   onAddMate,
   onBrowseProjects,
   onOpen,
@@ -471,6 +613,13 @@ function ProjectHeader({
   readonly name?: string;
   readonly muted?: boolean;
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
+  /**
+   * The one thing the flow says is next for this project — `groupFlow`'s own
+   * derivation, so a dot here never claims a step the page would not offer.
+   * Absent while the flow is unread, and drawn only once it says there is
+   * one (`kind !== "none"`).
+   */
+  readonly nextStep?: GroupNextStep | undefined;
   /** Records which project the add was asked for; absent in the harness. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
@@ -507,6 +656,24 @@ function ProjectHeader({
         >
           {title}
         </button>
+      )}
+      {/* Always on, unlike the verbs below: this says something is waiting on
+          the person, which is not a fact that should hide until they hover. */}
+      {nextStep === undefined || nextStep.kind === "none" ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <StatusDot
+                className="shrink-0"
+                data-zerops-surface="sidebar-project-next-step"
+                dotOnly
+                label={nextStep.text}
+                tone={nextStepTone(nextStep.kind)}
+              />
+            }
+          />
+          <TooltipPopup side="right">{nextStep.text}</TooltipPopup>
+        </Tooltip>
       )}
       {/* Hidden until hover keeps a list of five projects calm, but a finger
           never hovers — so a coarse pointer gets them at rest, as the stop
@@ -1296,29 +1463,38 @@ function StopMenu({
 }
 
 /**
- * The project's other environments, stage before production — the stops the
- * code travels to, drawn as the peers of the Mates above them.
+ * The project's other stops, drawn as the peers of the Mates above them:
+ * production first, then any group stage as its muted side branch —
+ * `groupFlow`'s own order (the owner, 2026-09-23), never the tags'.
  *
- * Each is two lines, like a Mate: the badge and the name, then what it is
- * actually running. What it runs is the version's **name** where Zerops has
- * one — `v1.4.0`, the word everybody uses for that deploy — and the commit
- * only where nobody named it (the owner, 2026-09-19: "the commit hash should
- * only be a fallback to version name from Zerops"). A production also says how
+ * Production is two lines, like a Mate: the badge and the name, then what it
+ * is actually running. What it runs is the version's **name** where Zerops
+ * has one — `v1.4.0`, the word everybody uses for that deploy — and the
+ * commit only where nobody named it (the owner, 2026-09-19: "the commit hash
+ * should only be a fallback to version name from Zerops"). It also says how
  * far behind it is, short enough that the row does not wrap at 256px, and the
  * menu spells the rest out.
+ *
+ * A group stage never competes with that for weight: it is an optional side
+ * branch of `main` (D16/D28/MB-23), so it is one muted line — `↳ stage ·
+ * follows main` — carrying no badge, no menu and no verb of its own.
  */
 function EnvironmentRows<T extends RosterCandidate>({
-  environments,
+  stops,
   flow,
   groupName,
+  deployments,
   onOpenProject,
   collapsed,
   onToggle,
 }: {
-  readonly environments: ReadonlyArray<Entry<T>>;
+  /** Production first, then a stage — the order `groupFlow` draws (`section`). */
+  readonly stops: ReadonlyArray<StopEntry<T>>;
   readonly flow: SidebarProjectFlow | undefined;
   /** The heading above, so a row never repeats the word already on it. */
   readonly groupName: string | undefined;
+  /** What each stop runs, read once by the tree and shared with `groupFlow`. */
+  readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
   readonly onOpenProject: () => void;
   readonly collapsed: boolean;
   readonly onToggle: () => void;
@@ -1327,21 +1503,19 @@ function EnvironmentRows<T extends RosterCandidate>({
   // The hover shows four because it floats over the menu; the stop's own menu
   // is a list and can hold the ones a person is actually looking for.
   const waitingInMenu = releaseContentsSummary(flow?.releaseContents ?? [], MENU_CHANGES_SHOWN);
-  // What each stop runs is the platform's answer, joined with the row the
-  // deploy half read (`stopView`): a stop not yet read holds its line and
-  // never reads as one with nothing deployed.
-  const deployments = useZeropsProjectFlowOptional()?.deployments;
   // Only a countdown reads the clock, and a stop's line carries none; the
   // time the rows were first drawn is enough.
   const [nowMs] = useState(Date.now);
+  // What each stop runs is the platform's answer, joined with the row the
+  // deploy half read (`stopView`): a stop not yet read holds its line and
+  // never reads as one with nothing deployed.
   const viewOf = (projectId: string) =>
     stopView({
       deployment: deployments?.get(projectId) ?? UNREAD_DEPLOYMENT,
       row: flow?.environments.get(projectId),
       nowMs,
     });
-  const folded = environments.map(({ item, role }) => {
-    const declared = flow?.environments.get(item.project.id);
+  const folded = stops.map(({ item, tier }) => {
     const stop = viewOf(item.project.id);
     return {
       key: item.project.id,
@@ -1350,10 +1524,9 @@ function EnvironmentRows<T extends RosterCandidate>({
       word: stop.word,
       attention: stopAttention({
         failed: stop.tone === "bad",
-        production: declared?.tier === "production",
+        production: tier === "production",
         waiting: behind.total,
       }),
-      role,
     };
   });
   return (
@@ -1409,21 +1582,33 @@ function EnvironmentRows<T extends RosterCandidate>({
       </li>
       {collapsed
         ? null
-        : environments.map(({ item, role }, index) => {
-            const tag = environmentRoleTag(role);
+        : stops.map(({ item, role, tier }, index) => {
             const name = environmentNameUnderGroup(groupName, item.project.name);
             const declared = flow?.environments.get(item.project.id);
-            const stop = viewOf(item.project.id);
-            const production = declared?.tier === "production";
-            const release = flow !== undefined && flow.releaseOffered && production;
-            const routes = item.routes ?? [];
-            const version = stop.version;
+            const last = index === stops.length - 1;
             const openStop =
               declared === undefined || flow?.onOpenStop === undefined
                 ? undefined
                 : () => {
                     flow.onOpenStop?.(declared);
                   };
+            if (tier === "stage") {
+              return (
+                <GroupStageRow
+                  key={item.project.id}
+                  name={name}
+                  onOpenStop={openStop}
+                  projectId={item.project.id}
+                  railCap={last ? "end" : undefined}
+                />
+              );
+            }
+            const tag = environmentRoleTag(role);
+            const stop = viewOf(item.project.id);
+            const production = tier === "production";
+            const release = flow !== undefined && flow.releaseOffered && production;
+            const routes = item.routes ?? [];
+            const version = stop.version;
             return (
               <li
                 className="group/stop flex min-w-0 items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
@@ -1434,9 +1619,9 @@ function EnvironmentRows<T extends RosterCandidate>({
                 {/* Centred on the row, because the Mate face directly above it is:
                 two neighbouring rows may not have two rules for their first
                 column. It was pinned to the first line, 11px high of centre. */}
-                {/* The production is the last stop, so the spine ends on its badge
-                rather than running past it into the gap under the group. */}
-                <RailCell cap={index === environments.length - 1 ? "end" : undefined}>
+                {/* Production is the last full stop on the spine unless a muted
+                stage follows it, so its badge ends the line only then. */}
+                <RailCell cap={last ? "end" : undefined}>
                   <StopBadge tone={stop.tone} word={stop.word} />
                 </RailCell>
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
@@ -1541,6 +1726,47 @@ function EnvironmentRows<T extends RosterCandidate>({
             );
           })}
     </ul>
+  );
+}
+
+/**
+ * A group stage: an optional side branch of `main`, never a gate before
+ * production (D16/D28/MB-23; the owner, 2026-09-23). It does not compete with
+ * production for weight — a single muted line, after production on the
+ * spine rather than before it, and never drawn where the group has none: an
+ * empty "add" row is the thing this replaces.
+ */
+function GroupStageRow({
+  name,
+  onOpenStop,
+  projectId,
+  railCap,
+}: {
+  readonly name: string;
+  readonly onOpenStop?: (() => void) | undefined;
+  readonly projectId: string;
+  readonly railCap?: RailCap;
+}) {
+  const label = `↳ ${name} · follows main`;
+  return (
+    <li
+      className="flex h-7 min-w-0 items-center gap-2.5 px-2.5 text-[11px] text-sidebar-muted-foreground"
+      data-zerops-project={projectId}
+      data-zerops-surface="sidebar-group-stage"
+    >
+      <RailCell cap={railCap} />
+      {onOpenStop === undefined ? (
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+      ) : (
+        <button
+          className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          onClick={onOpenStop}
+          type="button"
+        >
+          {label}
+        </button>
+      )}
+    </li>
   );
 }
 
