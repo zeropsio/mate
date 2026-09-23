@@ -256,6 +256,8 @@ const mountInventory = Effect.fn(function* (
     signOut: vi.fn(),
   };
   const events = yield* Queue.unbounded<ReceiverEvent>();
+  /** Every organization the runtime opened a receiver for, the mount's own first. */
+  const receivers: Array<OrganizationRef> = [];
   const registrations = new Map<RegistrationRequest["subscriptionName"], RegistrationRequest>();
   let delivered = yield* Deferred.make<void>();
   let nextId = 0;
@@ -265,15 +267,18 @@ const mountInventory = Effect.fn(function* (
     makeOpaqueId: () => `mounted-${++nextId}`,
     adapter: {
       openReceiver: (_scope, organization, identity) =>
-        Effect.succeed({
-          identity,
-          organization,
-          delivery: "hot-single-consumer-buffered-before-open-resolves",
-          events: Stream.fromQueue(events).pipe(
-            Stream.tap((event) =>
-              event.kind === "pong" ? Deferred.succeed(delivered, undefined) : Effect.void,
+        Effect.sync(() => {
+          receivers.push(organization);
+          return {
+            identity,
+            organization,
+            delivery: "hot-single-consumer-buffered-before-open-resolves" as const,
+            events: Stream.fromQueue(events).pipe(
+              Stream.tap((event) =>
+                event.kind === "pong" ? Deferred.succeed(delivered, undefined) : Effect.void,
+              ),
             ),
-          ),
+          };
         }),
       register: (_handle, request) =>
         Effect.gen(function* () {
@@ -313,8 +318,6 @@ const mountInventory = Effect.fn(function* (
   });
   /** Every grant the runtime took, as its access state published it. */
   const grants: VerifiedAccessGrant[] = [];
-  /** Every organization the provider asked the runtime to re-read. */
-  const refreshed: Array<OrganizationRef> = [];
   let admitted = signal();
   const stopRecording = registry.subscribe(actual.stateAtom, ({ access }) => {
     if (access.status === "verified" && access !== grants.at(-1)) {
@@ -323,14 +326,7 @@ const mountInventory = Effect.fn(function* (
     }
   });
   // The runtime the account's data provider builds for the signed-in account.
-  const makeRuntime = () =>
-    Promise.resolve({
-      ...actual,
-      refresh: (organization: OrganizationRef) =>
-        Effect.sync(() => refreshed.push(organization)).pipe(
-          Effect.andThen(actual.refresh(organization)),
-        ),
-    });
+  const makeRuntime = () => Promise.resolve(actual);
   let inventory: Inventory | null = null;
   let inventoryPublications = 0;
   let grantsWhenChildMounted: number | null = null;
@@ -395,7 +391,8 @@ const mountInventory = Effect.fn(function* (
     indexed,
     failing,
     grants,
-    refreshed,
+    /** Every organization re-read on a fresh receiver since the mount's own opened. */
+    refreshed: () => receivers.slice(1),
     organization,
     projectRef,
     inventory: () => inventory,
@@ -506,7 +503,7 @@ it.live("the renewal never calls runtime.refresh", () =>
       yield* renewal.establish();
       yield* harness.advance(60_000);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(2);
-      expect(harness.refreshed).toEqual([]);
+      expect(harness.refreshed()).toEqual([]);
     }),
   ),
 );
@@ -518,7 +515,7 @@ it.live("an inventory intent re-reads its organization and verifies nothing", ()
       invalidateZerops({ topic: "inventory", organization: harness.organization });
       invalidateZerops({ topic: "inventory", organization: harness.organization });
       yield* harness.advance(250);
-      expect(harness.refreshed).toEqual([harness.organization]);
+      expect(harness.refreshed()).toEqual([harness.organization]);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
     }),
   ),
@@ -543,8 +540,16 @@ it.live("creation triggers no verification rounds", () =>
       yield* Effect.promise(async () => act(async () => clock.unmount()));
 
       const ticks = (10 * 60_000) / CREATION_REFRESH_MS;
-      expect(heard.every(({ topic }) => topic === "inventory")).toBe(true);
-      expect(harness.refreshed).toEqual(Array.from({ length: ticks }, () => harness.organization));
+      expect(heard).toEqual(
+        Array.from({ length: ticks }, () => ({
+          topic: "inventory",
+          organization: harness.organization,
+        })),
+      );
+      // Each tick re-reads the organization: a fresh receiver, or a wake of the one recovering.
+      expect(harness.refreshed().length).toBeGreaterThan(0);
+      for (const organization of harness.refreshed())
+        expect(organization).toEqual(harness.organization);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
       expect(harness.grants).toHaveLength(1);
     }),
@@ -854,7 +859,7 @@ it.live("Try again asks the grant to renew now and re-reads no inventory", () =>
       yield* Effect.promise(async () => act(async () => press(retry!)));
       yield* harness.advance(250);
       expect(heard).toEqual([{ topic: "access", change: "renew-now" }]);
-      expect(harness.refreshed).toEqual([]);
+      expect(harness.refreshed()).toEqual([]);
       // A retry during the round joins it (G7).
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
     }),
@@ -885,7 +890,7 @@ it.live("Try again re-reads an organization whose data stalled and starts no rou
       yield* Effect.promise(async () => act(async () => press(retry!)));
       yield* harness.advance(250);
       expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
-      expect(harness.refreshed).toEqual([harness.organization, harness.organization]);
+      expect(harness.refreshed()).toEqual([harness.organization, harness.organization]);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
     }),
   ),

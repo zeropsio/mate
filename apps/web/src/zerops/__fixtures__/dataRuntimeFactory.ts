@@ -63,6 +63,7 @@ export function makeFakeRuntimeFactory(
         invalidations: Stream.empty,
         mounted: Effect.void,
       },
+      listen: () => Effect.void,
       shutdown: (reason: ShutdownReason) => Effect.sync(() => shutdownReasons.push(reason)),
     } as unknown as ManagedZeropsDataRuntime;
     const handle: FakeRuntimeHandle = {

@@ -5,8 +5,8 @@
  *   built for the epoch, its access grant, started here with the session's verifier, and the
  *   account's one invalidation bus (§6.2) with the account's `shown()`. The bus carries the
  *   grant's own invalidations and the intents surfaces send; it stands before the first grant
- *   because the grant and the data runtime hear `access` and `inventory` from the start — a
- *   person's "Try again" on a first round that failed is one.
+ *   because the grant and the data runtime subscribe to it and hear `access` and `inventory` from
+ *   the start — a person's "Try again" on a first round that failed is one.
  * - **Post-grant stage**, started on the epoch's first `granted` and kept for the epoch — a later
  *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10).
@@ -220,6 +220,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       Effect.forkIn(busScope),
     );
     yield* data.access.listen(invalidations).pipe(Scope.provide(busScope));
+    yield* data.listen(invalidations).pipe(Scope.provide(busScope));
     yield* Queue.take(signals).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
     // The views stream replays the latest, so it misses nothing the start publishes.
     yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));

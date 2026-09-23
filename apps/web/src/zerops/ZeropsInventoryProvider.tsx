@@ -24,7 +24,7 @@ import { APP_DISPLAY_NAME } from "../branding";
 import { PortalGate } from "../components/ui/portal-gate";
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { dismissContextMenu } from "../contextMenuFallback";
-import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
+import { invalidateZerops } from "./accountInvalidations";
 import {
   InventoryContext,
   inventoryProjectRefKey,
@@ -301,20 +301,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         organization: organizationRef(organization.id),
       })),
     [organizationRef, organizations],
-  );
-
-  // An inventory intent re-reads that organization on a fresh receiver while
-  // the rows already read stay up (`runtime.refresh`). The leases are never
-  // re-taken for it: a released lease drops what it read, and the projects
-  // page painted "Reading your projects…" over the list it had a moment ago
-  // (the owner's run of 2026-09-17).
-  useEffect(
-    () =>
-      onZeropsInvalidation((invalidation) => {
-        if (invalidation.topic !== "inventory") return;
-        void Effect.runPromise(runtime.refresh(invalidation.organization));
-      }),
-    [runtime],
   );
 
   const evidence = heldEvidence(grant.machine);

@@ -13,6 +13,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
 import { createZeropsDataAtoms } from "./atoms.ts";
 import { commandAdmissionError, commandTarget } from "./commands.ts";
@@ -562,6 +563,12 @@ export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
     readonly logs: BuildLogRegistry;
     /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
     readonly access: ZeropsAccessGrant;
+    /**
+     * Hears the account's bus for the caller's scope (DESIGN §6.2): each `inventory` re-reads that
+     * organization with `refresh`, on a fresh receiver while the rows already read stay up. Its
+     * leases are never re-taken for it: a released lease drops what it read.
+     */
+    readonly listen: (bus: InvalidationBus) => Effect.Effect<void, never, Scope.Scope>;
   };
 
 const leaseError = (
@@ -3153,6 +3160,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       ),
   });
 
+  const listen: ManagedZeropsDataRuntime["listen"] = (bus) =>
+    Effect.flatMap(bus.subscribe, (subscription) =>
+      Stream.fromSubscription(subscription).pipe(
+        Stream.runForEach((invalidation) =>
+          invalidation.topic === "inventory" ? refresh(invalidation.organization) : Effect.void,
+        ),
+        Effect.forkScoped,
+      ),
+    ).pipe(Effect.asVoid);
+
   const shutdown: ZeropsDataRuntime["shutdown"] = (_reason) =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
@@ -3183,6 +3200,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     logs,
     acquire,
     refresh,
+    listen,
     shutdown,
     state: Ref.get(model),
     stateAtom: rootAtom,

@@ -19,7 +19,7 @@ import { makeRestAccessVerifier, type AccessVerifier } from "../data/access/veri
 import { grantPlatformWrite, type GrantFailure } from "../data/access/grant.ts";
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
 import { makeZeropsDataRuntime } from "../data/runtime.ts";
-import type { ZeropsDataAdapter } from "../data/types.ts";
+import { ZeropsOrganizationId, type ZeropsDataAdapter } from "../data/types.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import { makeDeadlineClock, type DeadlineClock } from "../testing/deadlineClock.ts";
 import { makeFakeDatastream } from "../testing/fakeDatastream.ts";
@@ -306,6 +306,97 @@ describe("the account runtime", () => {
         yield* clock.advance(250);
         yield* settle;
         expect(grant.rounds()).toBe(2);
+      }),
+    ),
+  );
+
+  it.effect("inventory(org) on the bus refreshes that organization's reads only", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        const page = yield* makePage();
+        const other = { ...organization, organizationId: ZeropsOrganizationId.make("org-2") };
+        const rest = makeFakeZeropsRest();
+        rest.addUser({
+          user: {
+            id: account.accountId,
+            email: "person@example.test",
+            clientUserList: [
+              { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
+              { id: "cu-2", clientId: other.organizationId, roleCode: "OWNER" },
+            ],
+          },
+          password: "secret",
+        });
+        for (const [id, clientId] of [
+          ["project-1", organization.organizationId],
+          ["project-2", other.organizationId],
+        ] as const)
+          rest.addProject({ id, clientId, name: id, status: "ACTIVE" });
+        const client = new ZeropsApiClient({ fetch: rest.fetch });
+        client.restoreSession(rest.issueSession(account.accountId));
+        const datastream = makeFakeDatastream(rest).adapter;
+        /** Each organization whose receiver the runtime opened, in order. */
+        const opened: Array<string> = [];
+        const built = yield* Effect.gen(function* () {
+          const data = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: {
+              ...datastream,
+              openReceiver: (at, receiving, identity, context) =>
+                Effect.sync(() => opened.push(receiving.organizationId)).pipe(
+                  Effect.andThen(datastream.openReceiver(at, receiving, identity, context)),
+                ),
+            },
+            atomRegistry: registry,
+            makeOpaqueId: (() => {
+              let next = 0;
+              return () => `opaque-${++next}`;
+            })(),
+          });
+          return yield* makeAccountRuntime({
+            data,
+            verifier: makeRestAccessVerifier({
+              client,
+              account,
+              concurrency: policy.roundProjectConcurrency,
+              onUser: () => undefined,
+            }),
+            page: page.port,
+            writes: makeWrites().port,
+            atomRegistry: registry,
+          });
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* Effect.addFinalizer(() => built.close("application-close"));
+        const data = built.data;
+        for (const held of [organization, other])
+          yield* data
+            .acquire({ kind: "organization-inventory", organization: held })
+            .pipe(Effect.provideService(Clock.Clock, clock));
+        const statuses = () =>
+          Effect.map(data.state, (state) =>
+            [...state.interests.values()].map(({ interest }) => interest.status),
+          );
+        const rounds = () => rest.requests().filter(({ route }) => route === "GET /user/info");
+        yield* clock.advance(SECOND);
+        yield* settle;
+        expect(yield* statuses()).toEqual(["observing", "observing"]);
+        expect(opened.toSorted()).toEqual(["org-1", "org-2"]);
+        const roundsBefore = rounds().length;
+
+        yield* built.invalidations
+          .invalidate({ topic: "inventory", organization })
+          .pipe(Effect.provideService(Clock.Clock, clock));
+        yield* built.invalidations
+          .invalidate({ topic: "inventory", organization })
+          .pipe(Effect.provideService(Clock.Clock, clock));
+        yield* clock.advance(250);
+        yield* settle;
+
+        expect(opened.slice(2)).toEqual(["org-1"]);
+        expect(yield* statuses()).toEqual(["observing", "observing"]);
+        expect(rounds()).toHaveLength(roundsBefore);
       }),
     ),
   );
