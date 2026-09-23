@@ -11,11 +11,13 @@ import {
   type ZeropsResourceAdapter,
 } from "@t3tools/client-runtime/zerops/data";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
 import * as Stream from "effect/Stream";
 
 import type { MakeZeropsDataRuntime } from "../ZeropsDataProvider";
+import { tabClock } from "../tabClock";
 
 export function harnessRuntime(
   datastream: FakeDatastream,
@@ -39,7 +41,10 @@ export function harnessRuntime(
             Stream.map(() => (document.visibilityState === "hidden" ? "hidden" : "visible")),
           ),
         },
-      }).pipe(Effect.provideService(Scheduler.Scheduler, scheduler)),
+      }).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+        Effect.provideService(Clock.Clock, tabClock),
+      ),
       { signal },
     );
 }

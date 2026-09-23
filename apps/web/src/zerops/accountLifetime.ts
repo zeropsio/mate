@@ -2,25 +2,6 @@
  * lifetime must never publish into a later account's stores. */
 let accountId: string | null = null;
 let generation = 0;
-/** When the evidence behind account actions runs out, on `Date.now()` and `performance.now()`. */
-export interface AccountActionsDeadline {
-  readonly wallMs: number;
-  readonly monoMs: number;
-}
-let actionsDeadline: AccountActionsDeadline | null = null;
-/** Opens account actions until `deadline`, or closes them with `null`. */
-export function setAccountActionsAllowed(deadline: AccountActionsDeadline | null): void {
-  actionsDeadline = deadline;
-}
-/** Allowed only before the deadline on both clocks (DESIGN G5). */
-export function accountActionsAllowed(): boolean {
-  return (
-    accountId !== null &&
-    actionsDeadline !== null &&
-    Date.now() < actionsDeadline.wallMs &&
-    performance.now() < actionsDeadline.monoMs
-  );
-}
 const onClose = new Set<() => void>();
 
 export function currentAccountId(): string | null {
@@ -40,7 +21,6 @@ export function openAccountLifetime(userId: string): void {
   if (accountId === userId) return;
   closeAccountLifetime();
   accountId = userId;
-  actionsDeadline = null;
   // Every opener must run even if one account-scoped store fails to start.
   for (const open of onOpen) {
     try {
@@ -53,7 +33,6 @@ export function openAccountLifetime(userId: string): void {
 
 export function closeAccountLifetime(): void {
   generation += 1;
-  actionsDeadline = null;
   // Writers flush while their original account still owns the keys. Every
   // cleanup must run even if a storage policy rejects one writer.
   for (const close of [...onClose].toReversed()) {

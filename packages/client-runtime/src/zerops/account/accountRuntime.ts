@@ -32,7 +32,6 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
 import type { Instant } from "../data/access/grant.ts";
 import type { AccessVerifier } from "../data/access/verifier.ts";
-import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import { organizationKeyOf, projectKeyOf, type RuntimeInterestDescriptor } from "../data/types.ts";
 import {
@@ -61,19 +60,11 @@ export interface PagePort {
   readonly listen: (hear: (signal: PageSignal) => void) => () => void;
 }
 
-/** Where the account's actions and project writes are admitted, until 2.2's `WriteAdmission`. */
-export interface WriteWindowPort {
-  /** Admits them for `forMs` from now. */
-  readonly open: (forMs: number) => void;
-  readonly close: () => void;
-}
-
 export interface AccountRuntimePorts {
   /** The epoch's data runtime, which the host built for the verified principal. */
   readonly data: ManagedZeropsDataRuntime;
   readonly verifier: AccessVerifier;
   readonly page: PagePort;
-  readonly writes: WriteWindowPort;
   /** The registry the data runtime publishes to: what is shown is read from it. */
   readonly atomRegistry: AtomRegistry.AtomRegistry;
 }
@@ -103,7 +94,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   ports: AccountRuntimePorts,
 ): Effect.fn.Return<AccountRuntime> {
   const { data, page } = ports;
-  const policy = DEFAULT_ZEROPS_GRANT_POLICY;
   const clock = yield* Clock.Clock;
   const now = (): Instant => ({
     wall: clock.currentTimeMillisUnsafe(),
@@ -151,26 +141,10 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     shown,
   }).pipe(Scope.provide(busScope));
 
-  /** The admitted round the write window was last opened for. */
-  let openRound: number | null = null;
   const follow = (view: AccessGrantView): Effect.Effect<void> =>
     Effect.gen(function* () {
-      const phase = view.machine.phase;
-      if (phase.phase === "granted") {
+      if (view.machine.phase.phase === "granted") {
         yield* Deferred.succeed(postGrant, undefined);
-        const account = phase.evidence.account;
-        if (account.round === openRound) return;
-        openRound = account.round;
-        const at = now();
-        ports.writes.open(
-          Math.min(
-            account.startedAt.wall + policy.windowMs - at.wall,
-            account.startedAt.mono + policy.windowMs - at.mono,
-          ),
-        );
-      } else if (openRound !== null) {
-        openRound = null;
-        ports.writes.close();
       }
     });
 

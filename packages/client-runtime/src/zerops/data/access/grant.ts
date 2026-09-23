@@ -363,6 +363,10 @@ const accountRefusal = (machine: GrantMachine, ctx: GrantContext): GrantCapabili
   }
 };
 
+/** The account's own evidence authorizes now: what every platform capability starts from. */
+export const grantAccount = (machine: GrantMachine, ctx: GrantContext): GrantCapability =>
+  accountRefusal(machine, ctx) ?? ALLOWED;
+
 const projectRefusal = (
   machine: GrantMachine,
   projectId: ZeropsProjectId,

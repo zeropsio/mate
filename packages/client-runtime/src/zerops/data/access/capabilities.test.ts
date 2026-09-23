@@ -198,14 +198,13 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
     pass,
     freeze: (ms: number) => Effect.andThen(clock.freeze(ms), answer),
     phase: () => registry.get(runtime.access.view).machine.phase.phase,
-    /** The capability asked now, on the tab's clock. */
-    check: (ask: CapabilityAsk) =>
-      capabilities.check(ask).pipe(Effect.provideService(Clock.Clock, clock)),
-    /** Waits for the capability on the tab's clock, in the background. */
+    /** The capability asked now: whoever asks, it is read on the grant's clock. */
+    check: capabilities.check,
+    /** A project write's admission, in the background. */
+    admitProjectWrite: () => Effect.forkChild(capabilities.admitProjectWrite),
+    /** Waits for the capability, in the background. */
     await: (ask: CapabilityAsk, withinMs: number) =>
-      capabilities
-        .await(ask, { withinMs })
-        .pipe(Effect.provideService(Clock.Clock, clock), Effect.forkChild),
+      Effect.forkChild(capabilities.await(ask, { withinMs })),
     /**
      * Whether the broker admits a read of the project's resource now: it is neither withheld
      * nor, once the account closed, waiting for a Zerops session.
@@ -641,4 +640,45 @@ describe("capabilities over the access grant", () => {
   ] as const)("throwawayCleanup %s never waits", (_when, minted, expected) => {
     expect(throwawayCleanup(minted)).toEqual(expected);
   });
+
+  it.effect(
+    "a project write waits up to 30 s on the account's own evidence and is refused as an admission",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform = answering();
+          platform.roundFailure = serverDown;
+          const opened = yield* tab(platform);
+
+          const unverified = yield* opened.admitProjectWrite();
+          yield* opened.pass(30 * SECOND - 1);
+          expect(unverified.pollUnsafe()).toBeUndefined();
+          yield* opened.pass(1);
+          expect(yield* Fiber.join(unverified).pipe(Effect.flip)).toEqual({
+            _tag: "ZeropsCommandAdmissionError",
+            reason: "access-unverified",
+            // The wait was the command's last chance: for it, the evidence was never verified.
+            message: "Project access could not be verified.",
+          });
+
+          // Project writes need the account's evidence alone: a project the grant never read is the
+          // caller's to check.
+          platform.roundFailure = null;
+          platform.listed = [];
+          const granted = yield* opened.admitProjectWrite();
+          while (granted.pollUnsafe() === undefined) yield* opened.pass(SECOND);
+          yield* Fiber.join(granted);
+
+          yield* opened.runtime.shutdown("logout");
+          yield* settle;
+          const closed = yield* opened.admitProjectWrite();
+          yield* settle;
+          expect(yield* Fiber.join(closed).pipe(Effect.flip)).toEqual({
+            _tag: "ZeropsCommandAdmissionError",
+            reason: "runtime-closed",
+            message: "This Zerops sign-in has ended.",
+          });
+        }),
+      ),
+  );
 });

@@ -598,8 +598,6 @@ async function apiErrorFromResponse(response: Response): Promise<ZeropsApiError>
 export interface ZeropsApiClientOptions {
   readonly baseUrl?: string;
   readonly fetch?: FetchImplementation;
-  /** Epoch milliseconds; injectable so absolute write admission is deterministic. */
-  readonly now?: () => number;
   /** Fired whenever the held session changes — persist it, or clear on null. */
   readonly onSessionChange?: (session: ZeropsSession | null) => Promise<void> | void;
   /**
@@ -624,6 +622,16 @@ export interface ZeropsDataHttpRequest {
   readonly beforeWrite?: () => Promise<void>;
   /** Background data failures are scoped and never sign the account out. */
   readonly background: boolean;
+}
+
+/**
+ * Where the client asks, just before it sends each project write, whether
+ * project writes are admitted now (DESIGN §4.3). It may wait for them to be;
+ * what it rejects with reaches the write's caller as it came, never as a
+ * write that failed or may have happened, because nothing was sent.
+ */
+export interface WriteAdmission {
+  readonly beforeProjectWrite: () => Promise<void>;
 }
 
 interface RequestOptions {
@@ -668,15 +676,6 @@ function grantsNothing(mint: {
   readonly projects?: ReadonlyArray<ZeropsProjectGrant>;
 }): boolean {
   return mint.roleCode === "NO_ACCESS" && mint.projects?.length === 0;
-}
-
-function isProjectWriteAdmissionError(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "_tag" in cause &&
-    cause._tag === "ZeropsCommandAdmissionError"
-  );
 }
 
 /**
@@ -760,20 +759,17 @@ async function readProjectPages<T extends { readonly id: string }>(
  * so the caller never has to think about the Authorization header.
  */
 export class ZeropsApiClient {
-  #writesAllowedUntilMs = Number.POSITIVE_INFINITY;
+  /** Asked before every project write; none admits every write. */
+  #writeAdmission: WriteAdmission | null = null;
   /**
-   * Installs the verified account write window. The request path checks this
-   * absolute deadline itself, so browser timer throttling cannot extend it.
+   * Admits this client's project writes through `admission` from now on: the
+   * account epoch's own, which refuses them once that epoch closed.
    */
-  setWritesAllowed(
-    allowed: boolean,
-    deadlineMs: number = allowed ? Number.POSITIVE_INFINITY : 0,
-  ): void {
-    this.#writesAllowedUntilMs = allowed ? deadlineMs : 0;
+  admitWritesThrough(admission: WriteAdmission): void {
+    this.#writeAdmission = admission;
   }
   readonly #baseUrl: string;
   readonly #fetch: FetchImplementation;
-  readonly #now: () => number;
   readonly #onSessionChange: (session: ZeropsSession | null) => Promise<void> | void;
   readonly #renewSession: NonNullable<ZeropsApiClientOptions["renewSession"]>;
   #session: ZeropsSession | null = null;
@@ -788,7 +784,6 @@ export class ZeropsApiClient {
     // against Window, so storing the bare function and calling it as
     // `this.#fetch(...)` throws "Illegal invocation".
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-    this.#now = options.now ?? (() => performance.timeOrigin + performance.now());
     this.#onSessionChange = options.onSessionChange ?? (() => undefined);
     this.#renewSession = options.renewSession ?? ((_stale, refresh) => refresh());
   }
@@ -2974,15 +2969,22 @@ export class ZeropsApiClient {
     const retryAfterRefresh = options.retryAfterRefresh ?? true;
     const clearSessionOnUnauthorized = options.clearSessionOnUnauthorized ?? true;
 
+    /** A refusal before anything was sent reaches the caller as it came. */
+    let refusedBeforeSending = false;
     const run = async () => {
       if (mutatesProject) {
-        await options.beforeProjectWrite?.();
+        try {
+          if (this.#writeAdmission !== null) {
+            await waitForPromiseOrAbort(this.#writeAdmission.beforeProjectWrite(), init.signal);
+          }
+          await options.beforeProjectWrite?.();
+        } catch (cause) {
+          refusedBeforeSending = true;
+          throw cause;
+        }
         // An admission can wait, and whoever holds the session once it
         // resolves is not necessarily who asked for the write.
         this.#assertGeneration(generation);
-      }
-      if (mutatesProject && this.#now() >= this.#writesAllowedUntilMs) {
-        throw new ZeropsApiError("Project access could not be verified.", "unexpected");
       }
       const session = this.#session;
       if (authenticated && session) options.sentWith?.(session.accessToken);
@@ -3015,8 +3017,7 @@ export class ZeropsApiClient {
         if (response.status === 401 && clearSessionOnUnauthorized) await this.#setSession(null);
       }
     } catch (cause) {
-      if (cause instanceof ZeropsApiError) throw cause;
-      if (isProjectWriteAdmissionError(cause)) throw cause;
+      if (cause instanceof ZeropsApiError || refusedBeforeSending) throw cause;
       if (mayHaveWritten)
         throw new ZeropsApiError(
           "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.",

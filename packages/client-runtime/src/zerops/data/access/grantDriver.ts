@@ -96,6 +96,8 @@ export interface ZeropsAccessGrant {
   readonly invalidations: Stream.Stream<GrantInvalidation>;
   /** The epoch's first mount happened: its wait is over for the epoch. */
   readonly mounted: Effect.Effect<void>;
+  /** The clock the grant stamps its evidence and runs its timer on. */
+  readonly clock: Clock.Clock;
 }
 
 export interface GrantDriverOptions {
@@ -523,6 +525,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
         }),
       )
       .pipe(Effect.andThen(cancelPatience)),
+    clock,
   };
 
   return {

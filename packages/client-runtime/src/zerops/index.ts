@@ -22,6 +22,7 @@ export {
   type ZeropsStatHistoryWindow,
   type ZeropsStatPair,
   type ZeropsUser,
+  type WriteAdmission,
 } from "./api.ts";
 
 export {

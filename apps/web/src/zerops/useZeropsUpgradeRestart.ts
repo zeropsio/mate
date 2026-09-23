@@ -8,15 +8,16 @@
  * This door uses the verified platform inventory, so it also works before a Mate connection.
  */
 import { mateServerCompatibility } from "@t3tools/client-runtime/zerops/serverCompatibility";
-import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
-import { useEffect, useRef, useState } from "react";
+import {
+  CAPABILITY_WAIT_MS,
+  grantCapabilities,
+  ZeropsServiceId,
+} from "@t3tools/client-runtime/zerops/data";
+import * as Effect from "effect/Effect";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import {
-  accountActionsAllowed,
-  captureAccountLifetime,
-  onAccountLifetimeClose,
-} from "./accountLifetime";
+import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import {
   findInventoryProjectRef,
   inventoryCandidates,
@@ -42,6 +43,7 @@ export function useZeropsUpgradeRestart(
   reconnect: () => void,
 ): UpgradeRecovery | null {
   const { runtime } = useZeropsData();
+  const capabilities = useMemo(() => grantCapabilities(runtime.access), [runtime]);
   const inventory = useZeropsInventory();
   const [state, setState] = useState<UpgradeRecovery["state"]>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +114,7 @@ export function useZeropsUpgradeRestart(
     },
     confirm: () => {
       if (state !== "confirm") return;
-      if (!candidate?.service?.id || inventory.error || !accountActionsAllowed()) {
+      if (!candidate?.service?.id || inventory.error) {
         setError(NOT_VERIFIED);
         setState("failed");
         return;
@@ -128,13 +130,18 @@ export function useZeropsUpgradeRestart(
       const key = candidate.key;
       setState("waiting");
       setError(null);
-      void runZeropsCommand(
-        runtime.commands.restartService({
-          kind: "service",
-          project,
-          serviceId: ZeropsServiceId.make(candidate.service.id),
-        }),
+      const service = {
+        kind: "service" as const,
+        project,
+        serviceId: ZeropsServiceId.make(candidate.service.id),
+      };
+      void Effect.runPromise(
+        capabilities.await(
+          { kind: "platformWrite", project: project.projectId },
+          { withinMs: CAPABILITY_WAIT_MS },
+        ),
       )
+        .then(() => runZeropsCommand(runtime.commands.restartService(service)))
         .then(() => {
           if (alive.current !== isCurrent || !isCurrent()) return;
           if (intendContainer(key, { kind: "upgrade-restart" })) {

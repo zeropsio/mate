@@ -28,7 +28,6 @@ import { makeAccountRuntime, type PageSignal } from "./accountRuntime.ts";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
-const WINDOW = 15 * MINUTE;
 const START_WALL_MS = Date.UTC(2026, 8, 23, 10, 0, 0);
 const policy = DEFAULT_ZEROPS_GRANT_POLICY;
 const organizations = [{ organization, mutationsAllowed: true }];
@@ -88,18 +87,6 @@ const makePage = Effect.fnUntraced(function* () {
   };
 });
 
-/** Every window the account opened for writes, and every close. */
-const makeWrites = () => {
-  const calls: Array<{ readonly open: number } | "close"> = [];
-  return {
-    calls,
-    port: {
-      open: (forMs: number) => calls.push({ open: forMs }),
-      close: () => calls.push("close"),
-    },
-  };
-};
-
 /** A grant whose rounds each wait for the test to answer them, then verify `A`. */
 const heldVerifier = () => {
   const answers: Array<Deferred.Deferred<GrantFailure | null>> = [];
@@ -155,7 +142,6 @@ describe("the account runtime", () => {
           const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
           const registry = AtomRegistry.make();
           const page = yield* makePage();
-          const writes = makeWrites();
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
@@ -168,7 +154,6 @@ describe("the account runtime", () => {
               data,
               verifier: grant.verifier,
               page: page.port,
-              writes: writes.port,
               atomRegistry: registry,
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -176,15 +161,13 @@ describe("the account runtime", () => {
           const postGrant = yield* Effect.forkChild(built.postGrant);
           yield* settle;
 
-          // The first round is out and unanswered: nothing post-grant exists, no write is open.
+          // The first round is out and unanswered: nothing post-grant exists.
           expect(grant.rounds()).toBe(1);
           expect(postGrant.pollUnsafe()).toBeUndefined();
-          expect(writes.calls).toEqual([]);
 
           yield* grant.answer();
 
           yield* Fiber.join(postGrant);
-          expect(writes.calls).toEqual([{ open: WINDOW }]);
           const heard: Array<Invalidation> = [];
           const subscription = yield* built.invalidations.subscribe;
           yield* Stream.fromSubscription(subscription).pipe(
@@ -198,7 +181,6 @@ describe("the account runtime", () => {
           yield* clock.advance(SECOND);
           yield* settle;
 
-          expect(writes.calls.at(-1)).toBe("close");
           expect(yield* Effect.exit(built.postGrant)).toEqual(Exit.void);
           expect(heard).toEqual([{ topic: "access", change: "lapsed" }]);
         }),
@@ -225,7 +207,6 @@ describe("the account runtime", () => {
               data,
               verifier: grant.verifier,
               page: page.port,
-              writes: makeWrites().port,
               atomRegistry: registry,
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -282,7 +263,6 @@ describe("the account runtime", () => {
             data,
             verifier: grant.verifier,
             page: page.port,
-            writes: makeWrites().port,
             atomRegistry: registry,
           });
         }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -364,7 +344,6 @@ describe("the account runtime", () => {
               onUser: () => undefined,
             }),
             page: page.port,
-            writes: makeWrites().port,
             atomRegistry: registry,
           });
         }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -421,7 +400,6 @@ describe("the account runtime", () => {
               data,
               verifier: grant.verifier,
               page: page.port,
-              writes: makeWrites().port,
               atomRegistry: registry,
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -472,7 +450,6 @@ describe("the account runtime", () => {
             data,
             verifier: grant.verifier,
             page: page.port,
-            writes: makeWrites().port,
             atomRegistry: registry,
           }).pipe(Effect.exit);
         }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -492,7 +469,6 @@ describe("the account runtime", () => {
           const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
           const registry = AtomRegistry.make();
           const page = yield* makePage();
-          const writes = makeWrites();
           const rest = makeFakeZeropsRest();
           rest.addUser({
             user: {
@@ -532,7 +508,6 @@ describe("the account runtime", () => {
                 onUser: () => undefined,
               }),
               page: page.port,
-              writes: writes.port,
               atomRegistry: registry,
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -579,7 +554,6 @@ describe("the account runtime", () => {
           expect(view().machine.phase.phase).toBe("granted");
           expect(writable()).toBe(true);
           expect([...statuses]).toEqual(["verified"]);
-          expect(writes.calls).not.toContain("close");
           expect(yield* interest()).toBe("observing");
           // Renewed on schedule while hidden: at +12, +24 and +36 min.
           expect(rest.requests().filter(({ route }) => route === "GET /user/info").length).toBe(4);

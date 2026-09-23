@@ -1,12 +1,28 @@
 /**
  * The upgrade restart over its container's verdict, run as a plain function against
  * `reactHookHarness`: calling the hook again after each step observes the next state the way a
- * re-render would.
+ * re-render would. The restart is a write on the Mate's project, asked of that project's
+ * capability before anything is sent.
  */
+import {
+  DEFAULT_ZEROPS_GRANT_POLICY,
+  grantRoundInFlight,
+  initialGrant,
+  transitionGrant,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+  ZeropsProjectId,
+  makeZeropsApiOrigin,
+  type AccessGrantView,
+  type GrantEvent,
+  type ProjectRef,
+} from "@t3tools/client-runtime/zerops/data";
 import type { ContainerVerdict } from "@t3tools/client-runtime/zerops/environments";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import * as Stream from "effect/Stream";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { reactHookHarness } from "../test/reactHookHarness";
+import { tabClock } from "./tabClock";
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -14,6 +30,7 @@ vi.mock("react", async (importOriginal) => {
   return {
     ...actual,
     useEffect: harness.useEffect,
+    useMemo: harness.useMemo,
     useRef: harness.useRef,
     useState: harness.useState,
   };
@@ -22,7 +39,55 @@ vi.mock("react", async (importOriginal) => {
 const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
 const KEY = "project-1:service-1";
 
+const project: ProjectRef = {
+  kind: "project",
+  organization: {
+    kind: "organization",
+    account: {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account-1"),
+    },
+    organizationId: ZeropsOrganizationId.make("org-1"),
+  },
+  projectId: ZeropsProjectId.make("project-1"),
+};
+
+/** The grant after its first round verified `project` with this role, on the hook's clock. */
+const grantedAs = (role: "ADMIN" | "READ_ONLY"): AccessGrantView => {
+  const ctx = () => ({
+    now: {
+      wall: tabClock.currentTimeMillisUnsafe(),
+      mono: Number(tabClock.monotonicTimeNanosUnsafe()) / 1_000_000,
+    },
+    policy: DEFAULT_ZEROPS_GRANT_POLICY,
+  });
+  let machine = initialGrant({ hidden: false, online: true }, ctx().now);
+  machine = transitionGrant(machine, { type: "START" }, ctx()).state;
+  const round = grantRoundInFlight(machine)!.id;
+  for (const event of [
+    {
+      type: "ROUND_ACCOUNT",
+      round,
+      organizations: [{ organization: project.organization, mutationsAllowed: true }],
+      projects: [project],
+    },
+    {
+      type: "ROUND_PROJECT",
+      round,
+      project,
+      outcome: {
+        kind: "verified",
+        access: { project, role, mutationsAllowed: role === "ADMIN" },
+      },
+    },
+  ] satisfies ReadonlyArray<GrantEvent>) {
+    machine = transitionGrant(machine, event, ctx()).state;
+  }
+  return { machine, failure: null, overdue: false };
+};
+
 const mock = vi.hoisted(() => ({
+  view: undefined as unknown,
   restart: vi.fn(),
   reconnect: vi.fn(),
   intents: [] as Array<unknown>,
@@ -33,7 +98,12 @@ const mock = vi.hoisted(() => ({
 }));
 
 vi.mock("./zeropsDataContext", () => ({
-  useZeropsData: () => ({ runtime: { commands: { restartService: mock.restart } } }),
+  useZeropsData: () => ({
+    runtime: {
+      access: { changes: Stream.suspend(() => Stream.make(mock.view)), clock: tabClock },
+      commands: { restartService: mock.restart },
+    },
+  }),
   runZeropsCommand: (command: Promise<unknown>) => command,
 }));
 vi.mock("./inventoryContext", () => ({
@@ -46,10 +116,9 @@ vi.mock("./inventoryContext", () => ({
       containerOrigin: ORIGIN,
     },
   ],
-  findInventoryProjectRef: () => ({ projectId: "project-1" }),
+  findInventoryProjectRef: () => project,
 }));
 vi.mock("./accountLifetime", () => ({
-  accountActionsAllowed: () => true,
   captureAccountLifetime: () => () => true,
   onAccountLifetimeClose: () => () => undefined,
 }));
@@ -77,22 +146,18 @@ async function restart() {
   recovery.request();
   recovery = render();
   recovery.confirm();
-  await vi.advanceTimersByTimeAsync(0);
+  await vi.waitFor(() => expect(mock.intents).toHaveLength(1));
   return render();
 }
 
 beforeEach(() => {
   reactHookHarness.reset();
-  vi.useFakeTimers();
+  mock.view = grantedAs("ADMIN");
   mock.restart.mockReset().mockResolvedValue(undefined);
   mock.reconnect.mockReset();
   mock.intents = [];
   mock.container.verdict = { level: "ready" };
   mock.container.serverVersion = "0.10.0";
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 describe("useZeropsUpgradeRestart", () => {
@@ -131,5 +196,17 @@ describe("useZeropsUpgradeRestart", () => {
     const recovery = render();
     expect(recovery.state).toBe("failed");
     expect(recovery.error).toMatch(/has not come back yet/);
+  });
+
+  it("refuses a restart its project's role does not allow, in the refusal's words, and sends nothing", async () => {
+    mock.view = grantedAs("READ_ONLY");
+
+    render().request();
+    render().confirm();
+    await vi.waitFor(() => expect(render().state).toBe("failed"));
+
+    expect(render().error).toBe("Your role in this project doesn't allow this.");
+    expect(mock.restart).not.toHaveBeenCalled();
+    expect(mock.intents).toEqual([]);
   });
 });

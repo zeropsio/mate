@@ -2129,12 +2129,12 @@ function ZeropsProjectsContent() {
   // asks for this; it is here because this is where an account is read.
   useZeropsThrowawaySweep({
     clientId: activeOrganization?.id,
-    // Not on sign-in alone: deleting a token is a `project-write`, and writes
-    // are refused until the inventory provider has verified access
-    // (`setWritesAllowed`). The sweep ran on mount, was refused, and gave up
-    // for the life of that mount — so four door tokens from deleted projects
-    // were still on the account hours later (measured 2026-09-19). The
-    // account having been read is the window being open.
+    // Not on sign-in alone: deleting a token is a `project-write`, and the api
+    // admits one only through the epoch's grant (`admitWritesThrough`), which
+    // refuses it once its wait for the first grant ran out. The sweep ran on
+    // mount, was refused, and gave up for the life of that mount — so four
+    // door tokens from deleted projects were still on the account hours later
+    // (measured 2026-09-19). The account having been read is the grant admitted.
     enabled: status === "signed-in" && !inventory.isLoading,
   });
 

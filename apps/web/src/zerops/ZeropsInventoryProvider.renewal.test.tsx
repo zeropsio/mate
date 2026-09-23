@@ -1,4 +1,5 @@
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
+import { CAPABILITY_WAIT_MS } from "@t3tools/client-runtime/zerops/data";
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -78,6 +79,27 @@ async function admittedProduct(
   return { harness, tab, pass, rounds, mounts: () => mounts, firstRoundBy };
 }
 
+type Product = Awaited<ReturnType<typeof admittedProduct>>;
+
+/**
+ * A write at or past the deadline, every renewal still out. The lapsed account
+ * is a refusal the grant can still lift, so the write waits it out for
+ * {@link CAPABILITY_WAIT_MS} and is then refused, never sent (DESIGN §4.3).
+ */
+async function refusedWrite({ harness, tab, pass }: Product) {
+  const writes = () =>
+    harness.rest.requests().filter(({ route }) => route === "PUT /project/p1").length;
+  const sent = writes();
+  const { refused } = await tab.run(() => ({
+    refused: expect(
+      tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }),
+    ).rejects.toMatchObject({ message: "Project access could not be verified." }),
+  }));
+  await pass(CAPABILITY_WAIT_MS);
+  await refused;
+  expect(writes()).toBe(sent);
+}
+
 afterEach(async () => {
   await unmountTabs();
   vi.useRealTimers();
@@ -130,20 +152,20 @@ describe("ZeropsInventoryProvider renewal", () => {
   it.each([
     [
       "the monotonic clock",
-      async ({ pass }: Awaited<ReturnType<typeof admittedProduct>>) => {
+      async ({ pass }: Product) => {
         vi.setSystemTime(Date.now() - 30_000);
         await pass(15 * MINUTE_MS - 2_000);
       },
-      async ({ pass }: Awaited<ReturnType<typeof admittedProduct>>) => {
+      async ({ pass }: Product) => {
         await pass(2_000);
       },
     ],
     [
       "the wall clock",
-      async ({ pass }: Awaited<ReturnType<typeof admittedProduct>>) => {
+      async ({ pass }: Product) => {
         await pass(13 * MINUTE_MS);
       },
-      async ({ tab }: Awaited<ReturnType<typeof admittedProduct>>) => {
+      async ({ tab }: Product) => {
         vi.setSystemTime(Date.now() + 2 * MINUTE_MS);
         tab.tab.signals.freeze();
         tab.tab.signals.resume();
@@ -163,14 +185,13 @@ describe("ZeropsInventoryProvider renewal", () => {
       await toJustBefore(product);
       await expect(write()).resolves.toMatchObject({ id: "p1" });
       await toTheDeadline(product);
-      await expect(write()).rejects.toMatchObject({
-        message: "Project access could not be verified.",
-      });
+      await refusedWrite(product);
     },
   );
 
   it("a round that answers 40 s after it started ends its writes 15 min after it started", async () => {
-    const { harness, tab, pass, firstRoundBy } = await admittedProduct({ firstRoundMs: 40_000 });
+    const product = await admittedProduct({ firstRoundMs: 40_000 });
+    const { harness, tab, pass, firstRoundBy } = product;
     harness.rest.hang("GET /user/info");
     const write = () =>
       tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }));
@@ -181,9 +202,7 @@ describe("ZeropsInventoryProvider renewal", () => {
     await pass(toDeadline() - 10_000);
     await expect(write()).resolves.toMatchObject({ id: "p1" });
     await pass(toDeadline());
-    await expect(write()).rejects.toMatchObject({
-      message: "Project access could not be verified.",
-    });
+    await refusedWrite(product);
   });
 
   it("a lapse names its cause once, beside one way to try again", async () => {

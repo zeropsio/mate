@@ -199,9 +199,9 @@ describe("central Zerops data bindings", () => {
     registry.dispose();
   });
 
-  it("passes the absolute verification deadline into direct-write admission", () => {
+  it("admits direct writes through the epoch's own grant", () => {
     expect(source("./ZeropsDataProvider.tsx")).toContain(
-      "client.setWritesAllowed(true, performance.timeOrigin + performance.now() + forMs)",
+      "client.admitWritesThrough(writeAdmissionOf(grantCapabilities(created.access)))",
     );
   });
 

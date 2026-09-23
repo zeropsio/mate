@@ -1,8 +1,8 @@
 /**
  * Capabilities (DESIGN §4.3): whether a class of command may run now — `allowed`, or `no` with a
  * typed reason and whether waiting may change it. A capability is derived, never stored: it is
- * read from the access grant at the instant it is asked, on both clocks, so a deadline a frozen
- * or throttled tab slept through is honoured the moment anything asks.
+ * read from the access grant at the instant it is asked, on both of the grant's own clocks, so a
+ * deadline a frozen or throttled tab slept through is honoured the moment anything asks.
  *
  * Losing a capability disables verbs. It never unmounts anything and never cancels other work.
  */
@@ -14,9 +14,11 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../policy.ts";
-import type { ZeropsProjectId } from "../types.ts";
+import type { CommandAdmissionError, ZeropsProjectId } from "../types.ts";
+import type { WriteAdmission } from "../../api.ts";
 import type { ZeropsAccessGrant } from "./grantDriver.ts";
 import {
+  grantAccount,
   grantPlatformRead,
   grantPlatformWrite,
   type GrantCapability,
@@ -26,6 +28,8 @@ import {
 
 /** What a command asks of the grant. */
 export type CapabilityAsk =
+  /** The account's own evidence, whatever project a command names. */
+  | { readonly kind: "account" }
   | { readonly kind: "platformWrite"; readonly project: ZeropsProjectId }
   | { readonly kind: "platformRead"; readonly project: ZeropsProjectId }
   | { readonly kind: "identityMint" };
@@ -52,6 +56,8 @@ export const identityMint = (machine: GrantMachine): GrantCapability => {
 
 const answer = (ask: CapabilityAsk, machine: GrantMachine, ctx: GrantContext): GrantCapability => {
   switch (ask.kind) {
+    case "account":
+      return grantAccount(machine, ctx);
     case "platformWrite":
       return grantPlatformWrite(machine, ask.project, ctx);
     case "platformRead":
@@ -169,8 +175,33 @@ export class CapabilityRefusal extends Data.TaggedError("CapabilityRefusal")<{
   }
 }
 
+const UNVERIFIED_ADMISSION = "Project access could not be verified.";
+
+/** How long a command waits for a waitable capability before it is refused (§4.3). */
+export const CAPABILITY_WAIT_MS = 30_000;
+
+/**
+ * A refusal in the terms every command's and project write's caller already reads: a command's
+ * admission. It is the command's final answer, so evidence that is still being checked is, for
+ * that command, evidence that could not be verified.
+ */
+const ADMISSION: Record<Refusal["reason"], Pick<CommandAdmissionError, "reason" | "message">> = {
+  "access-unverified": { reason: "access-unverified", message: UNVERIFIED_ADMISSION },
+  "access-lapsed": { reason: "access-expired", message: UNVERIFIED_ADMISSION },
+  "project-unverified": { reason: "access-unverified", message: UNVERIFIED_ADMISSION },
+  "role-denies": { reason: "access-denied", message: REFUSAL_COPY["role-denies"] },
+  "project-closed": { reason: "access-denied", message: REFUSAL_COPY["project-closed"] },
+  "epoch-closed": { reason: "runtime-closed", message: REFUSAL_COPY["epoch-closed"] },
+};
+
+/** A capability's refusal as a command's admission error. */
+export const commandAdmissionOf = (refusal: Pick<Refusal, "reason">): CommandAdmissionError => ({
+  _tag: "ZeropsCommandAdmissionError",
+  ...ADMISSION[refusal.reason],
+});
+
 export interface GrantCapabilities {
-  /** The capability now, on the clock of whoever asks. */
+  /** The capability now. */
   readonly check: (ask: CapabilityAsk) => Effect.Effect<GrantCapability>;
   /**
    * Waits up to `withinMs` for a waitable refusal to become allowed, before the command's own
@@ -181,38 +212,55 @@ export interface GrantCapabilities {
     ask: CapabilityAsk,
     options: { readonly withinMs: number },
   ) => Effect.Effect<void, CapabilityRefusal>;
+  /**
+   * Admits a project write on the account's own evidence, waiting up to {@link CAPABILITY_WAIT_MS}
+   * for it. Which project a write names is its caller's to check.
+   */
+  readonly admitProjectWrite: Effect.Effect<void, CommandAdmissionError>;
 }
 
 /** The capabilities one epoch's access grant holds. */
-export const grantCapabilities = (grant: Pick<ZeropsAccessGrant, "changes">): GrantCapabilities => {
+export const grantCapabilities = (
+  grant: Pick<ZeropsAccessGrant, "changes" | "clock">,
+): GrantCapabilities => {
   /** The grant's machine as it is now: `changes` replays the latest view first. */
   const current = Stream.runHead(grant.changes).pipe(
     Effect.map((view) => Option.getOrThrow(view).machine),
   );
-  const ctx = Effect.gen(function* () {
-    const clock = yield* Clock.Clock;
-    return {
-      now: {
-        wall: clock.currentTimeMillisUnsafe(),
-        mono: Number(clock.monotonicTimeNanosUnsafe()) / 1_000_000,
-      },
-      policy: DEFAULT_ZEROPS_GRANT_POLICY,
-    };
-  });
+  // The grant's own clock, never the asker's: its evidence was stamped on it.
+  const ctx = Effect.sync(() => ({
+    now: {
+      wall: grant.clock.currentTimeMillisUnsafe(),
+      mono: Number(grant.clock.monotonicTimeNanosUnsafe()) / 1_000_000,
+    },
+    policy: DEFAULT_ZEROPS_GRANT_POLICY,
+  }));
   const check = (ask: CapabilityAsk) =>
     Effect.map(Effect.all([current, ctx]), ([machine, at]) => answer(ask, machine, at));
+  const awaitCapability: GrantCapabilities["await"] = (ask, { withinMs }) =>
+    grant.changes.pipe(
+      Stream.mapEffect((view) => Effect.map(ctx, (at) => answer(ask, view.machine, at))),
+      Stream.filter((capability) => capability.allowed || !capability.waitable),
+      Stream.runHead,
+      // A grant that stops publishing answers with what it holds now.
+      Effect.flatMap(Option.match({ onNone: () => check(ask), onSome: Effect.succeed })),
+      Effect.timeoutOrElse({ duration: Duration.millis(withinMs), orElse: () => check(ask) }),
+      Effect.flatMap((capability) =>
+        capability.allowed ? Effect.void : Effect.fail(new CapabilityRefusal(capability)),
+      ),
+      // The wait runs out on the grant's clock too.
+      Effect.provideService(Clock.Clock, grant.clock),
+    );
   return {
     check,
-    await: (ask, { withinMs }) =>
-      grant.changes.pipe(
-        Stream.mapEffect((view) => Effect.map(ctx, (at) => answer(ask, view.machine, at))),
-        Stream.filter((capability) => capability.allowed || !capability.waitable),
-        Stream.runHead,
-        Effect.map(Option.getOrThrow),
-        Effect.timeoutOrElse({ duration: Duration.millis(withinMs), orElse: () => check(ask) }),
-        Effect.flatMap((capability) =>
-          capability.allowed ? Effect.void : Effect.fail(new CapabilityRefusal(capability)),
-        ),
-      ),
+    await: awaitCapability,
+    admitProjectWrite: awaitCapability({ kind: "account" }, { withinMs: CAPABILITY_WAIT_MS }).pipe(
+      Effect.mapError(commandAdmissionOf),
+    ),
   };
 };
+
+/** The api's project-write admission over an epoch's capabilities, on the real clock. */
+export const writeAdmissionOf = (capabilities: GrantCapabilities): WriteAdmission => ({
+  beforeProjectWrite: () => Effect.runPromise(capabilities.admitProjectWrite),
+});

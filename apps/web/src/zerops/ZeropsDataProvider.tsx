@@ -4,17 +4,18 @@ import {
   makeAccountRuntime,
   type AccountRuntime,
   type PagePort,
-  type WriteWindowPort,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   AccountEpoch,
   DEFAULT_ZEROPS_GRANT_POLICY,
+  grantCapabilities,
   makeBuildLogTransport,
   makeRestAccessVerifier,
   makeZeropsApiOrigin,
   makeZeropsDataAdapter,
   makeZeropsDataRuntime,
   makeZeropsResourceRestAdapter,
+  writeAdmissionOf,
   ZeropsAccountId,
   ZeropsOrganizationId,
   ZeropsProjectId,
@@ -25,6 +26,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
 import * as Stream from "effect/Stream";
@@ -33,13 +35,9 @@ import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNod
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { bindAccountInvalidations } from "./accountInvalidations";
-import {
-  captureAccountLifetime,
-  currentAccountEpoch,
-  onAccountLifetimeClose,
-  setAccountActionsAllowed,
-} from "./accountLifetime";
+import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { makeBrowserDataScheduler } from "./dataScheduler";
+import { tabClock } from "./tabClock";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 
@@ -104,39 +102,6 @@ export function browserPage(document: Document, window: Window): PagePort {
   };
 }
 
-/** The write window that last opened each client's writes. */
-const clientWriteOwners = new WeakMap<Pick<ZeropsApiClient, "setWritesAllowed">, WriteWindowPort>();
-
-/**
- * Account actions and the api's project writes, open for as long as the
- * grant's evidence authorizes them (G4, G5): the account's deadline on both of
- * this renderer's clocks, the api's on its own `timeOrigin + performance.now()`.
- *
- * Bound to the account lifetime it is made in: once that lifetime closed it
- * opens nothing, and it closes only what it opened itself, never a newer
- * account's window.
- */
-export function browserWriteWindow(
-  client: Pick<ZeropsApiClient, "setWritesAllowed">,
-): WriteWindowPort {
-  const alive = captureAccountLifetime();
-  const window: WriteWindowPort = {
-    open: (forMs) => {
-      if (!alive()) return;
-      setAccountActionsAllowed({ wallMs: Date.now() + forMs, monoMs: performance.now() + forMs });
-      client.setWritesAllowed(true, performance.timeOrigin + performance.now() + forMs);
-      clientWriteOwners.set(client, window);
-    },
-    close: () => {
-      if (alive()) setAccountActionsAllowed(null);
-      if (clientWriteOwners.get(client) !== window) return;
-      clientWriteOwners.delete(client);
-      client.setWritesAllowed(false);
-    },
-  };
-  return window;
-}
-
 /**
  * Builds one platform-data runtime for one account. The default is the real
  * browser adapter stack; a test may substitute a fake one (the only clean
@@ -191,7 +156,10 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
       atomRegistry: registry,
       makeOpaqueId: () => crypto.randomUUID(),
       visibility: browserVisibility(),
-    }).pipe(Effect.provideService(Scheduler.Scheduler, scheduler)),
+    }).pipe(
+      Effect.provideService(Scheduler.Scheduler, scheduler),
+      Effect.provideService(Clock.Clock, tabClock),
+    ),
     { signal },
   );
 };
@@ -288,6 +256,8 @@ export function ZeropsDataProvider({
           void shutdown(created, "account-replaced");
           return;
         }
+        // Project writes are this epoch's from now on; once it closed, its grant refuses them.
+        client.admitWritesThrough(writeAdmissionOf(grantCapabilities(created.access)));
         account = Effect.runPromise(
           makeAccountRuntime({
             data: created,
@@ -298,7 +268,6 @@ export function ZeropsDataProvider({
               onUser: (verified) => verifiedMemberships(verified),
             }),
             page,
-            writes: browserWriteWindow(client),
             atomRegistry: registry,
           }),
         );

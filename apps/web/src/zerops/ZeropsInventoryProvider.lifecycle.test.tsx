@@ -1,7 +1,6 @@
 import { act, useEffect } from "react";
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/unstable/reactivity";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Stream from "effect/Stream";
@@ -12,6 +11,7 @@ import { expect, it } from "@effect/vitest";
 import {
   ZeropsApiError,
   zeropsClientsFromUser,
+  type WriteAdmission,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -243,7 +243,7 @@ const mountInventory = Effect.fn(function* (
       return project;
     }),
     baseUrl: "https://api.example.test",
-    setWritesAllowed: vi.fn(),
+    admitWritesThrough: vi.fn<(admission: WriteAdmission) => void>(),
   };
   // Signed in: the session opened the account's lifetime; its intents belong to it.
   openAccountLifetime(user.id);
@@ -744,21 +744,31 @@ it.live("a project its own retry verifies joins the runtime's grant before the n
   ),
 );
 
-it.live("closes the api's writes at the evidence deadline on the api's own clock", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory();
-      // The system clock was set apart from the api's `timeOrigin + performance.now()`.
-      expect(yield* Clock.currentTimeMillis).not.toBe(performance.timeOrigin + performance.now());
-      const [allowed, deadlineMs] = harness.client.setWritesAllowed.mock.lastCall!;
-      const onApiClock = performance.timeOrigin + performance.now() + 15 * 60_000;
-      expect(allowed).toBe(true);
-      // Short of it by no more than the real milliseconds the round took on the runtime's
-      // monotonic clock, which a test's faked timers do not move.
-      expect(deadlineMs).toBeLessThanOrEqual(onApiClock);
-      expect(deadlineMs).toBeGreaterThan(onApiClock - 1_000);
-    }),
-  ),
+it.live(
+  "admits the api's writes through the epoch's own grant, and refuses them once it closed",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* mountInventory();
+        const [admission] = harness.client.admitWritesThrough.mock.lastCall!;
+
+        yield* Effect.promise(() => admission.beforeProjectWrite());
+        yield* harness.unmount();
+
+        expect(
+          yield* Effect.promise(() =>
+            admission.beforeProjectWrite().then(
+              () => null,
+              (cause: unknown) => cause,
+            ),
+          ),
+        ).toEqual({
+          _tag: "ZeropsCommandAdmissionError",
+          reason: "runtime-closed",
+          message: "This Zerops sign-in has ended.",
+        });
+      }),
+    ),
 );
 
 it.live("a round cut off by sign-out is recorded as dropped", () =>
