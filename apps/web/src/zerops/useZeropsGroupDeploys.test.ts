@@ -42,6 +42,21 @@ describe("deployGroupKey", () => {
     expect(deployGroupKey(withRole)).not.toBe(deployGroupKey(GROUP));
   });
 
+  it("moves when the platform pushes a new active deploy, so the version is read again", () => {
+    const running = (activeDeploy: string): ZeropsDeployGroup => ({
+      ...GROUP,
+      projects: [
+        {
+          ...GROUP.projects[0]!,
+          services: [{ serviceId: "s1", hostname: "app", activeDeploy }],
+        },
+      ],
+    });
+    const before = running("2026-09-20T10:00:00Z v1.4.0");
+    expect(deployGroupKey(before)).toBe(deployGroupKey(running("2026-09-20T10:00:00Z v1.4.0")));
+    expect(deployGroupKey(running("2026-09-21T08:00:00Z v1.5.0"))).not.toBe(deployGroupKey(before));
+  });
+
   it("Key change creates a fact; neighbours unchanged", async () => {
     const reads: string[] = [];
     const published: string[] = [];

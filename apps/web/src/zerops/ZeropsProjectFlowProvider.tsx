@@ -31,6 +31,7 @@ import {
   GROUP_REPOSITORY,
   type FlowPullRequest,
   type FlowVerb,
+  type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
 import type { CollectionRead, ServiceRecord } from "@t3tools/client-runtime/zerops/data";
 import {
@@ -92,6 +93,13 @@ function sameServiceListing(
       (interest, index) => interest.status === right.observation.required[index]?.status,
     )
   );
+}
+
+/** What the platform pushed as a service's active deploy: when it was activated, and its name. */
+function activeDeployOf(service: ZeropsService | undefined): string | undefined {
+  const version = service?.activeAppVersion;
+  if (version === null || version === undefined) return undefined;
+  return `${version.lastUpdate ?? ""} ${version.name ?? ""}`;
 }
 
 /** Stands for a half a group has no answer for, as a key of {@link joinedFlows}. */
@@ -254,7 +262,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
               ...(tags.role === undefined ? {} : { role: tags.role }),
               services:
                 services?.status === "resolved"
-                  ? summarizeEnvironmentServices(services.services).deployable
+                  ? summarizeEnvironmentServices(services.services).deployable.map((service) => ({
+                      ...service,
+                      activeDeploy: activeDeployOf(
+                        services.services.find((entry) => entry.id === service.serviceId),
+                      ),
+                    }))
                   : [],
             };
           }),

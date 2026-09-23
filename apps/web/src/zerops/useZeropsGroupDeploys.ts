@@ -76,7 +76,16 @@ export interface ZeropsDeployGroup {
     /** Its role tag, which says which tier it fills before any declaration does. */
     readonly role?: ZeropsEnvironmentRole | undefined;
     /** Its runtime services — the ones that hold code the broker deploys. */
-    readonly services: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+    readonly services: ReadonlyArray<{
+      readonly serviceId: string;
+      readonly hostname: string;
+      /**
+       * The active deploy the platform pushed — when it was activated and its
+       * name — so a new deploy reads the version again at once rather than
+       * showing the previous one until the clock does (DESIGN §4.7).
+       */
+      readonly activeDeploy?: string | undefined;
+    }>;
   }>;
 }
 
@@ -122,7 +131,8 @@ export interface ZeropsGroupDeployAnswers {
 
 /**
  * Serialises what one group's reads depend on, so an unchanged group is read
- * once per tick and a group whose projects moved is read again on its own.
+ * once per tick and a group whose projects moved, or whose services the
+ * platform says run something new, is read again on its own.
  */
 export function deployGroupKey(group: ZeropsDeployGroup): string {
   return JSON.stringify([
@@ -131,7 +141,9 @@ export function deployGroupKey(group: ZeropsDeployGroup): string {
       project.projectId,
       project.name,
       project.role ?? "",
-      project.services.map((service) => service.serviceId).toSorted(),
+      project.services
+        .map((service) => [service.serviceId, service.activeDeploy ?? ""])
+        .toSorted(([left = ""], [right = ""]) => left.localeCompare(right)),
     ]),
   ]);
 }
