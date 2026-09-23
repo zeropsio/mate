@@ -51,15 +51,28 @@ describe("ComposerBannerStack", () => {
     const markup = renderToStaticMarkup(<ComposerBannerStack items={[banner("front")]} />);
 
     expect(markup).not.toContain("data-composer-banner-stack-expanded-items");
-    expect(markup).toContain("chat-composer-drawer-surface");
-    expect(markup).toContain("chat-composer-drawer-attached");
     expect(markup).not.toContain("before:mask-none");
-    expect(markup).toContain("text-xs");
-    expect(markup).toContain('data-composer-banner-drawer="true"');
+    expect(markup).toContain('data-composer-banner-stack="true"');
     expect(markup).toContain('data-variant="warning"');
     expect(markup).toContain("transform:none");
     expect(markup).not.toContain("will-change:transform");
   });
+  // The front banner used to be a drawer tucked under the composer: square
+  // bottom corners hidden behind the composer's top edge. At the composer's
+  // full width those corners stuck out beside its rounded ones, so every
+  // banner is now a whole rounded card floating a gap above the composer.
+  it("floats every banner as a rounded card above the composer, never a tucked drawer", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerBannerStack items={[banner("front"), banner("stacked")]} />,
+    );
+    const slot = markup.match(/<div[^>]*data-composer-banner-stack="true"[^>]*>/)?.[0] ?? "";
+
+    expect(slot).toContain("inset-x-0");
+    expect(slot).toContain("pb-2");
+    expect(markup).not.toContain("chat-composer-drawer");
+    expect(markup.match(/alert-glass rounded-\[22px\]/g)).toHaveLength(2);
+  });
+
   it("applies item-specific surface and action layout classes", () => {
     const markup = renderToStaticMarkup(
       <ComposerBannerStack
@@ -101,7 +114,7 @@ describe("ComposerBannerStack", () => {
     );
 
     expect(markup).toContain('role="alert"');
-    expect(markup).toContain("chat-composer-drawer-attached");
+    expect(markup).toContain("alert-glass");
     expect(markup).toContain('disabled=""');
     expect(markup).toContain('aria-label="Keep full history"');
   });
