@@ -224,22 +224,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsGiteaOverview.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.listUserRepositories().catch(() => [])",
-    "owner": "state-model 4.1",
-    "reason": "a failed Gitea list reads as no repositories / no pull requests; the forge store holds the lists as Known",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGiteaOverview.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.searchPullRequests().catch(() => [])",
-    "owner": "state-model 4.1",
-    "reason": "a failed Gitea list reads as no repositories / no pull requests; the forge store holds the lists as Known",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
     "kind": "CallExpression",
     "fingerprint": "client .commitDetail(slug, repo, read.head) .then((detail): ReadonlyArray<GiteaCommit> => detail === undefined ? [] : [{ sha: detail.sha, subject: detail.subject }], ) .catch((): ReadonlyArray<GiteaCommit> => [])",

@@ -5,7 +5,9 @@
  * Two account-wide reads, issued together — Gitea's list of the person's
  * repositories and its search over open pull requests — and re-read every
  * sixty seconds while the page is open, and at once when the Gitea session is
- * readable again. Nothing here is per project; a project's own flow is the
+ * readable again. A read that fails keeps what was read before it and names
+ * its cause beside it; it never answers "no repositories" or "no pull
+ * requests". Nothing here is per project; a project's own flow is the
  * provider's (`ZeropsProjectFlowProvider`).
  */
 import {
@@ -14,6 +16,7 @@ import {
   type GiteaOverviewOwner,
   type GiteaRepository,
 } from "@t3tools/client-runtime/zerops";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useEffect, useMemo, useState } from "react";
 
 import { giteaClientFor, useGiteaReadable } from "./accountGiteaSessions";
@@ -25,6 +28,8 @@ export interface ZeropsGiteaOverviewState {
   readonly owners: ReadonlyArray<GiteaOverviewOwner>;
   /** False until the first answer, so an empty page is "not read yet", never "nothing". */
   readonly read: boolean;
+  /** Why the last read did not answer, beside what was read before it; null once one answers. */
+  readonly failure: string | null;
 }
 
 /** What Gitea answered, before it is grouped: the names come from the account, later or sooner. */
@@ -33,7 +38,12 @@ interface GiteaAnswer {
   readonly pulls: ReadonlyArray<GiteaIssueSearchHit>;
 }
 
-const UNREAD: ZeropsGiteaOverviewState = { owners: [], read: false };
+/** What was read for one Gitea, and why the read after it did not answer. */
+interface HeldOverview {
+  readonly key: string;
+  readonly answer: GiteaAnswer | undefined;
+  readonly failure: string | null;
+}
 
 export function useZeropsGiteaOverview(input: {
   readonly giteaOrigin: string | undefined;
@@ -44,10 +54,7 @@ export function useZeropsGiteaOverview(input: {
   const { enabled, giteaOrigin, mateName } = input;
   const key = enabled && giteaOrigin !== undefined ? giteaOrigin : "";
   const readable = useGiteaReadable(giteaOrigin);
-  const [answer, setAnswer] = useState<{
-    readonly key: string;
-    readonly answer: GiteaAnswer;
-  } | null>(null);
+  const [held, setHeld] = useState<HeldOverview | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -69,23 +76,33 @@ export function useZeropsGiteaOverview(input: {
     });
     if (client === null) return;
     const controller = new AbortController();
-    void Promise.all([
-      client.listUserRepositories().catch(() => []),
-      client.searchPullRequests().catch(() => []),
-    ]).then(([repositories, pulls]) => {
-      if (controller.signal.aborted || unauthorized) return;
-      setAnswer({ key, answer: { repositories, pulls } });
-    });
+    void Promise.all([client.listUserRepositories(), client.searchPullRequests()]).then(
+      ([repositories, pulls]) => {
+        if (controller.signal.aborted || unauthorized) return;
+        setHeld({ key, answer: { repositories, pulls }, failure: null });
+      },
+      (error: unknown) => {
+        // The session names a 401's cause; what was read stands either way.
+        if (controller.signal.aborted || unauthorized) return;
+        setHeld((last) => ({
+          key,
+          answer: last?.key === key ? last.answer : undefined,
+          failure: zeropsErrorMessage(error),
+        }));
+      },
+    );
     return () => {
       controller.abort();
     };
   }, [giteaOrigin, key, readable, tick]);
 
-  const read = answer?.key === key ? answer.answer : undefined;
+  const current = held?.key === key ? held : undefined;
+  const read = current?.answer;
+  const failure = current?.failure ?? null;
   return useMemo<ZeropsGiteaOverviewState>(
     () =>
       read === undefined
-        ? UNREAD
+        ? { owners: [], read: false, failure }
         : {
             owners: giteaOverview({
               repositories: read.repositories,
@@ -93,7 +110,8 @@ export function useZeropsGiteaOverview(input: {
               ...(mateName === undefined ? {} : { mateName }),
             }),
             read: true,
+            failure,
           },
-    [mateName, read],
+    [failure, mateName, read],
   );
 }

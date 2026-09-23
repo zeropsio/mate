@@ -9,10 +9,15 @@ import {
 
 /**
  * Whether this tab can read Gitea now, whether the next reads meet a 401 that no token recovered —
- * the reacquire failed, or outlasted the request's wait — and how many times the repositories were
- * listed.
+ * the reacquire failed, or outlasted the request's wait — what Gitea answers the pull request
+ * search instead of a list, and how many times the repositories were listed.
  */
-const gitea = vi.hoisted(() => ({ readable: true, unauthorizedOnRead: false, listings: 0 }));
+const gitea = vi.hoisted(() => ({
+  readable: true,
+  unauthorizedOnRead: false,
+  searchFails: null as string | null,
+  listings: 0,
+}));
 
 vi.mock("./accountGiteaSessions", () => ({
   useGiteaReadable: () => gitea.readable,
@@ -33,7 +38,11 @@ vi.mock("./accountGiteaSessions", () => ({
         ]);
       },
       searchPullRequests: () =>
-        read([{ number: 7, title: "Stage follows main", repository: { full_name: "harbor/app" } }]),
+        gitea.searchFails === null
+          ? read([
+              { number: 7, title: "Stage follows main", repository: { full_name: "harbor/app" } },
+            ])
+          : Promise.reject(new Error(gitea.searchFails)),
     };
   },
 }));
@@ -106,6 +115,7 @@ describe("useZeropsGiteaOverview", () => {
   afterEach(() => {
     gitea.readable = true;
     gitea.unauthorizedOnRead = false;
+    gitea.searchFails = null;
     gitea.listings = 0;
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -172,6 +182,45 @@ describe("useZeropsGiteaOverview", () => {
     });
     expect(gitea.listings).toBe(1);
     expect(seen.at(-1)?.owners.map((owner) => owner.openPulls)).toEqual([1]);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps what it read when a re-read fails, and names the cause beside it until one answers", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGiteaOverviewState> = [];
+
+    function Probe() {
+      seen.push(
+        useZeropsGiteaOverview({ giteaOrigin: "https://gitea.example.test", enabled: true }),
+      );
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(seen.at(-1)?.failure).toBeNull();
+
+    // Only the pull request search fails: nothing read turns into "no pull requests".
+    gitea.searchFails = "Gitea answered 500.";
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GITEA_OVERVIEW_REFRESH_MS);
+    });
+    expect(seen.at(-1)).toMatchObject({ read: true, failure: "Gitea answered 500." });
+    expect(seen.at(-1)?.owners.map((owner) => owner.openPulls)).toEqual([1]);
+
+    gitea.searchFails = null;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GITEA_OVERVIEW_REFRESH_MS);
+    });
+    expect(seen.at(-1)).toMatchObject({ read: true, failure: null });
 
     await act(async () => {
       root.unmount();
