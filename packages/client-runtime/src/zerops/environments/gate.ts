@@ -23,7 +23,7 @@ export type RouteDiscovery =
   | "pending"
   /** Every source that could name the environment has answered or failed, and none named it. */
   | "settled"
-  /** No organization is chosen, so nothing is looking for it yet (Amendment A5). */
+  /** Every source answered or failed without naming it, and no organization is chosen (A5). */
   | "no-organization";
 
 export type RouteTarget =
@@ -43,7 +43,7 @@ export type RouteGate =
     }
   /** RG2 while the environment is still being looked for (null), RG8 with its verdict. */
   | { readonly kind: "wait"; readonly reachability: Reachability | null }
-  /** A5: nothing looks for the environment until an organization is chosen. */
+  /** A5: nothing named the environment, and no organization is chosen yet. */
   | { readonly kind: "choose-organization" }
   /** RG3 when no project holds the environment (null), RG4–RG6 with the terminal verdict. */
   | { readonly kind: "unavailable"; readonly reachability: Reachability | null };

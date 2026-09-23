@@ -92,7 +92,11 @@ export function discoveryPending(
 
 export type RouteOrganization = "chosen" | "choosing" | "not-chosen";
 
-/** The gate's target for the route's environment. */
+/**
+ * The gate's target for the route's environment. Discovery reads every organization's Mates, so
+ * it runs whether an organization is chosen or not: the picker is offered only once it settled
+ * without naming the environment, never while it could still name it.
+ */
 export function routeTarget(input: {
   readonly machines: Machines;
   readonly index: DescriptorIndex;
@@ -107,15 +111,16 @@ export function routeTarget(input: {
   if (found !== undefined) {
     return { kind: "resolved", reachability: found.reachability, content: input.content };
   }
-  if (input.organization === "not-chosen") {
-    return { kind: "unresolved", discovery: "no-organization" };
-  }
   const discovering =
     input.organization === "choosing" ||
     !input.inventoryKnown ||
     discoveryPending(input.machines, input.remembered) ||
     input.index.unanswered.length > 0;
-  return { kind: "unresolved", discovery: discovering ? "pending" : "settled" };
+  if (discovering) return { kind: "unresolved", discovery: "pending" };
+  return {
+    kind: "unresolved",
+    discovery: input.organization === "not-chosen" ? "no-organization" : "settled",
+  };
 }
 
 const ORGANIZATION: Record<ZeropsOrganizationStatus, RouteOrganization> = {
