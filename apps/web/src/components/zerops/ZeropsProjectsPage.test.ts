@@ -20,6 +20,7 @@ import {
   isZeropsBirthConnectTarget,
   mateOpener,
   nextZeropsBirthRetryDelayMs,
+  projectsGroupLine,
   projectsListingNotice,
   projectsPageError,
   readContainerAfter,
@@ -865,6 +866,28 @@ describe("opening a Mate from the projects page", () => {
     expect(projectsPageSource).toContain("const select = mateOpenerOf(candidate);");
     expect(projectsPageSource).toContain("openMate={mateOpenerOf}");
     expect(projectsPageSource.match(/mateOpener\(\{/gu)).toHaveLength(1);
+  });
+});
+
+describe("a group's one line about itself", () => {
+  it.each([
+    [{ placeholder: true, unfinished: "production", gitea: "" }, "This project has no name yet"],
+    [
+      { placeholder: false, unfinished: "production", gitea: "" },
+      "Couldn't finish setting up production",
+    ],
+    [
+      { placeholder: false, unfinished: "stage", gitea: "Gitea side …" },
+      "Couldn't finish setting up stage",
+    ],
+    [{ placeholder: false, unfinished: undefined, gitea: "Gitea side …" }, "Gitea side …"],
+    [{ placeholder: false, unfinished: undefined, gitea: "" }, undefined],
+  ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
+    expect(projectsGroupLine(input)).toBe(expected);
+  });
+
+  it("keeps a background repair's failure off the page's error line", () => {
+    expect(projectsPageSource).not.toContain("setToolError(`${entry.displayName}");
   });
 });
 

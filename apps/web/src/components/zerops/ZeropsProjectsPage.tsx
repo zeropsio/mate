@@ -118,6 +118,7 @@ import {
   runEnvironmentCreation,
   unionAgents,
   type EnvironmentCreationStepProgress,
+  type GroupEnvironmentTier,
   type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
@@ -453,6 +454,23 @@ export function projectsPageError(input: {
 }): string | null {
   if (input.connectError !== null) return input.connectError;
   return input.listingNotice?.region === "message" ? null : input.inventoryError;
+}
+
+/**
+ * The one line a group says about itself, in its own row: that it has no name
+ * yet, that a stage or production the page repaired in the background is not
+ * finished, or that the broker's Gitea side is still being set up. A repair's
+ * failure is the group's to show, in the page's words — the platform's own
+ * message is not the person's to read, and a line under the page is nobody's.
+ */
+export function projectsGroupLine(input: {
+  readonly placeholder: boolean;
+  readonly unfinished: GroupEnvironmentTier | undefined;
+  readonly gitea: string;
+}): string | undefined {
+  if (input.placeholder) return "This project has no name yet";
+  if (input.unfinished !== undefined) return `Couldn't finish setting up ${input.unfinished}`;
+  return input.gitea.length > 0 ? input.gitea : undefined;
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
@@ -943,6 +961,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
 
   const [toolError, setToolError] = useState<string | null>(null);
+  /** The groups whose background repair of a stage or production did not finish. */
+  const [unfinished, setUnfinished] = useState<ReadonlyMap<string, GroupEnvironmentTier>>(
+    () => new Map(),
+  );
   const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
   // Ticks once a second while a creation runs, so the checklist's durations
   // move; stops the moment it settles.
@@ -2234,12 +2256,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     refreshRegistry: registryState.refresh,
     halfMade,
     // Not a failed creation: the project runs, and what is outstanding is
-    // named so the person knows what is waiting on whom.
+    // said on its group's row (`projectsGroupLine`), not under the page.
     onOutcome: (entry, outcome) => {
       setDeployTokenGeneration((current) => current + 1);
-      if (outcome.failed !== undefined) {
-        setToolError(`${entry.displayName}: ${outcome.failed.reason}`);
-      }
+      setUnfinished((current) => {
+        const next = new Map(current);
+        if (outcome.failed === undefined) next.delete(entry.groupId);
+        else next.set(entry.groupId, entry.tier);
+        return next;
+      });
     },
   });
 
@@ -2900,7 +2925,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
       const placeholder = groupNameIsPlaceholder(group);
-      const groupLine = groupLines.get(group.groupId) ?? "";
       return {
         group,
         flow: groupFlow(
@@ -2933,11 +2957,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         lastMerged: reads === undefined ? undefined : lastMergedCode(reads.merged),
         // Visible rather than a tooltip: it is an invitation to name the
         // project, and it disappears the moment one does.
-        line: placeholder
-          ? "This project has no name yet"
-          : groupLine.length > 0
-            ? groupLine
-            : undefined,
+        line: projectsGroupLine({
+          placeholder,
+          unfinished: unfinished.get(group.groupId),
+          gitea: groupLines.get(group.groupId) ?? "",
+        }),
         placeholder,
       };
     },
