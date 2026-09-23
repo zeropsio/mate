@@ -16,8 +16,10 @@ import {
   ReceiptOrdinal,
   queryKeyOf,
 } from "../data/types.ts";
+import { serviceRecordToZeropsService } from "../data/dto.ts";
 import type { EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
+import { projectTopology } from "../topology.ts";
 import {
   CHECKING_WHAT_RUNS,
   NOTHING_DEPLOYED,
@@ -328,6 +330,19 @@ const PUSHED: ServiceDeployInfo = {
   repository: null,
 };
 
+/** What a native service frame states of the active version: its id, status and times. */
+const UNSTATED: ServiceDeployInfo = {
+  id: "app-version",
+  status: "ACTIVE",
+  source: null,
+  activatedAt: "2026-09-20T10:00:00Z",
+  name: null,
+  branch: null,
+  commit: null,
+  tag: null,
+  repository: null,
+};
+
 describe("stopDeployment", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
@@ -361,6 +376,12 @@ describe("stopDeployment", () => {
         record("s1", "app", deployed({ ...PUSHED, source: "NONE", name: null })),
       ]),
       expected: "none",
+    },
+    {
+      // A pushed frame states no source (A14): the deploy may be a NONE one.
+      name: "an active version whose source nobody stated",
+      read: servicesRead([record("s1", "app", deployed(UNSTATED))]),
+      expected: "unread",
     },
     {
       name: "no services at all, completely listed",
@@ -439,6 +460,47 @@ describe("stopDeployment", () => {
     expect(deployment).toMatchObject({
       state: "known",
       value: { kind: "running", version: { commit: "3f9c1b2", sha: SHA, label: "3f9c1b2" } },
+    });
+  });
+
+  describe("reads each deploy as the topology does (A14)", () => {
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly deploy: ServiceDeployInfo;
+      readonly stop: "unread" | "none" | "running";
+      readonly topologySource: string | undefined;
+    }> = [
+      {
+        name: "a version with its source stated",
+        deploy: PUSHED,
+        stop: "running",
+        topologySource: "GIT",
+      },
+      {
+        name: "a never-deployed runtime's NONE version",
+        deploy: { ...PUSHED, source: "NONE" },
+        stop: "none",
+        topologySource: undefined,
+      },
+      {
+        name: "a version whose source nobody stated",
+        deploy: UNSTATED,
+        stop: "unread",
+        topologySource: undefined,
+      },
+    ];
+
+    it.each(cases)("$name", ({ deploy, stop, topologySource }) => {
+      const stated = record("s1", "app", deployed(deploy));
+      const deployment = stopDeployment(servicesRead([stated]), NOW);
+      const topology = projectTopology(
+        { id: "project-1", name: "project", status: "ACTIVE" },
+        [serviceRecordToZeropsService(stated)!],
+        [],
+      );
+
+      expect(deployment.state === "known" ? deployment.value.kind : deployment.state).toBe(stop);
+      expect(topology.services[0]?.deploy?.source).toBe(topologySource);
     });
   });
 

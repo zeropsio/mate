@@ -1,12 +1,11 @@
 /**
  * What a stop runs, as a fact (DESIGN §4.7 "Deployment", D6).
  *
- * Existence comes from the platform's pushed deployment facet, not from the
- * group's deploy pass: the datastream already says whether a service has an
- * active deploy, when it was activated and what it is called, and it says so
- * without Gitea. The pass's REST read (`userData`) still names a version where
- * it answered first, because the pushed name is not yet confirmed to be the
- * app version's own name (OQ-3).
+ * Existence comes from the platform's deployment facet, not from the group's
+ * deploy pass, and without Gitea. A native frame states the active version's
+ * id, status and times but not its source or name (A14): a version whose
+ * source nobody has stated yet is pending, never running and never none. The
+ * pass's REST read (`userData`) still names a version where it answered first.
  *
  * The one negative, "Nothing deployed yet", is earned: only a complete listing
  * whose every runtime service is observed with no active deploy says it. A
@@ -117,9 +116,11 @@ function serviceAnswer(knowledge: CollectionRead<ServiceRecord>["value"][number]
     return { kind: "pending" };
   const deploy = facet.fields.activeDeploy;
   const asOf = toStamp(facet.stamp);
-  return runsNothing(deploy)
-    ? { kind: "none", asOf }
-    : { kind: "running", hostname: service.name, deploy, asOf };
+  if (runsNothing(deploy)) return { kind: "none", asOf };
+  // A version whose source nobody stated may be that `NONE` one: a native
+  // frame names only its id, status and times (A14). Neither running nor none.
+  if (deploy.source === null) return { kind: "pending" };
+  return { kind: "running", hostname: service.name, deploy, asOf };
 }
 
 /** The worst of the interests the listing needs, which is what vouches for it. */
