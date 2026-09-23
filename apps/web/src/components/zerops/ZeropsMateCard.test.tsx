@@ -122,6 +122,19 @@ describe("ZeropsMateCard", () => {
     expect(html).not.toContain("mate-snippet");
   });
 
+  it("keeps a row's name whole where its line is short: the time and Preview wrap, the name never gives way", () => {
+    const html = card({
+      layout: "row",
+      onSelect: () => {},
+      preview: "https://app.example/",
+      time: "3h ago",
+    });
+    const lineOne = html.slice(html.lastIndexOf("<div", html.indexOf(">Fen<")));
+    expect(lineOne).toMatch(/^<div class="[^"]*flex-wrap/u);
+    const button = html.slice(html.lastIndexOf("<button", html.indexOf(">Fen<")));
+    expect(button).toMatch(/^<button class="[^"]*flex-none/u);
+  });
+
   it("draws no Preview as a card, and none in a row without one", () => {
     expect(card({ preview: "https://app.example/" })).not.toContain("mate-preview");
     expect(card({ layout: "row" })).not.toContain("mate-preview");

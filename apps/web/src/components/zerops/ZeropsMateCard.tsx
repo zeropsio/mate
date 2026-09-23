@@ -153,11 +153,19 @@ const LAYOUT = {
     opens:
       "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
     hit: "after:rounded-[var(--zerops-card-radius)]",
+    lineOne: "",
+    name: "",
+    time: "",
   },
   row: {
     surface: ROW_SURFACE_CLASS,
     opens: "hover:bg-accent/60",
     hit: "after:rounded-md",
+    // A row sits in a narrow step: the name never gives way, and its time and
+    // Preview wrap under it rather than cut it to an initial.
+    lineOne: "flex-wrap gap-y-0",
+    name: "max-w-full flex-none",
+    time: "ms-auto",
   },
 } as const;
 
@@ -241,12 +249,13 @@ export function ZeropsMateCard({
     >
       <MateFace size="md" state={face} tint={tint} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className={cn("flex min-w-0 items-center gap-2", LAYOUT[layout].lineOne)}>
           {onSelect ? (
             <button
               className={cn(
                 "min-w-0 flex-1 truncate rounded-sm text-left text-sm leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring",
                 LAYOUT[layout].hit,
+                LAYOUT[layout].name,
               )}
               data-zerops-surface="mate-open"
               onClick={onSelect}
@@ -255,13 +264,21 @@ export function ZeropsMateCard({
               {name}
             </button>
           ) : (
-            <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium text-foreground">
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-sm leading-5 font-medium text-foreground",
+                LAYOUT[layout].name,
+              )}
+            >
               {name}
             </span>
           )}
           {time === undefined || time.length === 0 ? null : (
             <span
-              className="shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums"
+              className={cn(
+                "shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums",
+                LAYOUT[layout].time,
+              )}
               data-zerops-surface="mate-time"
             >
               {time}

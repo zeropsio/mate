@@ -148,7 +148,7 @@ function OverviewHeader() {
  */
 function StepPlace({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
-    <div className="col-span-2 grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 @2xl/flow:col-span-1 @2xl/flow:row-span-2 @2xl/flow:row-start-1 @2xl/flow:block @5xl/flow:row-span-1">
+    <div className="col-span-2 grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-x-3 @2xl/flow:col-span-1 @2xl/flow:row-span-2 @2xl/flow:row-start-1 @2xl/flow:block @5xl/flow:row-span-1">
       <MicroLabel className="text-muted-foreground @2xl/flow:hidden">{label}</MicroLabel>
       {children}
     </div>
