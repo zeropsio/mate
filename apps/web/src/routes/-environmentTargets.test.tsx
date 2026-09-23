@@ -584,13 +584,18 @@ const answering = (environmentId: EnvironmentId): ProbeReading => ({
 });
 
 /**
- * A real container store and exchange driver for present candidates on a device with no record:
- * every probe waits for the test to answer it, and every exchange started is kept, unanswered.
+ * A real container store and exchange driver for present candidates, remembered by `records` or
+ * not at all: every probe waits for the test to answer it, and every exchange started is kept,
+ * unanswered.
  */
-function descriptorRig(mates: ReadonlyArray<ReturnType<typeof mate>>) {
+function descriptorRig(
+  mates: ReadonlyArray<ReturnType<typeof mate>>,
+  records: ReadonlyMap<string, EnvironmentId> = new Map(),
+) {
   const pending = new Map<string, (reading: ProbeReading) => void>();
   const probed: Array<string> = [];
   const exchanges: Array<ExchangeRequest> = [];
+  const retired: Array<string> = [];
   const clock = {
     now: () => ({ wall: nowMs, mono: nowMs }),
     random: () => 0.5,
@@ -622,7 +627,9 @@ function descriptorRig(mates: ReadonlyArray<ReturnType<typeof mate>>) {
     readDescriptor: () => new Promise(() => undefined),
     retryLink: () => undefined,
     refreshPresence: () => undefined,
-    retire: () => undefined,
+    retire: (key) => {
+      retired.push(key);
+    },
   });
   containers.setTargets(
     mates.map(({ key, origin }) => ({
@@ -643,7 +650,7 @@ function descriptorRig(mates: ReadonlyArray<ReturnType<typeof mate>>) {
       key,
       presence: { kind: "present", origin } as const,
       container: { level: "unknown" } as const,
-      record: null,
+      record: records.get(key) ?? null,
     })),
   );
   return {
@@ -651,6 +658,7 @@ function descriptorRig(mates: ReadonlyArray<ReturnType<typeof mate>>) {
     driver,
     probed,
     exchanges,
+    retired,
     /** Answers the probe in flight for this origin. */
     answer: async (origin: string, reading: ProbeReading) => {
       const resolve = pending.get(origin);
@@ -752,6 +760,54 @@ describe("the descriptor index", () => {
       Array.from({ length: 4 }, () => "project-9"),
     );
     expect(seen.map(({ gate }) => gate)).not.toContain("unavailable");
+    rig.driver.dispose();
+    rig.containers.dispose();
+  });
+
+  it("a changed envId marks the old route replaced, drafts kept", async () => {
+    const one = mate(1);
+    const rig = descriptorRig([one], new Map([[one.key, ENV_A]]));
+    shell.driver = rig.driver;
+    shell.containers = rig.containers;
+    shell.records = [{ targetKey: one.key, environmentId: ENV_A }];
+    rig.driver.setDemand("record", [one.key]);
+    await settle();
+    function Probe({ environmentId }: { readonly environmentId: EnvironmentId }) {
+      const inputs = useRouteGateInputs(environmentId);
+      return JSON.stringify({
+        gate: selectRouteGate(inputs.target),
+        linkable: useEnvironmentLinks().linkable(environmentId),
+        routeKey: useRouteTargetKey(environmentId) ?? null,
+      });
+    }
+    const look = (environmentId: EnvironmentId) => {
+      act(() =>
+        root.render(
+          <InventoryContext value={inventory("ACTIVE")}>
+            <Probe environmentId={environmentId} />
+          </InventoryContext>,
+        ),
+      );
+      return JSON.parse(container.textContent) as {
+        gate: RouteGate;
+        linkable: boolean;
+        routeKey: string | null;
+      };
+    };
+
+    // The Mate was redeployed with its data history: its descriptor now reports another environment.
+    await rig.answer(one.origin, answering(ENV_B));
+
+    expect(look(ENV_A)).toEqual({
+      gate: { kind: "unavailable", reachability: { kind: "replaced", by: ENV_B } },
+      linkable: false,
+      routeKey: one.key,
+    });
+    // The new environment is the same target's.
+    expect(look(ENV_B).routeKey).toBe(one.key);
+    // Nothing retired the target: its record, and every draft keyed by the old environment, stay.
+    expect(rig.retired).toEqual([]);
+    expect(rig.driver.machine(one.key)?.record).toBe(ENV_A);
     rig.driver.dispose();
     rig.containers.dispose();
   });

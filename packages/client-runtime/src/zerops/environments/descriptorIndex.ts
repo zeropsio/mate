@@ -6,6 +6,10 @@
  * - A target's machine names an environment first: the credential it holds, then its record or
  *   the redeploys it saw. The index answers for an environment no machine names — a deep link on
  *   a device with no record.
+ * - A remembered environment whose target's descriptor now reports another was replaced by it:
+ *   a redeploy that dropped the Mate's data history. A credential held for it is left to its link,
+ *   whose block re-reads the descriptor (§4.4), so a reading older than the credential never
+ *   ends a live route. Nothing is retired for it: drafts keep their keys (AL-13).
  * - A present target's descriptor has answered once its origin was read as Mate (`ready`) or as
  *   serving no Mate at all (`predates-mate`). Unread, still coming up or unreachable, it has not,
  *   and an environment nothing names stays undecided until it has: "not in your projects" is
@@ -21,6 +25,8 @@ import { selectReachability, type Reachability } from "./reachability.ts";
 export interface DescriptorIndex {
   /** Each environment a present target's descriptor reports, to that target. */
   readonly serving: ReadonlyMap<EnvironmentId, TargetKey>;
+  /** Each present target whose descriptor answered as Mate, to the environment it reports. */
+  readonly reported: ReadonlyMap<TargetKey, EnvironmentId>;
   /** Present targets whose descriptor has not answered: unread, coming up, or unreachable. */
   readonly unanswered: ReadonlyArray<TargetKey>;
   /**
@@ -36,6 +42,7 @@ export function indexDescriptors(
   containers: ReadonlyMap<TargetKey, ContainerMachine>,
 ): DescriptorIndex {
   const serving = new Map<EnvironmentId, TargetKey>();
+  const reported = new Map<TargetKey, EnvironmentId>();
   const unanswered: Array<TargetKey> = [];
   const failed: Array<TargetKey> = [];
   for (const [key, machine] of environments) {
@@ -43,13 +50,14 @@ export function indexDescriptors(
     const reading = containers.get(key)?.reading?.reading;
     if (reading?.kind === "ready") {
       serving.set(reading.descriptor.environmentId, key);
+      reported.set(key, reading.descriptor.environmentId);
       continue;
     }
     if (reading?.kind === "predates-mate") continue;
     unanswered.push(key);
     if (reading !== undefined) failed.push(key);
   }
-  return { serving, unanswered, failed };
+  return { serving, reported, unanswered, failed };
 }
 
 const holds = (machine: EnvironmentMachine, environmentId: EnvironmentId): boolean =>
@@ -93,5 +101,19 @@ export function resolveEnvironment(
   const key = named?.key ?? index.serving.get(environmentId);
   const machine = named?.machine ?? (key === undefined ? undefined : machines.get(key));
   if (key === undefined || machine === undefined) return undefined;
-  return { key, machine, reachability: selectReachability(machine, environmentId) };
+  const verdict = selectReachability(machine, environmentId);
+  const by = index.reported.get(key);
+  // §4.4 row 2 off the descriptor: the target was found by its record, and its origin now reports
+  // another environment. `gone` and a replacement the machine saw itself come first.
+  const replaced =
+    verdict.kind !== "gone" &&
+    verdict.kind !== "replaced" &&
+    by !== undefined &&
+    by !== environmentId &&
+    !holds(machine, environmentId);
+  return {
+    key,
+    machine,
+    reachability: replaced ? { kind: "replaced", by } : verdict,
+  };
 }

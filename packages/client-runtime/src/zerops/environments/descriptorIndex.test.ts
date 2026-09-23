@@ -40,6 +40,14 @@ const read = (reading: ProbeReading): ContainerMachine => ({
   reading: { reading, sentAt: { wall: 0, mono: 0 } },
 });
 
+const HELD_A = {
+  kind: "held",
+  environmentId: ENV_A,
+  installed: true,
+  staleBlock: false,
+  rereading: null,
+} as const;
+
 describe("indexDescriptors", () => {
   const ROWS: ReadonlyArray<{
     readonly name: string;
@@ -53,6 +61,7 @@ describe("indexDescriptors", () => {
       container: read(ready(ENV_A)),
       index: {
         serving: new Map([[ENV_A, KEY]]),
+        reported: new Map([[KEY, ENV_A]]),
         unanswered: [],
         failed: [],
       },
@@ -61,37 +70,37 @@ describe("indexDescriptors", () => {
       name: "an origin serving no Mate answered: it holds no environment",
       machine: present(KEY),
       container: read({ kind: "predates-mate" }),
-      index: { serving: new Map(), unanswered: [], failed: [] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
     },
     {
       name: "an unread origin is on its way, not failed",
       machine: present(KEY),
       container: initialContainer(),
-      index: { serving: new Map(), unanswered: [KEY], failed: [] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [] },
     },
     {
       name: "a target the container store has not listed yet is unread",
       machine: present(KEY),
       container: undefined,
-      index: { serving: new Map(), unanswered: [KEY], failed: [] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [] },
     },
     {
       name: "a Mate still coming up has not answered",
       machine: present(KEY),
       container: read({ kind: "initializing", initAt: null }),
-      index: { serving: new Map(), unanswered: [KEY], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
     },
     {
       name: "an unreachable origin has not answered",
       machine: present(KEY),
       container: read({ kind: "unreachable" }),
-      index: { serving: new Map(), unanswered: [KEY], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
     },
     {
       name: "a target that is not present is neither indexed nor waited for",
       machine: present(KEY, { presence: { kind: "transitioning", status: "RESTARTING" } }),
       container: read(ready(ENV_A)),
-      index: { serving: new Map(), unanswered: [], failed: [] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
     },
   ];
 
@@ -105,6 +114,7 @@ describe("indexDescriptors", () => {
 describe("resolveEnvironment", () => {
   const index = (entries: ReadonlyArray<readonly [string, EnvironmentId]>): DescriptorIndex => ({
     serving: new Map(entries.map(([key, environmentId]) => [environmentId, key])),
+    reported: new Map(entries),
     unanswered: [],
     failed: [],
   });
@@ -116,7 +126,16 @@ describe("resolveEnvironment", () => {
   ): ResolvedEnvironment => ({ key, machine, reachability });
 
   const remembered = present(KEY, { record: ENV_A });
+  const holding = present(KEY, {
+    record: ENV_A,
+    credential: HELD_A,
+    link: { phase: "connected", since: { wall: 0, mono: 0 } },
+  });
   const deepLinked = present(OTHER);
+  const goneRemembered = present(KEY, {
+    record: ENV_A,
+    presence: { kind: "gone", evidence: "direct-not-found" },
+  });
 
   const ROWS: ReadonlyArray<{
     readonly name: string;
@@ -147,6 +166,24 @@ describe("resolveEnvironment", () => {
         [OTHER, ENV_A],
       ]),
       resolved: resolved(KEY, remembered),
+    },
+    {
+      name: "the remembered target's descriptor reports another environment: replaced",
+      machines: new Map([[KEY, remembered]]),
+      index: index([[KEY, ENV_B]]),
+      resolved: resolved(KEY, remembered, { kind: "replaced", by: ENV_B }),
+    },
+    {
+      name: "a credential held for it is judged by its link, never by an older reading",
+      machines: new Map([[KEY, holding]]),
+      index: index([[KEY, ENV_B]]),
+      resolved: resolved(KEY, holding),
+    },
+    {
+      name: "gone outranks the descriptor's replacement",
+      machines: new Map([[KEY, goneRemembered]]),
+      index: index([[KEY, ENV_B]]),
+      resolved: resolved(KEY, goneRemembered, { kind: "gone", because: "direct-not-found" }),
     },
   ];
 
