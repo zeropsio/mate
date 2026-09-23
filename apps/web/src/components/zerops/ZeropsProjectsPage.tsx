@@ -2099,10 +2099,10 @@ function ZeropsProjectsContent() {
   useZeropsGroupEnvironmentReconcile({
     enabled: status === "signed-in" && projectFlow.readable && !isLoading && !creationRunning,
     client,
+    data: { runtime, projectRef },
     clientId: activeOrganization?.id,
     giteaOrigin,
     giteaProjectId,
-    registry: registryState.registry,
     refreshRegistry: registryState.refresh,
     halfMade,
     // Not a failed creation: the project runs, and what is outstanding is

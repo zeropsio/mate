@@ -1106,50 +1106,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Writes the registry back, as the person — an org owner or admin, because
-   * the platform refuses a project write from anybody else.
-   *
-   * Read-modify-write against a tag list the **caller** produced, not against
-   * whatever is on the project now: the caller parsed the registry, decided,
-   * and formatted it back with every tag it did not own carried through
-   * (`groupRegistry.ts`). Re-reading here and merging again would silently
-   * resolve a concurrent write instead of letting the next read see it.
-   *
-   * `userRoles` is not sent. `PUT /project/{id}` replaces what it is given,
-   * and the Gitea project is exactly where a mistake there would be worst.
-   */
-  async writeGroupRegistry(
-    input: { readonly giteaProjectId: string; readonly tagList: ReadonlyArray<string> },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.fetchProject(input.giteaProjectId, signal);
-    this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(
-      `/project/${input.giteaProjectId}`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify(
-          projectTagWriteBody({
-            name: project.name,
-            description: project.description,
-            tagList: input.tagList,
-            publicIpV4Shared: project.publicIpV4Shared,
-            maxCreditLimit: project.maxCreditLimit,
-          }),
-        ),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /**
    * Hands a Mate to a person — or takes it away (guide 0.8, D11).
    *
    * A per-project role override, written by an org owner or admin. It is the

@@ -44,7 +44,7 @@ import { ZeropsMoveToGroupDialog } from "../components/zerops/ZeropsMoveToGroupD
 import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
 import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
-import { registerMateInGroup } from "./brokerGrant";
+import { projectTagsWrite, registerMateInGroup } from "./brokerGrant";
 import { findAccountGitea } from "./giteaProject";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useProjectOrderPreference } from "./projectOrderPreference";
@@ -348,9 +348,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         // step this verb has to sequence.
         const outstanding = await registerMateInGroup({
           client,
+          writeTags: projectTagsWrite({ runtime, projectRef }, activeOrganization.id),
           clientId: activeOrganization.id,
           giteaProjectId,
-          registry: registry.registry,
           groupId,
           projectId: candidate.project.id,
         });
@@ -358,7 +358,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         if (outstanding !== null) setTrouble(outstanding);
       });
     },
-    [activeOrganization, client, giteaProjectId, registry, write],
+    [activeOrganization, client, giteaProjectId, projectRef, registry, runtime, write],
   );
 
   const actionsFor = useCallback(

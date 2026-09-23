@@ -19,24 +19,22 @@
  * (`GiteaSessionView.readable`).
  */
 
-import type {
-  HalfMadeGroupEnvironment,
-  ZeropsApiClient,
-  ZeropsRegistry,
-} from "@t3tools/client-runtime/zerops";
+import type { HalfMadeGroupEnvironment, ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { useEffect, useRef } from "react";
 
 import { addGroupEnvironment, type AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
 import { giteaClientFor } from "./accountGiteaSessions";
-import { registryGroupSlug } from "./useZeropsRegistry";
+import { projectTagsWrite } from "./brokerGrant";
+import type { ZeropsDataContextValue } from "./zeropsDataContext";
 
 export function useZeropsGroupEnvironmentReconcile(input: {
   readonly enabled: boolean;
   readonly client: ZeropsApiClient;
+  /** The account's runtime, whose `updateProjectTags` writes the registry entry as a patch. */
+  readonly data: Pick<ZeropsDataContextValue, "runtime" | "projectRef">;
   readonly clientId: string | undefined;
   readonly giteaOrigin: string | undefined;
   readonly giteaProjectId: string | undefined;
-  readonly registry: ZeropsRegistry;
   readonly refreshRegistry: () => void;
   readonly halfMade: ReadonlyArray<HalfMadeGroupEnvironment>;
   /** What each repair came to — the caller says what is still outstanding. */
@@ -46,8 +44,8 @@ export function useZeropsGroupEnvironmentReconcile(input: {
 }): void {
   const { client, clientId, enabled, giteaOrigin, giteaProjectId, halfMade, refreshRegistry } =
     input;
-  const registry = useRef(input.registry);
-  registry.current = input.registry;
+  const data = useRef(input.data);
+  data.current = input.data;
   const refresh = useRef(refreshRegistry);
   refresh.current = refreshRegistry;
   const onOutcome = useRef(input.onOutcome);
@@ -91,12 +89,11 @@ export function useZeropsGroupEnvironmentReconcile(input: {
         });
         const outcome = await addGroupEnvironment({
           client,
+          writeTags: projectTagsWrite(data.current, clientId),
           gitea,
           clientId,
           giteaProjectId,
-          registry: registry.current,
           groupId: entry.groupId,
-          slug: registryGroupSlug(registry.current, entry.groupId),
           environment: {
             displayName: entry.displayName,
             tier: entry.tier,
@@ -117,7 +114,7 @@ export function useZeropsGroupEnvironmentReconcile(input: {
     return () => {
       controller.abort();
     };
-    // `key` is the half-made list; the list, the registry and the refresh are
+    // `key` is the half-made list; the list, the runtime and the refresh are
     // read through refs so a re-render does not abort a repair in flight.
   }, [client, clientId, enabled, giteaOrigin, giteaProjectId, key]);
 }

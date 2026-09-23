@@ -1,8 +1,4 @@
-import type {
-  HalfMadeGroupEnvironment,
-  ZeropsApiClient,
-  ZeropsRegistry,
-} from "@t3tools/client-runtime/zerops";
+import type { HalfMadeGroupEnvironment, ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -59,8 +55,11 @@ vi.mock("./addGroupEnvironment", () => ({
 const HALF_MADE: ReadonlyArray<HalfMadeGroupEnvironment> = [
   { groupId: "g1", projectId: "p-stage", displayName: "Harbor stage", tier: "stage" },
 ];
-const REGISTRY = { groups: [] } as unknown as ZeropsRegistry;
 const ZEROPS = {} as ZeropsApiClient;
+/** The repairs are mocked whole: the runtime they would write the registry with is never called. */
+const DATA = { runtime: {}, projectRef: () => ({}) } as unknown as Parameters<
+  typeof useZeropsGroupEnvironmentReconcile
+>[0]["data"];
 
 class TestNode {
   parentNode: TestNode | null = null;
@@ -143,10 +142,10 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
       useZeropsGroupEnvironmentReconcile({
         enabled,
         client: ZEROPS,
+        data: DATA,
         clientId: "org-1",
         giteaOrigin: "https://gitea.example.test",
         giteaProjectId: "gitea-project",
-        registry: REGISTRY,
         refreshRegistry: () => undefined,
         halfMade: HALF_MADE,
         onOutcome: (_entry, outcome) => onOutcome(outcome),

@@ -10,7 +10,6 @@
  * constructs the store and the worker (3.4).
  */
 import {
-  planGroupMembership,
   projectCreationOutcome,
   ZeropsApiError,
   type EnvironmentCreationOutcome,
@@ -54,10 +53,9 @@ import {
   onAccountLifetimeClose,
 } from "./accountLifetime";
 import { addGroupEnvironment } from "./addGroupEnvironment";
-import { grantBrokerProject } from "./brokerGrant";
+import { grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import { giteaClientFor } from "./accountGiteaSessions";
 import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
-import { registryGroupSlug } from "./useZeropsRegistry";
 import { nextContainerReading } from "./zeropsContainers";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
 
@@ -191,31 +189,20 @@ export function webBirthPorts(
       if (inputs === null) return NOT_BOUND;
       if (registration === null) return DONE;
       try {
-        const registry = await inputs.client.readGroupRegistry(registration.giteaProjectId);
-        const group = registry.groups.find((entry) => entry.groupId === registration.groupId);
+        const written = await projectTagsWrite(inputs, birth.organizationId)(
+          registration.giteaProjectId,
+          {
+            kind: "registry-member",
+            groupId: registration.groupId,
+            projectId: birth.projectId,
+            member: registration.kind,
+          },
+        );
+        if (written.kind !== "refused") return DONE;
         // A group written a moment ago may not read back yet.
-        if (group === undefined) {
-          return { kind: "not-yet", reason: "That project is not in the registry yet." };
-        }
-        if (
-          group.projects.some(
-            (entry) => entry.projectId === birth.projectId && entry.kind === registration.kind,
-          )
-        ) {
-          return DONE;
-        }
-        const membership = planGroupMembership({
-          registry,
-          groupId: registration.groupId,
-          projectId: birth.projectId,
-          kind: registration.kind,
-        });
-        if (!membership.ok) return { kind: "failed", reason: membership.reason };
-        await inputs.client.writeGroupRegistry({
-          giteaProjectId: registration.giteaProjectId,
-          tagList: membership.tagList,
-        });
-        return DONE;
+        return written.refusal.code === "group-unknown"
+          ? { kind: "not-yet", reason: written.refusal.reason }
+          : { kind: "failed", reason: written.refusal.reason };
       } catch (cause) {
         return birthStepFailure(cause);
       }
@@ -235,16 +222,14 @@ export function webBirthPorts(
         return grant.kind === "failed" ? { kind: "not-yet", reason: grant.reason } : DONE;
       }
       try {
-        const registry = await inputs.client.readGroupRegistry(registration.giteaProjectId);
         const written = await addGroupEnvironment({
           client: inputs.client,
+          writeTags: projectTagsWrite(inputs, birth.organizationId),
           gitea:
             registration.giteaOrigin === null ? null : giteaClientFor(registration.giteaOrigin),
           clientId: birth.organizationId,
           giteaProjectId: registration.giteaProjectId,
-          registry,
           groupId: registration.groupId,
-          slug: registryGroupSlug(registry, registration.groupId),
           environment: {
             displayName: registration.displayName,
             tier: registration.kind,

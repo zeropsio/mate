@@ -20,12 +20,33 @@
 
 import {
   planBrokerProjectGrant,
-  planGroupMembership,
   type ZeropsApiClient,
   type ZeropsIntegrationToken,
-  type ZeropsRegistry,
 } from "@t3tools/client-runtime/zerops";
+import type { ProjectTagPatch, ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+
+import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
+
+/**
+ * `updateProjectTags` on one organization's projects (DESIGN §2.B B2): the registry writes here
+ * are patches the TagWriter applies to the Gitea project's tags as they are, never a list
+ * computed from a registry read earlier.
+ */
+export type ProjectTagsWrite = (
+  projectId: string,
+  patch: ProjectTagPatch,
+) => Promise<ProjectTagWrite>;
+
+export function projectTagsWrite(
+  data: Pick<ZeropsDataContextValue, "runtime" | "projectRef">,
+  organizationId: string,
+): ProjectTagsWrite {
+  return (projectId, patch) =>
+    runZeropsCommand(
+      data.runtime.commands.updateProjectTags(data.projectRef(organizationId, projectId), patch),
+    );
+}
 
 export type BrokerGrantOutcome =
   /** The broker reaches the project — written now, or held already. */
@@ -95,20 +116,26 @@ export type MateRegistrationOutcome =
  * gives the broker the project again.
  */
 export async function registerMateProject(input: {
-  readonly client: BrokerGrantClient & Pick<ZeropsApiClient, "writeGroupRegistry">;
+  readonly client: BrokerGrantClient;
+  readonly writeTags: ProjectTagsWrite;
   readonly clientId: string;
   /** The account's Gitea project, where the registry lives. */
   readonly giteaProjectId: string;
-  readonly tagList: ReadonlyArray<string>;
+  readonly groupId: string;
   /** The Mate's project. */
   readonly projectId: string;
   readonly signal?: AbortSignal | undefined;
 }): Promise<MateRegistrationOutcome> {
   try {
-    await input.client.writeGroupRegistry(
-      { giteaProjectId: input.giteaProjectId, tagList: input.tagList },
-      input.signal,
-    );
+    const written = await input.writeTags(input.giteaProjectId, {
+      kind: "registry-member",
+      groupId: input.groupId,
+      projectId: input.projectId,
+      member: "mate",
+    });
+    if (written.kind === "refused") {
+      return { kind: "registry-failed", reason: written.refusal.reason };
+    }
   } catch (cause) {
     return { kind: "registry-failed", reason: zeropsErrorMessage(cause) };
   }
@@ -135,28 +162,22 @@ export async function registerMateProject(input: {
  * the grant.
  */
 export async function registerMateInGroup(input: {
-  readonly client: BrokerGrantClient & Pick<ZeropsApiClient, "writeGroupRegistry">;
+  readonly client: BrokerGrantClient;
+  readonly writeTags: ProjectTagsWrite;
   readonly clientId: string;
   /** The account's Gitea project, where the registry lives. */
   readonly giteaProjectId: string;
-  readonly registry: ZeropsRegistry;
   readonly groupId: string;
   /** The Mate's project. */
   readonly projectId: string;
 }): Promise<string | null> {
-  const membership = planGroupMembership({
-    registry: input.registry,
-    groupId: input.groupId,
-    projectId: input.projectId,
-    kind: "mate",
-  });
-  if (!membership.ok) return membership.reason;
   const outcome = await registerMateProject({
     client: input.client,
+    writeTags: input.writeTags,
     clientId: input.clientId,
     giteaProjectId: input.giteaProjectId,
+    groupId: input.groupId,
     projectId: input.projectId,
-    tagList: membership.tagList,
   });
   if (outcome.kind === "registry-failed") return outcome.reason;
   return outcome.grant.kind === "failed" ? outcome.grant.reason : null;

@@ -33,18 +33,17 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   selectLocationChoice,
   type OrganizationLocationsResourceRequest,
+  type ProjectTagWrite,
 } from "@t3tools/client-runtime/zerops/data";
 import { useContext, useEffect, useMemo, useState } from "react";
 
 import {
   generateBotName,
   generateZeropsGroupId,
-  planGroupRegistration,
   resolveAddProjectVerb,
   type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsOrganization,
-  type ZeropsRegistry,
   toolProjectName,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
@@ -70,7 +69,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { registryHoldsCreate, type RegistryReadState } from "./ZeropsNewProjectWizard.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 
 const CARD_CLASS = "rounded-[var(--zerops-card-radius)] border border-border/60 bg-card";
@@ -99,10 +97,9 @@ function isUncertainCreateFailure(cause: unknown): boolean {
   );
 }
 
-/** The account's Gitea — where the registry lives — and the registry as read from it. */
+/** The account's Gitea project — where the registry lives. */
 export interface ZeropsRegistryHome {
   readonly projectId: string;
-  readonly registry: ZeropsRegistry;
 }
 
 export type ZeropsNewProjectPhase = "gitea" | "project";
@@ -123,19 +120,21 @@ export type ZeropsNewProjectPhase = "gitea" | "project";
  * can add a Mate to and not a mess to clean up.
  */
 export async function submitZeropsNewProject(input: {
-  /** The account's Gitea and its registry, already read — or nothing yet. */
+  /** The account's Gitea, as the inventory names it — or nothing yet. */
   readonly gitea: ZeropsRegistryHome | undefined;
-  /**
-   * Stands the account's Gitea up and reads its registry back — the fresh
-   * project's own tags, so the write that follows keeps its `mate:tool:gitea`.
-   */
+  /** Stands the account's Gitea up. */
   readonly ensureGitea: () => Promise<ZeropsRegistryHome>;
-  /** Writes `mate:gn:{groupId}:{slug}` on the account's Gitea project. */
+  /**
+   * Writes `mate:gn:{groupId}:{slug}` on the account's Gitea project: a patch
+   * the TagWriter applies to the project's tags as they are, which derives the
+   * slug against the groups there and keeps every other tag — the fresh
+   * project's `mate:tool:gitea` among them.
+   */
   readonly registerGroup: (registration: {
     readonly giteaProjectId: string;
     readonly groupId: string;
-    readonly tagList: ReadonlyArray<string>;
-  }) => Promise<void>;
+    readonly name: string;
+  }) => Promise<ProjectTagWrite>;
   readonly createProject: (args: {
     readonly clientId: string;
     readonly name: string;
@@ -180,22 +179,16 @@ export async function submitZeropsNewProject(input: {
   }
   input.onPhase?.("project");
 
-  const registration = planGroupRegistration({
-    name: groupName,
-    groupId: input.groupId,
-    registry: gitea.registry,
-  });
-  if (!registration.ok) {
-    input.onError(registration.reason);
-    return;
-  }
-
   try {
-    await input.registerGroup({
+    const registered = await input.registerGroup({
       giteaProjectId: gitea.projectId,
-      groupId: registration.plan.groupId,
-      tagList: registration.plan.tagList,
+      groupId: input.groupId,
+      name: groupName,
     });
+    if (registered.kind === "refused") {
+      input.onError(registered.refusal.reason);
+      return;
+    }
   } catch (cause) {
     input.onError(zeropsErrorMessage(cause));
     return;
@@ -224,11 +217,10 @@ export async function submitZeropsNewProject(input: {
 function ZeropsNewProjectContent() {
   const { activeOrganization, organizationStatus, organizations, selectOrganization, status } =
     useZeropsSession();
-  const { organizationRef, runtime } = useZeropsData();
+  const { organizationRef, projectRef, runtime } = useZeropsData();
   const navigate = useNavigate();
 
   const inventory = useContext(InventoryContext);
-  const { client } = useZeropsSession();
   const [name, setName] = useState("");
   const [locationChoice, setLocationChoice] = useState<{
     readonly key: string;
@@ -238,13 +230,6 @@ function ZeropsNewProjectContent() {
   const [phase, setPhase] = useState<ZeropsNewProjectPhase>("project");
   const [createUncertain, setCreateUncertain] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  // Read once the Gitea project is known, and before the person reaches the
-  // create button: the slug is derived against the slugs already taken, and a
-  // registry read at click time would be a wait where none is expected.
-  const [registry, setRegistry] = useState<ZeropsRegistry | null>(null);
-  // Where that read got to. `registry` alone cannot say: null is both "not
-  // back yet" and "could not be read", and only the first may hold the button.
-  const [registryRead, setRegistryRead] = useState<RegistryReadState>("loading");
 
   // The registry lives on the account's Gitea project, and only its owners and
   // admins may write it (D3) — a stricter gate than *can create projects*, and
@@ -285,30 +270,6 @@ function ZeropsNewProjectContent() {
       : (locations[0]?.id ?? null);
   const locationStatus = !activeOrganization || !canCreate ? "ready" : offered.status;
   const locationError = offered.status === "failed" ? "Try again from the projects page." : null;
-
-  const giteaProjectId = gitea?.projectId;
-  useEffect(() => {
-    if (giteaProjectId === undefined) return;
-    const controller = new AbortController();
-    setRegistryRead("loading");
-    void client
-      .readGroupRegistry(giteaProjectId, controller.signal)
-      .then((read) => {
-        if (controller.signal.aborted) return;
-        setRegistry(read);
-        setRegistryRead("ready");
-      })
-      // A registry that cannot be read is a create that will say so when it is
-      // tried; there is nothing to tell the person about here. That is only
-      // true while the failure still lets it *be* tried — so it is recorded
-      // rather than swallowed, and the button reads it (`registryHoldsCreate`).
-      .catch(() => {
-        if (!controller.signal.aborted) setRegistryRead("failed");
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [client, giteaProjectId]);
 
   useEffect(() => {
     if (locations.length <= 1) return;
@@ -390,10 +351,7 @@ function ZeropsNewProjectContent() {
   }
 
   const createProject = () => {
-    const home =
-      gitea === undefined || registry === null
-        ? undefined
-        : { projectId: gitea.projectId, registry };
+    const home = gitea === undefined ? undefined : { projectId: gitea.projectId };
     setCreating(true);
     setCreateError(null);
     const botName = generateBotName([], (bytes) => crypto.getRandomValues(bytes));
@@ -403,8 +361,7 @@ function ZeropsNewProjectContent() {
     void submitZeropsNewProject({
       gitea: home,
       // The first project brings Git hosting along: the same stand-up the
-      // projects page offers an older account, then the fresh project's own
-      // tags read back as the registry the group is written into.
+      // projects page offers an older account.
       ensureGitea: async () => {
         const origin = window.location.origin;
         const { project } = await runZeropsCommand(
@@ -415,11 +372,16 @@ function ZeropsNewProjectContent() {
             appUrl: origin,
           }),
         );
-        return { projectId: project.id, registry: await client.readGroupRegistry(project.id) };
+        return { projectId: project.id };
       },
-      registerGroup: async ({ giteaProjectId, tagList }) => {
-        await client.writeGroupRegistry({ giteaProjectId, tagList });
-      },
+      registerGroup: ({ giteaProjectId, groupId, name: groupName }) =>
+        runZeropsCommand(
+          runtime.commands.updateProjectTags(projectRef(organizationId, giteaProjectId), {
+            kind: "registry-group",
+            groupId,
+            name: groupName,
+          }),
+        ),
       onPhase: setPhase,
       createProject: ({ clientId: _clientId, ...args }) =>
         runZeropsCommand(
@@ -516,8 +478,7 @@ function ZeropsNewProjectContent() {
           name.trim().length === 0 ||
           locationStatus === "loading" ||
           locationStatus === "failed" ||
-          (locations.length > 0 && !locationId) ||
-          registryHoldsCreate({ giteaKnown: gitea !== undefined, registryRead })
+          (locations.length > 0 && !locationId)
         }
         onClick={createProject}
       >

@@ -1,15 +1,13 @@
+import type { ZeropsApiClient, ZeropsIntegrationToken } from "@t3tools/client-runtime/zerops";
 import {
-  parseZeropsRegistry,
-  type ZeropsApiClient,
-  type ZeropsIntegrationToken,
-} from "@t3tools/client-runtime/zerops";
-import {
+  applyProjectTagPatch,
   ZeropsAccountId,
   ZeropsOrganizationId,
   ZeropsProjectId,
   makeZeropsApiOrigin,
   type OrganizationRef,
   type ProjectRef,
+  type ProjectTagPatch,
 } from "@t3tools/client-runtime/zerops/data";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
@@ -52,17 +50,6 @@ function accountTree(calls: Array<string>): BirthInputs {
   let tagList: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"];
   const broker: ZeropsIntegrationToken = { id: "broker-1", name: "mate-broker", projects: [] };
   const client = {
-    readGroupRegistry: async (giteaProjectId: string) => {
-      calls.push(`read registry of ${giteaProjectId}`);
-      return parseZeropsRegistry(tagList);
-    },
-    writeGroupRegistry: async (input: {
-      readonly giteaProjectId: string;
-      readonly tagList: ReadonlyArray<string>;
-    }) => {
-      calls.push(`write registry of ${input.giteaProjectId}`);
-      tagList = input.tagList;
-    },
     listIntegrationTokens: async (clientId: string) => {
       calls.push(`list tokens of ${clientId}`);
       return [broker];
@@ -98,6 +85,14 @@ function accountTree(calls: Array<string>): BirthInputs {
     acquire: () => Effect.void,
     reads: { activity: (project: ProjectRef) => project },
     commands: {
+      updateProjectTags: (project: ProjectRef, patch: ProjectTagPatch) =>
+        Effect.sync(() => {
+          calls.push(`${patch.kind} on ${project.projectId}`);
+          const next = applyProjectTagPatch(tagList, patch);
+          if (next.ok) tagList = next.tags;
+          const read = { id: project.projectId, name: "Gitea", status: "ACTIVE", tagList };
+          return { value: { kind: "written", project: read } };
+        }),
       isolateProjectEnv: (project: ProjectRef) =>
         Effect.sync(() => {
           calls.push(`harden ${project.organization.organizationId}/${project.projectId}`);
@@ -202,8 +197,7 @@ describe("the account's births", () => {
     await vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS + 100);
     try {
       expect(calls).toEqual([
-        "read registry of gitea-1",
-        "write registry of gitea-1",
+        "registry-member on gitea-1",
         "list tokens of org-1",
         "grant project-1 in org-1",
         "harden org-1/project-1",

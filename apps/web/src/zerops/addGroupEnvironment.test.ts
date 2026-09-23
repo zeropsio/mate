@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { parseZeropsRegistry, type GiteaClient } from "@t3tools/client-runtime/zerops";
+import type { GiteaClient } from "@t3tools/client-runtime/zerops";
 
 import { addGroupEnvironment } from "./addGroupEnvironment";
+import type { ProjectTagsWrite } from "./brokerGrant";
+import { tagsFake } from "./__fixtures__/projectTags";
 
-const REGISTRY = parseZeropsRegistry(["mate:tool:gitea", "mate:gn:g-1:acme"]);
+const REGISTRY = ["mate:tool:gitea", "mate:gn:g-1:acme"];
 
 const STAGE = {
   displayName: "Acme - stage",
@@ -29,7 +31,6 @@ function giteaFake(overrides: Partial<GiteaClient> = {}): GiteaClient {
 
 function apiFake(overrides: Record<string, unknown> = {}) {
   return {
-    writeGroupRegistry: vi.fn().mockResolvedValue({ id: "p-gitea" }),
     listIntegrationTokens: vi.fn().mockResolvedValue([
       {
         id: "t-2",
@@ -48,14 +49,17 @@ function apiFake(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const base = (api: ReturnType<typeof apiFake>, gitea: GiteaClient | null) => ({
+const base = (
+  api: ReturnType<typeof apiFake>,
+  gitea: GiteaClient | null,
+  writeTags: ProjectTagsWrite = tagsFake(REGISTRY).writeTags,
+) => ({
   client: api as never,
+  writeTags,
   gitea,
   clientId: "org-1",
   giteaProjectId: "p-gitea",
-  registry: REGISTRY,
   groupId: "g-1",
-  slug: "acme",
   environment: STAGE,
 });
 
@@ -63,7 +67,8 @@ describe("addGroupEnvironment", () => {
   it("writes the registry, the broker's grant and the environments document, in that order", async () => {
     const api = apiFake();
     const gitea = giteaFake();
-    const outcome = await addGroupEnvironment(base(api, gitea));
+    const registry = tagsFake(REGISTRY);
+    const outcome = await addGroupEnvironment(base(api, gitea, registry.writeTags));
 
     expect(outcome.done).toEqual([
       "registry",
@@ -72,13 +77,27 @@ describe("addGroupEnvironment", () => {
       "environments-document",
     ]);
     expect(outcome.failed).toBeUndefined();
-    expect(api.writeGroupRegistry).toHaveBeenCalledWith(
-      {
-        giteaProjectId: "p-gitea",
-        tagList: ["mate:gm:g-1:p-stage:stage", "mate:gn:g-1:acme", "mate:tool:gitea"],
-      },
-      undefined,
+    expect(registry.writeTags).toHaveBeenCalledWith("p-gitea", {
+      kind: "registry-member",
+      groupId: "g-1",
+      projectId: "p-stage",
+      member: "stage",
+    });
+    expect(registry.tags()).toEqual(
+      expect.arrayContaining(["mate:gm:g-1:p-stage:stage", "mate:gn:g-1:acme", "mate:tool:gitea"]),
     );
+  });
+
+  // The group's Gitea org is read off the registry the write itself met, never a copy the caller
+  // held: a group registered a moment ago in another tab is there.
+  it("declares on the group repo of the slug the registry write read back", async () => {
+    const gitea = giteaFake();
+    const outcome = await addGroupEnvironment(
+      base(apiFake(), gitea, tagsFake(["mate:tool:gitea", "mate:gn:g-1:beta"]).writeTags),
+    );
+
+    expect(outcome.failed).toBeUndefined();
+    expect(gitea.readFile).toHaveBeenCalledWith("beta", "group", "environments.yaml", "main");
   });
 
   it("adds the broker's grant without touching the rest, or its org role", async () => {
@@ -211,11 +230,18 @@ describe("addGroupEnvironment", () => {
   it.each([
     {
       name: "the registry write",
-      patch: {
-        writeGroupRegistry: vi.fn().mockRejectedValue(new Error("Only owners write tags.")),
-      },
+      writeTags: vi.fn<ProjectTagsWrite>().mockRejectedValue(new Error("Only owners write tags.")),
+      patch: {},
       step: "registry",
       reason: "Only owners write tags.",
+      done: [],
+    },
+    {
+      name: "a registry that names no such group",
+      writeTags: tagsFake(["mate:tool:gitea"]).writeTags,
+      patch: {},
+      step: "registry",
+      reason: "That project is not in the registry yet.",
       done: [],
     },
     {
@@ -234,8 +260,8 @@ describe("addGroupEnvironment", () => {
       reason: "Only admins mint tokens.",
       done: ["registry", "broker-grant"],
     },
-  ])("stops at $name and says which step", async ({ patch, step, reason, done }) => {
-    const outcome = await addGroupEnvironment(base(apiFake(patch), giteaFake()));
+  ])("stops at $name and says which step", async ({ writeTags, patch, step, reason, done }) => {
+    const outcome = await addGroupEnvironment(base(apiFake(patch), giteaFake(), writeTags));
     expect(outcome.failed).toEqual({ step, reason });
     expect(outcome.done).toEqual(done);
   });

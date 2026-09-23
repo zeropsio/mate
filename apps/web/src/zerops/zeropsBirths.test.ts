@@ -1,5 +1,4 @@
 import {
-  parseZeropsRegistry,
   planEnvironmentCreation,
   runEnvironmentCreation,
   ZeropsApiError,
@@ -10,12 +9,17 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { BirthRecord } from "@t3tools/client-runtime/zerops/birth";
 import {
+  applyProjectTagPatch,
+  sameProjectTags,
   ZeropsAccountId,
   ZeropsOrganizationId,
   ZeropsProjectId,
   makeZeropsApiOrigin,
   type ProjectRef,
+  type ProjectTagPatch,
+  type ProjectTagWrite,
 } from "@t3tools/client-runtime/zerops/data";
+import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -59,21 +63,37 @@ const birth: BirthRecord = {
   handoff: null,
 };
 
-function fakeClient(calls: Array<string>) {
+/**
+ * The account's runtime as far as a birth writes tags with it: `updateProjectTags` over the Gitea
+ * project's list, each patch applied to the list as it is now.
+ */
+function fakeRuntime(calls: Array<string>, onWrite: () => void = () => undefined) {
   let tagList: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"];
+  return {
+    commands: {
+      updateProjectTags: (project: ProjectRef, patch: ProjectTagPatch) =>
+        Effect.sync(() => {
+          const read = { id: project.projectId, name: "Gitea", status: "ACTIVE", tagList };
+          const next = applyProjectTagPatch(tagList, patch);
+          let value: ProjectTagWrite;
+          if (!next.ok) value = { kind: "refused", refusal: next.refusal, project: read };
+          else if (sameProjectTags(next.tags, tagList))
+            value = { kind: "unchanged", project: read };
+          else {
+            tagList = next.tags;
+            value = { kind: "written", project: { ...read, tagList } };
+          }
+          calls.push(`${value.kind} ${patch.kind} on ${project.projectId}`);
+          onWrite();
+          return { attempt: null, value };
+        }),
+    },
+  };
+}
+
+function fakeClient(calls: Array<string>) {
   const broker: ZeropsIntegrationToken = { id: "broker-1", name: "mate-broker", projects: [] };
   return {
-    readGroupRegistry: async (giteaProjectId: string) => {
-      calls.push(`read registry of ${giteaProjectId}`);
-      return parseZeropsRegistry(tagList);
-    },
-    writeGroupRegistry: async (input: {
-      readonly giteaProjectId: string;
-      readonly tagList: ReadonlyArray<string>;
-    }) => {
-      calls.push(`write registry of ${input.giteaProjectId}`);
-      tagList = input.tagList;
-    },
     listIntegrationTokens: async (clientId: string) => {
       calls.push(`list tokens of ${clientId}`);
       return [broker];
@@ -94,6 +114,7 @@ describe("the birth's ports", () => {
     const calls: Array<string> = [];
     const inputs = {
       client: fakeClient(calls),
+      runtime: fakeRuntime(calls),
       projectRef,
     } as unknown as BirthInputs;
     const ports = webBirthPorts(
@@ -104,8 +125,7 @@ describe("the birth's ports", () => {
     expect(await ports.writeTags(birth)).toEqual({ kind: "done" });
     expect(await ports.writeRegistry(birth)).toEqual({ kind: "done" });
     expect(calls).toEqual([
-      "read registry of gitea-1",
-      "write registry of gitea-1",
+      "written registry-member on gitea-1",
       "list tokens of org-1",
       "grant project-1 in org-1",
     ]);
@@ -113,7 +133,34 @@ describe("the birth's ports", () => {
     // Run again — a reload between the writes — it writes nothing twice.
     calls.length = 0;
     expect(await ports.writeTags(birth)).toEqual({ kind: "done" });
-    expect(calls).toEqual(["read registry of gitea-1"]);
+    expect(calls).toEqual(["unchanged registry-member on gitea-1"]);
+  });
+
+  it("waits for a group whose own registry write has not landed, and fails on a contradiction", async () => {
+    const calls: Array<string> = [];
+    const inputs = {
+      client: fakeClient(calls),
+      runtime: fakeRuntime(calls),
+      projectRef,
+    } as unknown as BirthInputs;
+    const ports = webBirthPorts(
+      () => inputs,
+      () => true,
+    );
+
+    expect(
+      await ports.writeTags({
+        ...birth,
+        registration: { ...birth.registration!, groupId: "group-new" },
+      }),
+    ).toEqual({ kind: "not-yet", reason: "That project is not in the registry yet." });
+    expect(await ports.writeTags(birth)).toEqual({ kind: "done" });
+    expect(
+      await ports.writeTags({
+        ...birth,
+        registration: { ...birth.registration!, kind: "stage" },
+      }),
+    ).toMatchObject({ kind: "failed" });
   });
 });
 
@@ -203,22 +250,18 @@ describe("the birth's account", () => {
   it("a step its account outlives writes nothing more", async () => {
     const calls: Array<string> = [];
     let current = true;
-    const client = fakeClient(calls);
-    const readGroupRegistry = client.readGroupRegistry.bind(client);
-    // The person signs out while the registry is read; somebody else signs in on the same client.
-    client.readGroupRegistry = async (giteaProjectId) => {
-      const registry = await readGroupRegistry(giteaProjectId);
+    // The person signs out while the registry entry is written; somebody else signs in.
+    const runtime = fakeRuntime(calls, () => {
       current = false;
-      return registry;
-    };
+    });
     const ports = webBirthPorts(
-      () => ({ client, projectRef }) as unknown as BirthInputs,
+      () => ({ client: fakeClient(calls), runtime, projectRef }) as unknown as BirthInputs,
       () => current,
     );
 
-    expect((await ports.writeTags(birth)).kind).not.toBe("done");
+    await ports.writeTags(birth);
     expect(await ports.writeRegistry(birth)).toMatchObject({ kind: "not-yet" });
-    expect(calls).toEqual(["read registry of gitea-1"]);
+    expect(calls).toEqual(["written registry-member on gitea-1"]);
   });
 });
 

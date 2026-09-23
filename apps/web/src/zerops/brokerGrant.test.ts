@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { parseZeropsRegistry } from "@t3tools/client-runtime/zerops";
 
-import { grantBrokerProject, registerMateInGroup, registerMateProject } from "./brokerGrant";
+import {
+  grantBrokerProject,
+  registerMateInGroup,
+  registerMateProject,
+  type ProjectTagsWrite,
+} from "./brokerGrant";
+import { tagsFake } from "./__fixtures__/projectTags";
 
 const BROKER = {
   id: "t-2",
@@ -13,7 +19,6 @@ const BROKER = {
 
 function apiFake(overrides: Record<string, unknown> = {}) {
   return {
-    writeGroupRegistry: vi.fn().mockResolvedValue({ id: "p-gitea" }),
     listIntegrationTokens: vi.fn().mockResolvedValue([{ id: "t-1", name: "zcp-fen" }, BROKER]),
     setIntegrationTokenProjects: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -90,48 +95,59 @@ describe("grantBrokerProject", () => {
 });
 
 describe("registerMateProject", () => {
-  const input = (api: ReturnType<typeof apiFake>) => ({
+  const REGISTRY = ["mate:gn:g-1:acme", "mate:tool:gitea"];
+  const input = (api: ReturnType<typeof apiFake>, writeTags: ProjectTagsWrite) => ({
     client: api as never,
+    writeTags,
     clientId: "org-1",
     giteaProjectId: "p-gitea",
-    tagList: ["mate:gm:g-1:p-mate:mate", "mate:gn:g-1:acme", "mate:tool:gitea"],
+    groupId: "g-1",
     projectId: "p-mate",
   });
 
-  it("writes the registry entry, then gives the broker the Mate's project", async () => {
+  it("writes the registry entry as a patch, then gives the broker the Mate's project", async () => {
     const api = apiFake();
+    const registry = tagsFake(REGISTRY);
     const order: Array<string> = [];
-    api.writeGroupRegistry.mockImplementation(async () => {
+    registry.writeTags.mockImplementationOnce(async (projectId, patch) => {
       order.push("registry");
-      return { id: "p-gitea" };
+      return tagsFake(REGISTRY).writeTags(projectId, patch);
     });
     api.setIntegrationTokenProjects.mockImplementation(async () => {
       order.push("grant");
     });
 
-    const outcome = await registerMateProject(input(api));
+    const outcome = await registerMateProject(input(api, registry.writeTags));
 
     expect(outcome).toEqual({ kind: "registered", grant: { kind: "granted" } });
     expect(order).toEqual(["registry", "grant"]);
-    expect(api.writeGroupRegistry).toHaveBeenCalledWith(
-      {
-        giteaProjectId: "p-gitea",
-        tagList: ["mate:gm:g-1:p-mate:mate", "mate:gn:g-1:acme", "mate:tool:gitea"],
-      },
-      undefined,
-    );
+    expect(registry.writeTags).toHaveBeenCalledWith("p-gitea", {
+      kind: "registry-member",
+      groupId: "g-1",
+      projectId: "p-mate",
+      member: "mate",
+    });
   });
 
   // The registry entry is what the broker's rights loop reads; without it the
   // grant would reach a project the loop never looks at.
-  it("stops at a registry write that failed and gives the broker nothing", async () => {
-    const api = apiFake({
-      writeGroupRegistry: vi.fn().mockRejectedValue(new Error("Only owners write tags.")),
-    });
+  it.each([
+    {
+      name: "failed",
+      writeTags: vi.fn<ProjectTagsWrite>().mockRejectedValue(new Error("Only owners write tags.")),
+      reason: "Only owners write tags.",
+    },
+    {
+      name: "was refused by the registry it met",
+      writeTags: tagsFake(["mate:tool:gitea"]).writeTags,
+      reason: "That project is not in the registry yet.",
+    },
+  ])("stops at a registry write that $name and gives the broker nothing", async (row) => {
+    const api = apiFake();
 
-    const outcome = await registerMateProject(input(api));
+    const outcome = await registerMateProject(input(api, row.writeTags));
 
-    expect(outcome).toEqual({ kind: "registry-failed", reason: "Only owners write tags." });
+    expect(outcome).toEqual({ kind: "registry-failed", reason: row.reason });
     expect(api.listIntegrationTokens).not.toHaveBeenCalled();
     expect(api.setIntegrationTokenProjects).not.toHaveBeenCalled();
   });
@@ -139,7 +155,7 @@ describe("registerMateProject", () => {
   it("registers the Mate even when the account has no broker to give it to", async () => {
     const api = apiFake({ listIntegrationTokens: vi.fn().mockResolvedValue([]) });
 
-    const outcome = await registerMateProject(input(api));
+    const outcome = await registerMateProject(input(api, tagsFake(REGISTRY).writeTags));
 
     expect(outcome).toEqual({
       kind: "registered",
@@ -149,11 +165,7 @@ describe("registerMateProject", () => {
 });
 
 describe("registerMateInGroup", () => {
-  const ACME = parseZeropsRegistry([
-    "mate:tool:gitea",
-    "mate:gn:g-acme:acme",
-    "mate:gm:g-acme:p-fen:mate",
-  ]);
+  const ACME = ["mate:tool:gitea", "mate:gn:g-acme:acme", "mate:gm:g-acme:p-fen:mate"];
 
   // Add Mate by an owner registers at birth, the card's Register in {group}
   // finishes a member's Mate: one path, so the second Mate of a group gets its
@@ -163,6 +175,7 @@ describe("registerMateInGroup", () => {
       name: "registers a second Mate beside the first and gives the broker its project",
       groupId: "g-acme",
       api: {},
+      failing: false,
       expected: null,
       written: ["mate:gm:g-acme:p-ada:mate", "mate:gm:g-acme:p-fen:mate"],
     },
@@ -170,41 +183,48 @@ describe("registerMateInGroup", () => {
       name: "says why when the group is not in the registry, and writes nothing",
       groupId: "g-gone",
       api: {},
-      expected: "That project is not in the registry.",
-      written: null,
+      failing: false,
+      expected: "That project is not in the registry yet.",
+      written: ["mate:gm:g-acme:p-fen:mate"],
     },
     {
       name: "says a registry write that failed",
       groupId: "g-acme",
-      api: { writeGroupRegistry: vi.fn().mockRejectedValue(new Error("Only owners write tags.")) },
+      api: {},
+      failing: true,
       expected: "Only owners write tags.",
-      written: ["mate:gm:g-acme:p-ada:mate", "mate:gm:g-acme:p-fen:mate"],
+      written: ["mate:gm:g-acme:p-fen:mate"],
     },
     {
       name: "says a grant that failed, with the Mate registered",
       groupId: "g-acme",
       api: { setIntegrationTokenProjects: vi.fn().mockRejectedValue(new Error("Forbidden.")) },
+      failing: false,
       expected: "Forbidden.",
       written: ["mate:gm:g-acme:p-ada:mate", "mate:gm:g-acme:p-fen:mate"],
     },
-  ])("$name", async ({ groupId, api: overrides, expected, written }) => {
-    const api = apiFake(overrides);
+  ])("$name", async ({ groupId, api: overrides, failing, expected, written }) => {
+    const registry = tagsFake(ACME);
+    if (failing) registry.writeTags.mockRejectedValueOnce(new Error("Only owners write tags."));
 
     const outcome = await registerMateInGroup({
-      client: api as never,
+      client: apiFake(overrides) as never,
+      writeTags: registry.writeTags,
       clientId: "org-1",
       giteaProjectId: "p-gitea",
-      registry: ACME,
       groupId,
       projectId: "p-ada",
     });
 
     expect(outcome).toBe(expected);
-    if (written === null) {
-      expect(api.writeGroupRegistry).not.toHaveBeenCalled();
-      return;
-    }
-    const [{ tagList }] = api.writeGroupRegistry.mock.calls[0] as [{ tagList: Array<string> }];
-    expect(tagList.filter((tag) => tag.startsWith("mate:gm:")).toSorted()).toEqual(written);
+    expect(
+      parseZeropsRegistry(registry.tags())
+        .groups.flatMap((group) =>
+          group.projects.map(
+            ({ projectId, kind }) => `mate:gm:${group.groupId}:${projectId}:${kind}`,
+          ),
+        )
+        .toSorted(),
+    ).toEqual(written);
   });
 });
