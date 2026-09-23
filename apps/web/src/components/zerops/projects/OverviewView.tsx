@@ -10,6 +10,7 @@
  * block of step labels and their first lines.
  */
 
+import { PRODUCTION_ADDED_HERE } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 
@@ -320,6 +321,9 @@ function OverviewRow<T>({
             ))}
             {groupRows}
           </ul>
+          {flow.nextStep.kind === "add-production" ? (
+            <p className="text-xs text-muted-foreground">{PRODUCTION_ADDED_HERE}</p>
+          ) : null}
         </div>
       ) : null}
     </li>

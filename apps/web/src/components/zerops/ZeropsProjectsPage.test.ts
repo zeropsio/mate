@@ -803,6 +803,13 @@ describe("a project's next step on the projects page", () => {
     expect(groupDetailSource).toContain("export function ZeropsReleaseVerb(");
   });
 
+  it("says whose production is in the Add production verb's tooltip, and to assistive technology", () => {
+    // Not a line in the cell: the verb explains itself where it is pressed.
+    expect(projectsPageSource).toContain("<TooltipPopup>{PRODUCTION_ADDED_HERE}</TooltipPopup>");
+    expect(projectsPageSource).toContain("aria-describedby={hintId}");
+    expect(projectsPageSource).toContain('<span className="sr-only" id={hintId}>');
+  });
+
   it("offers production as the flow's next step, and again from the project's menu", () => {
     // No missing-tier rows ("not set up yet") and no foot of add verbs: a
     // project's menu adds a Mate or a stage as before. Production is its

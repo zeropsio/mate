@@ -111,6 +111,7 @@ import {
   canCreateProjectsInOrganization,
   groupFlow,
   pullRequestLineWith,
+  PRODUCTION_ADDED_HERE,
   type FlowPullRequest,
   readZeropsGroupTags,
   resolveGroupGitea,
@@ -2791,14 +2792,38 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     switch (target.kind) {
       case "release":
         return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;
-      case "add-production":
-        return verb(
-          () => {
-            requestEnvironment(group.groupId, "prod");
-          },
-          creationRunning,
-          `+ ${step.verb}`,
+      case "add-production": {
+        // Whose production is — the person's to add, not the Mate's — is the
+        // verb's to say where it is pressed; its cell stays one line. Beside
+        // the button, not in it, so its name stays "+ Add production".
+        const hintId = `add-production-hint-${group.groupId}`;
+        return (
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-describedby={hintId}
+                    data-zerops-next-step-verb={step.kind}
+                    disabled={creationRunning}
+                    onClick={() => {
+                      requestEnvironment(group.groupId, "prod");
+                    }}
+                    size="compact"
+                    variant="outline"
+                  />
+                }
+              >
+                {`+ ${step.verb}`}
+              </TooltipTrigger>
+              <TooltipPopup>{PRODUCTION_ADDED_HERE}</TooltipPopup>
+            </Tooltip>
+            <span className="sr-only" id={hintId}>
+              {PRODUCTION_ADDED_HERE}
+            </span>
+          </>
         );
+      }
       case "mate": {
         const mate = entry.mates.find((item) => item.project.id === target.projectId);
         if (mate === undefined) return null;

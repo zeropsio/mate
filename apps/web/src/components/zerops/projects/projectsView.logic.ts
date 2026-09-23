@@ -17,7 +17,6 @@ import {
   hasMate,
   pairPreviewRoute,
   readZeropsGroupTags,
-  PRODUCTION_ADDED_HERE,
   releaseContentsSummary,
   type EnvironmentRow,
   type FlowPullRequest,
@@ -374,19 +373,14 @@ export interface ProductionCell {
 
 /**
  * Production's step. Its line is `groupFlow`'s; the detail says what a
- * release would carry, or — only where adding production is the next step —
- * that production is the person's to add, not the Mate's.
+ * release would carry. That production is the person's to add, not the
+ * Mate's, is the add verb's to say (its tooltip), not the cell's.
  */
 export function productionCell(flow: GroupFlow): ProductionCell {
   const { production } = flow;
   switch (production.kind) {
     case "absent":
-      return {
-        empty: true,
-        line: production.line,
-        detail: flow.nextStep.kind === "add-production" ? PRODUCTION_ADDED_HERE : undefined,
-        tone: "off",
-      };
+      return { empty: true, line: production.line, detail: undefined, tone: "off" };
     case "ready-to-release": {
       const { tag, waiting } = production.candidate;
       const count = waiting === 1 ? "1 change" : `${String(waiting)} changes`;

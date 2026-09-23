@@ -1,7 +1,6 @@
 import {
   ADD_PRODUCTION_LABEL,
   groupFlow,
-  PRODUCTION_ADDED_HERE,
   type GroupFlowStop,
   type FlowPullRequest,
   type GroupFlow,
@@ -425,22 +424,14 @@ describe("production's cell", () => {
     });
   });
 
-  it("says where production is added, only where adding it is the next step", () => {
+  it("is one line where production is not set up: whose it is to add is the verb's to say", () => {
     expect(productionCell(FLOWS.addProduction)).toEqual({
       empty: true,
       line: "Not set up",
-      detail: PRODUCTION_ADDED_HERE,
+      detail: undefined,
       tone: "off",
     });
     expect(FLOWS.addProduction.nextStep.verb).toBe(ADD_PRODUCTION_LABEL);
-    // A merge outranks it: the detail waits with the verb.
-    const merging = flowOf({
-      mainHasCode: true,
-      productionAddable: true,
-      missing: [{ tier: "production" }],
-      pullRequests: [pull()],
-    });
-    expect(productionCell(merging).detail).toBeUndefined();
   });
 
   it("names the release that would go and how much it carries", () => {

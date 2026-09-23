@@ -1,3 +1,4 @@
+import { PRODUCTION_ADDED_HERE } from "@t3tools/client-runtime/zerops";
 import { act } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -211,7 +212,7 @@ describe("the Overview", () => {
     expect(production).not.toContain("data-test-verb");
   });
 
-  it("offers Add production only where it is the next step, and says whose it is", () => {
+  it("offers Add production only where it is the next step; whose it is waits in the opened row", () => {
     const adding = entry([WREN], {
       mainHasCode: true,
       productionAddable: true,
@@ -220,7 +221,13 @@ describe("the Overview", () => {
     const html = render({ groups: [adding] });
     const production = html.slice(html.indexOf('data-zerops-step="production"'));
     expect(production).toContain('data-test-verb="add-production"');
-    expect(production).toContain("Production is added here, not by the Mate.");
+    // The verb's tooltip says it (the page's); the cell is one line.
+    expect(production).not.toContain(PRODUCTION_ADDED_HERE);
+
+    const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={[adding]} />);
+    act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
+    const detail = tree.root.findByProps({ "data-zerops-surface": "group-detail" });
+    expect(detail.findAll((node) => node.children.includes(PRODUCTION_ADDED_HERE))).toHaveLength(1);
   });
 
   it("says nothing where nothing needs anybody: no all-clear banner, no rows asking for a tier", () => {
