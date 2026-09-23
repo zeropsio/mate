@@ -272,6 +272,62 @@ describe("container store (DESIGN §4.5)", () => {
     after.store.dispose();
   });
 
+  it("the route's Mate takes the first probe slot that frees", async () => {
+    const clock = manualClock();
+    const probes: Array<string> = [];
+    const store = makeContainerStore({
+      clock,
+      // No Mate answers: each probe ends at its deadline.
+      probe: (origin, signal) => {
+        probes.push(origin);
+        return new Promise((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(new Error("aborted"))),
+        );
+      },
+      readMateFlag: () => Promise.resolve("unknown"),
+      intents: memoryStorage(),
+    });
+    const driver = makeExchangeDriver<string>({
+      clock,
+      exchange: () => new Promise(() => undefined),
+      install: async () => ({ ok: true }),
+      readDescriptor: () => new Promise(() => undefined),
+      retryLink: () => undefined,
+      refreshPresence: () => undefined,
+      retire: () => undefined,
+    });
+    const unbind = bindContainerStore(store, driver);
+    const ids = ["o1", "o2", "o3", "o4", "o5", "route"];
+    const originOf = (id: string) => `https://zcp-${id}.prg1.zerops.app`;
+    driver.setTargets([
+      {
+        key: "project-route:zcp",
+        presence: { kind: "present", origin: originOf("route") },
+        container: { level: "unknown" },
+        record: null,
+      },
+    ]);
+    driver.setDemand("route", ["project-route:zcp"]);
+    await clock.advance(0);
+
+    // Listed last, the route's Mate misses the pool's first four slots.
+    store.setTargets(
+      ids.map((id) => ({
+        key: `project-${id}:zcp`,
+        origin: originOf(id),
+        platform: { project: "ACTIVE", service: "ACTIVE" },
+      })),
+    );
+    await clock.advance(0);
+    expect(probes).toEqual(["o1", "o2", "o3", "o4"].map(originOf));
+
+    await clock.advance(8_000);
+    expect(probes.slice(4, 6)).toEqual([originOf("route"), originOf("o5")]);
+    unbind();
+    driver.dispose();
+    store.dispose();
+  });
+
   it("container ready kicks a link in backoff", async () => {
     const setup = rig();
     const { clock, store, probes } = setup;

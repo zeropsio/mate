@@ -138,6 +138,18 @@ describe("probe store (DESIGN §4.5 probes)", () => {
     store.dispose();
   });
 
+  it("the route's origin takes a free slot ahead of every other origin due", async () => {
+    const dead = ["o1", "o2", "o3", "o4", "o5", "o6", "route"];
+    const { clock, store, started } = rig({ hanging: new Set(dead), overdue: new Set(dead) });
+    store.setFirst(new Set(["route"]));
+    store.setCadences(new Map(dead.map((origin) => [origin, poll(true)] as const)));
+    // Each overdue slot is held for the 8 s deadline; the route's origin is due again at 18 s and
+    // takes the first slot that frees, at 24 s, ahead of o6, which was never read.
+    await clock.advance(24_000);
+    expect(started).toEqual(["route", "o1", "o2", "o3", "o4", "o5", "route", "o6"]);
+    store.dispose();
+  });
+
   it("an origin is unread until a probe answers, and a probe ends by its deadline", async () => {
     const { clock, store } = rig({ hanging: new Set(["a"]) });
     expect(store.fact("a")).toEqual({ status: "unread" });

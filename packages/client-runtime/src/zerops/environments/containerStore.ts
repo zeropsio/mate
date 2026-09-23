@@ -5,9 +5,9 @@
  * - Facts arrive as calls — the platform's statuses (`setTargets`), its processes (`process`),
  *   the link (`link`), the Mate flag's read — and every probe reading lands on each target whose
  *   origin it read. Each target's machine decides its level; the store runs its effects.
- * - Probes follow each machine's cadence. A ready container is read again on a status push, on
- *   its socket dropping or a connect to it failing, on a visible wake and whenever someone asks
- *   (`request`): ready is never terminal.
+ * - Probes follow each machine's cadence, the route's target first. A ready container is read
+ *   again on a status push, on its socket dropping or a connect to it failing, on a visible wake
+ *   and whenever someone asks (`request`): ready is never terminal.
  * - Intents are persisted in this tab's storage as `{target, kind, since, from?}`, so a reload
  *   inside an intent's budget shows `restarting(you)` or `updating` again instead of guesses. An
  *   intent restored for a target not yet listed waits for it.
@@ -78,6 +78,8 @@ export interface ContainerStore {
   readonly intend: (key: TargetKey, intent: IntentRequest) => void;
   /** Reads the target's container once more. */
   readonly request: (key: TargetKey) => void;
+  /** The targets whose containers are read ahead of every other: the route's (§4.5). */
+  readonly setFirst: (keys: ReadonlySet<TargetKey>) => void;
   /** The reading of a probe of this origin started from now on. */
   readonly next: (origin: string) => Promise<ProbeReading>;
   readonly setVisible: (visible: boolean) => void;
@@ -146,6 +148,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   );
   let published: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
   let persisted = ports.intents.read();
+  let first: ReadonlySet<TargetKey> = new Set();
   let disposed = false;
 
   const probes = makeProbeStore({ clock, probe: ports.probe });
@@ -235,6 +238,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
       depth -= 1;
     }
     if (depth > 0) return;
+    probes.setFirst(new Set([...first].flatMap((key) => entries.get(key)?.origin ?? [])));
     probes.setCadences(cadences());
     persist();
     const machines = new Map([...entries].map(([key, entry]) => [key, entry.machine] as const));
@@ -330,6 +334,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
         const entry = entries.get(key);
         if (entry !== undefined) requestFor(entry);
       }),
+    setFirst: (keys) =>
+      batch(() => {
+        first = keys;
+      }),
     next: (origin) => probes.next(origin),
     setVisible: (visible) => probes.setVisible(visible),
     wake: (visible) =>
@@ -367,7 +375,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
 /**
  * Joins the store to the exchange driver of the same epoch: each target's container verdict
  * reaches its environment machine (region C, whose `ready` kicks a link in backoff), and each
- * machine's link and wanted exchange reach the store. Returns what unbinds them.
+ * machine's link, wanted exchange and route demand reach the store. Returns what unbinds them.
  */
 export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver): () => void {
   const toDriver = () => {
@@ -391,7 +399,11 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
     else seen.delete(key);
   };
   const toStore = () => {
-    for (const [key, machine] of driver.machines()) {
+    const machines = [...driver.machines()];
+    store.setFirst(
+      new Set(machines.filter(([, machine]) => machine.guards.routeTarget).map(([key]) => key)),
+    );
+    for (const [key, machine] of machines) {
       store.link(key, machine.link.phase === "connected");
       // An exchange starting reads the container it is about to meet.
       onEdge(exchanging, key, machine.credential.kind === "exchanging");

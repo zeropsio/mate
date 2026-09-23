@@ -8,9 +8,10 @@
  *   up, 10 s rising to 60 s once that is overdue or while only failed probes say it is coming
  *   up), and once more whenever a push, a connect failure or a wake asks (`request`).
  * - The pool runs at most `PROBE_POOL_SIZE` probes at once, each ending by its
- *   `PROBE_DEADLINE_MS` as `unreachable`. A request or a timely poll goes before an overdue poll
- *   and, within one, slots round-robin to the origin started least recently; overdue origins
- *   share at most `OVERDUE_PROBE_SLOTS`, so one that never answers cannot starve the others.
+ *   `PROBE_DEADLINE_MS` as `unreachable`. The route's Mate goes first (`setFirst`), then a
+ *   request or a timely poll before an overdue poll and, within one, slots round-robin to the
+ *   origin started least recently; overdue origins share at most `OVERDUE_PROBE_SLOTS`, so one
+ *   that never answers cannot starve the others.
  * - A tab hidden for `HIDDEN_PROBE_PAUSE_MS` probes nothing until it is shown again.
  */
 import type { Instant } from "../data/access/grant.ts";
@@ -72,6 +73,8 @@ export interface ProbeStore {
    * `next` caller waits on it.
    */
   readonly setCadences: (cadences: ReadonlyMap<string, ProbeCadence>) => void;
+  /** The origins read ahead of every other due one from the next free slot: the route's Mate. */
+  readonly setFirst: (origins: ReadonlySet<string>) => void;
   /** Reads the origin once more, as soon as the pool gives it a slot. */
   readonly request: (origin: string) => void;
   /** The reading of a probe of this origin started from now on, held by a target or not. */
@@ -120,6 +123,7 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
   const { clock } = ports;
   const origins = new Map<string, Origin>();
   const listeners = new Set<(origin: string, reading: ProbeReading, sentAt: Instant) => void>();
+  let first: ReadonlySet<string> = new Set();
   let hiddenSince: number | null = null;
   let cancelWake: (() => void) | null = null;
   let disposed = false;
@@ -211,7 +215,8 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
     const ready = [...origins]
       .filter(([, entry]) => due(entry))
       .sort(
-        ([, left], [, right]) =>
+        ([leftOrigin, left], [rightOrigin, right]) =>
+          Number(first.has(rightOrigin)) - Number(first.has(leftOrigin)) ||
           Number(overdueOnly(left)) - Number(overdueOnly(right)) ||
           left.startedAt - right.startedAt,
       );
@@ -276,6 +281,9 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
         }
       }
       dispatch();
+    },
+    setFirst: (origins) => {
+      first = origins;
     },
     request: (origin) => {
       if (disposed) return;
