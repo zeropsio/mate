@@ -38,6 +38,17 @@ export const ZEROPS_API_PATH_PREFIX = "/api/rest/public";
 export const DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS = 300;
 
 /**
+ * The longest re-check interval any configuration gets.
+ *
+ * The membership watch ends a changed session within two intervals (one
+ * failed pass is tolerated, the second ends every session), and the client
+ * trusts exactly that bound when it keeps a connected Mate usable without the
+ * platform's own answer. A larger configured value would stretch the window a
+ * removed person keeps, so it is cut down to this.
+ */
+export const MAX_ZEROPS_ROLE_RECHECK_SECONDS = 300;
+
+/**
  * The longest a session lives on one proof.
  *
  * Role changes end a session within one re-check, so this is not a security
@@ -80,7 +91,10 @@ export interface ZeropsEnvironment {
    * answer" — never as "admit".
    */
   readonly apiToken: string | undefined;
-  /** See {@link DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS}. */
+  /**
+   * See {@link DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS}; never above
+   * {@link MAX_ZEROPS_ROLE_RECHECK_SECONDS}.
+   */
   readonly roleRecheckInterval: Duration.Duration;
   /** See {@link DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS}. */
   readonly sessionMaxAge: Duration.Duration;
@@ -135,7 +149,10 @@ export const resolveZeropsEnvironment = (
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
     apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,
     roleRecheckInterval: Duration.seconds(
-      positive(input.roleRecheckSeconds, DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
+      Math.min(
+        positive(input.roleRecheckSeconds, DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
+        MAX_ZEROPS_ROLE_RECHECK_SECONDS,
+      ),
     ),
     sessionMaxAge: Duration.seconds(
       positive(input.sessionMaxAgeSeconds, DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),

@@ -75,6 +75,23 @@ describe("resolveZeropsEnvironment — the one detection rule", () => {
     assert.isTrue(Duration.equals(overridden.sessionMaxAge, Duration.seconds(3_600)));
   });
 
+  it("a configured interval above 300 s is clamped", () => {
+    for (const [configured, effective] of [
+      [60, 60],
+      [300, 300],
+      [301, 300],
+      [3_600, 300],
+    ] as const) {
+      const resolved = resolveZeropsEnvironment(
+        input({ projectId: "abc", roleRecheckSeconds: configured }),
+      )!;
+      assert.isTrue(
+        Duration.equals(resolved.roleRecheckInterval, Duration.seconds(effective)),
+        `roleRecheckSeconds=${String(configured)}`,
+      );
+    }
+  });
+
   it("falls back to the defaults for a non-positive or non-finite override", () => {
     for (const seconds of [0, -1, Number.NaN]) {
       const resolved = resolveZeropsEnvironment(

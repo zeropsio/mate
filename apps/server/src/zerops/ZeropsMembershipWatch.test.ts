@@ -1,18 +1,22 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import {
+  make as makeWatch,
   planMembershipRecheck,
   readProjectMembership,
   runMembershipRecheck,
@@ -402,4 +406,65 @@ describe("runMembershipRecheck", () => {
       assert.isTrue(seen.some((header) => header === "Bearer new-key"));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
+});
+
+describe("the re-check loop", () => {
+  // The worst case the bound has to survive: the role is lowered just after a
+  // pass, the next pass cannot read, and the configured interval is above the
+  // ceiling. The session still ends within two clamped intervals.
+  const clamped = resolveZeropsEnvironment({
+    projectId: PROJECT_ID,
+    apiHost: undefined,
+    allowedOrigins: [],
+    apiToken: MATE_KEY,
+    roleRecheckSeconds: 3_600,
+  })!;
+  const LOWERED = {
+    clientUserList: MEMBERS.clientUserList.map((member) =>
+      member.userId === JAN ? { ...member, roleCode: "READ_ONLY" } : member,
+    ),
+  };
+
+  for (const [label, secondPass] of [
+    ["the second pass reads", "reads"],
+    ["the second pass fails", "fails"],
+  ] as const) {
+    it.effect(
+      `a lowered role ends the session within two recheck intervals whether or not the second pass reads (${label})`,
+      () =>
+        Effect.gen(function* () {
+          let members: { readonly status: number; readonly body: unknown } = {
+            status: 200,
+            body: MEMBERS,
+          };
+          const { layer, seen } = readLayer((url) =>
+            url.endsWith("/user/list")
+              ? json(members.body, members.status)
+              : json({ id: PROJECT_ID, clientId: CLIENT_ID, userRoles: [] }),
+          );
+          const auth = fakeAuth([{ sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` }]);
+          yield* makeWatch.pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                layer,
+                auth.layer,
+                ServerConfig.layer({ zerops: clamped } as ServerConfig.ServerConfig["Service"]),
+              ),
+            ),
+          );
+          yield* TestClock.adjust(Duration.zero);
+          assert.strictEqual(seen.length, 2, "the first pass ran at start");
+          assert.deepStrictEqual(auth.revoked, []);
+
+          // Lowered right after that pass; the next one cannot read.
+          members = { status: 500, body: LOWERED };
+          yield* TestClock.adjust(Duration.seconds(300));
+          assert.deepStrictEqual(auth.revoked, [], "one failed pass is tolerated");
+
+          members = secondPass === "reads" ? { status: 200, body: LOWERED } : members;
+          yield* TestClock.adjust(Duration.seconds(300));
+          assert.deepStrictEqual(auth.revoked, ["jan"]);
+        }).pipe(Effect.scoped),
+    );
+  }
 });

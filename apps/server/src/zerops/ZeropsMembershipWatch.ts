@@ -27,7 +27,9 @@
  * become a way to stay in either. One failed pass changes nothing; a second
  * consecutive failure ends every Zerops session, because by then the server
  * has been unable to say who belongs here for two intervals running. The
- * counter resets on the first pass that reads.
+ * counter resets on the first pass that reads. So a changed answer lands
+ * within two intervals at worst, and the interval is never longer than
+ * `MAX_ZEROPS_ROLE_RECHECK_SECONDS` (`ZeropsEnvironment.ts`).
  *
  * ## The day rule
  *
