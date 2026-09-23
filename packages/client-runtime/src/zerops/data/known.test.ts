@@ -144,7 +144,6 @@ describe("inventory knowledge", () => {
     readonly evidence: string;
   }>([
     { reason: "forbidden", evidence: "direct-forbidden" },
-    { reason: "access-revoked", evidence: "direct-forbidden" },
     { reason: "not-found", evidence: "direct-not-found" },
   ])("an unavailable project ($reason) has tags gone ($evidence)", ({ reason, evidence }) => {
     const read: EntityRead<ProjectRecord> = {
@@ -157,6 +156,41 @@ describe("inventory knowledge", () => {
       evidence,
       asOf: { ordinal: 6, atMs: 60 },
     });
+  });
+
+  // The grant machine's denial covers a scope, often the whole account: no read of this project
+  // said it is gone, so its tags wait for the grant (§3.4 withheld(access-denied), not gone).
+  it.each<{ readonly name: string; readonly read: EntityRead<ProjectRecord> }>([
+    {
+      name: "the project",
+      read: {
+        ...projectRead(makeUnresolvedProject(project()).presentation),
+        value: {
+          knowledge: "unavailable",
+          ref: project(),
+          reason: "access-revoked",
+          since: stamp(6),
+        },
+      },
+    },
+    {
+      name: "its presentation",
+      read: projectRead({
+        knowledge: "unavailable",
+        reason: "access-revoked",
+        previousFields: { tags: ["group:shop"] },
+        stamp: stamp(5),
+        fence: {
+          accountEpoch: scope().epoch,
+          readStartOrdinal: ReadStartOrdinal.make(0),
+          dispatchOrdinal: DispatchOrdinal.make(1),
+          verifiedAccessDeadlineMs: 50,
+        },
+        admission: EMPTY_ADMISSION,
+      }),
+    },
+  ])("a revoked access to $name leaves the tags waiting for the grant, never gone", ({ read }) => {
+    expect(knownProjectTags(read, NOW)).toEqual({ state: "unread", waitingFor: "access-grant" });
   });
 
   describe("a services listing", () => {

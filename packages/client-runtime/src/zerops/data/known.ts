@@ -184,15 +184,22 @@ export function knownServicesOf(
   return knownCollection(read, new Set(projectFeeders(read.query.descriptor.project)), nowMs);
 }
 
-/** A confirmed denial of the scope, or a direct read that found nothing (§3.5). */
-const ABSENCE: Record<
-  Extract<EntityKnowledge<ProjectRecord>, { readonly knowledge: "unavailable" }>["reason"],
-  AbsenceEvidence
-> = {
-  forbidden: "direct-forbidden",
-  "access-revoked": "direct-forbidden",
-  "not-found": "direct-not-found",
-};
+type Unavailable = Extract<
+  EntityKnowledge<ProjectRecord>,
+  { readonly knowledge: "unavailable" }
+>["reason"];
+
+/**
+ * A direct read that was refused or found nothing is absence (§3.5). A revoked access is the
+ * grant machine's denial of a scope, often the whole account, so no read of this project said it
+ * is gone: the value waits for the grant, and the withheld layer names the cause (§3.4).
+ */
+function unavailable<T>(reason: Unavailable, stamp: IngestionStamp): Known<T> {
+  if (reason === "access-revoked") return { state: "unread", waitingFor: "access-grant" };
+  const evidence: AbsenceEvidence =
+    reason === "forbidden" ? "direct-forbidden" : "direct-not-found";
+  return { state: "gone", evidence, asOf: stampOf(stamp) };
+}
 
 /**
  * A project's tags (B2): fed by its organization's list and by the project's own reads. A
@@ -211,12 +218,10 @@ export function knownProjectTags(
       ...projectFeeders(ref),
     ]),
   );
-  if (entity.knowledge === "unavailable")
-    return { state: "gone", evidence: ABSENCE[entity.reason], asOf: stampOf(entity.since) };
+  if (entity.knowledge === "unavailable") return unavailable(entity.reason, entity.since);
   if (entity.knowledge === "unresolved") return notYetKnown(source, nowMs);
   const facet = entity.record.presentation;
-  if (facet.knowledge === "unavailable")
-    return { state: "gone", evidence: ABSENCE[facet.reason], asOf: stampOf(facet.stamp) };
+  if (facet.knowledge === "unavailable") return unavailable(facet.reason, facet.stamp);
   if (facet.knowledge === "unresolved" || facet.fields.tags === undefined)
     return notYetKnown(source, nowMs);
   const asOf = stampOf(facet.stamp);
