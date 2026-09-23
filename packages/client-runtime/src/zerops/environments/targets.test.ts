@@ -55,6 +55,7 @@ const remembered = (targetKey: string, origin: string | null = ORIGIN): Registra
 
 interface Row {
   readonly name: string;
+  /** Each organization's listing, `org-1` first; the records name `org-1`. */
   readonly listings: ReadonlyArray<Known<ReadonlyArray<CandidateRow>>>;
   readonly records: ReadonlyArray<string>;
   /** The origin the records kept; `ORIGIN` unless a row says otherwise. */
@@ -120,6 +121,18 @@ const ROWS: ReadonlyArray<Row> = [
   {
     name: "projects still being read: a remembered Mate is looked for where its record kept it (A16)",
     listings: [{ state: "reading", sinceMs: 0, attempt: 1 }],
+    records: [KEY],
+    targets: [{ key: KEY, presence: REMEMBERED, record: ENV }],
+  },
+  {
+    name: "its organization's complete listing lacks the project while another's is read: the last presence held",
+    listings: [known([]), { state: "reading", sinceMs: 0, attempt: 1 }],
+    records: [KEY],
+    targets: [{ key: KEY, presence: null, record: ENV }],
+  },
+  {
+    name: "its own organization's projects still being read beside another's complete listing: remembered (A16)",
+    listings: [{ state: "reading", sinceMs: 0, attempt: 1 }, known([])],
     records: [KEY],
     targets: [{ key: KEY, presence: REMEMBERED, record: ENV }],
   },
@@ -260,7 +273,10 @@ describe("listTargets: region P from the listings and the records (§4.4, §9 C1
   it.each(ROWS)("$name", (row) => {
     expect(
       listTargets({
-        listings: row.listings,
+        listings: row.listings.map((listing, index) => ({
+          organizationId: `org-${index + 1}`,
+          listing,
+        })),
         records: row.records.map((key) =>
           remembered(key, row.origin === undefined ? ORIGIN : row.origin),
         ),

@@ -446,7 +446,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (stores === null || closed) return;
     const records = stores.records.list();
     const listed = listTargets({
-      listings: listings.map(({ listing }) => listing),
+      listings,
       records,
       directReads: new Map(listings.flatMap(({ directReads }) => [...directReads])),
       absences,

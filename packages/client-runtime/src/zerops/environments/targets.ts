@@ -5,9 +5,9 @@
  * - A row the inventory read names its target's presence: present at its origin, in a platform
  *   transition, inactive, or without a public address.
  * - A row whose project's services are not read yet says nothing of any Mate in it: those
- *   targets' presence is `unknown`. A target a record names there, like one whose project no
- *   listing has read yet, is `remembered` at the origin the record kept (A16): its Mate is looked
- *   for there before the services are read, never found gone.
+ *   targets' presence is `unknown`. A target a record names there, like one whose organization's
+ *   listing no read has answered yet, is `remembered` at the origin the record kept (A16): its
+ *   Mate is looked for there before the services are read, never found gone.
  * - A target only a record names holds its last value until every listing is known and complete.
  *   Then it is `gone` when its project is not listed. When its project's services were read
  *   without it, it is `gone` only once a direct read of those services, finished after the
@@ -75,7 +75,11 @@ const GONE: Presence = { kind: "gone", evidence: "complete-scope-omits-verified"
 
 /** Every target a listing row or a record names, with its presence (region P). */
 export function listTargets(input: {
-  readonly listings: ReadonlyArray<Known<ReadonlyArray<CandidateRow>>>;
+  /** Each organization's listing. */
+  readonly listings: ReadonlyArray<{
+    readonly organizationId: string;
+    readonly listing: Known<ReadonlyArray<CandidateRow>>;
+  }>;
   readonly records: ReadonlyArray<RegistrationRecord>;
   /**
    * The receipt ordinal of each project's latest complete direct read of its services, by
@@ -85,14 +89,20 @@ export function listTargets(input: {
   /** The absences the last evaluation answered. */
   readonly absences: ReadonlyMap<TargetKey, Absence>;
 }): ListedTargets {
-  const rows = input.listings.flatMap((listing) => heldCandidates(listing).rows);
+  const rows = input.listings.flatMap(({ listing }) => heldCandidates(listing).rows);
   const settled = input.listings.every(
-    (listing) => listing.state === "known" && listing.coverage === "complete",
+    ({ listing }) => listing.state === "known" && listing.coverage === "complete",
   );
-  /** A listing no read has answered yet: the projects it will name are not read either. */
-  const unanswered = input.listings.some(
-    (listing) => listing.state === "unread" || listing.state === "reading",
-  );
+  /**
+   * The record's organization's listing, or any listing for a record that kept no organization,
+   * that no read has answered yet: the projects it will name are not read either.
+   */
+  const unanswered = (record: RegistrationRecord | undefined): boolean =>
+    input.listings.some(
+      ({ organizationId, listing }) =>
+        (record?.projectRef == null || record.projectRef.orgId === organizationId) &&
+        (listing.state === "unread" || listing.state === "reading"),
+    );
   const listed = new Set(rows.map((row) => row.project.id));
   const unread = new Set(
     rows.filter((row) => row.presence === "unknown").map((row) => row.project.id),
@@ -119,7 +129,7 @@ export function listTargets(input: {
     }
     if (!settled) {
       if (held !== undefined) absences.set(key, held);
-      return unanswered && !listed.has(projectId) ? remembered : null;
+      return unanswered(record) && !listed.has(projectId) ? remembered : null;
     }
     if (!listed.has(projectId)) return GONE;
     const read = input.directReads.get(projectId) ?? null;
