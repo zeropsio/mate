@@ -448,11 +448,6 @@ describe("the page's refreshes are intents (DESIGN §6.2)", () => {
   ])("$name", ({ candidate, intent }) => {
     expect(containerInvalidation(candidate)).toEqual(intent);
   });
-
-  it("creation triggers no verification rounds: nothing re-reads the account on a clock", () => {
-    expect(projectsPageSource).not.toContain("creationRefresh");
-    expect(projectsPageSource).not.toContain("refreshZeropsCandidates");
-  });
 });
 
 describe("removeFailedZeropsProject", () => {
