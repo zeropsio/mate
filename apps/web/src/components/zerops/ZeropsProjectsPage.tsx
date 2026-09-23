@@ -1911,7 +1911,7 @@ function ZeropsProjectsContent() {
       setCreation((current) =>
         current === null
           ? current
-          : { ...current, outcome: { kind: "done", undeployed: outcome.undeployed } },
+          : { ...current, outcome: { kind: "done", deployments: outcome.deployments } },
       );
     },
     [

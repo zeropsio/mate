@@ -176,7 +176,6 @@ describe("runEnvironmentCreation", () => {
       projectId: "proj-1",
       serviceName: "zcp",
       awaitingAgent: true,
-      undeployed: [],
     });
     expect(calls).toEqual([
       "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
@@ -219,19 +218,22 @@ describe("runEnvironmentCreation", () => {
     const { platform, calls } = fakePlatform();
     const { outcome, reports, slept } = await run(plan("prod"), platform);
 
-    expect(outcome).toEqual({
+    expect(outcome).toMatchObject({
       ok: true,
       projectId: "proj-1",
       serviceName: undefined,
       awaitingAgent: false,
-      undeployed: [],
+      deployments: [
+        { service: "app", deployment: { state: "known", value: { kind: "running" } } },
+        { service: "db", deployment: { state: "known", value: { kind: "running" } } },
+      ],
     });
     expect(calls.filter((call) => call.startsWith("services:"))).toHaveLength(3);
     expect(slept).toEqual([7, 7]);
     expect(reports.at(-1)!.map((entry) => entry.state)).toEqual(["done", "done", "done"]);
   });
 
-  it("settles on a service created with nothing deployed, and names it", async () => {
+  it("settles on a service created with nothing deployed, and knows it runs nothing", async () => {
     // A cloned buildFromGit service whose build failed sits at
     // READY_TO_DEPLOY for good; waiting on it would only time out.
     const { platform } = fakePlatform({
@@ -242,12 +244,22 @@ describe("runEnvironmentCreation", () => {
         ]),
     });
     const { outcome } = await run(plan("prod"), platform);
-    expect(outcome).toEqual({
+    expect(outcome).toMatchObject({
       ok: true,
-      projectId: "proj-1",
-      serviceName: undefined,
       awaitingAgent: false,
-      undeployed: ["app"],
+      deployments: [
+        {
+          service: "app",
+          // The read that settled the wait is the evidence, and it saw every service.
+          deployment: {
+            state: "known",
+            value: { kind: "none" },
+            asOf: { ordinal: 1 },
+            coverage: "complete",
+          },
+        },
+        { service: "db", deployment: { state: "known", value: { kind: "running" } } },
+      ],
     });
   });
 

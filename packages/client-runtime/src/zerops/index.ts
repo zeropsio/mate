@@ -209,6 +209,7 @@ export {
   type EnvironmentCreationStepProgress,
   type EnvironmentCreationStepState,
   type RunEnvironmentCreationInput,
+  type ServiceDeployment,
 } from "./runEnvironmentCreation.ts";
 export {
   buildZeropsGroupTree,

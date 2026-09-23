@@ -28,6 +28,8 @@
  */
 
 import type { EnvironmentCreationStep } from "./createEnvironment.ts";
+import type { Deployment } from "./flow/deployment.ts";
+import { deployedVersion } from "./groupRows.ts";
 import {
   findMateIntegrationToken,
   planGroupReach,
@@ -35,6 +37,7 @@ import {
   type ZeropsProjectGrant,
   type ZeropsTokenDelegation,
 } from "./groupReach.ts";
+import type { Known } from "./knowledge/known.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
 import {
   projectCreationFailureSentence,
@@ -121,6 +124,12 @@ export interface EnvironmentCreationStepProgress {
   readonly finishedAtMs?: number;
 }
 
+/** What one service of a created environment runs, as the wait for it saw it. */
+export interface ServiceDeployment {
+  readonly service: string;
+  readonly deployment: Known<Deployment>;
+}
+
 export type EnvironmentCreationOutcome =
   | {
       readonly ok: true;
@@ -128,17 +137,25 @@ export type EnvironmentCreationOutcome =
       /** The zcp service, when the plan imported one. */
       readonly serviceName: string | undefined;
       /**
-       * True when the container wait is the caller's to run: the project
-       * exists and its imports were accepted, and what remains is the
-       * provisioning wait this executor deliberately does not own.
+       * The container wait is the caller's to run: the project exists and
+       * its imports were accepted, and what remains is the provisioning wait
+       * this executor deliberately does not own. Nothing was read of what
+       * the services run.
        */
-      readonly awaitingAgent: boolean;
+      readonly awaitingAgent: true;
+    }
+  | {
+      readonly ok: true;
+      readonly projectId: string;
+      readonly serviceName: string | undefined;
+      readonly awaitingAgent: false;
       /**
-       * Services that settled short of running — created with nothing
-       * deployed, typically a `buildFromGit` service whose build did not go
-       * through. The environment is up; these are what it still needs.
+       * What each service runs, from the read that saw every one of them
+       * settled. A service created with nothing deployed — typically a
+       * `buildFromGit` service whose build did not go through — is known to
+       * run nothing: the environment is up, and it is what it still needs.
        */
-      readonly undeployed: ReadonlyArray<string>;
+      readonly deployments: ReadonlyArray<ServiceDeployment>;
     }
   | {
       readonly ok: false;
@@ -217,7 +234,7 @@ export async function runEnvironmentCreation(
 
   let projectId: string | undefined;
   let serviceName: string | undefined;
-  let undeployed: ReadonlyArray<string> = [];
+  let deployments: ReadonlyArray<ServiceDeployment> = [];
   // Read once and shared by the two steps that need it: the account's token
   // list does not change under a creation, and one read is one round trip
   // fewer between the container coming up and its ADMIN going away.
@@ -342,10 +359,9 @@ export async function runEnvironmentCreation(
               projectId: requireProject(projectId),
               serviceName,
               awaitingAgent: true,
-              undeployed: [],
             };
           }
-          undeployed = await awaitServices({
+          deployments = await awaitServices({
             projectId: requireProject(projectId),
             platform: input.platform,
             now,
@@ -372,7 +388,7 @@ export async function runEnvironmentCreation(
     projectId: requireProject(projectId),
     serviceName,
     awaitingAgent: false,
-    undeployed,
+    deployments,
   };
 }
 
@@ -434,7 +450,9 @@ const UNDEPLOYED_STATUS = "READY_TO_DEPLOY";
 
 /**
  * Every service settled — `ACTIVE`, or created with nothing deployed — with
- * the names of the latter, or a failure naming what is still on its way.
+ * what each runs, or a failure naming what is still on its way. The read that
+ * saw them all settled is the evidence: an `ACTIVE` service runs something it
+ * does not name, a `READY_TO_DEPLOY` one runs nothing.
  *
  * An import's services appear a moment after the import is accepted, so an
  * empty list is "not yet", never "done": waiting on zero services would
@@ -448,9 +466,9 @@ async function awaitServices(input: {
   readonly pollIntervalMs: number;
   readonly capMs: number;
   readonly assertCurrent: () => void;
-}): Promise<ReadonlyArray<string>> {
+}): Promise<ReadonlyArray<ServiceDeployment>> {
   const startedAt = input.now();
-  for (;;) {
+  for (let reads = 1; ; reads += 1) {
     input.assertCurrent();
     const services = await input.platform.readObservedServices(input.projectId);
     input.assertCurrent();
@@ -458,9 +476,20 @@ async function awaitServices(input: {
       (service) => service.status !== "ACTIVE" && service.status !== UNDEPLOYED_STATUS,
     );
     if (services.length > 0 && pending.length === 0) {
-      return services
-        .filter((service) => service.status === UNDEPLOYED_STATUS)
-        .map((service) => service.name);
+      const asOf = { ordinal: reads, atMs: input.now() };
+      return services.map((service) => ({
+        service: service.name,
+        deployment: {
+          state: "known",
+          value:
+            service.status === UNDEPLOYED_STATUS
+              ? { kind: "none" }
+              : { kind: "running", activatedAt: null, version: deployedVersion(undefined) },
+          asOf,
+          coverage: "complete",
+          freshness: { kind: "settled" },
+        },
+      }));
     }
 
     if (input.now() - startedAt > input.capMs) {

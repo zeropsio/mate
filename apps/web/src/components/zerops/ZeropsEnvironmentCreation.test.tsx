@@ -1,6 +1,7 @@
 import type {
   EnvironmentCreationStep,
   EnvironmentCreationStepProgress,
+  ServiceDeployment,
 } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -18,6 +19,24 @@ function progress(
 ): ReadonlyArray<EnvironmentCreationStepProgress> {
   return STEPS.map((step, index) => ({ step, state: states[index] ?? "queued" }));
 }
+
+/** A service the platform settled with nothing deployed: `known(none)`. */
+const nothingDeployed = (service: string): ServiceDeployment => ({
+  service,
+  deployment: {
+    state: "known",
+    value: { kind: "none" },
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "settled" },
+  },
+});
+
+/** A service whose deployment nobody has read yet. */
+const unread = (service: string): ServiceDeployment => ({
+  service,
+  deployment: { state: "unread", waitingFor: null },
+});
 
 function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreation>[0]> = {}) {
   return renderToStaticMarkup(
@@ -97,8 +116,19 @@ describe("ZeropsEnvironmentCreation", () => {
   });
 
   it("says what still needs a deploy when the environment is up", () => {
-    const html = render({ outcome: { kind: "done", undeployed: ["app"] } });
+    const html = render({ outcome: { kind: "done", deployments: [nothingDeployed("app")] } });
     expect(html).toContain("app has nothing deployed yet");
+  });
+
+  it("never says nothing is deployed while what runs there is unread", () => {
+    // A negative is earned from a known, complete answer (DESIGN §3.4); an
+    // environment with one service not yet read has no such answer.
+    const html = render({
+      tier: "stage",
+      outcome: { kind: "done", deployments: [nothingDeployed("app"), unread("api")] },
+    });
+    expect(html).not.toContain("nothing deployed yet");
+    expect(html).toContain("Checking what runs here…");
   });
 
   it("says where a stage's first deploy comes from, rather than sending anyone out", () => {
@@ -106,14 +136,20 @@ describe("ZeropsEnvironmentCreation", () => {
     // the old sentence — "deploy from the Zerops dashboard or ask an agent to"
     // — sent the reader out of the product for something already on its way
     // (measured on the test account, 2026-09-20).
-    const html = render({ tier: "stage", outcome: { kind: "done", undeployed: ["app"] } });
+    const html = render({
+      tier: "stage",
+      outcome: { kind: "done", deployments: [nothingDeployed("app")] },
+    });
     expect(html).toContain("app has nothing deployed yet");
     expect(html).toContain("main lands here on its own");
     expect(html).not.toContain("Zerops dashboard");
   });
 
   it("says a production waits for a release", () => {
-    const html = render({ tier: "production", outcome: { kind: "done", undeployed: ["app"] } });
+    const html = render({
+      tier: "production",
+      outcome: { kind: "done", deployments: [nothingDeployed("app")] },
+    });
     expect(html).toContain("a release names");
     expect(html).not.toContain("Zerops dashboard");
   });

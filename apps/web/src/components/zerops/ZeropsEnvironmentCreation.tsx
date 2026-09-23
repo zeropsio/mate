@@ -11,7 +11,10 @@
 import {
   environmentCreationStepLabel,
   type EnvironmentCreationStepProgress,
+  type ServiceDeployment,
 } from "@t3tools/client-runtime/zerops";
+import { CHECKING_WHAT_RUNS, DEPLOYMENT_SURFACE } from "@t3tools/client-runtime/zerops/flow";
+import { knownPresentation } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { Button } from "../ui/button";
 import { ProcessSteps, type ProcessStep } from "./primitives";
@@ -23,7 +26,7 @@ export interface ZeropsEnvironmentCreationProps {
   /** Set once the run has stopped, however it stopped. */
   readonly outcome?:
     | { readonly kind: "handed-off" }
-    | { readonly kind: "done"; readonly undeployed: ReadonlyArray<string> }
+    | { readonly kind: "done"; readonly deployments: ReadonlyArray<ServiceDeployment> }
     | { readonly kind: "failed"; readonly error: string; readonly projectExists: boolean };
   readonly onDismiss: () => void;
   /**
@@ -33,6 +36,31 @@ export interface ZeropsEnvironmentCreationProps {
   readonly tier?: "mate" | "stage" | "production";
   /** The clock, so a running step's duration ticks; the caller owns the timer. */
   readonly nowMs: number;
+}
+
+/**
+ * What the environment runs, once it is up. The one negative, "nothing
+ * deployed yet", is earned only when every service's deployment is known
+ * (DESIGN §3.4): a service not yet read, or whose read failed, is what the
+ * sentence says instead.
+ */
+function upNote(
+  tier: ZeropsEnvironmentCreationProps["tier"],
+  deployments: ReadonlyArray<ServiceDeployment>,
+  nowMs: number,
+): string {
+  const unknown = deployments.find(({ deployment }) => deployment.state !== "known");
+  if (unknown !== undefined) {
+    const presentation = knownPresentation(unknown.deployment, DEPLOYMENT_SURFACE, {
+      nowMs,
+      updateOffered: false,
+    });
+    return `The environment is up. ${presentation.message?.text ?? CHECKING_WHAT_RUNS}`;
+  }
+  const undeployed = deployments
+    .filter(({ deployment }) => deployment.state === "known" && deployment.value.kind === "none")
+    .map(({ service }) => service);
+  return undeployed.length === 0 ? "The environment is up." : undeployedNote(tier, undeployed);
 }
 
 /**
@@ -111,9 +139,7 @@ export function ZeropsEnvironmentCreation({
                 : "Nothing was created."
               : outcome.kind === "handed-off"
                 ? "The agent's container is on its way — the wait continues below."
-                : outcome.undeployed.length === 0
-                  ? "The environment is up."
-                  : undeployedNote(tier, outcome.undeployed)}
+                : upNote(tier, outcome.deployments, nowMs)}
         </p>
       </div>
       <ProcessSteps
