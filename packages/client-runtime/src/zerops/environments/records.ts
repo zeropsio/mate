@@ -9,20 +9,6 @@ import type { TargetKey } from "./exchangeDriver.ts";
 
 export const REGISTRATION_RECORDS_KEY = "zerops-mate.registration-records.v1";
 
-/**
- * The keys records replace and 5.4 deletes; until then nothing writes or deletes them:
- * - `environment-targets:v1` and `zerops-mate.zerops-environment-project-ref.v1`, imported once;
- * - the door list `zerops-mate.zerops-environments.v1`, never read: it adds nothing to a record,
- *   because every record comes from a door exchange and an environment the targets list lacks has
- *   no target key.
- */
-export const LEGACY_REGISTRATION_KEYS = {
-  /** `[{ key, environmentId }]`. */
-  targets: "environment-targets:v1",
-  /** `{ [environmentId]: { projectId, orgId, … } }`. */
-  projectRefs: "zerops-mate.zerops-environment-project-ref.v1",
-} as const;
-
 export interface RecordProjectRef {
   readonly projectId: string;
   readonly orgId: string;
@@ -75,27 +61,7 @@ const projectRefOf = (value: unknown): RecordProjectRef | null =>
     ? { projectId: value.projectId, orgId: value.orgId }
     : null;
 
-/** Records from what a build before the switch stored: the targets, joined to their project refs. */
-export function importLegacyRecords(legacy: {
-  readonly targets: string | null;
-  readonly projectRefs: string | null;
-}): ReadonlyArray<RegistrationRecord> {
-  const targets = parseJson(legacy.targets);
-  const refs = parseJson(legacy.projectRefs);
-  if (!Array.isArray(targets)) return [];
-  return targets.flatMap((target: unknown): ReadonlyArray<RegistrationRecord> => {
-    if (!isObject(target) || !nonEmpty(target.key) || !nonEmpty(target.environmentId)) return [];
-    return [
-      {
-        targetKey: target.key,
-        environmentId: target.environmentId as EnvironmentId,
-        origin: null,
-        projectRef: isObject(refs) ? projectRefOf(refs[target.environmentId]) : null,
-        name: null,
-      },
-    ];
-  });
-}
+const NO_RECORDS: ReadonlyArray<RegistrationRecord> = [];
 
 const isRecord = (value: unknown): value is RegistrationRecord =>
   isObject(value) &&
@@ -119,11 +85,7 @@ const sameRecord = (left: RegistrationRecord, right: RegistrationRecord): boolea
   left.projectRef?.projectId === right.projectRef?.projectId &&
   left.projectRef?.orgId === right.projectRef?.orgId;
 
-/**
- * The records over one account's storage. The first read that finds no records imports the
- * legacy keys and stores the result, so they are read once; they are never written or deleted
- * here (5.4 deletes them), and a build from before the switch still finds them.
- */
+/** The records over one account's storage; none stored means none remembered. */
 export function makeRegistrationRecords(storage: RecordsStorage): RegistrationRecords {
   /** The last list, by its stored text: the same array until that text changes. */
   let held: { readonly raw: string; readonly records: ReadonlyArray<RegistrationRecord> } | null =
@@ -132,18 +94,9 @@ export function makeRegistrationRecords(storage: RecordsStorage): RegistrationRe
     if (held?.raw !== raw) held = { raw, records: records() };
     return held.records;
   };
-  const importOnce = (): ReadonlyArray<RegistrationRecord> => {
-    const imported = importLegacyRecords({
-      targets: storage.getItem(LEGACY_REGISTRATION_KEYS.targets),
-      projectRefs: storage.getItem(LEGACY_REGISTRATION_KEYS.projectRefs),
-    });
-    const raw = JSON.stringify(imported);
-    storage.setItem(REGISTRATION_RECORDS_KEY, raw);
-    return hold(raw, () => imported);
-  };
   const list = () => {
     const raw = storage.getItem(REGISTRATION_RECORDS_KEY);
-    return raw === null ? importOnce() : hold(raw, () => parseRegistrationRecords(raw));
+    return raw === null ? NO_RECORDS : hold(raw, () => parseRegistrationRecords(raw));
   };
   return {
     list,

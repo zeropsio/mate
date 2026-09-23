@@ -82,6 +82,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { readCollapsedStops, writeCollapsedStops } from "~/zerops/collapsedStops";
 import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace, StatusDot } from "./primitives";
@@ -997,37 +998,6 @@ function PullRequestRow({
  * It asks first, in the shape *Release* and *Merge* ask in, and the confirm
  * quotes the exact words that will be sent — because *Send* sends them.
  */
-/** Where the folded projects are remembered, per browser. */
-const COLLAPSED_STOPS_KEY = "zerops.sidebar.collapsedStops";
-
-/**
- * The projects whose stops were folded away last time.
- *
- * Storage can throw outright (a private window, blocked site data) and can
- * hold anything at all, so a bad read is an empty set rather than a crash on
- * boot — the menu unfolded is the safe wrong answer.
- */
-function readCollapsedStops(): ReadonlySet<string> {
-  try {
-    const raw = globalThis.localStorage?.getItem(COLLAPSED_STOPS_KEY);
-    if (raw === null || raw === undefined) return new Set();
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((entry): entry is string => typeof entry === "string"));
-  } catch {
-    return new Set();
-  }
-}
-
-function writeCollapsedStops(collapsed: ReadonlySet<string>): void {
-  try {
-    globalThis.localStorage?.setItem(COLLAPSED_STOPS_KEY, JSON.stringify([...collapsed]));
-  } catch {
-    // A menu that cannot remember its folds still works; one that throws on a
-    // fold does not.
-  }
-}
-
 function AskVerb({
   pull,
   word,
