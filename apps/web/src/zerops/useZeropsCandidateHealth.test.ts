@@ -12,6 +12,7 @@ import {
   type PollTimers,
 } from "./useZeropsCandidateHealth";
 import { TestNode } from "./__fixtures__/testDom";
+import { bindTestInvalidationBus, type BoundTestBus } from "./__fixtures__/invalidationBus";
 import { invalidateZerops } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 
@@ -19,7 +20,10 @@ const probe = vi.hoisted(() => vi.fn());
 vi.mock("@t3tools/client-runtime/zerops/containerHealth", () => ({
   probeZeropsContainerHealth: (...args: unknown[]) => probe(...args),
 }));
+let bus: BoundTestBus | null = null;
 afterEach(() => {
+  bus?.close();
+  bus = null;
   closeAccountLifetime();
   vi.useRealTimers();
   probe.mockReset();
@@ -65,6 +69,7 @@ it("carries the descriptor's update field alongside the server version", async (
 it("reads a container again on its intent, and only that container", async () => {
   vi.useFakeTimers();
   openAccountLifetime("account");
+  bus = bindTestInvalidationBus();
   probe.mockResolvedValue("unreachable");
   await probeCandidateHealth("https://one.example", "p1:s1");
   await probeCandidateHealth("https://two.example", "p2:s2");
@@ -83,6 +88,7 @@ it("reads a container again on its intent, and only that container", async () =>
 it("the hook reads a candidate's container again on its intent", async () => {
   vi.useFakeTimers();
   openAccountLifetime("account");
+  bus = bindTestInvalidationBus();
   const document = new TestNode("#document", null, 9);
   vi.stubGlobal("document", document);
   vi.stubGlobal("window", { document, HTMLIFrameElement: TestNode });

@@ -8,6 +8,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 
+import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { connectResult, webExchangePorts, type ExchangeInputs } from "./useZeropsIdentityExchange";
@@ -212,6 +213,7 @@ describe("the presence port asks for the target's organization's inventory (DESI
   ])("$name", async ({ candidates, activeOrganizationId, heard: expected }) => {
     vi.useFakeTimers();
     openAccountLifetime("account");
+    const bus = bindTestInvalidationBus();
     const heard: Array<Invalidation> = [];
     const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
     const inputs = {
@@ -225,6 +227,7 @@ describe("the presence port asks for the target's organization's inventory (DESI
       expect(heard).toEqual(expected);
     } finally {
       stop();
+      bus.close();
       closeAccountLifetime();
       vi.useRealTimers();
     }

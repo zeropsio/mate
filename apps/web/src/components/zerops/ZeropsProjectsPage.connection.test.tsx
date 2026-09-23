@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "~/zerops/__fixtures__/testDom";
+import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 
@@ -69,6 +70,7 @@ describe("useZeropsProjectConnection", () => {
     vi.stubGlobal("window", { document, HTMLIFrameElement: TestNode });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     openAccountLifetime("account");
+    const bus = bindTestInvalidationBus();
     const heard: Array<Invalidation> = [];
     const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
     let connection!: ReturnType<typeof useZeropsProjectConnection>;
@@ -89,6 +91,7 @@ describe("useZeropsProjectConnection", () => {
       expect(heard).toEqual(want);
     } finally {
       stop();
+      bus.close();
       act(() => root.unmount());
     }
   });

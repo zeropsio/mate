@@ -2,10 +2,13 @@
  * The account runtime (DESIGN §1.1, §1.2, §5): the composition root of one account epoch.
  *
  * - **Pre-grant stage**, built when the session verified its principal: the data runtime the host
- *   built for the epoch, and its access grant, started here with the session's verifier.
- * - **Post-grant stage**, built on the epoch's first `granted` and kept for the epoch — a later
- *   lapse never tears it down (G11): the invalidation bus with the account's `shown()`, carrying
- *   the grant's own invalidations. Nothing in it runs before the platform confirmed the
+ *   built for the epoch, its access grant, started here with the session's verifier, and the
+ *   account's one invalidation bus (§6.2) with the account's `shown()`. The bus carries the
+ *   grant's own invalidations and the intents surfaces send; it stands before the first grant
+ *   because the grant and the data runtime hear `access` and `inventory` from the start — a
+ *   person's "Try again" on a first round that failed is one.
+ * - **Post-grant stage**, started on the epoch's first `granted` and kept for the epoch — a later
+ *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10).
  *
  * It owns the tab's signals as the account's machines hear them (§6.4): the page's visibility,
@@ -75,16 +78,13 @@ export interface AccountRuntimePorts {
   readonly atomRegistry: AtomRegistry.AtomRegistry;
 }
 
-/** The stage built on the epoch's first grant. */
-export interface PostGrantStage {
-  readonly invalidations: InvalidationBus;
-}
-
 export interface AccountRuntime {
   readonly data: ManagedZeropsDataRuntime;
-  /** The post-grant stage: waits for the epoch's first grant, then the same stage for the epoch. */
-  readonly postGrant: Effect.Effect<PostGrantStage>;
-  /** Ends the epoch: the post-grant stage first, then the data runtime (§5 L9). */
+  /** The account's invalidation bus: every owner of pull-based facts hears it, every surface sends to it. */
+  readonly invalidations: InvalidationBus;
+  /** Waits for the epoch's first grant; the post-grant stage starts on it. */
+  readonly postGrant: Effect.Effect<void>;
+  /** Ends the epoch: the bus first, then the data runtime (§5 L9). */
   readonly close: (
     reason: "logout" | "account-replaced" | "application-close",
   ) => Effect.Effect<void>;
@@ -110,8 +110,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     mono: Number(clock.monotonicTimeNanosUnsafe()) / 1_000_000,
   });
   const epoch = yield* Scope.make();
-  const postGrantScope = yield* Scope.make();
-  const postGrant = yield* Deferred.make<PostGrantStage>();
+  /** The bus's own scope: it closes first, so nothing still coalescing reaches a subscriber. */
+  const busScope = yield* Scope.make();
+  const postGrant = yield* Deferred.make<void>();
   const busSignals = yield* PubSub.unbounded<InvalidationSignal>();
 
   /** Whether a view holds demand on facts under this invalidation's key. */
@@ -141,21 +142,14 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     }
   };
 
-  const buildPostGrant = Effect.gen(function* () {
-    const invalidations = yield* makeInvalidationBus({
-      // The page as it is when the bus starts hearing it, then every change.
-      signals: Stream.concat(
-        Stream.suspend(() => Stream.make(page.hidden() ? HIDDEN : VISIBLE)),
-        Stream.fromPubSub(busSignals),
-      ),
-      shown,
-    }).pipe(Scope.provide(postGrantScope));
-    yield* data.access.invalidations.pipe(
-      Stream.runForEach(invalidations.invalidate),
-      Effect.forkIn(postGrantScope),
-    );
-    yield* Deferred.succeed(postGrant, { invalidations });
-  });
+  const invalidations = yield* makeInvalidationBus({
+    // The page as it is when the bus starts hearing it, then every change.
+    signals: Stream.concat(
+      Stream.suspend(() => Stream.make(page.hidden() ? HIDDEN : VISIBLE)),
+      Stream.fromPubSub(busSignals),
+    ),
+    shown,
+  }).pipe(Scope.provide(busScope));
 
   /** The admitted round the write window was last opened for. */
   let openRound: number | null = null;
@@ -163,7 +157,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     Effect.gen(function* () {
       const phase = view.machine.phase;
       if (phase.phase === "granted") {
-        if (!(yield* Deferred.isDone(postGrant))) yield* buildPostGrant;
+        yield* Deferred.succeed(postGrant, undefined);
         const account = phase.evidence.account;
         if (account.round === openRound) return;
         openRound = account.round;
@@ -221,6 +215,10 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     const signals = yield* Queue.unbounded<PageSignal>();
     const unlisten = page.listen((signal) => Queue.offerUnsafe(signals, signal));
     yield* Scope.addFinalizer(epoch, Effect.sync(unlisten));
+    yield* data.access.invalidations.pipe(
+      Stream.runForEach(invalidations.invalidate),
+      Effect.forkIn(busScope),
+    );
     yield* Queue.take(signals).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
     // The views stream replays the latest, so it misses nothing the start publishes.
     yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));
@@ -232,15 +230,16 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     // An epoch that cannot start leaves nothing of its own running; its host closes the data.
   }).pipe(
     Effect.onError(() =>
-      Scope.close(postGrantScope, Exit.void).pipe(Effect.andThen(Scope.close(epoch, Exit.void))),
+      Scope.close(busScope, Exit.void).pipe(Effect.andThen(Scope.close(epoch, Exit.void))),
     ),
   );
 
   return {
     data,
+    invalidations,
     postGrant: Deferred.await(postGrant),
     close: (reason) =>
-      Scope.close(postGrantScope, Exit.void).pipe(
+      Scope.close(busScope, Exit.void).pipe(
         Effect.andThen(data.shutdown(reason)),
         Effect.andThen(Scope.close(epoch, Exit.void)),
       ),

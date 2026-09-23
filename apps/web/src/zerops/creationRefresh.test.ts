@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
+import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
@@ -108,6 +109,7 @@ describe("useCreationInventoryRefresh", () => {
     });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     openAccountLifetime("account");
+    stops.push(bindTestInvalidationBus().close);
     const heard: Array<Invalidation> = [];
     stops.push(onZeropsInvalidation((invalidation) => heard.push(invalidation)));
     function Clock({ on }: { readonly on: OrganizationRef | null }) {

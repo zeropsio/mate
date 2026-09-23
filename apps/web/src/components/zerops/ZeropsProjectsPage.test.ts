@@ -28,6 +28,7 @@ import {
   showsZeropsBirthLine,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
+import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { isAccessNotYetVerified } from "~/zerops/useZeropsProvisioning";
@@ -459,6 +460,7 @@ async function heardFrom(run: () => unknown): Promise<ReadonlyArray<Invalidation
     .spyOn(process.hrtime, "bigint")
     .mockImplementation(() => BigInt(Math.round(performance.now() * 1_000_000)));
   openAccountLifetime("account");
+  const bus = bindTestInvalidationBus();
   const heard: Array<Invalidation> = [];
   const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
   try {
@@ -467,6 +469,7 @@ async function heardFrom(run: () => unknown): Promise<ReadonlyArray<Invalidation
     return heard;
   } finally {
     stop();
+    bus.close();
     closeAccountLifetime();
     hrtime.mockRestore();
     vi.useRealTimers();

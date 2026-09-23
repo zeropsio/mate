@@ -183,24 +183,83 @@ describe("the account runtime", () => {
 
           yield* grant.answer();
 
-          const stage = yield* Fiber.join(postGrant);
+          yield* Fiber.join(postGrant);
           expect(writes.calls).toEqual([{ open: WINDOW }]);
           const heard: Array<Invalidation> = [];
-          const subscription = yield* stage.invalidations.subscribe;
+          const subscription = yield* built.invalidations.subscribe;
           yield* Stream.fromSubscription(subscription).pipe(
             Stream.runForEach((invalidation) => Effect.sync(() => heard.push(invalidation))),
             Effect.forkScoped,
           );
 
-          // Frozen past the deadline: the grant lapses, the stage stays and hears it.
+          // Frozen past the deadline: the grant lapses, the stage stays and the bus hears it.
           yield* clock.freeze(20 * MINUTE);
           yield* settle;
           yield* clock.advance(SECOND);
           yield* settle;
 
           expect(writes.calls.at(-1)).toBe("close");
-          expect(yield* built.postGrant).toBe(stage);
+          expect(yield* Effect.exit(built.postGrant)).toEqual(Exit.void);
           expect(heard).toEqual([{ topic: "access", change: "lapsed" }]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "a surface intent and a grant invalidation reach the same subscriber through one bus",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const registry = AtomRegistry.make();
+          const page = yield* makePage();
+          const grant = heldVerifier();
+          const built = yield* Effect.gen(function* () {
+            const data = yield* makeZeropsDataRuntime({
+              scope: scope(),
+              adapter: inertAdapter,
+              atomRegistry: registry,
+              makeOpaqueId: () => "opaque",
+            });
+            return yield* makeAccountRuntime({
+              data,
+              verifier: grant.verifier,
+              page: page.port,
+              writes: makeWrites().port,
+              atomRegistry: registry,
+            });
+          }).pipe(Effect.provideService(Clock.Clock, clock));
+          yield* Effect.addFinalizer(() => built.close("application-close"));
+          const heard: Array<Invalidation> = [];
+          const subscription = yield* built.invalidations.subscribe;
+          yield* Stream.fromSubscription(subscription).pipe(
+            Stream.runForEach((invalidation) => Effect.sync(() => heard.push(invalidation))),
+            Effect.forkScoped,
+          );
+          yield* settle;
+
+          // Before the first grant: a person's "Try again" on the gate is heard.
+          yield* built.invalidations
+            .invalidate({ topic: "access", change: "renew-now" })
+            .pipe(Effect.provideService(Clock.Clock, clock));
+          yield* clock.advance(SECOND);
+          yield* settle;
+          expect(heard).toEqual([{ topic: "access", change: "renew-now" }]);
+
+          yield* grant.answer();
+          yield* built.invalidations
+            .invalidate({ topic: "container", target: "project-a:service-a" })
+            .pipe(Effect.provideService(Clock.Clock, clock));
+          yield* clock.freeze(20 * MINUTE);
+          yield* settle;
+          yield* clock.advance(SECOND);
+          yield* settle;
+
+          expect(heard).toEqual([
+            { topic: "access", change: "renew-now" },
+            { topic: "container", target: "project-a:service-a" },
+            { topic: "access", change: "lapsed" },
+          ]);
         }),
       ),
   );

@@ -32,6 +32,7 @@ import { type AtomRegistry } from "effect/unstable/reactivity";
 import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
+import { bindAccountInvalidations } from "./accountInvalidations";
 import {
   captureAccountLifetime,
   currentAccountEpoch,
@@ -219,8 +220,9 @@ export function ZeropsDataStartupFailure({
 
 /**
  * Owns exactly one account runtime for one verified account lifetime: the
- * platform-data runtime `makeRuntime` builds, and its access grant verified
- * through the session's client.
+ * platform-data runtime `makeRuntime` builds, its access grant verified
+ * through the session's client, and its invalidation bus bound for the web's
+ * surfaces.
  */
 export function ZeropsDataProvider({
   children,
@@ -248,6 +250,7 @@ export function ZeropsDataProvider({
     let cancelled = false;
     let current: ManagedZeropsDataRuntime | null = null;
     let removeLifetimeClose: () => void = () => undefined;
+    let unbindInvalidations: () => void = () => undefined;
     setStartupFailure(null);
     const scope = {
       account: {
@@ -300,12 +303,14 @@ export function ZeropsDataProvider({
           }),
         );
         void account.then(
-          () => {
+          (built) => {
             // A cleanup before the account runtime stood closes it through `shutdown`.
             if (cancelled) return;
             removeLifetimeClose = onAccountLifetimeClose(() => {
               void shutdown(created, "logout");
             });
+            // Surfaces send their intents to this account's bus from the first mount.
+            unbindInvalidations = bindAccountInvalidations(built.invalidations);
             setRuntime(created);
           },
           (cause: unknown) => {
@@ -327,6 +332,7 @@ export function ZeropsDataProvider({
       cancelled = true;
       abort.abort();
       removeLifetimeClose();
+      unbindInvalidations();
       setRuntime(null);
       if (current !== null) void shutdown(current, "account-replaced");
     };

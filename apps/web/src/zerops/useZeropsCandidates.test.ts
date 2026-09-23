@@ -24,6 +24,7 @@ import { Atom } from "effect/unstable/reactivity";
 import { identity, organization, project, scope } from "./__fixtures__/platformData";
 import { TestNode } from "./__fixtures__/testDom";
 import { MATES_UNREAD, zeropsMateAt, type ZeropsMateIdentity } from "./mateIdentities";
+import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
@@ -382,6 +383,7 @@ describe("useZeropsCandidates", () => {
     vi.stubGlobal("window", { document, HTMLIFrameElement: TestNode });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     openAccountLifetime("account");
+    const bus = bindTestInvalidationBus();
     const heard: Array<Invalidation> = [];
     const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
     let refresh!: () => void;
@@ -400,6 +402,7 @@ describe("useZeropsCandidates", () => {
       expect(heard).toEqual([{ topic: "inventory", organization: organizationRef("org-1") }]);
     } finally {
       stop();
+      bus.close();
       act(() => root.unmount());
     }
   });
