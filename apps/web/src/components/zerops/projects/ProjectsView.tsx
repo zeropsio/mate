@@ -8,20 +8,18 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { FlatCard, MicroLabel, StatusDot } from "../primitives";
 import {
   drawn,
+  EmptyStep,
   GroupName,
   MainStep,
   mergesHere,
   PreviewLink,
   ProductionStep,
   releaseVerbFor,
+  STEP_CELL_CLASS,
+  VerbSlot,
+  verbFor,
 } from "./flowSteps";
-import {
-  groupMetaLine,
-  nextStepCell,
-  nextStepTone,
-  pullRequestsLine,
-  type FlowCell,
-} from "./projectsView.logic";
+import { groupMetaLine, nextStepTone, pullRequestsLine, type FlowCell } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
 
 /**
@@ -33,7 +31,12 @@ import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProject
 const STEPS_GRID_CLASS =
   "grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 @2xl/flow:grid-cols-2 @2xl/flow:gap-y-1.5 @5xl/flow:grid-cols-[minmax(0,1.3fr)_1rem_minmax(0,1fr)_1rem_minmax(0,1fr)_1rem_minmax(0,1fr)] @5xl/flow:grid-rows-[auto_1fr] @5xl/flow:gap-x-0";
 
-const EMPTY_WORD_CLASS = "text-sm font-normal text-muted-foreground";
+/**
+ * The slot a step's cell sits in: the cell stretches to its row. A narrow
+ * container reads the steps as a list, so the cell loses its surface there.
+ */
+const STEP_SLOT_CLASS =
+  "grid min-w-0 @2xl/flow:self-stretch @max-2xl/flow:*:min-h-0 @max-2xl/flow:*:rounded-none @max-2xl/flow:*:bg-transparent @max-2xl/flow:*:p-0";
 
 function Step({
   label,
@@ -55,17 +58,33 @@ function Step({
         "col-span-2 grid grid-cols-subgrid items-start border-b border-border/50 py-2 last:border-b-0 @2xl/flow:col-span-1 @2xl/flow:row-span-2 @2xl/flow:grid-cols-1 @2xl/flow:grid-rows-subgrid @2xl/flow:gap-y-1.5 @2xl/flow:border-b-0 @2xl/flow:py-0",
         placement,
       )}
-      data-zerops-step={name}
     >
       <span className="flex h-6 min-w-0 items-center gap-1">
         <MicroLabel className="text-muted-foreground">{label}</MicroLabel>
         {add}
       </span>
-      <div
-        className="flex min-w-0 flex-col gap-1.5 @2xl/flow:min-h-16 @2xl/flow:self-stretch @2xl/flow:rounded-lg @2xl/flow:bg-muted/50 @2xl/flow:px-3 @2xl/flow:py-2.5"
-        data-zerops-step-cell={name}
-      >
+      <div className={STEP_SLOT_CLASS} data-zerops-step-cell={name}>
         {children}
+      </div>
+    </div>
+  );
+}
+
+/** A step cell the card fills itself: its content, then its verb at the right. */
+function OwnCell({
+  name,
+  verb,
+  children,
+}: {
+  readonly name: FlowCell;
+  readonly verb: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className={STEP_CELL_CLASS} data-zerops-step={name}>
+      <div className="flex min-w-0 items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">{children}</div>
+        <VerbSlot>{verb}</VerbSlot>
       </div>
     </div>
   );
@@ -132,12 +151,6 @@ export function ProjectCard<T>({
   const groupRows = props.renderGroupRows(group);
   const offered = props.addsOffered?.(group) ?? true;
   const { onCreateEnvironment } = props;
-  const cell = nextStepCell(flow);
-  // The verb keeps its own width, at the right of the thing it acts on.
-  const verbIn = (where: FlowCell) =>
-    cell === where ? (
-      <span className="flex shrink-0 items-center">{props.renderNextStep(entry)}</span>
-    ) : null;
   return (
     <FlatCard
       className="flex scroll-mt-4 flex-col gap-3 p-4"
@@ -178,31 +191,29 @@ export function ProjectCard<T>({
           name="mates"
           placement="@5xl/flow:col-start-1"
         >
-          <div className="flex min-w-0 items-start gap-2">
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              {entry.mates.map((item, index) => {
-                const preview = flow.mates[index]?.preview;
-                return (
-                  <div className="flex min-w-0 flex-col gap-1" key={props.getKey(item)}>
-                    {props.renderMate(item)}
-                    {preview === undefined ? null : <PreviewLink url={preview} />}
-                  </div>
-                );
-              })}
-              {entry.mates.length === 0 ? (
-                <span className={EMPTY_WORD_CLASS}>No Mate yet</span>
-              ) : null}
-            </div>
-            {verbIn("mates")}
-          </div>
+          <OwnCell name="mates" verb={verbFor(entry, "mates", props.renderNextStep)}>
+            {entry.mates.map((item, index) => {
+              const preview = flow.mates[index]?.preview;
+              return (
+                <div className="flex min-w-0 flex-col gap-1" key={props.getKey(item)}>
+                  {props.renderMate(item)}
+                  {preview === undefined ? null : <PreviewLink url={preview} />}
+                </div>
+              );
+            })}
+            {entry.mates.length === 0 ? <EmptyStep>No Mate yet</EmptyStep> : null}
+          </OwnCell>
         </Step>
         <Arrow placement="@5xl/flow:col-start-2" />
         <Step label="Pull requests" name="pull-requests" placement="@5xl/flow:col-start-3">
-          <div className="flex min-w-0 items-start gap-2">
+          <OwnCell
+            name="pull-requests"
+            verb={verbFor(entry, "pull-requests", props.renderNextStep)}
+          >
             {flow.pullRequests.length === 0 ? (
-              <span className={cn(EMPTY_WORD_CLASS, "flex-1")}>{pullRequestsLine(flow)}</span>
+              <EmptyStep>{pullRequestsLine(flow)}</EmptyStep>
             ) : (
-              <ul className="flex min-w-0 flex-1 flex-col divide-y divide-border/50">
+              <ul className="flex min-w-0 flex-col divide-y divide-border/50">
                 {flow.pullRequests.map(({ pull }) => (
                   <Fragment key={`${pull.repository}#${String(pull.number)}`}>
                     {props.renderPullRequest(group, pull, {
@@ -213,8 +224,7 @@ export function ProjectCard<T>({
                 ))}
               </ul>
             )}
-            {verbIn("pull-requests")}
-          </div>
+          </OwnCell>
         </Step>
         <Arrow placement="@5xl/flow:col-start-4" />
         <Step
@@ -222,7 +232,12 @@ export function ProjectCard<T>({
           name="main"
           placement="@2xl/flow:mt-2 @5xl/flow:col-start-5 @5xl/flow:mt-0"
         >
-          <MainStep density="box" entry={entry} menuFor={stopMenu} verb={verbIn("main")} />
+          <MainStep
+            density="box"
+            entry={entry}
+            menuFor={stopMenu}
+            verb={verbFor(entry, "main", props.renderNextStep)}
+          />
         </Step>
         <Arrow placement="@5xl/flow:col-start-6" />
         <Step
@@ -235,7 +250,7 @@ export function ProjectCard<T>({
             entry={entry}
             menu={production.kind === "absent" ? null : stopMenu(production.stop.projectId)}
             releaseVerb={releaseVerbFor(entry, props.renderReleaseVerb)}
-            verb={verbIn("production")}
+            verb={verbFor(entry, "production", props.renderNextStep)}
           />
         </Step>
       </div>

@@ -1,12 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
+import { STEP_CELL_CLASS } from "./flowSteps";
 import {
   brokenProduction,
+  entry,
   FLOW_PROPS,
   MERGING,
   RELEASING,
   STAGE,
+  WREN,
   type Item,
 } from "./flowTestFixtures";
 import { ProjectCard } from "./ProjectsView";
@@ -26,6 +29,8 @@ function between(html: string, start: string, end: string | undefined): string {
   const to = html.indexOf(end, from + start.length);
   return html.slice(from, to === -1 ? undefined : to);
 }
+
+const STEPS = ["mates", "pull-requests", "main", "production"] as const;
 
 /** One step's cell: from its marker to the next step's. */
 function step(html: string, name: string): string {
@@ -53,29 +58,37 @@ describe("the Projects card", () => {
     expect(step(html, where)).toContain(`data-test-verb="${kind}"`);
   });
 
-  it("lays the four steps out as one row of labels over one row of equal cells", () => {
-    const html = card(RELEASING);
-    const labels = ["Mates", "Pull requests", "main", "Production"].map((label) =>
-      html.indexOf(`>${label}</span>`),
-    );
-    const cells = ["mates", "pull-requests", "main", "production"].map((name) =>
-      html.indexOf(`data-zerops-step-cell="${name}"`),
-    );
-    expect([...labels, ...cells].every((index) => index >= 0)).toBe(true);
-    expect([...cells].sort((left, right) => left - right)).toEqual(cells);
-    for (const name of ["mates", "pull-requests", "main", "production"]) {
-      const open = html.slice(0, html.indexOf(`data-zerops-step-cell="${name}"`));
-      const tag = open.slice(open.lastIndexOf("<"));
-      // Every cell is the same surface, empty or not: the empty pull
-      // requests' step is no dashed place.
-      expect(tag).toContain("@2xl/flow:min-h-16");
-      expect(tag).toContain("@2xl/flow:bg-muted/50");
-      expect(tag).toContain("@2xl/flow:self-stretch");
-    }
-    expect(html).toContain("@5xl/flow:grid-rows-[auto_1fr]");
-    expect(step(html, "pull-requests")).toMatch(
-      /<span class="text-sm font-normal text-muted-foreground[^"]*">None open<\/span>/u,
-    );
+  it.each([
+    ["filled", RELEASING],
+    ["empty", entry([WREN], { mainHasCode: false })],
+  ] as const)(
+    "lays the four steps out as one row of labels over one row of equal cells: %s",
+    (_name, value) => {
+      const html = card(value);
+      const labels = ["Mates", "Pull requests", "main", "Production"].map((label) =>
+        html.indexOf(`>${label}</span>`),
+      );
+      const cells = STEPS.map((name) => html.indexOf(`data-zerops-step-cell="${name}"`));
+      expect([...labels, ...cells].every((index) => index >= 0)).toBe(true);
+      expect([...cells].sort((left, right) => left - right)).toEqual(cells);
+      expect(html).toContain("@5xl/flow:grid-rows-[auto_1fr]");
+      for (const name of STEPS) {
+        // One surface per step, empty or not, stretched to its row: never a
+        // cell painted over another, never a dashed place.
+        const cell = step(html, name);
+        expect(cell.split(`class="${STEP_CELL_CLASS}`)).toHaveLength(2);
+        expect(cell).toContain(`data-zerops-step="${name}"`);
+        expect(cell).not.toContain("border-dashed");
+      }
+    },
+  );
+
+  it("says an empty step's word in the muted hand", () => {
+    const html = card(entry([WREN], { mainHasCode: false }));
+    expect(step(html, "pull-requests")).toContain("None yet");
+    expect(step(html, "pull-requests")).toContain('data-zerops-empty-step="true"');
+    expect(step(html, "main")).toContain('data-zerops-empty-step="true"');
+    expect(step(html, "production")).toContain('data-zerops-empty-step="true"');
   });
 
   it.each([
@@ -93,13 +106,13 @@ describe("the Projects card", () => {
     ["absent where nothing can create", {}, "absent"],
   ] as const)("draws Add Mate as a + beside the Mates label: %s", (_name, over, expected) => {
     const html = card(RELEASING, over);
-    const label = between(html, 'data-zerops-step="mates"', 'data-zerops-step-cell="mates"');
+    // The Mates label's line: from the label up to its cell.
+    const label = between(html, ">Mates</span>", 'data-zerops-step-cell="mates"');
     const plus = /<button[^>]*aria-label="Add a Mate to sm-fixture"[^>]*>/u.exec(label)?.[0];
     if (expected === "absent") {
       expect(html).not.toContain("Add a Mate to");
       return;
     }
-    expect(label.indexOf(">Mates</span>")).toBeLessThan(label.indexOf("Add a Mate to"));
     expect(plus).toBeDefined();
     expect(plus!.includes(` disabled=""`)).toBe(expected === "disabled");
   });
