@@ -12,6 +12,8 @@ import * as Effect from "effect/Effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
+import { batchedPerTask } from "./taskBatch";
+
 export interface ZeropsDataContextValue {
   readonly runtime: ManagedZeropsDataRuntime;
   /** The tab, as every consumer of the account hears it (DESIGN §6.4). */
@@ -84,7 +86,10 @@ export function zeropsKnowledgeArraysEqual<Record extends ZeropsEntityRecord>(
   );
 }
 
-/** Combines a dynamic set of narrow projections without observing their account root atom. */
+/**
+ * Combines a dynamic set of narrow projections without observing their account root atom. A
+ * subscriber hears its atoms' changes once per task, however many of them changed in it.
+ */
 export function makeZeropsAtomSelectionStore<Value>(
   registry: AtomRegistry.AtomRegistry,
   entries: ReadonlyArray<ZeropsAtomSelection<Value>>,
@@ -102,10 +107,12 @@ export function makeZeropsAtomSelectionStore<Value>(
       snapshot = next;
       listener();
     };
-    const releases = entries.map(([, atom]) => registry.subscribe(atom, refresh));
+    const batched = batchedPerTask(refresh);
+    const releases = entries.map(([, atom]) => registry.subscribe(atom, batched.notify));
     refresh();
     return () => {
       for (const release of releases) release();
+      batched.cancel();
     };
   };
   return { getSnapshot, subscribe };
