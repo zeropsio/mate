@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
+import {
+  initialEnvironment,
+  type EnvironmentMachine,
+  type TargetKey,
+} from "@t3tools/client-runtime/zerops/environments";
 import { reactHookHarness as hooks } from "../../../../web/src/test/reactHookHarness";
 
 interface TestBinding {
@@ -20,12 +25,9 @@ const runtime = vi.hoisted(() => ({
 }));
 const session = vi.hoisted(() => ({ status: "signed-in" }));
 const reads = vi.hoisted(() => ({ services: null as unknown, project: null as unknown }));
-const device = vi.hoisted(() => ({
-  environments: [] as Array<{
-    readonly environmentId: string;
-    readonly displayUrl: string | null;
-    readonly connection: { readonly phase: string };
-  }>,
+/** The account runtime's Mate environments, as the provider binds them after the first grant. */
+const stage = vi.hoisted(() => ({
+  machines: new Map() as ReadonlyMap<string, unknown>,
 }));
 const scopes = vi.hoisted(() => {
   let pending = false;
@@ -83,14 +85,18 @@ vi.mock("react", async (importOriginal) => {
   };
 });
 
-vi.mock("../../state/environments", () => ({
-  useEnvironments: () => ({ environments: device.environments }),
-}));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ status: session.status, organizations: ORGANIZATIONS }),
 }));
 vi.mock("./ZeropsDataProvider", () => ({
-  useZeropsData: () => ({ binding: runtime.binding, error: null }),
+  useZeropsData: () => ({
+    binding: runtime.binding,
+    environments: {
+      machines: () => stage.machines,
+      subscribe: () => () => undefined,
+    },
+    error: null,
+  }),
 }));
 vi.mock("effect/Scope", async (importOriginal) => {
   const actual = await importOriginal<typeof import("effect/Scope")>();
@@ -106,8 +112,6 @@ vi.mock("effect/Scope", async (importOriginal) => {
   };
 });
 
-import { connectedZeropsOrigins } from "./candidate-origins";
-import { makeMobileContainers } from "./containers";
 import { zeropsCandidatePresentation } from "./presentation";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import * as Effect from "effect/Effect";
@@ -135,24 +139,6 @@ const listenerOf = (atom: unknown): (() => void) | undefined =>
     | (() => void)
     | undefined;
 
-it("indexes only connected Zerops origins", () => {
-  const connected = EnvironmentId.make("connected");
-  const origins = connectedZeropsOrigins([
-    {
-      environmentId: connected,
-      displayUrl: "https://ZCP-DEMO-8080.PRG1.ZEROPS.APP/mate/",
-      connection: { phase: "connected" },
-    },
-    {
-      environmentId: EnvironmentId.make("offline"),
-      displayUrl: "https://offline.example.test/mate",
-      connection: { phase: "offline" },
-    },
-  ]);
-
-  expect(origins).toEqual(new Map([["https://zcp-demo-8080.prg1.zerops.app", connected]]));
-});
-
 describe("candidate inventory demand", () => {
   beforeEach(() => {
     hooks.reset();
@@ -162,7 +148,7 @@ describe("candidate inventory demand", () => {
     runtime.registry.subscribe.mockReset();
     scopes.reset();
     session.status = "signed-in";
-    device.environments = [];
+    stage.machines = new Map();
 
     const account = {
       apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
@@ -233,12 +219,6 @@ describe("candidate inventory demand", () => {
         refresh: runtime.refresh,
       },
       registry: runtime.registry,
-      containers: makeMobileContainers({
-        clock: { now: () => ({ wall: 0, mono: 0 }), setTimer: () => () => undefined },
-        probe: () => new Promise(() => undefined),
-        readMateFlag: () => Promise.resolve("unknown"),
-        visibility: { current: () => true, subscribe: () => () => undefined },
-      }),
       released,
       projectAtom: projectsAtom,
       serviceAtom: servicesAtom,
@@ -246,20 +226,29 @@ describe("candidate inventory demand", () => {
     } as TestBinding;
   });
 
-  it("keeps every lease when an environment connects", async () => {
+  it("keeps every lease when a Mate connects", async () => {
     render();
     await settle();
     listenerOf(runtime.binding?.projectAtom)?.();
     await settle();
     const acquired = runtime.acquire.mock.calls.length;
 
-    device.environments = [
-      {
-        environmentId: EnvironmentId.make("environment-a"),
-        displayUrl: "https://zcp-demo.example.test/mate/",
-        connection: { phase: "connected" },
-      },
-    ];
+    stage.machines = new Map<TargetKey, EnvironmentMachine>([
+      [
+        "project-a:service-a",
+        {
+          ...initialEnvironment({ record: null }),
+          credential: {
+            kind: "held",
+            environmentId: EnvironmentId.make("environment-a"),
+            installed: true,
+            staleBlock: false,
+            rereading: null,
+          },
+          link: { phase: "connected", since: { wall: 0, mono: 0 } },
+        },
+      ],
+    ]);
     render();
     await settle();
 
@@ -373,6 +362,17 @@ describe("candidate inventory demand", () => {
       },
       observation: { required: [], optional: [], access: { status: "unverified" } },
     };
+    // The account's container store read the platform's restart into the Mate's machine.
+    stage.machines = new Map<TargetKey, EnvironmentMachine>([
+      [
+        "project-a:service-a",
+        {
+          ...initialEnvironment({ record: null }),
+          presence: { kind: "transitioning", status: "RESTARTING" },
+          container: { level: "restarting", by: "platform", overdue: false },
+        },
+      ],
+    ]);
     render();
     await settle();
     listenerOf(runtime.binding?.projectAtom)?.();
@@ -382,9 +382,12 @@ describe("candidate inventory demand", () => {
     const row = listing.state === "known" ? listing.value[0] : undefined;
     expect(row).toMatchObject({
       key: "project-a:service-a",
-      container: { level: "restarting", by: "platform" },
+      reachability: {
+        kind: "container",
+        container: { level: "restarting", by: "platform" },
+      },
     });
-    expect(row === undefined ? null : zeropsCandidatePresentation(row)).toMatchObject({
+    expect(row === undefined ? null : zeropsCandidatePresentation(row, 0)).toMatchObject({
       label: "Restarting",
       notice: "Zerops is restarting this Mate.",
     });

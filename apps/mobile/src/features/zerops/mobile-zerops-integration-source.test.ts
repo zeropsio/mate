@@ -30,6 +30,16 @@ describe("mobile Zerops integration", () => {
     expect(candidates).not.toContain("runtime.stateAtom");
   });
 
+  it("hosts the account runtime, and connects a Mate through its exchange driver", () => {
+    const provider = readSource("src/features/zerops/ZeropsDataProvider.tsx");
+    const connectRoute = readSource("src/features/zerops/ZeropsConnectRouteScreen.tsx");
+
+    expect(provider).toContain("makeAccountRuntime(");
+    expect(connectRoute).toContain("connectMate(environments, candidate.key)");
+    expect(connectRoute).not.toContain("exchangeZeropsContainerIdentity");
+    expect(connectRoute).not.toContain("connectZeropsIdentity");
+  });
+
   it("leaves the deleted raw candidate path with no importer anywhere", () => {
     const self = NodePath.resolve(new URL(import.meta.url).pathname);
     const roots = ["apps/mobile/src", "apps/web/src", "packages/client-runtime/src"].map((root) =>

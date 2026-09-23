@@ -1,10 +1,8 @@
-import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import {
   knownProjectsOf,
   knownServicesOf,
   projectKeyOf,
   ZeropsOrganizationId,
-  ZeropsServiceId,
   type CollectionRead,
   type InterestLease,
   type OrganizationRef,
@@ -12,22 +10,15 @@ import {
   type ProjectRef,
   type ServiceRecord,
 } from "@t3tools/client-runtime/zerops/data";
-import type { ContainerMachine, TargetKey } from "@t3tools/client-runtime/zerops/environments";
+import type { EnvironmentMachine, TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-import {
-  heldCandidates,
-  selectCandidates,
-  type CandidateRow,
-} from "@t3tools/client-runtime/zerops/projections";
+import { selectCandidates, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { useEnvironments } from "../../state/environments";
 import { mobileCandidates, type MobileCandidate } from "./candidate-listing";
-import { connectedZeropsOrigins } from "./candidate-origins";
-import type { MobileContainerTarget } from "./containers";
 import { useZeropsData, type ZeropsDataBinding } from "./ZeropsDataProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -47,7 +38,7 @@ interface InventoryReads {
 }
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
-const NO_MACHINES: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
+const NO_MACHINES: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
 const NO_SUBSCRIPTION = () => () => undefined;
 const noMachines = () => NO_MACHINES;
 
@@ -77,30 +68,9 @@ function organizationRefsOf(
       }));
 }
 
-/** Each listed Mate as the container store's target, on the service its flag is read on. */
-function containerTargetsOf(
-  organizations: ReadonlyArray<Known<ReadonlyArray<CandidateRow>>>,
-  projectRefs: ReadonlyMap<string, ProjectRef>,
-): ReadonlyArray<MobileContainerTarget> {
-  return organizations.flatMap((listing) =>
-    heldCandidates(listing).rows.flatMap((row): ReadonlyArray<MobileContainerTarget> => {
-      const project = projectRefs.get(row.project.id);
-      if (row.service === undefined || project === undefined) return [];
-      return [
-        {
-          key: row.key,
-          origin: row.containerOrigin ?? null,
-          platform: { project: row.project.status, service: row.service.status },
-          service: { kind: "service", project, serviceId: ZeropsServiceId.make(row.service.id) },
-        },
-      ];
-    }),
-  );
-}
-
 export function useZeropsCandidates(): {
   /**
-   * Every organization's candidates as knowledge (DESIGN §3), each with its container's verdict:
+   * Every organization's candidates as knowledge (DESIGN §3), each with its Mate's reachability:
    * "no projects" is only ever read off a known, complete listing (`candidatePickerBody`).
    */
   readonly listing: Known<ReadonlyArray<MobileCandidate>>;
@@ -111,8 +81,7 @@ export function useZeropsCandidates(): {
   readonly refresh: () => void;
 } {
   const { status, organizations } = useZeropsSession();
-  const { binding, error: runtimeError } = useZeropsData();
-  const { environments } = useEnvironments();
+  const { binding, environments, error: runtimeError } = useZeropsData();
   const [reads, setReads] = useState<InventoryReads | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [demandAttempt, setDemandAttempt] = useState(0);
@@ -291,37 +260,10 @@ export function useZeropsCandidates(): {
     [reads],
   );
 
-  const containers = binding?.containers ?? null;
-  const targets = useMemo((): ReadonlyArray<MobileContainerTarget> => {
-    if (reads === null || organizationListings === null) return [];
-    const projectRefs = new Map<string, ProjectRef>(
-      reads.projects.flatMap(({ read }) =>
-        read.value.flatMap((member) =>
-          member.knowledge === "observed"
-            ? [[member.record.ref.projectId, member.record.ref] as const]
-            : [],
-        ),
-      ),
-    );
-    return containerTargetsOf(organizationListings, projectRefs);
-  }, [organizationListings, reads]);
-  const connectedOrigins = useMemo(() => connectedZeropsOrigins(environments), [environments]);
-
-  useEffect(() => {
-    containers?.setTargets(targets);
-  }, [containers, targets]);
-  // A Mate this device holds a socket to is up, whatever a probe last guessed (§4.5).
-  useEffect(() => {
-    if (containers === null) return;
-    for (const target of targets) {
-      const origin = target.origin === null ? null : normalizeOrigin(target.origin);
-      containers.store.link(target.key, origin !== null && connectedOrigins.has(origin));
-    }
-  }, [connectedOrigins, containers, targets]);
-
+  // Every Mate's machine, as the account runtime's exchange driver holds it (§4.4).
   const machines = useSyncExternalStore(
-    containers?.store.subscribe ?? NO_SUBSCRIPTION,
-    containers?.store.machines ?? noMachines,
+    environments?.subscribe ?? NO_SUBSCRIPTION,
+    environments?.machines ?? noMachines,
   );
 
   const listing = useMemo(
@@ -330,11 +272,10 @@ export function useZeropsCandidates(): {
         ? UNREAD
         : mobileCandidates({
             organizations: organizationListings,
-            connectedOrigins,
-            containers: machines,
+            machines,
             nowMs: reads.atMs,
           }),
-    [connectedOrigins, machines, organizationListings, reads, status],
+    [machines, organizationListings, reads, status],
   );
 
   const refresh = useCallback(() => {

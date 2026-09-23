@@ -1,7 +1,7 @@
 import {
   reachabilityPhrase,
   type ContainerReachability,
-  type ContainerVerdict,
+  type Reachability,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
   mateOnlyOwnerOpensIt,
@@ -58,20 +58,9 @@ const CONTAINER_STATUS: Record<
   inactive: { label: "Not running", waiting: false },
 };
 
-const isContainerReachability = (container: ContainerVerdict): container is ContainerReachability =>
-  container.level !== "unknown" && container.level !== "ready";
-
 /** The verdict's cause, as the reachability copy words it (§4.4). */
-const containerNotice = (container: ContainerReachability): string | undefined =>
-  reachabilityPhrase({ kind: "container", container }, { nowMs: 0, mateName: MATE_NAME }).text ??
-  undefined;
-
-/** A live link keeps showing that the container restarts or updates under it (§4.4 row 5). */
-const connectedNotice = (container: ContainerVerdict): string | undefined =>
-  container.level === "restarting" || container.level === "updating"
-    ? (reachabilityPhrase({ kind: "ready", notice: container }, { nowMs: 0, mateName: MATE_NAME })
-        .text ?? undefined)
-    : undefined;
+const phraseOf = (verdict: Reachability, nowMs: number): string | undefined =>
+  reachabilityPhrase(verdict, { nowMs, mateName: MATE_NAME }).text ?? undefined;
 
 const withNotice = (
   presentation: Omit<ZeropsCandidatePresentation, "notice">,
@@ -79,20 +68,94 @@ const withNotice = (
 ): ZeropsCandidatePresentation =>
   notice === undefined ? presentation : { ...presentation, notice };
 
-function stateOf(candidate: MobileCandidate): ZeropsCandidatePresentation {
+const CHECKING: ZeropsCandidatePresentation = {
+  label: "Checking",
+  tone: "attention",
+  pulsing: true,
+  action: null,
+  section: "waiting",
+};
+
+/** A ready Mate's row, by where the account's machine has it (§4.4). */
+function mateState(candidate: MobileCandidate, nowMs: number): ZeropsCandidatePresentation {
+  if (candidate.connectable) {
+    return { label: "Ready", tone: "busy", pulsing: false, action: "Connect", section: "ready" };
+  }
+  const verdict = candidate.reachability;
+  if (verdict === null) return CHECKING;
+  const notice = phraseOf(verdict, nowMs);
+  switch (verdict.kind) {
+    case "connecting":
+    case "resolving":
+    case "reconnecting":
+    case "waiting-for-zerops":
+      return withNotice(
+        { label: "Connecting", tone: "attention", pulsing: true, action: null, section: "waiting" },
+        notice,
+      );
+    case "retrying":
+      return withNotice(
+        {
+          label: "Connecting",
+          tone: "attention",
+          pulsing: false,
+          action: "Try now",
+          section: "waiting",
+        },
+        notice,
+      );
+    case "refused-configuration":
+      return withNotice(
+        {
+          label: "Unavailable",
+          tone: "off",
+          pulsing: false,
+          action: "Try now",
+          section: "unavailable",
+        },
+        notice,
+      );
+    case "ready":
+      return withNotice(
+        { label: "Connected", tone: "ok", pulsing: false, action: "Open", section: "connected" },
+        notice,
+      );
+    case "container":
+    case "gone":
+    case "replaced":
+    case "refused-role":
+    case "update-required":
+    case "update-unavailable":
+    case "no-address":
+      return withNotice(
+        {
+          label: "Unavailable",
+          tone: "off",
+          pulsing: false,
+          action: null,
+          section: "unavailable",
+        },
+        notice,
+      );
+  }
+}
+
+function stateOf(candidate: MobileCandidate, nowMs: number): ZeropsCandidatePresentation {
   // The inventory has not read whether a container is there: nothing negative is said of it.
   if (candidate.presence === "unknown") {
     return { label: "Checking", tone: "off", pulsing: true, action: null, section: "waiting" };
   }
-  const { container } = candidate;
+  const verdict = candidate.reachability;
   if (candidate.group === "connected") {
+    // A live link keeps showing that the container restarts or updates under it (§4.4 row 5).
     return withNotice(
       { label: "Connected", tone: "ok", pulsing: false, action: "Open", section: "connected" },
-      connectedNotice(container),
+      verdict === null ? undefined : phraseOf(verdict, nowMs),
     );
   }
-  // The container store's verdict outranks the platform's statuses and any probe's silence.
-  if (candidate.service !== undefined && isContainerReachability(container)) {
+  // The container's verdict outranks the platform's statuses and any probe's silence.
+  if (candidate.service !== undefined && verdict?.kind === "container") {
+    const { container } = verdict;
     const status = CONTAINER_STATUS[container.level];
     const overdue = "overdue" in container && container.overdue;
     return withNotice(
@@ -103,14 +166,12 @@ function stateOf(candidate: MobileCandidate): ZeropsCandidatePresentation {
         action: null,
         section: status.waiting ? "waiting" : "unavailable",
       },
-      containerNotice(container),
+      phraseOf(verdict, nowMs),
     );
   }
   switch (candidate.group) {
     case "ready":
-      return container.level === "ready"
-        ? { label: "Ready", tone: "busy", pulsing: false, action: "Connect", section: "ready" }
-        : { label: "Checking", tone: "attention", pulsing: true, action: null, section: "waiting" };
+      return mateState(candidate, nowMs);
     case "provisioning":
       return withNotice(
         { label: "Starting", tone: "attention", pulsing: true, action: null, section: "waiting" },
@@ -134,12 +195,14 @@ function stateOf(candidate: MobileCandidate): ZeropsCandidatePresentation {
  */
 export function zeropsCandidatePresentation(
   candidate: MobileCandidate,
+  /** The moment a retry's countdown is worded at. */
+  nowMs: number,
   options: {
     readonly visibility?: RoleMateVisibility | undefined;
     readonly ownerName?: string | undefined;
   } = {},
 ): ZeropsCandidatePresentation {
-  const state = stateOf(candidate);
+  const state = stateOf(candidate, nowMs);
   if (options.visibility === "listed") {
     return {
       label: "Not yours",

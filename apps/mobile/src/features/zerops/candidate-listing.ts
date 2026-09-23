@@ -1,13 +1,12 @@
 /**
- * The project picker's listing (DESIGN §7.5, A10): the shared `selectCandidates` rows, joined
- * with the environments this device has connected and the container store's verdict on each
- * Mate, and what the picker draws of them. Pure; `useZeropsCandidates` feeds it.
+ * The project picker's listing (DESIGN §7.5, A10): the shared `selectCandidates` rows, each joined
+ * with its Mate as the account runtime's exchange driver holds it — the one reachability verdict
+ * (§4.4) — and what the picker draws of them. Pure; `useZeropsCandidates` feeds it.
  */
-import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  containerVerdict,
-  type ContainerMachine,
-  type ContainerVerdict,
+  selectReachability,
+  type EnvironmentMachine,
+  type Reachability,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { Freshness, Known, KnownSurface } from "@t3tools/client-runtime/zerops/knowledge";
@@ -18,11 +17,13 @@ import {
   type CandidateRow,
   type CandidatesNotice,
 } from "@t3tools/client-runtime/zerops/projections";
-import type { EnvironmentId } from "@t3tools/contracts";
 
-/** A listed candidate with its container as the container store holds it now. */
+/** A listed candidate with its Mate as the account's machines hold it now. */
 export interface MobileCandidate extends CandidateRow {
-  readonly container: ContainerVerdict;
+  /** Reaching its Mate, the one verdict (§4.4); null while the account has no machine for it. */
+  readonly reachability: Reachability | null;
+  /** Nothing wants its Mate yet and its container is up: the person's Connect is what starts it. */
+  readonly connectable: boolean;
 }
 
 type Listing = Known<ReadonlyArray<CandidateRow>>;
@@ -97,40 +98,48 @@ function combineOrganizations(organizations: ReadonlyArray<Listing>, nowMs: numb
   };
 }
 
-/** A ready row whose origin an environment this device connected serves is connected to it. */
-function withConnection(
-  row: CandidateRow,
-  connectedOrigins: ReadonlyMap<string, EnvironmentId>,
-): CandidateRow {
-  if (row.group !== "ready" || row.containerOrigin === undefined) return row;
-  const environmentId = connectedOrigins.get(
-    normalizeOrigin(row.containerOrigin) ?? row.containerOrigin,
-  );
-  return environmentId === undefined ? row : { ...row, group: "connected", environmentId };
-}
-
-const UNKNOWN_CONTAINER: ContainerVerdict = { level: "unknown" };
+/** The verdicts that say where a wanted Mate is on its way, which an idle one never is. */
+const JOURNEY: ReadonlySet<Reachability["kind"]> = new Set(["connecting", "resolving"]);
 
 /**
- * The picker's listing: every organization's `selectCandidates` rows, each joined with the
- * environment this device connected at its origin and its container's verdict — unknown until
- * the container store holds the target.
+ * The row as its Mate's machine reads: a held credential on a live link is connected to its
+ * environment. A Mate nothing wants yet has no journey to show, only its facts — its container's
+ * verdict, or that it is gone or has no address — and the person's Connect starts it.
+ */
+function withMate(row: CandidateRow, machine: EnvironmentMachine | undefined): MobileCandidate {
+  if (machine === undefined) return { ...row, reachability: null, connectable: false };
+  const { credential } = machine;
+  const verdict = selectReachability(machine, null);
+  if (!machine.guards.want && credential.kind === "none") {
+    const journey = JOURNEY.has(verdict.kind);
+    return {
+      ...row,
+      reachability: journey ? null : verdict,
+      connectable: journey && machine.container.level === "ready",
+    };
+  }
+  return verdict.kind === "ready" && credential.kind === "held"
+    ? {
+        ...row,
+        group: "connected",
+        environmentId: credential.environmentId,
+        reachability: verdict,
+        connectable: false,
+      }
+    : { ...row, reachability: verdict, connectable: false };
+}
+
+/**
+ * The picker's listing: every organization's `selectCandidates` rows, each joined with its Mate's
+ * machine — none until the account's first grant built them.
  */
 export function mobileCandidates(input: {
   readonly organizations: ReadonlyArray<Known<ReadonlyArray<CandidateRow>>>;
-  readonly connectedOrigins: ReadonlyMap<string, EnvironmentId>;
-  readonly containers: ReadonlyMap<TargetKey, ContainerMachine>;
+  readonly machines: ReadonlyMap<TargetKey, EnvironmentMachine>;
   readonly nowMs: number;
 }): Known<ReadonlyArray<MobileCandidate>> {
-  return presentCandidates(
-    combineOrganizations(input.organizations, input.nowMs),
-    (row): MobileCandidate => {
-      const machine = input.containers.get(row.key);
-      return {
-        ...withConnection(row, input.connectedOrigins),
-        container: machine === undefined ? UNKNOWN_CONTAINER : containerVerdict(machine),
-      };
-    },
+  return presentCandidates(combineOrganizations(input.organizations, input.nowMs), (row) =>
+    withMate(row, input.machines.get(row.key)),
   );
 }
 

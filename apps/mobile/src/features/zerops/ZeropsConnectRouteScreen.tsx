@@ -1,5 +1,4 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
-import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import {
   resolveMateVisibility,
   type RoleMateVisibility,
@@ -14,16 +13,13 @@ import { AppText as Text, AppTextInput as TextInput } from "../../components/App
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { ZeropsMark } from "../../components/ZeropsMark";
 import { StatusDot } from "../../components/zerops";
-import { connectZeropsIdentity } from "../../connection/onboarding";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { uuidv4 } from "../../lib/uuid";
-import { useAtomCommand } from "../../state/use-atom-command";
 import { ConnectionSheetButton } from "../connection/ConnectionSheetButton";
 import { useSetHomeEnvironmentId } from "../home/home-list-options";
 import { candidatePickerBody, type MobileCandidate } from "./candidate-listing";
+import { connectMate } from "./connect";
 import { zeropsErrorMessage } from "./errors";
-import { exchangeZeropsContainerIdentity } from "./identity-exchange";
 import {
   CANDIDATE_SECTION_LABELS,
   CANDIDATE_SECTIONS,
@@ -31,6 +27,7 @@ import {
   type ZeropsCandidatePresentation,
 } from "./presentation";
 import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useZeropsData } from "./ZeropsDataProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 type ZeropsConnectSurfaceProps = {
@@ -271,9 +268,9 @@ function ListingNotice(props: { readonly notice: CandidatesNotice; readonly onRe
 }
 
 function ProjectPickerSurface(props: { readonly onDone: (environmentId: EnvironmentId) => void }) {
-  const { client, user, signOut, newRecoveryToken, clearNewRecoveryToken } = useZeropsSession();
+  const { user, signOut, newRecoveryToken, clearNewRecoveryToken } = useZeropsSession();
+  const { environments } = useZeropsData();
   const { listing, readAtMs, error, refresh } = useZeropsCandidates();
-  const connect = useAtomCommand(connectZeropsIdentity, { reportFailure: false });
   const connectingRef = useRef(false);
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -305,8 +302,10 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
       const visibility = visibilityOf(candidate);
       return {
         candidate,
+        // Worded at the moment the listing was read, like its notice.
         presentation: zeropsCandidatePresentation(
           candidate,
+          readAtMs,
           visibility === undefined ? {} : { visibility },
         ),
       };
@@ -315,8 +314,9 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
       section,
       rows: presented.filter((row) => row.presentation.section === section),
     })).filter((section) => section.rows.length > 0);
-  }, [body, visibilityOf]);
+  }, [body, readAtMs, visibilityOf]);
 
+  // The row's verb: Open a connected Mate, else the account's Connect on its target (§4.4).
   const openCandidate = useCallback(
     async (candidate: MobileCandidate) => {
       if (connectingRef.current) return;
@@ -324,46 +324,23 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         props.onDone(candidate.environmentId);
         return;
       }
-      if (visibilityOf(candidate) === "listed") return;
-      if (
-        candidate.group !== "ready" ||
-        candidate.container.level !== "ready" ||
-        !candidate.containerOrigin
-      ) {
-        return;
-      }
+      if (visibilityOf(candidate) === "listed" || environments === null) return;
       connectingRef.current = true;
       setConnectingKey(candidate.key);
       setActionError(null);
       try {
-        // The token is minted in the org that owns the Mate's project.
-        const clientId = candidate.project.clientId;
-        const result = await exchangeZeropsContainerIdentity({
-          containerOrigin: candidate.containerOrigin,
-          throwaway:
-            client.session?.accessToken && clientId
-              ? {
-                  platform: zeropsThrowawayPlatform(client),
-                  clientId,
-                  projectId: candidate.project.id,
-                  nonce: uuidv4(),
-                }
-              : null,
-          connect,
-        });
-        if (result._tag === "Failure") {
+        const result = await connectMate(environments, candidate.key);
+        if (result._tag === "Failed") {
           setActionError(result.error);
           return;
         }
         props.onDone(result.environmentId);
-      } catch (cause) {
-        setActionError(zeropsErrorMessage(cause));
       } finally {
         connectingRef.current = false;
         setConnectingKey(null);
       }
     },
-    [client, connect, props, visibilityOf],
+    [environments, props, visibilityOf],
   );
 
   return (

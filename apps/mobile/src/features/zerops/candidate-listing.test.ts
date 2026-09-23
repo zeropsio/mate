@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
-import { makeContainerStore } from "@t3tools/client-runtime/zerops/environments";
+import {
+  initialEnvironment,
+  type EnvironmentMachine,
+  type TargetKey,
+} from "@t3tools/client-runtime/zerops/environments";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 
@@ -23,7 +27,8 @@ const row = (overrides: Partial<MobileCandidate> = {}): MobileCandidate => ({
   presence: "known",
   service: { id: "service-a", name: "zcp", status: "ACTIVE" },
   containerOrigin: "https://zcp-demo.example.test",
-  container: { level: "ready" },
+  reachability: null,
+  connectable: false,
   ...overrides,
 });
 
@@ -121,22 +126,19 @@ const platformRow = (projectId: string): CandidateRow => ({
 });
 
 describe("mobileCandidates", () => {
-  const NOTHING_CONNECTED = new Map();
-  const NO_CONTAINERS = new Map();
+  const NO_MACHINES: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
 
   it("lists every organization's rows as one listing, as known as its least known organization", () => {
     const a = platformRow("project-a");
     const b = platformRow("project-b");
     const both = mobileCandidates({
       organizations: [listed([a]), listed([b])],
-      connectedOrigins: NOTHING_CONNECTED,
-      containers: NO_CONTAINERS,
+      machines: NO_MACHINES,
       nowMs: NOW_MS,
     });
     const oneUnread = mobileCandidates({
       organizations: [listed([a]), { state: "unread", waitingFor: null }],
-      connectedOrigins: NOTHING_CONNECTED,
-      containers: NO_CONTAINERS,
+      machines: NO_MACHINES,
       nowMs: NOW_MS,
     });
 
@@ -160,8 +162,7 @@ describe("mobileCandidates", () => {
     expect(
       mobileCandidates({
         organizations: [{ state: "reading", sinceMs: NOW_MS, attempt: 1 }, failed],
-        connectedOrigins: NOTHING_CONNECTED,
-        containers: NO_CONTAINERS,
+        machines: NO_MACHINES,
         nowMs: NOW_MS,
       }),
     ).toBe(failed);
@@ -169,8 +170,7 @@ describe("mobileCandidates", () => {
       candidatePickerBody(
         mobileCandidates({
           organizations: [],
-          connectedOrigins: NOTHING_CONNECTED,
-          containers: NO_CONTAINERS,
+          machines: NO_MACHINES,
           nowMs: NOW_MS,
         }),
         NOW_MS,
@@ -178,35 +178,83 @@ describe("mobileCandidates", () => {
     ).toEqual({ kind: "none" });
   });
 
-  it("joins each row with the environment this device connected and its container's verdict", () => {
-    const store = makeContainerStore({
-      clock: { now: () => ({ wall: NOW_MS, mono: NOW_MS }), setTimer: () => () => undefined },
-      probe: () => new Promise(() => undefined),
-      readMateFlag: () => Promise.resolve("unknown"),
-      intents: { read: () => null, write: () => undefined },
-    });
-    const a = platformRow("project-a");
-    const b = platformRow("project-b");
-    store.setTargets([
-      {
-        key: b.key,
-        origin: b.containerOrigin ?? null,
-        platform: { project: "ACTIVE", service: "RESTARTING" },
-      },
-    ]);
+  it("joins each row with its Mate's machine, and none before the first grant built them", () => {
+    const [connected, restarting, idle, wanted, unbuilt] = [
+      "project-a",
+      "project-b",
+      "project-c",
+      "project-d",
+      "project-e",
+    ].map(platformRow) as [CandidateRow, CandidateRow, CandidateRow, CandidateRow, CandidateRow];
     const environmentId = EnvironmentId.make("environment-a");
+    const idleMachine: EnvironmentMachine = {
+      ...initialEnvironment({ record: null }),
+      presence: { kind: "present", origin: idle.containerOrigin ?? "" },
+      container: { level: "ready" },
+    };
+    const machines = new Map<TargetKey, EnvironmentMachine>([
+      [
+        connected.key,
+        {
+          ...idleMachine,
+          guards: { ...idleMachine.guards, want: true },
+          credential: {
+            kind: "held",
+            environmentId,
+            installed: true,
+            staleBlock: false,
+            rereading: null,
+          },
+          link: { phase: "connected", since: { wall: NOW_MS, mono: 0 } },
+        },
+      ],
+      [
+        restarting.key,
+        { ...idleMachine, container: { level: "restarting", by: "platform", overdue: false } },
+      ],
+      [idle.key, idleMachine],
+      [
+        wanted.key,
+        {
+          ...idleMachine,
+          guards: { ...idleMachine.guards, want: true },
+          credential: { kind: "waiting", on: "access", reconnect: false },
+        },
+      ],
+    ]);
 
     const listing = mobileCandidates({
-      organizations: [listed([a, b])],
-      connectedOrigins: new Map([["https://zcp-project-a.example.test", environmentId]]),
-      containers: store.machines(),
+      organizations: [listed([connected, restarting, idle, wanted, unbuilt])],
+      machines,
       nowMs: NOW_MS,
     });
 
     expect(listing.state === "known" ? listing.value : []).toMatchObject([
-      { key: a.key, group: "connected", environmentId, container: { level: "unknown" } },
-      { key: b.key, group: "ready", container: { level: "restarting", by: "platform" } },
+      {
+        key: connected.key,
+        group: "connected",
+        environmentId,
+        reachability: { kind: "ready", notice: null },
+        connectable: false,
+      },
+      {
+        key: restarting.key,
+        group: "ready",
+        reachability: {
+          kind: "container",
+          container: { level: "restarting", by: "platform", overdue: false },
+        },
+        connectable: false,
+      },
+      // Nothing wants it yet: it has no journey to show, and the person's Connect starts one.
+      { key: idle.key, group: "ready", reachability: null, connectable: true },
+      {
+        key: wanted.key,
+        group: "ready",
+        reachability: { kind: "connecting", waitingOn: "access" },
+        connectable: false,
+      },
+      { key: unbuilt.key, group: "ready", reachability: null, connectable: false },
     ]);
-    store.dispose();
   });
 });
