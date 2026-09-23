@@ -42,19 +42,50 @@ const sourcePath = (filename: string): string | undefined => {
   return undefined;
 };
 
-/** `[]`, `undefined` or `null`: the empties a failure is turned into. */
+/** `[]`, `undefined` (`void …` included) or `null`: the empties a failure is turned into. */
 const isEmptyValue = (node: unknown): boolean => {
   const expression = unwrapExpression(node);
   if (Option.isNone(expression)) return false;
   const value = expression.value;
   if (value.type === "ArrayExpression") return value.elements.length === 0;
   if (value.type === "Identifier") return value.name === "undefined";
+  if (value.type === "UnaryExpression") return value.operator === "void";
   return value.type === "Literal" && value.value === null && !("regex" in value);
 };
 
 /**
- * A handler that ends in an empty: `() => []`, or a block whose last statement returns one
- * (`(cause) => { log(cause); return null; }`).
+ * Whether a statement list can end in an empty: its last statement returns one, returns nothing,
+ * or lets control run off the end (`{}`, `{ log(cause); }`, an `if` a branch of which does).
+ * A `try`, `switch` or loop at the end is not followed.
+ */
+const endsEmpty = (statements: ReadonlyArray<ESTree.Statement>): boolean => {
+  const last = statements.at(-1);
+  if (last === undefined) return true;
+  switch (last.type) {
+    case "ReturnStatement":
+      return last.argument === null || isEmptyValue(last.argument);
+    case "ThrowStatement":
+    case "TryStatement":
+    case "SwitchStatement":
+    case "ForStatement":
+    case "ForInStatement":
+    case "ForOfStatement":
+    case "WhileStatement":
+    case "DoWhileStatement":
+    case "LabeledStatement":
+      return false;
+    case "BlockStatement":
+      return endsEmpty(last.body);
+    case "IfStatement":
+      return endsEmpty([last.consequent]) || last.alternate === null || endsEmpty([last.alternate]);
+    default:
+      return true;
+  }
+};
+
+/**
+ * A handler that answers an empty: `() => []`, `() => void 0`, or a block that ends in one
+ * (`(cause) => { log(cause); return null; }`, `(cause) => { log(cause); }`).
  */
 const answersEmpty = (node: unknown): boolean => {
   const handler = unwrapExpression(node);
@@ -63,18 +94,31 @@ const answersEmpty = (node: unknown): boolean => {
   if (fn.type !== "ArrowFunctionExpression" && fn.type !== "FunctionExpression") return false;
   const body = fn.body;
   if (body === null || body === undefined) return false;
-  if (body.type !== "BlockStatement") return isEmptyValue(body);
-  const last = body.body.at(-1);
-  return last?.type === "ReturnStatement" && last.argument !== null && isEmptyValue(last.argument);
+  return body.type === "BlockStatement" ? endsEmpty(body.body) : isEmptyValue(body);
 };
 
-const isCatchCall = (node: ESTree.CallExpression): boolean => {
-  const callee = unwrapExpression(node.callee);
+/** The receiver of `receiver.method(…)`, when `node` is that call. */
+const methodReceiver = (node: unknown, method: string): ESTree.Node | undefined => {
+  const call = Option.getOrUndefined(unwrapExpression(node));
+  if (call?.type !== "CallExpression") return undefined;
+  const callee = Option.getOrUndefined(unwrapExpression(call.callee));
+  return callee?.type === "MemberExpression" &&
+    !callee.computed &&
+    Option.getOrUndefined(getPropertyName(callee.property)) === method
+    ? callee.object
+    : undefined;
+};
+
+/**
+ * `p.then(onFulfilled)` whose handler already answers an empty: a catch after it turns no value
+ * into an empty, since the chain carries none (`.then(() => { refresh(); }).catch(…)`).
+ */
+const answersEmptyOnSuccess = (node: ESTree.Node): boolean => {
+  const call = Option.getOrUndefined(unwrapExpression(node));
   return (
-    Option.isSome(callee) &&
-    callee.value.type === "MemberExpression" &&
-    !callee.value.computed &&
-    Option.getOrUndefined(getPropertyName(callee.value.property)) === "catch"
+    call?.type === "CallExpression" &&
+    methodReceiver(call, "then") !== undefined &&
+    answersEmpty(call.arguments[0])
   );
 };
 
@@ -147,11 +191,35 @@ const TRANSPARENT_PARENTS = new Set([
   "TSTypeAssertion",
 ]);
 
-/** A value nobody reads (`p.catch(…);`, `await p.catch(…);`, `void p.catch(…)`) holds no empty. */
+/** `p.finally(…)` around `p`: it settles with `p`'s value. */
+const finallyCallOn = (node: ESTree.Node): ESTree.Node | undefined => {
+  const member = node.parent;
+  if (
+    member?.type !== "MemberExpression" ||
+    member.object !== node ||
+    member.computed ||
+    Option.getOrUndefined(getPropertyName(member.property)) !== "finally"
+  ) {
+    return undefined;
+  }
+  const call = member.parent;
+  return call?.type === "CallExpression" && call.callee === member ? call : undefined;
+};
+
+/**
+ * A value nobody reads (`p.catch(…);`, `await p.catch(…);`, `void p.catch(…)`, also after a
+ * `.finally(…)`) holds no empty.
+ */
 const isDiscarded = (node: ESTree.Node): boolean => {
   let current: ESTree.Node = node;
-  while (current.parent !== null && TRANSPARENT_PARENTS.has(current.parent.type)) {
-    current = current.parent;
+  for (;;) {
+    if (current.parent !== null && TRANSPARENT_PARENTS.has(current.parent.type)) {
+      current = current.parent;
+      continue;
+    }
+    const settled = finallyCallOn(current);
+    if (settled === undefined) break;
+    current = settled;
   }
   const parent = current.parent;
   return (
@@ -163,12 +231,17 @@ const isDiscarded = (node: ESTree.Node): boolean => {
 /**
  * Guards the failure-to-empty shapes of the client state model
  * (`docs/internals/zerops/client-state-model.md`, "Negatives are earned") in the Zerops client
- * code: a rejected read turned into `[]`, `undefined` or `null` by `.catch`, and a store read
- * defaulted to `[]` or an `EMPTY_…` constant with `??`. Without types or inter-file data flow,
- * these stay gaps: a store read that reaches the default through a prop, a parameter or another
- * module; `.then(onFulfilled, () => [])`; Effect's `orElseSucceed` or `catch` into
- * `Effect.succeed([])`; a handler that stores the empty with a setter instead of returning it;
- * and `|| []`. A caught empty that nobody reads (`p.catch(() => undefined);`) is not a finding.
+ * code: a rejected read turned into `[]`, `undefined` or `null` by `.catch` (a handler that
+ * returns nothing or runs off its end answers `undefined`), and a store read defaulted to `[]` or
+ * an `EMPTY_…` constant with `??`. Without types or inter-file data flow, these stay gaps: a
+ * store read that reaches the default through a prop, a parameter or another module;
+ * `.then(onFulfilled, () => [])`; Effect's `orElseSucceed` or `catch` into `Effect.succeed([])`;
+ * a handler that stores the empty with a setter instead of returning it; a handler ending in a
+ * `try`, `switch` or loop; and `|| []`. Not a finding: a caught empty that nobody reads
+ * (`p.catch(() => undefined);`, also after a `.finally`), and a catch after a `.then` handler
+ * that already answers an empty, since that chain carries no value to lose. A command's promise
+ * kept after a catch that answers nothing (`return signOut().catch(show)`) reads the same as a
+ * read and is reported.
  */
 export default defineRule({
   meta: {
@@ -202,7 +275,9 @@ export default defineRule({
 
     return {
       CallExpression(node) {
-        if (!isCatchCall(node) || !answersEmpty(node.arguments[0]) || isDiscarded(node)) return;
+        const receiver = methodReceiver(node, "catch");
+        if (receiver === undefined || !answersEmpty(node.arguments[0])) return;
+        if (answersEmptyOnSuccess(receiver) || isDiscarded(node)) return;
         report(
           node,
           "A failed read caught into an empty reads as a negative. Keep the failure: hold the value as Known and let the view say it could not read it.",

@@ -123,6 +123,11 @@ describe(RULE, () => {
     ["a block that logs, then returns the empty", "(cause) => { console.warn(cause); return []; }"],
     ["a function expression", "function () { return undefined; }"],
     ["a parenthesized, asserted empty", "() => ([] as ReadonlyArray<string>)"],
+    ["an empty block", "() => {}"],
+    ["a block that logs, then returns nothing", "(cause) => { console.warn(cause); return; }"],
+    ["a block that only logs", "(cause) => { console.warn(cause); }"],
+    ["a block that returns only on one branch", "(cause) => { if (fatal(cause)) throw cause; }"],
+    ["a void expression", "() => void 0"],
   ] as const) {
     webHook.invalid(
       `reports ${name} catching into an empty`,
@@ -137,6 +142,10 @@ describe(RULE, () => {
     [
       "an early empty that rethrows otherwise",
       "(cause) => { if (gone(cause)) return []; throw cause; }",
+    ],
+    [
+      "a branch that answers a placeholder and one that rethrows",
+      "(cause) => { if (gone(cause)) { return UNREAD_FORGE; } else { throw cause; } }",
     ],
     ["a handler reference", "NOOP"],
   ] as const) {
@@ -156,6 +165,10 @@ describe(RULE, () => {
       "a void expression",
       `export const drop = (body) => { void body.cancel().catch(() => null); };`,
     ],
+    [
+      "a void expression after a finally",
+      `export const drop = (body) => { void body.cancel().catch((cause) => { fail(cause); }).finally(done); };`,
+    ],
   ] as const) {
     webHook.valid(`allows a caught empty discarded as ${name}`, source);
   }
@@ -163,6 +176,16 @@ describe(RULE, () => {
   webHook.invalid(
     "reports a caught empty that is kept",
     `export const queue = (done) => { let tail; tail = done.catch(() => undefined); return tail; };`,
+  );
+
+  webHook.invalid(
+    "reports a caught empty kept after a finally",
+    `export const read = (client) => client.listTags("o", "r").catch(() => []).finally(done);`,
+  );
+
+  webHook.valid(
+    "allows a catch after a then that answers nothing",
+    `export const load = (client) => { const op = client.list().then((rows) => { show(rows); }).catch((cause) => { fail(cause); }); return op; };`,
   );
 
   webHook.valid(
