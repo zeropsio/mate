@@ -14,5 +14,15 @@ export type {
   WithholdingCause,
   Withholding,
 } from "./known.ts";
+// The invalidation bus is a driver (§7.2 rule 2): this pure barrel carries its types, and the
+// account runtime imports the bus from `./invalidation.ts`.
+export type {
+  GiteaOrigin,
+  Invalidation,
+  InvalidationBus,
+  InvalidationBusOptions,
+  InvalidationSignal,
+  TargetKey,
+} from "./invalidation.ts";
 export * from "./presentation.ts";
 export * from "./retryPolicy.ts";
