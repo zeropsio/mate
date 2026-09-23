@@ -4,9 +4,14 @@ import {
   hasCreationErrors,
   proposedEnvironmentName,
   recipeOptions,
+  validateBotName,
   validateCreationForm,
   type RecipeOption,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+
+/** The account's Mates' names, read in full. */
+const FEN_TAKEN = { names: ["Fen"], complete: true };
+const NONE_TAKEN = { names: [], complete: true };
 
 /** A tier as the group repo's `main` hands it over, already import-ready. */
 const TIER = {
@@ -52,6 +57,56 @@ describe("recipeOptions", () => {
   });
 });
 
+describe("validateBotName", () => {
+  it.each<{
+    readonly name: string;
+    readonly value: string;
+    readonly taken: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
+    readonly current?: string;
+    readonly verdict: string | undefined;
+  }>([
+    {
+      name: "an unread listing never reads as no names taken",
+      value: "Ada",
+      taken: { names: [], complete: false },
+      verdict: "Checking which names are taken…",
+    },
+    {
+      name: "a name read as taken is refused while the rest are read",
+      value: "fen",
+      taken: { names: ["Fen"], complete: false },
+      verdict: "fen is already an agent on this account.",
+    },
+    {
+      name: "a name missing from a partial listing may still be taken",
+      value: "Ada",
+      taken: { names: ["Fen"], complete: false },
+      verdict: "Checking which names are taken…",
+    },
+    {
+      name: "a name missing from a complete listing is free",
+      value: "Ada",
+      taken: { names: ["Fen"], complete: true },
+      verdict: undefined,
+    },
+    {
+      name: "the Mate's own name stays its own while the rest are read",
+      value: "Fen",
+      taken: { names: ["Fen"], complete: false },
+      current: "Fen",
+      verdict: undefined,
+    },
+    {
+      name: "an empty name is refused before anything is read",
+      value: " ",
+      taken: { names: [], complete: false },
+      verdict: "Give the agent a name.",
+    },
+  ])("$name", ({ value, taken, current, verdict }) => {
+    expect(validateBotName(value, taken, current === undefined ? {} : { current })).toBe(verdict);
+  });
+});
+
 describe("validateCreationForm", () => {
   const options: ReadonlyArray<RecipeOption> = recipeOptions({
     roleLabel: "stage",
@@ -67,34 +122,46 @@ describe("validateCreationForm", () => {
 
   it("accepts a complete form", () => {
     expect(
-      hasCreationErrors(validateCreationForm(valid, { takenBotNames: ["Fen"], options })),
+      hasCreationErrors(validateCreationForm(valid, { takenBotNames: FEN_TAKEN, options })),
     ).toBe(false);
   });
 
   it("wants a name for the environment", () => {
-    expect(validateCreationForm({ ...valid, name: " " }, { takenBotNames: [], options }).name).toBe(
-      "Give the environment a name.",
-    );
+    expect(
+      validateCreationForm({ ...valid, name: " " }, { takenBotNames: NONE_TAKEN, options }).name,
+    ).toBe("Give the environment a name.");
   });
 
   it("wants a name for the agent, short and unused", () => {
     expect(
-      validateCreationForm({ ...valid, botName: "" }, { takenBotNames: [], options }).botName,
+      validateCreationForm({ ...valid, botName: "" }, { takenBotNames: NONE_TAKEN, options })
+        .botName,
     ).toBe("Give the agent a name.");
     expect(
-      validateCreationForm({ ...valid, botName: "x".repeat(25) }, { takenBotNames: [], options })
-        .botName,
+      validateCreationForm(
+        { ...valid, botName: "x".repeat(25) },
+        { takenBotNames: NONE_TAKEN, options },
+      ).botName,
     ).toContain("24");
     expect(
-      validateCreationForm({ ...valid, botName: "fen" }, { takenBotNames: ["Fen"], options })
+      validateCreationForm({ ...valid, botName: "fen" }, { takenBotNames: FEN_TAKEN, options })
         .botName,
     ).toContain("already");
+  });
+
+  it("waits for the rest of the listing before a name it has not read passes as free", () => {
+    expect(
+      validateCreationForm(valid, {
+        takenBotNames: { names: ["Fen"], complete: false },
+        options,
+      }).botName,
+    ).toBe("Checking which names are taken…");
   });
 
   it("does not care about the agent's name when there is no agent", () => {
     const errors = validateCreationForm(
       { ...valid, withAgent: false, botName: "" },
-      { takenBotNames: [], options },
+      { takenBotNames: NONE_TAKEN, options },
     );
     expect(errors.botName).toBeUndefined();
   });
@@ -102,14 +169,15 @@ describe("validateCreationForm", () => {
   it("refuses nothing yet without an agent, and names a way out", () => {
     const errors = validateCreationForm(
       { ...valid, withAgent: false, recipeId: "none" },
-      { takenBotNames: [], options },
+      { takenBotNames: NONE_TAKEN, options },
     );
     expect(errors.recipe).toContain("switch the agent on");
   });
 
   it("refuses an option that is not on offer", () => {
     expect(
-      validateCreationForm({ ...valid, recipeId: "store" }, { takenBotNames: [], options }).recipe,
+      validateCreationForm({ ...valid, recipeId: "store" }, { takenBotNames: NONE_TAKEN, options })
+        .recipe,
     ).toBe("Choose what goes in the environment.");
   });
 });
@@ -125,7 +193,7 @@ describe("validateCreationForm, on an environment with no agent", () => {
     expect(
       validateCreationForm(
         { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
-        { takenBotNames: [], options },
+        { takenBotNames: NONE_TAKEN, options },
       ).recipe,
     ).toBe("This project has no recipe on main yet. Merge one first, or switch the agent on.");
   });
@@ -135,7 +203,7 @@ describe("validateCreationForm, on an environment with no agent", () => {
     expect(
       validateCreationForm(
         { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
-        { takenBotNames: [], options },
+        { takenBotNames: NONE_TAKEN, options },
       ).recipe,
     ).toBe("Take the project's recipe, or switch the agent on to have one set up.");
   });

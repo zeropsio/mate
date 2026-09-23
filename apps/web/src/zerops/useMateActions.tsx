@@ -28,11 +28,7 @@ import {
   type ZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
-import {
-  heldCandidates,
-  takenBotNames,
-  type TakenBotNames,
-} from "@t3tools/client-runtime/zerops/projections";
+import { heldCandidates, takenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { resolveMateVerbs, resolveMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -100,24 +96,6 @@ export interface MateActionsInput {
 interface RegistryState {
   readonly registry: Parameters<typeof resolveMateRegistration>[0]["registry"];
   readonly refresh: () => void;
-}
-
-/**
- * A Mate's new name against the names the account's Mates already go by. A name read as taken is
- * refused at once; one missing from a listing not read in full may still be taken, so it waits
- * for the rest (M5) instead of passing as free. Keeping the Mate's own name needs no listing.
- */
-export function validateMateName(
-  value: string,
-  taken: TakenBotNames,
-  current: string | undefined,
-): string | undefined {
-  const verdict = validateBotName(value, taken.names, current === undefined ? {} : { current });
-  if (verdict !== undefined || taken.complete) return verdict;
-  const kept =
-    current !== undefined &&
-    current.toLowerCase() === value.replace(/\s+/g, " ").trim().toLowerCase();
-  return kept ? undefined : "Checking which names are taken…";
 }
 
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
@@ -502,7 +480,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           title={`Rename the Mate in ${dialog.candidate.project.name}`}
           validate={(value) => {
             const current = readZeropsGroupTags(dialog.candidate.project.tagList).bot;
-            return validateMateName(value, taken, current);
+            return validateBotName(value, taken, current === undefined ? {} : { current });
           }}
         />
       ) : null}

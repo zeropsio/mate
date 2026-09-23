@@ -10,6 +10,7 @@ import type {
   EnvironmentRecipeChoice,
   ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
+import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { useId, useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
@@ -56,7 +57,8 @@ export interface ZeropsEnvironmentCreationFormProps {
    */
   readonly proposeName?: ((botName: string) => string) | undefined;
   readonly defaultWithAgent: boolean;
-  readonly takenBotNames: ReadonlyArray<string>;
+  /** The account's Mates' names, and whether the listing read them all (`takenBotNames`). */
+  readonly takenBotNames: TakenBotNames;
   /** The tier read from the group repo's `main`, when one is merged. */
   readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
   /** The services that tier declares, for the line under the option. */

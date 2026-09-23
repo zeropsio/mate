@@ -51,6 +51,7 @@ import {
   heldCandidates,
   listsNoProject,
   takenBotNames,
+  type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
@@ -102,7 +103,9 @@ import {
   readZeropsToolKind,
   defaultAgentForRole,
   generateBotName,
+  hasBotName,
   keptOrGeneratedBotName,
+  type RandomBytes,
   GROUP_BEING_SET_UP_LINE,
   hasMate,
   planEnvironmentCreation,
@@ -366,6 +369,21 @@ export function hasNoZeropsProject(input: {
     input.listing,
     (candidate) => readZeropsToolKind(candidate.project.tagList) === undefined,
   );
+}
+
+/**
+ * The name *Set up Mate* gives a half-made Mate: the one it already has, or a fresh one once every
+ * Mate's name on the account is read. Until then a fresh name may already be somebody's (M5), so
+ * there is none yet — `undefined`, and the setup waits for the listing.
+ */
+export function setUpMateBotName(
+  existing: string | undefined,
+  taken: TakenBotNames,
+  randomBytes: RandomBytes,
+): string | undefined {
+  return hasBotName(existing) || taken.complete
+    ? keptOrGeneratedBotName(existing, taken.names, randomBytes)
+    : undefined;
 }
 
 const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
@@ -1048,6 +1066,19 @@ function ZeropsProjectsContent() {
   const setUpMate = useCallback(
     async (candidate: ZeropsCandidate) => {
       if (!activeOrganization || settingUpKey !== null) return;
+      // A recovery keeps the name the Mate already has: the project is named
+      // after it, and a fresh name leaves the two disagreeing.
+      const botName = setUpMateBotName(
+        readZeropsGroupTags(candidate.project.tagList).bot,
+        taken,
+        (bytes) => crypto.getRandomValues(bytes),
+      );
+      if (botName === undefined) {
+        setConnectError(
+          "Still reading which names your Mates go by. Try Set up Mate again in a moment.",
+        );
+        return;
+      }
       const isCurrent = captureAccountLifetime();
       setSettingUpKey(candidate.key);
       setConnectError(null);
@@ -1061,18 +1092,7 @@ function ZeropsProjectsContent() {
         const project = projectRef(activeOrganization.id, projectId);
         await runZeropsCommand(runtime.commands.importDevelopmentContainer({ project, agents }));
         if (!isCurrent()) return;
-        await runZeropsCommand(
-          runtime.commands.nameProjectAgent(
-            project,
-            // A recovery keeps the name the Mate already has: the project is
-            // named after it, and a fresh name leaves the two disagreeing.
-            keptOrGeneratedBotName(
-              readZeropsGroupTags(candidate.project.tagList).bot,
-              taken.names,
-              (bytes) => crypto.getRandomValues(bytes),
-            ),
-          ),
-        );
+        await runZeropsCommand(runtime.commands.nameProjectAgent(project, botName));
         if (!isCurrent()) return;
         resetConnectingTarget();
         setCreatingIn(activeOrganization.id);
@@ -1756,6 +1776,8 @@ function ZeropsProjectsContent() {
       setCreationRequest({
         groupId,
         role,
+        // A proposal only: the dialog refuses it until every Mate's name is
+        // read, and names the clash if one turns up (`validateBotName`).
         botName: generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
       });
     },
@@ -2730,7 +2752,7 @@ function ZeropsProjectsContent() {
           }}
           open
           role={creationRequest.role}
-          takenBotNames={taken.names}
+          takenBotNames={taken}
         />
       )}
       {creation === null ? null : (

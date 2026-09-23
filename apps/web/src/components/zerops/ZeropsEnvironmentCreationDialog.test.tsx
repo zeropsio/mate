@@ -13,7 +13,7 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[
       onCancel={() => {}}
       onCreate={() => {}}
       role="stage"
-      takenBotNames={["Fen"]}
+      takenBotNames={{ names: ["Fen"], complete: true }}
       tier={{
         kind: "tier",
         tier: "stage",
