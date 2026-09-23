@@ -398,6 +398,31 @@ describe("deriveZeropsRowPresentation", () => {
     expect(presentation.detail).toContain("The container is unreachable.");
   });
 
+  describe("a row whose presence the inventory has not read", () => {
+    const UNKNOWN: ZeropsRowCandidate = {
+      key: "p",
+      project: { id: "p", name: "crm-dev", status: "ACTIVE", tagList: [] },
+      group: "unavailable",
+      presence: "unknown",
+    };
+
+    it("says Checking, never Not available", () => {
+      expect(deriveZeropsRowPresentation(input(UNKNOWN, undefined))).toEqual({
+        status: { label: "Checking", pulse: true, tone: "busy" },
+      });
+    });
+
+    it("still says a creation this client waits on is coming up", () => {
+      expect(
+        deriveZeropsRowPresentation({ ...input(UNKNOWN, undefined), waiting: true }),
+      ).toMatchObject({ status: { label: "Preparing" }, detail: "Coming up. A few minutes." });
+    });
+
+    it("offers no verb", () => {
+      expect(deriveZeropsRowAction(input(UNKNOWN, undefined))).toEqual({ kind: "none" });
+    });
+  });
+
   it("calls a project without a container agentless, not unavailable", () => {
     const presentation = deriveZeropsRowPresentation(
       input(

@@ -2,7 +2,6 @@ import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -14,6 +13,7 @@ import {
   isZeropsBirthConnectTarget,
   nextZeropsBirthRetryDelayMs,
   projectsListingNotice,
+  projectsPageError,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
   showsZeropsBirthLine,
@@ -533,17 +533,27 @@ describe("hasNoZeropsProject", () => {
 });
 
 describe("the projects listing", () => {
+  const held = (coverage: "complete" | "partial"): Known<ReadonlyArray<ZeropsCandidate>> => ({
+    state: "known",
+    value: [],
+    asOf: { ordinal: 1, atMs: 10 },
+    coverage,
+    freshness: { kind: "live" },
+  });
+
   it("the projects page shows a placeholder, never 'No projects', while the inventory is unread", () => {
     const unread: Known<ReadonlyArray<ZeropsCandidate>> = { state: "unread", waitingFor: null };
 
     expect(projectsListingNotice(unread, 0)).toEqual({
-      kind: "placeholder",
-      text: "Reading your projects…",
+      region: "placeholder",
+      // A quick answer never flickers it (§3.4).
+      message: { text: "Reading your projects…", afterMs: 400, tone: "quiet" },
+      affordance: null,
     });
     expect(hasNoZeropsProject({ listing: unread })).toBe(false);
   });
 
-  it("says why a failed read shows no projects, with its cause", () => {
+  it("says why a failed read shows no projects, with its cause and its own affordance", () => {
     expect(
       projectsListingNotice(
         {
@@ -555,22 +565,71 @@ describe("the projects listing", () => {
         },
         0,
       ),
-    ).toEqual({ kind: "failed", text: "Couldn't read your projects. Zerops didn't answer." });
+    ).toEqual({
+      region: "message",
+      message: {
+        text: "Couldn't read your projects. Zerops didn't answer.",
+        afterMs: 0,
+        tone: "alert",
+      },
+      affordance: { kind: "retry", label: "Try again" },
+    });
   });
 
-  it("says nothing over a list it holds", () => {
-    expect(
-      projectsListingNotice(
-        {
-          state: "known",
-          value: [],
-          asOf: { ordinal: 1, atMs: 10 },
-          coverage: "complete",
-          freshness: { kind: "live" },
-        },
-        0,
-      ),
-    ).toBeNull();
+  it("says it is still reading over a partial list, never nothing", () => {
+    expect(projectsListingNotice(held("partial"), 0)).toEqual({
+      region: "value",
+      message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+      affordance: null,
+    });
+  });
+
+  it("says nothing over a complete list it holds", () => {
+    expect(projectsListingNotice(held("complete"), 0)).toBeNull();
+  });
+
+  describe("the page's own alert", () => {
+    const failedListing = projectsListingNotice(
+      {
+        state: "failed",
+        failure: { kind: "transport", detail: "gateway" },
+        atMs: 10,
+        attempt: 1,
+        retryAtMs: 90,
+      },
+      0,
+    );
+    const INVENTORY_ERROR = "Some project access or services could not be verified.";
+
+    it("never repeats a failed listing's cause beside it (R-K2, R-K3)", () => {
+      expect(
+        projectsPageError({
+          connectError: null,
+          inventoryError: INVENTORY_ERROR,
+          listingNotice: failedListing,
+        }),
+      ).toBeNull();
+    });
+
+    it("still says a connect failure, which is not the listing's", () => {
+      expect(
+        projectsPageError({
+          connectError: "The container is unreachable.",
+          inventoryError: INVENTORY_ERROR,
+          listingNotice: failedListing,
+        }),
+      ).toBe("The container is unreachable.");
+    });
+
+    it("says the inventory's failure over a list it holds", () => {
+      expect(
+        projectsPageError({
+          connectError: null,
+          inventoryError: INVENTORY_ERROR,
+          listingNotice: projectsListingNotice(held("complete"), 0),
+        }),
+      ).toBe(INVENTORY_ERROR);
+    });
   });
 });
 

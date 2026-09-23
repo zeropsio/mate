@@ -23,6 +23,7 @@ import {
   type ReleaseVerdict,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
   mateOnlyOwnerOpensIt,
   type RoleMateVisibility,
@@ -32,6 +33,12 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
+  /**
+   * Whether the inventory has read what decides this row's container
+   * (`selectCandidates`). An `unknown` row sits in the unavailable bucket
+   * with nothing to say against it; it is being checked, not refused.
+   */
+  readonly presence?: CandidatePresence;
 };
 
 export interface ZeropsRowInput {
@@ -331,6 +338,11 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     // says, so there is nothing for it to disagree with.
     if (input.waiting === true) {
       return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };
+    }
+    // Unknown is not unavailable: the inventory has not yet said whether a
+    // container is there, so the row is still being checked (DESIGN §3.4).
+    if (candidate.presence === "unknown") {
+      return { status: { label: "Checking", pulse: true, tone: "busy" } };
     }
     return {
       status: { label: "Not available", tone: "off" },

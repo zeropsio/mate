@@ -41,6 +41,9 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   knownPresentation,
   type Known,
+  type KnownAffordance,
+  type KnownMessage,
+  type KnownPresentation,
   type KnownSurface,
 } from "@t3tools/client-runtime/zerops/knowledge";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
@@ -337,34 +340,56 @@ export function hasNoZeropsProject(input: {
   return view.groups.length === 0 && view.ungrouped.length === 0;
 }
 
-const READING_PROJECTS = "Reading your projects…";
-
 const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
   subject: "your projects",
   entity: "project",
   source: "zerops",
-  checking: READING_PROJECTS,
+  checking: "Reading your projects…",
   negative: null,
 };
 
+export interface ProjectsListingNotice {
+  readonly region: KnownPresentation["region"];
+  readonly message: KnownMessage;
+  readonly affordance: KnownAffordance | null;
+}
+
 /**
- * What the page says in place of the projects it does not hold yet (DESIGN
+ * What the page says about the projects it does not hold in full (DESIGN
  * §3.4): a placeholder while they are unread or being read, the cause when the
- * read failed, and nothing over a list it holds.
+ * read failed, "Still reading…" over a partial list, and nothing over a
+ * complete one. Copy, delay and affordance are `knownPresentation`'s.
  */
 export function projectsListingNotice(
   listing: Known<ReadonlyArray<ZeropsCandidate>>,
   nowMs: number,
-): { readonly kind: "placeholder" | "failed"; readonly text: string } | null {
-  if (listing.state === "known") return null;
+): ProjectsListingNotice | null {
+  if (listing.state === "known" && listing.coverage === "complete") return null;
   const presentation = knownPresentation(listing, PROJECTS_SURFACE, {
     nowMs,
     updateOffered: false,
   });
+  if (presentation.message === null) return null;
   return {
-    kind: presentation.region === "message" ? "failed" : "placeholder",
-    text: presentation.message?.text ?? READING_PROJECTS,
+    region: presentation.region,
+    message: presentation.message,
+    affordance: presentation.affordance,
   };
+}
+
+/**
+ * The page's own alert, beside the listing's notice. A failure covers its own
+ * region once (R-K2, R-K3): when the listing already says its read failed,
+ * the inventory's failure over that same read is not said again. A connect
+ * failure is another region's and always stands.
+ */
+export function projectsPageError(input: {
+  readonly connectError: string | null;
+  readonly inventoryError: string | null;
+  readonly listingNotice: ProjectsListingNotice | null;
+}): string | null {
+  if (input.connectError !== null) return input.connectError;
+  return input.listingNotice?.region === "message" ? null : input.inventoryError;
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
@@ -897,7 +922,7 @@ function ZeropsProjectsContent() {
   );
 
   const rowInput = (
-    candidate: ZeropsCandidate,
+    candidate: ZeropsCandidatePresentation,
     role?: ZeropsEnvironmentRole | undefined,
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
@@ -2197,25 +2222,49 @@ function ZeropsProjectsContent() {
   // — the face asleep, the line saying how long, a failure and its retry on
   // the same line — and the rest of the roster stays where it was.
   const connectErrorOnRow = connectError !== null && candidates.some(waitedOn);
-  const pageError = (connectErrorOnRow ? null : connectError) ?? error;
   const listingNotice = projectsListingNotice(listing, nowMs);
+  const pageError = projectsPageError({
+    connectError: connectErrorOnRow ? null : connectError,
+    inventoryError: error,
+    listingNotice,
+  });
+  // Every affordance this region carries asks for the list again: a failed or
+  // stale read offers a retry, and the page it would go to is this one.
+  const listingAffordance =
+    listingNotice?.affordance == null ? null : (
+      <Button onClick={refreshZeropsCandidates} size="sm" variant="outline">
+        {listingNotice.affordance.label}
+      </Button>
+    );
 
   return (
     <div className="space-y-6">
-      {listingNotice === null ? null : listingNotice.kind === "placeholder" ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
-          <Spinner className="size-3.5" />
-          <span>{listingNotice.text}</span>
-        </div>
-      ) : (
+      {listingNotice === null ? null : listingNotice.region === "message" ? (
         <div
           className="flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
           role="alert"
         >
-          <span>{listingNotice.text}</span>
-          <Button onClick={refreshZeropsCandidates} size="sm" variant="outline">
-            Try again
-          </Button>
+          <span>{listingNotice.message.text}</span>
+          {listingAffordance}
+        </div>
+      ) : (
+        <div
+          className={cn(
+            "flex items-center gap-2 text-xs text-muted-foreground",
+            // A placeholder waits a beat before it says anything, so a quick
+            // answer never flickers it.
+            listingNotice.message.afterMs > 0 && "animate-zerops-appear",
+          )}
+          role="status"
+          style={
+            listingNotice.message.afterMs > 0
+              ? { animationDelay: `${listingNotice.message.afterMs}ms` }
+              : undefined
+          }
+        >
+          <Spinner className="size-3.5" />
+          <span>{listingNotice.message.text}</span>
+          {listingAffordance}
         </div>
       )}
       {pageError === null ? null : (
