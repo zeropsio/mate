@@ -8,7 +8,9 @@
  *
  * A read that fails answers its reason rather than nothing, because this is
  * the whole of what the surface shows — there is no last-good list to keep.
- * With no Gitea token to read with it says so, and reads once one is back.
+ * With no Gitea token to read with it says so, and reads once one is back. A
+ * history already answered keeps its answer while the token is gone and while
+ * it is read again (DESIGN §4.6: a 401 never blanks what was read).
  */
 import {
   GROUP_REPOSITORY,
@@ -34,6 +36,20 @@ export type ZeropsCommitsState =
     }
   | { readonly kind: "failed"; readonly reason: string };
 
+/** An answer and the request it answers; `key` is `null` for a request with nothing to read. */
+interface HeldCommits {
+  readonly key: string | null;
+  readonly state: ZeropsCommitsState;
+}
+
+/** The held answer, kept when it already answers `key`, otherwise `waiting`. */
+function holdFor(key: string, waiting: ZeropsCommitsState) {
+  return (held: HeldCommits): HeldCommits =>
+    held.key === key && (held.state.kind === "read" || held.state.kind === "failed")
+      ? held
+      : { key, state: waiting };
+}
+
 export interface ZeropsCommitsRequest {
   readonly giteaOrigin: string | undefined;
   readonly owner: string | undefined;
@@ -47,20 +63,21 @@ export function useZeropsRepositoryCommits(
   const owner = request?.owner;
   const repo = request?.repo;
   const readable = useGiteaReadable(giteaOrigin);
-  const [state, setState] = useState<ZeropsCommitsState>({ kind: "reading" });
+  const [held, setHeld] = useState<HeldCommits>({ key: null, state: { kind: "reading" } });
 
   useEffect(() => {
     if (giteaOrigin === undefined || owner === undefined || repo === undefined) {
-      setState({ kind: "no-gitea" });
+      setHeld({ key: null, state: { kind: "no-gitea" } });
       return;
     }
+    const key = JSON.stringify([giteaOrigin, owner, repo]);
     const client = readable ? giteaClientFor(giteaOrigin) : null;
     if (client === null) {
-      setState({ kind: "no-gitea" });
+      setHeld(holdFor(key, { kind: "no-gitea" }));
       return;
     }
     let live = true;
-    setState({ kind: "reading" });
+    setHeld(holdFor(key, { kind: "reading" }));
     // The releases come from the group repository, not this one: a tag lists
     // every service's commit in its message. A failure there is not a failure
     // of the history — the commits still answer, with no release names on them.
@@ -69,17 +86,19 @@ export function useZeropsRepositoryCommits(
       client.listTags(owner, GROUP_REPOSITORY).catch(() => []),
     ])
       .then(([commits, tags]) => {
-        if (live) setState({ kind: "read", commits, releases: releaseTagsByCommit(tags) });
+        if (live) {
+          setHeld({ key, state: { kind: "read", commits, releases: releaseTagsByCommit(tags) } });
+        }
       })
       .catch((error: unknown) => {
-        if (live) setState({ kind: "failed", reason: zeropsErrorMessage(error) });
+        if (live) setHeld({ key, state: { kind: "failed", reason: zeropsErrorMessage(error) } });
       });
     return () => {
       live = false;
     };
   }, [giteaOrigin, owner, readable, repo]);
 
-  return state;
+  return held.state;
 }
 
 /**
@@ -106,7 +125,7 @@ export function useZeropsChangeCommits(
   const base = request?.base;
   const head = request?.head;
   const readable = useGiteaReadable(giteaOrigin);
-  const [state, setState] = useState<ZeropsCommitsState>({ kind: "reading" });
+  const [held, setHeld] = useState<HeldCommits>({ key: null, state: { kind: "reading" } });
 
   useEffect(() => {
     if (
@@ -116,29 +135,35 @@ export function useZeropsChangeCommits(
       base === undefined ||
       head === undefined
     ) {
-      setState({ kind: "no-gitea" });
+      setHeld({ key: null, state: { kind: "no-gitea" } });
       return;
     }
+    const key = JSON.stringify([giteaOrigin, owner, repo, base, head]);
     const client = readable ? giteaClientFor(giteaOrigin) : null;
     if (client === null) {
-      setState({ kind: "no-gitea" });
+      setHeld(holdFor(key, { kind: "no-gitea" }));
       return;
     }
     let live = true;
-    setState({ kind: "reading" });
+    setHeld(holdFor(key, { kind: "reading" }));
     void client
       .compareCommits(owner, repo, base, head)
       .then((commits) => {
         // Newest first, as a history reads.
-        if (live) setState({ kind: "read", commits: [...commits].reverse(), releases: new Map() });
+        if (live) {
+          setHeld({
+            key,
+            state: { kind: "read", commits: [...commits].reverse(), releases: new Map() },
+          });
+        }
       })
       .catch((error: unknown) => {
-        if (live) setState({ kind: "failed", reason: zeropsErrorMessage(error) });
+        if (live) setHeld({ key, state: { kind: "failed", reason: zeropsErrorMessage(error) } });
       });
     return () => {
       live = false;
     };
   }, [giteaOrigin, owner, readable, repo, base, head]);
 
-  return state;
+  return held.state;
 }

@@ -120,4 +120,47 @@ describe("useZeropsDeployRun", () => {
       root.unmount();
     });
   });
+
+  it("keeps a build it read while the token is gone and while it is read again (§4.6)", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsDeployRunState> = [];
+    const request = {
+      giteaOrigin: "https://gitea.example.test",
+      owner: "harbor",
+      repo: "app",
+      sha: "abc123",
+    };
+
+    function Probe(_props: { readonly render: number }) {
+      seen.push(useZeropsDeployRun(request).state);
+      return null;
+    }
+
+    gitea.readable = true;
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe, { render: 0 }));
+    });
+    expect(seen.at(-1)?.kind).toBe("read");
+    const readAt = seen.length - 1;
+
+    // A 401's reacquire fails: no request can go out, and the build still stands.
+    gitea.readable = false;
+    await act(async () => {
+      root.render(createElement(Probe, { render: 1 }));
+    });
+    gitea.readable = true;
+    await act(async () => {
+      root.render(createElement(Probe, { render: 2 }));
+    });
+
+    expect(seen.slice(readAt).map((state) => state.kind)).toEqual(
+      seen.slice(readAt).map(() => "read"),
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });
