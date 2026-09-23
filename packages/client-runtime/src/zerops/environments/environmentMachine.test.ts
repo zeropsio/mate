@@ -310,6 +310,38 @@ describe("environment machine (DESIGN §4.4)", () => {
     ]);
   });
 
+  it("a credential this tab could not install backs off and is exchanged again", () => {
+    const exchanging = drive(initialEnvironment({ record: null }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]).machine;
+    const held = drive(exchanging, [
+      {
+        type: "EXCHANGE_SUCCEEDED",
+        attempt: lastExchange(exchanging),
+        environmentId: ENV_A,
+        descriptor: descriptor(),
+      },
+    ]).machine;
+
+    // A failure for a credential this machine no longer holds changes nothing.
+    expect(
+      drive(held, [{ type: "INSTALL_FAILED", environmentId: ENV_B }]).machine.credential,
+    ).toMatchObject({ kind: "held", environmentId: ENV_A });
+
+    const failed = drive(held, [{ type: "INSTALL_FAILED", environmentId: ENV_A }]);
+    expect(failed.machine.credential).toMatchObject({ kind: "backoff", last: { kind: "install" } });
+    expect(failed.machine.failures).toBe(1);
+    expect(selectReachability(failed.machine, null)).toMatchObject({
+      kind: "retrying",
+      last: { kind: "install" },
+    });
+
+    const retried = drive(failed.machine, [{ type: "TICK" }], failed.nowMs);
+    expect(retried.machine.credential.kind).toBe("exchanging");
+  });
+
   it("counts one auth rejection per rotated credential and backs off on the third within two minutes", () => {
     /** The link rejects the held credential; the re-exchange succeeds and installs a new one. */
     const rejectAndRotate = (machine: EnvironmentMachine, nowMs: number): Run => {

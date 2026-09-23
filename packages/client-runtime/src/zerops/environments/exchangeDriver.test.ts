@@ -96,13 +96,21 @@ interface Rig {
   readonly reach: (mate: FakeMate) => ReturnType<typeof selectReachability>;
 }
 
-function rig(mates: ReadonlyArray<FakeMate>, options: { readonly hold?: boolean } = {}): Rig {
+function rig(
+  mates: ReadonlyArray<FakeMate>,
+  options: {
+    readonly hold?: boolean;
+    /** How the first installs fail, in order; every later one succeeds. */
+    readonly failedInstalls?: ReadonlyArray<"answers" | "throws">;
+  } = {},
+): Rig {
   const clock = manualClock();
   const exchanges: Array<ExchangeRequest> = [];
   const installs: Array<{ readonly key: TargetKey; readonly credential: FakeMateCredential }> = [];
   const retriedLinks: Array<EnvironmentId> = [];
   const logs: Array<{ readonly key: TargetKey; readonly diagnostic: EnvironmentDiagnostic }> = [];
   const held: Array<() => void> = [];
+  const failedInstalls = [...(options.failedInstalls ?? [])];
   const mateAt = (origin: string): FakeMate => {
     const mate = mates.find((entry) => entry.origin === origin);
     if (mate === undefined) throw new Error(`no Mate at ${origin}`);
@@ -127,6 +135,9 @@ function rig(mates: ReadonlyArray<FakeMate>, options: { readonly hold?: boolean 
     },
     install: async ({ key, environmentId, credential }) => {
       installs.push({ key, credential });
+      const failure = failedInstalls.shift();
+      if (failure === "throws") throw new Error("the registry is unavailable");
+      if (failure === "answers") return { ok: false };
       const mate = mates.find((entry) => keyOf(entry) === key)!;
       // The registry's supervisor connects with what was installed, and publishes its verdict.
       const link = mate.socket(credential);
@@ -138,6 +149,7 @@ function rig(mates: ReadonlyArray<FakeMate>, options: { readonly hold?: boolean 
             : { phase: "blocked", reason: link.reason! },
         ),
       );
+      return { ok: true };
     },
     readDescriptor: async (origin) =>
       descriptorFacts(await mateAt(origin).readDescriptor(`${origin}/mate`)),
@@ -432,6 +444,27 @@ describe("exchange driver (DESIGN §4.4)", () => {
     await expect(driver.connect(keyOf(readOnly), "user")).resolves.toMatchObject({
       _tag: "NotConnected",
       reachability: { kind: "refused-role" },
+    });
+  });
+
+  describe("a credential this tab could not install backs off, and the user's Connect says why", () => {
+    it.each(["answers", "throws"] as const)("the install %s", async (failure) => {
+      const shop = mate("shop");
+      const { driver, clock, exchanges, installs, start, reach } = rig([shop], {
+        failedInstalls: [failure],
+      });
+      await start({});
+
+      await expect(driver.connect(keyOf(shop), "user")).resolves.toMatchObject({
+        _tag: "NotConnected",
+        reachability: { kind: "retrying", last: { kind: "install" } },
+      });
+      expect(installs).toHaveLength(1);
+
+      await clock.advance(2_000);
+      expect(exchanges).toHaveLength(2);
+      expect(installs).toHaveLength(2);
+      expect(reach(shop)).toEqual({ kind: "ready", notice: null });
     });
   });
 

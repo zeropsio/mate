@@ -631,6 +631,17 @@ describe("reachabilityPhrase", () => {
       text: "This Mate can't reach Zerops to check who you are. Trying again in 15 s.",
       actions: ["try-now", "restart"],
     });
+    expect(
+      phrase({
+        kind: "retrying",
+        retryAtMs: NOW + 2_000,
+        last: { kind: "install" },
+        restart: false,
+      }),
+    ).toEqual({
+      text: "This tab couldn't set up the connection to this Mate. Trying again in 2 s.",
+      actions: ["try-now"],
+    });
     expect(phrase({ kind: "reconnecting" }).text).toBe("Reconnecting…");
     expect(phrase({ kind: "gone", because: "direct-not-found" })).toEqual({
       text: "This project is no longer available. It was deleted, or you no longer have access.",

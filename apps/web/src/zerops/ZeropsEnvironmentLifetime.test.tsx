@@ -33,6 +33,7 @@ vi.mock("./useZeropsIdentityExchange", async () => {
       install: async (input: { key: string; environmentId: EnvironmentId }) => {
         mock.install(input);
         remember({ key: input.key, environmentId: String(input.environmentId) });
+        return { ok: true };
       },
       readDescriptor: () => new Promise(() => undefined),
       retryLink: () => undefined,

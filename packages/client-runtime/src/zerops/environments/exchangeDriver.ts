@@ -99,19 +99,23 @@ export const systemExchangeClock: ExchangeClock = {
   },
 };
 
+/** Whether an install registered or rotated the credential; a rejection reads as `ok: false`. */
+export type InstallOutcome = { readonly ok: true } | { readonly ok: false };
+
 export interface ExchangeDriverPorts<C> {
   readonly clock: ExchangeClock;
   /** The descriptor, the mint, the door and the token exchange; installs nothing. */
   readonly exchange: (request: ExchangeRequest) => Promise<ExchangeAnswer<C>>;
   /**
    * Installs an accepted credential: registers the environment, or rotates the credential of
-   * one already registered (`registry.rotateCredential`), and remembers the target.
+   * one already registered (`registry.rotateCredential`), and remembers the target. A failed
+   * install sends the target's machine to backoff, and it is exchanged again.
    */
   readonly install: (input: {
     readonly key: TargetKey;
     readonly environmentId: EnvironmentId;
     readonly credential: C;
-  }) => Promise<void>;
+  }) => Promise<InstallOutcome>;
   readonly readDescriptor: (origin: string, signal: AbortSignal) => Promise<DescriptorFacts>;
   /** The supervisor's `retryNow` for a link in backoff. */
   readonly retryLink: (environmentId: EnvironmentId) => void;
@@ -166,8 +170,11 @@ interface Entry {
   cancelTimer: (() => void) | null;
   /** The ops in flight, by attempt. */
   readonly inFlight: Map<number, AbortController>;
-  /** Waiting for the install of an accepted credential; a Connect answers after it. */
-  installing: boolean;
+  /**
+   * The exchange attempt whose accepted credential is being installed; a Connect answers after
+   * it. Null while no install is pending.
+   */
+  installing: number | null;
   /** The reason the user's last Connect gave; the target's exchanges carry it. */
   userReason: IdentityExchangeReason | null;
 }
@@ -223,7 +230,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       machine: initialEnvironment({ record }),
       cancelTimer: null,
       inFlight: new Map(),
-      installing: false,
+      installing: null,
       userReason: null,
     };
     entries.set(key, created);
@@ -381,14 +388,19 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       after.kind === "held" &&
       after.environmentId === answer.environmentId;
     if (!accepted) return;
-    entry.installing = true;
-    const installed = () =>
+    entry.installing = attempt;
+    const installed = (outcome: InstallOutcome) =>
       enqueue(() => {
-        entry.installing = false;
+        // A newer accepted credential's install owns the entry now.
+        if (entries.get(key) !== entry || entry.installing !== attempt) return;
+        entry.installing = null;
+        if (!outcome.ok) {
+          step(key, { type: "INSTALL_FAILED", environmentId: answer.environmentId });
+        }
       });
     ports
       .install({ key, environmentId: answer.environmentId, credential: answer.credential })
-      .then(installed, installed);
+      .then(installed, () => installed({ ok: false }));
   };
 
   // ── Slots ──────────────────────────────────────────────────────────────────────────────────
@@ -456,7 +468,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   // ── Publication ────────────────────────────────────────────────────────────────────────────
 
   const outcomeOf = (entry: Entry): ConnectOutcome | null => {
-    if (entry.installing) return null;
+    if (entry.installing !== null) return null;
     const machine = entry.machine;
     const credential = machine.credential;
     switch (credential.kind) {

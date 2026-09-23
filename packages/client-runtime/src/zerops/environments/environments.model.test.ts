@@ -80,6 +80,7 @@ const INPUTS: ReadonlyArray<EnvironmentEvent> = [
     type: "DESCRIPTOR",
     descriptor: descriptor({ identity: "failed", identityCheckedAt: "2026-09-23T10:01:00.000Z" }),
   },
+  { type: "INSTALL_FAILED", environmentId: ENV_A },
   { type: "ROLE_CHANGED" },
   { type: "TICK" },
   { type: "WAKE", visible: true },

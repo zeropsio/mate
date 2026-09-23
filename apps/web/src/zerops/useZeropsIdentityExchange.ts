@@ -210,17 +210,19 @@ export function webExchangePorts(
       const finish = beginEnvironmentIdentityExchange(credential.profile.httpBaseUrl);
       try {
         const result = await runAtomCommand(registry, installCommand, credential, quiet);
-        if (result._tag === "Failure" || !alive()) return;
+        if (result._tag === "Failure" || !alive()) return { ok: false };
         rememberEnvironment({ key, environmentId: String(environmentId) });
         rememberZeropsEnvironment(String(environmentId));
-        if (candidate === undefined) return;
-        promoteCreationHandoff(candidate.project.id, String(environmentId));
-        void rememberExchangedProjectRef(
-          browserZeropsStorage,
-          environmentId,
-          candidate,
-          candidate.project.clientId ?? activeOrganizationId,
-        );
+        if (candidate !== undefined) {
+          promoteCreationHandoff(candidate.project.id, String(environmentId));
+          void rememberExchangedProjectRef(
+            browserZeropsStorage,
+            environmentId,
+            candidate,
+            candidate.project.clientId ?? activeOrganizationId,
+          );
+        }
+        return { ok: true };
       } finally {
         finish();
       }

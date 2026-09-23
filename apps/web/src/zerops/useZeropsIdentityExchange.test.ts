@@ -3,7 +3,30 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
 
-import { connectResult, rememberExchangedProjectRef } from "./useZeropsIdentityExchange";
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import {
+  connectResult,
+  rememberExchangedProjectRef,
+  webExchangePorts,
+  type ExchangeInputs,
+} from "./useZeropsIdentityExchange";
+
+const mock = vi.hoisted(() => ({
+  command: { _tag: "Success", value: undefined } as unknown,
+  remembered: [] as Array<unknown>,
+}));
+
+vi.mock("@t3tools/client-runtime/state/runtime", async (original) => ({
+  ...(await original<typeof import("@t3tools/client-runtime/state/runtime")>()),
+  runAtomCommand: async () => mock.command,
+}));
+vi.mock("./rememberedEnvironments", () => ({
+  beginEnvironmentIdentityExchange: () => () => undefined,
+  rememberEnvironment: (record: unknown) => {
+    mock.remembered.push(record);
+  },
+}));
+vi.mock("./firstPromptStorage", () => ({ rememberZeropsEnvironment: () => undefined }));
 
 function fakeStorage(): ZeropsStorageAdapter & { readonly raw: Map<string, string> } {
   const raw = new Map<string, string>();
@@ -130,5 +153,30 @@ describe("connectResult: the user's Connect as the projects page reads it", () =
     },
   ])("$name", ({ outcome, result }) => {
     expect(connectResult(outcome)).toMatchObject(result);
+  });
+});
+
+describe("the install port answers whether the registry took the credential", () => {
+  const inputs = { candidates: [] } as unknown as ExchangeInputs;
+  const install = () =>
+    webExchangePorts(() => inputs).install({
+      key: "project-1:service-1",
+      environmentId: ENV,
+      credential: { profile: { httpBaseUrl: "https://zcp-1-8080.prg1.zerops.app/mate" } } as never,
+    });
+
+  it.each([
+    { name: "registered", command: { _tag: "Success", value: undefined }, ok: true },
+    { name: "refused by the registry", command: { _tag: "Failure" }, ok: false },
+  ])("$name", async ({ command, ok }) => {
+    openAccountLifetime("account");
+    mock.command = command;
+    mock.remembered = [];
+    try {
+      await expect(install()).resolves.toEqual({ ok });
+      expect(mock.remembered).toHaveLength(ok ? 1 : 0);
+    } finally {
+      closeAccountLifetime();
+    }
   });
 });

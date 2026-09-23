@@ -217,6 +217,7 @@ const CAUSE: Record<ExchangeCause["kind"], string> = {
   "identity-failed": "This Mate can't reach Zerops to check who you are.",
   "access-unverified": "Your access to this project is still being checked.",
   rejected: "This Mate didn't accept the sign-in.",
+  install: "This tab couldn't set up the connection to this Mate.",
 };
 
 const CONNECTING: Record<ConnectingOn, string> = {

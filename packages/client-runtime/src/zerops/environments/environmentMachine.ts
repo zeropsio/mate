@@ -103,7 +103,9 @@ export type ExchangeCause =
   /** The descriptor reports `zerops.identity = "failed"`: the Mate could not check who you are. */
   | { readonly kind: "identity-failed" }
   /** The Mate kept refusing freshly exchanged credentials. */
-  | { readonly kind: "rejected" };
+  | { readonly kind: "rejected" }
+  /** The exchanged credential could not be registered or rotated in this tab. */
+  | { readonly kind: "install" };
 
 /** A "no" that retrying does not change; it waits for the user or an input change. */
 export type RefusalReason =
@@ -278,6 +280,8 @@ export type EnvironmentEvent =
       readonly failure: ExchangeFailure;
       readonly descriptor: DescriptorFacts | null;
     }
+  /** The held credential could not be installed: nothing was registered or rotated for it. */
+  | { readonly type: "INSTALL_FAILED"; readonly environmentId: EnvironmentId }
   | { readonly type: "ROLE_CHANGED" }
   | { readonly type: "TICK" }
   /** §6.4's coalesced wake: a visible one resets the ladder and retries now. */
@@ -846,6 +850,12 @@ const apply = (
       }
       return refuse(next, event.failure.reason, out);
     }
+    case "INSTALL_FAILED":
+      if (credential.kind !== "held" || credential.environmentId !== event.environmentId) {
+        return machine;
+      }
+      // A link already published means an earlier credential was installed: this was a reconnect.
+      return backoff(machine, { kind: "install" }, machine.link.phase !== "idle", ctx);
     case "ROLE_CHANGED":
       return inputChanged(machine, "input-change");
     case "TICK":

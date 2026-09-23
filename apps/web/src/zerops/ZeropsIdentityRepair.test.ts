@@ -137,6 +137,7 @@ describe("repair is the exchange driver's", () => {
           const phase = linkPhaseOf(connectionState("connected"));
           if (phase !== null) driver.link(ENVIRONMENT_ID, phase);
         });
+        return { ok: true };
       },
       readDescriptor: () => new Promise(() => undefined),
       retryLink: () => undefined,
