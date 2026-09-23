@@ -230,6 +230,48 @@ describe("useZeropsGroupReach", () => {
     }
   });
 
+  it("plans from retained grants only once a read confirms them", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    // A remount inside the retention window shows the retained grants while they are read again.
+    broker.current = {
+      state: "known",
+      value: NARROW_GRANTS,
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "revalidating", sinceMs: 0 },
+    };
+    const writes: unknown[] = [];
+    const context = contextFor(broker, (input) => writes.push(input));
+
+    function Probe() {
+      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => {
+        root.render(
+          <ZeropsDataContext value={context}>
+            <Probe />
+          </ZeropsDataContext>,
+        );
+      });
+      await flushEffects();
+      expect(writes).toEqual([]);
+
+      await act(async () => {
+        await broker.publish(knownGrants(NARROW_GRANTS, 2));
+      });
+      await flushEffects();
+      expect(writes).toHaveLength(1);
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
+
   it("never reads or drops a token's delegations — the birth owns that now", async () => {
     // The one-time mint (guide 0.4) is dropped once, at birth
     // (`ZeropsApiClient.hardenMate`, `provisioning.ts`'s `hardening` phase),

@@ -59,8 +59,9 @@ describe("selectTokenGrants", () => {
     reading: { status: "pending" },
     failed: { status: "failed" },
     "known settled": { status: "known", grants },
-    "known revalidating": { status: "known", grants },
-    "known stale": { status: "known", grants },
+    // A retained value is planned from only once a read confirmed it.
+    "known revalidating": { status: "pending" },
+    "known stale": { status: "failed" },
     withheld: { status: "pending" },
   };
   it.each(everyState(grants))("%s", (name, shown) => {
