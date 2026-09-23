@@ -1156,6 +1156,10 @@ const buildAppUnderTest = (options?: {
             // nobody signed anything in and nothing is ever signed out.
             Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
               signers: Effect.succeed({}),
+              turnRefusal: ({ agent, subject }) =>
+                Effect.succeed(
+                  ZeropsProjectSignersModule.turnRefusal({ agent, signer: undefined, subject }),
+                ),
               checkLeaversNow: Effect.succeed(0),
             }),
             // A test machine has no agent-browser daemon — mocked to

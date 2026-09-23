@@ -526,6 +526,8 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       ZeropsProjectSigners.ZeropsProjectSigners,
       ZeropsProjectSigners.ZeropsProjectSigners.of({
         signers: Effect.succeed({}),
+        turnRefusal: ({ agent, subject }) =>
+          Effect.succeed(ZeropsProjectSigners.turnRefusal({ agent, signer: undefined, subject })),
         checkLeaversNow: Effect.succeed(0),
       }),
     ),
