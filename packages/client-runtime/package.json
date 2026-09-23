@@ -283,6 +283,10 @@
       "types": "./src/zerops/environments/index.ts",
       "default": "./src/zerops/environments/index.ts"
     },
+    "./zerops/forge": {
+      "types": "./src/zerops/forge/index.ts",
+      "default": "./src/zerops/forge/index.ts"
+    },
     "./zerops/cards/decode": {
       "types": "./src/zerops/cards/decode.ts",
       "default": "./src/zerops/cards/decode.ts"
