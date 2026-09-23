@@ -36,22 +36,24 @@ export function useComposerMenuHighlight(input: {
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
   const [highlightedSearchKey, setHighlightedSearchKey] = useState<string | null>(null);
 
+  // The composer rebuilds `items` on every render, so this runs after each of
+  // its commits. It calls a setter only when the value changes: a same-value
+  // update still schedules a render while the fiber has work pending, and one
+  // left pending by every commit of a burst of store writes (a reconnect after
+  // a lapse) makes React count each commit as nested until it throws
+  // "Maximum update depth exceeded".
   useEffect(() => {
-    if (!menuOpen) {
-      setHighlightedItemId(null);
-      setHighlightedSearchKey(null);
-      return;
-    }
-    const nextActiveItemId = resolveComposerMenuActiveItemId({
-      items,
-      highlightedItemId,
-      currentSearchKey: searchKey,
-      highlightedSearchKey,
-    });
-    setHighlightedItemId((existing) =>
-      existing === nextActiveItemId ? existing : nextActiveItemId,
-    );
-    setHighlightedSearchKey((existing) => (existing === searchKey ? existing : searchKey));
+    const nextItemId = menuOpen
+      ? resolveComposerMenuActiveItemId({
+          items,
+          highlightedItemId,
+          currentSearchKey: searchKey,
+          highlightedSearchKey,
+        })
+      : null;
+    const nextSearchKey = menuOpen ? searchKey : null;
+    if (nextItemId !== highlightedItemId) setHighlightedItemId(nextItemId);
+    if (nextSearchKey !== highlightedSearchKey) setHighlightedSearchKey(nextSearchKey);
   }, [highlightedItemId, highlightedSearchKey, items, menuOpen, searchKey]);
 
   return { highlightedItemId, setHighlightedItemId, highlightedSearchKey, setHighlightedSearchKey };
