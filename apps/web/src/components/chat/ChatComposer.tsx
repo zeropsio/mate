@@ -147,6 +147,7 @@ import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
 import { resolveComposerMenuActiveItemId, useComposerMenuHighlight } from "./composerMenuHighlight";
+import { useSyncStateOnChange } from "./composerStateSync";
 import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
@@ -1637,8 +1638,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   useEffect(() => {
     promptRef.current = prompt;
-    setComposerCursor((existing) => clampCollapsedComposerCursor(prompt, existing));
   }, [prompt, promptRef]);
+  useSyncStateOnChange(
+    composerCursor,
+    setComposerCursor,
+    clampCollapsedComposerCursor(prompt, composerCursor),
+    [prompt],
+  );
 
   useEffect(() => {
     if (composerSubmissionError === null) return;
@@ -1648,9 +1654,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   }, [composerSubmissionError, prompt]);
 
-  useEffect(() => {
-    setProviderInputSubmissionError(null);
-  }, [
+  useSyncStateOnChange(providerInputSubmissionError, setProviderInputSubmissionError, null, [
     composerReviewComments,
     composerTerminalContexts,
     prompt,
@@ -2919,33 +2923,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       (visibleTasksProgress !== null &&
         visibleTaskSteps !== null &&
         visibleTasksProgress.totalSteps > 0));
-  useEffect(() => {
-    if (visibleTasksProgress === null || visibleTaskSteps === null) {
-      setIsTasksDrawerOpen(false);
-    }
-  }, [visibleTaskSteps, visibleTasksProgress]);
-
-  useEffect(() => {
-    if (hasBlockingComposerTopDrawer) {
-      setIsTasksDrawerOpen(false);
-    }
-  }, [hasBlockingComposerTopDrawer]);
-
-  useEffect(() => {
-    setIsTasksDrawerOpen(false);
-  }, [activeThreadId]);
+  useSyncStateOnChange(
+    isTasksDrawerOpen,
+    setIsTasksDrawerOpen,
+    isTasksDrawerOpen && visibleTasksProgress !== null && visibleTaskSteps !== null,
+    [visibleTaskSteps, visibleTasksProgress],
+  );
+  useSyncStateOnChange(
+    isTasksDrawerOpen,
+    setIsTasksDrawerOpen,
+    isTasksDrawerOpen && !hasBlockingComposerTopDrawer,
+    [hasBlockingComposerTopDrawer],
+  );
+  useSyncStateOnChange(isTasksDrawerOpen, setIsTasksDrawerOpen, false, [activeThreadId]);
 
   // Close the stash menu whenever the trigger-driven command menu opens so
   // the two popovers never stack in the same layer, and when the user
   // resumes typing (the menu is a transient picker, not a panel).
-  useEffect(() => {
-    if (composerMenuOpen) {
-      setIsStashMenuOpen(false);
-    }
-  }, [composerMenuOpen]);
-  useEffect(() => {
-    setIsStashMenuOpen(false);
-  }, [prompt]);
+  useSyncStateOnChange(isStashMenuOpen, setIsStashMenuOpen, isStashMenuOpen && !composerMenuOpen, [
+    composerMenuOpen,
+  ]);
+  useSyncStateOnChange(isStashMenuOpen, setIsStashMenuOpen, false, [prompt]);
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
