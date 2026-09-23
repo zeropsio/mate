@@ -63,8 +63,8 @@ export interface ZeropsProjectFlow {
 export interface ZeropsProjectFlowValue {
   readonly giteaOrigin: string | undefined;
   /**
-   * Whether this tab holds a Gitea session, or is replacing one after a 401; without one nothing
-   * below is read.
+   * Whether what was read as the person stands: this tab holds a Gitea session, or is getting one
+   * back after holding it, through the first two failed tries. Without it the flows are empty.
    */
   readonly signedIn: boolean;
   /**

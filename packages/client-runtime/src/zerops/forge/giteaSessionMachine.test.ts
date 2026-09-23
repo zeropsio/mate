@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   initialGiteaSession,
   giteaSessionAwaitsToken,
+  giteaSessionReadable,
   giteaSessionToken,
   giteaSessionView,
   KEEPS_REFUSING,
@@ -338,6 +339,12 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       const expired = play([[TICK, 60 * MIN]], failedRenewal.machine);
       expect(expired.machine.phase.kind).toBe("unavailable");
       expect(giteaSessionToken(expired.machine)).toBeUndefined();
+      // One failure: what was read with the token still stands.
+      expect(giteaSessionView(expired.machine)).toEqual({
+        signedIn: true,
+        login: "u-person",
+        trouble: null,
+      });
     });
 
     it("not demanded at expiry: idle, the token forgotten, acquired again on the next demand", () => {
@@ -377,6 +384,35 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
 
       const back = play([[acquired(2, "t2"), 1 * MIN]], run.machine);
       expect(giteaSessionToken(back.machine)).toBe("t2");
+    });
+
+    it("whose reacquire fails keeps the facts for two failed acquisitions, then names the cause", () => {
+      const first = play(
+        [
+          [{ type: "UNAUTHORIZED", token: "t1" }, 1 * MIN],
+          [failed(2, BROKER_DOWN), 1 * MIN],
+        ],
+        signedIn().machine,
+      );
+      expect(first.machine.phase.kind).toBe("unavailable");
+      expect(giteaSessionView(first.machine)).toEqual({
+        signedIn: true,
+        login: "u-person",
+        trouble: null,
+      });
+      // Nothing is read meanwhile: no token to send, none on its way.
+      expect(giteaSessionReadable(first.machine)).toBe(false);
+
+      // The retry's liveness check runs with the facts still up.
+      const checking = play([[TICK, 1 * MIN + 10 * S]], first.machine);
+      expect(giteaSessionView(checking.machine).signedIn).toBe(true);
+
+      const second = play([[liveness(3, false), 1 * MIN + 10 * S]], checking.machine);
+      expect(giteaSessionView(second.machine)).toEqual({
+        signedIn: false,
+        login: undefined,
+        trouble: "Gitea isn't answering.",
+      });
     });
 
     it("for a token the session no longer holds is ignored", () => {

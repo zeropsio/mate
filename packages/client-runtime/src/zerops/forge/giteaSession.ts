@@ -30,6 +30,7 @@ import { createGiteaClient, GiteaApiError, type GiteaClient } from "../giteaClie
 import {
   GITEA_SIGNED_OUT,
   giteaSessionAwaitsToken,
+  giteaSessionReadable,
   giteaSessionToken,
   giteaSessionView,
   initialGiteaSession,
@@ -78,7 +79,10 @@ export interface GiteaSessions {
   readonly view: (giteaOrigin: string) => GiteaSessionView;
   /** Tells the listener whenever any session's view changes. */
   readonly subscribe: (listener: () => void) => () => void;
-  /** A client that acts as the person there, or `null` while no session stands. */
+  /**
+   * A client that acts as the person there, or `null` while no token is held or on its way after
+   * a 401 — also while what was read still stands without one.
+   */
   readonly clientFor: (giteaOrigin: string) => GiteaClient | null;
   /** §6.4's visible wake: waits for Gitea or the broker are tried again now. */
   readonly wake: () => void;
@@ -360,7 +364,7 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
     clientFor: (giteaOrigin) => {
       const origin = normalize(giteaOrigin);
       const entry = entries.get(origin);
-      if (entry === undefined || !entry.view.signedIn) return null;
+      if (entry === undefined || !giteaSessionReadable(entry.machine)) return null;
       return createGiteaClient({
         origin,
         // Replaced per request by the token `fetchAsPerson` waited for.

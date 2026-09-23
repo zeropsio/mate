@@ -11,7 +11,8 @@
  *
  * "Gitea still setting up" and "the broker does not answer" are separate waits, each re-mint
  * preceded by a credential-less liveness check, so nothing is minted while the broker is down. A
- * Gitea 401 reacquires without dropping what was read; the third in 10 minutes refuses. A refusal
+ * Gitea 401 reacquires without dropping what was read, and what was read stands through the first
+ * two failed acquisitions after a token was held; the third 401 in 10 minutes refuses. A refusal
  * is asked again every 5 minutes while the tab is visible. `expiresIn` is honoured, and the token
  * renewed only while a surface wants it.
  */
@@ -80,7 +81,7 @@ export type GiteaSessionPhase =
     }
   | { readonly kind: "signed-in"; readonly session: GiteaToken; readonly renewal: GiteaRenewal }
   /** A Gitea 401 ended the token; requests wait for the next one, and the facts stay. */
-  | { readonly kind: "reacquiring"; readonly attempt: number; readonly login: string }
+  | { readonly kind: "reacquiring"; readonly attempt: number }
   | { readonly kind: "pending"; readonly retryAt: Instant }
   | {
       readonly kind: "unavailable";
@@ -101,6 +102,11 @@ export interface GiteaSessionMachine {
   readonly demanded: boolean;
   /** Consecutive failed acquisitions and liveness checks; a token resets it. */
   readonly failures: number;
+  /**
+   * The login of the last token this epoch held: what was read with it stands while the session
+   * gets another. A refusal clears it, and so does going idle with nobody wanting the session.
+   */
+  readonly lastLogin: string | null;
   /** Where the next retry sits on its ladder. */
   readonly rung: number;
   /** Monotonic times of the Gitea 401s inside the reacquire window. */
@@ -114,6 +120,7 @@ export const initialGiteaSession: GiteaSessionMachine = {
   phase: { kind: "idle" },
   demanded: false,
   failures: 0,
+  lastLogin: null,
   rung: 0,
   unauthorized: [],
   nextAttempt: 1,
@@ -252,6 +259,7 @@ function failed(
     case "refused":
       return {
         ...machine,
+        lastLogin: null,
         phase: {
           kind: "refused",
           reason: failure.reason,
@@ -323,6 +331,7 @@ function apply(
       return {
         ...machine,
         failures: 0,
+        lastLogin: event.login,
         rung: 0,
         phase: {
           kind: "signed-in",
@@ -360,12 +369,11 @@ function apply(
           ctx,
         );
       }
-      const login = phase.session.login;
       if (phase.renewal.kind === "renewing") {
         return {
           ...machine,
           unauthorized,
-          phase: { kind: "reacquiring", attempt: phase.renewal.attempt, login },
+          phase: { kind: "reacquiring", attempt: phase.renewal.attempt },
         };
       }
       const attempt = machine.nextAttempt;
@@ -374,7 +382,7 @@ function apply(
         ...machine,
         unauthorized,
         nextAttempt: attempt + 1,
-        phase: { kind: "reacquiring", attempt, login },
+        phase: { kind: "reacquiring", attempt },
       };
     }
     case "WAKE":
@@ -416,19 +424,16 @@ function settle(
       const { session, renewal } = phase;
       if (expired(session, ctx.now)) {
         if (renewal.kind === "renewing") {
-          return {
-            ...machine,
-            phase: { kind: "reacquiring", attempt: renewal.attempt, login: session.login },
-          };
+          return { ...machine, phase: { kind: "reacquiring", attempt: renewal.attempt } };
         }
-        if (!machine.demanded) return { ...machine, phase: { kind: "idle" } };
+        if (!machine.demanded) return { ...machine, lastLogin: null, phase: { kind: "idle" } };
         if (renewal.kind === "failed") return failed(machine, renewal.failure, ctx);
         const attempt = machine.nextAttempt;
         out.push({ kind: "run", attempt, op: "acquire" });
         return {
           ...machine,
           nextAttempt: attempt + 1,
-          phase: { kind: "reacquiring", attempt, login: session.login },
+          phase: { kind: "reacquiring", attempt },
         };
       }
       if (machine.demanded && renewal.kind === "none" && renewDue(session, ctx.now)) {
@@ -514,8 +519,9 @@ export function transitionGiteaSession(
 /** What a surface that reads Gitea as the person shows about the session. */
 export interface GiteaSessionView {
   /**
-   * A token is held, or a 401 is being answered with a new one: what was read stays, and
-   * requests wait for the token.
+   * What was read as the person stands: a token is held, or the session is getting another after
+   * holding one, for up to {@link FAILURES_BEFORE_CAUSE} failed acquisitions. Only
+   * {@link giteaSessionReadable} says whether a request can go out now.
    */
   readonly signedIn: boolean;
   /** The person's login on that Gitea, `u-…`, while signed in. */
@@ -541,31 +547,46 @@ function retryingCause(machine: GiteaSessionMachine, retrying: GiteaRetrying): s
   return retrying.kind === "pending" ? RETRYING_CAUSE.pending : RETRYING_CAUSE[retrying.source];
 }
 
+/** No token held: the facts stand until a cause is named, if a token was held before. */
+function withoutToken(machine: GiteaSessionMachine, trouble: string | null): GiteaSessionView {
+  if (trouble === null && machine.lastLogin !== null && machine.failures < FAILURES_BEFORE_CAUSE) {
+    return { signedIn: true, login: machine.lastLogin, trouble: null };
+  }
+  return trouble === null ? GITEA_SIGNED_OUT : { ...GITEA_SIGNED_OUT, trouble };
+}
+
 export function giteaSessionView(machine: GiteaSessionMachine): GiteaSessionView {
   const phase = machine.phase;
   switch (phase.kind) {
     case "signed-in":
       return { signedIn: true, login: phase.session.login, trouble: null };
     case "reacquiring":
-      return { signedIn: true, login: phase.login, trouble: null };
+      return withoutToken(machine, null);
     case "refused":
-      return { ...GITEA_SIGNED_OUT, trouble: phase.reason };
+      return withoutToken(machine, phase.reason);
     case "pending":
-      return { ...GITEA_SIGNED_OUT, trouble: retryingCause(machine, { kind: "pending" }) };
+      return withoutToken(machine, retryingCause(machine, { kind: "pending" }));
     case "unavailable":
-      return {
-        ...GITEA_SIGNED_OUT,
-        trouble: retryingCause(machine, { kind: "unavailable", source: phase.source }),
-      };
+      return withoutToken(
+        machine,
+        retryingCause(machine, { kind: "unavailable", source: phase.source }),
+      );
     case "acquiring":
-      return phase.retrying === null
-        ? GITEA_SIGNED_OUT
-        : { ...GITEA_SIGNED_OUT, trouble: retryingCause(machine, phase.retrying) };
-    case "idle":
+      return withoutToken(
+        machine,
+        phase.retrying === null ? null : retryingCause(machine, phase.retrying),
+      );
     case "waiting":
+      return withoutToken(machine, null);
+    case "idle":
     case "closed":
       return GITEA_SIGNED_OUT;
   }
+}
+
+/** A request can go out now, or wait for the token a 401's reacquire brings back. */
+export function giteaSessionReadable(machine: GiteaSessionMachine): boolean {
+  return machine.phase.kind === "signed-in" || machine.phase.kind === "reacquiring";
 }
 
 /** The token a request carries now, if one is held. */

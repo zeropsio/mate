@@ -92,8 +92,9 @@ export function accountGiteaSessions(): GiteaSessions | null {
 
 /**
  * Wants the account's Gitea signed in while the calling surface is mounted, and says how that
- * stands: `signedIn` holds through a 401's reacquire, `trouble` names a refusal at once and a
- * Gitea or broker that does not answer after two failed tries.
+ * stands: `signedIn` says what was read still stands — through a 401's reacquire and the first
+ * two failed tries after a token was held — and `trouble` names a refusal at once and a Gitea or
+ * broker that does not answer after two failed tries.
  */
 export function useGiteaSession(input: {
   readonly giteaOrigin: string | undefined;

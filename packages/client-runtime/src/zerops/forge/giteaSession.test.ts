@@ -368,9 +368,19 @@ describe("the account's Gitea sessions", () => {
       expect(w.view().signedIn).toBe(true);
 
       // The broker's own deadline ends the attempt: unavailable, and the throwaway taken back.
+      // One failure: the facts still stand, but nothing is read without a token.
       await w.time.advance(BROKER_DEADLINE_MS);
-      expect(w.view().signedIn).toBe(false);
+      expect(w.view()).toEqual({ signedIn: true, login: "u-person", trouble: null });
+      expect(w.sessions.clientFor(HARNESS_GITEA_ORIGIN)).toBeNull();
       expect(w.throwaways.removed).toEqual(["throwaway-1", "throwaway-2"]);
+
+      // The next rung's mint is not answered either: the regions name the cause.
+      await w.time.advance(BROKER_DEADLINE_MS);
+      expect(w.view()).toEqual({
+        signedIn: false,
+        login: undefined,
+        trouble: "Gitea isn't answering.",
+      });
     });
   });
 
