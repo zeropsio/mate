@@ -954,6 +954,169 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
+  describe("a malformed frame", () => {
+    const organizationDescriptor: RuntimeInterestDescriptor = {
+      kind: "organization-inventory",
+      organization: topologyDescriptor.project.organization,
+    };
+    const activityDescriptor: RuntimeInterestDescriptor = {
+      kind: "project-activity",
+      project: topologyDescriptor.project,
+    };
+    const isActivityQuery = (request: RegistrationRequest) =>
+      request.descriptor.kind === "query-membership" &&
+      request.descriptor.query.kind === "running-processes-of-project";
+
+    const setup = Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const opened = yield* Queue.unbounded<{
+        readonly handle: ReceiverHandle;
+        readonly events: Queue.Queue<ReceiverEvent>;
+      }>();
+      const registrations: RegistrationRequest[] = [];
+      let closes = 0;
+      const adapter: ZeropsDataAdapter = {
+        openReceiver: (_scope, organization, identity) =>
+          Effect.gen(function* () {
+            const events = yield* Queue.unbounded<ReceiverEvent>();
+            const handle: ReceiverHandle = {
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.fromQueue(events),
+            };
+            yield* Queue.offer(opened, { handle, events });
+            return handle;
+          }),
+        register: (_receiver, request) =>
+          Effect.sync(() => {
+            registrations.push(request);
+            return { responseObservations: [] };
+          }),
+        read: () => Effect.succeed({ observations: [] }),
+        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        closeReceiver: () => Effect.sync(() => void (closes += 1)),
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 10, recoveryBackoffMaxMs: 10 }),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const leaseScope = yield* Scope.make();
+      const organization = yield* runtime
+        .acquire(organizationDescriptor)
+        .pipe(Scope.provide(leaseScope));
+      const activity = yield* runtime.acquire(activityDescriptor).pipe(Scope.provide(leaseScope));
+      const receiver = yield* Queue.take(opened);
+      const observing = yield* waitForState(
+        states,
+        (state) =>
+          state.interests.get(organization.interest)?.interest.status === "observing" &&
+          state.interests.get(activity.interest)?.interest.status === "observing",
+      );
+      return {
+        states,
+        opened,
+        registrations,
+        closes: () => closes,
+        receiver,
+        organization,
+        activity,
+        observing,
+        dispose: Effect.gen(function* () {
+          yield* runtime.shutdown("application-close");
+          yield* Scope.close(leaseScope, Exit.void);
+          unsubscribe();
+          registry.dispose();
+        }),
+      };
+    });
+
+    it.effect("on one subscription re-establishes only its interests on the same receiver", () =>
+      Effect.gen(function* () {
+        const rig = yield* setup;
+        const organizationIdentity = rig.observing.interests.get(rig.organization.interest)!
+          .interest.identity;
+        const activitySubscription = rig.registrations.find(isActivityQuery)!.subscriptionName;
+
+        yield* Queue.offer(rig.receiver.events, {
+          kind: "malformed",
+          subscriptionName: activitySubscription,
+        });
+        const recovering = yield* waitForState(
+          rig.states,
+          (state) => state.interests.get(rig.activity.interest)?.interest.status === "recovering",
+        );
+        expect(recovering.interests.get(rig.activity.interest)?.interest).toMatchObject({
+          reason: "malformed",
+          identity: { receiver: rig.receiver.handle.identity },
+        });
+        expect(recovering.interests.get(rig.organization.interest)?.interest).toMatchObject({
+          status: "observing",
+          identity: organizationIdentity,
+        });
+
+        yield* TestClock.adjust("10 millis");
+        const recovered = yield* waitForState(
+          rig.states,
+          (state) => state.interests.get(rig.activity.interest)?.interest.status === "observing",
+        );
+        expect(recovered.interests.get(rig.activity.interest)?.interest.identity.receiver).toEqual(
+          rig.receiver.handle.identity,
+        );
+        expect(recovered.interests.get(rig.organization.interest)?.interest.identity).toBe(
+          organizationIdentity,
+        );
+        // The subscription is registered afresh, with its own baseline.
+        expect(rig.registrations.filter(isActivityQuery)).toHaveLength(2);
+        expect(yield* Queue.size(rig.opened)).toBe(0);
+        expect(rig.closes()).toBe(0);
+
+        yield* rig.dispose;
+      }),
+    );
+
+    it.effect("with no subscription it can name replaces the whole receiver", () =>
+      Effect.gen(function* () {
+        const rig = yield* setup;
+        const organizationIdentity = rig.observing.interests.get(rig.organization.interest)!
+          .interest.identity;
+
+        yield* Queue.offer(rig.receiver.events, { kind: "malformed" });
+        yield* waitForState(
+          rig.states,
+          (state) =>
+            state.interests.get(rig.organization.interest)?.interest.status === "recovering",
+        );
+        yield* TestClock.adjust("10 millis");
+        const replacement = yield* Queue.take(rig.opened);
+        const recovered = yield* waitForState(
+          rig.states,
+          (state) =>
+            state.interests.get(rig.organization.interest)?.interest.status === "observing" &&
+            state.interests.get(rig.activity.interest)?.interest.status === "observing",
+        );
+        expect(replacement.handle.identity.receiverId).not.toBe(
+          rig.receiver.handle.identity.receiverId,
+        );
+        expect(
+          recovered.interests.get(rig.organization.interest)?.interest.identity.receiver,
+        ).toEqual(replacement.handle.identity);
+        expect(recovered.interests.get(rig.organization.interest)?.interest.identity).not.toEqual(
+          organizationIdentity,
+        );
+
+        yield* rig.dispose;
+      }),
+    );
+  });
+
   it.effect(
     "a registration that fails after the background pause leaves its interest to resume",
     () =>

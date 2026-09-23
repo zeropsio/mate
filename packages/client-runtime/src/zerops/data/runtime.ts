@@ -776,6 +776,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   let scheduleHydration: (query: QueryKey) => Effect.Effect<void> = () => Effect.void;
   let scheduleRecovery: (receiver: RuntimeReceiver, reason: string) => Effect.Effect<void> = () =>
     Effect.void;
+  let recoverSubscription: (
+    receiver: RuntimeReceiver,
+    registration: RuntimeRegistration,
+  ) => Effect.Effect<void> = () => Effect.void;
   // Bounded, backoff-capped retry out of the `failed` interest state. Assigned once
   // `establishInterest` exists; referenced from both `establishInterest` and `scheduleRecovery`.
   let scheduleFailedRetry: (
@@ -1499,15 +1503,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       if (event.kind === "malformed") {
         const registration =
           event.subscriptionName === undefined
-            ? null
-            : (receiver.registrationOwners.get(event.subscriptionName) ?? null);
-        return registration === null
+            ? undefined
+            : receiver.registrationOwners.get(event.subscriptionName);
+        return registration === undefined
           ? scheduleRecovery(receiver, "malformed receiver frame")
-          : Effect.forEach(
-              registration.dependents.values(),
-              (identity) => markRecovering(identity, "malformed"),
-              { discard: true },
-            ).pipe(Effect.andThen(scheduleRecovery(receiver, "malformed receiver frame")));
+          : recoverSubscription(receiver, registration);
       }
       return scheduleRecovery(receiver, event.reason);
     }).pipe(Effect.catch((error) => scheduleRecovery(receiver, error.message)));
@@ -2193,6 +2193,72 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     startRecoveryCycle(receiver, reason, (organizationKey) =>
       replaceReceiver(organizationKey, receiver, reason),
     );
+
+  // Retries the organization's recovering interests on `receiver` without replacing it; a
+  // retried interest that fails again replaces the receiver as in any other cycle.
+  const retryOnReceiver = (receiver: RuntimeReceiver, reason: string): Effect.Effect<void> =>
+    startRecoveryCycle(receiver, reason, (organizationKey) =>
+      Ref.get(model).pipe(
+        Effect.map((state) => ({
+          replacement: receiver,
+          hidden: false,
+          minRecoveringRetryAtMs: nextRecoveryAtMs(organizationKey, receiver, state),
+        })),
+      ),
+    );
+
+  // A malformed frame that names its subscription lost data of that subscription alone. The
+  // subscription leaves the receiver, so its later frames are dropped and re-establishment
+  // registers it afresh with a new baseline; only the interests it fed re-establish, on the
+  // same receiver, and every other interest keeps observing.
+  recoverSubscription = (receiver, registration) =>
+    lifecycleLock
+      .withPermit(
+        Effect.gen(function* () {
+          const subscriptionName = registration.request.subscriptionName;
+          if (
+            (yield* Ref.get(closed)) ||
+            receivers.get(organizationKeyOf(receiver.organization)) !== receiver ||
+            receiver.registrationOwners.get(subscriptionName) !== registration
+          )
+            return false;
+          receiver.registrationOwners.delete(subscriptionName);
+          if (receiver.registrations.get(registration.key) === registration)
+            receiver.registrations.delete(registration.key);
+          const hidden = (yield* Ref.get(currentVisibility)) === "hidden";
+          const now = yield* Clock.currentTimeMillis;
+          let recovering = false;
+          for (const identity of registration.dependents.values()) {
+            const runtimeInterest = interests.get(identity.key);
+            if (
+              runtimeInterest === undefined ||
+              runtimeInterest.identity !== identity ||
+              runtimeInterest.leases.size === 0
+            )
+              continue;
+            const outcome = yield* reestablishLater(runtimeInterest, receiver, {
+              hidden,
+              now,
+              reason: "malformed",
+              message: "malformed receiver frame",
+            });
+            if (outcome.failedRetryAtMs !== null) {
+              yield* scheduleFailedRetry(
+                runtimeInterest,
+                runtimeInterest.identity,
+                outcome.failedRetryAtMs,
+              );
+            }
+            recovering ||= outcome.recoveringRetryAtMs !== null;
+          }
+          return recovering;
+        }),
+      )
+      .pipe(
+        Effect.flatMap((recovering) =>
+          recovering ? retryOnReceiver(receiver, "malformed receiver frame") : Effect.void,
+        ),
+      );
 
   scheduleFailedRetry = (runtimeInterest, identity, retryAtMs) =>
     Effect.gen(function* () {
