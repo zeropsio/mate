@@ -136,6 +136,101 @@ describe("environment machine (DESIGN §4.4)", () => {
     });
   });
 
+  it("a configuration block the descriptor does not explain stops minting after three rounds", () => {
+    /** Blocked(configuration), the re-read shows the same environment, the re-exchange lands. */
+    const blockRereadAndRotate = (machine: EnvironmentMachine): Run => {
+      const blocked = drive(machine, [
+        { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
+      ]);
+      const read = blocked.effects.find(
+        (effect): effect is Extract<EnvironmentEffect, { kind: "run" }> =>
+          effect.kind === "run" && effect.op.kind === "read-descriptor",
+      );
+      if (read === undefined) throw new Error("no descriptor re-read");
+      return drive(
+        blocked.machine,
+        [
+          {
+            type: "DESCRIPTOR_READ",
+            attempt: read.attempt,
+            result: { ok: true, descriptor: descriptor() },
+          },
+        ],
+        blocked.nowMs,
+      );
+    };
+    const rotate = (run: Run): EnvironmentMachine =>
+      drive(
+        run.machine,
+        [
+          {
+            type: "EXCHANGE_SUCCEEDED",
+            attempt: lastExchange(run.machine),
+            environmentId: ENV_A,
+            descriptor: null,
+          },
+        ],
+        run.nowMs,
+      ).machine;
+
+    const first = blockRereadAndRotate(connected());
+    expect(first.machine.credential.kind).toBe("exchanging");
+    const second = blockRereadAndRotate(rotate(first));
+    expect(second.machine.credential.kind).toBe("exchanging");
+    const third = blockRereadAndRotate(rotate(second));
+    expect(third.machine.credential).toEqual({
+      kind: "refused",
+      reason: { kind: "configuration" },
+    });
+    expect(third.effects).toContainEqual({
+      kind: "log",
+      diagnostic: { kind: "configuration-loop", blocks: 3 },
+    });
+    expect(selectReachability(third.machine, ENV_A)).toEqual({ kind: "refused-configuration" });
+
+    // Nothing but an input change leaves it: time passes and wakes arrive, and no exchange starts.
+    const waited = drive(third.machine, [
+      { type: "TICK" },
+      { type: "WAKE", visible: true },
+      { type: "ONLINE" },
+    ]);
+    expect(waited.machine.credential.kind).toBe("refused");
+    const retried = drive(waited.machine, [{ type: "USER_RETRY" }]);
+    expect(retried.machine.credential.kind).toBe("exchanging");
+  });
+
+  it("a connect between configuration blocks starts the count over", () => {
+    let machine = connected();
+    for (let round = 0; round < 5; round += 1) {
+      const blocked = drive(machine, [
+        { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
+      ]);
+      const read = blocked.effects.find(
+        (effect): effect is Extract<EnvironmentEffect, { kind: "run" }> =>
+          effect.kind === "run" && effect.op.kind === "read-descriptor",
+      );
+      if (read === undefined) throw new Error("no descriptor re-read");
+      const reread = drive(blocked.machine, [
+        {
+          type: "DESCRIPTOR_READ",
+          attempt: read.attempt,
+          result: { ok: true, descriptor: descriptor() },
+        },
+      ]).machine;
+      machine = drive(reread, [
+        {
+          type: "EXCHANGE_SUCCEEDED",
+          attempt: lastExchange(reread),
+          environmentId: ENV_A,
+          descriptor: null,
+        },
+        { type: "LINK", link: { phase: "connecting" } },
+        { type: "LINK", link: { phase: "connected" } },
+      ]).machine;
+      expect(machine.credential.kind).toBe("held");
+    }
+  });
+
   it("after a role change, the first permission block re-exchanges once before refusing the role", () => {
     const blockAndRotate = (machine: EnvironmentMachine): EnvironmentMachine => {
       const blocked = drive(machine, [

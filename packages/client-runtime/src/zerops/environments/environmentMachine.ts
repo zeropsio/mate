@@ -113,6 +113,11 @@ export type RefusalReason =
   | { readonly kind: "version" }
   /** The Mate at this origin belongs to another project: presence needs a re-read. */
   | { readonly kind: "project-mismatch" }
+  /**
+   * The link kept being blocked on configuration while the descriptor showed the same
+   * environment: re-exchanging does not change it, and each round mints a throwaway.
+   */
+  | { readonly kind: "configuration" }
   /** `identityMint` refused for a reason no later round changes. */
   | {
       readonly kind: "access";
@@ -228,6 +233,11 @@ export interface EnvironmentMachine {
   readonly authRejections: ReadonlyArray<number>;
   /** The link was blocked on permission once and one exchange was spent on it. */
   readonly permissionRetried: boolean;
+  /**
+   * Configuration blocks in a row the descriptor did not explain (the same environment), each
+   * answered by a re-exchange; a connect or an input change starts the count over.
+   */
+  readonly configurationBlocks: number;
   /** A descriptor read reported identity `ok` since Zerops last started failing for the grant. */
   readonly identityAnswered: boolean;
   /** Consecutive descriptor reads reporting identity `failed`, each with a newer check. */
@@ -293,7 +303,8 @@ export type EnvironmentOp =
 
 export type EnvironmentDiagnostic =
   | { readonly kind: "stale-result"; readonly attempt: number }
-  | { readonly kind: "auth-loop"; readonly rejections: number };
+  | { readonly kind: "auth-loop"; readonly rejections: number }
+  | { readonly kind: "configuration-loop"; readonly blocks: number };
 
 export const ENVIRONMENT_TIMER_KEY = "environment";
 
@@ -324,6 +335,8 @@ export const CAPPED_RETRY_MS = 5 * 60_000;
 /** This many auth rejections inside `AUTH_LOOP_WINDOW_MS` back off instead of re-exchanging. */
 export const AUTH_LOOP_REJECTIONS = 3;
 export const AUTH_LOOP_WINDOW_MS = 2 * 60_000;
+/** This many unexplained configuration blocks in a row refuse instead of re-exchanging. */
+export const CONFIGURATION_LOOP_BLOCKS = 3;
 /** Identity `failed` backs off from the 15 s rung (§4.4). */
 const IDENTITY_FAILED_RUNG = 3;
 
@@ -348,6 +361,7 @@ export const initialEnvironment = (input: {
   failures: 0,
   authRejections: [],
   permissionRetried: false,
+  configurationBlocks: 0,
   identityAnswered: false,
   identityFailures: NO_IDENTITY_FAILURES,
   nextAttempt: 1,
@@ -458,7 +472,7 @@ const inputChanged = (
   machine: EnvironmentMachine,
   trigger: "user-retry" | "input-change",
 ): EnvironmentMachine => {
-  const reset = { ...machine, failures: 0, permissionRetried: false };
+  const reset = { ...machine, failures: 0, permissionRetried: false, configurationBlocks: 0 };
   return machine.credential.kind === "refused"
     ? { ...reset, ladder: INITIAL_BACKOFF, credential: { kind: "none", reconnect: false } }
     : release(reset, trigger);
@@ -669,6 +683,7 @@ const onLink = (
       link: { phase: "connected", since: ctx.now },
       credential,
       permissionRetried: false,
+      configurationBlocks: 0,
     };
     // A live socket proves the container is up: a wait on it ends.
     return next.credential.kind === "held"
@@ -778,9 +793,19 @@ const apply = (
           credential: { kind: "none", reconnect: false },
         };
       }
-      return credential.rereading.block === "unsupported"
-        ? refuse(next, { kind: "version" }, out)
-        : { ...next, credential: { kind: "none", reconnect: true } };
+      if (credential.rereading.block === "unsupported")
+        return refuse(next, { kind: "version" }, out);
+      // The same environment behind a configuration block: another exchange may clear it, but a
+      // block that keeps coming back only spends throwaways.
+      const configurationBlocks = next.configurationBlocks + 1;
+      if (configurationBlocks >= CONFIGURATION_LOOP_BLOCKS) {
+        out.push({
+          kind: "log",
+          diagnostic: { kind: "configuration-loop", blocks: configurationBlocks },
+        });
+        return refuse({ ...next, configurationBlocks }, { kind: "configuration" }, out);
+      }
+      return { ...next, configurationBlocks, credential: { kind: "none", reconnect: true } };
     }
     case "EXCHANGE_SUCCEEDED": {
       if (credential.kind !== "exchanging" || credential.attempt !== event.attempt) {

@@ -154,6 +154,12 @@ const ROWS: ReadonlyArray<{
   },
   {
     row: 3,
+    name: "the link kept refusing its configuration",
+    machine: machine({ credential: { kind: "refused", reason: { kind: "configuration" } } }),
+    verdict: { kind: "refused-configuration" },
+  },
+  {
+    row: 3,
     name: "the Mate at this origin belongs to another project: presence is re-read",
     machine: machine({ credential: { kind: "refused", reason: { kind: "project-mismatch" } } }),
     verdict: { kind: "connecting", waitingOn: "presence" },
@@ -590,6 +596,10 @@ describe("reachabilityPhrase", () => {
     expect(phrase({ kind: "refused-role" })).toEqual({
       text: "You can see this project in Zerops but can't operate its Mate.",
       actions: [],
+    });
+    expect(phrase({ kind: "refused-configuration" })).toEqual({
+      text: "This Mate keeps refusing its connection settings.",
+      actions: ["try-now"],
     });
     expect(phrase({ kind: "update-unavailable" })).toEqual({
       text: "This project's Zerops tooling installs an older Mate than this app supports.",

@@ -40,6 +40,8 @@ export type Reachability =
   | { readonly kind: "gone"; readonly because: AbsenceEvidence }
   | { readonly kind: "replaced"; readonly by: EnvironmentId }
   | { readonly kind: "refused-role" }
+  /** The link kept refusing its configuration; waits for the user or an input change. */
+  | { readonly kind: "refused-configuration" }
   | { readonly kind: "update-required"; readonly actual: string; readonly minimum: string }
   | { readonly kind: "update-unavailable" }
   | { readonly kind: "connecting"; readonly waitingOn: ConnectingOn }
@@ -132,6 +134,8 @@ export function selectReachability(
         return { kind: "connecting", waitingOn: "presence" };
       case "access":
         return { kind: "connecting", waitingOn: "access" };
+      case "configuration":
+        return { kind: "refused-configuration" };
     }
   }
   const held = credential.kind === "held";
@@ -284,6 +288,8 @@ export function reachabilityPhrase(
       ]);
     case "refused-role":
       return phrase("You can see this project in Zerops but can't operate its Mate.");
+    case "refused-configuration":
+      return phrase("This Mate keeps refusing its connection settings.", ["try-now"]);
     case "update-required":
       return phrase(
         `This Mate runs ${verdict.actual}; this app needs ${verdict.minimum} or newer. Restarting it installs a newer one.`,
