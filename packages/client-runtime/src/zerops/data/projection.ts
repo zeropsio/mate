@@ -4,6 +4,7 @@ import type {
   CollectionRead,
   CommandAttemptRef,
   CommandAttemptState,
+  DesiredInterestState,
   EntityKnowledge,
   EntityRead,
   HistoryReadView,
@@ -14,10 +15,12 @@ import type {
   OrganizationRef,
   ProcessRecord,
   ProjectActivityRead,
+  ProjectKey,
   ProjectRecord,
   ProjectRef,
   ProjectTopologyRead,
   QueryState,
+  ServiceKey,
   ServiceRecord,
   ServiceRef,
   UsageRead,
@@ -31,22 +34,78 @@ import {
   serviceKeyOf,
 } from "./types.ts";
 
-const observationOf = (state: ZeropsDataState, project?: ProjectRef): ViewObservation => {
+type Interests = ZeropsDataState["interests"];
+type InterestsOfView = Pick<ViewObservation, "required" | "optional">;
+
+/**
+ * The interests one view observes, by project: a project's own interests and those of no project
+ * (an organization's inventory), in the order the state holds them. Every project's view is read on
+ * each publication, so the interests are indexed once per interests map, not once per project.
+ */
+interface InterestIndex {
+  /** In state order. */
+  readonly interests: ReadonlyArray<DesiredInterestState>;
+  /** The positions of each project's own interests, and under `null` those of no project. */
+  readonly positions: ReadonlyMap<ProjectKey | null, ReadonlyArray<number>>;
+  /** The views already read, by project key; `undefined` for the view of every interest. */
+  readonly views: Map<ProjectKey | undefined, InterestsOfView>;
+}
+
+const interestIndexes = new WeakMap<Interests, InterestIndex>();
+
+function interestIndexOf(interests: Interests): InterestIndex {
+  const held = interestIndexes.get(interests);
+  if (held !== undefined) return held;
+  const ordered: Array<DesiredInterestState> = [];
+  const positions = new Map<ProjectKey | null, Array<number>>();
+  for (const desired of interests.values()) {
+    const descriptor = desired.descriptor;
+    const key = "project" in descriptor ? projectKeyOf(descriptor.project) : null;
+    const position = ordered.length;
+    ordered.push(desired);
+    const atKey = positions.get(key);
+    if (atKey === undefined) positions.set(key, [position]);
+    else atKey.push(position);
+  }
+  const index: InterestIndex = { interests: ordered, positions, views: new Map() };
+  interestIndexes.set(interests, index);
+  return index;
+}
+
+function interestsOfView(index: InterestIndex, project: ProjectKey | undefined): InterestsOfView {
+  const held = index.views.get(project);
+  if (held !== undefined) return held;
+  const own = project === undefined ? [] : (index.positions.get(project) ?? []);
+  const unscoped = project === undefined ? [] : (index.positions.get(null) ?? []);
   const required: InterestState[] = [];
   const optional: InterestState[] = [];
-  for (const desired of state.interests.values()) {
-    const descriptor = desired.descriptor;
-    const descriptorProject = "project" in descriptor ? descriptor.project : undefined;
-    if (
-      project !== undefined &&
-      descriptorProject !== undefined &&
-      projectKeyOf(descriptorProject) !== projectKeyOf(project)
-    )
-      continue;
+  const take = (position: number) => {
+    const desired = index.interests[position]!;
     (desired.required ? required : optional).push(desired.interest);
+  };
+  if (project === undefined) {
+    index.interests.forEach((_, position) => take(position));
+  } else {
+    // Both position lists are ascending: merged, they keep the state's order.
+    let o = 0;
+    let u = 0;
+    while (o < own.length || u < unscoped.length) {
+      if (u >= unscoped.length || (o < own.length && own[o]! < unscoped[u]!)) take(own[o++]!);
+      else take(unscoped[u++]!);
+    }
   }
-  return { required, optional, access: state.access };
-};
+  const view = { required, optional };
+  index.views.set(project, view);
+  return view;
+}
+
+const observationOf = (state: ZeropsDataState, project?: ProjectRef): ViewObservation => ({
+  ...interestsOfView(
+    interestIndexOf(state.interests),
+    project === undefined ? undefined : projectKeyOf(project),
+  ),
+  access: state.access,
+});
 
 const projectKnowledge = (
   record: ProjectRecord | undefined,
@@ -188,20 +247,67 @@ const unresolvedServiceQuery = (project: ProjectRef): QueryState<ServiceQuery> =
   membershipOperations: new Map(),
 });
 
+type InventoryQueries = ZeropsDataState["inventory"]["queries"];
+type InventoryServices = ZeropsDataState["inventory"]["services"];
+
+/** Each project's services read, once per query map: the first one the map holds. */
+const serviceQueryIndexes = new WeakMap<
+  InventoryQueries,
+  ReadonlyMap<ProjectKey, QueryState<ServiceQuery>>
+>();
+
+function serviceQueryOf(
+  queries: InventoryQueries,
+  project: ProjectKey,
+): QueryState<ServiceQuery> | undefined {
+  let index = serviceQueryIndexes.get(queries);
+  if (index === undefined) {
+    const byProject = new Map<ProjectKey, QueryState<ServiceQuery>>();
+    for (const candidate of queries.values()) {
+      if (candidate.descriptor.kind !== "services-of-project") continue;
+      const key = projectKeyOf(candidate.descriptor.project);
+      if (!byProject.has(key)) byProject.set(key, candidate as QueryState<ServiceQuery>);
+    }
+    index = byProject;
+    serviceQueryIndexes.set(queries, index);
+  }
+  return index.get(project);
+}
+
+/** Each project's service keys, once per service map, in the order the map holds them. */
+const serviceKeyIndexes = new WeakMap<
+  InventoryServices,
+  ReadonlyMap<ProjectKey, ReadonlyArray<ServiceKey>>
+>();
+
+function serviceKeysOf(
+  services: InventoryServices,
+  project: ProjectKey,
+): ReadonlyArray<ServiceKey> {
+  let index = serviceKeyIndexes.get(services);
+  if (index === undefined) {
+    const byProject = new Map<ProjectKey, Array<ServiceKey>>();
+    for (const [key, record] of services) {
+      const owner = projectKeyOf(record.ref.project);
+      const keys = byProject.get(owner);
+      if (keys === undefined) byProject.set(owner, [key]);
+      else keys.push(key);
+    }
+    index = byProject;
+    serviceKeyIndexes.set(services, index);
+  }
+  return index.get(project) ?? [];
+}
+
 export function selectServicesOf(
   state: ZeropsDataState,
   project: ProjectRef,
 ): CollectionRead<ServiceRecord> {
-  const indexed = [...state.inventory.queries.values()].find(
-    (candidate) =>
-      candidate.descriptor.kind === "services-of-project" &&
-      projectKeyOf(candidate.descriptor.project) === projectKeyOf(project),
-  ) as QueryState<ServiceQuery> | undefined;
-  const query = indexed ?? unresolvedServiceQuery(project);
+  const projectKey = projectKeyOf(project);
+  const query =
+    serviceQueryOf(state.inventory.queries, projectKey) ?? unresolvedServiceQuery(project);
   const relationshipKeys = new Set(query.memberKeys);
-  for (const [key, record] of state.inventory.services) {
-    if (projectKeyOf(record.ref.project) === projectKeyOf(project)) relationshipKeys.add(key);
-  }
+  for (const key of serviceKeysOf(state.inventory.services, projectKey)) relationshipKeys.add(key);
   return {
     value: [...relationshipKeys].flatMap((key) => {
       const record = state.inventory.services.get(key);

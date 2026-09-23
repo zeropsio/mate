@@ -21,6 +21,7 @@ import type {
   IngestionStamp,
   InterestKey,
   InterestState,
+  OrganizationRef,
   ProjectRecord,
   ProjectRef,
   QueryState,
@@ -43,11 +44,28 @@ function sourceOf(
   feeders: ReadonlySet<InterestKey>,
 ): InterestState | null {
   let best: InterestState | null = null;
-  for (const interest of [...observation.required, ...observation.optional]) {
-    if (!feeders.has(interest.identity.key)) continue;
-    if (best === null || RANK[interest.status] < RANK[best.status]) best = interest;
+  for (const interests of [observation.required, observation.optional]) {
+    for (const interest of interests) {
+      if (!feeders.has(interest.identity.key)) continue;
+      if (best === null || RANK[interest.status] < RANK[best.status]) best = interest;
+    }
   }
   return best;
+}
+
+/** A read's feeders, computed once per ref object: every publication reads every project's. */
+function feedersOnce<Ref extends object>(
+  feedersOf: (ref: Ref) => ReadonlySet<InterestKey>,
+): (ref: Ref) => ReadonlySet<InterestKey> {
+  const held = new WeakMap<Ref, ReadonlySet<InterestKey>>();
+  return (ref) => {
+    let feeders = held.get(ref);
+    if (feeders === undefined) {
+      feeders = feedersOf(ref);
+      held.set(ref, feeders);
+    }
+    return feeders;
+  };
 }
 
 const stampOf = (stamp: IngestionStamp): Stamp => ({
@@ -168,12 +186,14 @@ function knownCollection<Record extends ProjectRecord | ServiceRecord>(
  * recovering changes the read's knowledge while its query stays as it was.
  */
 export function projectsSourceOf(read: CollectionRead<ProjectRecord>): InterestState | null {
-  const { organization } = read.query.descriptor;
-  return sourceOf(
-    read.observation,
-    new Set([interestKeyOf({ kind: "organization-inventory", organization })]),
-  );
+  return sourceOf(read.observation, organizationFeeders(read.query.descriptor.organization));
 }
+
+/** The interest that reads an organization's projects. */
+const organizationFeeders = feedersOnce(
+  (organization: OrganizationRef): ReadonlySet<InterestKey> =>
+    new Set([interestKeyOf({ kind: "organization-inventory", organization })]),
+);
 
 /** An organization's projects: fed by its inventory interest. */
 export function knownProjectsOf(
@@ -184,15 +204,18 @@ export function knownProjectsOf(
 }
 
 /** The interests that read one project and its services directly. */
-const projectFeeders = (project: ProjectRef): ReadonlyArray<InterestKey> => [
-  interestKeyOf({ kind: "project-inventory", project }),
-  interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: false }),
-  interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: true }),
-];
+const projectFeeders = feedersOnce(
+  (project: ProjectRef): ReadonlySet<InterestKey> =>
+    new Set([
+      interestKeyOf({ kind: "project-inventory", project }),
+      interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: false }),
+      interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: true }),
+    ]),
+);
 
 /** The interest a project's services read is as current as, like `projectsSourceOf`. */
 export function servicesSourceOf(read: CollectionRead<ServiceRecord>): InterestState | null {
-  return sourceOf(read.observation, new Set(projectFeeders(read.query.descriptor.project)));
+  return sourceOf(read.observation, projectFeeders(read.query.descriptor.project));
 }
 
 /** A project's services: fed by its inventory interest or by its topology. */
@@ -220,6 +243,12 @@ function unavailable<T>(reason: Unavailable, stamp: IngestionStamp): Known<T> {
   return { state: "gone", evidence, asOf: stampOf(stamp) };
 }
 
+/** The interests that read a project's tags: its organization's list and its own reads. */
+const tagFeeders = feedersOnce(
+  (project: ProjectRef): ReadonlySet<InterestKey> =>
+    new Set([...organizationFeeders(project.organization), ...projectFeeders(project)]),
+);
+
 /**
  * A project's tags (B2): fed by its organization's list and by the project's own reads. A
  * presentation read that did not carry the tags leaves them unread.
@@ -230,13 +259,7 @@ export function knownProjectTags(
 ): Known<ReadonlyArray<string>> {
   const entity = read.value;
   const ref = entity.knowledge === "observed" ? entity.record.ref : entity.ref;
-  const source = sourceOf(
-    read.observation,
-    new Set([
-      interestKeyOf({ kind: "organization-inventory", organization: ref.organization }),
-      ...projectFeeders(ref),
-    ]),
-  );
+  const source = sourceOf(read.observation, tagFeeders(ref));
   if (entity.knowledge === "unavailable") return unavailable(entity.reason, entity.since);
   if (entity.knowledge === "unresolved") return notYetKnown(source, nowMs);
   const facet = entity.record.presentation;
