@@ -262,7 +262,16 @@ export interface StopReads {
   /** Every app version a build named, by id: a name outlives its build (A11). */
   readonly names: ReadonlyMap<string, string>;
   /** Why the platform took no demand for the running processes; they are never read then. */
-  readonly refused: LeaseAdmissionError["reason"] | null;
+  readonly refused: ProcessRefusal | null;
+}
+
+/** The platform took no demand for a stop's running processes: why, and when it is asked again. */
+export interface ProcessRefusal {
+  readonly reason: LeaseAdmissionError["reason"];
+  /** How many times in a row it refused. */
+  readonly attempt: number;
+  /** `null` for a demand it will never admit. */
+  readonly retryAtMs: number | null;
 }
 
 /** A `stack.build` the platform reports running, and the app version it builds (A11). */
@@ -468,9 +477,9 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
         ? worstSource([...read.observation.required, ...reads.processes.observation.required])
         : {
             kind: "failed",
-            failure: { kind: "refused", code: reads.refused, words: "" },
-            attempts: 1,
-            retryAtMs: null,
+            failure: { kind: "refused", code: reads.refused.reason, words: "" },
+            attempts: reads.refused.attempt,
+            retryAtMs: reads.refused.retryAtMs,
           },
     nowMs,
   };

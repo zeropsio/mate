@@ -26,6 +26,8 @@ function listings() {
   const processReads = new Map<string, CollectionRead<ProcessRecord>>();
   const watchers = new Map<string, Set<() => void>>();
   const refusals = new Map<string, (reason: LeaseAdmissionError["reason"]) => void>();
+  const timers: Array<{ readonly delayMs: number; readonly fire: () => void; armed: boolean }> = [];
+  let follows = 0;
   const changed = (ref: ProjectRef) => {
     for (const listener of watchers.get(projectKeyOf(ref)) ?? []) listener();
   };
@@ -42,6 +44,7 @@ function listings() {
         listener: () => void,
         refused: (reason: LeaseAdmissionError["reason"]) => void,
       ) => {
+        follows += 1;
         const key = projectKeyOf(ref);
         const set = watchers.get(key) ?? new Set();
         watchers.set(key, set.add(listener));
@@ -49,6 +52,14 @@ function listings() {
         return () => void set.delete(listener);
       },
       nowMs: () => NOW,
+      random: () => 0.5,
+      setTimer: (delayMs: number, fire: () => void) => {
+        const timer = { delayMs, fire, armed: true };
+        timers.push(timer);
+        return () => {
+          timer.armed = false;
+        };
+      },
     },
     publish: (ref: ProjectRef, read: CollectionRead<ServiceRecord>) => {
       reads.set(projectKeyOf(ref), read);
@@ -62,6 +73,17 @@ function listings() {
     refuse: (ref: ProjectRef, reason: LeaseAdmissionError["reason"]) =>
       refusals.get(projectKeyOf(ref))?.(reason),
     watching: () => [...watchers.values()].reduce((count, set) => count + set.size, 0),
+    /** How often a stop's demand was taken. */
+    follows: () => follows,
+    /** The armed timers' delays. */
+    armed: () => timers.filter(({ armed }) => armed).map(({ delayMs }) => delayMs),
+    /** Fires every armed timer. */
+    fire: () => {
+      for (const timer of timers.filter(({ armed }) => armed)) {
+        timer.armed = false;
+        timer.fire();
+      }
+    },
   };
 }
 
@@ -231,10 +253,10 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     });
   });
 
-  it("a refused process demand fails the none it could not prove, never checks forever", () => {
+  it("a refused process demand fails the none it could not prove until it is taken again", () => {
     const platform = listings();
     const store = makeDeploymentStore(platform.ports);
-    store.demand(STAGE);
+    const release = store.demand(STAGE);
     const heard: Array<string> = [];
     store.subscribe((ref) => heard.push(ref.projectId));
     platform.publish(STAGE, stage(NEVER_DEPLOYED));
@@ -245,8 +267,42 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
       state: "failed",
       failure: { kind: "refused", code: "account-capacity" },
-      retryAtMs: null,
+      attempt: 1,
+      retryAtMs: NOW + 2_000,
     });
+    // Refused again, the next ask waits a rung longer (§4.0).
+    platform.fire();
+    platform.refuse(STAGE, "account-capacity");
+    expect(platform.armed()).toEqual([4_000]);
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "failed",
+      attempt: 2,
+      retryAtMs: NOW + 4_000,
+    });
+
+    // Taken this time: the stop reads its processes, and proves its none.
+    platform.fire();
+    expect(platform.follows()).toBe(3);
+    expect(deploymentOf(store.stop(STAGE), "app")?.state).toBe("unread");
+    platform.publishProcesses(STAGE, building());
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: { kind: "none" },
+    });
+
+    release();
+    expect(platform.armed()).toEqual([]);
+  });
+
+  it("a stop let go stops asking for the demand the platform refused", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    const release = store.demand(STAGE);
+    platform.refuse(STAGE, "account-capacity");
+
+    release();
+
+    expect(platform.armed()).toEqual([]);
   });
 
   it("a process demand refused as it is taken fails the none too", () => {
@@ -265,7 +321,10 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
       state: "failed",
       failure: { kind: "refused", code: "account-mismatch" },
+      retryAtMs: null,
     });
+    // A demand for another account is never admitted: nothing asks again.
+    expect(platform.armed()).toEqual([]);
   });
 
   it("a disposed store watches nothing and publishes nothing", () => {

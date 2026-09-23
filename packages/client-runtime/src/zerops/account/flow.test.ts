@@ -1,5 +1,7 @@
+import { it as effectIt } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as TestClock from "effect/testing/TestClock";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -139,4 +141,23 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     expect(refused).toEqual(["account-capacity"]);
     unfollow();
   });
+
+  effectIt.effect("arms the store's timers on the account's clock, and disarms them", () =>
+    Effect.gen(function* () {
+      const listing = Atom.make(null);
+      const data = {
+        reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
+      } as unknown as ManagedZeropsDataRuntime;
+      const ports = deploymentStorePorts(data, AtomRegistry.make(), yield* Effect.context<never>());
+      const fired: Array<string> = [];
+      ports.setTimer(2_000, () => fired.push("kept"));
+      const disarm = ports.setTimer(2_000, () => fired.push("disarmed"));
+
+      disarm();
+      yield* TestClock.adjust(1_999);
+      expect(fired).toEqual([]);
+      yield* TestClock.adjust(1);
+      expect(fired).toEqual(["kept"]);
+    }),
+  );
 });

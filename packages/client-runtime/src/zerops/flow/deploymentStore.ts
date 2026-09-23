@@ -9,7 +9,8 @@
  * listing changes, with each service's deployment beside it (`stopServices`). The names the
  * builds gave are kept while the stop is demanded: a version that activates after its build
  * ended is still named by it. A process demand the platform refuses fails what it could not
- * prove, rather than checking forever. A stop nobody demands shows `unread`.
+ * prove, rather than checking forever, and is asked for again on the retry ladder (§4.0) while the
+ * stop is demanded. A stop nobody demands shows `unread`.
  *
  * A `deployment` invalidation (§6.2) publishes the stop holding that service again.
  *
@@ -26,7 +27,8 @@ import {
 } from "../data/types.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import type { Shown } from "../knowledge/known.ts";
-import { buildNames, stopServices, type StopService } from "./deployment.ts";
+import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
+import { buildNames, stopServices, type ProcessRefusal, type StopService } from "./deployment.ts";
 
 /** The invalidations the deployment store answers (§6.2). */
 export type DeploymentInvalidation = Extract<Invalidation, { readonly topic: "deployment" }>;
@@ -46,6 +48,10 @@ export interface DeploymentStorePorts {
     refused: (reason: LeaseAdmissionError["reason"]) => void,
   ) => () => void;
   readonly nowMs: () => number;
+  /** The jitter source of the retry ladder. */
+  readonly random: () => number;
+  /** Arms a timer; the returned function disarms it. */
+  readonly setTimer: (delayMs: number, fire: () => void) => () => void;
 }
 
 export interface DeploymentStore {
@@ -67,11 +73,23 @@ interface Entry {
   leases: number;
   /** Every app version a build of the stop named while it was demanded, by id. */
   names: ReadonlyMap<string, string>;
-  /** Why the platform took no demand for the stop's running processes. */
-  refused: LeaseAdmissionError["reason"] | null;
+  /** Why the platform took no demand for the stop's running processes, while it did not. */
+  refused: ProcessRefusal | null;
+  /** How often the platform refused the demand; it keeps a demand it admitted. */
+  refusals: number;
+  /** Where the next ask for a refused demand sits on the ladder. */
+  backoff: Backoff;
+  /** Disarms the next ask for a refused demand. */
+  disarm: () => void;
   shown: Shown<ReadonlyArray<StopService>>;
   unfollow: () => void;
 }
+
+/** A demand refused for capacity may be admitted later; one for another account never is. */
+const RETRIED_REFUSALS: ReadonlySet<LeaseAdmissionError["reason"]> = new Set([
+  "account-capacity",
+  "receiver-capacity",
+]);
 
 const UNREAD: Shown<never> = { state: "unread", waitingFor: null };
 
@@ -100,6 +118,43 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
     for (const listener of listeners) listener(entry.project);
   };
 
+  /** Asks for the stop's demand; a refusal fails the stop until it is asked for again. */
+  const follow = (entry: Entry): void => {
+    entry.unfollow = ports.follow(
+      entry.project,
+      () => publish(entry),
+      (reason) => {
+        if (disposed || entries.get(projectKeyOf(entry.project)) !== entry) return;
+        const nowMs = ports.nowMs();
+        const scheduled = RETRIED_REFUSALS.has(reason)
+          ? scheduleRetry(entry.backoff, nowMs, ports.random)
+          : null;
+        entry.refused = {
+          reason,
+          attempt: ++entry.refusals,
+          retryAtMs: scheduled?.retryAtMs ?? null,
+        };
+        if (scheduled !== null) {
+          entry.backoff = scheduled.backoff;
+          entry.disarm = ports.setTimer(scheduled.retryAtMs - nowMs, () => askAgain(entry));
+        }
+        publish(entry);
+      },
+    );
+  };
+
+  /** Asked again, the stop reads as its listings say until the platform answers. */
+  const askAgain = (entry: Entry): void => {
+    entry.disarm = () => undefined;
+    entry.unfollow();
+    const refused = entry.refused;
+    follow(entry);
+    // Refused again as it was asked, the stop already published its new refusal.
+    if (entry.refused !== refused) return;
+    entry.refused = null;
+    publish(entry);
+  };
+
   return {
     demand: (project) => {
       if (disposed) return () => undefined;
@@ -111,19 +166,15 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
           leases: 0,
           names: new Map(),
           refused: null,
+          refusals: 0,
+          backoff: INITIAL_BACKOFF,
+          disarm: () => undefined,
           shown: UNREAD,
           unfollow: () => undefined,
         };
         // Held before it is followed: a demand refused as it is taken reaches the entry.
         entries.set(key, created);
-        created.unfollow = ports.follow(
-          project,
-          () => publish(created),
-          (reason) => {
-            created.refused = reason;
-            publish(created);
-          },
-        );
+        follow(created);
         read(created);
         entry = created;
       }
@@ -135,6 +186,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         released = true;
         held.leases -= 1;
         if (held.leases > 0) return;
+        held.disarm();
         held.unfollow();
         entries.delete(key);
       };
@@ -155,7 +207,10 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      for (const entry of entries.values()) entry.unfollow();
+      for (const entry of entries.values()) {
+        entry.disarm();
+        entry.unfollow();
+      }
       entries.clear();
       listeners.clear();
     },

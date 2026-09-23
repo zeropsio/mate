@@ -17,6 +17,7 @@
  * builds none.
  */
 import type * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
@@ -163,6 +164,15 @@ export function deploymentStorePorts(
       };
     },
     nowMs: () => data.access.clock.currentTimeMillisUnsafe(),
+    random: Math.random,
+    setTimer: (delayMs, fire) => {
+      const timer = run(
+        Effect.sleep(Duration.millis(delayMs)).pipe(Effect.andThen(Effect.sync(fire))),
+      );
+      return () => {
+        timer.interruptUnsafe();
+      };
+    },
   };
 }
 
