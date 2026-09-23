@@ -1860,9 +1860,13 @@ code {
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: var(--app-scrollbar-width);
+  height: var(--app-scrollbar-width);
 }
 
-::-webkit-scrollbar-track {
+/* A box scrolling both ways (a build log) meets its two bars in a corner that
+   the platform paints white unless told otherwise. */
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 
