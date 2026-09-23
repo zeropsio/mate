@@ -10,9 +10,10 @@ import {
   type EnvironmentGuards,
   type EnvironmentMachine,
 } from "./environmentMachine.ts";
+import { isTerminalReachability, selectReachability } from "./reachability.ts";
 
 /**
- * DESIGN §11.3 I5 and I7 over every event sequence the driver can send one target, breadth first
+ * DESIGN §11.3 I5, I7 and I9's reachability half over every event sequence the driver can send one target, breadth first
  * to depth 6, deduplicated by state. Time stands still between events and jumps to the machine's
  * own timer on `TICK`, so a state's instants stay few and the layers stay bounded. An answer is
  * sent for the attempt in flight and for the one before it (a late, superseded answer).
@@ -152,7 +153,7 @@ const keyOf = (state: ModelState): string =>
     value instanceof Map ? [...value.entries()] : value,
   );
 
-/** Every violation of I5 and I7 in one transition, as readable strings. */
+/** Every violation of I5, I7 and I9 in one transition, as readable strings. */
 const violations = (
   before: ModelState,
   effects: ReadonlyArray<EnvironmentEffect>,
@@ -212,10 +213,35 @@ const violations = (
       found.push(`I7: waiting(${credential.on}) was stranded; its inputs already allow more`);
     }
   }
+  // I9: a terminal verdict only with its evidence; K held ∧ L connected ∧ C ≠ inactive ⇒ ready.
+  for (const asked of [ENV_A, ENV_B]) {
+    const verdict = selectReachability(machine, asked);
+    const superseded = machine.superseded.has(asked);
+    if (isTerminalReachability(verdict)) {
+      const evidenced =
+        verdict.kind === "gone"
+          ? machine.presence.kind === "gone" || credential.kind === "retired"
+          : verdict.kind === "replaced"
+            ? superseded
+            : credential.kind === "refused" &&
+              credential.reason.kind === (verdict.kind === "refused-role" ? "role" : "version");
+      if (!evidenced) found.push(`I9: terminal ${verdict.kind} for ${asked} without evidence`);
+    }
+    if (
+      credential.kind === "held" &&
+      machine.link.phase === "connected" &&
+      machine.container.level !== "inactive" &&
+      machine.presence.kind !== "gone" &&
+      !superseded &&
+      verdict.kind !== "ready"
+    ) {
+      found.push(`I9: held, connected and not inactive, yet ${verdict.kind} for ${asked}`);
+    }
+  }
   return found;
 };
 
-describe("environment machine invariants (DESIGN §11.3 I5, I7) over enumerated event sequences", () => {
+describe("environment invariants (DESIGN §11.3 I5, I7, I9) over enumerated event sequences", () => {
   it(`holds for every sequence to depth ${DEPTH}`, () => {
     const initial: ModelState = { machine: initialEnvironment({ record: ENV_A }), nowMs: 100_000 };
     let layer = new Map<string, { state: ModelState; path: ReadonlyArray<string> }>([
