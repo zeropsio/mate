@@ -178,6 +178,51 @@ const RELEASING = entry([WREN, PROD], {
 });
 const FRESH = entry([UMA]);
 
+/** A production whose last deploy failed, with merged work a release could put there. */
+function brokenProduction() {
+  const FAILED_PROD_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
+  return entry([WREN, PROD], {
+    merged: [pull({ number: 4, merged: true })],
+    stops: [
+      {
+        ...PRODUCTION_STOP,
+        row: environmentRow({
+          projectId: "fixture-prod",
+          name: "production",
+          tier: "production",
+          sources: "release",
+          environment: "production",
+          services: [
+            {
+              hostname: "app",
+              appVersionName: FAILED_PROD_SHA,
+              statuses: [{ context: "mate/deploy/production/app", state: "failure" }],
+            },
+          ],
+        }),
+        deployment: {
+          state: "known",
+          value: {
+            kind: "running",
+            activatedAt: null,
+            version: {
+              name: undefined,
+              commit: "055a7e8",
+              sha: FAILED_PROD_SHA,
+              taggedBy: undefined,
+              label: "055a7e8",
+            },
+          },
+          asOf: { ordinal: 1, atMs: 0 },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        },
+      },
+    ],
+    release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+  });
+}
+
 describe("the Overview", () => {
   it("opens with the next steps across groups, each with its verb", () => {
     const html = render({ groups: [MERGING, FRESH] });
@@ -220,48 +265,7 @@ describe("the Overview", () => {
   });
 
   it("still offers the release beside a broken production, not just the build (D28)", () => {
-    const FAILED_PROD_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
-    const broken = entry([WREN, PROD], {
-      merged: [pull({ number: 4, merged: true })],
-      stops: [
-        {
-          ...PRODUCTION_STOP,
-          row: environmentRow({
-            projectId: "fixture-prod",
-            name: "production",
-            tier: "production",
-            sources: "release",
-            environment: "production",
-            services: [
-              {
-                hostname: "app",
-                appVersionName: FAILED_PROD_SHA,
-                statuses: [{ context: "mate/deploy/production/app", state: "failure" }],
-              },
-            ],
-          }),
-          deployment: {
-            state: "known",
-            value: {
-              kind: "running",
-              activatedAt: null,
-              version: {
-                name: undefined,
-                commit: "055a7e8",
-                sha: FAILED_PROD_SHA,
-                taggedBy: undefined,
-                label: "055a7e8",
-              },
-            },
-            asOf: { ordinal: 1, atMs: 0 },
-            coverage: "complete",
-            freshness: { kind: "live" },
-          },
-        },
-      ],
-      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
-    });
-    const group = section(render({ groups: [broken] }), 'data-zerops-group="aaa"');
+    const group = section(render({ groups: [brokenProduction()] }), 'data-zerops-group="aaa"');
     const production = group.slice(group.indexOf('data-zerops-step="production"'));
     expect(production).toContain('data-test-verb="fix-deploy"');
     expect(production).toContain('data-test-release-verb="true"');
@@ -483,5 +487,14 @@ describe("the Projects view", () => {
       renderGroupRows: () => <li data-test-release="v0.0.9" />,
     });
     expect(html).toContain('data-test-release="v0.0.9"');
+  });
+
+  it("still offers the release beside a broken production, not just the build (D28)", () => {
+    const card = section(
+      render({ view: "projects", groups: [brokenProduction()] }),
+      'data-zerops-group="aaa"',
+    );
+    const production = card.slice(card.indexOf('data-zerops-step="production"'));
+    expect(production).toContain('data-test-release-verb="true"');
   });
 });

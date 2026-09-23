@@ -854,6 +854,7 @@ function ProjectCard<T>({
           <ProductionStep
             compact={false}
             entry={entry}
+            renderReleaseVerb={props.renderReleaseVerb}
             renderStopMenu={props.renderStopMenu}
             verb={null}
           />
