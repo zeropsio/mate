@@ -543,68 +543,71 @@ the runtime, 3 builds environments, containers and births, 4 the forge and flow,
 withholding; S is the Mate server, and a server item holds on Mates at or above the release that
 carries it. "Live" means it holds on `main` today.
 
-| Item                                                                                                        | Status                                           |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Platform data runtime: records, interests, receivers, resource broker, commands                             | Live                                             |
-| T3 shell and thread stores                                                                                  | Live                                             |
-| Account epoch and its fence at the web boundary                                                             | Live                                             |
-| Active organization per tab                                                                                 | Live                                             |
-| Agent availability as one projection                                                                        | Live; takes `Known` inputs from 1.4              |
-| Server membership watch: 300 s re-check, two-pass rule, 24-hour maximum age                                 | Live; interval clamped to at most 300 s from S.0 |
-| Mate credentials in memory only                                                                             | Live                                             |
-| Gitea sessions forgotten on account close                                                                   | 0.1                                              |
-| Account harness and sign-in guards                                                                          | 0.0                                              |
-| `Known`, `Shown`, `Cell`, `knownPresentation`, retry policy                                                 | 0.4                                              |
-| Grant reducer with per-project evidence and policy constants                                                | 0.5                                              |
-| REST-only renewal, round-start evidence, per-project admission, writes open during renewal                  | 0.6                                              |
-| Throwaway mint waits for the account window; `deleteThrowaway` with the minting token; per-tab mint budgets | 0.7                                              |
-| `registry.rotateCredential`                                                                                 | 0.8                                              |
-| Environment machine and reachability, with an interim container region                                      | 0.9a; container region replaced in 3.2           |
-| One exchange driver for restore, auto-connect and repair                                                    | 0.9b; its React shell deleted in 3.4             |
-| Content-based route gate and one link predicate                                                             | 0.9c; descriptor sweep from 3.3                  |
-| A lapse never unmounts (opaque overlay, portals closed, title neutralized)                                  | 0.10; replaced by per-region withholding in 5.1  |
-| Session machine: cross-tab sign-in without reload, owner record, verified adoption                          | 0.11                                             |
-| `Deployment` from the pushed facet; per-group publication                                                   | 0.12; complete with `deploying` in 4.4           |
-| Gitea session machine                                                                                       | 0.13                                             |
-| `MergeState` shared by the flow, Git tab, banner and change page                                            | 0.14                                             |
-| Broker leases as cells, withheld and re-admitted per scope                                                  | 1.1                                              |
-| Invalidation bus and cross-tab channel                                                                      | 1.2                                              |
-| Inventory selectors return `Known`; presence `unknown`                                                      | 1.3                                              |
-| Mate feeds as `Known`                                                                                       | 1.4                                              |
-| Lint `t3code/no-failure-to-empty` and the `Cell` zone rule                                                  | 1.5                                              |
-| Runtime hygiene: no stranded `recovering`, resume reuses a live receiver, scoped malformed frames           | 1.6                                              |
-| Grant machine inside the data runtime; pre-grant and post-grant stages                                      | 2.1                                              |
-| Capabilities; typed refusals from commands                                                                  | 2.2                                              |
-| Refresh epoch deleted; callers become intents                                                               | 2.3                                              |
-| Rights-less throwaway mint no longer waits for the account window                                           | 2.4                                              |
-| Mate commands need the Mate session only                                                                    | 2.5, after S.0 is released                       |
-| First mount on the first grant alone                                                                        | 2.6                                              |
-| Registration records                                                                                        | 3.1; legacy keys deleted in 5.4                  |
-| Probe store, container machine, persisted intents                                                           | 3.2                                              |
-| Descriptor index and full sweep; `replaced`                                                                 | 3.3                                              |
-| Environment store in the post-grant stage                                                                   | 3.4                                              |
-| Birth store and worker                                                                                      | 3.5                                              |
-| Derived topology, names and Mate atoms                                                                      | 3.6                                              |
-| Mobile on the shared selectors and reachability                                                             | 3.7                                              |
-| Wake definition; a stream defect leaves `live`; thread gate                                                 | 3.8                                              |
-| Forge store with its scheduler                                                                              | 4.1                                              |
-| Registry as a projection of tags                                                                            | 4.2                                              |
-| One tag writer                                                                                              | 4.3                                              |
-| `groupFlow`, per-verb attempts, envelope and VCS invalidations                                              | 4.5; old hooks deleted in 4.6                    |
-| Reconcilers as account workers                                                                              | 4.7                                              |
-| Server lifecycle feed keeps each thread's latest value                                                      | S.1                                              |
-| Signer re-read before refusing a turn                                                                       | S.2                                              |
-| A turn failing authentication re-probes the agent's sign-in                                                 | S.3                                              |
-| Agent login reports its exit; a deploy operation becomes uncertain after its cap                            | S.4, S.5                                         |
-| Descriptor boot identity, server state stream, identity verdict split, close reasons                        | S.6                                              |
-| Persisted UI keys under the account key; the last route through the gate                                    | 5.2                                              |
-| Zone tests: one owner per fact family, no component I/O, no data timers                                     | 5.5                                              |
-| Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                                      | Live                                             |
-| Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)                    | 0.Z; zone test "rule 2"                          |
-| Dependency rule 3 (projections and the named pure modules are pure)                                         | 0.Z; zone test "rule 3"                          |
-| Dependency rules 2 and 3 read no clock and set no timer                                                     | 0.Z2; zone tests "rule 2" and "rule 3"           |
-| Dependency rule 4 (components import hooks only and set no data timer)                                      | 5.5                                              |
-| Dependency rule 5 (`Cell` and `advance` private to their store; `.value` only in selectors)                 | 1.5                                              |
-| Dependency rule 6, one way (only `account/` and `testing/` depend on `account/`)                            | 0.Z; zone test "rule 6"                          |
-| Dependency rule 6, construction (post-grant modules built only by `accountRuntime.ts`)                      | Lands with 2.1 (accountRuntime)                  |
-| Dependency rule 7 (protected roots render only)                                                             | Live                                             |
+| Item                                                                                              | Status                                                                                 |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Platform data runtime: records, interests, receivers, resource broker, commands                   | Live                                                                                   |
+| T3 shell and thread stores                                                                        | Live                                                                                   |
+| Account epoch and its fence at the web boundary                                                   | Live                                                                                   |
+| Active organization per tab                                                                       | Live                                                                                   |
+| Agent availability as one projection                                                              | Live                                                                                   |
+| Server membership watch: 300 s re-check, two-pass rule, 24-hour maximum age                       | Live; the interval clamped to at most 300 s (S.0) from the first release after 0.11.41 |
+| Mate credentials in memory only                                                                   | Live                                                                                   |
+| Gitea sessions forgotten on account close                                                         | Live                                                                                   |
+| Account harness and sign-in guards                                                                | Live                                                                                   |
+| `Known`, `Shown`, `Cell`, `knownPresentation`, retry policy                                       | Live                                                                                   |
+| Grant reducer with per-project evidence and policy constants                                      | Live                                                                                   |
+| REST-only renewal, round-start evidence, per-project admission, writes open during renewal        | Live                                                                                   |
+| `deleteThrowaway` with the minting token; per-tab mint budgets                                    | Live                                                                                   |
+| `registry.rotateCredential`                                                                       | Live                                                                                   |
+| Environment machine and reachability                                                              | Live                                                                                   |
+| One exchange driver for restore, auto-connect and repair                                          | Live                                                                                   |
+| Content-based route gate over the driver's machines, and one link predicate                       | Live                                                                                   |
+| A lapse never unmounts (opaque overlay, portals removed, title neutralized)                       | Live; replaced by per-region withholding in 5.1                                        |
+| Session machine: cross-tab sign-in without reload, owner record, verified adoption                | Live                                                                                   |
+| `Deployment` from the pushed facet; per-group publication                                         | Live; `deploying` in 4.4                                                               |
+| Gitea session machine                                                                             | Live                                                                                   |
+| `MergeState` shared by the flow, Git tab, banner and change page                                  | 4.1, in the forge store                                                                |
+| Broker leases as cells, withheld and re-admitted per scope                                        | Live                                                                                   |
+| Invalidation bus and cross-tab channel                                                            | Live                                                                                   |
+| Inventory selectors return `Known`; presence `unknown`                                            | Live                                                                                   |
+| The candidate listing's web consumers read `Known` through selectors                              | Live                                                                                   |
+| Mate feeds as `Known`                                                                             | Live                                                                                   |
+| Lint `t3code/no-failure-to-empty` and the `Cell` zone rule                                        | Live                                                                                   |
+| Runtime hygiene: no stranded `recovering`, resume reuses a live receiver, scoped malformed frames | Live                                                                                   |
+| Grant machine inside the data runtime; pre-grant and post-grant stages                            | Live                                                                                   |
+| Capabilities; typed refusals from commands                                                        | Live                                                                                   |
+| Refresh epoch deleted; callers become intents                                                     | Live                                                                                   |
+| Rights-less throwaway mint no longer waits for the account window                                 | Live                                                                                   |
+| Mate commands need the Mate session only                                                          | 2.5, after S.0 is released                                                             |
+| First mount on the first grant alone                                                              | 2.6                                                                                    |
+| Registration records, followed across tabs                                                        | Live; legacy keys deleted in 5.4                                                       |
+| Probe store, container machine, persisted intents                                                 | Live                                                                                   |
+| Descriptor index and full sweep; `replaced`                                                       | Live                                                                                   |
+| Environment store in the post-grant stage                                                         | Live                                                                                   |
+| Birth store and worker                                                                            | Live                                                                                   |
+| Derived topology, names and Mate atoms                                                            | Live                                                                                   |
+| Mobile on the shared candidate selectors and container store                                      | Live                                                                                   |
+| Mobile reachability, hosted by a mobile account runtime                                           | 3.7b                                                                                   |
+| Wake definition; a stream defect leaves `live`; thread gate                                       | Live                                                                                   |
+| Forge store with its scheduler                                                                    | 4.1                                                                                    |
+| Registry as a projection of tags                                                                  | Live                                                                                   |
+| One tag writer                                                                                    | Live                                                                                   |
+| `groupFlow`, per-verb attempts, envelope and VCS invalidations                                    | 4.5; old hooks deleted in 4.6                                                          |
+| Reconcilers as account workers                                                                    | 4.7                                                                                    |
+| Server lifecycle feed keeps each thread's latest value; one bad event never stops the ingest      | Live from the first release after 0.11.41                                              |
+| Signer re-read before refusing a turn                                                             | Live from the first release after 0.11.41                                              |
+| A turn failing authentication re-probes the agent's sign-in                                       | Live from the first release after 0.11.41                                              |
+| Agent login reports its exit                                                                      | Live from the first release after 0.11.41                                              |
+| A deploy operation becomes uncertain after its cap                                                | 4.4–4.5 (S.5)                                                                          |
+| Descriptor boot identity, server state stream, identity verdict split, close reasons              | S.6                                                                                    |
+| Persisted UI keys under the account key; the last route through the gate                          | 5.2                                                                                    |
+| Zone tests: one owner per fact family, no component I/O, no data timers                           | 5.5                                                                                    |
+| Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                            | Live                                                                                   |
+| Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)          | Live; zone test "rule 2"                                                               |
+| Dependency rule 3 (projections and the named pure modules are pure)                               | Live; zone test "rule 3"                                                               |
+| Dependency rules 2 and 3 read no clock and set no timer                                           | Live; zone tests "rule 2" and "rule 3"                                                 |
+| Dependency rule 4 (components import hooks only and set no data timer)                            | 5.5                                                                                    |
+| Dependency rule 5 (`Cell` and `advance` private to their store; `.value` only in selectors)       | Live                                                                                   |
+| Dependency rule 6, one way (only `account/` and `testing/` depend on `account/`)                  | Live; zone test "rule 6"                                                               |
+| Dependency rule 6, construction (post-grant modules built only by `accountRuntime.ts`)            | Live; zone test "rule 6"; mobile's own container store a named exception until 3.7b    |
+| Dependency rule 7 (protected roots render only)                                                   | Live                                                                                   |
