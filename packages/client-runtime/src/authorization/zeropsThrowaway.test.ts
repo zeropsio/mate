@@ -134,9 +134,14 @@ describe("withThrowaway", () => {
     },
   );
 
-  it("answers without waiting for the deletion, which still runs to its end", async () => {
-    // DESIGN §4.4: the finalizer is detached. A delete that takes its full
-    // deadline and its retry never holds the exchange's answer back.
+  it.each([
+    // DESIGN §4.4: a door exchange's finalizer is detached. A delete that
+    // takes its full deadline and its retry never holds the answer back.
+    { receiver: "a door", name: "mate-door:p:n", waits: false },
+    // A Gitea sign-in sends the browser on as soon as it answers, and a page
+    // being left takes an unfinished delete with it.
+    { receiver: "a Gitea sign-in", name: "gitea-signin:git.example.com:n", waits: true },
+  ])("$receiver answers once the deletion ended: $waits", async ({ name, waits }) => {
     let finishRemove!: () => void;
     const removed: Array<string> = [];
     const { platform } = fakePlatform({
@@ -148,16 +153,22 @@ describe("withThrowaway", () => {
           };
         }),
     });
-    await expect(
-      withThrowaway({
-        platform,
-        clientId: "org-1",
-        name: "mate-door:p:n",
-        use: () => Promise.resolve("in"),
-      }),
-    ).resolves.toBe("in");
+    let answered = false;
+    const answer = withThrowaway({
+      platform,
+      clientId: "org-1",
+      name,
+      use: () => Promise.resolve("in"),
+    }).then((value) => {
+      answered = true;
+      return value;
+    });
+    for (let hop = 0; hop < 10; hop += 1) await Promise.resolve();
+    expect(answered).toBe(!waits);
     expect(removed).toEqual([]);
+
     finishRemove();
+    await expect(answer).resolves.toBe("in");
     expect(removed).toEqual(["tok-1"]);
   });
 
