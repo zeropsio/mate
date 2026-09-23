@@ -56,7 +56,8 @@ operations check the original session generation before subsequent writes.
 
 ## Access verification
 
-The rules in this section hold from slice 0.6 of the client state model.
+The rules in this section hold from slice 0.6 of the
+[client state model](client-state-model.md#status-by-phase).
 
 Access is verified by REST alone. A round reads `user/info`, every organization's project list and
 each listed project, four projects at a time. Inventory completeness, interest liveness and receiver

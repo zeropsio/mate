@@ -3,8 +3,10 @@
 2026-09-17. The one page that says what this project is, where each piece lives, what is built,
 what is proven on the platform, and what is open — slice by slice. It carries **state** and nothing
 else: design is the spec (`../../../../zcp/docs/spec-mate.md`, §10 for the backbone), measured facts
-are the ledger (`verified.md`), the three-codebase contracts are `gitea-mate/docs/`, and the owner's
-screen-by-screen notes are the journal in `../../../../zcp/plans/` (transient). A row here changes
+are the ledger (`verified.md`), the client's state model — fact owners, machines, lifetimes — is
+[`client-state-model.md`](client-state-model.md), the three-codebase contracts are
+`gitea-mate/docs/`, and the owner's screen-by-screen notes are the journal in
+`../../../../zcp/plans/` (transient). A row here changes
 in the commit that changes the fact; the commit is the evidence.
 
 The slice numbering follows the 2026-09-15 implementation guide (`zerops-auth-backbone-implementation-2026-09-15.md`, transient) so the two can be read side by side; the guide plans, this page reports.
