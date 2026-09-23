@@ -171,9 +171,12 @@ Account inventory demands `organization-inventory` and `project-inventory`:
 project/service updates and service membership, without process searches. Visible
 topology and operation activity add their process demand; current metrics and
 history have separate leases. Web and retained mobile candidate lists use the
-same narrower inventory descriptor. The account's independent 14-minute access
-renewal and absolute 15-minute deadline still apply; data traffic does not renew
-access.
+same narrower inventory descriptor. Access renewal is independent of this demand:
+from 0.6 it is a REST-only round, due before the 15-minute deadline its evidence
+carries on either clock, with per-project evidence, as the
+[account contract](account-lifecycle.md#access-verification) states. A renewal
+waits for no interest, and from 2.3 it re-reads no inventory; data traffic does not
+renew access.
 
 Operational constants live in one tested runtime policy module: HTTP, heartbeat,
 open, greeting and registration deadlines; ingress bytes/events; hydration

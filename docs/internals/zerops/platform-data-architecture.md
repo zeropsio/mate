@@ -349,9 +349,10 @@ document replacement endpoints need explicit command semantics; the ledger recor
 an env write replacing the complete environment set. Secrets and signed grants
 have restricted lifetimes. No generic platform-state persistence is proposed.
 
-The account-wide admission gate remains in force. A future change to per-scope
-admission requires an explicit account-contract update; transport changes must
-continue to preserve the existing gate.
+Admission is per project, as the [account contract](account-lifecycle.md#access-verification)
+states from 0.6: the account is admitted when `user/info` and every organization
+list answer, and each project's content and writes rest on that project's own
+evidence and deadline. Transport changes must preserve that gate.
 
 ## Alternatives and engine choice
 
