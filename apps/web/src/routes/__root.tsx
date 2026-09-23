@@ -1,11 +1,12 @@
 import { rememberAccountRoute } from "../zerops/navigationStorage";
-import {
-  useAvailableEnvironmentIds,
-  useEnvironmentRestorePending,
-} from "../zerops/ZeropsEnvironmentLifetime";
-import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
+import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
+import {
+  routeGatePhrase,
+  selectRouteGate,
+  type RouteGate,
+} from "@t3tools/client-runtime/zerops/environments";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Link,
@@ -68,8 +69,11 @@ import {
 import { countDoorEnvironments, resolveDoor } from "./-door";
 import { resolveZeropsAccountGate } from "./-accountGate";
 import { environmentIdFromPathname } from "./-environmentRoute";
+import { useRouteGateInputs } from "./-environmentTargets";
+import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { ZeropsIdentityRepair } from "~/zerops/ZeropsIdentityRepair";
+import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 // At boot, before the first route renders: every emit point writes from then on.
@@ -118,27 +122,26 @@ function SignedInRootRouteView() {
     environmentCount: countDoorEnvironments(environments),
   });
   const primaryEnvironmentAuthenticated = door.session === "authenticated";
-  const restoring = useEnvironmentRestorePending();
-  const availableEnvironmentIds = useAvailableEnvironmentIds();
-  const targetEnvironmentId = environmentIdFromPathname(pathname);
-  const routeVerdict =
-    door.shell === "bare" ||
-    targetEnvironmentId === null ||
-    availableEnvironmentIds.has(targetEnvironmentId)
-      ? "outlet"
-      : restoring
-        ? "restoring"
-        : "unavailable";
+  const routeEnvironmentId = environmentIdFromPathname(pathname);
+  const gateInputs = useRouteGateInputs(
+    door.shell === "bare" || routeEnvironmentId === null
+      ? null
+      : EnvironmentId.make(routeEnvironmentId),
+  );
+  const gate = selectRouteGate(gateInputs.target);
+  const nowMs = useNowMs();
+  const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
+  const diagnosedVerdict = DIAGNOSED_VERDICT[gate.kind];
   useEffect(() => {
     rememberAccountRoute(pathname);
   }, [pathname]);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",
-      verdict: routeVerdict,
-      environmentId: targetEnvironmentId,
+      verdict: diagnosedVerdict,
+      environmentId: routeEnvironmentId,
     });
-  }, [routeVerdict, targetEnvironmentId]);
+  }, [diagnosedVerdict, routeEnvironmentId]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -161,30 +164,9 @@ function SignedInRootRouteView() {
   const appShell = (
     <CommandPalette>
       <AppSidebarLayout>
-        {routeVerdict !== "outlet" ? (
-          <div className="flex flex-col items-start gap-3 p-8">
-            <p className="text-sm text-muted-foreground">
-              {routeVerdict === "restoring"
-                ? "Checking this environment…"
-                : "This environment is not reachable right now. It may be restarting, or it may be gone."}
-            </p>
-            {/*
-              Not a redirect: an environment is "unavailable" while its
-              container restarts too, and throwing somebody out of their
-              conversation for that is worse than saying so. But the old copy
-              sent them to a sidebar that is empty on an account whose
-              projects were just deleted — advice you cannot follow. The
-              projects screen always exists.
-            */}
-            {routeVerdict === "restoring" ? null : (
-              <Button render={<Link to="/zerops" />} size="sm" variant="secondary">
-                Go to projects
-              </Button>
-            )}
-          </div>
-        ) : (
+        <RouteGateView gate={gate} phrase={gatePhrase} projectId={gateInputs.projectId}>
           <Outlet />
-        )}
+        </RouteGateView>
       </AppSidebarLayout>
     </CommandPalette>
   );
@@ -215,6 +197,14 @@ function SignedInRootRouteView() {
     </ToastProvider>
   );
 }
+
+/** The route gate's verdict as the diagnostics ring records it. */
+const DIAGNOSED_VERDICT: Record<RouteGate["kind"], "restoring" | "unavailable" | "outlet"> = {
+  outlet: "outlet",
+  wait: "restoring",
+  "choose-organization": "restoring",
+  unavailable: "unavailable",
+};
 
 function ContrastAppearanceSync() {
   const appearanceContrast = useClientSettings((settings) => settings.appearanceContrast);
