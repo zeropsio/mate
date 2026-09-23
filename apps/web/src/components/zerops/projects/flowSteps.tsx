@@ -59,10 +59,19 @@ export function drawn(node: ReactNode): boolean {
 }
 
 /** The verbs of a cell, at its right end, centred on its lines. Nothing for none. */
-export function VerbSlot({ children }: { readonly children?: ReactNode }) {
+export function VerbSlot({
+  children,
+  className,
+}: {
+  readonly children?: ReactNode;
+  readonly className?: string;
+}) {
   if (Children.toArray(children).length === 0) return null;
   return (
-    <span className="flex shrink-0 items-center gap-1.5" data-zerops-verb-slot="true">
+    <span
+      className={cn("flex shrink-0 items-center gap-1.5", className)}
+      data-zerops-verb-slot="true"
+    >
       {children}
     </span>
   );
@@ -80,7 +89,10 @@ export function EmptyStep({ children }: { readonly children: string }) {
   );
 }
 
-/** A cell: its lines, then its verbs. */
+/**
+ * A cell: its lines, then its verbs. The lines never go under a word: where a
+ * verb leaves them less, the verb wraps to the cell's end on a line of its own.
+ */
 function Cell({
   step,
   density,
@@ -95,11 +107,11 @@ function Cell({
   readonly className?: string;
 }) {
   const row = (
-    <span className="flex min-w-0 items-center gap-2">
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5" data-zerops-cell-lines="true">
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+      <span className="flex min-w-24 flex-1 flex-col gap-0.5" data-zerops-cell-lines="true">
         {lines}
       </span>
-      <VerbSlot>{verbs}</VerbSlot>
+      <VerbSlot className="ms-auto">{verbs}</VerbSlot>
     </span>
   );
   if (density === "box") {
@@ -444,7 +456,9 @@ export function GroupName<T>({
 /**
  * The Overview's columns, the header's and every row's: toggle · Project ·
  * Mates · Pull requests · main · Production · menu. A medium container drops
- * the Mates column — the names move under the project's.
+ * the Mates column — the names move under the project's. Production is the
+ * widest, with a floor: its state and its verb share it, and the state is the
+ * column's one fact.
  */
 export const OVERVIEW_GRID_CLASS =
-  "@2xl/flow:grid @2xl/flow:grid-cols-[1.75rem_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_1.75rem] @2xl/flow:gap-x-4 @5xl/flow:grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_1.75rem]";
+  "@2xl/flow:grid @2xl/flow:grid-cols-[1.75rem_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_1.75rem] @2xl/flow:gap-x-4 @5xl/flow:grid-cols-[1.75rem_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(15rem,1.4fr)_1.75rem]";

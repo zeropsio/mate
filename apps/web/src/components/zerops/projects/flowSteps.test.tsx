@@ -158,4 +158,17 @@ describe("a production's state", () => {
       'class="inline-flex items-center gap-1.5 min-w-0 text-sm" data-zerops-primitive="status-dot"',
     );
   });
+
+  it("never goes under a word beside its verb: its lines keep a floor", () => {
+    const tree = mount(
+      <ProductionStep
+        density="line"
+        entry={brokenProduction()}
+        releaseVerb={<button data-test="release" type="button" />}
+        verb={<button data-test="fix" type="button" />}
+      />,
+    );
+    const lines = tree.root.findByProps({ "data-zerops-cell-lines": "true" });
+    expect(lines.props.className).toContain("min-w-24");
+  });
 });
