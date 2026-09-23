@@ -14,7 +14,7 @@ const liveDependencies = Layer.mergeAll(
 type CliService = ZeropsCli.ZeropsCli["Service"];
 type CliEffect = ReturnType<typeof ZeropsCli.make>;
 
-/** A stand-in for the `zcp` binary: `node -e <script>` ignores the mark-oauth args. */
+/** A stand-in for the `zcp` binary: `node -e <script>` ignores the mate-status/mate-update args ZeropsCli passes. */
 const stub = (script: string): CliEffect =>
   ZeropsCli.make({ command: process.execPath, baseArgs: ["-e", script], cwd: process.cwd() });
 

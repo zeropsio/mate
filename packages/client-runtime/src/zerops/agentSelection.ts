@@ -8,11 +8,13 @@
  * `REDACTED` for every one of them (measured 2026-09-07 against a live zcp:
  * `ZCP_AGENTS` and `ZCP_AGENT_AUTH_TYPE_CLAUDE_CODE` both redacted).
  *
- * `ZCP_AGENT_OAUTH_<SUFFIX>` is not. `zcp agent mark-oauth` writes it
- * **non-sensitive** on purpose — the GUI's flag read path redacts sensitive
- * entries — so it reads back as the literal `true` it was written as. That
- * makes it the better source anyway: it says which agents this environment is
- * *signed in with*, not which ones somebody once picked from a list.
+ * `ZCP_AGENT_OAUTH_<SUFFIX>` is not. Whoever writes it — this server through
+ * the Zerops API, zcp's own `agent mark-oauth` (the VS Code panel's path),
+ * or the Zerops GUI — writes it **non-sensitive** on purpose — the GUI's
+ * flag read path redacts sensitive entries — so it reads back as the
+ * literal `true` it was written as. That makes it the better source anyway:
+ * it says which agents this environment is *signed in with*, not which ones
+ * somebody once picked from a list.
  *
  * Nothing credential-shaped passes through here. The flag is a boolean marker
  * that an authorization happened; the credential itself is a file inside the

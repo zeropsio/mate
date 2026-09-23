@@ -340,7 +340,7 @@ export const ZeropsAgentAuth = Schema.Struct({
    * or is replaced. `"unknown"` before the first check has run. Presence of
    * the credential FILE is not proof of a working login — a stale or
    * unusable credential can exist on disk — so this is the field that
-   * actually gates the `mark-oauth` spawn, never `credPresent` alone.
+   * actually gates the flag write, never `credPresent` alone.
    */
   providerAuth: ServerProviderAuthStatus,
   state: ZeropsAgentAuthState,

@@ -274,7 +274,7 @@ export class ZeropsAgentAuth extends Context.Service<
       Scope.Scope
     >;
     /**
-     * Requests the same coalesced, mark-oauth-eligible provider check a
+     * Requests the same coalesced, flag-write-eligible provider check a
      * credential-file event would (S7 follow-up F8: `ZeropsAgentLogin` calls
      * this once its output parser sees the CLI's own success line, so a
      * server-driven login re-uses this feed's existing verification +
@@ -301,7 +301,7 @@ export interface ZeropsAgentAuthOptions {
    * at {@link layer} — see the module header's "How it verifies"), NOT the
    * provider registry's probe. Presence of the credential FILE is not proof
    * of a working login (a stale or unusable credential can exist on disk),
-   * so this — not `credPresent` — is what gates the `mark-oauth` spawn.
+   * so this — not `credPresent` — is what gates the flag write.
    * Coalescing a burst of credential events into one call here is `make`'s
    * own job (see `PROVIDER_CHECK_DEBOUNCE_MS`), not this function's.
    */
@@ -348,15 +348,15 @@ interface FeedState {
   readonly credPresence: Readonly<Record<ZeropsAgentId, boolean>>;
   /** The provider's own auth probe result, per agent. `"unknown"` until the first targeted check runs. */
   readonly providerAuth: Readonly<Record<ZeropsAgentId, ServerProviderAuthStatus>>;
-  /** Set once a `mark-oauth` spawn actually SUCCEEDED for an agent, so a later re-check of an already-authenticated agent does not spawn again. Never set on failure — a genuine failure is eligible to retry on the next coalesced check. */
+  /** Set once the flag write (`ZeropsAgentFlag.markSignedIn`) actually SUCCEEDED for an agent, so a later re-check of an already-authenticated agent does not write it again. Never set on failure — a genuine failure is eligible to retry on the next coalesced check. */
   readonly markedOAuth: Readonly<Record<ZeropsAgentId, boolean>>;
   /**
    * Whether the NEXT coalesced provider check for this agent was requested
    * (at least in part) by a credential event, versus only by the env-store
-   * flag appearing. `mark-oauth` is only ever eligible to spawn when this is
-   * true: the env-store path keeps `providerAuth` current but never spawns
-   * `mark-oauth` itself — that flag is what it would be writing. Consumed
-   * (reset to false) by the first check it gates that answers.
+   * flag appearing. The flag write is only ever eligible when this is
+   * true: the env-store path keeps `providerAuth` current but never writes
+   * the flag itself. Consumed (reset to false) by the first check it gates
+   * that answers.
    */
   readonly pendingCredentialCheck: Readonly<Record<ZeropsAgentId, boolean>>;
   /**
@@ -563,14 +563,14 @@ export const make = (options: ZeropsAgentAuthOptions) =>
 
     /**
      * The coalesced provider check (plan correction D2): reads the fresh,
-     * targeted `auth.status` for one agent, records it, and spawns
-     * `mark-oauth` only when it reads `"authenticated"` AND the check was
+     * targeted `auth.status` for one agent, records it, and writes the
+     * platform flag only when it reads `"authenticated"` AND the check was
      * requested (at least in part) by a credential event — presence of the
      * credential file is not proof of a working login, and the env-store
-     * path keeps `providerAuth` current without ever spawning `mark-oauth`
-     * itself (that flag is what it would be writing). `markedOAuth` keeps a
-     * re-check of an already-marked agent from re-spawning; a genuine
-     * failure never sets it, so the next coalesced check retries.
+     * path keeps `providerAuth` current without ever writing the flag
+     * itself. `markedOAuth` keeps a re-check of an already-marked agent from
+     * writing it again; a genuine failure never sets it, so the next
+     * coalesced check retries.
      */
     const checkProviderAuth = (agentId: ZeropsAgentId) =>
       Effect.gen(function* () {
@@ -665,7 +665,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     }
     /**
      * Requests a coalesced check. `fromCredential: true` marks the check
-     * eligible to spawn `mark-oauth` if it reads authenticated — ANY
+     * eligible to write the flag if it reads authenticated — ANY
      * credential event folded into the coalesced batch makes it eligible,
      * so this only ever sets the flag, never clears it (only
      * `checkProviderAuth`, once it has actually consumed the flag, does).
@@ -702,8 +702,8 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         // needs its own check too (S7 fix2 F1) — without one, `providerAuth`
         // never flips to "unauthenticated" for the file-absent window, since
         // only `credPresent` itself would change. The verified check is
-        // still what actually gates `mark-oauth` (see checkProviderAuth): a
-        // check that reads back unauthenticated can never spawn it, removal
+        // still what actually gates the flag write (see checkProviderAuth): a
+        // check that reads back unauthenticated can never write it, removal
         // included.
         yield* requestProviderCheck(agentId, { fromCredential: true });
         yield* publish;
@@ -728,7 +728,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         // S7 follow-up F2: the platform flag can disappear without this
         // process restarting (a GUI revoke). Reset the latch so the next
         // VERIFIED credential re-marks — otherwise a revoke-then-re-login
-        // would leave `mark-oauth` permanently skipped for this agent.
+        // would leave the flag write permanently skipped for this agent.
         if (wasOAuth && !isOAuth) {
           yield* Ref.update(state, (current) => ({
             ...current,
@@ -855,7 +855,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       latest,
       changes: Stream.fromPubSub(changes),
       subscribe: subscribeBeforeSnapshot(changes, latest, subscribeMutex),
-      // Mark-oauth-eligible, exactly like a credential-file event — see the
+      // Flag-write-eligible, exactly like a credential-file event — see the
       // Service interface doc comment. What was verified before the login is
       // no longer an answer: until the check says otherwise the agent is
       // being checked, never "signed out" (the row would offer Sign in again

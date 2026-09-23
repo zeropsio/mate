@@ -5,9 +5,9 @@
  * `authenticated` for Claude Code off `~/.claude.json`'s account section
  * alone, even when the credential artifact itself
  * (`~/.claude/.credentials.json`) is absent — live-verified false positive
- * (docs/internals/zerops/verified.md, S7 agent-auth findings). Gating
- * `mark-oauth` on that probe would upsert the platform OAuth flag for a
- * session that is not actually usable.
+ * (docs/internals/zerops/verified.md, S7 agent-auth findings). Gating the
+ * platform flag write on that probe would upsert the platform OAuth flag for
+ * a session that is not actually usable.
  *
  * This module runs each agent CLI's own status command instead — the same
  * argv-list spawn shape {@link ZeropsCli} uses for `zcp` (a command plus a

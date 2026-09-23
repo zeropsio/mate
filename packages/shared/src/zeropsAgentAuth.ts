@@ -6,11 +6,12 @@
  *
  * The platform flag decides, as it does everywhere else in Zerops: the
  * `ZCP_AGENT_OAUTH_<SUFFIX>` / `ZCP_AGENT_TOKEN_<SUFFIX>` env on the project's
- * zcp service, written by whoever signs the agent in (this app through
- * `zcp agent mark-oauth`, or the Zerops GUI) and read by the Zerops GUI, the
- * VS Code panel and Mate alike. The moment it is set, the agent is signed in
- * — its state (`ZeropsAgentAuth.state`, the welcome panel's matrix) says
- * `authorized` and nothing waits for a further check.
+ * zcp service, written by whoever signs the agent in — this server, through
+ * the Zerops API; the Zerops GUI; or zcp's own `agent mark-oauth`, used by
+ * the VS Code panel — and read by the Zerops GUI, the VS Code panel and Mate
+ * alike. The moment it is set, the agent is signed in — its state
+ * (`ZeropsAgentAuth.state`, the welcome panel's matrix) says `authorized` and
+ * nothing waits for a further check.
  *
  * The agent CLI's own status check (`providerAuth`) runs behind it and only
  * refines the answer: a definite "not logged in" under a set flag means the

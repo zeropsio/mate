@@ -63,7 +63,7 @@ const makeFakeProviderAuth = (answer: (agentId: ZeropsAgentId) => ServerProvider
 /**
  * A fake `watch` collaborator: no real OS file watcher, just a registry of
  * `onChange` callbacks keyed by target path that the test fires explicitly.
- * `make`'s own transition-detection, debounce, mark-oauth spawn, and
+ * `make`'s own transition-detection, debounce, flag write, and
  * provider-check logic all run for real — only "does the OS notice a file
  * changed" is replaced, since that mechanism (`watchWithFallback`) has its
  * own, separate test using plain Node `fs.watch`
@@ -195,7 +195,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
   "ZeropsAgentAuth — credential watcher",
   (it) => {
     it.effect(
-      "spawns mark-oauth claude-code once the targeted provider check confirms authenticated",
+      "writes the sign-in flag for claude-code once the targeted provider check confirms authenticated",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -301,7 +301,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             assert.equal(claude?.providerAuth, "unauthenticated");
             assert.deepEqual(yield* Ref.get(calls), ["claude-code", "claude-code"]);
             // The removal's own check reads unauthenticated, so it is never
-            // eligible to spawn mark-oauth — only the first (authenticated)
+            // eligible to write the flag — only the first (authenticated)
             // check was.
             assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
           }),
@@ -309,7 +309,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
     );
 
     it.effect(
-      "does not spawn mark-oauth when the credential appears but the provider is not authenticated",
+      "does not write the sign-in flag when the credential appears but the provider is not authenticated",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -349,7 +349,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
     );
 
     it.effect(
-      "does not re-spawn mark-oauth on a second confirmed-authenticated check for the same agent",
+      "does not re-write the sign-in flag on a second confirmed-authenticated check for the same agent",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -442,7 +442,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
       10_000,
     );
 
-    it.effect("spawns mark-oauth codex for the codex credential path", () =>
+    it.effect("writes the sign-in flag for codex on the codex credential path", () =>
       Effect.scoped(
         Effect.gen(function* () {
           const { fs, path, homeDir, envStorePath } = yield* makeEnv();
@@ -743,7 +743,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
   "ZeropsAgentAuth — env store watcher",
   (it) => {
     it.effect(
-      "flips flagOAuth and refreshes providerAuth (never mark-oauth) when an oauth flag appears in the zembed store",
+      "flips flagOAuth and refreshes providerAuth (never writes the sign-in flag) when an oauth flag appears in the zembed store",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -783,8 +783,8 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             // true + credPresent false is the matrix's "reconnect" row.
             assert.equal(claude?.state, "reconnect");
             // The env-store path requests a targeted provider check to keep
-            // providerAuth current, but never spawns mark-oauth itself — only
-            // a credential-driven check does that.
+            // providerAuth current, but never writes the sign-in flag itself —
+            // only a credential-driven check does that.
             assert.deepEqual(yield* Ref.get(fake.calls), []);
             assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
           }),
@@ -825,7 +825,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             const subscription = yield* feed.subscribe;
 
             // First sign-in: credential appears, provider check reads
-            // authenticated, mark-oauth spawns once.
+            // authenticated, the sign-in flag write happens once.
             yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
             fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
             yield* changeWhere(subscription, claudeAuthResolved);
@@ -861,7 +861,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
   "ZeropsAgentAuth — recheckNow (S7 follow-up F8)",
   (it) => {
     it.effect(
-      "requests the same mark-oauth-eligible coalesced check a credential event would",
+      "requests the same flag-write-eligible coalesced check a credential event would",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -888,7 +888,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             const subscription = yield* feed.subscribe;
             // No credential file was ever written and no watcher fired —
             // recheckNow alone drives the whole coalesced-check ->
-            // mark-oauth pipeline.
+            // flag-write pipeline.
             yield* feed.recheckNow("claude-code");
             const published = yield* changeWhere(subscription, claudeAuthResolved);
 
