@@ -592,7 +592,7 @@ carries it. "Live" means it holds on `main` today.
 | Zone tests: one owner per fact family, no component I/O, no data timers                                     | 5.5                                              |
 | Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                                      | Live                                             |
 | Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)                    | 0.Z; zone test "rule 2"                          |
-| Dependency rule 3 (projections and the named pure modules are pure)                                         | Stated; no slice adds its test yet               |
+| Dependency rule 3 (projections and the named pure modules are pure)                                         | 0.Z; zone test "rule 3"                          |
 | Dependency rule 4 (components import hooks only and set no data timer)                                      | 5.5                                              |
 | Dependency rule 5 (`Cell` and `advance` private to their store; `.value` only in selectors)                 | 1.5                                              |
 | Dependency rule 6 (one-way dependencies; post-grant modules built only by `accountRuntime.ts`)              | Stated; no slice adds its test yet               |

@@ -523,6 +523,26 @@ const MACHINE_ZONE: PureZone = {
   forbiddenGlobals: NETWORK_AND_STORAGE_GLOBALS,
 };
 
+const TIMER_GLOBALS = [
+  "setTimeout",
+  "setInterval",
+  "setImmediate",
+  "requestAnimationFrame",
+  "requestIdleCallback",
+  "queueMicrotask",
+] as const;
+
+// Rule 3: projections and the named pure modules are pure — no Effect runtime,
+// fetch, storage or timers.
+const PURE_PROJECTION_ZONE: PureZone = {
+  contains: (file) =>
+    file.startsWith("projections/") ||
+    file === "flow/groupFlow.ts" ||
+    file === "environments/reachability.ts" ||
+    file === "environments/gate.ts",
+  forbiddenGlobals: [...NETWORK_AND_STORAGE_GLOBALS, ...TIMER_GLOBALS],
+};
+
 function isTestFile(file: string): boolean {
   return /\.test\.tsx?$/u.test(file);
 }
@@ -1930,6 +1950,62 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     Effect.gen(function* () {
       const root = yield* repoRoot;
       assert.deepStrictEqual(yield* collectPureZoneViolations(root, MACHINE_ZONE), []);
+    }),
+  );
+
+  it.effect("rule 3 fixture: projections and the named pure modules are pure", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
+        "projections/sidebarRows.ts": [
+          'import * as Option from "effect/Option";',
+          "export const rows = () => setTimeout(() => undefined, 0);",
+          "",
+        ].join("\n"),
+        "projections/banner.ts": 'import * as Stream from "effect/Stream";\n',
+        "flow/groupFlow.ts": "export const read = () => localStorage.getItem('k');\n",
+        "flow/deploymentStore.ts": "export const later = () => setInterval(() => undefined, 1);\n",
+        "environments/reachability.ts":
+          "export const settle = () => requestAnimationFrame(() => undefined);\n",
+        "environments/gate.ts": "export const gate = () => fetch('/healthz');\n",
+      });
+
+      const violations = yield* collectPureZoneViolations(fixtureRoot, PURE_PROJECTION_ZONE);
+
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      assert.deepStrictEqual(violations, [
+        {
+          root: `${zerops}/environments/gate.ts`,
+          file: `${zerops}/environments/gate.ts`,
+          reason: "uses fetch",
+        },
+        {
+          root: `${zerops}/environments/reachability.ts`,
+          file: `${zerops}/environments/reachability.ts`,
+          reason: "uses requestAnimationFrame",
+        },
+        {
+          root: `${zerops}/flow/groupFlow.ts`,
+          file: `${zerops}/flow/groupFlow.ts`,
+          reason: "uses localStorage",
+        },
+        {
+          root: `${zerops}/projections/banner.ts`,
+          file: `${zerops}/projections/banner.ts`,
+          reason: "imports effect/Stream, which is not a pure effect data module",
+        },
+        {
+          root: `${zerops}/projections/sidebarRows.ts`,
+          file: `${zerops}/projections/sidebarRows.ts`,
+          reason: "uses setTimeout",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 3: projections and the named pure modules are pure", () =>
+    Effect.gen(function* () {
+      const root = yield* repoRoot;
+      assert.deepStrictEqual(yield* collectPureZoneViolations(root, PURE_PROJECTION_ZONE), []);
     }),
   );
 });
