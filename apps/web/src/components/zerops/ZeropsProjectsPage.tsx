@@ -43,6 +43,7 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { NOTHING_DEPLOYED } from "@t3tools/client-runtime/zerops/flow";
 import {
   knownPresentation,
   type Known,
@@ -118,6 +119,7 @@ import {
   runEnvironmentCreation,
   unionAgents,
   type EnvironmentCreationStepProgress,
+  type EnvironmentRow,
   type GroupEnvironmentTier,
   type ZeropsAgentType,
   type ZeropsEnvironmentRole,
@@ -454,6 +456,19 @@ export function projectsPageError(input: {
 }): string | null {
   if (input.connectError !== null) return input.connectError;
   return input.listingNotice?.region === "message" ? null : input.inventoryError;
+}
+
+/**
+ * What a declared stage or production says in its row's middle. With
+ * something deployed that is its source and version (`main · e014b0e`); with
+ * nothing yet, a bare source (`release`) reads as a stray word, so the row
+ * says it runs nothing. A first deploy on its way keeps its source: the
+ * status beside it already says *Deploying*.
+ */
+export function declaredEnvironmentSummary(
+  row: Pick<EnvironmentRow, "line" | "tone" | "version">,
+): string {
+  return row.version.label === undefined && row.tone === "neutral" ? NOTHING_DEPLOYED : row.line;
 }
 
 /**
@@ -2516,7 +2531,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             ? presentation.detail
             : declared === undefined
               ? summaryOf(candidate)
-              : declared.line
+              : declaredEnvironmentSummary(declared)
         }
         tag={environmentRoleTag(role)}
       />

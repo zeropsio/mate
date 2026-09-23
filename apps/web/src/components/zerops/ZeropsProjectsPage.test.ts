@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   autoConnectServedZeropsEnvironment,
+  declaredEnvironmentSummary,
   hasNoZeropsProject,
   isZeropsBirthConnectTarget,
   mateOpener,
@@ -866,6 +867,40 @@ describe("opening a Mate from the projects page", () => {
     expect(projectsPageSource).toContain("const select = mateOpenerOf(candidate);");
     expect(projectsPageSource).toContain("openMate={mateOpenerOf}");
     expect(projectsPageSource.match(/mateOpener\(\{/gu)).toHaveLength(1);
+  });
+});
+
+describe("a declared environment's row", () => {
+  const version = (label: string | undefined) => ({
+    name: undefined,
+    commit: label,
+    sha: undefined,
+    taggedBy: undefined,
+    label,
+  });
+  it.each([
+    [
+      "an empty production",
+      { line: "release", tone: "neutral", version: version(undefined) },
+      "Nothing deployed yet",
+    ],
+    [
+      "an empty stage",
+      { line: "main", tone: "neutral", version: version(undefined) },
+      "Nothing deployed yet",
+    ],
+    [
+      "a first deploy on its way",
+      { line: "release", tone: "pending", version: version(undefined) },
+      "release",
+    ],
+    [
+      "a deployed stage",
+      { line: "main · e014b0e", tone: "good", version: version("e014b0e") },
+      "main · e014b0e",
+    ],
+  ] as const)("says what %s runs, not a bare source", (_name, row, expected) => {
+    expect(declaredEnvironmentSummary(row)).toBe(expected);
   });
 });
 
