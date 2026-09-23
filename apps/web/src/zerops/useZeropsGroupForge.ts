@@ -11,8 +11,9 @@
  * (`flow/verbs.ts`). Gitea has no event stream, so a clock is the only
  * freshness there is. A part that does not answer keeps what it had. A
  * repository never read is left out of what the answer holds, rather than
- * shown as having no pull requests, and releases that did not answer carry
- * why, whether or not earlier ones are kept.
+ * held as having no pull requests — `repositories` names the ones its pull
+ * requests cover — and releases that did not answer carry why, whether or not
+ * earlier ones are kept.
  *
  * What an environment runs is not read here: that is the account's to prove
  * (`useZeropsGroupDeploys`), and the two are joined in the provider.
