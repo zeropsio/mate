@@ -41,6 +41,7 @@ import {
   containersSummary,
   groupMetaLine,
   nextStepTone,
+  stripColumns,
   TOOL_LABEL,
   type FlowCell,
 } from "./projectsView.logic";
@@ -64,6 +65,12 @@ function jumpToRow(groupId: string): void {
   target?.focus();
 }
 
+const WIDE_STRIP_COLUMNS = {
+  1: "@5xl/flow:grid-cols-1",
+  2: "@5xl/flow:grid-cols-2",
+  3: "@5xl/flow:grid-cols-3",
+} as const;
+
 /**
  * The Overview's first thing: what waits on somebody, across every group. A
  * step is a place to go, not a second copy of its verb — the row below
@@ -85,7 +92,13 @@ export function NextStepsStrip<T>({
         <h2 className="text-sm font-semibold text-foreground">
           Next steps <span className="font-normal text-muted-foreground">{entries.length}</span>
         </h2>
-        <ul className="grid grid-cols-1 gap-1 @2xl/flow:grid-cols-2 @5xl/flow:grid-cols-3">
+        <ul
+          className={cn(
+            "grid grid-cols-1 gap-1",
+            entries.length > 1 && "@2xl/flow:grid-cols-2",
+            WIDE_STRIP_COLUMNS[stripColumns(entries.length)],
+          )}
+        >
           {entries.map((entry) => (
             <li className="min-w-0" key={entry.group.groupId}>
               <button

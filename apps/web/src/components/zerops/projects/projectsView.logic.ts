@@ -112,6 +112,16 @@ export function nextStepAwaitsSomebody(kind: GroupNextStepKind): boolean {
   return STRIP_STEPS.has(kind);
 }
 
+/**
+ * How many columns the wide "Next steps" strip takes for `count` steps: as
+ * few rows as three columns allow, then as few columns as fill those rows
+ * evenly — four steps are two by two, not three and one left alone.
+ */
+export function stripColumns(count: number): 1 | 2 | 3 {
+  const rows = Math.max(1, Math.ceil(count / 3));
+  return Math.min(3, Math.max(1, Math.ceil(count / rows))) as 1 | 2 | 3;
+}
+
 /** A group the page lays out, with whether its project flow has been read at all. */
 export interface FoldedGroupInput {
   readonly flow: GroupFlow;

@@ -25,6 +25,7 @@ import {
   nextStepTone,
   orderByNextStep,
   parseProjectsSearch,
+  stripColumns,
 } from "./projectsView.logic";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
@@ -266,6 +267,23 @@ describe("nextStepAwaitsSomebody", () => {
   it.each(Object.entries(AWAITS))("says %s awaits somebody: %s", (kind, awaits) => {
     expect(nextStepAwaitsSomebody(kind as GroupNextStepKind)).toBe(awaits);
   });
+});
+
+describe("stripColumns", () => {
+  it.each([
+    [1, 1],
+    [2, 2],
+    [3, 3],
+    [4, 2],
+    [5, 3],
+    [6, 3],
+    [7, 3],
+  ] as const)(
+    "lays %i steps out in %i columns, the rows as even as three columns allow",
+    (count, columns) => {
+      expect(stripColumns(count)).toBe(columns);
+    },
+  );
 });
 
 describe("the ungrouped containers' one line", () => {
