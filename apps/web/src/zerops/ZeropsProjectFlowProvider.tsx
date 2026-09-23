@@ -46,6 +46,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { findAccountGitea } from "./giteaProject";
+import { useNowMs } from "./useNowMs";
 import { giteaClientFor, useGiteaSession } from "./giteaSession";
 import {
   ZeropsProjectFlowContext,
@@ -250,12 +251,14 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [inventory.projectRefs, runtime],
   );
   const serviceReads = useZeropsAtomSelections<CollectionRead<ServiceRecord>>(serviceReadEntries);
-  const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(() => {
-    const nowMs = Date.now();
-    return new Map(
-      [...serviceReads].map(([projectId, read]) => [projectId, stopDeployment(read, nowMs)]),
-    );
-  }, [serviceReads]);
+  const nowMs = useNowMs();
+  const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(
+    () =>
+      new Map(
+        [...serviceReads].map(([projectId, read]) => [projectId, stopDeployment(read, nowMs)]),
+      ),
+    [nowMs, serviceReads],
+  );
 
   const [trouble, setTrouble] = useState<string | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
