@@ -52,6 +52,28 @@ function readServices(
   return complete || decoded.some(isZcpService) ? decoded : null;
 }
 
+const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<CandidateRow> =>
+  candidates.map((candidate) => ({ ...candidate, presence: "known" }));
+
+/**
+ * One project's candidates; null while its name or status is not read yet. Only an active
+ * project's services are read (`servicesOf`): any other status decides its one row alone.
+ */
+export function projectCandidates(
+  record: ProjectRecord,
+  servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
+): ReadonlyArray<CandidateRow> | null {
+  const project = projectRecordToZeropsProject(record);
+  if (project === null) return null;
+  if (project.status !== "ACTIVE")
+    return known(deriveZeropsCandidates(project, [], NO_CONNECTIONS));
+  const services = readServices(servicesOf(record.ref));
+  if (services === null) {
+    return [{ key: project.id, project, group: "unavailable", presence: "unknown" }];
+  }
+  return known(deriveZeropsCandidates(project, services, NO_CONNECTIONS));
+}
+
 /**
  * Every candidate the organization's projects hold. The listing is as known as the projects are:
  * unread, reading or failed projects give no rows at all, never an empty list. A project whose
@@ -62,28 +84,26 @@ export function selectCandidates(
   servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
 ): Known<ReadonlyArray<CandidateRow>> {
   if (projects.state !== "known") return projects;
-  const rows: CandidateRow[] = [];
-  let complete = projects.coverage === "complete";
-  for (const record of projects.value) {
-    const project = projectRecordToZeropsProject(record);
-    if (project === null) {
-      complete = false;
-      continue;
-    }
-    if (project.status !== "ACTIVE") {
-      for (const candidate of deriveZeropsCandidates(project, [], NO_CONNECTIONS))
-        rows.push({ ...candidate, presence: "known" });
-      continue;
-    }
-    const services = readServices(servicesOf(record.ref));
-    if (services === null) {
-      rows.push({ key: project.id, project, group: "unavailable", presence: "unknown" });
-      continue;
-    }
-    for (const candidate of deriveZeropsCandidates(project, services, NO_CONNECTIONS))
-      rows.push({ ...candidate, presence: "known" });
-  }
-  return { ...projects, value: rows, coverage: complete ? "complete" : "partial" };
+  return candidateListing(
+    projects,
+    projects.value.map((record) => projectCandidates(record, servicesOf)),
+  );
+}
+
+/**
+ * The listing of known projects out of each project's rows, in the projects' order; a project
+ * with no rows yet (`null`) leaves it partial.
+ */
+export function candidateListing(
+  projects: Extract<Known<ReadonlyArray<ProjectRecord>>, { readonly state: "known" }>,
+  rowsOfEach: ReadonlyArray<ReadonlyArray<CandidateRow> | null>,
+): Extract<Known<ReadonlyArray<CandidateRow>>, { readonly state: "known" }> {
+  const complete = projects.coverage === "complete" && rowsOfEach.every((rows) => rows !== null);
+  return {
+    ...projects,
+    value: rowsOfEach.flatMap((rows) => rows ?? []),
+    coverage: complete ? "complete" : "partial",
+  };
 }
 
 /**

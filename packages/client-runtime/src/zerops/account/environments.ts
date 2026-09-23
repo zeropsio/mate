@@ -4,11 +4,12 @@
  * exchange driver — and what surfaces read and ask of them.
  *
  * - Every target's presence comes from the account's listings, the data runtime's projects and
- *   services of every organization the grant names (B4), and from the records (C1). A remembered
- *   Mate is looked for where its record kept it until its project's services are read (A16); one
- *   they were read without has that organization's inventory read again, and is gone only once
- *   that direct read lacks it too (§9 C19). No React holds a fact here: the web and mobile hand
- *   over ports and send intents — the route, the active organization, a Connect.
+ *   services of every organization the grant names (B4, `candidateListingsAtom`), and from the
+ *   records (C1). A remembered Mate is looked for where its record kept it until its project's
+ *   services are read (A16); one they were read without has that organization's inventory read
+ *   again, and is gone only once that direct read lacks it too (§9 C19). A listing change that
+ *   changes no row and settles no absence feeds nothing. No React holds a fact here: the web and
+ *   mobile hand over ports and send intents — the route, the active organization, a Connect.
  * - The account's guards come from its grant, the tab from the account's signals, a container's
  *   re-read from the account's bus.
  * - Restore is the records' demand, auto-connect the active organization's ready Mates (D13), and
@@ -24,14 +25,13 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import { selectAutoConnectTargets } from "../autoConnect.ts";
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
-import type { Evidence, GrantMachine, Instant } from "../data/access/grant.ts";
+import type { Instant } from "../data/access/grant.ts";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
-import { knownProjectsOf, knownServicesOf, servicesSourceOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   ZeropsOrganizationId,
@@ -57,6 +57,7 @@ import {
   sweepRead,
   type DescriptorIndex,
 } from "../environments/descriptorIndex.ts";
+import { candidateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import type {
   DescriptorFacts,
@@ -86,9 +87,8 @@ import {
 } from "../environments/targets.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
-import type { Known } from "../knowledge/known.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
-import { heldCandidates, selectCandidates, type CandidateRow } from "../projections/candidates.ts";
+import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
 
@@ -219,23 +219,18 @@ export interface EnvironmentWiringOptions {
 
 // ── The listings ─────────────────────────────────────────────────────────────────────────────
 
-/** One organization's Mate candidates. */
-interface OrganizationListing {
-  readonly organizationId: string;
-  readonly listing: Known<ReadonlyArray<CandidateRow>>;
-  /**
-   * The receipt ordinal of each of its projects' latest complete direct read of their services:
-   * the one the interest that observes them crossed when it last established.
-   */
-  readonly directReads: ReadonlyMap<string, number>;
-}
+/**
+ * What `listTargets` reads of a listing besides its rows: whether it can settle an absence, and
+ * its direct reads.
+ */
+const settling = (listed: OrganizationListing) => ({
+  state: listed.listing.state,
+  coverage: listed.listing.state === "known" ? listed.listing.coverage : null,
+  directReads: [...listed.directReads],
+});
 
-const heldEvidence = (machine: GrantMachine): Evidence | null =>
-  machine.phase.phase === "granted"
-    ? machine.phase.evidence
-    : machine.phase.phase === "lapsed"
-      ? machine.phase.last
-      : null;
+const sameItems = <T>(left: ReadonlyArray<T>, right: ReadonlyArray<T>): boolean =>
+  left.length === right.length && left.every((item, index) => item === right[index]);
 
 /** Whether a process the activity feed reads as running runs on the row's container. */
 const runningOn = (activity: ProjectActivityRead, row: CandidateRow): boolean =>
@@ -579,33 +574,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
-  // ── The listings, read off the data runtime ────────────────────────────────────────────────
-
-  const listingsAtom = Atom.make((get): ReadonlyArray<OrganizationListing> => {
-    const evidence = heldEvidence(get(data.access.view).machine);
-    const nowMs = ports.clock.now().wall;
-    return (evidence?.account.organizations ?? []).map(({ organization }) => {
-      const directReads = new Map<string, number>();
-      const listing = selectCandidates(
-        knownProjectsOf(get(data.reads.projectsOf(organization)), nowMs),
-        (ref) => {
-          const read = get(data.reads.servicesOf(ref));
-          const services = knownServicesOf(read, nowMs);
-          const source = servicesSourceOf(read);
-          if (
-            source?.status === "observing" &&
-            services.state === "known" &&
-            services.coverage === "complete"
-          ) {
-            directReads.set(ref.projectId, source.sinceReceiptOrdinal);
-          }
-          return services;
-        },
-      );
-      return { organizationId: organization.organizationId, listing, directReads };
-    });
-  });
-
   // ── The index ──────────────────────────────────────────────────────────────────────────────
 
   let indexed: {
@@ -664,14 +632,18 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         link: (environmentId, phase) => driver.link(environmentId, phase),
       }),
       atomRegistry.subscribe(
-        listingsAtom,
+        candidateListingsAtom(data),
         (next) => {
+          const before = listings;
           listings = next;
-          rows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
+          const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
+          const moved = !sameItems(rows, listedRows);
+          if (moved) rows = listedRows;
           // The route's target first, so its container is read before any other's.
           updateRoute();
-          updateTargets();
-          updateAutoConnect();
+          if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
+            updateTargets();
+          if (moved) updateAutoConnect();
         },
         { immediate: true },
       ),

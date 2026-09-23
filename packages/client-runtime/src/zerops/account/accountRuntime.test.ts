@@ -226,6 +226,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
   /** What the stage listens to now, by port. */
   const listening = { records: 0, catalog: 0, births: 0 };
+  /** How many times the records were read from storage. */
+  let recordReads = 0;
   let catalog: CatalogListener | null = null;
   let unhardened: ReadonlySet<string> = new Set();
   const ports: AccountEnvironmentPorts = {
@@ -243,7 +245,10 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     probe: (origin, signal) => pending(probes, origin, signal),
     intents: { read: () => null, write: () => undefined },
     records: {
-      getItem: (key) => storage.get(key) ?? null,
+      getItem: (key) => {
+        recordReads += 1;
+        return storage.get(key) ?? null;
+      },
       setItem: (key, value) => void storage.set(key, value),
       listen: () => {
         listening.records += 1;
@@ -277,6 +282,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     /** The records as they are stored now. */
     records: () =>
       JSON.parse(storage.get(REGISTRATION_RECORDS_KEY) ?? "[]") as Array<RegistrationRecord>,
+    recordReads: () => recordReads,
     /** The connection catalog as the stage hears it. */
     catalog: () => catalog!,
     setUnhardened: (next: ReadonlySet<string>) => {
@@ -1515,6 +1521,31 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
           mates.map(({ origin }) => origin).toSorted(),
         );
+      }),
+    ),
+  );
+
+  it.effect("an unchanged listing publishes no target change", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, grant, rig, environments } = yield* granted([REMEMBERED_A]);
+        yield* answerDescriptor(rig, ENV_A);
+        yield* clock.advance(SECOND);
+        yield* settle;
+        const machines = environments.machines();
+        const probes = rig.probes.length;
+        const reads = rig.recordReads();
+
+        // A renewal admits the same evidence: the listings are derived again, and none changed.
+        while (grant.rounds() < 2) {
+          yield* clock.advance(MINUTE);
+          yield* settle;
+        }
+        yield* grant.answer();
+
+        expect(rig.recordReads()).toBe(reads);
+        expect(rig.probes).toHaveLength(probes);
+        expect(environments.machines()).toBe(machines);
       }),
     ),
   );
