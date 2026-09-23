@@ -28,6 +28,11 @@ import {
   type ZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
+import {
+  heldCandidates,
+  takenBotNames,
+  type TakenBotNames,
+} from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { resolveMateVerbs, resolveMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -97,10 +102,29 @@ interface RegistryState {
   readonly refresh: () => void;
 }
 
+/**
+ * A Mate's new name against the names the account's Mates already go by. A name read as taken is
+ * refused at once; one missing from a listing not read in full may still be taken, so it waits
+ * for the rest (M5) instead of passing as free. Keeping the Mate's own name needs no listing.
+ */
+export function validateMateName(
+  value: string,
+  taken: TakenBotNames,
+  current: string | undefined,
+): string | undefined {
+  const verdict = validateBotName(value, taken.names, current === undefined ? {} : { current });
+  if (verdict !== undefined || taken.complete) return verdict;
+  const kept =
+    current !== undefined &&
+    current.toLowerCase() === value.replace(/\s+/g, " ").trim().toLowerCase();
+  return kept ? undefined : "Checking which names are taken…";
+}
+
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
   const { activeOrganization, client } = useZeropsSession();
   const { projectRef, runtime } = useZeropsData();
-  const { candidates, refresh } = useZeropsCandidates();
+  const { listing, refresh } = useZeropsCandidates();
+  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const inventory = useZeropsInventory();
   const [dialog, setDialog] = useState<MateDialog | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -122,14 +146,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       }),
     [candidates, projectOrder],
   );
-  const takenBotNames = useMemo(
-    () =>
-      candidates.flatMap((candidate) => {
-        const bot = readZeropsGroupTags(candidate.project.tagList).bot;
-        return bot === undefined ? [] : [bot];
-      }),
-    [candidates],
-  );
+  const taken = useMemo(() => takenBotNames(listing), [listing]);
   const viewer = useMemo(
     () =>
       activeOrganization === null
@@ -485,7 +502,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           title={`Rename the Mate in ${dialog.candidate.project.name}`}
           validate={(value) => {
             const current = readZeropsGroupTags(dialog.candidate.project.tagList).bot;
-            return validateBotName(value, takenBotNames, current === undefined ? {} : { current });
+            return validateMateName(value, taken, current);
           }}
         />
       ) : null}
