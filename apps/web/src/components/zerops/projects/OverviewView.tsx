@@ -280,7 +280,9 @@ function OverviewRow<T>({
       <div
         className={cn(
           OVERVIEW_GRID_CLASS,
-          "grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-3 @2xl/flow:gap-y-0 @2xl/flow:py-2",
+          // A medium row's verbs take a second line, so its cells' first
+          // lines share the row's top rather than each centring on its own.
+          "grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-3 @2xl/flow:gap-y-0 @2xl/flow:py-2 @2xl/flow:@max-5xl/flow:items-start",
         )}
       >
         <button

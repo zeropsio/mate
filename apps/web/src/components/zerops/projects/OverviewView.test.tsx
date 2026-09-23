@@ -116,6 +116,12 @@ describe("the Overview", () => {
     expect([...order].sort((left, right) => left - right)).toEqual(order);
   });
 
+  it("sets every cell's first line on the row's top on a medium container, where a verb takes a second line", () => {
+    const row = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
+    const grid = row.slice(row.indexOf("<div"), row.indexOf(">", row.indexOf("<div")));
+    expect(grid).toContain("@2xl/flow:@max-5xl/flow:items-start");
+  });
+
   it("puts the verb in the cell it belongs to", () => {
     const merge = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
     const pulls = merge.slice(
