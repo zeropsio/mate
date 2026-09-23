@@ -266,6 +266,13 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
               : clock.now();
         } else if (cadence.overdue !== before.overdue) {
           entry.overdueRung = 0;
+          // Evidence that it is coming up reads it on the 2 s cadence from its last probe, not
+          // at the rung the overdue poll had backed off to.
+          const fact = entry.fact;
+          if (!cadence.overdue && entry.pollAt !== null && fact.status === "read") {
+            const timely = after(fact.sentAt, POLL_INTERVAL_MS);
+            if (timely.mono < entry.pollAt.mono) entry.pollAt = timely;
+          }
         }
       }
       dispatch();

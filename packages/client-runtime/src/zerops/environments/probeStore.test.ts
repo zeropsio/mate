@@ -200,6 +200,31 @@ describe("probe store (DESIGN §4.5 probes)", () => {
     store.dispose();
   });
 
+  it("an overdue poll turning timely reads on the 2 s cadence from its last probe", async () => {
+    const { clock, store, started } = rig({});
+    store.setCadences(new Map([["a", poll(true)]]));
+    // Probes at 0, 10 s, 30 s and 70 s; the next overdue read would be at 130 s.
+    await clock.advance(100_000);
+    expect(started).toEqual(["a", "a", "a", "a"]);
+
+    // Evidence the container is coming up after all: its last probe is long past 2 s, so at once.
+    started.length = 0;
+    store.setCadences(new Map([["a", poll(false)]]));
+    await clock.advance(0);
+    expect(started).toEqual(["a"]);
+
+    // A reading that just landed turns the poll timely: the next read is 2 s after it, not sooner.
+    store.setCadences(new Map([["a", poll(true)]]));
+    await clock.advance(1_000);
+    started.length = 0;
+    store.setCadences(new Map([["a", poll(false)]]));
+    await clock.advance(1_000 - 1);
+    expect(started).toEqual([]);
+    await clock.advance(1);
+    expect(started).toEqual(["a"]);
+    store.dispose();
+  });
+
   it("a tab hidden for a minute probes nothing until it is shown", async () => {
     const { clock, store, started } = rig({});
     store.setCadences(new Map([["a", poll(false)]]));
