@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 
+import type { Known } from "./knowledge/index.ts";
+
 import {
   buildZeropsServiceMap,
   formatAmount,
@@ -56,8 +58,14 @@ const realServices: ReadonlyArray<ZeropsTopologyService> = [
   }),
 ];
 
-const lifecycle = (overrides: Partial<ZeropsLifecycle>): ZeropsLifecycle =>
-  ({ threadId: "thread-1", recentTools: [], ...overrides }) as unknown as ZeropsLifecycle;
+/** The lifecycle feed's live answer. */
+const lifecycle = (overrides: Partial<ZeropsLifecycle>): Known<ZeropsLifecycle> => ({
+  state: "known",
+  value: { threadId: "thread-1", recentTools: [], ...overrides } as unknown as ZeropsLifecycle,
+  asOf: { ordinal: 1, atMs: 0 },
+  coverage: "complete",
+  freshness: { kind: "live" },
+});
 
 describe("control-plane identity", () => {
   it.each([
@@ -360,6 +368,15 @@ describe("buildZeropsServiceMap", () => {
       },
       { label: "malformed entry" },
     ]);
+  });
+
+  it("a lifecycle not known yet lists no production link: only a known envelope names one", () => {
+    const view = buildZeropsServiceMap(topology([service({ hostname: "kanbandev" })]), {
+      state: "unread",
+      waitingFor: null,
+    });
+
+    expect(view?.groups[0]?.rows[0]?.production).toEqual([]);
   });
 
   it("has no production links when the envelope carries none", () => {

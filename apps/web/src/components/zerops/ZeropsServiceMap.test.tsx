@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import type {
   ZeropsTopologyService,
@@ -59,6 +60,15 @@ const history = [
   },
 ];
 
+/** A lifecycle snapshot as the feed's live answer. */
+const liveLifecycle = (value: ZeropsLifecycle): Known<ZeropsLifecycle> => ({
+  state: "known",
+  value,
+  asOf: { ordinal: 1, atMs: 0 },
+  coverage: "complete",
+  freshness: { kind: "live" },
+});
+
 const render = (
   view: ZeropsTopologyView | undefined,
   options?: {
@@ -78,13 +88,20 @@ const render = (
       error={options?.error}
       liveness={options?.liveness}
       mate={options?.mate}
-      view={buildZeropsServiceMap(view, options?.lifecycle, options?.runningTool)}
+      view={buildZeropsServiceMap(
+        view,
+        options?.lifecycle === undefined ? undefined : liveLifecycle(options.lifecycle),
+        options?.runningTool,
+      )}
     />,
   );
 
 /** The pop's body for the first row of the first group. */
 const renderDetail = (view: ZeropsTopologyView, lifecycle?: ZeropsLifecycle): string => {
-  const row = buildZeropsServiceMap(view, lifecycle)?.groups[0]?.rows[0];
+  const row = buildZeropsServiceMap(
+    view,
+    lifecycle === undefined ? undefined : liveLifecycle(lifecycle),
+  )?.groups[0]?.rows[0];
   expect(row).toBeDefined();
   return renderToStaticMarkup(<ZeropsServiceDetail row={row!} />);
 };

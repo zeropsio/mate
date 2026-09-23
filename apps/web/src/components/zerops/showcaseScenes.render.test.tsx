@@ -4,6 +4,8 @@ import {
   zeropsStatusWord,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import type { ZeropsLifecycle } from "@t3tools/contracts";
 import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { listShowcaseScenes } from "@t3tools/shared/showcaseScenes";
 import { SERVICE_STATUS_TONES, type ServiceStatusToneId } from "@t3tools/shared/brand";
@@ -25,6 +27,15 @@ import {
   StatusDot,
 } from "./primitives";
 
+/** A lifecycle snapshot as the feed's live answer. */
+const liveLifecycle = (value: ZeropsLifecycle): Known<ZeropsLifecycle> => ({
+  state: "known",
+  value,
+  asOf: { ordinal: 1, atMs: 0 },
+  coverage: "complete",
+  freshness: { kind: "live" },
+});
+
 it.each(listShowcaseScenes())("$id renders through the web presentation components", (scene) => {
   const markup: Array<string> = [];
   const topologyView = projectTopology(
@@ -32,7 +43,7 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
     scene.topologySource.services,
     scene.topologySource.processes,
   );
-  const map = buildZeropsServiceMap(topologyView, scene.lifecycle);
+  const map = buildZeropsServiceMap(topologyView, liveLifecycle(scene.lifecycle));
   const mapMarkup = renderToStaticMarkup(<ZeropsServiceMap view={map} />);
   markup.push(mapMarkup);
   if (map === undefined) {
@@ -50,7 +61,7 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
 
   const lifecycleThreadModel = deriveZeropsThreadModel({
     activities: scene.threadActivities[scene.lifecycle.threadId] ?? [],
-    lifecycle: scene.lifecycle,
+    lifecycle: liveLifecycle(scene.lifecycle),
     runningTurnId: null,
   });
   const authMarkup = renderToStaticMarkup(

@@ -934,11 +934,8 @@ const KNOWN_VALUE_READ_EXCEPTIONS: ReadonlyMap<string, string> = new Map([
   ],
   ...[
     "apps/web/src/components/ChatView.logic.ts agentAuth.value",
-    "apps/web/src/components/ChatView.tsx activeZeropsLifecycleRead.value",
     "apps/web/src/components/ChatView.tsx zeropsAgentAuthRead.value",
-    "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx lifecycle.value",
     "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx agentAuthRead.value",
-    "apps/web/src/components/zerops/ZeropsPanel.tsx lifecycleRead.value",
     "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx agentAuth.value",
   ].map(
     (read) =>

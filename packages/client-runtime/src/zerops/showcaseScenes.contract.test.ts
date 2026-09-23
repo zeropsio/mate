@@ -114,7 +114,13 @@ function scenePresentation(scene: ShowcaseScene) {
     scene.topologySource.services,
     scene.topologySource.processes,
   );
-  const map = buildZeropsServiceMap(view, scene.lifecycle);
+  const map = buildZeropsServiceMap(view, {
+    state: "known",
+    value: scene.lifecycle,
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
   const strips = sceneLifecycles(scene).flatMap(({ lifecycle }) =>
     [false, true].map((pendingUserInput) =>
       zeropsStripState(composeSession(lifecycle.envelope, []), undefined, pendingUserInput),

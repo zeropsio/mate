@@ -196,6 +196,34 @@ describe("ZeropsBrowserPanel", () => {
     );
   });
 
+  it("an unread lifecycle never renders as nobody driving: the driving line checks", () => {
+    feedState.browserStream = { status: "live", frame: FRAME };
+    feedState.lifecycle = { state: "unread", waitingFor: null };
+    hooks.beginRender();
+    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
+    const driving = findByAttribute(tree, "data-zerops-browser-driving");
+    expect(driving?.props.children).toBe("Checking whether the agent is driving…");
+    expect(driving?.props.style).toEqual({ animationDelay: "400ms" });
+    expect(findByAttribute(tree, "data-zerops-browser-take-over")).toBeNull();
+  });
+
+  it("a failed lifecycle read says why on the driving line", () => {
+    feedState.browserStream = { status: "live", frame: FRAME };
+    feedState.lifecycle = {
+      state: "failed",
+      failure: { kind: "transport", detail: "closed" },
+      atMs: 0,
+      attempt: 1,
+      retryAtMs: null,
+    };
+    hooks.beginRender();
+    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
+    const driving = findByAttribute(tree, "data-zerops-browser-driving");
+    expect(driving?.props.children).toBe(
+      "Couldn't read what the agent is doing. This Mate didn't answer.",
+    );
+  });
+
   it("sends a drag move as button left, matching press/release (only drags are ever forwarded, so button:none would read as a hover and break drag-select)", () => {
     feedState.browserStream = { status: "live", frame: FRAME };
     feedState.lifecycle = undefined;

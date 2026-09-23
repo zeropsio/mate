@@ -7,6 +7,8 @@
  */
 import type { OrchestrationThreadActivity, ZeropsLifecycle } from "@t3tools/contracts";
 
+import type { Known } from "../knowledge/index.ts";
+
 import { collectZeropsCalls } from "./calls.ts";
 import { compareAnchors } from "./order.ts";
 import { reduceZeropsOperations } from "./operations.ts";
@@ -20,8 +22,12 @@ import type {
 
 export interface ZeropsThreadModelInput {
   readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
-  /** The lifecycle feed's latest snapshot; `recentTools` is ignored. */
-  readonly lifecycle?: ZeropsLifecycle | undefined;
+  /**
+   * The lifecycle feed; `recentTools` is ignored. Only a known snapshot, stale or not, carries an
+   * envelope: until then the session has no phase, and the strip says nothing rather than a
+   * phase nobody read.
+   */
+  readonly lifecycle?: Known<ZeropsLifecycle> | undefined;
   /** The thread's running turn, or null when idle — the only "clock" the model has. */
   readonly runningTurnId?: string | null | undefined;
 }
@@ -61,7 +67,11 @@ export function deriveZeropsThreadModel(input: ZeropsThreadModelInput): ZeropsTh
     })),
   ].sort(compareAnchors);
 
-  const session = composeSession(input.lifecycle?.envelope, operations);
+  const lifecycle = input.lifecycle;
+  const session = composeSession(
+    lifecycle?.state === "known" ? lifecycle.value.envelope : undefined,
+    operations,
+  );
 
   let running: ZeropsOperation | undefined;
   for (const operation of operations) {

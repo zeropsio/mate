@@ -33,6 +33,7 @@
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
+import type { Known } from "./knowledge/index.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 import { isZcpServiceType } from "./topology.ts";
 import type {
@@ -467,11 +468,17 @@ export function parseZeropsProductionLaunch(entry: string): ZeropsProductionLink
     : { label, projectId, url: zeropsProjectUrl(projectId) };
 }
 
+/**
+ * The production links a known lifecycle names for the service, stale or not. A lifecycle not
+ * known yet names none: the map only lists the links it holds and never says a service feeds no
+ * production, so an unread feed reads as nothing yet, not as none.
+ */
 const productionOf = (
   hostname: string,
-  lifecycle: ZeropsLifecycle | undefined,
+  lifecycle: Known<ZeropsLifecycle> | undefined,
 ): ReadonlyArray<ZeropsProductionLink> => {
-  const snapshot = lifecycle?.envelope?.services.find((entry) => entry.hostname === hostname);
+  if (lifecycle?.state !== "known") return [];
+  const snapshot = lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname);
   return (snapshot?.feedsProduction ?? []).map(parseZeropsProductionLaunch);
 };
 
@@ -485,7 +492,7 @@ const productionOf = (
  */
 export function buildZeropsServiceMap(
   topology: ZeropsTopologyView | undefined,
-  lifecycle?: ZeropsLifecycle,
+  lifecycle?: Known<ZeropsLifecycle>,
   runningTool?: string,
 ): ZeropsServiceMapView | undefined {
   if (topology === undefined) {

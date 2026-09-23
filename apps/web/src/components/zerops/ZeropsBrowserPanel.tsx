@@ -26,6 +26,8 @@ import {
 } from "@t3tools/client-runtime/zerops/browserStream";
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
 import { useZeropsBrowserStream, useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
@@ -57,7 +59,7 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
   const sendInputCommand = useAtomCommand(zeropsCommands.browserInput, "zerops browser input");
 
   const driving = resolveBrowserDrivingState({
-    recentTools: lifecycle?.state === "known" ? lifecycle.value.recentTools : [],
+    lifecycle,
     takeOver,
     lastUserInputAtMs: lastUserInputAtRef.current,
     nowMs: Date.now(),
@@ -66,11 +68,12 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
   // A FRESH agent call reclaims control by default — a take-over from the
   // agent's PREVIOUS zerops_browser call must never silently carry forward
   // and leave input enabled for the next one. Adjusting state during render
-  // from a computed transition is the standard React pattern for this.
-  if (driving.agentDriving && previousAgentDrivingRef.current === false && takeOver) {
+  // from a computed transition is the standard React pattern for this. A
+  // lifecycle not known yet is no observation: it leaves the ref alone.
+  if (driving.agentDriving === true && previousAgentDrivingRef.current === false && takeOver) {
     setTakeOver(false);
   }
-  previousAgentDrivingRef.current = driving.agentDriving;
+  if (driving.agentDriving !== null) previousAgentDrivingRef.current = driving.agentDriving;
 
   if (environmentId === null) {
     return null;
@@ -154,13 +157,17 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
     sendInput({ kind: "keyboard", eventType: "keyUp", key: event.key });
   };
 
-  const drivingLabel = driving.agentDriving
-    ? read !== undefined && read !== "unavailable" && read.url !== undefined
-      ? `Agent is driving · verifying ${read.url}`
-      : "Agent is driving"
+  const drivingLine = driving.agentDriving
+    ? {
+        text:
+          read !== undefined && read !== "unavailable" && read.url !== undefined
+            ? `Agent is driving · verifying ${read.url}`
+            : "Agent is driving",
+        afterMs: 0,
+      }
     : driving.userDriving
-      ? "You're driving"
-      : undefined;
+      ? { text: "You're driving", afterMs: 0 }
+      : driving.agentUnknown;
 
   return (
     <FlatCard className="space-y-2 p-3" data-zerops-browser-panel>
@@ -178,9 +185,20 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
         ) : null}
       </div>
 
-      {drivingLabel !== undefined ? (
-        <p className="text-muted-foreground text-xs" data-zerops-browser-driving>
-          {drivingLabel}
+      {drivingLine !== null ? (
+        <p
+          className={cn(
+            "text-muted-foreground text-xs",
+            // A placeholder waits a beat before it says anything, so a quick
+            // answer never flickers "Checking…".
+            drivingLine.afterMs > 0 && "animate-zerops-appear",
+          )}
+          data-zerops-browser-driving
+          style={
+            drivingLine.afterMs > 0 ? { animationDelay: `${drivingLine.afterMs}ms` } : undefined
+          }
+        >
+          {drivingLine.text}
         </p>
       ) : null}
 

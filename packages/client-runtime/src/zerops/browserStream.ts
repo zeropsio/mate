@@ -11,6 +11,13 @@ import type {
   ZeropsBrowserStreamStatus,
 } from "@t3tools/contracts";
 
+import {
+  knownPresentation,
+  type Known,
+  type KnownMessage,
+  type KnownSurface,
+} from "./knowledge/index.ts";
+
 /** The daemon relays JPEG frames (S8b brief), never re-encoded — `data` is base64 as received. */
 export function frameImageSrc(frame: ZeropsBrowserFrame): string {
   return `data:image/jpeg;base64,${frame.data}`;
@@ -115,16 +122,33 @@ export interface RecentToolEntry {
 }
 
 export interface BrowserDrivingState {
-  /** The agent has an in-progress `zerops_browser` call right now. */
-  readonly agentDriving: boolean;
+  /**
+   * The agent has an in-progress `zerops_browser` call right now; `null` while the lifecycle is
+   * not known, which is not a lifecycle where nobody drives.
+   */
+  readonly agentDriving: boolean | null;
   /** The viewer sent input in the last {@link USER_DRIVING_WINDOW_MS}. */
   readonly userDriving: boolean;
-  /** `agentDriving && !takeOver` — the panel's own input-capture gate. */
+  /**
+   * `agentDriving && !takeOver` — the panel's own input-capture gate. Only a known call in
+   * progress disables input: the input is the viewer's own action, and a feed an old Mate
+   * cannot serve must not lock them out of the page.
+   */
   readonly inputDisabled: boolean;
+  /** While the lifecycle is not known, what the driving line says instead: checking, or why not. */
+  readonly agentUnknown: KnownMessage | null;
 }
 
 /** How long the panel keeps showing "you're driving" after the viewer's last input. */
 export const USER_DRIVING_WINDOW_MS = 2000;
+
+const DRIVING_SURFACE: KnownSurface<unknown> = {
+  subject: "what the agent is doing",
+  entity: "conversation",
+  source: "mate",
+  checking: "Checking whether the agent is driving…",
+  negative: null,
+};
 
 /**
  * Pure: derives the panel's "who is driving" / input-capture state from the
@@ -132,22 +156,38 @@ export const USER_DRIVING_WINDOW_MS = 2000;
  * own take-over toggle, and when the viewer last sent input. The agent is
  * "driving" exactly when its OWN most recent recorded tool call is a
  * `zerops_browser` call still `inProgress` — a completed or failed one, or
- * any other tool since, means the agent has moved on.
+ * any other tool since, means the agent has moved on. A known lifecycle
+ * answers however stale it is; one not known yet, or whose read failed,
+ * leaves the agent unknown and says so (DESIGN §3.4). `undefined` is no
+ * thread to read, where no agent drives.
  */
 export function resolveBrowserDrivingState(input: {
-  readonly recentTools: ReadonlyArray<RecentToolEntry>;
+  readonly lifecycle: Known<{ readonly recentTools: ReadonlyArray<RecentToolEntry> }> | undefined;
   readonly takeOver: boolean;
   readonly lastUserInputAtMs: number | undefined;
   readonly nowMs: number;
 }): BrowserDrivingState {
-  const last = input.recentTools.at(-1);
-  const agentDriving = last?.toolName === "zerops_browser" && last.status === "inProgress";
   const userDriving =
     input.lastUserInputAtMs !== undefined &&
     input.nowMs - input.lastUserInputAtMs < USER_DRIVING_WINDOW_MS;
+  const { lifecycle } = input;
+  if (lifecycle !== undefined && lifecycle.state !== "known") {
+    return {
+      agentDriving: null,
+      userDriving,
+      inputDisabled: false,
+      agentUnknown: knownPresentation(lifecycle, DRIVING_SURFACE, {
+        nowMs: input.nowMs,
+        updateOffered: false,
+      }).message,
+    };
+  }
+  const last = lifecycle?.value.recentTools.at(-1);
+  const agentDriving = last?.toolName === "zerops_browser" && last.status === "inProgress";
   return {
     agentDriving,
     userDriving,
     inputDisabled: agentDriving && !input.takeOver,
+    agentUnknown: null,
   };
 }

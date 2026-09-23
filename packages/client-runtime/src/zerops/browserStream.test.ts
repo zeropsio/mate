@@ -1,14 +1,31 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsBrowserFrame, ZeropsBrowserStreamEvent } from "@t3tools/contracts";
 
+import type { FailureReason, Known } from "./knowledge/index.ts";
+
 import {
   foldBrowserStreamEvent,
   frameImageSrc,
   INITIAL_BROWSER_STREAM_STATE,
   mapCanvasPointToDevicePixels,
   resolveBrowserDrivingState,
+  type RecentToolEntry,
   type ZeropsBrowserStreamState,
 } from "./browserStream.ts";
+
+/** The lifecycle feed's answer, as the panel reads it. */
+type LifecycleRead = Known<{ readonly recentTools: ReadonlyArray<RecentToolEntry> }>;
+
+const knownTools = (
+  recentTools: ReadonlyArray<RecentToolEntry>,
+  freshness: Extract<LifecycleRead, { state: "known" }>["freshness"] = { kind: "live" },
+): LifecycleRead => ({
+  state: "known",
+  value: { recentTools },
+  asOf: { ordinal: 1, atMs: 0 },
+  coverage: "complete",
+  freshness,
+});
 
 const frame = (overrides: Partial<ZeropsBrowserFrame> = {}): ZeropsBrowserFrame => ({
   type: "frame",
@@ -162,7 +179,7 @@ describe("resolveBrowserDrivingState", () => {
 
   it("panel disables input while the agent drives and enables it on take-over", () => {
     const driving = resolveBrowserDrivingState({
-      recentTools: [{ toolName: "zerops_browser", status: "inProgress" }],
+      lifecycle: knownTools([{ toolName: "zerops_browser", status: "inProgress" }]),
       takeOver: false,
       lastUserInputAtMs: undefined,
       nowMs: NOW,
@@ -171,7 +188,7 @@ describe("resolveBrowserDrivingState", () => {
     expect(driving.inputDisabled).toBe(true);
 
     const tookOver = resolveBrowserDrivingState({
-      recentTools: [{ toolName: "zerops_browser", status: "inProgress" }],
+      lifecycle: knownTools([{ toolName: "zerops_browser", status: "inProgress" }]),
       takeOver: true,
       lastUserInputAtMs: undefined,
       nowMs: NOW,
@@ -182,7 +199,7 @@ describe("resolveBrowserDrivingState", () => {
 
   it("input stays enabled when the agent's browser call already completed", () => {
     const driving = resolveBrowserDrivingState({
-      recentTools: [{ toolName: "zerops_browser", status: "completed" }],
+      lifecycle: knownTools([{ toolName: "zerops_browser", status: "completed" }]),
       takeOver: false,
       lastUserInputAtMs: undefined,
       nowMs: NOW,
@@ -193,10 +210,10 @@ describe("resolveBrowserDrivingState", () => {
 
   it("input stays enabled when the agent's most recent call is a different tool", () => {
     const driving = resolveBrowserDrivingState({
-      recentTools: [
+      lifecycle: knownTools([
         { toolName: "zerops_browser", status: "inProgress" },
         { toolName: "zerops_deploy", status: "inProgress" },
-      ],
+      ]),
       takeOver: false,
       lastUserInputAtMs: undefined,
       nowMs: NOW,
@@ -207,7 +224,7 @@ describe("resolveBrowserDrivingState", () => {
 
   it("reports the viewer as driving within the window after their last input", () => {
     const driving = resolveBrowserDrivingState({
-      recentTools: [],
+      lifecycle: knownTools([]),
       takeOver: false,
       lastUserInputAtMs: NOW - 500,
       nowMs: NOW,
@@ -217,7 +234,7 @@ describe("resolveBrowserDrivingState", () => {
 
   it("the viewer stops driving once the window elapses", () => {
     const driving = resolveBrowserDrivingState({
-      recentTools: [],
+      lifecycle: knownTools([]),
       takeOver: false,
       lastUserInputAtMs: NOW - 2001,
       nowMs: NOW,
@@ -227,11 +244,73 @@ describe("resolveBrowserDrivingState", () => {
 
   it("no recent tools at all: nobody is driving, input stays enabled", () => {
     const driving = resolveBrowserDrivingState({
-      recentTools: [],
+      lifecycle: knownTools([]),
       takeOver: false,
       lastUserInputAtMs: undefined,
       nowMs: NOW,
     });
-    expect(driving).toEqual({ agentDriving: false, userDriving: false, inputDisabled: false });
+    expect(driving).toEqual({
+      agentDriving: false,
+      userDriving: false,
+      inputDisabled: false,
+      agentUnknown: null,
+    });
+  });
+
+  it("an unread lifecycle is not one where nobody drives: the agent is unknown, the line checks", () => {
+    const driving = resolveBrowserDrivingState({
+      lifecycle: { state: "unread", waitingFor: null },
+      takeOver: false,
+      lastUserInputAtMs: undefined,
+      nowMs: NOW,
+    });
+    expect(driving).toEqual({
+      agentDriving: null,
+      userDriving: false,
+      inputDisabled: false,
+      agentUnknown: { text: "Checking whether the agent is driving…", afterMs: 400, tone: "quiet" },
+    });
+  });
+
+  it("a failed lifecycle read names its cause, an old Mate's included", () => {
+    const failed = (failure: FailureReason) =>
+      resolveBrowserDrivingState({
+        lifecycle: { state: "failed", failure, atMs: 0, attempt: 1, retryAtMs: null },
+        takeOver: false,
+        lastUserInputAtMs: undefined,
+        nowMs: NOW,
+      });
+    expect(failed({ kind: "transport", detail: "closed" }).agentUnknown?.text).toBe(
+      "Couldn't read what the agent is doing. This Mate didn't answer.",
+    );
+    expect(
+      failed({ kind: "unsupported", capability: "subscribeZeropsLifecycle" }).agentUnknown?.text,
+    ).toBe("This Mate is too old for this. Updating it adds it.");
+  });
+
+  it("a stale lifecycle keeps its value: the agent still drives", () => {
+    const driving = resolveBrowserDrivingState({
+      lifecycle: knownTools([{ toolName: "zerops_browser", status: "inProgress" }], {
+        kind: "stale",
+        reason: { kind: "source-recovering", retryAtMs: null },
+        sinceMs: 0,
+      }),
+      takeOver: false,
+      lastUserInputAtMs: undefined,
+      nowMs: NOW,
+    });
+    expect(driving.agentDriving).toBe(true);
+    expect(driving.inputDisabled).toBe(true);
+  });
+
+  it("no thread to read: nobody is driving and nothing is checked", () => {
+    const driving = resolveBrowserDrivingState({
+      lifecycle: undefined,
+      takeOver: false,
+      lastUserInputAtMs: undefined,
+      nowMs: NOW,
+    });
+    expect(driving.agentDriving).toBe(false);
+    expect(driving.agentUnknown).toBeNull();
   });
 });

@@ -2406,9 +2406,7 @@ export default function ChatView(props: ChatViewProps) {
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
   );
-  const activeZeropsLifecycleRead = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
-  const activeZeropsLifecycle =
-    activeZeropsLifecycleRead?.state === "known" ? activeZeropsLifecycleRead.value : undefined;
+  const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
   const zeropsThreadModel = useMemo(
     () =>
       deriveZeropsThreadModel({
