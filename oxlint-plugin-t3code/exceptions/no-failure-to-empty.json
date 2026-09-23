@@ -26,22 +26,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "LogicalExpression",
-    "fingerprint": "candidate?.routeOffers ?? EMPTY_OFFERS",
-    "owner": "state-model 1.3",
-    "reason": "unread candidate routes read as none; selectCandidates gives web candidates with presence unknown",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "candidate?.routes ?? EMPTY_ROUTES",
-    "owner": "state-model 1.3",
-    "reason": "unread candidate routes read as none; selectCandidates gives web candidates with presence unknown",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
     "fingerprint": "flow?.environments ?? []",
     "owner": "state-model 4.5",
     "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",

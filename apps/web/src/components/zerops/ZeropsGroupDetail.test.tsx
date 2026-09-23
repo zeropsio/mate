@@ -38,7 +38,18 @@ const mate = (projectId: string, name: string, subject: string) => ({
   when: "1h",
 });
 
-function render(withheld: ReadonlySet<string>) {
+function render(
+  withheld: ReadonlySet<string>,
+  who: Pick<
+    React.ComponentProps<typeof ZeropsGroupPane>,
+    "mates" | "matesNotice" | "onMatesNoticeAct"
+  > = {
+    mates: [
+      mate("theo", "Theo", "Cache the link previews"),
+      mate("iris", "Iris", "Split the checkout"),
+    ],
+  },
+) {
   return renderToStaticMarkup(
     <ZeropsGroupPane
       attention={[]}
@@ -46,10 +57,7 @@ function render(withheld: ReadonlySet<string>) {
       crumbs={[]}
       environments={[environment("stage", "stage"), environment("prod", "production")]}
       groupId="shop"
-      mates={[
-        mate("theo", "Theo", "Cache the link previews"),
-        mate("iris", "Iris", "Split the checkout"),
-      ]}
+      {...who}
       name="Shop"
       names={{ mateNames: new Map(), groupName: "Shop" }}
       onAct={() => {}}
@@ -90,5 +98,46 @@ describe("ZeropsGroupPane", () => {
 
     expect(markup).toContain("Split the checkout");
     expect(markup).not.toContain(CHECKING);
+  });
+
+  const NO_MATE = "No Mate is working on this project yet.";
+
+  it("never says no Mate is on it while the listing is unread: a placeholder instead", () => {
+    const markup = render(new Set(), {
+      mates: [],
+      matesNotice: {
+        region: "placeholder",
+        message: { text: "Checking who is on it…", afterMs: 400, tone: "quiet" },
+        affordance: null,
+      },
+    });
+
+    expect(markup).not.toContain(NO_MATE);
+    expect(markup).toContain("Checking who is on it…");
+    expect(markup).not.toContain("Try again");
+  });
+
+  it("names why the listing's read failed once, with one Try again, and no none", () => {
+    const markup = render(new Set(), {
+      mates: [],
+      matesNotice: {
+        region: "message",
+        message: {
+          text: "Couldn't read who is on this project. Zerops didn't answer.",
+          afterMs: 0,
+          tone: "alert",
+        },
+        affordance: { kind: "retry", label: "Try again" },
+      },
+      onMatesNoticeAct: () => {},
+    });
+
+    expect(markup).not.toContain(NO_MATE);
+    expect(markup.match(/Zerops didn(?:&#x27;|')t answer\./g)).toHaveLength(1);
+    expect(markup.match(/Try again/g)).toHaveLength(1);
+  });
+
+  it("says no Mate is on it only once the listing is complete", () => {
+    expect(render(new Set(), { mates: [], matesNotice: null })).toContain(NO_MATE);
   });
 });

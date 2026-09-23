@@ -53,6 +53,13 @@ import {
   type ZeropsGroup,
   type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
+import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
+import {
+  candidatesNotice,
+  findCandidate,
+  heldCandidates,
+  type CandidatesNotice,
+} from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -134,14 +141,14 @@ const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
  * environment in it.
  */
 function useGroup(groupId: string): ZeropsGroup | undefined {
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
   return useMemo(
     // Order is irrelevant here — a lookup by groupId, not a listing.
     () =>
-      buildZeropsGroupTree(candidates, { order: "name" }).groups.find(
+      buildZeropsGroupTree(heldCandidates(listing).rows, { order: "name" }).groups.find(
         (entry) => entry.group.groupId === groupId,
       )?.group,
-    [candidates, groupId],
+    [groupId, listing],
   );
 }
 
@@ -170,7 +177,8 @@ function useMateMenus(): {
   readonly trouble: string | null;
 } {
   const { activeOrganization, status } = useZeropsSession();
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
+  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const inventory = useZeropsInventory();
   const { serverVersions } = useZeropsCandidateHealth(candidates);
   const giteaProjectId = useMemo(
@@ -181,8 +189,9 @@ function useMateMenus(): {
   const actions = useMateActions({ registry, serverVersions });
   const menuForMate = useCallback(
     (projectId: string) => {
-      const candidate = candidates.find((entry) => entry.project.id === projectId);
-      if (candidate === undefined) return null;
+      const found = findCandidate(listing, (entry) => entry.project.id === projectId);
+      if (found.kind !== "found") return null;
+      const candidate = found.row;
       const tags = readZeropsGroupTags(candidate.project.tagList);
       const menu = (extra: ReadonlyArray<ZeropsMenuAction>) => {
         const entries = actions.actionsFor(candidate, tags, extra);
@@ -207,7 +216,7 @@ function useMateMenus(): {
         </ZeropsMateUpdateControl>
       );
     },
-    [actions, candidates],
+    [actions, listing],
   );
   return { menuForMate, dialogs: actions.dialogs, trouble: actions.trouble };
 }
@@ -307,17 +316,36 @@ function useHistoryNames(groupName: string | undefined): HistoryNames {
   return useMemo(() => ({ mateNames, groupName }), [mateNames, groupName]);
 }
 
+/** How "Who is on it" names the listing it is drawn from, while that listing cannot say "none". */
+const GROUP_MATES_SURFACE = {
+  subject: "who is on this project",
+  entity: "project",
+  source: "zerops",
+  checking: "Checking who is on it…",
+  negative: null,
+} as const;
+
 /**
- * Every Mate on a project, as its page shows them.
+ * Every Mate on a project, as its page shows them, and what the section says
+ * in place of "no Mate" until the listing may say it (DESIGN §3.4): a
+ * placeholder while it is unread, its cause while its read failed, "Still
+ * reading…" over the Mates read of a listing known in part.
  *
  * Read from the same three places the menu reads: the group tree for who is in
  * the group, the activity feed for what each is on, and `mateTints` for the
  * colour its face wears — so a Mate is the same Mate on both surfaces.
  */
-function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
-  const { candidates } = useZeropsCandidates();
+function useGroupMates(groupId: string): {
+  readonly mates: ReadonlyArray<GroupMate>;
+  readonly notice: CandidatesNotice | null;
+  /** Reads the listing again: the notice's *Try again*. */
+  readonly refresh: () => void;
+} {
+  const { listing, refresh } = useZeropsCandidates();
   const activity = useZeropsAgentActivity();
-  return useMemo(() => {
+  const nowMs = useNowMs();
+  const mates = useMemo(() => {
+    const candidates = heldCandidates(listing).rows;
     const tints = assignCandidateMateTints(candidates);
     // Order is irrelevant here — a lookup by groupId, not a listing.
     const group = buildZeropsGroupTree(candidates, { order: "name" }).groups.find(
@@ -349,7 +377,12 @@ function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
               : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
         };
       });
-  }, [activity, candidates, groupId]);
+  }, [activity, groupId, listing]);
+  const notice = useMemo(
+    () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs),
+    [listing, nowMs],
+  );
+  return { mates, notice, refresh };
 }
 
 /**
@@ -364,14 +397,15 @@ function useStopRoutes(projectId: string): {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
 } {
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
   return useMemo(() => {
-    const candidate = candidates.find((entry) => entry.project.id === projectId);
+    const found = findCandidate(listing, (entry) => entry.project.id === projectId);
+    const candidate = found.kind === "found" ? found.row : undefined;
     return {
       routes: candidate?.routes ?? EMPTY_ROUTES,
       offers: candidate?.routeOffers ?? EMPTY_OFFERS,
     };
-  }, [candidates, projectId]);
+  }, [listing, projectId]);
 }
 
 const EMPTY_ROUTES: ReadonlyArray<ZeropsPublicRoute> = [];
@@ -379,20 +413,21 @@ const EMPTY_OFFERS: ReadonlyArray<ZeropsRouteOffer> = [];
 
 /** Opens a Mate's own conversation, as selecting its row in the menu does. */
 function useOpenMate(): (projectId: string) => void {
-  const { candidates } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
   const threads = useThreadShells();
   const navigate = useNavigate();
   return useCallback(
     (projectId: string) => {
-      const candidate = candidates.find((entry) => entry.project.id === projectId);
-      const environmentId = candidate?.environmentId;
+      const found = findCandidate(listing, (entry) => entry.project.id === projectId);
+      const environmentId = found.kind === "found" ? found.row.environmentId : undefined;
       const { primary } =
         environmentId === undefined
           ? { primary: undefined }
           : resolvePrimaryConversation(
               threads.filter((thread) => thread.environmentId === environmentId),
             );
-      // Not connected, or nothing started: the projects screen owns both.
+      // Not connected, nothing started, or not read yet: the projects screen
+      // owns connecting and starting, and says what it is still reading.
       if (environmentId === undefined || primary === undefined) {
         void navigate({ to: "/zerops" });
         return;
@@ -402,7 +437,7 @@ function useOpenMate(): (projectId: string) => void {
         params: buildThreadRouteParams(scopeThreadRef(environmentId, primary.id)),
       });
     },
-    [candidates, navigate, threads],
+    [listing, navigate, threads],
   );
 }
 
@@ -535,7 +570,7 @@ export function ZeropsGroupAnswer({
   const flow = flowValue?.flows.get(groupId);
   const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
   const release = useReleaseOffer(groupId);
-  const mates = useGroupMates(groupId);
+  const { mates } = useGroupMates(groupId);
   const attention = useProjectAttention(groupId, mates, {
     environments: flow?.environments ?? [],
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
@@ -578,7 +613,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
   const names = useHistoryNames(groupName);
-  const mates = useGroupMates(groupId);
+  const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
   const openMate = useOpenMate();
   const inventory = useZeropsInventory();
   const attention = useProjectAttention(groupId, mates, {
@@ -603,6 +638,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       groupId={groupId}
       attention={attention.items}
       mates={mates}
+      matesNotice={matesNotice}
+      onMatesNoticeAct={(affordance) => {
+        if (affordance.kind === "go-to-projects") openProjects();
+        else rereadMates();
+      }}
       name={groupName ?? flow.groupId}
       onAct={attention.onAct}
       names={names}
@@ -641,6 +681,8 @@ export function ZeropsGroupPane({
   attention,
   groupId,
   mates,
+  matesNotice = null,
+  onMatesNoticeAct,
   onAct,
   name,
   names,
@@ -673,8 +715,15 @@ export function ZeropsGroupPane({
   /** What needs somebody, worst first — the page's opening answer. */
   readonly attention: ReadonlyArray<ProjectAttentionItem>;
   readonly onAct: (item: ProjectAttentionItem) => void;
-  /** Every Mate on this project, in the order the menu lists them. */
+  /** Every Mate on this project read so far, in the order the menu lists them. */
   readonly mates: ReadonlyArray<GroupMate>;
+  /**
+   * What "Who is on it" says until the listing may say "no Mate" (DESIGN §3.4);
+   * absent or `null` once it is complete.
+   */
+  readonly matesNotice?: CandidatesNotice | null;
+  /** Its affordance, pressed: read the listing again, or go to the projects. */
+  readonly onMatesNoticeAct?: ((affordance: KnownAffordance) => void) | undefined;
   readonly names: HistoryNames;
   readonly onAddMate: () => void;
   /** One Mate's own quiet actions, by its project id. */
@@ -718,11 +767,13 @@ export function ZeropsGroupPane({
 
       <Section title="Who is on it">
         {mates.length === 0 ? (
-          <Empty
-            action="Add a Mate"
-            onAction={onAddMate}
-            text="No Mate is working on this project yet."
-          />
+          matesNotice === null ? (
+            <Empty
+              action="Add a Mate"
+              onAction={onAddMate}
+              text="No Mate is working on this project yet."
+            />
+          ) : null
         ) : (
           <ul className="flex flex-col">
             {mates.map((mate) => (
@@ -735,6 +786,9 @@ export function ZeropsGroupPane({
               />
             ))}
           </ul>
+        )}
+        {matesNotice === null ? null : (
+          <ListingNotice notice={matesNotice} onAct={onMatesNoticeAct} />
         )}
       </Section>
 
@@ -1959,6 +2013,47 @@ function Fact({ term, children }: { readonly term: string; readonly children: Re
       <dt className="text-muted-foreground">{term}</dt>
       <dd className="min-w-0 text-foreground">{children}</dd>
     </>
+  );
+}
+
+/**
+ * What a section drawn from the listing says in place of a "none" it may not
+ * say yet: its message, after the delay that keeps a quick answer from
+ * flickering it, and its one affordance.
+ */
+function ListingNotice({
+  notice,
+  onAct,
+}: {
+  readonly notice: CandidatesNotice;
+  readonly onAct?: ((affordance: KnownAffordance) => void) | undefined;
+}) {
+  const { affordance, message } = notice;
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-3",
+        message.afterMs > 0 && "animate-zerops-appear",
+      )}
+      role={notice.region === "message" ? "alert" : "status"}
+      style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
+    >
+      <p
+        className={cn(
+          "text-sm",
+          message.tone === "alert"
+            ? "text-[var(--zerops-status-failed-text)]"
+            : "text-muted-foreground",
+        )}
+      >
+        {message.text}
+      </p>
+      {affordance === null || onAct === undefined ? null : (
+        <Button onClick={() => onAct(affordance)} size="sm" variant="outline">
+          {affordance.label}
+        </Button>
+      )}
+    </div>
   );
 }
 
