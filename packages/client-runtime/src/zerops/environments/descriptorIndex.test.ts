@@ -168,7 +168,15 @@ describe("sweepRead", () => {
       name: "a Mate coming up is read on its poll, a poll interval after the failure the sweep saw",
       container: {
         ...read({ kind: "unreachable" }, 2_500),
-        state: { level: "booting", since: at(0) },
+        state: { level: "booting", since: at(0), guessed: false },
+      },
+      read: { from: at(4_500), request: false },
+    },
+    {
+      name: "a Mate only failed reads say is coming up is read on its backed-off poll, never sooner",
+      container: {
+        ...read({ kind: "unreachable" }, 2_500),
+        state: { level: "booting", since: at(0), guessed: true },
       },
       read: { from: at(4_500), request: false },
     },
@@ -176,7 +184,7 @@ describe("sweepRead", () => {
       name: "a Mate past its boot budget is read on its overdue poll, never sooner",
       container: {
         ...read({ kind: "unreachable" }, 2_500),
-        state: { level: "booting", since: at(0) },
+        state: { level: "booting", since: at(0), guessed: false },
         overdue: true,
       },
       read: { from: at(4_500), request: false },
