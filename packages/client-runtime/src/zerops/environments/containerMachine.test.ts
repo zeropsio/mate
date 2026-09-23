@@ -341,6 +341,47 @@ describe("container machine (DESIGN §4.5)", () => {
     });
   });
 
+  it("a socket connected since the platform's restart began ends it, whatever its status still says", () => {
+    const restarting: ContainerEvent = {
+      type: "PLATFORM",
+      status: { project: "ACTIVE", service: "RESTARTING" },
+    };
+    // The push lands while the old socket still holds: that socket proves nothing about it.
+    const linked = drive([{ type: "LINK", connected: true }], ready());
+    const pushed = drive([restarting], linked);
+    const theirs = { level: "restarting", by: "platform", overdue: false };
+    expect(containerVerdict(pushed.machine)).toEqual(theirs);
+
+    const dropped = drive(
+      [{ type: "LINK", connected: false }, probed({ kind: "unreachable" }, pushed.nowMs)],
+      pushed,
+    );
+    expect(containerVerdict(dropped.machine)).toEqual(theirs);
+
+    // The Mate is back before the platform's status is: the fresh socket ends the restart.
+    const back = drive([{ type: "LINK", connected: true }], dropped);
+    expect(containerVerdict(back.machine)).toEqual({ level: "ready" });
+    expect(probeCadence(back.machine)).toEqual({ kind: "none" });
+
+    // The status the platform still shows does not open the restart again under that socket.
+    const held = drive([{ type: "PROCESS", running: true }, restarting], back);
+    expect(containerVerdict(held.machine)).toEqual({ level: "ready" });
+    const ended = drive([active], held);
+    expect(containerVerdict(ended.machine)).toEqual({ level: "ready" });
+
+    // Our restart ends the same way.
+    const asked = drive(
+      [{ type: "INTENT", intent: { kind: "restart", since: instant(linked.nowMs + 1_000) } }],
+      linked,
+    );
+    const ours = drive(
+      [restarting, { type: "LINK", connected: false }, { type: "LINK", connected: true }],
+      asked,
+    );
+    expect(containerVerdict(ours.machine)).toEqual({ level: "ready" });
+    expect(ours.machine.intent).toBeNull();
+  });
+
   it("a container predating Mate is Enable only on a flag read off", () => {
     const predates = transitionContainer(
       drive([active]).machine,

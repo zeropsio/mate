@@ -12,9 +12,10 @@
  *   until a read fact proves the container back: a link connect after the intent, a changed
  *   `/healthz` `initAt`, a reading sent after the platform's own restart process ended, or — for
  *   an update — a descriptor on another version.
- * - A live socket outranks every guess but `inactive`: a connect ends booting at once. A ready
- *   container stays ready when a probe goes unanswered; a boot that only failed probes suggest
- *   is `guessed`, and read at the backing-off intervals.
+ * - A live socket outranks every guess but `inactive`: a connect ends booting at once, and a
+ *   connect since the platform began restarting ends that restart while its status still says
+ *   RESTARTING. A ready container stays ready when a probe goes unanswered; a boot that only
+ *   failed probes suggest is `guessed`, and read at the backing-off intervals.
  */
 import type { Instant } from "../data/access/grant.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
@@ -85,6 +86,8 @@ export interface ContainerMachine {
   /** The current level's cap ran out; only a new level (or a new `since` on it) clears it. */
   readonly overdue: boolean;
   readonly platform: PlatformStatus | null;
+  /** When the platform's service status turned to restarting; null while it is not. */
+  readonly platformRestartAt: Instant | null;
   /** A platform process (a start, a restart) is running against the container. */
   readonly processRunning: boolean;
   /** When the last running process was seen ending; null while none has. */
@@ -149,6 +152,7 @@ export const initialContainer = (): ContainerMachine => ({
   state: { level: "unknown" },
   overdue: false,
   platform: null,
+  platformRestartAt: null,
   processRunning: false,
   processEndedAt: null,
   reading: null,
@@ -413,6 +417,10 @@ const settleFacts = (machine: ContainerMachine, now: Instant): ContainerMachine 
       );
     }
     if (service !== null && SERVICE_RESTARTING.has(service)) {
+      // A socket connected since the platform began restarting outranks the status it still
+      // shows (§0A): the restart is over, and the reads say so.
+      const restartAt = machine.platformRestartAt;
+      if (restartAt !== null && connectedAfter(machine, restartAt)) return settleReads(machine);
       if (state.level === "restarting") {
         return moveTo(
           machine,
@@ -444,6 +452,12 @@ const settleFacts = (machine: ContainerMachine, now: Instant): ContainerMachine 
       return moveTo(machine, { level: "booting", since: now, guessed: false });
     }
   }
+  return settleReads(machine);
+};
+
+/** Where the reads put a container the platform's status leaves to them. */
+const settleReads = (machine: ContainerMachine): ContainerMachine => {
+  const state = machine.state;
   switch (state.level) {
     case "restarting": {
       const over = restartOver(machine, state);
@@ -494,10 +508,15 @@ const apply = (
   switch (event.type) {
     case "PLATFORM": {
       if (sameJson(machine.platform, event.status)) return machine;
-      const next = { ...machine, platform: event.status };
+      const wasRestarting = SERVICE_RESTARTING.has(machine.platform?.service ?? "");
+      const restarting = SERVICE_RESTARTING.has(event.status.service ?? "");
+      const next = {
+        ...machine,
+        platform: event.status,
+        platformRestartAt: restarting ? (machine.platformRestartAt ?? now) : null,
+      };
       // The platform's restart ending is ours to see only once it was seen running.
       const state = machine.state;
-      const wasRestarting = SERVICE_RESTARTING.has(machine.platform?.service ?? "");
       if (
         state.level === "restarting" &&
         state.platformEnded === null &&
