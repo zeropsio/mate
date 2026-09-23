@@ -116,6 +116,15 @@ function exitUnlessInterrupted<A, E, R>(
 
 export interface EnvironmentSupervisorOptions {
   readonly initiallyDesired?: boolean;
+  /**
+   * The generation of the credential the store holds, read only once that
+   * credential is safe to present: it waits out a replacement still being
+   * written. An attempt carries the generation it started under, and a block
+   * it reports after the credential was replaced is not published — it
+   * answers a credential that is gone. Without it every attempt shares one
+   * generation.
+   */
+  readonly credentialGeneration?: Effect.Effect<number>;
 }
 
 function retryDelayMs(failureCount: number): number {
@@ -252,6 +261,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const intent = yield* Ref.make(initialIntent);
   const signals = yield* Queue.unbounded<SupervisorSignal>();
   const resetRetryState = yield* Ref.make(false);
+  const credentialGeneration = options?.credentialGeneration ?? Effect.succeed(0);
   // Set when a foreground wake probe fails or times out: the user is actively
   // returning to the app on a dead transport, so the follow-up reconnect skips
   // the first backoff rung instead of sleeping.
@@ -890,6 +900,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       }
 
       const attempt = failureCount + 1;
+      const attemptCredentialGeneration = yield* credentialGeneration;
       const outcome: AttemptOutcome = yield* Effect.scoped(
         runAttempt(attempt, generation, latestFailure, pendingRetry),
       );
@@ -914,17 +925,23 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       const error: ConnectionAttemptError = outcome.failure.error;
       latestFailure = error;
       if (error._tag === "ConnectionBlockedError") {
-        const blockedIntent = yield* Ref.get(intent);
-        yield* setState({
-          desired: blockedIntent.desired,
-          network: blockedIntent.network,
-          phase: "blocked",
-          stage: null,
-          attempt,
-          generation,
-          lastFailure: error,
-          retryAt: null,
-        });
+        // The credential this attempt presented was replaced while it was in
+        // flight, so the block answers one that is gone. Published, it would
+        // read as a rejection of the new one. The replacement's retry signal
+        // re-attempts with the new credential.
+        if ((yield* credentialGeneration) === attemptCredentialGeneration) {
+          const blockedIntent = yield* Ref.get(intent);
+          yield* setState({
+            desired: blockedIntent.desired,
+            network: blockedIntent.network,
+            phase: "blocked",
+            stage: null,
+            attempt,
+            generation,
+            lastFailure: error,
+            retryAt: null,
+          });
+        }
         const applicationActivated = yield* waitForSignal;
         if (applicationActivated) {
           resetRetryLadder();

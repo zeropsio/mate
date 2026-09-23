@@ -15,6 +15,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import {
+  type BearerConnectionCredential,
   type ConnectionCatalogEntry,
   type ConnectionRegistration,
   type PlatformConnectionRegistration,
@@ -26,11 +27,12 @@ import * as ConnectionCredentialStore from "./credentialStore.ts";
 import * as CredentialRenewal from "./credentialRenewal.ts";
 import * as ConnectionProfileStore from "./profileStore.ts";
 import * as Connectivity from "./connectivity.ts";
-import type {
-  ConnectionAttemptError,
-  ConnectionTarget,
-  NetworkStatus,
-  SupervisorConnectionState,
+import {
+  type ConnectionAttemptError,
+  ConnectionBlockedError,
+  type ConnectionTarget,
+  type NetworkStatus,
+  type SupervisorConnectionState,
 } from "./model.ts";
 import * as Persistence from "../platform/persistence.ts";
 import * as EnvironmentSupervisor from "./supervisor.ts";
@@ -92,6 +94,10 @@ export class EnvironmentRegistry extends Context.Service<
       | PlatformEnvironmentRemovalError
     >;
     readonly retryNow: (environmentId: EnvironmentId) => Effect.Effect<void>;
+    readonly rotateCredential: (
+      environmentId: EnvironmentId,
+      credential: BearerConnectionCredential,
+    ) => Effect.Effect<void, ConnectionAttemptError | EnvironmentNotRegisteredError>;
     readonly state: (
       environmentId: EnvironmentId,
     ) => Effect.Effect<SupervisorConnectionState, EnvironmentNotRegisteredError>;
@@ -125,6 +131,12 @@ interface EnvironmentServiceScope {
   readonly entry: ConnectionCatalogEntry;
   readonly supervisor: EnvironmentSupervisor.EnvironmentSupervisor["Service"];
   readonly scope: Scope.Closeable;
+  // Counts the credentials `rotateCredential` handed this supervisor; the
+  // supervisor stamps each attempt with it.
+  readonly credentialGeneration: Ref.Ref<number>;
+  // Held while a rotated credential is written, so no attempt starts, and no
+  // block is judged, between the store write and the generation bump.
+  readonly credentialWrite: Semaphore.Semaphore;
 }
 
 /** @public Service construction is part of the canonical Effect module API. */
@@ -362,8 +374,11 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const environmentId = entry.target.environmentId;
           const scope = yield* Scope.fork(registryScope);
+          const credentialGeneration = yield* Ref.make(0);
+          const credentialWrite = yield* Semaphore.make(1);
           const supervisor = yield* EnvironmentSupervisor.make(entry, {
             initiallyDesired: false,
+            credentialGeneration: credentialWrite.withPermits(1)(Ref.get(credentialGeneration)),
           }).pipe(
             Effect.provideService(Connectivity.Connectivity, connectivity),
             Effect.provideService(ConnectionDriver.ConnectionDriver, driver),
@@ -375,7 +390,13 @@ export const make = Effect.gen(function* () {
           yield* runCredentialRenewal(entry, supervisor).pipe(Effect.forkIn(scope));
           yield* SubscriptionRef.update(serviceScopes, (current) => {
             const next = new Map(current);
-            next.set(environmentId, { entry, supervisor, scope });
+            next.set(environmentId, {
+              entry,
+              supervisor,
+              scope,
+              credentialGeneration,
+              credentialWrite,
+            });
             return next;
           });
           return supervisor;
@@ -383,24 +404,22 @@ export const make = Effect.gen(function* () {
       ),
   );
 
-  const acquireSupervisor = Effect.fn("EnvironmentRegistry.acquireSupervisor")(function* (
-    environmentId: EnvironmentId,
-  ) {
-    return yield* withLeaseLock(
-      environmentId,
-      Effect.gen(function* () {
-        const entry = yield* getEntry(environmentId);
-        const existing = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
-        if (existing !== undefined) {
-          if (Equal.equals(existing.entry, entry)) {
-            return existing.supervisor;
-          }
-          yield* closeServiceScope(environmentId);
+  const acquireSupervisorLocked = Effect.fn("EnvironmentRegistry.acquireSupervisorLocked")(
+    function* (environmentId: EnvironmentId) {
+      const entry = yield* getEntry(environmentId);
+      const existing = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+      if (existing !== undefined) {
+        if (Equal.equals(existing.entry, entry)) {
+          return existing.supervisor;
         }
-        return yield* createServiceScope(entry);
-      }),
-    );
-  });
+        yield* closeServiceScope(environmentId);
+      }
+      return yield* createServiceScope(entry);
+    },
+  );
+
+  const acquireSupervisor = (environmentId: EnvironmentId) =>
+    withLeaseLock(environmentId, acquireSupervisorLocked(environmentId));
 
   const run: EnvironmentRegistry["Service"]["run"] = Effect.fn("EnvironmentRegistry.run")(
     function* <A, E, R>(environmentId: EnvironmentId, effect: Effect.Effect<A, E, R>) {
@@ -770,6 +789,62 @@ export const make = Effect.gen(function* () {
       Effect.catchTag("EnvironmentNotRegisteredError", () => Effect.void),
       Effect.withSpan("EnvironmentRegistry.retryNow"),
     );
+  /**
+   * Hands a live environment a new bearer — the Zerops door's re-exchange after
+   * the old one was revoked.
+   *
+   * Like `runCredentialRenewal` it writes through the credential STORE, never
+   * through `register`: re-registering rebuilds the supervisor, which moves the
+   * install generation and rebinds every `followStream` consumer, the shell
+   * among them. Here the supervisor, its install generation and the catalog
+   * entry stay as they are. The retry is this environment's alone — never the
+   * global `credentials-changed` wakeup, which would kick every blocked
+   * supervisor.
+   *
+   * It holds the environment's lease for the whole write, so a `remove` cannot
+   * land between the lookup and the store and leave the new bearer behind in a
+   * catalog that no longer lists the environment.
+   */
+  const rotateCredential = Effect.fn("EnvironmentRegistry.rotateCredential")(function* (
+    environmentId: EnvironmentId,
+    credential: BearerConnectionCredential,
+  ) {
+    yield* withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        const entry = yield* getEntry(environmentId);
+        const target = entry.target;
+        if (target._tag !== "BearerConnectionTarget") {
+          return yield* new ConnectionBlockedError({
+            reason: "configuration",
+            detail: `${target.label} does not authenticate with a bearer credential.`,
+          });
+        }
+        const store = credentials.put(target.connectionId, credential);
+        const existing = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+        if (existing !== undefined && Equal.equals(existing.entry, entry)) {
+          // The bump and the retry are one step: a block judged stale by the
+          // bump is left waiting for exactly that retry.
+          yield* existing.credentialWrite.withPermits(1)(
+            store.pipe(
+              Effect.andThen(
+                Effect.uninterruptible(
+                  Ref.update(existing.credentialGeneration, (generation) => generation + 1).pipe(
+                    Effect.andThen(existing.supervisor.retryNow),
+                  ),
+                ),
+              ),
+            ),
+          );
+          return;
+        }
+        // No live supervisor: store first, so the one built next presents only
+        // the new bearer.
+        yield* store;
+        yield* acquireSupervisorLocked(environmentId);
+      }),
+    );
+  });
   const state = Effect.fn("EnvironmentRegistry.state")(function* (environmentId: EnvironmentId) {
     const supervisor = yield* acquireSupervisor(environmentId);
     return yield* SubscriptionRef.get(supervisor.state);
@@ -809,6 +884,7 @@ export const make = Effect.gen(function* () {
     remove,
     removeRelayEnvironments,
     retryNow,
+    rotateCredential,
     state,
     stateChanges,
     run,

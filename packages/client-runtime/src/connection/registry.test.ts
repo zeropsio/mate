@@ -37,11 +37,13 @@ import * as ConnectionCredentialStore from "./credentialStore.ts";
 import * as CredentialRenewal from "./credentialRenewal.ts";
 import * as ConnectionDriver from "./driver.ts";
 import {
+  ConnectionBlockedError,
   ConnectionTransientError,
   BearerConnectionTarget,
   PrimaryConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
+  type ConnectionAttemptError,
   type ConnectionTarget,
   type PreparedConnection,
   type SupervisorConnectionState,
@@ -96,6 +98,18 @@ const BEARER_PROFILE = new BearerConnectionProfile({
   httpBaseUrl: "https://bearer.example.test",
   wsBaseUrl: "wss://bearer.example.test",
 });
+const SECOND_BEARER_TARGET = new BearerConnectionTarget({
+  environmentId: EnvironmentId.make("environment-bearer-2"),
+  label: "Second bearer environment",
+  connectionId: "bearer-connection-2",
+});
+const SECOND_BEARER_PROFILE = new BearerConnectionProfile({
+  connectionId: SECOND_BEARER_TARGET.connectionId,
+  environmentId: SECOND_BEARER_TARGET.environmentId,
+  label: SECOND_BEARER_TARGET.label,
+  httpBaseUrl: "https://bearer-2.example.test",
+  wsBaseUrl: "wss://bearer-2.example.test",
+});
 const BEARER_CREDENTIAL = new BearerConnectionCredential({
   token: "bearer-token",
 });
@@ -142,6 +156,15 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
       target: ConnectionTarget,
     ) => Effect.Effect<void, Persistence.ConnectionPersistenceError>;
     readonly credentialRenewer?: CredentialRenewal.ConnectionCredentialRenewer["Service"];
+    // Stands in for the server's check of the bearer the attempt presents,
+    // read from the credential store the way `resolver.prepare` reads it.
+    readonly authenticate?: (
+      environmentId: EnvironmentId,
+      credential: ConnectionCredential | undefined,
+    ) => Effect.Effect<void, ConnectionAttemptError>;
+    // Runs before a credential write lands, standing in for the catalog's
+    // asynchronous update.
+    readonly beforeCredentialPut?: (credential: ConnectionCredential) => Effect.Effect<void>;
   },
 ) {
   const storedTargets = yield* Ref.make(
@@ -305,11 +328,15 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
         Effect.map((current) => Option.fromUndefinedOr(current.get(connectionId))),
       ),
     put: (connectionId, credential) =>
-      Ref.update(storedCredentials, (current) => {
-        const next = new Map(current);
-        next.set(connectionId, credential);
-        return next;
-      }),
+      (options?.beforeCredentialPut?.(credential) ?? Effect.void).pipe(
+        Effect.andThen(
+          Ref.update(storedCredentials, (current) => {
+            const next = new Map(current);
+            next.set(connectionId, credential);
+            return next;
+          }),
+        ),
+      ),
     remove: (connectionId) =>
       Ref.update(storedCredentials, (current) => {
         const next = new Map(current);
@@ -351,6 +378,13 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
           target,
         };
         yield* reportProgress({ stage: "preparing" });
+        if (options?.authenticate !== undefined) {
+          const credential =
+            target._tag === "BearerConnectionTarget"
+              ? (yield* Ref.get(storedCredentials)).get(target.connectionId)
+              : undefined;
+          yield* options.authenticate(target.environmentId, credential);
+        }
         yield* reportProgress({ stage: "opening", prepared });
         yield* options?.beforeSessionConnect?.(target.environmentId) ?? Effect.void;
         const closed = yield* Deferred.make<never, ConnectionTransientError>();
@@ -434,6 +468,29 @@ function eventuallyCredential(
     }
     return yield* Effect.die(new Error("Credential was not renewed."));
   });
+}
+
+function rejectBearer(revokedToken: string) {
+  return (
+    _environmentId: EnvironmentId,
+    credential: ConnectionCredential | undefined,
+  ): Effect.Effect<void, ConnectionBlockedError> =>
+    credential?.token === revokedToken
+      ? Effect.fail(
+          new ConnectionBlockedError({
+            reason: "authentication",
+            detail: "The environment credential is invalid.",
+          }),
+        )
+      : Effect.void;
+}
+
+const currentSupervisor = Effect.gen(function* () {
+  return yield* EnvironmentSupervisor.EnvironmentSupervisor;
+});
+
+function isAuthenticationBlock(state: SupervisorConnectionState): boolean {
+  return state.phase === "blocked" && state.lastFailure?.reason === "authentication";
 }
 
 function awaitConnectionState(
@@ -1131,6 +1188,389 @@ describe("EnvironmentRegistry", () => {
         );
         expect(yield* Ref.get(harness.disconnectedSshTargets)).toEqual([SSH_TARGET]);
       }).pipe(Effect.provide(harness.layer));
+    }),
+  );
+
+  it.effect(
+    "blocked(authentication) → rotate → connected; install generation unchanged; shell stays live",
+    () =>
+      Effect.gen(function* () {
+        const revoked = new BearerConnectionCredential({ token: "revoked-token" });
+        const rotated = new BearerConnectionCredential({ token: "rotated-token" });
+        const harness = yield* makeHarness(
+          [BEARER_TARGET],
+          [BEARER_PROFILE],
+          [[BEARER_TARGET.connectionId, revoked]],
+          { authenticate: rejectBearer(revoked.token) },
+        );
+
+        yield* Effect.gen(function* () {
+          const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+          const environmentId = BEARER_TARGET.environmentId;
+          yield* registry.start;
+          yield* awaitConnectionState(registry, environmentId, isAuthenticationBlock);
+          const entry = (yield* SubscriptionRef.get(registry.entries)).get(environmentId);
+          const supervisor = yield* registry.run(environmentId, currentSupervisor);
+          // `followStream` rebinds every consumer when the install generation
+          // moves, so a binding count of one is the install generation held.
+          const bound = yield* Deferred.make<void>();
+          const binds = yield* Ref.make(0);
+          const subscription = yield* Effect.forkChild(
+            registry
+              .followStream(environmentId, Stream.concat(Stream.succeed(undefined), Stream.never))
+              .pipe(
+                Stream.tap(() =>
+                  Ref.update(binds, (count) => count + 1).pipe(
+                    Effect.andThen(Deferred.succeed(bound, undefined)),
+                  ),
+                ),
+                Stream.runDrain,
+              ),
+          );
+          yield* Deferred.await(bound).pipe(Effect.timeout("1 second"));
+
+          yield* registry.rotateCredential(environmentId, rotated);
+          yield* awaitConnectionState(
+            registry,
+            environmentId,
+            (state) => state.phase === "connected",
+          );
+          yield* Effect.yieldNow;
+          yield* Fiber.interrupt(subscription);
+
+          expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toBe(
+            rotated,
+          );
+          expect(yield* registry.run(environmentId, currentSupervisor)).toBe(supervisor);
+          expect(yield* Ref.get(binds)).toBe(1);
+          expect((yield* SubscriptionRef.get(registry.entries)).get(environmentId)).toBe(entry);
+          expect(yield* Ref.get(harness.cacheClears)).toEqual([]);
+          expect(yield* Ref.get(harness.ownedDataClears)).toEqual([]);
+        }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      }),
+  );
+
+  it.effect("no global credentials-changed wakeup is emitted", () =>
+    Effect.gen(function* () {
+      // A global wakeup reaches every supervisor: a blocked one re-attempts on
+      // any signal and a connected relay drops its socket. Rotating one
+      // environment must touch neither.
+      const revoked = new BearerConnectionCredential({ token: "revoked-token" });
+      const rotated = new BearerConnectionCredential({ token: "rotated-token" });
+      const attempts = yield* Ref.make<ReadonlyMap<EnvironmentId, number>>(new Map());
+      const reject = rejectBearer(revoked.token);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET, SECOND_BEARER_TARGET, RELAY_TARGET],
+        [BEARER_PROFILE, SECOND_BEARER_PROFILE],
+        [
+          [BEARER_TARGET.connectionId, revoked],
+          [SECOND_BEARER_TARGET.connectionId, revoked],
+        ],
+        {
+          authenticate: (environmentId, credential) =>
+            Ref.update(attempts, (current) =>
+              new Map(current).set(environmentId, (current.get(environmentId) ?? 0) + 1),
+            ).pipe(Effect.andThen(reject(environmentId, credential))),
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* awaitConnectionState(registry, BEARER_TARGET.environmentId, isAuthenticationBlock);
+        yield* awaitConnectionState(
+          registry,
+          SECOND_BEARER_TARGET.environmentId,
+          isAuthenticationBlock,
+        );
+        yield* awaitConnectionState(
+          registry,
+          RELAY_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        const attemptsBefore = yield* Ref.get(attempts);
+
+        yield* registry.rotateCredential(BEARER_TARGET.environmentId, rotated);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        yield* Effect.yieldNow;
+
+        const attemptsAfter = yield* Ref.get(attempts);
+        expect(attemptsAfter.get(SECOND_BEARER_TARGET.environmentId)).toBe(
+          attemptsBefore.get(SECOND_BEARER_TARGET.environmentId),
+        );
+        expect(attemptsAfter.get(RELAY_TARGET.environmentId)).toBe(
+          attemptsBefore.get(RELAY_TARGET.environmentId),
+        );
+        expect(
+          isAuthenticationBlock(yield* registry.state(SECOND_BEARER_TARGET.environmentId)),
+        ).toBe(true);
+        expect(yield* Ref.get(harness.releasedSessions)).toBe(0);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("a rejection of the old credential after rotation does not block the new one", () =>
+    Effect.gen(function* () {
+      // The server's answer to the revoked bearer is still in flight when the
+      // re-exchanged one is stored. That late rejection belongs to the old
+      // credential and must not park the environment on "authentication".
+      const revoked = new BearerConnectionCredential({ token: "revoked-token" });
+      const rotated = new BearerConnectionCredential({ token: "rotated-token" });
+      const revokedAttemptStarted = yield* Deferred.make<void>();
+      const releaseRejection = yield* Deferred.make<void>();
+      const presented = yield* Ref.make<ReadonlyArray<string>>([]);
+      const reject = rejectBearer(revoked.token);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, revoked]],
+        {
+          authenticate: (environmentId, credential) =>
+            Effect.gen(function* () {
+              yield* Ref.update(presented, (current) => [...current, credential?.token ?? ""]);
+              if (credential?.token === revoked.token) {
+                yield* Deferred.succeed(revokedAttemptStarted, undefined);
+                yield* Deferred.await(releaseRejection);
+              }
+              yield* reject(environmentId, credential);
+            }),
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const environmentId = BEARER_TARGET.environmentId;
+        yield* registry.start;
+        yield* Deferred.await(revokedAttemptStarted).pipe(Effect.timeout("1 second"));
+        const observed = yield* Ref.make<ReadonlyArray<SupervisorConnectionState>>([]);
+        const recording = yield* Deferred.make<void>();
+        const recorder = yield* Effect.forkChild(
+          registry
+            .stateChanges(environmentId)
+            .pipe(
+              Stream.runForEach((state) =>
+                Ref.update(observed, (current) => [...current, state]).pipe(
+                  Effect.andThen(Deferred.succeed(recording, undefined)),
+                ),
+              ),
+            ),
+        );
+        yield* Deferred.await(recording).pipe(Effect.timeout("1 second"));
+
+        yield* registry.rotateCredential(environmentId, rotated);
+        yield* Deferred.succeed(releaseRejection, undefined);
+        const settled = yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected" || isAuthenticationBlock(state),
+        );
+        yield* Fiber.interrupt(recorder);
+
+        expect(settled.phase).toBe("connected");
+        expect(yield* Ref.get(presented)).toEqual([revoked.token, rotated.token]);
+        expect((yield* Ref.get(observed)).filter(isAuthenticationBlock)).toEqual([]);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("refuses to rotate a credential into an environment that takes no bearer", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([RELAY_TARGET]);
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const error = yield* Effect.flip(
+          registry.rotateCredential(RELAY_TARGET.environmentId, BEARER_CREDENTIAL),
+        );
+
+        expect(error._tag).toBe("ConnectionBlockedError");
+        expect(yield* Ref.get(harness.storedCredentials)).toEqual(new Map());
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("a removal during a rotation leaves no bearer behind", () =>
+    Effect.gen(function* () {
+      // The user removes the Mate, or signs out, while a re-exchanged bearer is
+      // being stored. The removal must not run in between: a bearer written
+      // after it would sit in the catalog with no target or profile, where the
+      // sign-out's revocation loop never finds it.
+      const current = new BearerConnectionCredential({ token: "current-token" });
+      const rotated = new BearerConnectionCredential({ token: "rotated-token" });
+      const putStarted = yield* Deferred.make<void>();
+      const releasePut = yield* Deferred.make<void>();
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, current]],
+        {
+          beforeCredentialPut: (credential) =>
+            credential.token === rotated.token
+              ? Deferred.succeed(putStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releasePut)),
+                )
+              : Effect.void,
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const environmentId = BEARER_TARGET.environmentId;
+        yield* registry.start;
+        yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected",
+        );
+
+        const rotation = yield* registry
+          .rotateCredential(environmentId, rotated)
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Deferred.await(putStarted);
+        const removal = yield* registry
+          .remove(environmentId)
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Effect.yieldNow;
+
+        yield* Deferred.succeed(releasePut, undefined);
+        yield* Fiber.join(rotation);
+        yield* Fiber.join(removal);
+
+        expect((yield* Ref.get(harness.storedTargets)).has(environmentId)).toBe(false);
+        expect((yield* Ref.get(harness.storedCredentials)).has(BEARER_TARGET.connectionId)).toBe(
+          false,
+        );
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect(
+    "an attempt rejected while the rotated bearer is being stored publishes no authentication block",
+    () =>
+      Effect.gen(function* () {
+        // The server refuses the revoked bearer while the catalog write of the
+        // new one is still in flight. That refusal answers the old credential;
+        // published, it would read as a rejection of the new one and send the
+        // Zerops repair into a second exchange.
+        const revoked = new BearerConnectionCredential({ token: "revoked-token" });
+        const rotated = new BearerConnectionCredential({ token: "rotated-token" });
+        const revokedAttemptStarted = yield* Deferred.make<void>();
+        const releaseRejection = yield* Deferred.make<void>();
+        const rejected = yield* Deferred.make<void>();
+        const putStarted = yield* Deferred.make<void>();
+        const releasePut = yield* Deferred.make<void>();
+        const presented = yield* Ref.make<ReadonlyArray<string>>([]);
+        const reject = rejectBearer(revoked.token);
+        const harness = yield* makeHarness(
+          [BEARER_TARGET],
+          [BEARER_PROFILE],
+          [[BEARER_TARGET.connectionId, revoked]],
+          {
+            authenticate: (environmentId, credential) =>
+              Effect.gen(function* () {
+                yield* Ref.update(presented, (current) => [...current, credential?.token ?? ""]);
+                if (credential?.token === revoked.token) {
+                  yield* Deferred.succeed(revokedAttemptStarted, undefined);
+                  yield* Deferred.await(releaseRejection);
+                }
+                yield* reject(environmentId, credential).pipe(
+                  Effect.tapError(() => Deferred.succeed(rejected, undefined)),
+                );
+              }),
+            beforeCredentialPut: (credential) =>
+              credential.token === rotated.token
+                ? Deferred.succeed(putStarted, undefined).pipe(
+                    Effect.andThen(Deferred.await(releasePut)),
+                  )
+                : Effect.void,
+          },
+        );
+
+        yield* Effect.gen(function* () {
+          const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+          const environmentId = BEARER_TARGET.environmentId;
+          yield* registry.start;
+          yield* Deferred.await(revokedAttemptStarted).pipe(Effect.timeout("1 second"));
+          const observed = yield* Ref.make<ReadonlyArray<SupervisorConnectionState>>([]);
+          const recording = yield* Deferred.make<void>();
+          const recorder = yield* Effect.forkChild(
+            registry
+              .stateChanges(environmentId)
+              .pipe(
+                Stream.runForEach((state) =>
+                  Ref.update(observed, (current) => [...current, state]).pipe(
+                    Effect.andThen(Deferred.succeed(recording, undefined)),
+                  ),
+                ),
+              ),
+          );
+          yield* Deferred.await(recording).pipe(Effect.timeout("1 second"));
+
+          const rotation = yield* registry
+            .rotateCredential(environmentId, rotated)
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* Deferred.await(putStarted);
+          yield* Deferred.succeed(releaseRejection, undefined);
+          yield* Deferred.await(rejected);
+          yield* Effect.yieldNow;
+          yield* Deferred.succeed(releasePut, undefined);
+          yield* Fiber.join(rotation);
+          const settled = yield* awaitConnectionState(
+            registry,
+            environmentId,
+            (state) => state.phase === "connected" || isAuthenticationBlock(state),
+          );
+          yield* Fiber.interrupt(recorder);
+
+          expect(settled.phase).toBe("connected");
+          expect(yield* Ref.get(presented)).toEqual([revoked.token, rotated.token]);
+          expect((yield* Ref.get(observed)).filter(isAuthenticationBlock)).toEqual([]);
+        }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      }),
+  );
+
+  it.effect("rotating an environment with no supervisor yet presents only the new bearer", () =>
+    Effect.gen(function* () {
+      // Nothing has acquired the persisted environment yet. Building its
+      // supervisor before the store write would start an attempt with the
+      // revoked bearer and spend a request on a refusal.
+      const revoked = new BearerConnectionCredential({ token: "revoked-token" });
+      const rotated = new BearerConnectionCredential({ token: "rotated-token" });
+      const presented = yield* Ref.make<ReadonlyArray<string>>([]);
+      const reject = rejectBearer(revoked.token);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, revoked]],
+        {
+          authenticate: (environmentId, credential) =>
+            Ref.update(presented, (current) => [...current, credential?.token ?? ""]).pipe(
+              Effect.andThen(reject(environmentId, credential)),
+            ),
+          // The catalog write is asynchronous; an attempt started before it
+          // gets to run.
+          beforeCredentialPut: () =>
+            Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, { discard: true }),
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const environmentId = BEARER_TARGET.environmentId;
+
+        yield* registry.rotateCredential(environmentId, rotated);
+        yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected",
+        );
+
+        expect(yield* Ref.get(presented)).toEqual([rotated.token]);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
 });
