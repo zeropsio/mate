@@ -3,14 +3,22 @@ import * as DateTime from "effect/DateTime";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
-import { ACCOUNT_WINDOW_WAIT_MS, ZeropsApiClient, ZeropsApiError, type ZeropsUser } from "./api.ts";
+import {
+  ACCOUNT_WINDOW_WAIT_MS,
+  ZeropsApiClient,
+  ZeropsApiError,
+  type FetchImplementation,
+  type ZeropsUser,
+} from "./api.ts";
 import { mateDiagnostics } from "./diagnostics.ts";
 import {
   connectThroughThrowaway,
   planThrowawaySweep,
+  THROWAWAY_DELETE_RETRY_MS,
   THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
 } from "./doorThrowaway.ts";
+import type { ZeropsSession } from "./session.ts";
 import { makeFakeZeropsRest } from "./testing/fakeZeropsRest.ts";
 
 const NOW = Date.parse("2026-09-16T10:00:00.000Z");
@@ -125,9 +133,9 @@ describe("zeropsThrowawayPlatform's diagnostics", () => {
     const client = {
       mintThrowaway: async (input: { readonly name: string }) =>
         input.name.startsWith("gitea-signin:")
-          ? { id: "gitea-token", token: "a-value" }
-          : { id: "door-token", token: "a-value" },
-      deleteIntegrationToken: async (input: { readonly tokenId: string }) => {
+          ? { id: "gitea-token", token: "a-value", mintingToken: "access-1" }
+          : { id: "door-token", token: "a-value", mintingToken: "access-1" },
+      deleteThrowaway: async (input: { readonly tokenId: string }) => {
         if (input.tokenId === "gitea-token") throw new ZeropsApiError("gone", "not-found", 404);
       },
     } as unknown as ZeropsApiClient;
@@ -188,6 +196,14 @@ function member(id: string, roleCode: string): ZeropsUser {
   };
 }
 
+/** A browser's fetch: a request whose signal is already aborted never leaves. */
+function browserFetch(fetch: FetchImplementation): FetchImplementation {
+  return (input, init) =>
+    init?.signal?.aborted === true
+      ? Promise.reject(new DOMException("This operation was aborted", "AbortError"))
+      : fetch(input, init);
+}
+
 /**
  * One tab signed in to the account harness's Zerops, its access window open
  * as the inventory provider opens it after a grant.
@@ -195,12 +211,21 @@ function member(id: string, roleCode: string): ZeropsUser {
 function signedInTab(roleCode = "OWNER") {
   const rest = makeFakeZeropsRest();
   rest.addUser({ user: member("user-1", roleCode), password: "one" });
-  const client = new ZeropsApiClient({ fetch: rest.fetch, now: () => Date.now() });
-  client.restoreSession(rest.issueSession("user-1"));
+  rest.addUser({ user: member("user-2", "OWNER"), password: "two" });
+  const sessionChanges: Array<ZeropsSession | null> = [];
+  const client = new ZeropsApiClient({
+    fetch: browserFetch(rest.fetch),
+    now: () => Date.now(),
+    onSessionChange: (session) => {
+      sessionChanges.push(session);
+    },
+  });
+  const session = rest.issueSession("user-1");
+  client.restoreSession(session);
   client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
   const mints = () => rest.requests().filter(({ route }) => route.startsWith("POST /client/"));
-  const throwaways = () => zeropsThrowawayPlatform(client);
-  return { rest, client, mints, throwaways };
+  const throwaways = (signal?: AbortSignal) => zeropsThrowawayPlatform(client, signal);
+  return { rest, client, session, sessionChanges, mints, throwaways };
 }
 
 /** Lets every promise that can settle without a timer settle. */
@@ -275,6 +300,79 @@ describe("throwaway hygiene", () => {
     expect(tab.mints()).toHaveLength(0);
   });
 
+  it("aborting the exchange after the mint still deletes the token", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const exchange = new AbortController();
+    const orphaned: Array<unknown> = [];
+
+    const connecting = connectThroughThrowaway({
+      platform: tab.throwaways(exchange.signal),
+      clientId: "org-1",
+      projectId: "p1",
+      nonce: "n1",
+      onOrphaned: (cause) => orphaned.push(cause),
+      // The door has the throwaway when the exchange is given up.
+      connect: () =>
+        new Promise<never>((_resolve, reject) => {
+          exchange.signal.addEventListener("abort", () => reject(exchange.signal.reason), {
+            once: true,
+          });
+        }),
+    }).catch(() => "aborted");
+    await settle();
+    expect(tab.rest.integrationTokens()).toHaveLength(1);
+
+    exchange.abort();
+
+    await expect(connecting).resolves.toBe("aborted");
+    expect(orphaned).toEqual([]);
+    expect(tab.rest.orphanTokens()).toEqual([]);
+    expect(tab.rest.integrationTokens()[0]?.deletedWith).toBe(tab.session.accessToken);
+  });
+
+  for (const row of [
+    { next: "another person", email: "user-2@example.test", password: "two", revoked: true },
+    { next: "the same person", email: "user-1@example.test", password: "one", revoked: true },
+    { next: "another person", email: "user-2@example.test", password: "two", revoked: false },
+  ] as const) {
+    it(`finalizer 401 after sign-out/sign-in never clears the new session and never runs under another principal (${row.next}, first session ${row.revoked ? "revoked" : "alive"})`, async () => {
+      vi.useFakeTimers();
+      const tab = signedInTab();
+      const orphaned: Array<unknown> = [];
+      let signedInAgain: ZeropsSession | undefined;
+
+      await connectThroughThrowaway({
+        platform: tab.throwaways(),
+        clientId: "org-1",
+        projectId: "p1",
+        nonce: "n1",
+        onOrphaned: (cause) => orphaned.push(cause),
+        // While the door answers, the person signs out and somebody signs in.
+        connect: async () => {
+          await tab.client.signOutLocally();
+          if (row.revoked) tab.rest.expireAccessToken(tab.session.accessToken);
+          signedInAgain = (await tab.client.login(row.email, row.password)).auth;
+          return "connected";
+        },
+      });
+      await settle();
+
+      const deletes = tab.rest.requests().filter(({ route }) => route.startsWith("DELETE "));
+      expect(deletes.map(({ token }) => token)).toEqual([tab.session.accessToken]);
+      expect(tab.client.session?.accessToken).toBe(signedInAgain?.accessToken);
+      expect(tab.sessionChanges.at(-1)?.accessToken).toBe(signedInAgain?.accessToken);
+      expect(tab.rest.refreshes()).toBe(0);
+      if (row.revoked) {
+        expect(orphaned).toHaveLength(1);
+        expect(tab.rest.orphanTokens()).toHaveLength(1);
+      } else {
+        expect(orphaned).toEqual([]);
+        expect(tab.rest.integrationTokens()[0]?.deletedWith).toBe(tab.session.accessToken);
+      }
+    });
+  }
+
   // CM-3: the organization's write flag would lock these members out, and
   // the door and the broker are what decide their roles.
   for (const row of [
@@ -307,4 +405,29 @@ describe("throwaway hygiene", () => {
       expect(tab.rest.orphanTokens()).toEqual([]);
     });
   }
+
+  it("a delete Zerops could not answer is tried once more, 5 s later", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const orphaned: Array<unknown> = [];
+    const firstDelete = tab.rest.hold("DELETE /client/org-1/integration-token/integration-1");
+
+    const connecting = connectThroughThrowaway({
+      platform: tab.throwaways(),
+      clientId: "org-1",
+      projectId: "p1",
+      nonce: "n1",
+      onOrphaned: (cause) => orphaned.push(cause),
+      connect: async () => "connected",
+    });
+    await settle();
+    firstDelete.fail(503);
+    await vi.advanceTimersByTimeAsync(THROWAWAY_DELETE_RETRY_MS - 1);
+    expect(tab.rest.orphanTokens()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(connecting).resolves.toBe("connected");
+    expect(orphaned).toEqual([]);
+    expect(tab.rest.orphanTokens()).toEqual([]);
+  });
 });

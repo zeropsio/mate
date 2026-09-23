@@ -96,7 +96,12 @@ export interface ZeropsThrowawayPlatform {
     readonly clientId: string;
     readonly name: string;
   }) => Promise<{ readonly id: string; readonly token: string }>;
-  /** `DELETE /client/{org}/integration-token/{tokenId}`. */
+  /**
+   * `DELETE /client/{org}/integration-token/{tokenId}`, as the person who
+   * minted it: with the access token the mint carried, on a deadline of its
+   * own and never a caller's signal. The implementation is
+   * `ZeropsApiClient.deleteThrowaway`.
+   */
   readonly remove: (input: {
     readonly clientId: string;
     readonly tokenId: string;
@@ -127,6 +132,10 @@ export interface WithThrowawayInput<T> {
  * them, or never answered — because a throwaway that outlives its call is a
  * row in the account's token list that blocks removing its owner (Zerops
  * refuses to remove a member who still holds tokens, measured 2026-09-15).
+ *
+ * Nothing interrupts the deletion: the caller giving up, the account closing
+ * or somebody else signing in to the tab mid-call all leave it running, and it
+ * acts as the person who minted or not at all.
  *
  * A deletion that itself fails is reported and swallowed: the caller's outcome
  * is the answer, and a token with no rights is not worth turning a successful

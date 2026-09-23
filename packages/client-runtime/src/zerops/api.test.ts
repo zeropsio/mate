@@ -1552,6 +1552,54 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
   });
 });
 
+describe("ZeropsApiClient.deleteThrowaway", () => {
+  it.each(["zcp-acme", "mate-broker", "mate-doorstop", "mate-door"])(
+    "refuses %s, which is not a throwaway, and sends nothing",
+    async (name) => {
+      const stub = recordingFetch(() => jsonResponse(204, {}));
+      const client = new ZeropsApiClient({ fetch: stub.fetch });
+      client.restoreSession(SESSION);
+
+      await expect(
+        client.deleteThrowaway({ clientId: "org-1", tokenId: "t1", name }, { token: "access-0" }),
+      ).rejects.toMatchObject({ kind: "invalid-input" });
+      expect(stub.requests).toHaveLength(0);
+    },
+  );
+
+  it("carries the minting token with the window closed, and its 401 never touches the session", async () => {
+    const stored: Array<ZeropsSession | null> = [];
+    const stub = recordingFetch(() => jsonResponse(401, { error: { code: "unauthorized" } }));
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        stored.push(session);
+      },
+    });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(false);
+
+    await expect(
+      client.deleteThrowaway(
+        { clientId: "org-1", tokenId: "t1", name: "mate-door:p1:n1" },
+        { token: "access-0" },
+      ),
+    ).rejects.toMatchObject({ kind: "expired-session", status: 401 });
+
+    expect(
+      stub.requests.map(({ method, url, authorization }) => [method, url, authorization]),
+    ).toEqual([
+      [
+        "DELETE",
+        `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/client/org-1/integration-token/t1`,
+        "Bearer access-0",
+      ],
+    ]);
+    expect(client.session).toEqual(SESSION);
+    expect(stored).toEqual([]);
+  });
+});
+
 describe("ZeropsApiClient.adoptPersonalToken", () => {
   // The hand-over from app.zerops.io delivers a personal access token, which is
   // already a bearer — there is nothing to exchange. What there is to do is

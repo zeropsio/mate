@@ -40,11 +40,26 @@ import {
   withThrowaway,
   type ZeropsThrowawayPlatform,
 } from "../authorization/zeropsThrowaway.ts";
-import type { ZeropsApiClient } from "./api.ts";
+import { ZeropsApiError, type ZeropsApiClient } from "./api.ts";
 import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
 
 /** Nothing older than this is still anybody's live throwaway. */
 export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
+
+/** How long a throwaway delete that Zerops could not answer waits before its one retry. */
+export const THROWAWAY_DELETE_RETRY_MS = 5_000;
+
+/**
+ * Whether a failed delete is worth its one retry: the platform was not
+ * reached, did not answer in time, or answered 429/5xx. A 401 or 403 is the
+ * minting session's own verdict and is left to the sweep.
+ */
+function isTransientDeleteFailure(cause: unknown): boolean {
+  return (
+    cause instanceof ZeropsApiError &&
+    (cause.kind === "network" || cause.kind === "server" || cause.status === 429)
+  );
+}
 
 /**
  * The two platform calls a throwaway is, backed by the signed-in account's own
@@ -53,12 +68,20 @@ export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
  * `mintThrowaway` mints `NO_ACCESS` with no projects and refuses to set a
  * flag of any kind, which is what makes what it mints a throwaway rather than
  * something a door has to argue with. It waits for a closed account window
- * rather than refusing, and `signal` ends that wait and the mint.
+ * rather than refusing, and `signal` ends that wait and the mint — never the
+ * delete, which runs on its own deadline with the token the mint carried and
+ * is tried once more after {@link THROWAWAY_DELETE_RETRY_MS} when Zerops could
+ * not answer.
  */
 export function zeropsThrowawayPlatform(
   client: ZeropsApiClient,
   signal?: AbortSignal,
 ): ZeropsThrowawayPlatform {
+  /**
+   * What each throwaway minted here is deleted with: its name, and the access
+   * token its mint carried. Held from the mint to the delete, and no longer.
+   */
+  const minted = new Map<string, { readonly name: string; readonly mintingToken: string }>();
   return {
     mint: (input) => {
       const diagnostic = {
@@ -68,9 +91,10 @@ export function zeropsThrowawayPlatform(
         clientId: input.clientId,
       } as const;
       return client.mintThrowaway({ clientId: input.clientId, name: input.name }, signal).then(
-        (minted) => {
-          mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: minted.id });
-          return minted;
+        (throwaway) => {
+          minted.set(throwaway.id, { name: input.name, mintingToken: throwaway.mintingToken });
+          mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: throwaway.id });
+          return { id: throwaway.id, token: throwaway.token };
         },
         (cause: unknown) => {
           mateDiagnostics.record({
@@ -82,26 +106,41 @@ export function zeropsThrowawayPlatform(
         },
       );
     },
-    remove: (input) => {
+    remove: async (input) => {
       const diagnostic = {
         kind: "throwaway",
         action: "delete",
         clientId: input.clientId,
         tokenId: input.tokenId,
       } as const;
-      return client
-        .deleteIntegrationToken({ clientId: input.clientId, tokenId: input.tokenId }, signal)
-        .then(
-          () => mateDiagnostics.record({ ...diagnostic, outcome: "ok" }),
-          (cause: unknown) => {
-            mateDiagnostics.record({
-              ...diagnostic,
-              outcome: "failed",
-              ...diagnosticFailure(cause),
-            });
-            throw cause;
-          },
-        );
+      const throwaway = minted.get(input.tokenId);
+      minted.delete(input.tokenId);
+      const attempt = async () => {
+        try {
+          if (throwaway === undefined) {
+            throw new ZeropsApiError(
+              "This throwaway was not minted here, so there is no token to delete it with.",
+              "invalid-input",
+            );
+          }
+          await client.deleteThrowaway(
+            { clientId: input.clientId, tokenId: input.tokenId, name: throwaway.name },
+            { token: throwaway.mintingToken },
+          );
+          mateDiagnostics.record({ ...diagnostic, outcome: "ok" });
+        } catch (cause) {
+          mateDiagnostics.record({ ...diagnostic, outcome: "failed", ...diagnosticFailure(cause) });
+          throw cause;
+        }
+      };
+      try {
+        await attempt();
+      } catch (cause) {
+        if (!isTransientDeleteFailure(cause)) throw cause;
+        // @effect-diagnostics-next-line globalTimers:off -- plain promises: the retry's own pause.
+        await new Promise((resolve) => setTimeout(resolve, THROWAWAY_DELETE_RETRY_MS));
+        await attempt();
+      }
     },
   };
 }
