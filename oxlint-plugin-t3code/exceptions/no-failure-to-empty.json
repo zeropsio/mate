@@ -266,7 +266,7 @@
   {
     "path": "apps/web/src/zerops/useZeropsGroupEnvironmentReconcile.ts",
     "kind": "CallExpression",
-    "fingerprint": "addGroupEnvironment({ client, gitea: giteaClientFor(giteaOrigin), clientId, giteaProjectId, registry: registry.current, groupId: entry.groupId, slug: registryGroupSlug(registry.current, entry.groupId), environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
+    "fingerprint": "addGroupEnvironment({ client, gitea, clientId, giteaProjectId, registry: registry.current, groupId: entry.groupId, slug: registryGroupSlug(registry.current, entry.groupId), environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
     "owner": "state-model 4.7",
     "reason": "a failed repair reads as no outcome and the entry is given back for the next pass; the reconciler becomes an account worker with typed attempts",
     "expires": "never"
