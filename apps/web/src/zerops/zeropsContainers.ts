@@ -13,6 +13,7 @@ import {
   containerVerdict,
   environmentTarget,
   makeContainerStore,
+  readServiceMateFlag,
   systemExchangeClock,
   type ContainerMachine,
   type ContainerVerdict,
@@ -30,7 +31,6 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { accountStorageKey, currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { findInventoryProjectRef, type Inventory } from "./inventoryContext";
-import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
 import { useExchangeDriver } from "./useZeropsIdentityExchange";
 import {
   useZeropsAtomSelections,
@@ -90,12 +90,11 @@ async function readMateFlag(inputs: ContainerInputs | null, key: TargetKey): Pro
     inputs.clientId,
   );
   if (project === null) return "unknown";
-  const value = await readZeropsResourceOnce(inputs.runtime.resources, {
-    kind: "service-mate-flag",
-    account: inputs.runtime.scope,
-    service: { kind: "service", project, serviceId: ZeropsServiceId.make(serviceId) },
+  return readServiceMateFlag(inputs.runtime.resources, {
+    kind: "service",
+    project,
+    serviceId: ZeropsServiceId.make(serviceId),
   });
-  return value === undefined ? "unknown" : value.enabled;
 }
 
 export function hostContainerStore(): ContainerStore {

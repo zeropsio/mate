@@ -37,7 +37,10 @@ import {
   type ProjectRef,
   type ProjectActivityRead,
 } from "@t3tools/client-runtime/zerops/data";
-import { systemExchangeClock } from "@t3tools/client-runtime/zerops/environments";
+import {
+  readServiceMateFlag,
+  systemExchangeClock,
+} from "@t3tools/client-runtime/zerops/environments";
 import type { ProvisioningState } from "@t3tools/client-runtime/zerops/provisioning";
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/unstable/reactivity";
@@ -55,7 +58,6 @@ import {
 import { addGroupEnvironment } from "./addGroupEnvironment";
 import { grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import { giteaClientFor } from "./accountGiteaSessions";
-import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
 import { nextContainerReading } from "./zeropsContainers";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
 
@@ -300,16 +302,11 @@ export function webBirthPorts(
     readMateFlag: async (birth, serviceId) => {
       const inputs = read();
       if (inputs === null) return "unknown";
-      const value = await readZeropsResourceOnce(inputs.runtime.resources, {
-        kind: "service-mate-flag",
-        account: inputs.runtime.scope,
-        service: {
-          kind: "service",
-          project: refOf(inputs, birth),
-          serviceId: ZeropsServiceId.make(serviceId),
-        },
+      return readServiceMateFlag(inputs.runtime.resources, {
+        kind: "service",
+        project: refOf(inputs, birth),
+        serviceId: ZeropsServiceId.make(serviceId),
       });
-      return value === undefined ? "unknown" : value.enabled;
     },
     release: (projectId) => {
       leases.get(projectId)?.abort();
