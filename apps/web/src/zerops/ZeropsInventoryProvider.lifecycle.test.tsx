@@ -168,7 +168,11 @@ function actEffect<A, E>(work: Effect.Effect<A, E>): Effect.Effect<A, E> {
 
 const mountInventory = Effect.fn(function* (
   ids: ReadonlyArray<string> = ["kept"],
-  options: { readonly holdFirstRound?: boolean } = {},
+  options: {
+    readonly holdFirstRound?: boolean;
+    /** Projects whose own read answers 503 from the start. */
+    readonly failing?: ReadonlyArray<string>;
+  } = {},
 ) {
   vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
   vi.setSystemTime(1788825600000);
@@ -204,6 +208,7 @@ const mountInventory = Effect.fn(function* (
   let fetchGate: Promise<void> | null = null;
   let registrationGate: Deferred.Deferred<void> | null = null;
   const indexed = new Set(ids);
+  const failing = new Set(options.failing);
   const client = {
     fetchUser: vi.fn(async () => {
       if (fetchGate !== null) await fetchGate;
@@ -213,6 +218,7 @@ const mountInventory = Effect.fn(function* (
       [...projects.values()].filter(({ id }) => indexed.has(id)),
     ),
     fetchProject: vi.fn(async (id: string) => {
+      if (failing.has(id)) throw new ZeropsApiError("Unavailable", "server", 503);
       const project = projects.get(id);
       if (project === undefined) throw new ZeropsApiError("Gone", "not-found");
       return project;
@@ -347,6 +353,7 @@ const mountInventory = Effect.fn(function* (
     client,
     projects,
     indexed,
+    failing,
     grants,
     projectRef,
     inventory: () => inventory,
@@ -487,6 +494,45 @@ it.live("a renewal withholds a deleted project until a second read confirms it i
 
 const grantedProjects = (grant: VerifiedAccessGrant | undefined) =>
   grant?.projects.map(({ project }) => project.projectId);
+
+it.live("a project whose evidence runs out leaves the runtime's grant at its own deadline", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory(["kept", "flaky"]);
+      const renewal = harness.holdRenewal();
+      harness.failing.add("flaky");
+      yield* harness.advance(RENEWAL_DUE_MS);
+      yield* renewal.verify();
+      // The renewal carries the project's evidence from the first round, still fresh.
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept", "flaky"]);
+
+      yield* harness.advance(15 * 60_000 - RENEWAL_DUE_MS);
+
+      // Its writes and reads end with its own evidence, not with the next round (G2, T-L19).
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+      const access = (yield* harness.runtime.state).access;
+      expect(
+        access.status === "verified" && access.projects.map(({ project }) => project.projectId),
+      ).toEqual(["kept"]);
+    }),
+  ),
+);
+
+it.live("a project its own retry verifies joins the runtime's grant before the next round", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory(["kept", "flaky"], { failing: ["flaky"] });
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+      harness.failing.delete("flaky");
+
+      // The project's own retry comes 10 s after the round, long before the renewal.
+      yield* harness.advance(10_000);
+
+      expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
+      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept", "flaky"]);
+    }),
+  ),
+);
 
 it.live("closes the api's writes at the evidence deadline on the api's own clock", () =>
   Effect.scoped(

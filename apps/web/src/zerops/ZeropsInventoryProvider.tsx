@@ -88,11 +88,22 @@ function openWrites(client: Pick<ZeropsApiClient, "setWritesAllowed">, evidence:
   client.setWritesAllowed(true, performance.timeOrigin + performance.now() + remainingMs(stamp));
 }
 
-/** The data runtime's grant for admitted evidence; hidden projects stay out of it. */
+/**
+ * The data runtime's grant for held evidence: every project whose own evidence
+ * is fresh, and those a command established that the evidence does not name
+ * yet. A project the evidence holds unverified or denied is out of it.
+ */
 function runtimeGrant(
   runtime: ReturnType<typeof useZeropsData>["runtime"],
   evidence: Evidence,
+  current: AccessState,
 ): VerifiedAccessGrant {
+  const named = (project: ProjectRef) =>
+    evidence.projects.has(project.projectId) ||
+    evidence.unverified.has(project.projectId) ||
+    evidence.closedProjects.has(project.projectId);
+  const established =
+    current.status === "verified" ? current.projects.filter(({ project }) => !named(project)) : [];
   return {
     account: runtime.scope.account,
     accountEpoch: runtime.scope.epoch,
@@ -101,11 +112,25 @@ function runtimeGrant(
     deadlineMs: Date.now() + remainingMs(evidence.account.startedAt),
     mutationsAllowed: true,
     organizations: evidence.account.organizations,
-    projects: [...evidence.projects.values()]
-      .map(({ access }) => access)
-      .filter(({ role }) => role !== "NO_ACCESS"),
+    projects: [
+      ...[...evidence.projects.values()]
+        .map(({ access }) => access)
+        .filter(({ role }) => role !== "NO_ACCESS"),
+      ...established,
+    ],
   };
 }
+
+/** What of the evidence the runtime's grant is built from; a change is a new grant. */
+const grantKey = (evidence: Evidence): string =>
+  JSON.stringify([
+    evidence.account.round,
+    [...evidence.projects.values()].map(({ access }) => [
+      access.project.projectId,
+      access.role,
+      access.mutationsAllowed,
+    ]),
+  ]);
 
 /**
  * The projects admitted evidence names: verified ones, those whose latest
@@ -302,6 +327,8 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   /** Why the last round failed, in the platform's words. */
   const [roundFailure, setRoundFailure] = useState<string | null>(null);
   const dispatch = useRef<(event: GrantEvent) => void>(() => undefined);
+  /** Hands the evidence held now to the data runtime; `null` when none is held then. */
+  const publishGrant = useRef<() => Promise<Evidence | null>>(async () => null);
   /** Each project's status as its last read gave it, until the runtime has read it. */
   const [readStatuses, setReadStatuses] = useState<ReadonlyMap<string, string>>(new Map());
   /** Each project's authority, as the grant's withhold and restore effects last said (G12). */
@@ -337,6 +364,42 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       },
       now(),
     );
+
+    /** What reaches the runtime's access reaches it in the order it was sent. */
+    let accessQueue: Promise<unknown> = Promise.resolve();
+    const inOrder = <T,>(work: () => Promise<T>): Promise<T> => {
+      const done = accessQueue.then(work);
+      // One observation that did not land does not hold back the next.
+      accessQueue = done.catch(() => undefined);
+      return done;
+    };
+    /** The evidence the runtime's grant was last built from, by `grantKey`. */
+    let grantedKey: string | null = null;
+    publishGrant.current = () => {
+      if (machine.phase.phase === "granted") grantedKey = grantKey(machine.phase.evidence);
+      return inOrder(async () => {
+        const phase = machine.phase;
+        if (!alive || phase.phase !== "granted") return null;
+        const { access } = await Effect.runPromise(runtime.state);
+        await Effect.runPromise(
+          runtime.observeAccess({
+            kind: "access-verified",
+            grant: runtimeGrant(runtime, phase.evidence, access),
+          }),
+        );
+        return phase.evidence;
+      });
+    };
+    /**
+     * A project's evidence that changes between rounds — it runs out, its own
+     * read verifies it, a denial closes it, its role is lowered — changes the
+     * runtime's grant at once, not with the next round (G2).
+     */
+    const syncGrant = () => {
+      const phase = machine.phase;
+      if (grantedKey === null || phase.phase !== "granted") return;
+      if (grantKey(phase.evidence) !== grantedKey) void publishGrant.current();
+    };
 
     /** The round in flight; one cut off by the epoch's end is dropped, never verified. */
     let roundSpan: MateDiagnosticSpan<"access-round"> | null = null;
@@ -439,33 +502,32 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
                 return;
               }
               // A renewal: REST evidence alone, never the push half (G1).
-              void Effect.runPromise(
-                runtime.observeAccess({
-                  kind: "access-verified",
-                  grant: runtimeGrant(runtime, evidence),
-                }),
-              ).then(() => {
-                if (!alive) return;
-                mateDiagnostics.record({ kind: "access-grant", round: evidence.account.round });
-                openWrites(client, evidence);
+              void publishGrant.current().then((granted) => {
+                if (!alive || granted === null) return;
+                mateDiagnostics.record({ kind: "access-grant", round: granted.account.round });
+                openWrites(client, granted);
                 setReadWindowExpired(false);
               });
               return;
             }
-            case "access-expired":
+            case "access-expired": {
+              const { expiredAtMs } = effect.observation;
               mateDiagnostics.record({ kind: "access-timer", timer: "expiry" });
               setAccountActionsAllowed(null);
               client.setWritesAllowed(false);
               setFirstEvidence(null);
               if (admitted.current) setReadWindowExpired(true);
-              void Effect.runPromise(
-                runtime.observeAccess({
-                  kind: "access-expired",
-                  accountEpoch: runtime.scope.epoch,
-                  expiredAtMs: effect.observation.expiredAtMs,
-                }),
+              void inOrder(() =>
+                Effect.runPromise(
+                  runtime.observeAccess({
+                    kind: "access-expired",
+                    accountEpoch: runtime.scope.epoch,
+                    expiredAtMs,
+                  }),
+                ),
               );
               return;
+            }
             case "project-gone":
               // The confirmed denial is in the evidence, which no longer names the project.
               return;
@@ -497,6 +559,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       machine = state;
       setGrant(state);
       for (const effect of effects) interpret(effect);
+      syncGrant();
     };
 
     let hiddenAt: number | null = hidden() ? performance.now() : null;
@@ -769,24 +832,23 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     if (firstEvidence === null || !projected.established) return;
     if (granting.current === firstEvidence) return;
     granting.current = firstEvidence;
-    const evidence = firstEvidence;
-    void Effect.runPromise(
-      runtime.observeAccess({ kind: "access-verified", grant: runtimeGrant(runtime, evidence) }),
-    )
-      .then(() => {
-        mateDiagnostics.record({ kind: "access-grant", round: evidence.account.round });
-        openWrites(client, evidence);
-        admitted.current = true;
-        setFirstEvidence(null);
-        setAdmission({ round: evidence.account.round });
-      })
-      .catch(() => {
-        // The gate stays shut and the screen keeps saying it is checking.
-        // The next admitted round tries again, rather than mounting children
-        // onto a runtime that never took the grant.
-        granting.current = null;
-      });
-  }, [client, firstEvidence, projected.established, runtime]);
+    // The gate stays shut and the screen keeps saying it is checking. The next
+    // admitted round tries again, rather than mounting children onto a runtime
+    // that never took the grant.
+    const stayShut = () => {
+      granting.current = null;
+    };
+    // The grant is built from the evidence held when it is handed over, which
+    // a project's own read may have changed since this evidence was admitted.
+    void publishGrant.current().then((granted) => {
+      if (granted === null) return stayShut();
+      mateDiagnostics.record({ kind: "access-grant", round: granted.account.round });
+      openWrites(client, granted);
+      admitted.current = true;
+      setFirstEvidence(null);
+      setAdmission({ round: granted.account.round });
+    }, stayShut);
+  }, [client, firstEvidence, projected.established]);
 
   const round = grantRoundInFlight(grant)?.id ?? null;
   // Every round starts the patience over, so a retry that is itself slow gets
