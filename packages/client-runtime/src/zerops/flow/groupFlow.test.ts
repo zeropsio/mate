@@ -13,6 +13,7 @@ import {
   groupFlow,
   groupFlowStatusReads,
   pullKey,
+  RELEASES_SHOWN,
   releaseContentKey,
   releaseContentReads,
   statusKey,
@@ -570,7 +571,7 @@ describe("groupFlow (DESIGN §4.7)", () => {
     });
   });
 
-  it("releases come newest first from the group repo's tags, each with the broker's verdict on its commit", () => {
+  it("releases come newest first from the group repo's tags, each row waiting only for the broker's verdict on its own commit", () => {
     const tag = (name: string, sha: string): GiteaTag => ({
       name,
       message: `appdev ${MAIN_SHA}`,
@@ -602,19 +603,65 @@ describe("groupFlow (DESIGN §4.7)", () => {
     expect(flowOf({}).releases).toMatchObject({
       state: "known",
       value: [
-        { tag: "v1.10.0", verdict: "approved", word: "Approved", rollBack: false },
-        { tag: "v1.2.0", verdict: "refused", line: "No stage runs it.", rollBack: false },
+        {
+          tag: "v1.10.0",
+          row: {
+            state: "known",
+            value: { verdict: "approved", word: "Approved", rollBack: false },
+          },
+        },
+        {
+          tag: "v1.2.0",
+          row: {
+            state: "known",
+            value: { verdict: "refused", line: "No stage runs it.", rollBack: false },
+          },
+        },
         {
           tag: "v1.0.0",
-          verdict: "approved",
-          line: `appdev ${MAIN_SHA.slice(0, 7)}`,
-          rollBack: true,
+          row: {
+            state: "known",
+            value: { verdict: "approved", line: `appdev ${MAIN_SHA.slice(0, 7)}`, rollBack: true },
+          },
         },
       ],
     });
-    // A verdict still being read holds the history; it never reads as "not judged".
-    const reading = new Map(statuses).set(statusKey("group", "s2"), READING);
-    expect(flowOf({ statuses: reading }).releases.state).toBe("reading");
+    // A verdict still being read, or one that failed, holds its own row, never the history: it
+    // never reads as "not judged".
+    const oneHeld = new Map(statuses)
+      .set(statusKey("group", "s2"), READING)
+      .set(statusKey("group", "s1"), failed({ kind: "server", status: 502 }));
+    expect(flowOf({ statuses: oneHeld }).releases).toMatchObject({
+      state: "known",
+      value: [
+        { tag: "v1.10.0", row: { state: "known" } },
+        { tag: "v1.2.0", row: { state: "reading" } },
+        { tag: "v1.0.0", row: { state: "failed" } },
+      ],
+    });
+    expect(flowOf({ tags: READING }).releases.state).toBe("reading");
+  });
+
+  it("only the newest releases are listed, and only their verdicts are read (D5)", () => {
+    // A long-lived group: forty releases, one status read each if every one were judged.
+    const made = 40;
+    const tags = known(
+      Array.from({ length: made }, (_, minor): GiteaTag => ({
+        name: `v1.${String(minor)}.0`,
+        commit: { sha: `s${String(minor)}` },
+      })),
+    );
+    const newest = Array.from({ length: RELEASES_SHOWN }, (_, index) => made - 1 - index);
+    expect(newest.length).toBeGreaterThan(0);
+    expect(newest.length).toBeLessThan(made);
+
+    expect(
+      groupFlowStatusReads(inputs({ tags })).filter(({ repository }) => repository === "group"),
+    ).toEqual(newest.map((minor) => ({ repository: "group", sha: `s${String(minor)}` })));
+    const releases = groupFlow(inputs({ tags }), RELEASER, NOW).releases;
+    expect(releases.state === "known" ? releases.value.map(({ tag }) => tag) : []).toEqual(
+      newest.map((minor) => `v1.${String(minor)}.0`),
+    );
   });
 
   it("the landed pull requests come from each repository's recent landings, in the org's order", () => {

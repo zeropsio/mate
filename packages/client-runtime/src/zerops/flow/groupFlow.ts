@@ -7,8 +7,9 @@
  *   list is, the landings once every repository's recent landings are; each stop carries its own
  *   deployment, and a declared stop its environment row — each service's version and how its
  *   deploy went, from the statuses on that commit. Nothing fills a missing half with `[]`.
- * - **Releases** are the group repo's release tags, newest first, each with the broker's verdict
- *   on its commit; a verdict not read yet holds the list rather than reading as not judged.
+ * - **Releases** are the group repo's newest release tags, newest first, known once the tags are;
+ *   each row carries the broker's verdict on its commit, and a verdict not read yet holds its own
+ *   row rather than reading as not judged.
  * - **The release offer** is known only when every input it is measured from is known — the
  *   declarations, the group repo's tags, the tiers on `main`, each production service's
  *   deployment (what it runs, or what it deploys while a build runs) and the head of `main` of the
@@ -107,6 +108,13 @@ export interface TiersOnMain {
 /** The tiers a group repo's `main` may offer, in the order they are added. */
 export const TIERS_ON_MAIN: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
 
+/** One release of the group: its tag, and its row once the broker's verdict on it is read. */
+export interface GroupFlowRelease {
+  readonly tag: string;
+  /** Never "not judged yet" before the verdict is read: until then it is the read's own state. */
+  readonly row: Shown<FlowReleaseRow>;
+}
+
 /** One pull request of the group that landed. */
 export interface GroupFlowLanding {
   readonly repository: string;
@@ -196,8 +204,8 @@ export interface GroupFlow {
   readonly release: Shown<ReleaseOffer>;
   /** What pressing *Release* would put live: per service, the commits production does not run. */
   readonly releaseContents: Shown<ReadonlyArray<ReleaseContent>>;
-  /** The group repo's releases, newest first, each with the broker's verdict on it. */
-  readonly releases: Shown<ReadonlyArray<FlowReleaseRow>>;
+  /** The group repo's releases, newest first, known once its tags are; each row with its verdict. */
+  readonly releases: Shown<ReadonlyArray<GroupFlowRelease>>;
   /** Whether *Release* is offered now, and why not. */
   readonly releaseGate: ReleaseGate;
   /** What the person can do about a gate an input holds shut: *Try again* after a failed read. */
@@ -555,15 +563,24 @@ function byVersionDescending(left: GiteaTag, right: GiteaTag): number {
   return b.major - a.major || b.minor - a.minor || b.patch - a.patch;
 }
 
-/** The group repo's release tags, newest version first. */
+/**
+ * How many of the newest releases the flow lists, and so reads the broker's verdict on (D5): one
+ * read per release tag ever made grows with the group's age.
+ */
+export const RELEASES_SHOWN = 10;
+
+/** The group repo's newest {@link RELEASES_SHOWN} release tags, newest version first. */
 const releaseTagsOf = (tags: ReadonlyArray<GiteaTag>): ReadonlyArray<GiteaTag> =>
   // Filtered into a fresh array, so the sort touches nothing else.
-  tags.filter(({ name }) => isReleaseTag(name)).sort(byVersionDescending);
+  tags
+    .filter(({ name }) => isReleaseTag(name))
+    .sort(byVersionDescending)
+    .slice(0, RELEASES_SHOWN);
 
 /**
  * The commits whose statuses the flow reads, as far as what is known names them: each version a
- * declared stop runs, where the broker writes how its deploy went, and each release tag's, where
- * it writes its verdict on the release.
+ * declared stop runs, where the broker writes how its deploy went, and each listed release tag's,
+ * where it writes its verdict on the release.
  */
 export function groupFlowStatusReads(inputs: GroupFlowInputs): ReadonlyArray<StatusRead> {
   const reads = new Map<string, StatusRead>();
@@ -583,42 +600,46 @@ export function groupFlowStatusReads(inputs: GroupFlowInputs): ReadonlyArray<Sta
 }
 
 /**
- * The group's releases, newest first: known once the tags are and the broker's verdict on every
- * tagged commit is read — a verdict not read yet is never "not judged yet".
+ * The group's releases, newest first: known once the tags are. Each row is known once the
+ * broker's verdict on its commit is; a verdict not read yet holds its own row, never the others,
+ * and is never "not judged yet".
  */
-function releasesOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<FlowReleaseRow>> {
+function releasesOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowRelease>> {
   const { tags } = inputs;
   if (!isKnown(tags)) return tags as Shown<never>;
-  const parts: Array<Part> = [{ shown: tags, source: "gitea" }];
-  const judged: Array<{
-    readonly tag: GiteaTag;
-    readonly statuses: ReadonlyArray<GiteaCommitStatus>;
-  }> = [];
-  for (const tag of releaseTagsOf(tags.value)) {
-    const sha = tag.commit?.sha;
-    // A tag naming no commit has nothing the broker could have judged.
-    if (sha === undefined) {
-      judged.push({ tag, statuses: [] });
-      continue;
-    }
-    const statuses = inputs.statuses.get(statusKey(GROUP_REPOSITORY, sha)) ?? UNREAD;
-    parts.push({ shown: statuses, source: "gitea" });
-    if (isKnown(statuses)) judged.push({ tag, statuses: statuses.value });
-  }
-  return withValue(combine(parts).shown, () =>
-    judged.map(({ tag, statuses }, index) => {
-      const { verdict, detail } = releaseVerdict(tag.name, statuses);
-      const release: FlowRelease = {
+  return {
+    ...tags,
+    value: releaseTagsOf(tags.value).map((tag, index): GroupFlowRelease => {
+      const sha = tag.commit?.sha;
+      // A tag naming no commit has nothing the broker could have judged.
+      const statuses: Shown<ReadonlyArray<GiteaCommitStatus>> =
+        sha === undefined
+          ? { ...tags, value: [] }
+          : (inputs.statuses.get(statusKey(GROUP_REPOSITORY, sha)) ?? UNREAD);
+      const combined = combine([
+        { shown: tags, source: "gitea" },
+        { shown: statuses, source: "gitea" },
+      ]).shown;
+      return {
         tag: tag.name,
-        verdict,
-        detail: verdict === "refused" ? detail : undefined,
-        line: readReleaseMessage(tag.message ?? "")
-          .map((entry) => `${entry.service} ${shortCommit(entry.commit)}`)
-          .join(" · "),
+        row: withValue(combined, () => {
+          const { verdict, detail } = releaseVerdict(
+            tag.name,
+            isKnown(statuses) ? statuses.value : [],
+          );
+          const release: FlowRelease = {
+            tag: tag.name,
+            verdict,
+            detail: verdict === "refused" ? detail : undefined,
+            line: readReleaseMessage(tag.message ?? "")
+              .map((entry) => `${entry.service} ${shortCommit(entry.commit)}`)
+              .join(" · "),
+          };
+          return releaseRow(release, index);
+        }),
       };
-      return releaseRow(release, index);
     }),
-  );
+  };
 }
 
 /**
