@@ -168,15 +168,50 @@ describe("stopView", () => {
     expect(view.afterMs).toBe(0);
   });
 
-  it("runs the name the deploy half read, over the one the platform pushed", () => {
+  it("names what runs by the platform's answer, coloured by the deploy half's row of it", () => {
     const read = ROWS[2]!.row;
     const view = stopView({ deployment: known(RUNNING), row: read, nowMs: NOW });
-    expect(view).toMatchObject({ tone: "good", word: "Deployed", line: "3f9c1b2" });
+    expect(view).toMatchObject({
+      tone: "good",
+      word: "Deployed",
+      line: "v1.4.0",
+      version: RUNNING.version,
+    });
     expect(stopView({ deployment: known(RUNNING), row: undefined, nowMs: NOW })).toMatchObject({
       tone: "neutral",
       word: "Running",
       line: "v1.4.0",
       version: RUNNING.version,
+    });
+  });
+
+  it("never names or colours a stop by a version the deploy half read that does not run there", () => {
+    // userData moved to a build that then failed; the service still runs RUNNING (A11, A14).
+    const failedBuild = "9d8e7f6000000000000000000000000000000000";
+    const read = row(
+      {
+        name: undefined,
+        commit: "9d8e7f6",
+        sha: failedBuild,
+        taggedBy: undefined,
+        label: "9d8e7f6",
+      },
+      "bad",
+    );
+    expect(stopView({ deployment: known(RUNNING), row: read, nowMs: NOW })).toMatchObject({
+      tone: "neutral",
+      word: "Running",
+      line: "v1.4.0",
+      version: RUNNING.version,
+    });
+  });
+
+  it("takes the deploy half's name for what runs where the platform's answer names none", () => {
+    const unnamed = known({ ...RUNNING, version: NO_VERSION });
+    expect(stopView({ deployment: unnamed, row: ROWS[2]!.row, nowMs: NOW })).toMatchObject({
+      tone: "good",
+      word: "Deployed",
+      line: "3f9c1b2",
     });
   });
 

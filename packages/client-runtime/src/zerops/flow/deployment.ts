@@ -505,12 +505,24 @@ export interface StopView {
   readonly afterMs: number;
 }
 
-function runningView(
-  pushed: DeployedVersion | undefined,
-  row: EnvironmentRow | undefined,
-): StopView {
-  const version = row !== undefined && row.version.label !== undefined ? row.version : pushed;
-  const tone = row?.tone ?? "neutral";
+/** Whether two versions name the same deploy: by commit where both carry one. */
+const sameVersion = (left: DeployedVersion, right: DeployedVersion): boolean =>
+  left.sha !== undefined && right.sha !== undefined
+    ? left.sha === right.sha
+    : left.label === right.label;
+
+/**
+ * A stop that runs something: the platform's answer names it, and the deploy half's row colours
+ * it only when the row read that same version. The row names it only where nothing else does.
+ */
+function runningView(runs: DeployedVersion | undefined, row: EnvironmentRow | undefined): StopView {
+  const named = runs?.label === undefined ? undefined : runs;
+  const read = row?.version.label === undefined ? undefined : row;
+  const version = named ?? read?.version;
+  const tone =
+    read !== undefined && (named === undefined || sameVersion(named, read.version))
+      ? read.tone
+      : "neutral";
   return {
     tone,
     word: deployWord(tone) ?? RUNNING_WORD,
@@ -522,10 +534,10 @@ function runningView(
 
 /**
  * A stop's row from its deployment and, where the deploy half read one, its
- * environment row. The platform decides whether anything runs; the row names
- * it and colours it. A version the row read stands for a deploy while the
- * platform's own answer is still on its way — it is evidence of one, never of
- * none.
+ * environment row. The platform decides whether anything runs and names it; the
+ * row colours the version it read, and names it only where nothing else does. A
+ * version the row read stands for a deploy while the platform's own answer is
+ * still on its way — it is evidence of one, never of none.
  */
 export function stopView(input: {
   readonly deployment: Shown<Deployment>;
