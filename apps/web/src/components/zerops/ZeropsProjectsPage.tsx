@@ -7,7 +7,7 @@ import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZerop
  * pick). Creating a project happens at that route, not here.
  */
 
-import { useNavigate, useRouteContext } from "@tanstack/react-router";
+import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import {
@@ -25,7 +25,11 @@ import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
+import {
+  projectTreeOrder,
+  useProjectsPageOrder,
+  type ProjectsPageOrder,
+} from "~/zerops/projectOrderPreference";
 import {
   applyProjectCreationVerdict,
   normalizeOrigin,
@@ -104,6 +108,8 @@ import {
   hasMate,
   planEnvironmentCreation,
   canWriteRegistry,
+  canCreateProjectsInOrganization,
+  groupFlow,
   pullRequestLineWith,
   type FlowPullRequest,
   readZeropsGroupTags,
@@ -115,15 +121,15 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsGroupTags,
-  type ZeropsProjectOrder,
+  type ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { creationRefreshWanted, useCreationInventoryRefresh } from "~/zerops/creationRefresh";
 
-import { StatusDot } from "./primitives";
+import { MateFace, StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
-import { ZeropsMateCard, ZeropsMateVerb, ZeropsToolCard } from "./ZeropsMateCard";
+import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -150,10 +156,23 @@ import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { readZeropsResourceOnce } from "~/zerops/useZeropsDeployedVersion";
 import { deployRowTone, releaseRowTone } from "./ZeropsProjectRow.logic";
-import { ZeropsGroupAnswer } from "./ZeropsGroupDetail";
+import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
-import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
-import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
+import {
+  creatableRoles,
+  environmentRoleLabel,
+  environmentRoleTag,
+  groupNameIsPlaceholder,
+} from "./ZeropsGroupTree.logic";
+import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
+import {
+  groupFlowInputOf,
+  lastMergedCode,
+  orderByNextStep,
+  parseProjectsSearch,
+  TOOL_LABEL,
+  type ProjectsSearch,
+} from "./projects/projectsView.logic";
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
@@ -341,7 +360,7 @@ export function showsZeropsBirthLine(input: {
  *
  * A tool is not a project (`tools.ts`), so an account holding nothing but
  * Gitea has still not started. Two readers ask: the header, which drops its
- * create button so the invitation is not said twice, and the tree, which
+ * create button so the invitation is not said twice, and the flow views, which
  * carries the invitation. Both must agree, and neither may answer from a list
  * that is not known and complete (DESIGN M5) — an invitation that paints for a
  * second and is then replaced by the roster is a shift the reader has to undo.
@@ -422,17 +441,18 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 }
 
 /**
- * The page's title row: the title and the reload beside it, as a glyph. No
- * creating action here — the left menu's "New project" is the entry, and a
- * filled pill beside the title was the loudest thing on a page whose loud
- * thing should be the Mate. No sentence under the title either: the
- * projects below say what the page is.
+ * The page's title row: the title, the two views of one flow beside it, the
+ * sort and the reload as a glyph. No creating action here — the left menu's
+ * "New project" is the entry, and a filled pill beside the title was the
+ * loudest thing on a page whose loud thing should be the Mate. No sentence
+ * under the title either: the projects below say what the page is.
  */
 
 const PROJECT_ORDER_OPTIONS: ReadonlyArray<{
-  readonly value: ZeropsProjectOrder;
+  readonly value: ProjectsPageOrder;
   readonly label: string;
 }> = [
+  { value: "next-step", label: "Next step first" },
   { value: "newest", label: "Newest first" },
   { value: "name", label: "Name" },
 ];
@@ -444,11 +464,12 @@ const PROJECT_ORDER_OPTIONS: ReadonlyArray<{
  * around together the moment it changes.
  */
 function ZeropsProjectOrderControl() {
-  const [order, setOrder] = useProjectOrderPreference();
+  const [order, setOrder] = useProjectsPageOrder();
   return (
     <Select
       onValueChange={(value) => {
-        if (value) setOrder(value as ZeropsProjectOrder);
+        const option = PROJECT_ORDER_OPTIONS.find((entry) => entry.value === value);
+        if (option !== undefined) setOrder(option.value);
       }}
       value={order}
     >
@@ -474,19 +495,61 @@ function ZeropsProjectOrderControl() {
   );
 }
 
+type ProjectsView = "overview" | "projects";
+
+const PROJECTS_VIEWS: ReadonlyArray<{ readonly value: ProjectsView; readonly label: string }> = [
+  { value: "overview", label: "Overview" },
+  { value: "projects", label: "Projects" },
+];
+
+/** The two views of the same flow: the Overview across projects, and every project as a card. */
+function ZeropsProjectsViewSwitch({
+  view,
+  onView,
+}: {
+  readonly view: ProjectsView;
+  readonly onView: (view: ProjectsView) => void;
+}) {
+  return (
+    <nav aria-label="View" className="flex rounded-lg bg-muted p-0.5">
+      {PROJECTS_VIEWS.map((option) => (
+        <button
+          aria-current={option.value === view ? "page" : undefined}
+          className={cn(
+            "rounded-md px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground",
+            option.value === view && "bg-card font-medium text-foreground shadow-xs",
+          )}
+          key={option.value}
+          onClick={() => onView(option.value)}
+          type="button"
+        >
+          {option.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 export function ZeropsProjectsHeader({
   onRefresh,
   refreshing = false,
+  view = "overview",
+  onView,
 }: {
   readonly onRefresh?: (() => void) | undefined;
   readonly refreshing?: boolean;
+  readonly view?: ProjectsView;
+  readonly onView?: ((view: ProjectsView) => void) | undefined;
 }) {
   return (
     <div
       className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3"
       data-zerops-project-scope="true"
     >
-      <h1 className="text-xl font-medium text-foreground">Projects</h1>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h1 className="text-xl font-medium text-foreground">Projects</h1>
+        {onView === undefined ? null : <ZeropsProjectsViewSwitch onView={onView} view={view} />}
+      </div>
       <div className="flex items-center gap-2">
         <ZeropsProjectOrderControl />
         {onRefresh === undefined ? null : (
@@ -719,7 +782,7 @@ export function useZeropsProjectConnection(): {
   };
 }
 
-function ZeropsProjectsContent() {
+function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) {
   const authGate = useRouteContext({
     from: "__root__",
     select: (context) => context.authGateState,
@@ -875,10 +938,10 @@ function ZeropsProjectsContent() {
       clearInterval(timer);
     };
   }, [creationRunning]);
-  const [projectOrder] = useProjectOrderPreference();
+  const [pageOrder] = useProjectsPageOrder();
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
-    order: projectOrder,
+    order: projectTreeOrder(pageOrder),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
@@ -1543,7 +1606,7 @@ function ZeropsProjectsContent() {
 
   // A group is offered more once its first Mate is up — connected, or its
   // container answering ready — and not a minute before. Shared by the
-  // group's foot and the rows that ask for a missing tier.
+  // project's menu, its card's add verbs and whether production is offered.
   const groupAddsOffered = useCallback(
     (group: ZeropsGroup) =>
       (
@@ -1692,8 +1755,16 @@ function ZeropsProjectsContent() {
     ));
   };
 
-  /** One pull request's row, the same on both ends of the list. */
-  const pullRequestRowOf = (group: ZeropsGroup, pull: FlowPullRequest) => {
+  /**
+   * One pull request's row, wherever it is drawn. `withMerge` is false where
+   * the project's next step already offers *Merge* on it: one verb, once.
+   * `compact` stacks title, state and verb for a flow step's narrow column.
+   */
+  const pullRequestRowOf = (
+    group: ZeropsGroup,
+    pull: FlowPullRequest,
+    { withMerge, compact }: { readonly withMerge: boolean; readonly compact: boolean },
+  ) => {
     const slug = groupDeploys.get(group.groupId)?.slug;
     // One vocabulary down the column, the same one the project's own page and
     // the left menu use: `changeState` answers a rebase and a passing check in
@@ -1705,36 +1776,56 @@ function ZeropsProjectsContent() {
       projectFlow.pending.has(
         flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
       );
+    const action =
+      withMerge && pull.mergeable && slug !== undefined ? (
+        <ZeropsMateVerb
+          disabled={merging}
+          label={flowVerbLabel("merge", merging)}
+          onClick={() => {
+            void projectFlow.mergePullRequest(slug, pull);
+          }}
+        />
+      ) : undefined;
+    const key = `pull-${group.groupId}-${pull.repository}-${pull.number}`;
+    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""));
+    const open = () => {
+      void navigate({
+        to: "/change/$groupId/$repository/$number",
+        params: {
+          groupId: group.groupId,
+          repository: pull.repository,
+          number: String(pull.number),
+        },
+      });
+    };
+    const status =
+      state === undefined ? undefined : <StatusDot label={state.word} sentence tone={state.tone} />;
+    if (compact) {
+      return (
+        <li className="flex min-w-0 flex-col items-start gap-0.5 py-1.5" key={key}>
+          <button
+            className="min-w-0 max-w-full truncate rounded-sm text-left text-[13px] text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            data-zerops-surface="pull-request-title"
+            onClick={open}
+            type="button"
+          >
+            <span className="text-muted-foreground">#{pull.number}</span> {pull.title}
+          </button>
+          <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted-foreground">
+            {status}
+            <span className="min-w-0 truncate">{line}</span>
+          </span>
+          {action}
+        </li>
+      );
+    }
     return (
       <ZeropsPullRequestRow
-        action={
-          pull.mergeable && slug !== undefined ? (
-            <ZeropsMateVerb
-              disabled={merging}
-              label={flowVerbLabel("merge", merging)}
-              onClick={() => {
-                void projectFlow.mergePullRequest(slug, pull);
-              }}
-            />
-          ) : undefined
-        }
-        key={`pull-${group.groupId}-${pull.repository}-${pull.number}`}
-        line={pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""))}
-        onOpen={() => {
-          void navigate({
-            to: "/change/$groupId/$repository/$number",
-            params: {
-              groupId: group.groupId,
-              repository: pull.repository,
-              number: String(pull.number),
-            },
-          });
-        }}
-        status={
-          state === undefined ? undefined : (
-            <StatusDot label={state.word} sentence tone={state.tone} />
-          )
-        }
+        action={action}
+        key={key}
+        line={line}
+        onOpen={open}
+        status={status}
         tag={pull.kind === "recipe" ? "recipe" : "pr"}
         title={pull.title}
       />
@@ -2273,6 +2364,519 @@ function ZeropsProjectsContent() {
       </Button>
     );
 
+  /** Each environment's role in its group, for the card and the row that draw it. */
+  const roleOf = new Map(
+    groupTree.groups.flatMap(({ environments }) =>
+      environments.map(({ item, role }) => [item.project.id, role] as const),
+    ),
+  );
+
+  const renderEnvironment = (
+    candidate: ZeropsCandidatePresentation,
+    role: ZeropsEnvironmentRole | undefined,
+  ): React.ReactNode => {
+    // Without fresh access evidence the row keeps its name and says why
+    // its content is not shown (DESIGN G12).
+    const withheld = withheldProjectNotice(inventory, candidate.project.id);
+    if (withheld !== null) {
+      return (
+        <ZeropsEnvironmentRow
+          name={environmentNameUnderGroup(
+            readZeropsGroupTags(candidate.project.tagList).label,
+            candidate.project.name,
+          )}
+          summary={withheld}
+          tag={environmentRoleTag(role)}
+        />
+      );
+    }
+    const input = rowInput(candidate, role);
+    const presentation = deriveZeropsRowPresentation(input);
+    const action = deriveZeropsRowAction(input);
+    const tags = readZeropsGroupTags(candidate.project.tagList);
+    const busy = busyKeys.has(candidate.key);
+    // The project itself is the row's concern. Only a project on its
+    // way in, or out of reach, gets a word; one that is simply there
+    // says nothing.
+    const projectTrouble =
+      candidate.group === "provisioning" ||
+      (candidate.group === "unavailable" && candidate.missingContainer !== true);
+    // A group environment says what it follows and what it runs — the
+    // branch and the deployed commit, from the two parties that can
+    // prove each (`groupDeploys.ts`). Anything else keeps the summary of
+    // what it holds.
+    const declared = declaredEnvironment(candidate.project.id);
+    const deployTone = declared === undefined ? undefined : deployRowTone(declared.tone);
+    const deployLabel = declared === undefined ? undefined : deployWord(declared.tone);
+    // *Release* is the project's next step, in production's cell beside
+    // the fact it acts on — never a second copy on this row, which put the
+    // same verb on the page twice with nothing beside it saying why (the
+    // owner, 2026-09-19).
+    return (
+      <ZeropsEnvironmentRow
+        action={
+          action.kind === "set-up-mate" ? (
+            <ZeropsMateVerb
+              disabled={busy}
+              label={busy ? "Setting up…" : action.label}
+              onClick={() => {
+                runRowAction(candidate, action.kind);
+              }}
+            />
+          ) : action.kind === "remove" ? (
+            <ZeropsMateVerb
+              disabled={busy}
+              label={busy ? "Removing…" : action.label}
+              onClick={() => {
+                runRowAction(candidate, action.kind);
+              }}
+            />
+          ) : undefined
+        }
+        busy={busy}
+        menu={renderEnvironmentMenu(candidate, tags, false)}
+        // `Links - stage` under a heading that says `Links`: the group's
+        // own page calls it `stage`, and so does the left menu.
+        name={environmentNameUnderGroup(tags.label, candidate.project.name)}
+        status={
+          projectTrouble ? (
+            <StatusDot
+              label={presentation.status.label}
+              sentence
+              tone={presentation.status.tone}
+              {...(presentation.status.pulse === undefined
+                ? {}
+                : { pulse: presentation.status.pulse })}
+            />
+          ) : deployTone !== undefined && deployLabel !== undefined ? (
+            <StatusDot label={deployLabel} sentence tone={deployTone} />
+          ) : undefined
+        }
+        // A project the platform failed to create holds nothing; its
+        // line is what happened, not "No services yet".
+        summary={
+          candidate.creationFailed !== undefined
+            ? presentation.detail
+            : declared === undefined
+              ? summaryOf(candidate)
+              : declared.line
+        }
+        tag={environmentRoleTag(role)}
+      />
+    );
+  };
+
+  const renderMate = (candidate: ZeropsCandidatePresentation): React.ReactNode => {
+    const role = roleOf.get(candidate.project.id);
+    const withheld = withheldProjectNotice(inventory, candidate.project.id);
+    if (withheld !== null) {
+      const tags = readZeropsGroupTags(candidate.project.tagList);
+      return (
+        <ZeropsMateCard
+          face="idle"
+          line={withheld}
+          name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+          tint={tints.get(candidate.project.id) ?? "slate"}
+        />
+      );
+    }
+    const input = rowInput(candidate, role);
+    const presentation = deriveZeropsRowPresentation(input);
+    const action = deriveZeropsRowAction(input);
+    const tags = readZeropsGroupTags(candidate.project.tagList);
+    const connected = candidate.group === "connected";
+    const busy = busyKeys.has(candidate.key);
+    const live =
+      connected && candidate.environmentId !== undefined
+        ? activity.get(candidate.environmentId)
+        : undefined;
+    // Clicking a Mate opens it: a connected one straight away, a ready
+    // one by connecting first. Coming up, it is not clickable — nothing
+    // a click could do that the page is not already doing.
+    const select =
+      action.kind === "open" && !busy
+        ? () => {
+            runRowAction(candidate, "open");
+          }
+        : undefined;
+    // Not a hover-only verb on the line: a real, always-visible button
+    // at the card's trailing edge, next to where the menu sits.
+    const startAction =
+      action.kind === "start" ? (
+        <Button
+          disabled={busy}
+          onClick={() => {
+            runRowAction(candidate, "start");
+          }}
+          size="compact"
+          variant="outline"
+        >
+          <PlayIcon />
+          {busy ? "Starting…" : "Start"}
+        </Button>
+      ) : undefined;
+    // The platform failed to make this project and nothing will ever
+    // run in it: the one verb takes it away, at the same edge Start sits.
+    const removeAction =
+      action.kind === "remove" ? (
+        <Button
+          disabled={busy}
+          onClick={() => {
+            runRowAction(candidate, "remove");
+          }}
+          size="compact"
+          variant="outline"
+        >
+          {busy ? "Removing…" : "Remove"}
+        </Button>
+      ) : undefined;
+    const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
+    const tint = tints.get(candidate.project.id) ?? "slate";
+
+    if (connected && candidate.environmentId !== undefined) {
+      const environmentId = candidate.environmentId;
+      // The update control's line ("Server x.y.z · x.y.z+1 available")
+      // stays off the card: the version is in the menu, and so is the
+      // update verb the control supplies.
+      return (
+        <ZeropsMateUpdateControl environmentId={environmentId} key={candidate.key}>
+          {({ menuActions }) => (
+            <ZeropsMateCard
+              action={startAction ?? removeAction}
+              busy={busy}
+              face={mateFace(candidate)}
+              line={renderMateLine(candidate, presentation, action, live, busy)}
+              menu={renderEnvironmentMenu(candidate, tags, true, action, menuActions)}
+              name={name}
+              onSelect={select}
+              snippet={live?.subject === undefined ? undefined : live.snippet}
+              time={live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)}
+              tint={tint}
+            />
+          )}
+        </ZeropsMateUpdateControl>
+      );
+    }
+    return (
+      <ZeropsMateCard
+        action={startAction ?? removeAction}
+        busy={busy}
+        face={mateFace(candidate)}
+        line={renderMateLine(candidate, presentation, action, live, busy)}
+        menu={renderEnvironmentMenu(candidate, tags, true, action, [])}
+        name={name}
+        onSelect={select}
+        tint={tint}
+      />
+    );
+  };
+
+  /**
+   * A tool, in the page's last quiet line: its name as the way to it, and its
+   * menu. The project's own name, not the tool's — it is deliberately not
+   * called "Gitea" (it holds the broker and the groups' runners too,
+   * `tools.ts`), and a line that says "Gitea" sends somebody to Zerops looking
+   * for a project by that name.
+   */
+  const renderTool = (candidate: ZeropsCandidatePresentation, kind: ZeropsToolKind) => {
+    // A tool has no Mate and never will: Gitea's own state (`deriveGiteaState`,
+    // read once for the account) says whether it is up and where it is; the
+    // platform's project status covers the minutes before its services exist.
+    const gitea = accountGitea?.projectId === candidate.project.id ? accountGitea.state : undefined;
+    const line = giteaToolLine({
+      projectStatus: candidate.project.status,
+      phase: gitea?.phase,
+      url: gitea?.url,
+    });
+    const name = candidate.project.name || TOOL_LABEL[kind];
+    return (
+      <span className="group/tool inline-flex items-center gap-1" data-zerops-surface="tool">
+        {line.kind === "link" ? (
+          <a
+            className="underline-offset-2 hover:text-foreground hover:underline"
+            data-zerops-surface="tool-link"
+            href={line.url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {name}
+          </a>
+        ) : (
+          <span>
+            {name}
+            {line.kind === "setting-up"
+              ? " · Setting up."
+              : line.kind === "unavailable"
+                ? " · Not available."
+                : ""}
+          </span>
+        )}
+        <ZeropsProjectMenu
+          actions={[]}
+          enablingServiceId={route.enablingServiceId}
+          label={`More for ${name}`}
+          offers={candidate.routeOffers}
+          onEnableRoute={(offer) => {
+            void route.enable(candidate.project.id, offer.serviceId);
+          }}
+          routes={candidate.routes}
+        />
+      </span>
+    );
+  };
+
+  /**
+   * A project's own quiet actions: its name, and the environments a person
+   * adds to it — another Mate, and a stage, which is optional and never a
+   * step before production (D16, D28). Production is not here: it is added
+   * where the flow asks for it, as the project's next step.
+   */
+  const renderGroupMenu = (group: ZeropsGroup) => (
+    <ZeropsProjectMenu
+      actions={[
+        {
+          id: "rename-group",
+          label: groupNameIsPlaceholder(group) ? "Name this project" : "Rename project",
+          onSelect: () => {
+            setRowDialog({ kind: "rename-group", group });
+          },
+        },
+        ...(groupAddsOffered(group)
+          ? [
+              {
+                id: "add-mate",
+                label: "Add Mate",
+                disabled: creationRunning,
+                onSelect: () => {
+                  requestEnvironment(group.groupId, "dev");
+                },
+              },
+              {
+                id: "add-stage",
+                label: "Add stage — optional",
+                disabled: creationRunning,
+                onSelect: () => {
+                  requestEnvironment(group.groupId, "stage");
+                },
+              },
+            ]
+          : []),
+      ]}
+      label={`More for ${group.name}`}
+    />
+  );
+
+  /**
+   * The rows of a project that are not one of its four steps: why *Release*
+   * is not offered, what it would carry, the releases (each with the way back
+   * to it) and the changes waiting on its recipe. `null` where it has none.
+   */
+  const renderGroupRows = (group: ZeropsGroup): React.ReactNode => {
+    const gate = releaseGateLine(group);
+    const contents = releaseContentLines(group);
+    // The releases, newest first, each with the broker's word and, on an
+    // earlier approved one, the way back to it.
+    const releases = (groupDeploys.get(group.groupId)?.releases ?? []).map((release) => {
+      const tone = releaseRowTone(release.verdict);
+      const rollingBack = projectFlow.pending.has(
+        flowVerbKey({ kind: "roll-back", groupId: group.groupId, tag: release.tag }),
+      );
+      return (
+        <ZeropsEnvironmentRow
+          action={
+            release.rollBack ? (
+              <ZeropsMateVerb
+                disabled={rollingBack}
+                label={flowVerbLabel("roll-back", rollingBack)}
+                onClick={() => {
+                  void projectFlow.rollBack(group.groupId, release.tag);
+                }}
+              />
+            ) : undefined
+          }
+          key={`release-${group.groupId}-${release.tag}`}
+          name={release.tag}
+          status={
+            tone === undefined || release.word === undefined ? undefined : (
+              <StatusDot label={release.word} sentence tone={tone} />
+            )
+          }
+          summary={release.line}
+          tag="release"
+        />
+      );
+    });
+    // The recipe changes waiting on somebody: last, under the environments
+    // they would change.
+    const recipes = (groupDeploys.get(group.groupId)?.pullRequests ?? [])
+      .filter((pull) => pull.kind === "recipe")
+      .map((pull) => pullRequestRowOf(group, pull, { withMerge: true, compact: false }));
+    if (gate === null && contents === null && releases.length === 0 && recipes.length === 0) {
+      return null;
+    }
+    return (
+      <>
+        {gate}
+        {contents}
+        {releases}
+        {recipes}
+      </>
+    );
+  };
+
+  /**
+   * The verb of a project's next step, where the step says one (`groupFlow`).
+   * Each acts on the thing it names: a Mate opens, a failed deploy's build
+   * and a blocked change open their pages, a merge merges as the person, a
+   * release asks first, and production is added here — not by the Mate.
+   */
+  const renderNextStep = (
+    entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
+  ): React.ReactNode => {
+    const { group, flow } = entry;
+    const step = flow.nextStep;
+    const target = step.target;
+    if (step.verb === undefined || target === undefined) return null;
+    const verb = (onClick: () => void, disabled = false, label = step.verb) => (
+      <Button
+        data-zerops-next-step-verb={step.kind}
+        disabled={disabled}
+        onClick={onClick}
+        size="compact"
+        variant="outline"
+      >
+        {label}
+      </Button>
+    );
+    switch (target.kind) {
+      case "release":
+        return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;
+      case "add-production":
+        return verb(
+          () => {
+            requestEnvironment(group.groupId, "prod");
+          },
+          creationRunning,
+          `+ ${step.verb}`,
+        );
+      case "mate": {
+        const mate = entry.mates.find((item) => item.project.id === target.projectId);
+        if (mate === undefined) return null;
+        return verb(() => {
+          runRowAction(mate, "open");
+        }, busyKeys.has(mate.key));
+      }
+      case "stop":
+        return verb(() => {
+          void navigate({
+            to: "/group/$groupId/$projectId",
+            params: { groupId: group.groupId, projectId: target.projectId },
+          });
+        });
+      case "change": {
+        const slug = groupDeploys.get(group.groupId)?.slug;
+        const pull = flow.pullRequests.find(
+          (entry_) =>
+            entry_.pull.repository === target.repository && entry_.pull.number === target.number,
+        )?.pull;
+        if (step.kind === "merge" && slug !== undefined && pull !== undefined) {
+          const merging = projectFlow.pending.has(
+            flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
+          );
+          return verb(
+            () => {
+              void projectFlow.mergePullRequest(slug, pull);
+            },
+            merging,
+            flowVerbLabel("merge", merging),
+          );
+        }
+        return verb(() => {
+          void navigate({
+            to: "/change/$groupId/$repository/$number",
+            params: {
+              groupId: group.groupId,
+              repository: target.repository,
+              number: String(target.number),
+            },
+          });
+        });
+      }
+    }
+  };
+
+  // Every group's flow, from the one derivation the thread and the left menu
+  // read too (`groupFlow`): what each step holds and the one next step.
+  const mayCreate = canCreateProjectsInOrganization(activeOrganization);
+  const flowGroups = groupTree.groups.map(
+    ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
+      const reads = groupDeploys.get(group.groupId);
+      const members = environments.map(({ item, role }) => {
+        const tags = readZeropsGroupTags(item.project.tagList);
+        const live =
+          item.group === "connected" && item.environmentId !== undefined
+            ? activity.get(item.environmentId)
+            : undefined;
+        return {
+          projectId: item.project.id,
+          role,
+          name: environmentNameUnderGroup(tags.label, item.project.name),
+          mate: hasMate(item)
+            ? {
+                name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+                waiting: mateFace(item) === "needs",
+                talked: live?.subject !== undefined,
+              }
+            : undefined,
+          routes: item.routes ?? [],
+          hostnames: item.services?.hostnames ?? [],
+        };
+      });
+      const isStop = (role: ZeropsEnvironmentRole | undefined) =>
+        role === "stage" || role === "prod";
+      const placeholder = groupNameIsPlaceholder(group);
+      const groupLine = groupLines.get(group.groupId) ?? "";
+      return {
+        group,
+        flow: groupFlow(
+          groupFlowInputOf({
+            groupId: group.groupId,
+            members,
+            flow: reads,
+            deployments: projectFlow.deployments,
+            productionAddable:
+              mayCreate && creatableRoles(group).includes("prod") && groupAddsOffered(group),
+          }),
+        ),
+        read: reads !== undefined,
+        mates: environments.filter(({ item }) => hasMate(item)).map(({ item }) => item),
+        stops: new Map(
+          environments
+            .filter(({ role }) => isStop(role))
+            .map((entry) => [entry.item.project.id, entry] as const),
+        ),
+        others: environments.filter(({ item, role }) => !hasMate(item) && !isStop(role)),
+        lastMerged: reads === undefined ? undefined : lastMergedCode(reads.merged),
+        // Visible rather than a tooltip: it is an invitation to name the
+        // project, and it disappears the moment one does.
+        line: placeholder
+          ? "This project has no name yet"
+          : groupLine.length > 0
+            ? groupLine
+            : undefined,
+        placeholder,
+      };
+    },
+  );
+  const orderedGroups = pageOrder === "next-step" ? orderByNextStep(flowGroups) : flowGroups;
+  const ungroupedRows = groupTree.ungrouped.map((candidate) => ({
+    item: candidate,
+    action:
+      withheldProjectNotice(inventory, candidate.project.id) === null
+        ? deriveZeropsRowAction(rowInput(candidate)).kind
+        : ("none" as const),
+  }));
+
   return (
     <div className="space-y-6">
       {listingNotice === null ? null : listingNotice.region === "message" ? (
@@ -2311,13 +2915,14 @@ function ZeropsProjectsContent() {
           {pageError}
         </div>
       )}
-      <ZeropsGroupTree
+      <ZeropsProjectsFlow
         // A group is offered more once its first Mate is up — connected, or
         // its container answering ready — and not a minute before.
         addsOffered={groupAddsOffered}
         creating={creationRunning}
+        focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
-        groupLine={(group) => groupLines.get(group.groupId) ?? ""}
+        groups={orderedGroups}
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={
@@ -2330,356 +2935,30 @@ function ZeropsProjectsContent() {
         onCreateTool={() => {
           void createTool();
         }}
-        renderEnvironment={(candidate: ZeropsCandidatePresentation, role) => {
-          // Without fresh access evidence the row keeps its name and says why
-          // its content is not shown (DESIGN G12).
-          const withheld = withheldProjectNotice(inventory, candidate.project.id);
-          if (withheld !== null) {
-            return (
-              <ZeropsEnvironmentRow
-                name={environmentNameUnderGroup(
-                  readZeropsGroupTags(candidate.project.tagList).label,
-                  candidate.project.name,
-                )}
-                summary={withheld}
-                tag={environmentRoleTag(role)}
-              />
-            );
-          }
-          const input = rowInput(candidate, role);
-          const presentation = deriveZeropsRowPresentation(input);
-          const action = deriveZeropsRowAction(input);
-          const tags = readZeropsGroupTags(candidate.project.tagList);
-          const busy = busyKeys.has(candidate.key);
-          // The project itself is the row's concern. Only a project on its
-          // way in, or out of reach, gets a word; one that is simply there
-          // says nothing.
-          const projectTrouble =
-            candidate.group === "provisioning" ||
-            (candidate.group === "unavailable" && candidate.missingContainer !== true);
-          // A group environment says what it follows and what it runs — the
-          // branch and the deployed commit, from the two parties that can
-          // prove each (`groupDeploys.ts`). Anything else keeps the summary of
-          // what it holds.
-          const declared = declaredEnvironment(candidate.project.id);
-          const deployTone = declared === undefined ? undefined : deployRowTone(declared.tone);
-          const deployLabel = declared === undefined ? undefined : deployWord(declared.tone);
-          // *Release* is the answer panel's, at the head of the project, on
-          // the row that says how many changes are waiting — one element for
-          // the fact and the verb that acts on it. A second copy on the
-          // production row put the same verb on the page twice, one of them
-          // with nothing beside it saying why (the owner, 2026-09-19).
-          return (
-            <ZeropsEnvironmentRow
-              action={
-                action.kind === "set-up-mate" ? (
-                  <ZeropsMateVerb
-                    disabled={busy}
-                    label={busy ? "Setting up…" : action.label}
-                    onClick={() => {
-                      runRowAction(candidate, action.kind);
-                    }}
-                  />
-                ) : action.kind === "remove" ? (
-                  <ZeropsMateVerb
-                    disabled={busy}
-                    label={busy ? "Removing…" : action.label}
-                    onClick={() => {
-                      runRowAction(candidate, action.kind);
-                    }}
-                  />
-                ) : undefined
-              }
-              busy={busy}
-              menu={renderEnvironmentMenu(candidate, tags, false)}
-              // `Links - stage` under a heading that says `Links`: the group's
-              // own page calls it `stage`, and so does the left menu.
-              name={environmentNameUnderGroup(tags.label, candidate.project.name)}
-              status={
-                projectTrouble ? (
-                  <StatusDot
-                    label={presentation.status.label}
-                    sentence
-                    tone={presentation.status.tone}
-                    {...(presentation.status.pulse === undefined
-                      ? {}
-                      : { pulse: presentation.status.pulse })}
-                  />
-                ) : deployTone !== undefined && deployLabel !== undefined ? (
-                  <StatusDot label={deployLabel} sentence tone={deployTone} />
-                ) : undefined
-              }
-              // A project the platform failed to create holds nothing; its
-              // line is what happened, not "No services yet".
-              summary={
-                candidate.creationFailed !== undefined
-                  ? presentation.detail
-                  : declared === undefined
-                    ? summaryOf(candidate)
-                    : declared.line
-              }
-              tag={environmentRoleTag(role)}
-            />
-          );
+        onRetryContainers={(items) => {
+          for (const candidate of items) runRowAction(candidate, "retry-probe");
         }}
-        renderWaitingRows={(group: ZeropsGroup) =>
-          (groupDeploys.get(group.groupId)?.pullRequests ?? [])
-            .filter((pull) => pull.kind === "code")
-            .map((pull) => pullRequestRowOf(group, pull))
-        }
-        renderGroupRows={(group: ZeropsGroup) => (
-          <>
-            {releaseGateLine(group)}
-            {releaseContentLines(group)}
-            {/* The releases, newest first, each with the broker's word and,
-                on an earlier approved one, the way back to it. */}
-            {(groupDeploys.get(group.groupId)?.releases ?? []).map((release) => {
-              const tone = releaseRowTone(release.verdict);
-              const rollingBack = projectFlow.pending.has(
-                flowVerbKey({ kind: "roll-back", groupId: group.groupId, tag: release.tag }),
-              );
-              return (
-                <ZeropsEnvironmentRow
-                  action={
-                    release.rollBack ? (
-                      <ZeropsMateVerb
-                        disabled={rollingBack}
-                        label={flowVerbLabel("roll-back", rollingBack)}
-                        onClick={() => {
-                          void projectFlow.rollBack(group.groupId, release.tag);
-                        }}
-                      />
-                    ) : undefined
-                  }
-                  key={`release-${group.groupId}-${release.tag}`}
-                  name={release.tag}
-                  status={
-                    tone === undefined || release.word === undefined ? undefined : (
-                      <StatusDot label={release.word} sentence tone={tone} />
-                    )
-                  }
-                  summary={release.line}
-                  tag="release"
-                />
-              );
-            })}
-            {/* The recipe changes waiting on somebody: last, under the
-                environments they would change. */}
-            {(groupDeploys.get(group.groupId)?.pullRequests ?? [])
-              .filter((pull) => pull.kind === "recipe")
-              .map((pull) => pullRequestRowOf(group, pull))}
-            {/* The tiers the recipe offers and the group lacks: the rows that
-                ask. The verb is the same one the group's foot offered, moved
-                up to where the answer will sit; it waits for the first Mate
-                like the foot does. */}
-            {(groupDeploys.get(group.groupId)?.missing ?? []).map((row) => {
-              const role = row.tier === "stage" ? "stage" : "prod";
-              return (
-                <ZeropsEnvironmentRow
-                  action={
-                    groupAddsOffered(group) ? (
-                      <ZeropsMateVerb
-                        disabled={creationRunning}
-                        label={`Add ${row.name.toLowerCase()}`}
-                        onClick={() => {
-                          requestEnvironment(group.groupId, role);
-                        }}
-                      />
-                    ) : undefined
-                  }
-                  key={`missing-${group.groupId}-${row.tier}`}
-                  name={row.name}
-                  summary={row.line}
-                  tag={environmentRoleTag(role)}
-                />
-              );
-            })}
-          </>
-        )}
-        roleOffered={(group: ZeropsGroup, role) =>
-          !(groupDeploys.get(group.groupId)?.missing ?? []).some(
-            (row) => (row.tier === "stage" ? "stage" : "prod") === role,
-          )
-        }
-        renderGroupAnswer={(group: ZeropsGroup) => (
-          <ZeropsGroupAnswer className="mb-1" groupId={group.groupId} />
-        )}
-        renderGroupMenu={(group: ZeropsGroup) => (
-          <ZeropsProjectMenu
-            actions={[
-              {
-                id: "rename-group",
-                label: "Rename project",
-                onSelect: () => {
-                  setRowDialog({ kind: "rename-group", group });
-                },
-              },
-            ]}
-            label={`More for ${group.name}`}
+        renderEnvironment={renderEnvironment}
+        renderGroupMenu={renderGroupMenu}
+        renderGroupRows={renderGroupRows}
+        renderMate={renderMate}
+        renderMateFace={(candidate: ZeropsCandidatePresentation) => (
+          <MateFace
+            className="rounded-full ring-2 ring-card"
+            size="sm"
+            state={mateFace(candidate)}
+            tint={tints.get(candidate.project.id) ?? "slate"}
           />
         )}
-        renderMate={(candidate: ZeropsCandidatePresentation, role) => {
-          const withheld = withheldProjectNotice(inventory, candidate.project.id);
-          if (withheld !== null) {
-            const tags = readZeropsGroupTags(candidate.project.tagList);
-            return (
-              <ZeropsMateCard
-                face="idle"
-                line={withheld}
-                name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
-                tint={tints.get(candidate.project.id) ?? "slate"}
-              />
-            );
-          }
-          const input = rowInput(candidate, role);
-          const presentation = deriveZeropsRowPresentation(input);
-          const action = deriveZeropsRowAction(input);
-          const tags = readZeropsGroupTags(candidate.project.tagList);
-          const connected = candidate.group === "connected";
-          const busy = busyKeys.has(candidate.key);
-          const live =
-            connected && candidate.environmentId !== undefined
-              ? activity.get(candidate.environmentId)
-              : undefined;
-          // Clicking a Mate opens it: a connected one straight away, a ready
-          // one by connecting first. Coming up, it is not clickable — nothing
-          // a click could do that the page is not already doing.
-          const select =
-            action.kind === "open" && !busy
-              ? () => {
-                  runRowAction(candidate, "open");
-                }
-              : undefined;
-          // Not a hover-only verb on the line: a real, always-visible button
-          // at the card's trailing edge, next to where the menu sits.
-          const startAction =
-            action.kind === "start" ? (
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  runRowAction(candidate, "start");
-                }}
-                size="compact"
-                variant="outline"
-              >
-                <PlayIcon />
-                {busy ? "Starting…" : "Start"}
-              </Button>
-            ) : undefined;
-          // The platform failed to make this project and nothing will ever
-          // run in it: the one verb takes it away, at the same edge Start sits.
-          const removeAction =
-            action.kind === "remove" ? (
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  runRowAction(candidate, "remove");
-                }}
-                size="compact"
-                variant="outline"
-              >
-                {busy ? "Removing…" : "Remove"}
-              </Button>
-            ) : undefined;
-          const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
-          const tint = tints.get(candidate.project.id) ?? "slate";
-
-          if (connected && candidate.environmentId !== undefined) {
-            const environmentId = candidate.environmentId;
-            // The update control's line ("Server x.y.z · x.y.z+1 available")
-            // stays off the card: the version is in the menu, and so is the
-            // update verb the control supplies.
-            return (
-              <ZeropsMateUpdateControl environmentId={environmentId} key={candidate.key}>
-                {({ menuActions }) => (
-                  <ZeropsMateCard
-                    action={startAction ?? removeAction}
-                    busy={busy}
-                    face={mateFace(candidate)}
-                    line={renderMateLine(candidate, presentation, action, live, busy)}
-                    menu={renderEnvironmentMenu(candidate, tags, true, action, menuActions)}
-                    name={name}
-                    onSelect={select}
-                    snippet={live?.subject === undefined ? undefined : live.snippet}
-                    time={
-                      live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)
-                    }
-                    tint={tint}
-                  />
-                )}
-              </ZeropsMateUpdateControl>
-            );
-          }
-          return (
-            <ZeropsMateCard
-              action={startAction ?? removeAction}
-              busy={busy}
-              face={mateFace(candidate)}
-              line={renderMateLine(candidate, presentation, action, live, busy)}
-              menu={renderEnvironmentMenu(candidate, tags, true, action, [])}
-              name={name}
-              onSelect={select}
-              tint={tint}
-            />
-          );
-        }}
-        renderTool={(candidate: ZeropsCandidatePresentation, kind) => {
-          // A tool has no Mate and never will, so the environment classifier's
-          // verdict is meaningless here. Gitea's own state (`deriveGiteaState`,
-          // read once for the account) says whether it is up and where it is;
-          // the platform's project status covers the minutes before its
-          // services exist.
-          const gitea =
-            accountGitea?.projectId === candidate.project.id ? accountGitea.state : undefined;
-          const line = giteaToolLine({
-            projectStatus: candidate.project.status,
-            phase: gitea?.phase,
-            url: gitea?.url,
-          });
-          return (
-            <ZeropsToolCard
-              line={
-                line.kind === "link" ? (
-                  <a
-                    className="min-w-0 truncate underline-offset-2 hover:text-foreground hover:underline"
-                    data-zerops-surface="tool-link"
-                    href={line.url}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    {line.label}
-                  </a>
-                ) : line.kind === "setting-up" ? (
-                  <span className="min-w-0 truncate">Setting up.</span>
-                ) : line.kind === "unavailable" ? (
-                  <span className="min-w-0 truncate">Not available.</span>
-                ) : undefined
-              }
-              menu={
-                <ZeropsProjectMenu
-                  actions={[]}
-                  enablingServiceId={route.enablingServiceId}
-                  label={`More for ${candidate.project.name || TOOL_LABEL[kind]}`}
-                  offers={candidate.routeOffers}
-                  onEnableRoute={(offer) => {
-                    void route.enable(candidate.project.id, offer.serviceId);
-                  }}
-                  routes={candidate.routes}
-                />
-              }
-              // The project's own name, not the tool's. It is deliberately not
-              // called "Gitea" — it holds the broker and the groups' runners
-              // too (`tools.ts`, the owner 2026-09-18) — and every other card
-              // in this grid carries the name of the thing it opens. A card
-              // that says "Gitea" sends somebody to Zerops looking for a
-              // project by that name and there is none. The kind is still
-              // what the glyph and the heading say, and still what the add
-              // verb offers, where there is no project to name yet.
-              name={candidate.project.name || TOOL_LABEL[kind]}
-            />
-          );
-        }}
-        view={groupTree}
+        renderNextStep={renderNextStep}
+        renderPullRequest={pullRequestRowOf}
+        renderStopMenu={(candidate: ZeropsCandidatePresentation) =>
+          renderEnvironmentMenu(candidate, readZeropsGroupTags(candidate.project.tagList), false)
+        }
+        renderTool={renderTool}
+        tools={groupTree.tools}
+        ungrouped={ungroupedRows}
+        view={search.view ?? "overview"}
       />
       {mateActions.dialogs}
       {rowDialog?.kind === "rename-group" ? (
@@ -2770,6 +3049,11 @@ function ZeropsProjectsContent() {
 export function ZeropsProjectsPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
+  const navigate = useNavigate();
+  // The same page is the signed-in door at `/`, so the search is read loosely
+  // and through the route's own parser: anything but `/zerops?view=projects`
+  // is the Overview.
+  const search = parseProjectsSearch(useSearch({ strict: false }));
   const { listing, isLoading, refresh } = useZeropsCandidates();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
@@ -2783,7 +3067,7 @@ export function ZeropsProjectsPage() {
 
   return (
     <ZeropsHostedFrame
-      width="readable"
+      width="expanded"
       actions={
         <>
           {scoped ? (
@@ -2800,9 +3084,19 @@ export function ZeropsProjectsPage() {
       }
     >
       {scoped && !firstRun ? (
-        <ZeropsProjectsHeader onRefresh={refresh} refreshing={isLoading} />
+        <ZeropsProjectsHeader
+          onRefresh={refresh}
+          onView={(view) => {
+            void navigate({
+              to: "/zerops",
+              search: view === "projects" ? { view: "projects" } : {},
+            });
+          }}
+          refreshing={isLoading}
+          view={search.view ?? "overview"}
+        />
       ) : null}
-      <ZeropsProjectsContent />
+      <ZeropsProjectsContent search={search} />
     </ZeropsHostedFrame>
   );
 }

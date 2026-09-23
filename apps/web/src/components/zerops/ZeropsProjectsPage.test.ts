@@ -773,14 +773,43 @@ describe("a status word's hand", () => {
   });
 });
 
-describe("the tools card", () => {
-  it("is named after the project it opens, never after the tool", () => {
+describe("the tools line", () => {
+  it("names a tool after the project it opens, never after the tool", () => {
     // `toolProjectName` deliberately does not call it "Gitea" — the project
-    // holds the broker and the groups' runners as well — so a card saying
+    // holds the broker and the groups' runners as well — so a line saying
     // "Gitea" named something the account does not contain, and sent anybody
     // who went looking for it in Zerops to a project that is not there.
-    expect(projectsPageSource).toContain("name={candidate.project.name || TOOL_LABEL[kind]}");
+    expect(projectsPageSource).toContain(
+      "const name = candidate.project.name || TOOL_LABEL[kind];",
+    );
     expect(projectsPageSource).not.toContain("name={TOOL_LABEL[kind]}");
+  });
+});
+
+describe("a project's next step on the projects page", () => {
+  it("is groupFlow's, not a second derivation of what waits", () => {
+    // The page, the left menu and a Mate's conversation read one derivation,
+    // so the three cannot disagree about what a project needs next.
+    expect(projectsPageSource).toContain("groupFlow(");
+    expect(projectsPageSource).not.toContain("projectAttention(");
+    expect(projectsPageSource).not.toContain("ZeropsGroupAnswer");
+  });
+
+  it("releases through the same confirm the project's own page asks", () => {
+    expect(projectsPageSource).toContain(
+      "<ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />",
+    );
+    expect(groupDetailSource).toContain("export function ZeropsReleaseVerb(");
+  });
+
+  it("offers production where the flow asks for it and nowhere else", () => {
+    // No missing-tier rows ("not set up yet") and no foot of add verbs: the
+    // project's menu adds a Mate or a stage, and production is its next step.
+    expect(projectsPageSource).toContain('requestEnvironment(group.groupId, "prod")');
+    expect(projectsPageSource.match(/requestEnvironment\(group\.groupId, "prod"\)/gu)).toHaveLength(
+      1,
+    );
+    expect(projectsPageSource).not.toContain("?.missing ??");
   });
 });
 

@@ -18,24 +18,40 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 
 export const PROJECT_ORDER_STORAGE_KEY = "mate:zerops:project-order";
 
-/** Newest first, unless the viewer chose otherwise — spec-mate's simpler
- * take on the legacy dashboard's `created desc` default. */
-export const DEFAULT_PROJECT_ORDER: ZeropsProjectOrder = "newest";
+/**
+ * The page's choice: *Next step first* — the groups that wait on somebody,
+ * worst first (`orderByNextStep`) — or one of the tree's own orders.
+ */
+export type ProjectsPageOrder = "next-step" | ZeropsProjectOrder;
 
-export const ZeropsProjectOrderSchema = Schema.Literals(["newest", "name"]);
+/** The groups that need somebody lead, unless the viewer chose otherwise (the owner, 2026-09-23). */
+export const DEFAULT_PROJECT_ORDER: ProjectsPageOrder = "next-step";
+
+export const ProjectsPageOrderSchema = Schema.Literals(["next-step", "newest", "name"]);
 
 /**
- * The projects page and the sidebar tree both call this — `useLocalStorage`'s
- * `storage` and same-tab change events keep them in the same state without
- * either one owning the other.
+ * The order the group tree itself takes (`deriveZeropsGroups`). A next step
+ * is a page's derivation the tree does not hold, so under *Next step first*
+ * the tree reads its tie-break, newest first.
  */
-export function useProjectOrderPreference(): readonly [
-  ZeropsProjectOrder,
-  (next: ZeropsProjectOrder) => void,
+export function projectTreeOrder(order: ProjectsPageOrder): ZeropsProjectOrder {
+  return order === "next-step" ? "newest" : order;
+}
+
+/**
+ * The projects page's sort control — `useLocalStorage`'s `storage` and
+ * same-tab change events keep every reader in the same state without any one
+ * of them owning it.
+ */
+export function useProjectsPageOrder(): readonly [
+  ProjectsPageOrder,
+  (next: ProjectsPageOrder) => void,
 ] {
-  return useLocalStorage(
-    PROJECT_ORDER_STORAGE_KEY,
-    DEFAULT_PROJECT_ORDER,
-    ZeropsProjectOrderSchema,
-  );
+  return useLocalStorage(PROJECT_ORDER_STORAGE_KEY, DEFAULT_PROJECT_ORDER, ProjectsPageOrderSchema);
+}
+
+/** The same preference as the group tree reads it — the sidebar and the move dialog. */
+export function useProjectOrderPreference(): readonly [ZeropsProjectOrder] {
+  const [order] = useProjectsPageOrder();
+  return [projectTreeOrder(order)];
 }

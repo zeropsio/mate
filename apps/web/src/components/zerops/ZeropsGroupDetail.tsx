@@ -510,49 +510,19 @@ function useReleaseOffer(groupId: string): ReleaseOffer {
 }
 
 /**
- * What one project needs somebody for — the same panel, wherever a project is
- * drawn.
- *
- * The projects screen listed every project's Mates, changes, environments and
- * releases at one weight and never said which of them wanted a person. Its own
- * left menu, two inches away, showed the same blocked change in amber; the
- * screen showed it as a grey row with no verb (the owner, 2026-09-19: "either
- * not sure is needed or needs to go through redesign as well so all pages are
- * unified in how they look work feel have ux and abilities").
- *
- * So it is this component, not a second copy of it: one set of words, one set
- * of tones, one set of verbs, read from the same flow. It reads everything it
- * needs from the group's id, which is the only thing a caller has to know.
+ * *Release* where the projects page draws a project's next step, with the same
+ * confirm the project's own page asks: one verb, one dialog, wherever it is
+ * offered. `label` is the step's own words (`Release v0.1.0`).
  */
-export function ZeropsGroupAnswer({
+export function ZeropsReleaseVerb({
   groupId,
-  className,
+  label,
 }: {
   readonly groupId: string;
-  readonly className?: string;
+  readonly label: string;
 }) {
-  const flowValue = useZeropsProjectFlowOptional();
-  const flow = flowValue?.flows.get(groupId);
-  const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
   const release = useReleaseOffer(groupId);
-  const mates = useGroupMates(groupId);
-  const attention = useProjectAttention(groupId, mates, {
-    environments: flow?.environments ?? [],
-    pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
-    notLive: waiting.total,
-    canRelease: release.offered,
-  });
-  // Nothing read yet is not "all clear": a panel that says so and then fills
-  // with three rows a second later is a promise it takes back.
-  if (flow === undefined) return null;
-  return (
-    <AttentionPanel
-      items={attention.items}
-      onAct={attention.onAct}
-      release={release}
-      {...(className === undefined ? {} : { className })}
-    />
-  );
+  return <ReleaseAction label={label} release={release} />;
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
@@ -1444,7 +1414,14 @@ export interface ReleaseOffer {
  * one screen listing three changes merged and not live was the one screen that
  * could not put them live.
  */
-function ReleaseAction({ release }: { readonly release: ReleaseOffer }) {
+function ReleaseAction({
+  release,
+  label,
+}: {
+  readonly release: ReleaseOffer;
+  /** The verb's words where the caller has them; *Release* otherwise. */
+  readonly label?: string;
+}) {
   const [confirming, setConfirming] = useState(false);
   if (!release.offered) return null;
   return (
@@ -1457,7 +1434,9 @@ function ReleaseAction({ release }: { readonly release: ReleaseOffer }) {
         }}
         size="sm"
       >
-        {flowVerbLabel("release", release.releasing)}
+        {release.releasing
+          ? flowVerbLabel("release", true)
+          : (label ?? flowVerbLabel("release", false))}
       </Button>
       <ZeropsReleaseDialog
         contents={release.contents}
@@ -1506,12 +1485,9 @@ function AttentionPanel({
   items,
   onAct,
   release,
-  className = "mb-8",
 }: {
   readonly items: ReadonlyArray<ProjectAttentionItem>;
   readonly onAct: (item: ProjectAttentionItem) => void;
-  /** The room it leaves under itself, which the projects screen sets tighter. */
-  readonly className?: string;
   /**
    * What *Release* would do, for the one item whose verb is not a way
    * somewhere. Without it that row drew a button with no target, and `onAct`
@@ -1523,10 +1499,7 @@ function AttentionPanel({
   if (first === undefined) {
     return (
       <p
-        className={cn(
-          "rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground",
-          className,
-        )}
+        className="mb-8 rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground"
         data-zerops-surface="project-attention-clear"
       >
         {PROJECT_ALL_CLEAR}
@@ -1540,9 +1513,8 @@ function AttentionPanel({
       // worst first. It used to be amber whatever it held, so a panel whose
       // only row was a blue *Release* still had a blocked change's border.
       className={cn(
-        "flex flex-col overflow-hidden rounded-lg border",
+        "mb-8 flex flex-col overflow-hidden rounded-lg border",
         VERDICT_BORDER_CLASS[worst],
-        className,
       )}
       data-zerops-surface="project-attention"
     >
