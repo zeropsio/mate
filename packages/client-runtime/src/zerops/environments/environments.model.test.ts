@@ -168,15 +168,16 @@ const step = (
  * Two states share a key when they differ only by a shift of the clock and of the attempt
  * counter: the machine compares instants only with each other and with `now`, and an op's
  * `attempt` only for equality, so every sequence from one checks as it does from the other. The
- * guards' grant stamp stays absolute: 0 precedes every instant the model reaches, so no shift
- * reorders it.
+ * counter itself is keyed only as whether an attempt has run, since `eventsFrom` answers the last
+ * two attempts only then. The guards' grant stamp stays absolute: 0 precedes every instant the
+ * model reaches, so no shift reorders it.
  */
 const keyOf = ({ machine, nowMs }: ModelState): string =>
   JSON.stringify(machine, (key, value: unknown) => {
     if (typeof value === "number") {
       switch (key) {
         case "nextAttempt":
-          return undefined;
+          return value > 1;
         case "attempt":
           return machine.nextAttempt - value;
         case "sinceMs":
