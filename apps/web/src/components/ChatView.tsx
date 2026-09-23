@@ -173,8 +173,7 @@ import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
-import { useZeropsMateNextStep } from "../zerops/useZeropsMateNextStep";
-import { ZeropsReleaseDialog } from "./zerops/ZeropsReleaseDialog";
+import { useZeropsNextStepBanner } from "./zerops/ZeropsNextStepBanner";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -3734,7 +3733,6 @@ export default function ChatView(props: ChatViewProps) {
     snapshot: zeropsAgentAuth.snapshot,
     projectId: useZeropsEnvironmentProjectId(activeThreadEnvironmentId),
   });
-  const zeropsMateNextStep = useZeropsMateNextStep(activeThreadRef);
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
@@ -5186,94 +5184,10 @@ export default function ChatView(props: ChatViewProps) {
   }, [openAgentAuthDialog, zeropsAgentOwnership, zeropsOwnedAgent]);
 
   /**
-   * The one next step this Mate's conversation offers, right where the
-   * person is reading its answer, from the project's flow rather than from
-   * what the agent said (the owner, 2026-09-23): merge this Mate's own
-   * change (the owner, 2026-09-18, unchanged), release what is already
-   * merged, or add the production a release would go to — the Mate's part
-   * ends at the pull request and the recipe, so that verb only links to
-   * where it lives, on the projects page.
+   * The one next step this Mate's conversation offers, from the project's
+   * flow rather than from what the agent said (`ZeropsNextStepBanner.tsx`).
    */
-  const [zeropsReleaseConfirmOpen, setZeropsReleaseConfirmOpen] = useState(false);
-  const mateReviewBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    const step = zeropsMateNextStep.step;
-    const trouble = zeropsMateNextStep.trouble;
-    if (step.kind === "merge") {
-      return {
-        id: `mate-next-step:merge:${step.pull.repository}#${step.pull.number}`,
-        variant: trouble === null ? "info" : "error",
-        icon: <GitBranchIcon />,
-        title: step.title,
-        description: trouble ?? step.pull.title,
-        actions: (
-          <Button
-            disabled={zeropsMateNextStep.running}
-            size="xs"
-            onClick={zeropsMateNextStep.merge}
-          >
-            {zeropsMateNextStep.running ? step.running : step.verb}
-          </Button>
-        ),
-      } satisfies ComposerBannerStackItem;
-    }
-    if (step.kind === "release") {
-      return {
-        id: `mate-next-step:release:${zeropsMateNextStep.groupId}`,
-        variant: trouble === null ? "info" : "error",
-        icon: <GitBranchIcon />,
-        title: step.title,
-        description:
-          trouble ??
-          (step.waiting === 1
-            ? "1 change ready to go live."
-            : `${step.waiting} changes ready to go live.`),
-        actions: (
-          <>
-            <Button
-              disabled={zeropsMateNextStep.running}
-              size="xs"
-              onClick={() => setZeropsReleaseConfirmOpen(true)}
-            >
-              {zeropsMateNextStep.running ? step.running : step.verb}
-            </Button>
-            <ZeropsReleaseDialog
-              contents={zeropsMateNextStep.releaseContents}
-              onConfirm={() => {
-                setZeropsReleaseConfirmOpen(false);
-                zeropsMateNextStep.release();
-              }}
-              onOpenChange={setZeropsReleaseConfirmOpen}
-              open={zeropsReleaseConfirmOpen}
-              releasing={zeropsMateNextStep.running}
-              tag={step.tag}
-            />
-          </>
-        ),
-      } satisfies ComposerBannerStackItem;
-    }
-    if (step.kind === "add-production") {
-      return {
-        id: `mate-next-step:add-production:${zeropsMateNextStep.groupId}`,
-        variant: "info",
-        icon: <GitBranchIcon />,
-        title: step.title,
-        description: step.detail,
-        actions: (
-          <Button
-            size="xs"
-            onClick={() => {
-              const groupId = zeropsMateNextStep.groupId;
-              if (groupId !== undefined)
-                void navigate({ to: "/zerops", search: { view: "projects", group: groupId } });
-            }}
-          >
-            {step.verb}
-          </Button>
-        ),
-      } satisfies ComposerBannerStackItem;
-    }
-    return null;
-  }, [navigate, zeropsMateNextStep, zeropsReleaseConfirmOpen]);
+  const mateNextStepBannerItem = useZeropsNextStepBanner(activeThreadRef);
 
   const feedbackBannerItems = useMemo(
     () =>
@@ -5299,7 +5213,7 @@ export default function ChatView(props: ChatViewProps) {
       ...(agentOwnershipBannerItem === null ? [] : [agentOwnershipBannerItem]),
       ...systemComposerBannerItems.filter(isUrgentSystemItem),
     ];
-    const mateReviewItems = mateReviewBannerItem === null ? [] : [mateReviewBannerItem];
+    const mateNextStepItems = mateNextStepBannerItem === null ? [] : [mateNextStepBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const backgroundLivenessItems =
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
@@ -5314,7 +5228,7 @@ export default function ChatView(props: ChatViewProps) {
       return [
         ...urgentSystemItems,
         ...usageLimitsItems,
-        ...mateReviewItems,
+        ...mateNextStepItems,
         ...feedbackBannerItems,
         ...projectCloneItems,
         ...backgroundLivenessItems,
@@ -5327,7 +5241,7 @@ export default function ChatView(props: ChatViewProps) {
     return [
       ...urgentSystemItems,
       ...usageLimitsItems,
-      ...mateReviewItems,
+      ...mateNextStepItems,
       ...feedbackBannerItems,
       ...projectCloneItems,
       ...backgroundLivenessItems,
@@ -5383,7 +5297,7 @@ export default function ChatView(props: ChatViewProps) {
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
     localCheckoutBranchMismatch,
-    mateReviewBannerItem,
+    mateNextStepBannerItem,
     parkedThreadBannerItem,
     projectCloneBannerItem,
     resumeCompactionBannerItem,
