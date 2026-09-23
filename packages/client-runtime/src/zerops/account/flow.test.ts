@@ -5,7 +5,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { project } from "../data/__fixtures__/index.ts";
+import { project, service } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import type { LeaseAdmissionError } from "../data/types.ts";
 import type { FlowCommands } from "../flow/flowCommands.ts";
@@ -140,6 +140,37 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
 
     expect(refused).toEqual(["account-capacity"]);
     unfollow();
+  });
+
+  it("reads a service directly through the account's resource broker while the store holds it", () => {
+    const shown = Atom.make({ state: "reading", sinceMs: 0, attempt: 1 });
+    const requests: Array<unknown> = [];
+    const scope = { epoch: 1 };
+    const data = {
+      scope,
+      resources: {
+        known: (request: unknown) => {
+          requests.push(request);
+          return shown;
+        },
+      },
+    } as unknown as ManagedZeropsDataRuntime;
+    const registry = AtomRegistry.make();
+    const ports = deploymentStorePorts(data, registry, Context.empty());
+    const told: Array<string> = [];
+    const target = service("app-id", project("project-stage"));
+
+    const release = ports.deployedVersion(target, (next) => told.push(next.state));
+
+    expect(requests).toEqual([
+      { kind: "service-deployed-version", account: scope, service: target },
+    ]);
+    expect(told).toEqual(["reading"]);
+    registry.set(shown, { state: "reading", sinceMs: 0, attempt: 2 });
+    expect(told).toEqual(["reading", "reading"]);
+    release();
+    registry.set(shown, { state: "reading", sinceMs: 0, attempt: 3 });
+    expect(told).toHaveLength(2);
   });
 
   effectIt.effect("arms the store's timers on the account's clock, and disarms them", () =>

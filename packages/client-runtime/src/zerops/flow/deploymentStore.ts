@@ -8,9 +8,11 @@
  * what deploys now and name the version they build (A11). It publishes the stop each time either
  * listing changes, with each service's deployment beside it (`stopServices`). The names the
  * builds gave are kept while the stop is demanded: a version that activates after its build
- * ended is still named by it. A process demand the platform refuses fails what it could not
- * prove, rather than checking forever, and is asked for again on the retry ladder (§4.0) while the
- * stop is demanded. A stop nobody demands shows `unread`.
+ * ended is still named by it. A version a push left unstated that no build named is read from the
+ * service directly (A14), once: the read is held until it answers, tried again on the retry
+ * ladder while it fails, then let go. A process demand the platform refuses fails what it could
+ * not prove, rather than checking forever, and is asked for again on the retry ladder (§4.0)
+ * while the stop is demanded. A stop nobody demands shows `unread`.
  *
  * A `deployment` invalidation (§6.2) publishes the stop holding that service again.
  *
@@ -25,10 +27,17 @@ import {
   type ServiceRecord,
   type ServiceRef,
 } from "../data/types.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/resources.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import type { Shown } from "../knowledge/known.ts";
 import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
-import { buildNames, stopServices, type ProcessRefusal, type StopService } from "./deployment.ts";
+import {
+  buildNames,
+  stopServices,
+  unnamedVersions,
+  type ProcessRefusal,
+  type StopService,
+} from "./deployment.ts";
 
 /** The invalidations the deployment store answers (§6.2). */
 export type DeploymentInvalidation = Extract<Invalidation, { readonly topic: "deployment" }>;
@@ -38,6 +47,15 @@ export interface DeploymentStorePorts {
   readonly services: (project: ProjectRef) => CollectionRead<ServiceRecord>;
   /** The project's running processes, as the data runtime holds them now. */
   readonly processes: (project: ProjectRef) => CollectionRead<ProcessRecord>;
+  /**
+   * Holds a direct read of what the service runs (A14) and tells `changed` what it shows now and
+   * each time that changes, until the returned release; a failed read is tried again on the retry
+   * ladder while it is held.
+   */
+  readonly deployedVersion: (
+    service: ServiceRef,
+    changed: (shown: Shown<ZeropsServiceDeployedVersion>) => void,
+  ) => () => void;
   /**
    * Holds the demand both listings need and tells `changed` each time either changes, until the
    * returned stop; tells `refused` once when the platform takes no demand for the processes.
@@ -68,11 +86,27 @@ export interface DeploymentStore {
   readonly dispose: () => void;
 }
 
+/** A direct read of one service, for the active version a push left unstated. */
+interface DirectRead {
+  readonly versionId: string;
+  shown: Shown<ZeropsServiceDeployedVersion>;
+  /** Lets the read go; a no-op once it answered. */
+  release: () => void;
+}
+
+/** A read that answered for good: known, gone, or failed with nothing more to try. */
+const answered = (shown: Shown<ZeropsServiceDeployedVersion>): boolean =>
+  (shown.state === "known" && shown.freshness.kind !== "revalidating") ||
+  shown.state === "gone" ||
+  (shown.state === "failed" && shown.retryAtMs === null);
+
 interface Entry {
   readonly project: ProjectRef;
   leases: number;
   /** Every app version a build of the stop named while it was demanded, by id. */
   names: ReadonlyMap<string, string>;
+  /** The direct reads of its services, by service id. */
+  readonly direct: Map<ServiceRef["serviceId"], DirectRead>;
   /** Why the platform took no demand for the stop's running processes, while it did not. */
   refused: ProcessRefusal | null;
   /** How often the platform refused the demand; it keeps a demand it admitted. */
@@ -98,19 +132,56 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
   const listeners = new Set<(project: ProjectRef) => void>();
   let disposed = false;
 
-  /** The stop as its listings stand now, and the names its builds gave. */
+  /** The stop as its listings stand now, the names its builds gave, and what was read directly. */
   const read = (entry: Entry): void => {
+    const services = ports.services(entry.project);
     const processes = ports.processes(entry.project);
     entry.names = buildNames(entry.names, processes);
+    readDirectly(entry, services);
     entry.shown = stopServices(
       {
-        services: ports.services(entry.project),
+        services,
         processes,
         names: entry.names,
         refused: entry.refused,
+        stated: new Map(
+          [...entry.direct.values()].map(({ versionId, shown }) => [versionId, shown]),
+        ),
       },
       ports.nowMs(),
     );
+  };
+
+  /** Reads each version nothing states once, and lets go of every read nothing needs any more. */
+  const readDirectly = (entry: Entry, services: CollectionRead<ServiceRecord>): void => {
+    const wanted = new Map(
+      unnamedVersions(services, entry.names).map((version) => [version.service.serviceId, version]),
+    );
+    for (const [serviceId, direct] of entry.direct) {
+      if (wanted.get(serviceId)?.versionId === direct.versionId) continue;
+      direct.release();
+      entry.direct.delete(serviceId);
+    }
+    for (const [serviceId, { service, versionId }] of wanted) {
+      if (entry.direct.has(serviceId)) continue;
+      const direct: DirectRead = { versionId, shown: UNREAD, release: () => undefined };
+      entry.direct.set(serviceId, direct);
+      let taking = true;
+      const release = ports.deployedVersion(service, (shown) => {
+        direct.shown = shown;
+        if (taking || entry.direct.get(serviceId) !== direct) return;
+        if (answered(shown)) letGo(direct);
+        publish(entry);
+      });
+      taking = false;
+      direct.release = release;
+      if (answered(direct.shown)) letGo(direct);
+    }
+  };
+
+  const letGo = (direct: DirectRead): void => {
+    direct.release();
+    direct.release = () => undefined;
   };
 
   const publish = (entry: Entry): void => {
@@ -165,6 +236,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
           project,
           leases: 0,
           names: new Map(),
+          direct: new Map(),
           refused: null,
           refusals: 0,
           backoff: INITIAL_BACKOFF,
@@ -188,6 +260,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         if (held.leases > 0) return;
         held.disarm();
         held.unfollow();
+        for (const direct of held.direct.values()) direct.release();
         entries.delete(key);
       };
     },
@@ -210,6 +283,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       for (const entry of entries.values()) {
         entry.disarm();
         entry.unfollow();
+        for (const direct of entry.direct.values()) direct.release();
       }
       entries.clear();
       listeners.clear();

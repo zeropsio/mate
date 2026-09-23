@@ -9,8 +9,9 @@
  * - The forge answers `forge-*` invalidations and the deployment store `deployment` ones (§6.2);
  *   a verb's settlement sends its own through the account's bus.
  * - The deployment store follows the data runtime's service listings and, holding the project's
- *   activity demand while a stop is shown, its running processes; a Mate's envelope names a
- *   service by hostname, which the account's inventory resolves.
+ *   activity demand while a stop is shown, its running processes; it reads a service directly
+ *   through the account's resource broker when a push leaves its active version unstated (A14). A
+ *   Mate's envelope names a service by hostname, which the account's inventory resolves.
  *
  * The stores are constructed by the account runtime alone (§7.2 rule 6); this module only wires
  * them. The forge stands on a host that gives it ports — the web; a host without Gitea surfaces
@@ -163,6 +164,14 @@ export function deploymentStorePorts(
         run(Fiber.interrupt(lease));
       };
     },
+    // Subscribing is the demand: the broker reads the service while it is held, and tries a failed
+    // read again on the retry ladder (§4.0).
+    deployedVersion: (service, changed) =>
+      atomRegistry.subscribe(
+        data.resources.known({ kind: "service-deployed-version", account: data.scope, service }),
+        changed,
+        { immediate: true },
+      ),
     nowMs: () => data.access.clock.currentTimeMillisUnsafe(),
     random: Math.random,
     setTimer: (delayMs, fire) => {

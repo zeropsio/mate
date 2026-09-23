@@ -5,12 +5,14 @@
  * deploy pass, and without Gitea. A native frame states the active version's
  * id, status and times but not its source or name (A14): a version whose
  * source nobody has stated yet is pending, never running and never none. The
- * pass's REST read (`userData`) still names a version where it answered first.
+ * pass's REST read (`userData`) names a version only where nothing else does.
  *
  * The project's running processes say the rest (A11). While a `stack.build`
  * runs for a service, the service is deploying the version it builds, whose
  * name is the commit on a Mate's deploys. Once the active version's id is the
- * one a build named, that name is what runs, the build over or not.
+ * one a build named, that name is what runs, the build over or not. A version
+ * no build named is read from the service directly (`unnamedVersions`), which
+ * states its source and, while it is the newest deploy started, its name.
  *
  * The one negative, "Nothing deployed yet", is earned: only a complete listing
  * whose every runtime service is observed with no active deploy, and a
@@ -24,6 +26,7 @@
  */
 import { isZcpService } from "../containerAddress.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/resources.ts";
 import type {
   CollectionRead,
   IngestionStamp,
@@ -263,6 +266,11 @@ export interface StopReads {
   readonly names: ReadonlyMap<string, string>;
   /** Why the platform took no demand for the running processes; they are never read then. */
   readonly refused: ProcessRefusal | null;
+  /**
+   * What a direct read of each service said of an active version a push left unstated and nothing
+   * named, by that version's id (A14, `unnamedVersions`).
+   */
+  readonly stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>;
 }
 
 /** The platform took no demand for a stop's running processes: why, and when it is asked again. */
@@ -342,6 +350,24 @@ function namedBy(
   return names;
 }
 
+/**
+ * The services whose active version a push left unstated and no build named, each with that
+ * version's id: only a direct read of the service can say what it is (A14).
+ */
+export function unnamedVersions(
+  services: CollectionRead<ServiceRecord>,
+  names: ReadonlyMap<string, string>,
+): ReadonlyArray<{ readonly service: ServiceRef; readonly versionId: string }> {
+  return services.value.flatMap((knowledge) => {
+    const answer = serviceAnswer(knowledge);
+    if (knowledge.knowledge !== "observed" || answer.kind !== "unstated") return [];
+    const versionId = answer.deploy.id;
+    return versionId === null || names.has(versionId)
+      ? []
+      : [{ service: knowledge.record.ref, versionId }];
+  });
+}
+
 /** What one listed service contributes to its stop's list. */
 type ListedService =
   | { readonly kind: "not-a-stop" }
@@ -354,40 +380,51 @@ function activeVersionId(answer: ServiceAnswer): string | null {
   return answer.kind === "running" || answer.kind === "unstated" ? answer.deploy.id : null;
 }
 
-/** What a stop's services are measured against: its builds, and every name one gave. */
+/** What a stop's services are measured against: its builds, every name one gave, what was read. */
 interface StopContext extends StopBuilds {
   readonly names: ReadonlyMap<string, string>;
+  readonly stated: StopReads["stated"];
   readonly source: SourceState;
   readonly nowMs: number;
 }
 
+/** The direct read of an active version the push left unstated, while it is one. */
+function directReadOf(
+  answer: ServiceAnswer,
+  stated: StopReads["stated"],
+): Shown<ZeropsServiceDeployedVersion> | undefined {
+  return answer.kind === "unstated" && answer.deploy.id !== null
+    ? stated.get(answer.deploy.id)
+    : undefined;
+}
+
 /**
  * What the service's active version is, as far as anything states it: a build's name for it first,
- * else what the platform pushed; `null` while nothing names or sources it (A14).
+ * else what the platform pushed, else what a direct read of the service said of that same version;
+ * `null` while nothing names or sources it (A14).
  */
 function activeDeployment(
   answer: ServiceAnswer,
   names: ReadonlyMap<string, string>,
+  stated: StopReads["stated"],
 ): SettledDeployment | null {
   switch (answer.kind) {
     case "none":
       return { kind: "none" };
     case "running":
     case "unstated": {
-      const named = answer.deploy.id === null ? undefined : names.get(answer.deploy.id);
+      const { id, activatedAt } = answer.deploy;
+      const named = id === null ? undefined : names.get(id);
       if (named !== undefined)
-        return {
-          kind: "running",
-          activatedAt: answer.deploy.activatedAt,
-          version: deployedVersion(named),
-        };
-      return answer.kind === "running"
-        ? {
-            kind: "running",
-            activatedAt: answer.deploy.activatedAt,
-            version: pushedVersion(answer.deploy),
-          }
-        : null;
+        return { kind: "running", activatedAt, version: deployedVersion(named) };
+      if (answer.kind === "running")
+        return { kind: "running", activatedAt, version: pushedVersion(answer.deploy) };
+      const read = directReadOf(answer, stated);
+      // An answer for another version says nothing of this one.
+      if (read?.state !== "known" || read.value.activeId !== id) return null;
+      return read.value.source === "NONE"
+        ? { kind: "none" }
+        : { kind: "running", activatedAt, version: deployedVersion(read.value.name ?? undefined) };
     }
     default:
       return null;
@@ -399,7 +436,7 @@ function serviceDeployment(
   serviceId: string,
   context: StopContext,
 ): Shown<Deployment> {
-  const { builds, complete, names, source, nowMs } = context;
+  const { builds, complete, names, stated, source, nowMs } = context;
   const known = (value: Deployment, asOf: Stamp): Shown<Deployment> => ({
     state: "known",
     value,
@@ -408,7 +445,7 @@ function serviceDeployment(
     freshness: freshnessOf(source, nowMs),
   });
   const active = activeVersionId(answer);
-  const settled = activeDeployment(answer, names);
+  const settled = activeDeployment(answer, names, stated);
   // A build whose version is already the active one has deployed: the service runs it.
   const build = builds.find(
     ({ serviceIds, appVersionId }) =>
@@ -422,10 +459,16 @@ function serviceDeployment(
   switch (answer.kind) {
     case "running":
     case "unstated":
-      return settled === null ? notYetKnown(source, nowMs) : known(settled, answer.asOf);
-    case "none":
+    case "none": {
+      if (settled === null) {
+        // A direct read that failed says why nothing states the version, and when it is tried again.
+        const read = directReadOf(answer, stated);
+        return read?.state === "failed" ? read : notYetKnown(source, nowMs);
+      }
       // Nothing active is no proof while a build for it may be running unseen.
-      return complete ? known({ kind: "none" }, answer.asOf) : notYetKnown(source, nowMs);
+      if (settled.kind === "none" && !complete) return notYetKnown(source, nowMs);
+      return known(settled, answer.asOf);
+    }
     case "withheld":
       return {
         state: "failed",
@@ -471,6 +514,7 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
   const context: StopContext = {
     ...stopBuilds,
     names: namedBy(reads.names, stopBuilds.builds),
+    stated: reads.stated,
     // A service's deployment stands on both listings: its builds are the processes'.
     source:
       reads.refused === null

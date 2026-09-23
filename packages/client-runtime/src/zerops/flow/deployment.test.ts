@@ -283,7 +283,13 @@ const UNSTATED: ServiceDeployInfo = {
 /** The one listed service's deployment, its processes read and none of them a build. */
 function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deployment> | undefined {
   const stops = stopServices(
-    { services: read, processes: processesRead([]), names: new Map(), refused: null },
+    {
+      services: read,
+      processes: processesRead([]),
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
     NOW,
   );
   return stops.state === "known" ? stops.value[0]?.deployment : stops;
@@ -434,6 +440,7 @@ describe("stopServices", () => {
     readonly processes?: CollectionRead<ProcessRecord>;
     readonly names?: ReadonlyMap<string, string>;
     readonly refused?: StopReads["refused"];
+    readonly stated?: StopReads["stated"];
     /** The list's state, else each listed service's hostname and deployment. */
     readonly expected: string | ReadonlyArray<readonly [string, string]>;
   }> = [
@@ -553,15 +560,50 @@ describe("stopServices", () => {
       read: listed([record("s1", "app", deployed(UNSTATED))]),
       expected: [["app", "unread"]],
     },
+    {
+      name: "a version the service itself states runs",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      stated: new Map([
+        [
+          UNSTATED.id!,
+          {
+            state: "known",
+            value: { activeId: UNSTATED.id!, source: "GIT", name: SHA },
+            asOf: { ordinal: 5, atMs: 50 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          },
+        ],
+      ]),
+      expected: [["app", "running"]],
+    },
+    {
+      name: "a direct read that failed fails the version it could not state",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      stated: new Map([
+        [
+          UNSTATED.id!,
+          {
+            state: "failed",
+            failure: { kind: "transport", detail: "Zerops did not answer." },
+            atMs: NOW,
+            attempt: 1,
+            retryAtMs: NOW + 2_000,
+          },
+        ],
+      ]),
+      expected: [["app", "failed"]],
+    },
   ];
 
-  it.each(cases)("$name", ({ read, processes, names, refused, expected }) => {
+  it.each(cases)("$name", ({ read, processes, names, refused, stated, expected }) => {
     const stops = stopServices(
       {
         services: read,
         processes: processes ?? NO_PROCESSES,
         names: names ?? new Map(),
         refused: refused ?? null,
+        stated: stated ?? new Map(),
       },
       NOW,
     );
@@ -611,6 +653,7 @@ describe("stopServices", () => {
           processes: processesRead([build({ id: "next", name: SHA })], { project: PROJECT }),
           names: names ?? new Map(),
           refused: null,
+          stated: new Map(),
         },
         NOW,
       );
@@ -635,6 +678,7 @@ describe("stopServices", () => {
           ["next", SHA],
         ]),
         refused: null,
+        stated: new Map(),
       },
       NOW,
     );
@@ -651,6 +695,7 @@ describe("stopServices", () => {
         processes: NO_PROCESSES,
         names: new Map(),
         refused: null,
+        stated: new Map(),
       },
       NOW,
     );
@@ -666,6 +711,7 @@ describe("stopServices", () => {
         processes: NO_PROCESSES,
         names: new Map([[PUSHED.id!, SHA]]),
         refused: null,
+        stated: new Map(),
       },
       NOW,
     );
