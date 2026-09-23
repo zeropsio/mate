@@ -5,7 +5,12 @@ import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowawa
 import { DOOR_MINTS_PER_MINUTE } from "../doorThrowaway.ts";
 import { descriptorFacts, exchangeAtDoor } from "../identityExchange.ts";
 import { makeFakeMate, type FakeMate, type FakeMateCredential } from "../testing/fakeMate.ts";
-import type { ContainerVerdict, EnvironmentDiagnostic, Presence } from "./environmentMachine.ts";
+import {
+  AUTH_LOOP_REJECTIONS,
+  type ContainerVerdict,
+  type EnvironmentDiagnostic,
+  type Presence,
+} from "./environmentMachine.ts";
 import {
   EXCHANGE_CONCURRENCY,
   makeExchangeDriver,
@@ -23,6 +28,12 @@ const GRANTED: AccountGuards = {
   identityMint: { allowed: true },
   zeropsFailing: false,
   grantVerifiedAtMs: 0,
+};
+
+/** A renewal round in progress: the mint waits for it (§4.3 `identityMint`). */
+const RENEWING: AccountGuards = {
+  ...GRANTED,
+  identityMint: { allowed: false, reason: "access-unverified", waitable: true },
 };
 
 const LAPSED: AccountGuards = {
@@ -300,23 +311,38 @@ describe("exchange driver (DESIGN §4.4)", () => {
 
   it("a renewal round never burns an attempt", async () => {
     const shop = mate("shop");
-    const { driver, exchanges, release, start } = rig([shop], { hold: true });
+    const cafe = mate("cafe");
+    const { driver, exchanges, release, start } = rig([shop, cafe], { hold: true });
     await start({ records: [shop] });
     expect(exchanges).toHaveLength(1);
 
-    // The round starts and is admitted while the exchange is in flight: the mint stays allowed.
-    driver.setAccount({ ...GRANTED, grantVerifiedAtMs: 60_000 });
-    driver.setAccount({ ...GRANTED, grantVerifiedAtMs: 61_000 });
+    // A round closes the mint while shop's exchange is in flight, and cafe is wanted meanwhile.
+    driver.setAccount(RENEWING);
+    driver.setDemand("auto-connect", [keyOf(cafe)]);
     await flush();
     expect(exchanges).toHaveLength(1);
     expect(exchanges[0]!.signal.aborted).toBe(false);
+    expect(driver.machine(keyOf(cafe))).toMatchObject({
+      credential: { kind: "waiting", on: "access" },
+      failures: 0,
+    });
 
+    // Shop's mint waited the round out inside its attempt; its answer is installed.
     await release();
     expect(driver.machine(keyOf(shop))).toMatchObject({
       credential: { kind: "held" },
       failures: 0,
     });
-    expect(exchanges).toHaveLength(1);
+
+    // The round is admitted: cafe's exchange starts, on its first attempt.
+    driver.setAccount(GRANTED);
+    await flush();
+    expect(exchanges.map((request) => request.key)).toEqual([keyOf(shop), keyOf(cafe)]);
+    await release();
+    expect(driver.machine(keyOf(cafe))).toMatchObject({
+      credential: { kind: "held" },
+      failures: 0,
+    });
   });
 
   it("route target exchanged first", async () => {
@@ -339,23 +365,33 @@ describe("exchange driver (DESIGN §4.4)", () => {
 
   it("a revoked session re-exchanges with backoff, repeatedly", async () => {
     const shop = mate("shop");
-    const { driver, clock, exchanges, installs, start, reach } = rig([shop]);
+    const { driver, clock, exchanges, installs, logs, start, reach } = rig([shop]);
     await start({ records: [shop] });
     const environmentId = EnvironmentId.make("env-shop");
     expect(reach(shop)).toEqual({ kind: "ready", notice: null });
 
+    // Revoked every 30 s: from the third rejection on, the loop window holds three of them.
     for (let revocation = 1; revocation <= 6; revocation += 1) {
       shop.revokeSessions();
       driver.link(environmentId, { phase: "blocked", reason: "authentication" });
       // The supervisor re-attempts with the revoked credential while the new one is exchanged.
       driver.link(environmentId, { phase: "blocked", reason: "authentication" });
       await flush();
-      await clock.advance(60_000);
+      if (revocation >= AUTH_LOOP_REJECTIONS) {
+        expect(exchanges).toHaveLength(revocation);
+        expect(reach(shop)).toMatchObject({ kind: "retrying", last: { kind: "rejected" } });
+        await clock.advance(2_000);
+      }
       expect(exchanges).toHaveLength(1 + revocation);
       expect(installs).toHaveLength(1 + revocation);
       expect(reach(shop)).toEqual({ kind: "ready", notice: null });
+      await clock.advance(30_000);
     }
     expect(exchanges.slice(1).every((request) => request.reason === "repair")).toBe(true);
+    expect(logs).toContainEqual({
+      key: keyOf(shop),
+      diagnostic: { kind: "auth-loop", rejections: AUTH_LOOP_REJECTIONS },
+    });
   });
 
   it("lapse → wake → grant → exchange with no user action", async () => {
