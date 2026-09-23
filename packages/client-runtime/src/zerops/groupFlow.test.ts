@@ -302,6 +302,27 @@ describe("groupFlow", () => {
       }),
     })),
   };
+  /** `fsadfdasfsa` with its stage failing: nothing waits on it but a release. */
+  const STAGE_FAILED_WITH_RELEASE = {
+    ...FSADFDASFSA,
+    stops: [
+      ...FSADFDASFSA.stops,
+      {
+        projectId: "p-stage",
+        name: "stage",
+        tier: "stage" as const,
+        row: declared({
+          projectId: "p-stage",
+          name: "stage",
+          tier: "stage",
+          appVersionName: STAGE_SHA,
+          status: "failure",
+        }),
+        deployment: runs(STAGE_SHA),
+        route: undefined,
+      },
+    ],
+  };
 
   it.each([
     {
@@ -315,13 +336,26 @@ describe("groupFlow", () => {
       },
     },
     {
-      case: "a failed deploy outranks the merge",
+      // A stage is never what a release, or anything else, waits behind
+      // (D28): its own failure stays on its own row and never becomes the
+      // one next step.
+      case: "a failed stage never becomes the next step, and does not outrank the merge",
       input: STAGE_FAILED,
       step: {
-        kind: "fix-deploy",
-        text: "The last deploy to stage failed",
-        verb: "See the build",
-        target: { kind: "stop", projectId: "p-stage" },
+        kind: "merge",
+        text: "Pull request #1 waits for your merge",
+        verb: "Merge",
+        target: { kind: "change", repository: "app", number: 1 },
+      },
+    },
+    {
+      case: "a failed stage does not hide a release either (D28)",
+      input: STAGE_FAILED_WITH_RELEASE,
+      step: {
+        kind: "release",
+        text: "1 change is merged and not live",
+        verb: "Release v0.1.0",
+        target: { kind: "release", tag: "v0.1.0" },
       },
     },
     {
@@ -417,7 +451,14 @@ describe("groupFlow", () => {
         },
         { gate: { allowed: true }, suggestion: "v0.1.1", waiting: 2 },
       ),
-      expected: { kind: "deploy-failed", line: "v0.1.0", stop: { state: "failed" } },
+      // The failure does not swallow the release that might clear it (D28):
+      // a broken production still carries the candidate a new tag would cut.
+      expected: {
+        kind: "deploy-failed",
+        line: "v0.1.0",
+        stop: { state: "failed" },
+        candidate: { tag: "v0.1.1", waiting: 2 },
+      },
     },
     {
       case: "empty: it runs nothing and there is nothing to release",
@@ -439,6 +480,35 @@ describe("groupFlow", () => {
     },
   ])("reads production as $case", ({ production, expected }) => {
     expect(production).toMatchObject(expected);
+  });
+
+  it("still ranks a failed production above the release, unlike a failed stage", () => {
+    const flow = groupFlow({
+      ...FSADFDASFSA,
+      stops: [
+        {
+          ...FSADFDASFSA.stops[0]!,
+          row: declared({
+            projectId: "p-prod",
+            name: "production",
+            tier: "production",
+            appVersionName: MAIN_SHA,
+            status: "failure",
+          }),
+          deployment: runs(MAIN_SHA),
+        },
+      ],
+    });
+    expect(flow.nextStep).toEqual({
+      kind: "fix-deploy",
+      text: "The last deploy to production failed",
+      verb: "See the build",
+      target: { kind: "stop", projectId: "p-prod" },
+    });
+    expect(flow.production).toMatchObject({
+      kind: "deploy-failed",
+      candidate: { tag: "v0.1.0", waiting: 1 },
+    });
   });
 
   // Wren has been spoken to, so an empty flow asks for no first task.

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { groupFlow, type GroupFlowInput } from "./groupFlow.ts";
+import { deployedVersion, environmentRow } from "./groupRows.ts";
 import { mateNextStep } from "./mateNextStep.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
+
+const MAIN_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
@@ -103,6 +106,49 @@ describe("mateNextStep", () => {
         running: "Releasing…",
       },
     );
+  });
+
+  it("offers the release that might clear a failed production deploy, not nothing", () => {
+    const failed = flow({
+      ...FSADFDASFSA_INPUT,
+      stops: [
+        {
+          projectId: "p-prod",
+          name: "production",
+          tier: "production",
+          row: environmentRow({
+            projectId: "p-prod",
+            name: "production",
+            tier: "production",
+            sources: "release",
+            environment: "production",
+            services: [
+              {
+                hostname: "app",
+                appVersionName: MAIN_SHA,
+                statuses: [{ context: "mate/deploy/production/app", state: "failure" }],
+              },
+            ],
+          }),
+          deployment: {
+            state: "known",
+            value: { kind: "running", activatedAt: null, version: deployedVersion(MAIN_SHA) },
+            asOf: { ordinal: 1, atMs: 0 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          },
+          route: undefined,
+        },
+      ],
+    });
+    expect(mateNextStep({ group: failed, mateProjectId: "p-juno", mateName: "Juno" })).toEqual({
+      kind: "release",
+      tag: "v0.1.0",
+      waiting: 1,
+      title: "Release v0.1.0 to production",
+      verb: "Release v0.1.0",
+      running: "Releasing…",
+    });
   });
 
   it("offers adding production once the merge has landed on main (sm-fixture, after #1)", () => {

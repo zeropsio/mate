@@ -77,8 +77,14 @@ export function mateNextStep(input: {
     };
 
   const production = group.production;
-  if (production.kind === "ready-to-release") {
-    const { tag, waiting } = production.candidate;
+  // A failed deploy does not hide the release that might clear it (D28): a
+  // broken production still carries a candidate where one is offered.
+  const candidate =
+    production.kind === "ready-to-release" || production.kind === "deploy-failed"
+      ? production.candidate
+      : undefined;
+  if (candidate !== undefined) {
+    const { tag, waiting } = candidate;
     return {
       kind: "release",
       tag,

@@ -160,9 +160,20 @@ export type GroupFlowProduction =
   /** No production yet: `addable` says whether *Add production* is offered. */
   | { readonly kind: "absent"; readonly line: string; readonly addable: boolean }
   | {
-      readonly kind: "checking" | "empty" | "live" | "deploy-failed";
+      readonly kind: "checking" | "empty" | "live";
       readonly stop: GroupFlowStop;
       readonly line: string;
+    }
+  | {
+      /**
+       * The last deploy failed. `candidate` still carries what a release
+       * would tag where one is offered (D28) — the failure does not hide the
+       * new release that might clear it.
+       */
+      readonly kind: "deploy-failed";
+      readonly stop: GroupFlowStop;
+      readonly line: string;
+      readonly candidate: { readonly tag: string; readonly waiting: number } | undefined;
     }
   | {
       readonly kind: "ready-to-release";
@@ -278,14 +289,11 @@ function productionOf(
     stop.state === "checking"
       ? CHECKING_WHAT_RUNS
       : (stop.version?.label ?? PRODUCTION_NOTHING_LIVE);
-  if (stop.state === "failed") return { kind: "deploy-failed", stop, line };
-  if (releaseOffered(input))
-    return {
-      kind: "ready-to-release",
-      stop,
-      line,
-      candidate: { tag: input.release.suggestion, waiting: input.release.waiting },
-    };
+  const candidate = releaseOffered(input)
+    ? { tag: input.release.suggestion, waiting: input.release.waiting }
+    : undefined;
+  if (stop.state === "failed") return { kind: "deploy-failed", stop, line, candidate };
+  if (candidate !== undefined) return { kind: "ready-to-release", stop, line, candidate };
   if (stop.state === "checking") return { kind: "checking", stop, line };
   return { kind: stop.state === "empty" ? "empty" : "live", stop, line };
 }
@@ -297,13 +305,19 @@ function releaseOffered(input: GroupFlowInput): boolean {
 /** The one step, worst first; `projectAttention` decides every kind it has. */
 function nextStepOf(
   input: GroupFlowInput,
-  stops: ReadonlyArray<GroupFlowStop>,
   pullRequests: ReadonlyArray<GroupFlowPullRequest>,
   production: GroupFlowProduction,
 ): GroupNextStep {
+  // A stage is never what anything downstream waits behind (D28): only the
+  // production's own failure — already tracked on `production` — ranks
+  // above a merge or a release. A stage's own failure stays on its own row.
+  const failedProduction =
+    production.kind === "deploy-failed"
+      ? [{ projectId: production.stop.projectId, name: production.stop.name }]
+      : [];
   const attention = projectAttention({
     waitingMates: input.mates.filter((mate) => mate.waiting),
-    failedStops: stops.filter((stop) => stop.state === "failed"),
+    failedStops: failedProduction,
     pullRequests: input.pullRequests,
     notLive: input.release.waiting,
     canRelease: production.kind !== "absent" && input.release.gate.allowed,
@@ -388,7 +402,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     main,
     stages,
     production,
-    nextStep: nextStepOf(input, stops, pullRequests, production),
+    nextStep: nextStepOf(input, pullRequests, production),
   };
 }
 
