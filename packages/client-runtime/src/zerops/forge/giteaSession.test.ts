@@ -196,6 +196,30 @@ describe("the account's Gitea sessions", () => {
     expect(brokerPosts(w)).toHaveLength(1);
   });
 
+  it("a client made with a signal ends its requests on it", async () => {
+    const w = world({
+      wrapFetch: (fetch) =>
+        (async (input: string | URL | Request, init?: RequestInit) =>
+          String(input).includes("/tags")
+            ? new Promise<Response>((_resolve, reject) => {
+                // As `fetch` does: a signal already ended rejects at once.
+                if (init?.signal?.aborted === true) reject(init.signal.reason);
+                init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+                  once: true,
+                });
+              })
+            : fetch(input, init)) as Fetch,
+    });
+    w.demand();
+    await w.time.advance(0);
+    const controller = new AbortController();
+    const client = w.sessions.clientFor(HARNESS_GITEA_ORIGIN, undefined, controller.signal);
+    if (client === null) throw new Error("no Gitea client");
+    const read = client.listTags("acme", "group");
+    controller.abort(new DOMException("The read's owner is gone.", "AbortError"));
+    await expect(read).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("Gitea down: after 2 failures regions show the cause; at most one mint per rung", async () => {
     const w = world();
     w.broker.answer("unreachable");

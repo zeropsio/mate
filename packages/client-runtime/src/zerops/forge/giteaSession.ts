@@ -89,9 +89,13 @@ export interface GiteaSessions {
    * a 401 — also while what was read still stands without one, and while a reacquire runs on after
    * a request's 401 went unrecovered. `onUnauthorized` is told each time one of its requests ends
    * in Gitea's 401 that no token recovered: whatever that request's reader made of it is not an
-   * answer.
+   * answer. `signal` ends the client's requests, each of which also ends by its own deadline.
    */
-  readonly clientFor: (giteaOrigin: string, onUnauthorized?: () => void) => GiteaClient | null;
+  readonly clientFor: (
+    giteaOrigin: string,
+    onUnauthorized?: () => void,
+    signal?: AbortSignal,
+  ) => GiteaClient | null;
   /** §6.4's visible wake: waits for Gitea or the broker are tried again now. */
   readonly wake: () => void;
   /** The tab is visible again after a short hide: what came due while it was hidden runs now. */
@@ -392,7 +396,7 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
         listeners.delete(listener);
       };
     },
-    clientFor: (giteaOrigin, onUnauthorized = () => undefined) => {
+    clientFor: (giteaOrigin, onUnauthorized = () => undefined, signal) => {
       const origin = normalize(giteaOrigin);
       const entry = entries.get(origin);
       if (entry === undefined || !giteaSessionReadable(entry.machine)) return null;
@@ -401,6 +405,7 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
         // Replaced per request by the token `fetchAsPerson` waited for.
         token: () => giteaSessionToken(entry.machine) ?? "",
         fetch: fetchAsPerson(origin, onUnauthorized),
+        signal,
       });
     },
     wake: () => toEvery({ type: "WAKE" }),
