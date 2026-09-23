@@ -23,8 +23,6 @@ import { RETRY_JITTER, RETRY_RUNGS_MS } from "../knowledge/retryPolicy.ts";
 
 /** "Gitea still setting up": 5 s rising to 60 s. */
 export const PENDING_RUNGS_MS: ReadonlyArray<number> = [5_000, 10_000, 20_000, 40_000, 60_000];
-/** The broker, or Zerops behind the mint, does not answer: 10 s rising to 60 s. */
-export const UNAVAILABLE_RUNGS_MS: ReadonlyArray<number> = [10_000, 20_000, 40_000, 60_000];
 /** A refusal is asked again this long after it was said, while the tab is visible. */
 export const REFUSED_RETRY_MS = 5 * 60_000;
 /** This many Gitea 401s inside the window refuse instead of reacquiring again. */
@@ -259,7 +257,8 @@ function failed(
       };
     }
     case "unreachable": {
-      const { retryAt, rung } = retryAfter(machine, UNAVAILABLE_RUNGS_MS, ctx);
+      // A transient failure: the broker, or Zerops behind the mint, is retried on the common ladder.
+      const { retryAt, rung } = retryAfter(machine, RETRY_RUNGS_MS, ctx);
       return {
         ...machine,
         rung,
