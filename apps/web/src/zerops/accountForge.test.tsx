@@ -283,6 +283,37 @@ describe("the account's project flow in the web", () => {
     expect(rig.stopDemands).toEqual([]);
   });
 
+  it("a stop joining or leaving the rows keeps every other stop's demand", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStopDeployments } = await import("./accountForge");
+    const rig = stage();
+    const unbind = bindAccountFlow(rig.stage);
+    const production = { ...PROJECT, projectId: "p-prod" } as ProjectRef;
+
+    function Rows({ stops }: { readonly stops: ReadonlyArray<ProjectRef> }) {
+      useStopDeployments(stops);
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      root.render(<Rows stops={[PROJECT]} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      root.render(<Rows stops={[PROJECT, production]} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage", "p-prod"]));
+      expect(rig.stopDemandCalls()).toBe(2);
+      root.render(<Rows stops={[production]} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
+      expect(rig.stopDemandCalls()).toBe(2);
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+    expect(rig.stopDemands).toEqual([]);
+  });
+
   it("a group's flow demands what it reads as it learns more, and lets it all go at unmount", async () => {
     const document = installTestDom();
     const { createRoot } = await import("react-dom/client");
