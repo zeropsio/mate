@@ -932,18 +932,6 @@ const KNOWN_VALUE_READ_EXCEPTIONS: ReadonlyMap<string, string> = new Map([
     "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx deployment.value",
     "state-model 4.4: the deployment store answers which services run nothing as a selector",
   ],
-  ...[
-    "apps/web/src/components/ChatView.logic.ts agentAuth.value",
-    "apps/web/src/components/ChatView.tsx zeropsAgentAuthRead.value",
-    "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx agentAuthRead.value",
-    "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx agentAuth.value",
-  ].map(
-    (read) =>
-      [
-        read,
-        "state-model 1.4 follow-up: the Mate feed consumers narrow a Known in web; a cr/zerops selector answers them",
-      ] as const,
-  ),
 ]);
 
 interface KnownValueRead {

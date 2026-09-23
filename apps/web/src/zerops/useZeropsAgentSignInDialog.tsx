@@ -21,6 +21,7 @@
  *
  * @module useZeropsAgentSignInDialog
  */
+import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { EnvironmentId, ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
 import { useCallback, useState, type ReactNode } from "react";
 
@@ -52,7 +53,7 @@ export function useZeropsAgentSignInDialog(
       agentId={openAgentId}
       onClose={() => setOpenAgentId(null)}
       projectName={options?.projectName ?? null}
-      snapshot={agentAuth?.state === "known" ? agentAuth.value : null}
+      snapshot={zeropsAgentAuthView(agentAuth).snapshot}
       threadRef={threadRef}
     />
   );

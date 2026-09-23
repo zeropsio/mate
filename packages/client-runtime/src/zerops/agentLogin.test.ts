@@ -14,8 +14,10 @@ import {
   classifyAgentLogin,
   classifyAgentRowLogin,
   zeropsAgentAuthNeedsAttention,
+  zeropsAgentAuthView,
   zeropsAgentSignInRequired,
 } from "./agentLogin.ts";
+import type { FailureReason, Known } from "./knowledge/index.ts";
 
 const agent = (
   overrides: Partial<ZeropsAgentAuth> & { agentId: "claude-code" | "codex" },
@@ -403,5 +405,92 @@ describe("zeropsAgentSignInRequired", () => {
     },
   ])("is $expected when $name", ({ snapshot: input, expected }) => {
     expect(zeropsAgentSignInRequired(input)).toBe(expected);
+  });
+});
+
+describe("zeropsAgentAuthView", () => {
+  const SNAPSHOT: ZeropsAgentAuthSnapshot = {
+    available: true,
+    agents: [agent({ agentId: "codex" })],
+  };
+  const failed = (failure: FailureReason): Known<ZeropsAgentAuthSnapshot> => ({
+    state: "failed",
+    failure,
+    atMs: 0,
+    attempt: 1,
+    retryAtMs: null,
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly read: Known<ZeropsAgentAuthSnapshot> | undefined;
+    readonly expected: ReturnType<typeof zeropsAgentAuthView>;
+  }>([
+    {
+      name: "an unread feed is no snapshot, and the region checks",
+      read: { state: "unread", waitingFor: null },
+      expected: {
+        snapshot: null,
+        unknown: {
+          text: "Checking which coding agents are signed in…",
+          afterMs: 400,
+          tone: "quiet",
+        },
+      },
+    },
+    {
+      name: "a feed waiting for its Mate says so",
+      read: { state: "unread", waitingFor: "mate-session" },
+      expected: {
+        snapshot: null,
+        unknown: { text: "Waiting for this Mate to connect…", afterMs: 0, tone: "quiet" },
+      },
+    },
+    {
+      name: "a failed read names its cause",
+      read: failed({ kind: "transport", detail: "closed" }),
+      expected: {
+        snapshot: null,
+        unknown: {
+          text: "Couldn't read which coding agents are signed in. This Mate didn't answer.",
+          afterMs: 0,
+          tone: "alert",
+        },
+      },
+    },
+    {
+      name: "an old Mate without the feed says it is too old",
+      read: failed({ kind: "unsupported", capability: "subscribeZeropsAgentAuth" }),
+      expected: {
+        snapshot: null,
+        unknown: {
+          text: "This Mate is too old for this. Updating it adds it.",
+          afterMs: 0,
+          tone: "alert",
+        },
+      },
+    },
+    {
+      name: "a known snapshot is kept while stale",
+      read: {
+        state: "known",
+        value: SNAPSHOT,
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: {
+          kind: "stale",
+          reason: { kind: "source-recovering", retryAtMs: null },
+          sinceMs: 0,
+        },
+      },
+      expected: { snapshot: SNAPSHOT, unknown: null },
+    },
+    {
+      name: "no environment to read says nothing",
+      read: undefined,
+      expected: { snapshot: null, unknown: null },
+    },
+  ])("$name", ({ read, expected }) => {
+    expect(zeropsAgentAuthView(read)).toEqual(expected);
   });
 });

@@ -301,6 +301,26 @@ describe("ZeropsPanel agent authorization ownership", () => {
     },
   );
 
+  it("an unread agent-auth feed never renders as no coding agents: the tray says it is checking", () => {
+    feedState.topology = resolved(VIEW);
+    const html = renderToStaticMarkup(
+      <ZeropsPanel
+        agentAuthCard={null}
+        agentAuthUnknown={{
+          text: "Checking which coding agents are signed in…",
+          afterMs: 400,
+          tone: "quiet",
+        }}
+        threadRef={THREAD_REF}
+      />,
+    );
+
+    expect(html).toContain("data-zerops-agent-auth-tray");
+    expect(html).toContain("Checking which coding agents are signed in…");
+    expect(html).toContain("animation-delay:400ms");
+    expect(html).not.toContain("data-zerops-agent-auth-card");
+  });
+
   it.each([
     {
       name: "not authorized while topology is pending",

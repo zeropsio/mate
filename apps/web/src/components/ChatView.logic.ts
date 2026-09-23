@@ -3,6 +3,7 @@ import { resolveAgentAuthorizer, type LocalAgentSigners } from "../zerops/useZer
 import { resolveZeropsAgentPickerPanelView } from "./zerops/ZeropsAgentPickerPanel.logic";
 import {
   resolveZeropsAgentAvailability,
+  zeropsAgentAuthReads,
   zeropsAgentAvailabilityIsRunnable,
   type ZeropsAgentAvailability,
 } from "@t3tools/client-runtime/zerops/agentAvailability";
@@ -409,13 +410,10 @@ export function resolveComposerProviderSelection(input: {
  * Per-instance zerops runnability (D6), derived once from the agent-auth
  * feed so the composer's selection gate and the model picker's panels read
  * the same answer for the same instance. `undefined` when nothing gates the
- * agents — no environment to read, a non-Zerops environment
- * (`available: false`), or a failed read, an old Mate's `unsupported`
- * included: the composer offers no retry for one, so gating on it would
- * hide the models with no way out, and the server's turn refusal stays the
- * authority. Every caller then falls back to pre-zerops behavior. While the
- * snapshot is still being read, every agent instance is `unknown` with that
- * read — never `needs-sign-in`.
+ * agents — no environment to read, or whatever `zeropsAgentAuthReads` leaves
+ * ungated (a non-Zerops environment, a failed read). Every caller then falls
+ * back to pre-zerops behavior. While the snapshot is still being read, every
+ * agent instance is `unknown` with that read — never `needs-sign-in`.
  */
 export function resolveZeropsProviderAvailability(input: {
   readonly entries: ReadonlyArray<ProviderInstanceEntry>;
@@ -424,44 +422,28 @@ export function resolveZeropsProviderAvailability(input: {
   readonly localSigners: LocalAgentSigners;
   readonly recordFailed: ReadonlySet<ZeropsAgentId>;
 }): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
-  const agentAuth = input.agentAuth;
-  if (agentAuth === undefined || agentAuth.state === "gone" || agentAuth.state === "failed") {
-    return undefined;
-  }
-  if (agentAuth.state === "known" && !agentAuth.value.available) return undefined;
+  if (input.agentAuth === undefined) return undefined;
+  const reads = zeropsAgentAuthReads(input.agentAuth, (agent) => ({
+    credPresent: agent.credPresent,
+    flagToken: agent.flagToken,
+    providerAuth: agent.providerAuth,
+    state: agent.state,
+    loginPhase: agent.login?.phase,
+    authorizedBy: resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, input.localSigners),
+  }));
+  if (reads === undefined) return undefined;
   const map = new Map<ProviderInstanceId, ZeropsAgentAvailability>();
   for (const entry of input.entries) {
     const agentId = agentIdForProviderInstance(entry.instanceId);
     if (agentId === undefined) continue;
-    if (agentAuth.state !== "known") {
-      map.set(
-        entry.instanceId,
-        resolveZeropsAgentAvailability({ agent: agentAuth, viewerSubject: input.viewerSubject }),
-      );
-      continue;
-    }
-    const agent = agentAuth.value.agents.find((candidate) => candidate.agentId === agentId);
+    const agent = reads(agentId);
     if (agent === undefined) continue;
     map.set(
       entry.instanceId,
       resolveZeropsAgentAvailability({
-        agent: {
-          ...agentAuth,
-          value: {
-            credPresent: agent.credPresent,
-            flagToken: agent.flagToken,
-            providerAuth: agent.providerAuth,
-            state: agent.state,
-            loginPhase: agent.login?.phase,
-            authorizedBy: resolveAgentAuthorizer(
-              agent.agentId,
-              agent.authorizedBy,
-              input.localSigners,
-            ),
-          },
-        },
+        agent,
         viewerSubject: input.viewerSubject,
-        recordFailed: input.recordFailed.has(agent.agentId),
+        recordFailed: input.recordFailed.has(agentId),
       }),
     );
   }

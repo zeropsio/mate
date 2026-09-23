@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
+import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 
 import {
   resolveZeropsAgentAvailability,
+  zeropsAgentAuthReads,
   zeropsAgentAvailabilityIsRunnable,
   type ZeropsAgentAuthFacts,
   type ZeropsAgentAuthRead,
   type ZeropsAgentAvailability,
 } from "./agentAvailability.ts";
-import type { FailureReason, Freshness } from "./knowledge/index.ts";
+import type { FailureReason, Freshness, Known } from "./knowledge/index.ts";
 
 const JAN = "jan-user-id";
 const EVA = "eva-user-id";
@@ -315,4 +317,54 @@ describe("zeropsAgentAvailabilityIsRunnable", () => {
       expect(zeropsAgentAvailabilityIsRunnable(availability)).toBe(expected);
     },
   );
+});
+
+describe("zeropsAgentAuthReads", () => {
+  const SNAPSHOT: ZeropsAgentAuthSnapshot = {
+    available: true,
+    agents: [{ agentId: "codex", flagOAuth: true, ...signedIn }],
+  };
+  const facts = (row: ZeropsAgentAuthSnapshot["agents"][number]): ZeropsAgentAuthFacts => ({
+    state: row.state,
+    providerAuth: row.providerAuth,
+    credPresent: row.credPresent,
+    flagToken: row.flagToken,
+    authorizedBy: { subject: JAN },
+  });
+  const knownSnapshot = (snapshot: ZeropsAgentAuthSnapshot): Known<ZeropsAgentAuthSnapshot> => ({
+    state: "known",
+    value: snapshot,
+    asOf: { ordinal: 1, atMs: 1_000 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+
+  it("an unread snapshot is every agent's read, never a snapshot without agents", () => {
+    const read: Known<ZeropsAgentAuthSnapshot> = { state: "reading", sinceMs: 0, attempt: 1 };
+    const reads = zeropsAgentAuthReads(read, facts);
+    expect(reads?.("codex")).toEqual(read);
+    expect(reads?.("claude-code")).toEqual(read);
+  });
+
+  it("a known snapshot answers with each agent's own row, and nothing for one it does not carry", () => {
+    const reads = zeropsAgentAuthReads(knownSnapshot(SNAPSHOT), facts);
+    expect(reads?.("codex")).toEqual(known(facts(SNAPSHOT.agents[0]!)));
+    expect(reads?.("claude-code")).toBeUndefined();
+  });
+
+  it.each<{ readonly name: string; readonly read: Known<ZeropsAgentAuthSnapshot> }>([
+    { name: "a Mate outside Zerops", read: knownSnapshot({ available: false, agents: [] }) },
+    {
+      name: "a failed read",
+      read: {
+        state: "failed",
+        failure: { kind: "unsupported", capability: "subscribeZeropsAgentAuth" },
+        atMs: 0,
+        attempt: 1,
+        retryAtMs: null,
+      },
+    },
+  ])("nothing gates the agents on $name", ({ read }) => {
+    expect(zeropsAgentAuthReads(read, facts)).toBeUndefined();
+  });
 });

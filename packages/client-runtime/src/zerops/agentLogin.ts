@@ -23,6 +23,13 @@ import {
   type ZeropsAgentAuthFields,
 } from "@t3tools/shared/zeropsAgentAuth";
 
+import {
+  knownPresentation,
+  type Known,
+  type KnownMessage,
+  type KnownSurface,
+} from "./knowledge/index.ts";
+
 type AgentAuthFields = ZeropsAgentAuthFields;
 
 /**
@@ -225,4 +232,44 @@ export function zeropsAgentSignInRequired(snapshot: ZeropsAgentAuthSnapshot): bo
       return kind === "not-authorized" || kind === "reconnect" || kind === "needs-reauth";
     })
   );
+}
+
+/** The agent-auth feed as its surfaces read it (DESIGN §2.C C13, §3.4). */
+export interface ZeropsAgentAuthView {
+  /**
+   * The snapshot once known, kept while stale: what the card lists and what a sign-in, the
+   * dialog and the signer record act on. `null` until then.
+   */
+  readonly snapshot: ZeropsAgentAuthSnapshot | null;
+  /**
+   * While no snapshot is known, what the agents' region says instead of listing none: that it
+   * is checking, or why the read failed. `null` once known, or with no environment to read.
+   */
+  readonly unknown: KnownMessage | null;
+}
+
+const AGENT_AUTH_SURFACE: KnownSurface<ZeropsAgentAuthSnapshot> = {
+  subject: "which coding agents are signed in",
+  entity: "Mate",
+  source: "mate",
+  checking: "Checking which coding agents are signed in…",
+  negative: null,
+};
+
+/**
+ * The one reading of the agent-auth feed. `undefined` is no environment to read. A feed not
+ * known yet is not a Mate without agents: its region says so, and nothing asks for a sign-in.
+ * Only the message is used, and none of the states it renders reads the clock; the Mate's
+ * update offer is not known here, so none is made.
+ */
+export function zeropsAgentAuthView(
+  read: Known<ZeropsAgentAuthSnapshot> | undefined,
+): ZeropsAgentAuthView {
+  if (read === undefined) return { snapshot: null, unknown: null };
+  if (read.state === "known") return { snapshot: read.value, unknown: null };
+  return {
+    snapshot: null,
+    unknown: knownPresentation(read, AGENT_AUTH_SURFACE, { nowMs: 0, updateOffered: false })
+      .message,
+  };
 }

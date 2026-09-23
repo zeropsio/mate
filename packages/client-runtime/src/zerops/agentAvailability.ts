@@ -56,7 +56,11 @@ import {
   type ZeropsAgentAuthFields,
   type ZeropsAgentAuthKind,
 } from "@t3tools/shared/zeropsAgentAuth";
-import type { ZeropsAgentLoginPhase } from "@t3tools/contracts";
+import type {
+  ZeropsAgentAuthSnapshot,
+  ZeropsAgentId,
+  ZeropsAgentLoginPhase,
+} from "@t3tools/contracts";
 
 import type { ZeropsAgentAuthorizer } from "./agentOwnership.ts";
 import type { Known } from "./knowledge/index.ts";
@@ -104,6 +108,39 @@ export type ZeropsAgentAuthRead = Exclude<Known<ZeropsAgentAuthFacts>, { readonl
 
 /** A read that holds no row yet: unread, reading, or failed with its cause. */
 export type ZeropsAgentAuthUnknown = Exclude<ZeropsAgentAuthRead, { readonly state: "known" }>;
+
+/**
+ * Each agent's sign-in as a read, from the environment's agent-auth snapshot. While the
+ * snapshot holds no row, every agent's read is the snapshot's own (unread or reading), never a
+ * snapshot without agents; once known, stale or not, each agent's own row through `facts`, and
+ * `undefined` for an agent the snapshot does not carry.
+ *
+ * `undefined` when nothing gates the agents: a Mate outside Zerops (`available: false`), or a
+ * failed read, an old Mate's `unsupported` included. Nothing offers a retry for one, so gating
+ * on it would hide the models with no way out, and the server's turn refusal stays the
+ * authority (T-L17). A Mate feed never proves absence, so `gone` gates nothing either.
+ */
+export function zeropsAgentAuthReads(
+  snapshot: Known<ZeropsAgentAuthSnapshot>,
+  facts: (row: ZeropsAgentAuthSnapshot["agents"][number]) => ZeropsAgentAuthFacts,
+): ((agentId: ZeropsAgentId) => ZeropsAgentAuthRead | undefined) | undefined {
+  switch (snapshot.state) {
+    case "gone":
+    case "failed":
+      return undefined;
+    case "unread":
+    case "reading":
+      return () => snapshot;
+    case "known": {
+      if (!snapshot.value.available) return undefined;
+      const rows = snapshot.value.agents;
+      return (agentId) => {
+        const row = rows.find((candidate) => candidate.agentId === agentId);
+        return row === undefined ? undefined : { ...snapshot, value: facts(row) };
+      };
+    }
+  }
+}
 
 export interface ZeropsAgentAvailabilityInput {
   readonly agent: ZeropsAgentAuthRead;

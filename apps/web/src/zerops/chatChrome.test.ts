@@ -4,6 +4,8 @@ import {
   type ScopedThreadRef,
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
+import type { ZeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
+import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -71,19 +73,48 @@ const ONE_OF_TWO: ZeropsAgentAuthSnapshot = {
 // any agent (a Zerops environment `zcp studio` has not answered for yet).
 const UNAVAILABLE: ZeropsAgentAuthSnapshot = { available: false, agents: [] };
 
-const AUTH_STATES = [
-  { label: "before agent auth answers", value: undefined, signInRequired: false },
-  // The card used to disappear here (no agent needs attention); it is the
-  // agents' own home, so it stays as long as the feed itself is available.
-  { label: "when agent auth needs no attention", value: NO_ATTENTION, signInRequired: false },
+const CHECKING: KnownMessage = {
+  text: "Checking which coding agents are signed in…",
+  afterMs: 400,
+  tone: "quiet",
+};
+
+/** A known snapshot, as `zeropsAgentAuthView` reads it. */
+const known = (snapshot: ZeropsAgentAuthSnapshot): ZeropsAgentAuthView => ({
+  snapshot,
+  unknown: null,
+});
+
+const AUTH_STATES: ReadonlyArray<{
+  readonly label: string;
+  readonly value: ZeropsAgentAuthView;
+  readonly signInRequired: boolean;
+}> = [
+  // Not a Mate without agents: the agents' region says it is checking.
   {
-    label: "when one agent is authorized and the other is not",
-    value: ONE_OF_TWO,
+    label: "before agent auth answers",
+    value: { snapshot: null, unknown: CHECKING },
     signInRequired: false,
   },
-  { label: "when no agent is authorized", value: ATTENTION, signInRequired: true },
-  { label: "when the feed itself is unavailable", value: UNAVAILABLE, signInRequired: false },
-] as const;
+  // The card used to disappear here (no agent needs attention); it is the
+  // agents' own home, so it stays as long as the feed itself is available.
+  {
+    label: "when agent auth needs no attention",
+    value: known(NO_ATTENTION),
+    signInRequired: false,
+  },
+  {
+    label: "when one agent is authorized and the other is not",
+    value: known(ONE_OF_TWO),
+    signInRequired: false,
+  },
+  { label: "when no agent is authorized", value: known(ATTENTION), signInRequired: true },
+  {
+    label: "when the feed itself is unavailable",
+    value: known(UNAVAILABLE),
+    signInRequired: false,
+  },
+];
 
 const CASES = THREADS.flatMap((thread) =>
   TOPOLOGIES.flatMap((topologyState) =>
@@ -100,6 +131,7 @@ const CASES = THREADS.flatMap((thread) =>
               threadRef: null,
               panel: "unknown" as const,
               agentAuthCard: null,
+              agentAuthUnknown: null,
               agentSignInRequired: false,
               projectName: null,
             }
@@ -107,7 +139,10 @@ const CASES = THREADS.flatMap((thread) =>
               threadRef: thread.value,
               panel: topologyState.panel,
               agentAuthCard:
-                authState.value !== undefined && authState.value.available ? authState.value : null,
+                authState.value.snapshot !== null && authState.value.snapshot.available
+                  ? authState.value.snapshot
+                  : null,
+              agentAuthUnknown: authState.value.unknown,
               agentSignInRequired: authState.signInRequired,
               projectName: null,
             },
@@ -124,12 +159,13 @@ describe("resolveZeropsChatChrome", () => {
     expect(
       resolveZeropsChatChrome(null, {
         topology: topology({ project: { id: "project-1", name: "acme-docs-dev" } }),
-        agentAuth: undefined,
+        agentAuth: { snapshot: null, unknown: null },
       }),
     ).toEqual({
       threadRef: null,
       panel: "unknown",
       agentAuthCard: null,
+      agentAuthUnknown: null,
       agentSignInRequired: false,
       projectName: "acme-docs-dev",
     });
@@ -139,14 +175,14 @@ describe("resolveZeropsChatChrome", () => {
     expect(
       resolveZeropsChatChrome(THREAD_REF, {
         topology: topology({ project: { id: "project-1", name: "  zerops-xyz  " } }),
-        agentAuth: NO_ATTENTION,
+        agentAuth: known(NO_ATTENTION),
       }).projectName,
     ).toBe("zerops-xyz");
 
     expect(
       resolveZeropsChatChrome(THREAD_REF, {
         topology: undefined,
-        agentAuth: NO_ATTENTION,
+        agentAuth: known(NO_ATTENTION),
       }).projectName,
     ).toBeNull();
   });

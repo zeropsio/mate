@@ -13,10 +13,14 @@ import { useRightPanelStore } from "../../rightPanelStore";
  * which grows it out of the control plane's card, beside the Mate who lives
  * there. Only while the map cannot identify this environment's service — the
  * project unread, or read and found without one — does the card stand on its
- * own under a heading.
+ * own under a heading. While the agent-auth feed has no snapshot, the card's
+ * place says so instead of showing no agents.
  */
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
+import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import { useState } from "react";
+
+import { cn } from "~/lib/utils";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
@@ -38,12 +42,15 @@ import { MicroLabel } from "./primitives";
 export function ZeropsPanel({
   threadRef,
   agentAuthCard,
+  agentAuthUnknown = null,
   agentAuthSnapshot,
   runningToolLabel,
 }: {
   readonly threadRef: ScopedThreadRef | null;
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
-  readonly agentAuthSnapshot?: ZeropsAgentAuthSnapshot | undefined;
+  /** While the agent-auth feed has no snapshot: that it is checking, or why the read failed. */
+  readonly agentAuthUnknown?: KnownMessage | null;
+  readonly agentAuthSnapshot?: ZeropsAgentAuthSnapshot | null | undefined;
   /** The caller's own reading of `ZeropsThreadModel.running` (`ChatView`) — the map never derives this itself. */
   readonly runningToolLabel?: string | undefined;
 }) {
@@ -100,7 +107,11 @@ export function ZeropsPanel({
     }),
   );
   const agents =
-    agentAuthCard === null ? null : (
+    agentAuthCard === null ? (
+      agentAuthUnknown === null ? null : (
+        <ZeropsAgentAuthUnknown message={agentAuthUnknown} />
+      )
+    ) : (
       <ZeropsAgentAuthCard
         onCancel={cancelAgentLogin}
         onRetryRecord={signerRecord.retry}
@@ -196,6 +207,24 @@ export function ZeropsPanelPlaceholder() {
   return (
     <p className="text-muted-foreground text-sm" data-zerops-panel-placeholder>
       Reading the project…
+    </p>
+  );
+}
+
+/** The card's place while the agent-auth feed has no snapshot: checking, or why not. */
+function ZeropsAgentAuthUnknown({ message }: { readonly message: KnownMessage }) {
+  return (
+    <p
+      className={cn(
+        "text-muted-foreground text-sm",
+        // A placeholder waits a beat before it says anything, so a quick
+        // answer never flickers "Checking…".
+        message.afterMs > 0 && "animate-zerops-appear",
+      )}
+      data-zerops-agent-auth-unknown
+      style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
+    >
+      {message.text}
     </p>
   );
 }

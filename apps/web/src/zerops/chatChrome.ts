@@ -2,10 +2,14 @@
  * The Zerops decisions shared by the chat header, overlay, and right panel.
  *
  * This is a pure projection, never a feed subscriber or panel controller:
- * ChatView reads the snapshots and the consumers keep their own rendering and
+ * ChatView reads the feeds and the consumers keep their own rendering and
  * command wiring.
  */
-import { zeropsAgentSignInRequired } from "@t3tools/client-runtime/zerops/agentLogin";
+import {
+  zeropsAgentSignInRequired,
+  type ZeropsAgentAuthView,
+} from "@t3tools/client-runtime/zerops/agentLogin";
+import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 
@@ -28,6 +32,11 @@ export interface ZeropsChatChrome {
    */
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
   /**
+   * While the feed has no snapshot, what the card's place says instead of
+   * showing no agents: that it is checking, or why the read failed.
+   */
+  readonly agentAuthUnknown: KnownMessage | null;
+  /**
    * Whether the lifecycle band asks for a coding-agent sign-in. Narrower than
    * the card: one authorized agent is enough to work, so this is true only
    * when no agent is authorized (`docs/spec-mate.md` §5.4).
@@ -46,7 +55,7 @@ export function resolveZeropsChatChrome(
   threadRef: ScopedThreadRef | null,
   input: {
     readonly topology: ZeropsTopologyView | undefined;
-    readonly agentAuth: ZeropsAgentAuthSnapshot | undefined;
+    readonly agentAuth: ZeropsAgentAuthView;
   },
 ): ZeropsChatChrome {
   const topologyProjectName = input.topology?.project.name.trim();
@@ -57,13 +66,14 @@ export function resolveZeropsChatChrome(
       threadRef: null,
       panel: "unknown",
       agentAuthCard: null,
+      agentAuthUnknown: null,
       agentSignInRequired: false,
       projectName,
     };
   }
 
   const panel = input.topology === undefined ? "unknown" : "available";
-  const agentAuth = input.agentAuth;
+  const agentAuth = input.agentAuth.snapshot;
 
   return {
     threadRef,
@@ -71,7 +81,8 @@ export function resolveZeropsChatChrome(
     projectName,
     // The panel owns the snapshot even while closed. Chat chrome may expose an
     // in-flow entry to that panel, but never render the card over the timeline.
-    agentAuthCard: agentAuth !== undefined && agentAuth.available ? agentAuth : null,
-    agentSignInRequired: agentAuth !== undefined && zeropsAgentSignInRequired(agentAuth),
+    agentAuthCard: agentAuth !== null && agentAuth.available ? agentAuth : null,
+    agentAuthUnknown: input.agentAuth.unknown,
+    agentSignInRequired: agentAuth !== null && zeropsAgentSignInRequired(agentAuth),
   };
 }

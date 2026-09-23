@@ -301,7 +301,7 @@ import {
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
-import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
+import { agentAuthAction, zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import {
   creationJobSendable,
   MATE_REVIEW_MERGE_LABEL,
@@ -2309,9 +2309,12 @@ export default function ChatView(props: ChatViewProps) {
   // because the composer's own selection gate needs it: a candidate whose
   // agent this viewer cannot run must never become the selection (D6).
   const zeropsAgentAuthRead = useZeropsAgentAuth(activeThreadEnvironmentId);
-  // The sign-in surfaces below show a snapshot once one is known, kept while stale.
-  const zeropsAgentAuth =
-    zeropsAgentAuthRead?.state === "known" ? zeropsAgentAuthRead.value : undefined;
+  // The sign-in surfaces below act on a snapshot once one is known, kept
+  // while stale; until then the agents' region says it is checking.
+  const zeropsAgentAuth = useMemo(
+    () => zeropsAgentAuthView(zeropsAgentAuthRead),
+    [zeropsAgentAuthRead],
+  );
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
   // The record this client wrote itself counts until the snapshot carries it.
   const zeropsLocalSigners = useLocalAgentSigners();
@@ -3731,7 +3734,7 @@ export default function ChatView(props: ChatViewProps) {
   // conversation); every row reads how it went by environment.
   useZeropsAgentSignerRecord({
     environmentId: activeThreadEnvironmentId,
-    snapshot: zeropsAgentAuth ?? null,
+    snapshot: zeropsAgentAuth.snapshot,
     projectId: useZeropsEnvironmentProjectId(activeThreadEnvironmentId),
   });
   const zeropsMateReview = useZeropsMateReview(activeThreadRef);
@@ -3749,7 +3752,7 @@ export default function ChatView(props: ChatViewProps) {
   // The agent this composer would actually spend — the selected provider
   // instance, resolved to one of the two agents Mate signs people in to. A
   // driver Mate never signs anybody in to has no signer to speak of.
-  const zeropsOwnedAgent = zeropsAgentAuth?.agents.find(
+  const zeropsOwnedAgent = zeropsAgentAuth.snapshot?.agents.find(
     (agent) =>
       agent.agentId ===
       agentIdForProviderInstance(
@@ -7560,7 +7563,8 @@ export default function ChatView(props: ChatViewProps) {
               return (
                 <ZeropsPanel
                   agentAuthCard={zeropsChrome.agentAuthCard}
-                  agentAuthSnapshot={zeropsAgentAuth}
+                  agentAuthUnknown={zeropsChrome.agentAuthUnknown}
+                  agentAuthSnapshot={zeropsAgentAuth.snapshot}
                   runningToolLabel={zeropsThreadModel.running?.kicker}
                   threadRef={zeropsChrome.threadRef}
                 />
