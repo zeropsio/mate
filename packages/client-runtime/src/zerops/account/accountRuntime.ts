@@ -61,6 +61,12 @@ export type {
   DoorRequest,
   RegisteredEnvironment,
 } from "./environments.ts";
+export {
+  evidenceProjectRefs,
+  heldEvidence,
+  inventoryProjectRefs,
+  pendingDenials,
+} from "./inventoryDemand.ts";
 
 export interface AccountRuntimePorts {
   /** The epoch's data runtime, which the host built for the verified principal. */

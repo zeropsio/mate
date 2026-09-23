@@ -804,23 +804,23 @@ it.live(
     ),
 );
 
-it.live("a first mount whose data never arrives offers a way off 20 s after its grant (G10)", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      // Granted, while the push half never gets its registrations answered.
-      const harness = yield* mountInventory(["kept"], { holdRegistrations: true });
-      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
-      yield* harness.advance(19_000);
-      expect(harness.grantsWhenChildMounted()).toBeNull();
-      expect(harness.container.textContent).not.toContain("Try again");
+it.live(
+  "a first mount whose data never arrives mounts on its grant and waits on nothing (D2)",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // Granted, while the push half never gets its registrations answered.
+        const harness = yield* mountInventory(["kept"], { holdRegistrations: true });
+        expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
+        expect(harness.grantsWhenChildMounted()).toBe(1);
+        expect(harness.inventory()?.isLoading).toBe(true);
 
-      yield* harness.advance(1_000);
+        yield* harness.advance(20_000);
 
-      expect(harness.container.textContent).toContain("Still checking your Zerops projects.");
-      expect(harness.container.textContent).toContain("Try again");
-      expect(harness.container.textContent).toContain("Sign out");
-    }),
-  ),
+        expect(harness.container.textContent).not.toContain("Still checking your Zerops projects.");
+        expect(harness.container.textContent).not.toContain("Try again");
+      }),
+    ),
 );
 
 it.live("Try again asks the grant to renew now and re-reads no inventory", () =>

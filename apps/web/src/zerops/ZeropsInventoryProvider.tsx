@@ -1,14 +1,17 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
+  evidenceProjectRefs,
+  heldEvidence,
+  inventoryProjectRefs,
+  pendingDenials,
+} from "@t3tools/client-runtime/zerops/account/runtime";
+import {
   interestKeyOf,
   organizationKeyOf,
   projectRecordToZeropsProject,
   serviceRecordToZeropsService,
-  type AccessState,
-  type Evidence,
   type GrantFailure,
-  type GrantMachine,
   type InterestState,
   type OrganizationRef,
   type ProjectRef,
@@ -38,73 +41,15 @@ import {
   stabilizeZeropsAtom,
   useZeropsAtomSelections,
   useZeropsData,
-  useZeropsDataInterest,
   zeropsKnowledgeArraysEqual,
 } from "./zeropsDataContext";
 
 export { useZeropsInventory } from "./inventoryContext";
 
-/**
- * The projects admitted evidence names: verified ones, those whose latest
- * read failed, and those a denial withholds until a confirming read (G6).
- * A confirmed denial is the only way a project leaves.
- */
-function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRef> {
-  if (evidence === null) return [];
-  const refs = new Map<string, ProjectRef>();
-  for (const { access } of evidence.projects.values()) {
-    if (access.role !== "NO_ACCESS")
-      refs.set(inventoryProjectRefKey(access.project), access.project);
-  }
-  for (const { project } of evidence.unverified.values()) {
-    if (!evidence.projects.has(project.projectId))
-      refs.set(inventoryProjectRefKey(project), project);
-  }
-  for (const { project, confirmation } of evidence.closedProjects.values()) {
-    if (confirmation.status === "due") refs.set(inventoryProjectRefKey(project), project);
-  }
-  return [...refs.values()];
-}
-
-/** The projects a denial withholds until its confirming read (G6), by `inventoryProjectRefKey`. */
-function pendingDenials(evidence: Evidence | null): ReadonlySet<string> {
-  if (evidence === null) return new Set();
-  return new Set(
-    [...evidence.closedProjects.values()]
-      .filter(({ confirmation }) => confirmation.status === "due")
-      .map(({ project }) => inventoryProjectRefKey(project)),
-  );
-}
-
-/** Evidence projects plus those a command established since, from the runtime's grant. */
-export function inventoryProjectRefs(
-  granted: ReadonlyArray<ProjectRef>,
-  access: AccessState | undefined,
-): ReadonlyArray<ProjectRef> {
-  const refs = new Map(granted.map((ref) => [inventoryProjectRefKey(ref), ref]));
-  const established =
-    access?.status === "verified"
-      ? access.projects
-      : access?.status === "verifying" || access?.status === "failed"
-        ? (access.previous?.projects ?? [])
-        : [];
-  for (const { project: ref, role } of established) {
-    if (role !== "NO_ACCESS") refs.set(inventoryProjectRefKey(ref), ref);
-  }
-  return [...refs.values()];
-}
-
 type OrganizationInventoryDescriptor = Extract<
   RuntimeInterestDescriptor,
   { readonly kind: "organization-inventory" }
 >;
-
-const heldEvidence = (grant: GrantMachine): Evidence | null =>
-  grant.phase.phase === "granted"
-    ? grant.phase.evidence
-    : grant.phase.phase === "lapsed"
-      ? grant.phase.last
-      : null;
 
 /**
  * A project's service list can go transiently unread mid-re-projection (its
@@ -122,25 +67,6 @@ export function carryForwardServiceOutcome(
   if (computed.status === "resolved") return computed;
   const prior = previous.get(projectId);
   return prior?.status === "resolved" ? prior : computed;
-}
-
-/**
- * Whether the inventory round is incomplete only because the tab is
- * backgrounded: every demanded interest that hasn't reached `observing` is
- * `paused` on purpose (`pauseForBackground`), not stuck or failed. It
- * resolves on its own the moment the tab is visible again, so the wait
- * screen should read as "waiting for the tab", not "still checking".
- */
-export function isPausedOnlyRound(demanded: ReadonlyArray<InterestState | undefined>): boolean {
-  return (
-    demanded.some((interest) => interest?.status === "paused") &&
-    demanded.every((interest) => interest?.status === "paused" || interest?.status === "observing")
-  );
-}
-
-function InterestDemand({ descriptor }: { readonly descriptor: RuntimeInterestDescriptor }) {
-  useZeropsDataInterest(descriptor);
-  return null;
 }
 
 function demandedInterest(
@@ -308,6 +234,10 @@ function AccessLapse({
  * services, and the access grant the runtime interprets (DESIGN §4.2) — the
  * evidence that names the projects, each project's authority, and the lapse.
  *
+ * It holds no demand of its own: the account runtime holds the inventories it
+ * reads (DESIGN §5 L7). Its gate mounts the product on the epoch's first grant
+ * (D2), while those inventories may still be unread.
+ *
  * It publishes the runtime, the session and, once the product mounts, the
  * inventory into the account's atom registry (`state/zerops.ts`): the one base
  * the derived candidate listing, names, Mates and topology read, which starts
@@ -451,8 +381,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const previousOutcomes = prevServiceOutcomesRef.current;
     const resolvedOrCarried = (projectId: string, computed: InventoryServiceOutcome) =>
       carryForwardServiceOutcome(previousOutcomes, projectId, computed);
-    // Whether every project and its services are read; how live the push is
-    // is the first mount's concern alone.
+    // Whether every project and its services are read.
     let complete = evidence !== null;
     for (const ref of knownProjectRefs) {
       const key = inventoryProjectRefKey(ref);
@@ -541,16 +470,12 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         blocked.set(organizationKeyOf(organization), organization);
       }
     }
-    const observing = demanded.every(({ interest }) => interest?.status === "observing");
-    const pausedOnly = isPausedOnlyRound(demanded.map(({ interest }) => interest));
     return {
       projects,
       services,
       projectRefs,
       read: complete,
-      established: complete && observing,
       blockedOrganizations: [...blocked.values()],
-      pausedOnly,
     };
   }, [
     denied,
@@ -571,14 +496,15 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         ? "Some project access or services could not be verified."
         : null;
 
-  // The first mount waits for its data as well as its grant (G10), and the
-  // runtime holds the grant before the gate opens: `ready` is what mounts the
-  // children, and the first thing some of them do is lease a resource — which
-  // the broker refuses until the runtime holds a grant. Opening the gate first
-  // made `/zerops/new` fail its locations read on every cold load (measured
-  // 2026-09-20).
+  // The account gate: the first mount waits for the epoch's first grant and
+  // for nothing else (D2, §9 C10) — services render per region as they arrive.
+  // The runtime holds the grant before the gate opens: `ready` is what mounts
+  // the children, and the first thing some of them do is lease a resource —
+  // which the broker refuses until the runtime holds a grant. Opening the gate
+  // first made `/zerops/new` fail its locations read on every cold load
+  // (measured 2026-09-20).
   const firstRound =
-    phase.phase === "granted" && access?.status === "verified" && projected.established
+    phase.phase === "granted" && access?.status === "verified"
       ? phase.evidence.account.round
       : null;
   const ready = admitted || firstRound !== null;
@@ -628,12 +554,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
 
   return (
     <>
-      {organizationDescriptors.map((descriptor) => (
-        <InterestDemand key={interestKeyOf(descriptor)} descriptor={descriptor} />
-      ))}
-      {projectDescriptors.map((descriptor) => (
-        <InterestDemand key={interestKeyOf(descriptor)} descriptor={descriptor} />
-      ))}
       {!ready ? (
         visibleError !== null ? (
           <div role="alert" className="p-8">
@@ -645,8 +565,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               Sign out
             </button>
           </div>
-        ) : projected.pausedOnly ? (
-          <ZeropsLandingWait label="Paused while this tab is in the background…" />
         ) : grant.overdue ? (
           <div role="alert" className="p-8">
             Still checking your Zerops projects.{" "}

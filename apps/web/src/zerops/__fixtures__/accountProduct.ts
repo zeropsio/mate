@@ -13,13 +13,17 @@ import {
   selectLocationChoice,
   type ZeropsResourceAdapter,
 } from "@t3tools/client-runtime/zerops/data";
+import { candidatesNotice, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { SidebarZeropsTree } from "../../components/zerops/SidebarZeropsTree";
 import { ZeropsDataProvider } from "../ZeropsDataProvider";
 import { useZeropsInventory, withheldProjectNotice } from "../inventoryContext";
+import { useNowMs } from "../useNowMs";
+import { useZeropsCandidates } from "../useZeropsCandidates";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
 import { useKnown, useZeropsData } from "../zeropsDataContext";
 import { harnessRuntime } from "./harnessRuntime";
@@ -91,4 +95,27 @@ export function OrganizationLocations({ organizationId }: { readonly organizatio
   const shown = useKnown(runtime.resources.known(request));
   const names = selectLocationChoice(shown).locations.map(({ name }) => name);
   return [`locations: ${shown.state}`, ...names].join(" ");
+}
+
+/** How the menu's Mate tree names the listing it is drawn from, as the sidebar names it. */
+const SIDEBAR_SURFACE = {
+  subject: "your projects",
+  entity: "project",
+  source: "zerops",
+  checking: "Reading your projects…",
+  negative: null,
+} as const;
+
+/** The menu's Mate tree over the account's listing, wired the way the sidebar wires it. */
+export function SidebarListing() {
+  const { listing } = useZeropsCandidates();
+  const nowMs = useNowMs();
+  const held = heldCandidates(listing);
+  return createElement(SidebarZeropsTree, {
+    candidates: held.rows,
+    complete: held.complete,
+    notice: candidatesNotice(listing, SIDEBAR_SURFACE, nowMs),
+    onSelect: () => undefined,
+    onBrowseProjects: () => undefined,
+  });
 }
