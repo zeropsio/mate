@@ -1989,6 +1989,141 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
+  it.effect(
+    "retries a failed interest on the live receiver when the tab returns before a pause",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const opened = yield* Queue.unbounded<{
+          readonly handle: ReceiverHandle;
+          readonly events: Queue.Queue<ReceiverEvent>;
+        }>();
+        const registrations: RegistrationRequest[] = [];
+        let closes = 0;
+        const adapter: ZeropsDataAdapter = {
+          openReceiver: (_scope, organization, identity) =>
+            Effect.gen(function* () {
+              const events = yield* Queue.unbounded<ReceiverEvent>();
+              const handle: ReceiverHandle = {
+                identity,
+                organization,
+                delivery: "hot-single-consumer-buffered-before-open-resolves",
+                events: Stream.fromQueue(events),
+              };
+              yield* Queue.offer(opened, { handle, events });
+              return handle;
+            }),
+          register: (_receiver, request) => {
+            registrations.push(request);
+            return request.descriptor.kind === "current-metrics"
+              ? Effect.fail({
+                  _tag: "ZeropsDataAdapterError",
+                  kind: "registration",
+                  message: "metrics unavailable",
+                  retryable: true,
+                  accountRevocationEvidence: false,
+                } satisfies AdapterError)
+              : Effect.succeed({ responseObservations: [] });
+          },
+          read: () => Effect.succeed({ observations: [] }),
+          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          closeReceiver: () => Effect.sync(() => void (closes += 1)),
+        };
+        const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
+        const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          visibility: {
+            current: Ref.get(visibilityState),
+            changes: Stream.fromQueue(visibilityChanges),
+          },
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+          Queue.offerUnsafe(states, state);
+        });
+        const leaseScope = yield* Scope.make();
+        const topology = yield* runtime.acquire(topologyDescriptor).pipe(Scope.provide(leaseScope));
+        const metrics = yield* runtime
+          .acquire({ kind: "project-current-metrics", project: topologyDescriptor.project })
+          .pipe(Scope.provide(leaseScope));
+        const live = yield* Queue.take(opened);
+        const settled = yield* waitForState(
+          states,
+          (state) =>
+            state.interests.get(topology.interest)?.interest.status === "observing" &&
+            state.interests.get(metrics.interest)?.interest.status === "failed",
+        );
+        const topologyIdentity = settled.interests.get(topology.interest)!.interest.identity;
+        const metricsAttempts = registrations.filter(
+          (request) => request.descriptor.kind === "current-metrics",
+        ).length;
+
+        // Hidden for less than the pause: the receiver stays open, and the return retries
+        // only the failed interest, on that same receiver.
+        yield* Ref.set(visibilityState, "hidden");
+        yield* Queue.offer(visibilityChanges, "hidden");
+        yield* Ref.set(visibilityState, "visible");
+        yield* Queue.offer(visibilityChanges, "visible");
+        yield* waitForState(
+          states,
+          (state) =>
+            state.interests.get(metrics.interest)?.interest.status === "failed" &&
+            registrations.filter((request) => request.descriptor.kind === "current-metrics")
+              .length > metricsAttempts,
+        );
+        expect(yield* Queue.size(opened)).toBe(0);
+        expect(closes).toBe(0);
+        const afterResume = yield* runtime.state;
+        expect(afterResume.interests.get(topology.interest)?.interest.identity).toBe(
+          topologyIdentity,
+        );
+        expect(
+          afterResume.interests.get(metrics.interest)?.interest.identity.receiver.receiverId,
+        ).toBe(live.handle.identity.receiverId);
+
+        // The topology interest is still fed by the receiver it registered on.
+        const serviceRegistration = registrations.find(
+          (request) =>
+            request.descriptor.kind === "entity-updates" && request.descriptor.entity === "service",
+        )!;
+        const pushed = ZeropsServiceId.make("service-after-resume");
+        yield* Queue.offer(live.events, {
+          kind: "observation",
+          input: {
+            kind: "service-lifecycle-observed",
+            ref: { kind: "service", project: topologyDescriptor.project, serviceId: pushed },
+            observation: {
+              source: "native-push",
+              registration: serviceRegistration as Extract<
+                RegistrationRequest,
+                {
+                  readonly descriptor: {
+                    readonly kind: "entity-updates";
+                    readonly entity: "service";
+                  };
+                }
+              >,
+              fields: { status: "RUNNING", updatedAt: null },
+              metadata: {},
+            },
+          },
+          bytes: 1,
+        });
+        yield* waitForState(states, (state) =>
+          [...state.inventory.services.values()].some((record) => record.ref.serviceId === pushed),
+        );
+
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        unsubscribe();
+        registry.dispose();
+      }),
+  );
+
   it.effect("keeps a healthy receiver push-driven across repeated former repair intervals", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();

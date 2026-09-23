@@ -2238,16 +2238,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         if (resumingOrganizationKeys.has(record.organizationKey))
           hydrationFailures.delete(entityKey);
       }
-      const replacements = new Map<string, RuntimeReceiver>();
+      // A paused tab has no receivers left, so each organization gets a fresh one. A tab that
+      // returned before the pause still holds its live receiver, which keeps serving the
+      // interests observing on it: a failed interest retries there rather than replacing it.
       for (const runtimeInterest of toResume) {
-        const organization = organizationOfInterest(runtimeInterest.descriptor);
-        const organizationKey = organizationKeyOf(organization);
-        let receiver = replacements.get(organizationKey);
-        if (receiver === undefined) {
-          receiver = makeReceiver(organization);
-          replacements.set(organizationKey, receiver);
-          receivers.set(organizationKey, receiver);
-        }
+        const receiver = receiverFor(organizationOfInterest(runtimeInterest.descriptor));
         const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
         yield* applyControl({ kind: "interest-upserted", interest: desired });
       }
