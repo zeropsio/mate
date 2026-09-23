@@ -22,9 +22,10 @@
  * when it is sent. A 401 is reported with the token that request carried, so a late 401 for a
  * token already replaced never ends the new one; the request then waits up to
  * {@link REQUEST_QUEUE_MS} for the reacquired token and is sent once more; a 401 to that retry
- * ends the token it carried too. A 401 that no token recovered is told to the client's reader,
- * whose read then answered nothing, and to the session: while its reacquire runs on nothing is
- * readable, so the reader reads again when the next token arrives.
+ * ends the token it carried too, and where another read's 401 has already brought a newer one
+ * back, the request is sent again with that. A 401 after which no newer token is held is told to
+ * the client's reader, whose read then answered nothing, and to the session: nothing is readable
+ * until the next token arrives, so the reader reads again then.
  */
 import { acquireGiteaPersonToken, MateCredentialError } from "../../authorization/giteaBroker.ts";
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
@@ -291,6 +292,12 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
     );
   };
 
+  /** The token held now, without waiting for one being acquired. */
+  const heldToken = (origin: string): string | undefined => {
+    const entry = entries.get(origin);
+    return entry === undefined ? undefined : giteaSessionToken(entry.machine);
+  };
+
   /** The token to send now, waiting up to {@link REQUEST_QUEUE_MS} for one being acquired. */
   const tokenFor = (origin: string): Promise<string | undefined> => {
     const entry = entries.get(origin);
@@ -322,26 +329,26 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
         onUnauthorized();
         dispatch(origin, { type: "UNRECOVERED" });
       };
-      const sent = await tokenFor(origin);
+      let sent = await tokenFor(origin);
       if (sent === undefined) {
         unrecovered();
         throw new GiteaApiError("You are not signed in to Gitea.", 401);
       }
-      const response = await ports.fetch(input, withBearer(init, sent));
+      let response = await ports.fetch(input, withBearer(init, sent));
       if (response.status !== 401) return response;
       dispatch(origin, { type: "UNAUTHORIZED", token: sent });
-      const next = await tokenFor(origin);
-      if (next === undefined || next === sent) {
-        unrecovered();
-        return response;
+      // Waited for once; after that only a token another read's 401 already brought back is used.
+      let next = await tokenFor(origin);
+      while (next !== undefined && next !== sent) {
+        void response.body?.cancel().catch(() => undefined);
+        sent = next;
+        response = await ports.fetch(input, withBearer(init, sent));
+        if (response.status !== 401) return response;
+        dispatch(origin, { type: "UNAUTHORIZED", token: sent });
+        next = heldToken(origin);
       }
-      void response.body?.cancel().catch(() => undefined);
-      const retried = await ports.fetch(input, withBearer(init, next));
-      if (retried.status === 401) {
-        dispatch(origin, { type: "UNAUTHORIZED", token: next });
-        unrecovered();
-      }
-      return retried;
+      unrecovered();
+      return response;
     };
 
   const entryFor = (origin: string): Entry => {

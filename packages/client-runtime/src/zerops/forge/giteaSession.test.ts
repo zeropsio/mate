@@ -509,6 +509,46 @@ describe("the account's Gitea sessions", () => {
       expect(w.gitea.requests().at(-1)?.bearer).toBe("gitea-token-3");
     });
 
+    it("to a retry whose token another read's 401 already replaced sends it once more with the newer token", async () => {
+      // The first request to carry token-2 is held at Gitea until the test lets it answer.
+      let holdRetry = true;
+      let answerRetry: () => void = () => undefined;
+      const w = world({
+        wrapFetch: (fetch) =>
+          (async (input: string | URL | Request, init?: RequestInit) => {
+            const bearer = new Headers(init?.headers).get("authorization");
+            if (holdRetry && bearer === "Bearer gitea-token-2") {
+              holdRetry = false;
+              await new Promise<void>((resolve) => {
+                answerRetry = resolve;
+              });
+            }
+            return fetch(input, init);
+          }) as Fetch,
+      });
+      w.gitea.setTags("acme", "group", ["v1.0.0"]);
+      w.demand();
+      await w.time.advance(0);
+      w.gitea.revoke("gitea-token-1");
+      w.gitea.revoke("gitea-token-2");
+      let unauthorized = 0;
+
+      // A's 401 brings token-2 back; its retry is held while B's 401 on token-2 brings token-3.
+      const first = w.sessions
+        .clientFor(HARNESS_GITEA_ORIGIN, () => {
+          unauthorized += 1;
+        })
+        ?.listTags("acme", "group");
+      await w.time.advance(0);
+      await expect(readTags(w.sessions)).resolves.toEqual([{ name: "v1.0.0" }]);
+      answerRetry();
+
+      await expect(first).resolves.toEqual([{ name: "v1.0.0" }]);
+      expect(unauthorized).toBe(0);
+      expect(w.gitea.requests().at(-1)?.bearer).toBe("gitea-token-3");
+      expect(w.view().readable).toBe(true);
+    });
+
     it("whose reacquire outlasts the request's wait makes nothing readable until the token arrives", async () => {
       let answerBroker: (() => void) | null = null;
       let brokerSlow = false;

@@ -14,7 +14,8 @@
  * Gitea 401 reacquires without dropping what was read, and what was read stands, stale, while the
  * session gets another token — the cause named beside it after two failed acquisitions; the third
  * 401 in 10 minutes refuses. Once a request's reader got the 401 as its answer, nothing is readable
- * until the next token arrives, so every such reader reads again then. A refusal is asked again every 5 minutes while the tab is visible.
+ * until the next token arrives, so every such reader reads again then. A refusal is asked again
+ * every 5 minutes while the tab is visible.
  * `expiresIn` is honoured, and the token renewed only while a surface wants it.
  */
 import type { Instant } from "../data/access/grant.ts";
