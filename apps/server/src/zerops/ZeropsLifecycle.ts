@@ -29,7 +29,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -207,6 +206,11 @@ export const make = (options: ZeropsLifecycleOptions) =>
           ),
         );
 
+    // A state folded over an unread row would be persisted over it and drop
+    // its envelope, so an event that cannot be read against its thread's
+    // state is dropped instead; the next one reads again. Any other failure
+    // or defect in the fold drops its event the same way: one bad event must
+    // not stop the ingest for every other thread.
     const ingest = (event: SpiEvent): Effect.Effect<void> =>
       writeMutex.withPermits(1)(
         Effect.gen(function* () {
@@ -218,20 +222,7 @@ export const make = (options: ZeropsLifecycleOptions) =>
             return;
           }
 
-          // A state folded over an unread row would be persisted over it and
-          // drop its envelope, so an event that cannot be read against its
-          // thread's state is dropped instead. The next one reads again. A
-          // defect is dropped the same way: one bad row must not stop the
-          // ingest for every other thread.
-          const loaded = yield* Effect.result(Effect.sandbox(load(event.threadId)));
-          if (Result.isFailure(loaded)) {
-            yield* Effect.logWarning("Dropped a Zerops lifecycle event: stored state unreadable", {
-              threadId: event.threadId,
-              cause: loaded.failure,
-            });
-            return;
-          }
-          const previous = loaded.success;
+          const previous = yield* load(event.threadId);
           const at = yield* DateTime.now;
           const resultText = call.result?.text;
           const failed = call.result?.failed === true;
@@ -261,11 +252,18 @@ export const make = (options: ZeropsLifecycleOptions) =>
           yield* Ref.update(cache, (current) => new Map(current).set(next.threadId, next));
           yield* persist(next, at);
           yield* PubSub.publish(yield* channel(next.threadId), next);
-        }),
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Dropped a Zerops lifecycle event", {
+              threadId: event.threadId,
+              cause,
+            }),
+          ),
+        ),
       );
 
     // The ingest is the feed's only writer, so it must not end quietly: a
-    // defect in the event stream or in the reducer is logged and the stream
+    // failure of the event stream itself is logged and the stream
     // resubscribed, backing off to one attempt every 30 s. A run that lasted
     // longer than that was healthy, so the failure that ended it starts the
     // backoff from the first rung again.

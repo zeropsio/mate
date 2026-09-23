@@ -515,6 +515,54 @@ describe("ZeropsLifecycle", () => {
       ).pipe(Effect.provide(persistence)),
   );
 
+  it.effect("a defect while extracting one event's envelope does not stop the next event", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // The real bus is a fresh PubSub subscription per run, so an event
+        // published while the ingest is down is never seen.
+        const bus = yield* PubSub.unbounded<SpiEvent>();
+        const subscribed = yield* Deferred.make<void>();
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const lifecycle = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.unwrap(
+            Effect.gen(function* () {
+              const subscription = yield* PubSub.subscribe(bus);
+              yield* Deferred.succeed(subscribed, undefined);
+              return Stream.fromSubscription(subscription);
+            }),
+          ),
+          repository,
+        });
+
+        // A tool call whose result text is not a string: extracting its
+        // envelope throws.
+        const wellFormed = claudeEvent({ threadId: OTHER_THREAD });
+        const malformed = {
+          ...wellFormed,
+          toolCall: {
+            ...wellFormed.toolCall!,
+            result: { text: null as unknown as string, failed: false },
+          },
+        } as SpiEvent;
+
+        const subscription = yield* lifecycle.subscribe(THREAD);
+        const next = yield* Stream.runHead(subscription.changes).pipe(
+          Effect.timeoutOption("1 minute"),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(subscribed);
+        yield* PubSub.publish(bus, malformed);
+        yield* PubSub.publish(bus, claudeEvent({}));
+        yield* TestClock.adjust("1 minute");
+        const delivered = Option.flatten(yield* Fiber.join(next));
+
+        expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
+          Option.some("develop-active"),
+        );
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
   it.effect("reads a thread's state back after a restart", () =>
     Effect.scoped(
       Effect.gen(function* () {
