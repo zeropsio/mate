@@ -275,6 +275,10 @@
       "types": "./src/zerops/knowledge/index.ts",
       "default": "./src/zerops/knowledge/index.ts"
     },
+    "./zerops/projections": {
+      "types": "./src/zerops/projections/index.ts",
+      "default": "./src/zerops/projections/index.ts"
+    },
     "./zerops/account": {
       "types": "./src/zerops/account/session.ts",
       "default": "./src/zerops/account/session.ts"
