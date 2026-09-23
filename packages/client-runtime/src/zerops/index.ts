@@ -53,19 +53,6 @@ export {
 } from "./session.ts";
 
 export {
-  ZEROPS_REFRESH_LOCK,
-  ZEROPS_SESSION_OWNER_STORAGE_KEY,
-  makeZeropsSessionDriver,
-  parseZeropsSessionOwner,
-  probeZeropsPrincipal,
-  type ZeropsPrincipalVerdict,
-  type ZeropsSessionDriver,
-  type ZeropsSessionOwner,
-  type ZeropsSessionPorts,
-  type ZeropsSessionState,
-} from "./account/session.ts";
-
-export {
   ZEROPS_CAPTCHA_ERROR_CODE,
   buildZeropsRegistrationBody,
   isZeropsCaptchaRejection,
