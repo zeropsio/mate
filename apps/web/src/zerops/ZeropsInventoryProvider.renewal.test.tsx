@@ -22,7 +22,11 @@ const person: ZeropsUser = {
  * run on their own between moves, so the harness's task turns go by.
  */
 async function admittedProduct(
-  options: { readonly before?: (harness: AccountHarness) => void } = {},
+  options: {
+    readonly before?: (harness: AccountHarness) => void;
+    /** How long the first round's project read takes to answer. */
+    readonly firstRoundMs?: number;
+  } = {},
 ) {
   vi.useFakeTimers({
     toFake: ["Date", "performance", "setTimeout", "clearTimeout"],
@@ -37,6 +41,8 @@ async function admittedProduct(
     signedIn: "user-1",
   });
   options.before?.(harness);
+  const firstRead =
+    options.firstRoundMs === undefined ? null : harness.rest.hold("GET /project/p1");
   let mounts = 0;
   const tab: MountedTab = await mountTab(harness, harness.browser.openTab(), {
     page: async () => {
@@ -56,11 +62,20 @@ async function admittedProduct(
       );
     },
   });
-  expect(tab.text()).toContain(CHILD);
   const pass = (ms: number) => tab.run(() => vi.advanceTimersByTimeAsync(ms));
+  // The first round's read is out, so the round started no later than this.
+  const firstRoundBy = performance.now();
+  if (firstRead !== null) {
+    expect(firstRead.waiting()).toBe(1);
+    await pass(options.firstRoundMs!);
+    expect(tab.text()).not.toContain(CHILD);
+    await tab.run(() => firstRead.release());
+    await pass(0);
+  }
+  expect(tab.text()).toContain(CHILD);
   const rounds = () =>
     harness.rest.requests().filter(({ route }) => route === "GET /user/info").length;
-  return { harness, tab, pass, rounds, mounts: () => mounts };
+  return { harness, tab, pass, rounds, mounts: () => mounts, firstRoundBy };
 }
 
 afterEach(async () => {
@@ -111,8 +126,7 @@ describe("ZeropsInventoryProvider renewal", () => {
 
   // The evidence runs out 15 min after its round started, whichever clock gets
   // there first: the monotonic one when the system clock is set back, the wall
-  // one when the machine sleeps (DESIGN G2, G5, T-L4). The round started before
-  // the product was admitted, so 15 min after admission is past its deadline.
+  // one when the machine sleeps (DESIGN G2, G5).
   it.each([
     [
       "the monotonic clock",
@@ -154,6 +168,23 @@ describe("ZeropsInventoryProvider renewal", () => {
       });
     },
   );
+
+  it("a round that answers 40 s after it started ends its writes 15 min after it started", async () => {
+    const { harness, tab, pass, firstRoundBy } = await admittedProduct({ firstRoundMs: 40_000 });
+    harness.rest.hang("GET /user/info");
+    const write = () =>
+      tab.run(() => tab.session().client.updateProjectGroupTags("p1", { label: "Renamed" }));
+    const toDeadline = () => firstRoundBy + 15 * MINUTE_MS - performance.now();
+
+    // Admitted 40 s into its round, the evidence is stamped when the round
+    // started, not when it answered (G2, T-L4).
+    await pass(toDeadline() - 10_000);
+    await expect(write()).resolves.toMatchObject({ id: "p1" });
+    await pass(toDeadline());
+    await expect(write()).rejects.toMatchObject({
+      message: "Project access could not be verified.",
+    });
+  });
 
   it("a lapse names its cause once, beside one way to try again", async () => {
     const { harness, tab, pass } = await admittedProduct();
