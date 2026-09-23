@@ -6,12 +6,16 @@ import {
   type ProjectRef,
   type ScopeAuthority,
 } from "@t3tools/client-runtime/zerops/data";
-import { describe, expect, it } from "vite-plus/test";
+import { act, createElement } from "react";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   conversationAccess,
+  InventoryContext,
   inventoryProjectRefKey,
   projectAuthority,
+  useProjectDialog,
   withheldProjectNotice,
   withheldProjectNotices,
   type Inventory,
@@ -129,5 +133,58 @@ describe("projectAuthority and conversationAccess", () => {
   ] as const)("%s", (_case, held, authority, access) => {
     expect(projectAuthority(held, "p1")).toEqual(authority);
     expect(conversationAccess(held, "p1")).toEqual(access);
+  });
+});
+
+describe("useProjectDialog", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // DESIGN §4.2 G6, G12: what a dialog captured of a project outlives the read that withholds it,
+  // so the dialog closes on the project's own withholding, not only on the account's lapse.
+  it.each([
+    ["an authorized project", "open on p1", inventory(AUTHORIZED)],
+    [
+      "a project without fresh evidence",
+      "closed",
+      inventory({ kind: "withheld", reason: "access-unverified", cause: null }),
+    ],
+    [
+      "a project a read was refused",
+      "closed",
+      inventory({ kind: "withheld", reason: "access-denied", cause: null }),
+    ],
+    ["a project proved lost", "closed", inventory(AUTHORIZED, AUTHORIZED, ["p1"])],
+    ["the account's lapse", "closed", inventory(AUTHORIZED, LAPSED)],
+  ] as const)("a dialog open on p1, then %s: %s", async (_case, shown, next) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    function Dialog() {
+      const [dialog, setDialog] = useProjectDialog(
+        (held: { readonly projectId: string }) => held.projectId,
+      );
+      return createElement(
+        "button",
+        { onClick: () => setDialog({ projectId: "p1" }) },
+        dialog === null ? "closed" : `open on ${dialog.projectId}`,
+      );
+    }
+    const tree = (value: Inventory) =>
+      createElement(InventoryContext, { value }, createElement(Dialog));
+    const shownNow = () => renderer.root.findByType("button").props.children as string;
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(tree(inventory(AUTHORIZED)));
+    });
+    await act(async () => {
+      renderer.root.findByType("button").props.onClick();
+    });
+    expect(shownNow()).toBe("open on p1");
+
+    await act(async () => {
+      renderer.update(tree(next));
+    });
+
+    expect(shownNow()).toBe(shown);
   });
 });
