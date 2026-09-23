@@ -1872,6 +1872,14 @@ describe("AL-06 account lifetime", () => {
       kind: "unexpected",
     });
   });
+
+  it("names an incomplete inventory by its cause alone, leaving the retry to the surface", async () => {
+    const client = new ZeropsApiClient({ fetch: async () => jsonResponse(200, {}) });
+    client.restoreSession(SESSION);
+    await expect(client.listAccessibleClientProjects("org")).rejects.toMatchObject({
+      message: "Zerops returned an incomplete project inventory.",
+    });
+  });
 });
 
 describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => {

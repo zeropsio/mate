@@ -739,7 +739,7 @@ async function readProjectPages<T extends { readonly id: string }>(
   const seen = new Set<string>();
   let expectedTotal: number | undefined;
   const incomplete = () =>
-    new ZeropsApiError("Zerops returned an incomplete project inventory. Try again.", "unexpected");
+    new ZeropsApiError("Zerops returned an incomplete project inventory.", "unexpected");
   if (!Number.isInteger(limit) || limit < 1) throw incomplete();
   for (let page = 0; page < 100; page += 1) {
     const response = await load(projects.length);
