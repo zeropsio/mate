@@ -11,6 +11,8 @@ import {
   type EnvironmentMachine,
 } from "./environmentMachine.ts";
 import { isTerminalReachability, selectReachability } from "./reachability.ts";
+import type { Instant } from "../data/access/grant.ts";
+import { explore } from "../testing/explore.ts";
 
 /**
  * DESIGN §11.3 I5, I7 and I9's reachability half over every event sequence the driver can send one target, breadth first
@@ -153,13 +155,45 @@ const step = (
     now: { wall: nowMs, mono: nowMs },
     random: () => 0.5,
   });
-  return { state: { machine: next.state, nowMs }, effects: next.effects };
+  return {
+    state:
+      next.state === state.machine && nowMs === state.nowMs
+        ? state
+        : { machine: next.state, nowMs },
+    effects: next.effects,
+  };
 };
 
-const keyOf = (state: ModelState): string =>
-  JSON.stringify(state, (_key, value: unknown) =>
-    value instanceof Map ? [...value.entries()] : value,
-  );
+/**
+ * Two states share a key when they differ only by a shift of the clock and of the attempt
+ * counter: the machine compares instants only with each other and with `now`, and an op's
+ * `attempt` only for equality, so every sequence from one checks as it does from the other. The
+ * guards' grant stamp stays absolute: 0 precedes every instant the model reaches, so no shift
+ * reorders it.
+ */
+const keyOf = ({ machine, nowMs }: ModelState): string =>
+  JSON.stringify(machine, (key, value: unknown) => {
+    if (typeof value === "number") {
+      switch (key) {
+        case "nextAttempt":
+          return undefined;
+        case "attempt":
+          return machine.nextAttempt - value;
+        case "sinceMs":
+          return value - nowMs;
+        default:
+          return value;
+      }
+    }
+    if (typeof value !== "object" || value === null) return value;
+    if (value instanceof Map) return [...value.entries()];
+    if ("wall" in value && "mono" in value) {
+      const instant = value as Instant;
+      return [instant.wall - nowMs, instant.mono - nowMs];
+    }
+    if (key === "authRejections") return (value as ReadonlyArray<number>).map((at) => at - nowMs);
+    return value;
+  });
 
 /** Every violation of I5, I7 and I9 in one transition, as readable strings. */
 const violations = (
@@ -268,34 +302,16 @@ const violations = (
 };
 
 describe("environment invariants (DESIGN §11.3 I5, I7, I9) over enumerated event sequences", () => {
-  it(`holds for every sequence to depth ${DEPTH}`, () => {
-    const initial: ModelState = { machine: initialEnvironment({ record: ENV_A }), nowMs: 100_000 };
-    let layer = new Map<string, { state: ModelState; path: ReadonlyArray<string> }>([
-      [keyOf(initial), { state: initial, path: [] }],
-    ]);
-    const seen = new Set<string>(layer.keys());
-    const found: Array<string> = [];
-    let transitions = 0;
-    for (let depth = 1; depth <= DEPTH && found.length === 0; depth += 1) {
-      const nextLayer = new Map<string, { state: ModelState; path: ReadonlyArray<string> }>();
-      for (const { state, path } of layer.values()) {
-        for (const event of eventsFrom(state)) {
-          const { state: after, effects } = step(state, event);
-          transitions += 1;
-          const trail = [...path, JSON.stringify(event)];
-          for (const violation of violations(state, effects, after)) {
-            found.push(`${violation}\n  after ${trail.join("\n  ")}`);
-          }
-          const key = keyOf(after);
-          if (!seen.has(key)) {
-            seen.add(key);
-            nextLayer.set(key, { state: after, path: trail });
-          }
-        }
-      }
-      layer = nextLayer;
-    }
-    expect(found.slice(0, 3)).toEqual([]);
-    expect(transitions).toBeGreaterThan(10_000);
+  it(`holds for every sequence to depth ${DEPTH}`, { timeout: 30_000 }, () => {
+    const report = explore({
+      roots: [{ machine: initialEnvironment({ record: ENV_A }), nowMs: 100_000 }],
+      depth: DEPTH,
+      events: eventsFrom,
+      step,
+      key: keyOf,
+      check: (before, _event, { state: after, effects }) => violations(before, effects, after),
+    });
+    expect(report.violations.slice(0, 3)).toEqual([]);
+    expect(report.transitions).toBeGreaterThan(10_000);
   });
 });
