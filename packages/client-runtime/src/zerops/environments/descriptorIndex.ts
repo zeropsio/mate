@@ -10,6 +10,8 @@
  *   a redeploy that dropped the Mate's data history. A credential held for it is left to its link,
  *   whose block re-reads the descriptor (§4.4), so a reading older than the credential never
  *   ends a live route. Nothing is retired for it: drafts keep their keys (AL-13).
+ * - An environment a target's descriptor reports while its machine still holds another's
+ *   credential waits on the descriptor: the machine's verdict speaks for the environment it holds.
  * - A descriptor serves an environment only for the target whose project it states
  *   (`zerops.projectId`): an origin answering for another project's Mate, or for no project, has
  *   answered and serves nothing here.
@@ -118,9 +120,16 @@ export function resolveEnvironment(
     by !== undefined &&
     by !== environmentId &&
     !holds(machine, environmentId);
+  // Found only by its descriptor while the machine holds another environment's credential: the
+  // machine's verdict is about that one, and its link's block re-reads the descriptor (§4.4).
+  const heldForAnother = named === undefined && machine.credential.kind === "held";
   return {
     key,
     machine,
-    reachability: replaced ? { kind: "replaced", by } : verdict,
+    reachability: replaced
+      ? { kind: "replaced", by }
+      : heldForAnother
+        ? { kind: "connecting", waitingOn: "descriptor" }
+        : verdict,
   };
 }

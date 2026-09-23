@@ -148,6 +148,11 @@ describe("resolveEnvironment", () => {
     credential: HELD_A,
     link: { phase: "connected", since: { wall: 0, mono: 0 } },
   });
+  const holdingB = present(KEY, {
+    record: ENV_B,
+    credential: { ...HELD_A, environmentId: ENV_B },
+    link: { phase: "connected", since: { wall: 0, mono: 0 } },
+  });
   const deepLinked = present(OTHER);
   const goneRemembered = present(KEY, {
     record: ENV_A,
@@ -195,6 +200,12 @@ describe("resolveEnvironment", () => {
       machines: new Map([[KEY, holding]]),
       index: index([[KEY, ENV_B]]),
       resolved: resolved(KEY, holding),
+    },
+    {
+      name: "found only by its descriptor, with a credential held for another: waits on the descriptor",
+      machines: new Map([[KEY, holdingB]]),
+      index: index([[KEY, ENV_A]]),
+      resolved: resolved(KEY, holdingB, { kind: "connecting", waitingOn: "descriptor" }),
     },
     {
       name: "gone outranks the descriptor's replacement",
