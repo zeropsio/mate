@@ -17,6 +17,7 @@ import {
   inventoryProjectRefs,
   isInterestBlocked,
   isPausedOnlyRound,
+  retryInvalidations,
 } from "./ZeropsInventoryProvider";
 
 const account = {
@@ -32,6 +33,42 @@ const project = (projectId: string): ProjectRef => ({
   kind: "project",
   organization,
   projectId: ZeropsProjectId.make(projectId),
+});
+
+describe("retryInvalidations", () => {
+  const other = { ...organization, organizationId: ZeropsOrganizationId.make("org-b") };
+  it.each([
+    {
+      name: "a grant not held is renewed now",
+      granted: false,
+      blocked: [],
+      want: [{ topic: "access", change: "renew-now" }],
+    },
+    {
+      name: "an organization whose data failed is read again, and a held grant is left alone",
+      granted: true,
+      blocked: [organization],
+      want: [{ topic: "inventory", organization }],
+    },
+    {
+      name: "a grant not held and failed data ask for both",
+      granted: false,
+      blocked: [organization, other],
+      want: [
+        { topic: "access", change: "renew-now" },
+        { topic: "inventory", organization },
+        { topic: "inventory", organization: other },
+      ],
+    },
+    {
+      name: "with nothing failed, a check still running asks the grant",
+      granted: true,
+      blocked: [],
+      want: [{ topic: "access", change: "renew-now" }],
+    },
+  ])("$name", ({ granted, blocked, want }) => {
+    expect(retryInvalidations({ granted, blockedOrganizations: blocked })).toEqual(want);
+  });
 });
 
 describe("inventoryProjectRefs", () => {

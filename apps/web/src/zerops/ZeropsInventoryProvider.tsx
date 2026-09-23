@@ -22,6 +22,7 @@ import {
   type GrantMachine,
   type Instant,
   type InterestState,
+  type OrganizationRef,
   type ProjectEffectiveAccess,
   type ProjectRef,
   type RuntimeInterestDescriptor,
@@ -35,6 +36,7 @@ import {
   type MateDiagnosticSpan,
 } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -312,6 +314,24 @@ export function isInterestBlocked(
     case "paused":
       return false;
   }
+}
+
+/**
+ * What "Try again" asks for (DESIGN §6.2): each organization whose data failed
+ * or stalled is read again, and the grant renews now when it is not held — or
+ * when nothing else failed, since the check still running is then the grant's.
+ */
+export function retryInvalidations(input: {
+  readonly granted: boolean;
+  readonly blockedOrganizations: ReadonlyArray<OrganizationRef>;
+}): ReadonlyArray<Invalidation> {
+  const reads = input.blockedOrganizations.map((organization): Invalidation => ({
+    topic: "inventory",
+    organization,
+  }));
+  return !input.granted || reads.length === 0
+    ? [{ topic: "access", change: "renew-now" }, ...reads]
+    : reads;
 }
 
 function makeInventorySnapshotSelector() {
@@ -857,29 +877,38 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     }
     prevServiceOutcomesRef.current = carryableOutcomes;
     const demanded = [
-      ...organizationDescriptors.map((descriptor) =>
-        demandedInterest(organizationReads.get(interestKeyOf(descriptor))?.observation, descriptor),
-      ),
-      ...projectDescriptors.map((descriptor) =>
-        demandedInterest(
+      ...organizationDescriptors.map((descriptor) => ({
+        organization: descriptor.organization,
+        interest: demandedInterest(
+          organizationReads.get(interestKeyOf(descriptor))?.observation,
+          descriptor,
+        ),
+      })),
+      ...projectDescriptors.map((descriptor) => ({
+        organization: descriptor.project.organization,
+        interest: demandedInterest(
           serviceReads.get(inventoryProjectRefKey(descriptor.project))?.observation,
           descriptor,
         ),
-      ),
+      })),
     ];
     const documentHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
-    const failedInterest = demanded.some((interest) =>
-      isInterestBlocked(interest, Date.now(), documentHidden),
-    );
-    const observing = demanded.every((interest) => interest?.status === "observing");
-    const pausedOnly = isPausedOnlyRound(demanded);
+    /** The organizations whose data failed or stalled, once each. */
+    const blocked = new Map<string, OrganizationRef>();
+    for (const { organization, interest } of demanded) {
+      if (isInterestBlocked(interest, Date.now(), documentHidden)) {
+        blocked.set(organizationKeyOf(organization), organization);
+      }
+    }
+    const observing = demanded.every(({ interest }) => interest?.status === "observing");
+    const pausedOnly = isPausedOnlyRound(demanded.map(({ interest }) => interest));
     return {
       projects,
       services,
       projectRefs,
       read: complete,
       established: complete && observing,
-      failedInterest,
+      blockedOrganizations: [...blocked.values()],
       pausedOnly,
     };
   }, [
@@ -896,7 +925,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   const error =
     grant.phase.phase === "unverified-failed"
       ? (roundFailure ?? "Zerops didn't answer.")
-      : projected.failedInterest
+      : projected.blockedOrganizations.length > 0
         ? "Some project access or services could not be verified."
         : null;
 
@@ -942,7 +971,13 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   /** What the overlay names while the grant is lapsed, and nothing otherwise. */
   const lapseCause = readWindowExpired ? (error ?? "Project access verification expired.") : null;
   const visibleError = lapseCause ?? error;
-  const retry = () => invalidateZerops({ topic: "access", change: "renew-now" });
+  const retry = () => {
+    const intents = retryInvalidations({
+      granted: grant.phase.phase === "granted",
+      blockedOrganizations: projected.blockedOrganizations,
+    });
+    for (const intent of intents) invalidateZerops(intent);
+  };
 
   const snapshot = selectSnapshot({
     projects: projected.projects,
