@@ -27,6 +27,7 @@ import {
   buildGroupEnvironmentRowInputs,
   deployStatusKey,
   environmentTierForRole,
+  GROUP_REPOSITORY,
   missingEnvironmentRows,
   planDeployStatusReads,
   planDeployedVersionReads,
@@ -52,8 +53,7 @@ import type { DeployScope, GroupUpdate } from "@t3tools/client-runtime/zerops/fl
 import type { ZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
 import { useGroupAnswers } from "./useZeropsGroupForge";
 
-/** Where `environments.yaml` lives, and what the group repo is called. */
-const GROUP_REPOSITORY = "group";
+/** Where `environments.yaml` lives in the group repo. */
 const ENVIRONMENTS_PATH = "environments.yaml";
 /**
  * How often the group repo is read again while the screen is open. The
@@ -130,7 +130,7 @@ export interface ZeropsGroupDeployAnswers {
   /** Why each group's latest deploy read failed, while it keeps failing. */
   readonly failures: ReadonlyMap<string, string>;
   /** Re-reads one part of one group at once: what a verb changed. */
-  readonly invalidate: (groupId: string, scope: DeployScope) => void;
+  readonly invalidate: (groupId: string, scope: DeployScope | "group") => void;
 }
 
 /**

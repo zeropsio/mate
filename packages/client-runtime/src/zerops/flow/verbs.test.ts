@@ -19,6 +19,12 @@ describe("flowVerbInvalidations", () => {
       },
     },
     {
+      // The group repo's `main` holds the declarations and the tiers the
+      // deploy half reads, so a recipe merge reads that half whole again.
+      verb: { kind: "merge", slug: "harbor", repository: "group", number: 2 },
+      expected: { forge: { kind: "repository", repository: "group" }, deploys: "group" },
+    },
+    {
       verb: { kind: "open", slug: "harbor", repository: "appdev", head: "mate/ada" },
       expected: { forge: { kind: "repository", repository: "appdev" }, deploys: null },
     },
