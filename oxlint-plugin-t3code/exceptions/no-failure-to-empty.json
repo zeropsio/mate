@@ -1,13 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "lifecycle?.recentTools ?? []",
-    "owner": "state-model 1.4",
-    "reason": "an unread lifecycle feed reads as no recent tools; Mate feeds become Known",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
     "kind": "LogicalExpression",
     "fingerprint": "project?.tagList ?? []",
