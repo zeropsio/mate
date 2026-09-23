@@ -517,7 +517,8 @@ Dependency rules, each an import-graph test in `scripts/mate-zone-architecture.t
    `fetch` — and set no timer for data.
 5. `Cell` and `advance` stay private to their store; `.value` is read only in selectors.
 6. Dependencies run one way: data runtime ← environments ← flow, and data runtime ← forge ← flow.
-   Nothing depends on `account/` except the web and mobile bindings; post-grant modules are
+   Nothing depends on `account/` except the web and mobile bindings and, inside `cr/zerops`,
+   `account/` itself and the `testing/` harness, which drives sessions; post-grant modules are
    constructed only by `accountRuntime.ts`.
 7. Protected roots render only (design-system R2).
 
@@ -595,5 +596,6 @@ carries it. "Live" means it holds on `main` today.
 | Dependency rule 3 (projections and the named pure modules are pure)                                         | 0.Z; zone test "rule 3"                          |
 | Dependency rule 4 (components import hooks only and set no data timer)                                      | 5.5                                              |
 | Dependency rule 5 (`Cell` and `advance` private to their store; `.value` only in selectors)                 | 1.5                                              |
-| Dependency rule 6 (one-way dependencies; post-grant modules built only by `accountRuntime.ts`)              | 0.Z one-way part; construction rule: no slice    |
+| Dependency rule 6, one way (only `account/` and `testing/` depend on `account/`)                            | 0.Z; zone test "rule 6"                          |
+| Dependency rule 6, construction (post-grant modules built only by `accountRuntime.ts`)                      | Lands with 2.1 (accountRuntime)                  |
 | Dependency rule 7 (protected roots render only)                                                             | Live                                             |

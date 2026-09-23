@@ -653,9 +653,9 @@ function collectPureZoneViolations(
 
 // Rule 6: dependencies run one way — data ← environments ← flow and
 // data ← forge ← flow — and nothing under `cr/zerops` depends on `account/`
-// except `account/` itself. Every import edge counts, type-only included: the
-// rule is about the module graph, not the emitted code. Test files are not
-// part of the graph.
+// except `account/` itself and the `testing/` harness, which drives sessions.
+// Every import edge counts, type-only included: the rule is about the module
+// graph, not the emitted code. Test files are not part of the graph.
 const FORBIDDEN_LAYER_EDGES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["data", new Set(["environments", "forge", "flow"])],
   ["environments", new Set(["flow"])],
@@ -704,8 +704,8 @@ function collectOneWayViolations(
             specifier,
             reason,
           });
-        if (toLayer === "account" && fromLayer !== "account") {
-          report("only account/ may depend on account/");
+        if (toLayer === "account" && fromLayer !== "account" && fromLayer !== "testing") {
+          report("only account/ and testing/ may depend on account/");
         } else if (
           fromLayer !== undefined &&
           toLayer !== undefined &&
@@ -2089,7 +2089,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     }),
   );
 
-  it.effect("rule 6 fixture: dependencies run one way and only account/ depends on account/", () =>
+  it.effect("rule 6 fixture: one-way dependencies; only account/ and testing/ use account/", () =>
     Effect.gen(function* () {
       const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
         "data/runtime.ts": 'import type { Reach } from "../environments/reachability.ts";\n',
@@ -2150,18 +2150,39 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         {
           file: `${zerops}/groupReach.ts`,
           specifier: "./account",
-          reason: "only account/ may depend on account/",
+          reason: "only account/ and testing/ may depend on account/",
         },
         {
           file: `${zerops}/knowledge/known.ts`,
           specifier: "../account/session.ts",
-          reason: "only account/ may depend on account/",
+          reason: "only account/ and testing/ may depend on account/",
         },
       ]);
     }).pipe(Effect.scoped),
   );
 
-  it.effect("rule 6: dependencies run one way and only account/ depends on account/", () =>
+  it.effect("rule 6 fixture: the test harness may depend on account/, nothing else may", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
+        "testing/accountHarness.ts": 'import { session } from "../account/session.ts";\n',
+        "testing/drivers/sessionDriver.ts": 'import type { Session } from "../../account";\n',
+        "reconcilers/groupReach.ts": 'import { session } from "../account/session.ts";\n',
+      });
+
+      const violations = yield* collectOneWayViolations(fixtureRoot);
+
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      assert.deepStrictEqual(violations, [
+        {
+          file: `${zerops}/reconcilers/groupReach.ts`,
+          specifier: "../account/session.ts",
+          reason: "only account/ and testing/ may depend on account/",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 6: one-way dependencies; only account/ and testing/ use account/", () =>
     Effect.gen(function* () {
       const root = yield* repoRoot;
       assert.deepStrictEqual(yield* collectOneWayViolations(root), []);
