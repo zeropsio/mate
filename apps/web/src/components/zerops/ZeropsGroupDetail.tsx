@@ -901,11 +901,12 @@ export function ZeropsStopDetailPage({
   const flow = flowValue?.flows.get(groupId);
   const environments = flow?.environments ?? [];
   const stop = environments.find((entry) => entry.projectId === projectId);
-  const repo = stop?.versionRepository;
   // A stop whose project the grant withholds draws nothing of it (DESIGN §3.4),
-  // nor marks what it runs in another stop's history.
+  // nor marks what it runs in another stop's history, and reads nothing its
+  // repository and commit address.
   const { withheldNotice, shown } = useWithheldStops(flow?.environments);
   const withheld = withheldNotice(projectId);
+  const repo = withheld === null ? stop?.versionRepository : undefined;
   const deployed = useMemo(() => deployedShas(shown), [shown]);
   const commits = useZeropsRepositoryCommits(
     flow === undefined || repo === undefined
