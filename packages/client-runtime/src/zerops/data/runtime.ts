@@ -741,7 +741,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     setTimer: logTimers.setTimer,
     clearTimer: logTimers.clearTimer,
   });
-  let logAccess = Ref.getUnsafe(model).access;
+  /** The access the build logs and the resource broker were last reconciled with. */
+  let reconciledAccess = Ref.getUnsafe(model).access;
   const runtimeScope = yield* Scope.make();
   // Demand arrives from independently run UI effects; workers retain the account scheduler.
   const forkOwned = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -804,16 +805,17 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     if (next !== null) options.atomRegistry.set(rootAtom, next);
   });
 
+  /** Every change of access reaches the build logs and the resource broker, whatever made it. */
   const publish = (next: ZeropsDataState, deferPublication = false): Effect.Effect<void> =>
     Ref.set(model, next).pipe(
       Effect.andThen(
-        Effect.sync(() => {
-          if (next.access !== logAccess) {
-            logAccess = next.access;
-            logs.reconcileAccess();
-          }
+        Effect.suspend(() => {
           pendingPublication = next;
           publicationEvents += 1;
+          if (next.access === reconciledAccess) return Effect.void;
+          reconciledAccess = next.access;
+          logs.reconcileAccess();
+          return resources.reconcileAccess;
         }),
       ),
       Effect.andThen(deferPublication ? Effect.void : flushPublication),
@@ -3134,7 +3136,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>
     enqueue({ kind: "access-observation", observation, interest: null }).pipe(
       Effect.andThen(awaitIngress),
-      Effect.andThen(resources.reconcileAccess),
     );
 
   const grant = yield* makeGrantDriver({

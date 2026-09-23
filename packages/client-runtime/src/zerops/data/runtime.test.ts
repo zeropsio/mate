@@ -1752,6 +1752,86 @@ describe("makeZeropsDataRuntime", () => {
       }),
   );
 
+  it.effect("project access established re-admits a withheld broker atom", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const base = makeAdapterHarness();
+      const adapter: ZeropsDataAdapter = {
+        ...base.adapter,
+        execute: (command) =>
+          command.kind === "create-project"
+            ? Effect.succeed({
+                processRefs: [],
+                observations: [],
+                result: {
+                  kind: command.kind,
+                  value: {
+                    id: "created-project",
+                    clientId: "org-a",
+                    name: "Created",
+                    status: "ACTIVE",
+                  },
+                },
+              })
+            : Effect.die(`unexpected command ${command.kind}`),
+      };
+      let reads = 0;
+      const unused = Effect.die("this test reads only authorized agents");
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        resourceAdapter: {
+          readOrganizationLocations: () => unused,
+          readServiceAuthorizedAgents: () =>
+            Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
+          readServiceDeployedVersion: () => unused,
+          readServiceMateFlag: () => unused,
+          readOrganizationIntegrationTokenGrants: () => unused,
+        },
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        initialAccess: {
+          status: "verified",
+          account: runtimeScope.account,
+          accountEpoch: runtimeScope.epoch,
+          verifiedAtMs: 0,
+          deadlineMs: 10_000,
+          mutationsAllowed: true,
+          organizations: [
+            { organization: topologyDescriptor.project.organization, mutationsAllowed: true },
+          ],
+          projects: [],
+        },
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* runtime.resources
+        .acquire({
+          kind: "service-authorized-agents",
+          account: runtimeScope,
+          service: {
+            kind: "service",
+            project: project("created-project"),
+            serviceId: ZeropsServiceId.make("service-a"),
+          },
+        })
+        .pipe(Scope.provide(leaseScope));
+      expect(yield* lease.snapshot).toMatchObject({ state: "withheld" });
+      expect(reads).toBe(0);
+
+      yield* runtime.commands.createProject({
+        organization: topologyDescriptor.project.organization,
+        name: "Created",
+        tagList: [],
+      });
+
+      expect(yield* lease.awaitSettled).toMatchObject({ state: "known", value: [] });
+      expect(reads).toBe(1);
+      yield* Scope.close(leaseScope, Exit.void);
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
+
   it.effect("does not preserve created-project continuation access past the grant deadline", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
