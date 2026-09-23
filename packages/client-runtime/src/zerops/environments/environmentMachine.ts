@@ -899,8 +899,12 @@ export const transitionEnvironment = (
   event: EnvironmentEvent,
   ctx: EnvironmentContext,
 ): { readonly state: EnvironmentMachine; readonly effects: ReadonlyArray<EnvironmentEffect> } => {
-  if (machine.credential.kind === "retired") return { state: machine, effects: [] };
   const out: Effects = [];
+  if (machine.credential.kind === "retired") {
+    // An op's answer after retirement is never accepted: no credential is installed for it.
+    if ("attempt" in event) stale(machine, event.attempt, out);
+    return { state: machine, effects: out };
+  }
   // The clocks first: an event is judged at the instant it is delivered.
   let next = settle(machine, ctx);
   next = apply(next, event, ctx, out);

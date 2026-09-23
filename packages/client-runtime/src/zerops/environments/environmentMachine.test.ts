@@ -198,6 +198,23 @@ describe("environment machine (DESIGN §4.4)", () => {
     expect(retryDelays[4]).toBe(CAPPED_RETRY_MS);
   });
 
+  it("an exchange that answers after the user removed the Mate is logged stale and never held", () => {
+    const exchanging = drive(initialEnvironment({ record: ENV_A }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]).machine;
+    const attempt = lastExchange(exchanging);
+    const removed = drive(exchanging, [
+      { type: "USER_REMOVE" },
+      { type: "EXCHANGE_SUCCEEDED", attempt, environmentId: ENV_A, descriptor: null },
+    ]);
+    expect(removed.machine.credential).toEqual({ kind: "retired", evidence: "removed-by-user" });
+    expect(removed.effects).toEqual([
+      { kind: "log", diagnostic: { kind: "stale-result", attempt } },
+    ]);
+  });
+
   it("counts one auth rejection per rotated credential and backs off on the third within two minutes", () => {
     /** The link rejects the held credential; the re-exchange succeeds and installs a new one. */
     const rejectAndRotate = (machine: EnvironmentMachine, nowMs: number): Run => {
