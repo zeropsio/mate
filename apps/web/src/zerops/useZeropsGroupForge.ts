@@ -13,9 +13,8 @@
  * repository never read is left out of what the answer holds, rather than
  * held as having no pull requests — `repositories` names the ones its pull
  * requests cover — and releases that did not answer carry why, whether or not
- * earlier ones are kept. A read that loses the Gitea token part-way — a 401
- * whose reacquire fails — is not an answer, and the token coming back reads
- * every group again.
+ * earlier ones are kept. A read that meets a Gitea 401 no token recovered is
+ * not an answer, and the token coming back reads every group again.
  *
  * What an environment runs is not read here: that is the account's to prove
  * (`useZeropsGroupDeploys`), and the two are joined in the provider.
@@ -154,8 +153,7 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
 
   useEffect(() => {
     if (!enabled || giteaOrigin === undefined || !readable) return;
-    const client = giteaClientFor(giteaOrigin);
-    if (client === null) return;
+    if (giteaClientFor(giteaOrigin) === null) return;
     const kept =
       latest.current.held.origin === giteaOrigin ? latest.current.held.answers : undefined;
     const answers = createGroupAnswers<Group, Scope, Answer>({
@@ -163,15 +161,19 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
       idOf: (group) => group.groupId,
       keyOf: (group) => latest.current.input.keyOf(group),
       read: async (group, scope, signal, previous) => {
-        // A read that met a 401 whose reacquire failed answered nothing, and
-        // every read after it had no token: it is not an answer, and the group
-        // keeps what it had without a cause of its own.
-        const lost = () => giteaClientFor(giteaOrigin) === null;
+        // A read that met a 401 no token recovered answered nothing for what
+        // came after it: it is not an answer, even if the token is back by its
+        // end, and the group keeps what it had without a cause of its own.
+        let unauthorized = false;
+        const client = giteaClientFor(giteaOrigin, () => {
+          unauthorized = true;
+        });
+        if (client === null) return () => undefined;
         try {
           const update = await latest.current.input.read(client, group, scope, signal, previous);
-          return lost() ? () => undefined : update;
+          return unauthorized ? () => undefined : update;
         } catch (cause) {
-          if (lost()) return () => undefined;
+          if (unauthorized) return () => undefined;
           throw cause;
         }
       },

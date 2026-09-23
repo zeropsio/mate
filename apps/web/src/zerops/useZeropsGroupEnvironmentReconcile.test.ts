@@ -10,24 +10,35 @@ import type { AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
 import { useZeropsGroupEnvironmentReconcile } from "./useZeropsGroupEnvironmentReconcile";
 
 /**
- * Whether this tab can read Gitea now, the repairs run, and whether the next one loses the Gitea
- * token part-way — a 401 whose reacquire fails.
+ * Whether this tab can read Gitea now, the repairs run, whether the next one loses the Gitea
+ * token part-way — a 401 whose reacquire fails — and whether its Gitea request meets a 401 that
+ * outlasts the request's wait while the reacquire goes on to succeed.
  */
 const gitea = vi.hoisted(() => ({
   readable: true,
   repairs: [] as Array<{ readonly gitea: unknown }>,
   loseTokenOnRepair: false,
+  outwaitReacquireOnRepair: false,
 }));
 
+/** The fake client's side door: its request ended in a 401 no token recovered. */
+interface FakeGitea {
+  readonly unauthorized: () => void;
+}
+
 vi.mock("./accountGiteaSessions", () => ({
-  giteaClientFor: () => (gitea.readable ? { readFile: async () => undefined } : null),
+  giteaClientFor: (_origin: string, onUnauthorized: () => void = () => undefined) =>
+    gitea.readable
+      ? ({ readFile: async () => undefined, unauthorized: onUnauthorized } as FakeGitea)
+      : null,
 }));
 
 vi.mock("./addGroupEnvironment", () => ({
-  addGroupEnvironment: async (input: { readonly gitea: unknown }) => {
+  addGroupEnvironment: async (input: { readonly gitea: FakeGitea | null }) => {
     gitea.repairs.push({ gitea: input.gitea });
-    if (gitea.loseTokenOnRepair) {
-      gitea.readable = false;
+    if (gitea.loseTokenOnRepair || gitea.outwaitReacquireOnRepair) {
+      if (gitea.loseTokenOnRepair) gitea.readable = false;
+      input.gitea?.unauthorized();
       return {
         done: ["registry", "broker-grant", "deploy-token"],
         failed: {
@@ -120,6 +131,7 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
     gitea.readable = true;
     gitea.repairs = [];
     gitea.loseTokenOnRepair = false;
+    gitea.outwaitReacquireOnRepair = false;
     vi.unstubAllGlobals();
   });
 
@@ -184,6 +196,22 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
 
     gitea.loseTokenOnRepair = false;
     gitea.readable = true;
+    await page.render(false);
+    await page.render(true);
+    expect(gitea.repairs).toHaveLength(2);
+    expect(outcomes.map((outcome) => outcome.failed)).toEqual([undefined]);
+    await page.unmount();
+  });
+
+  it("gives back a repair whose Gitea request's 401 outlasted its wait, though the token is back", async () => {
+    const outcomes: Array<AddGroupEnvironmentOutcome> = [];
+    const page = await mount((outcome) => outcomes.push(outcome));
+    gitea.outwaitReacquireOnRepair = true;
+    await page.render(true);
+    expect(gitea.repairs).toHaveLength(1);
+    expect(outcomes).toEqual([]);
+
+    gitea.outwaitReacquireOnRepair = false;
     await page.render(false);
     await page.render(true);
     expect(gitea.repairs).toHaveLength(2);

@@ -14,30 +14,46 @@ import {
 } from "./useZeropsGroupDeploys";
 
 /**
- * Whether this tab holds a Gitea token now, how often the group repo's pulls were read, and
- * whether the next read meets a 401 whose reacquire fails — the session loses its token mid-pass.
+ * Whether this tab holds a Gitea token now, how often the group repo's pulls were read, whether
+ * the next read meets a 401 whose reacquire fails — the session loses its token mid-pass — and
+ * whether it meets a 401 that outlasts the request's wait while the reacquire goes on to succeed.
  * A client handed out earlier answers 401 once the token is gone.
  */
-const gitea = vi.hoisted(() => ({ readable: true, pullReads: 0, loseTokenOnRead: false }));
+const gitea = vi.hoisted(() => ({
+  readable: true,
+  pullReads: 0,
+  loseTokenOnRead: false,
+  outwaitReacquireOnRead: false,
+}));
 
-vi.mock("./accountGiteaSessions", () => {
-  const refuse = () => Promise.reject(new Error("Gitea answered 401"));
-  const client = {
-    readFile: async () => (gitea.readable ? undefined : refuse()),
-    listPullRequests: async () => {
-      if (!gitea.readable) return refuse();
-      gitea.pullReads += 1;
-      if (gitea.loseTokenOnRead) {
-        gitea.readable = false;
-        throw new Error("You are not signed in to Gitea.");
-      }
-      return [{ number: 7, title: "Stage follows main" }];
-    },
-    listCommitStatuses: async () => (gitea.readable ? [] : refuse()),
-    getBranch: async () => (gitea.readable ? undefined : refuse()),
-  };
-  return { giteaClientFor: () => (gitea.readable ? client : null) };
-});
+vi.mock("./accountGiteaSessions", () => ({
+  giteaClientFor: (_origin: string, onUnauthorized?: () => void) => {
+    if (!gitea.readable) return null;
+    const refuse = () => {
+      onUnauthorized?.();
+      return Promise.reject(new Error("Gitea answered 401."));
+    };
+    return {
+      readFile: async () => (gitea.readable ? undefined : refuse()),
+      listPullRequests: async () => {
+        if (!gitea.readable) return refuse();
+        gitea.pullReads += 1;
+        if (gitea.loseTokenOnRead) {
+          gitea.readable = false;
+          onUnauthorized?.();
+          throw new Error("You are not signed in to Gitea.");
+        }
+        if (gitea.outwaitReacquireOnRead) {
+          gitea.outwaitReacquireOnRead = false;
+          return refuse();
+        }
+        return [{ number: 7, title: "Stage follows main" }];
+      },
+      listCommitStatuses: async () => (gitea.readable ? [] : refuse()),
+      getBranch: async () => (gitea.readable ? undefined : refuse()),
+    };
+  },
+}));
 
 const SHA = "3f9c1b2000000000000000000000000000000000";
 
@@ -367,6 +383,7 @@ describe("useZeropsGroupDeploys", () => {
     gitea.readable = true;
     gitea.pullReads = 0;
     gitea.loseTokenOnRead = false;
+    gitea.outwaitReacquireOnRead = false;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -450,6 +467,50 @@ describe("useZeropsGroupDeploys", () => {
 
     // The clock's pass starts with a token; its read meets the 401 and the reacquire fails.
     gitea.loseTokenOnRead = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_DEPLOYS_REFRESH_MS);
+    });
+    expect(gitea.pullReads).toBe(2);
+    expect(seen.at(-1)?.deploys.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.failures.get("g1")).toBeUndefined();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps what it read when a read's 401 outlasts its wait, though the token is back by the pass's end", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGroupDeployAnswers> = [];
+    const groups: ReadonlyArray<ZeropsDeployGroup> = [
+      { groupId: "g1", slug: "harbor", projects: [] },
+    ];
+    const readVersion = async () => undefined;
+
+    function Probe() {
+      seen.push(
+        useZeropsGroupDeploys({
+          groups,
+          giteaOrigin: "https://gitea.example.test",
+          readVersion,
+          enabled: true,
+          readable: true,
+        }),
+      );
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(seen.at(-1)?.deploys.get("g1")?.pullRequests).toHaveLength(1);
+
+    // The read gives up on the reacquire and answers Gitea's 401; the token lands afterwards.
+    gitea.outwaitReacquireOnRead = true;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(GROUP_DEPLOYS_REFRESH_MS);
     });

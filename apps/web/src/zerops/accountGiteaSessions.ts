@@ -144,10 +144,14 @@ export function useGiteaReadable(giteaOrigin: string | undefined): boolean {
 
 /**
  * A client that acts as the person on that Gitea, or `null` while the account holds no session
- * there. Each request carries the token held when it is sent.
+ * there. Each request carries the token held when it is sent; `onUnauthorized` is told when one
+ * ends in Gitea's 401 that no token recovered.
  */
-export function giteaClientFor(giteaOrigin: string): GiteaClient | null {
-  return current?.clientFor(giteaOrigin) ?? null;
+export function giteaClientFor(
+  giteaOrigin: string,
+  onUnauthorized?: () => void,
+): GiteaClient | null {
+  return current?.clientFor(giteaOrigin, onUnauthorized) ?? null;
 }
 
 /** The person's login on that Gitea, `u-…`, while signed in. */

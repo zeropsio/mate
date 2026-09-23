@@ -389,6 +389,44 @@ describe("the account's Gitea sessions", () => {
       });
     });
 
+    it("that no token recovered is told to the client's reader; one the reacquire recovered is not", async () => {
+      let brokerHangs = false;
+      const w = world({
+        wrapFetch: (fetch) =>
+          (async (input: string | URL | Request, init?: RequestInit) => {
+            if (brokerHangs && String(input).endsWith("/person/token")) {
+              return new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+                  once: true,
+                });
+              });
+            }
+            return fetch(input, init);
+          }) as Fetch,
+      });
+      w.gitea.setTags("acme", "group", ["v1.0.0"]);
+      w.demand();
+      await w.time.advance(0);
+      let unauthorized = 0;
+      const tell = () => {
+        unauthorized += 1;
+      };
+
+      w.gitea.revoke("gitea-token-1");
+      const recovered = w.sessions.clientFor(HARNESS_GITEA_ORIGIN, tell);
+      await expect(recovered?.listTags("acme", "group")).resolves.toEqual([{ name: "v1.0.0" }]);
+      expect(unauthorized).toBe(0);
+
+      // The next reacquire outlasts the queue: the read answers Gitea's 401, and its pass is told.
+      w.gitea.revoke("gitea-token-2");
+      brokerHangs = true;
+      const client = w.sessions.clientFor(HARNESS_GITEA_ORIGIN, tell);
+      const read = client?.listTags("acme", "group").catch((cause: unknown) => cause);
+      await w.time.advance(REQUEST_QUEUE_MS);
+      expect(((await read) as GiteaApiError).status).toBe(401);
+      expect(unauthorized).toBe(1);
+    });
+
     it("whose reacquire fails tells the surfaces when nothing can be read, and when it can again", async () => {
       let brokerDown = false;
       const w = world({

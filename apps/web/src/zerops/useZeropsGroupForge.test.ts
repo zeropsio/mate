@@ -12,20 +12,32 @@ import {
 } from "./useZeropsGroupForge";
 
 /**
- * Whether this tab can read Gitea now, how often the org's repositories were listed, and whether
- * the next listing meets a 401 whose reacquire fails — the session loses its token mid-pass.
+ * Whether this tab can read Gitea now, how often the org's repositories were listed, whether the
+ * next listing meets a 401 whose reacquire fails — the session loses its token mid-pass — and
+ * whether it meets a 401 that outlasts the request's wait while the reacquire goes on to succeed.
  */
-const gitea = vi.hoisted(() => ({ readable: true, listings: 0, loseTokenOnRead: false }));
+const gitea = vi.hoisted(() => ({
+  readable: true,
+  listings: 0,
+  loseTokenOnRead: false,
+  outwaitReacquireOnRead: false,
+}));
 
 vi.mock("./accountGiteaSessions", () => ({
-  giteaClientFor: () =>
+  giteaClientFor: (_origin: string, onUnauthorized?: () => void) =>
     gitea.readable
       ? {
           listOrganizationRepositories: async () => {
             gitea.listings += 1;
             if (gitea.loseTokenOnRead) {
               gitea.readable = false;
+              onUnauthorized?.();
               throw new Error("You are not signed in to Gitea.");
+            }
+            if (gitea.outwaitReacquireOnRead) {
+              gitea.outwaitReacquireOnRead = false;
+              onUnauthorized?.();
+              throw new Error("Gitea answered 401.");
             }
             return [{ name: "app" }];
           },
@@ -237,6 +249,7 @@ describe("useZeropsGroupForge", () => {
     gitea.readable = true;
     gitea.listings = 0;
     gitea.loseTokenOnRead = false;
+    gitea.outwaitReacquireOnRead = false;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -268,6 +281,45 @@ describe("useZeropsGroupForge", () => {
 
     // The clock's pass starts with a token; its first read meets the 401 and the reacquire fails.
     gitea.loseTokenOnRead = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
+    });
+    expect(gitea.listings).toBe(2);
+    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.failures.get("g1")).toBeUndefined();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps what it read when a read's 401 outlasts its wait, though the token is back by the pass's end", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGroupForge> = [];
+
+    function Probe() {
+      seen.push(
+        useZeropsGroupForge({
+          giteaOrigin: "https://gitea.example.test",
+          groups: GROUPS,
+          enabled: true,
+          readable: true,
+        }),
+      );
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+
+    // The listing gives up on the reacquire and answers Gitea's 401; the token lands afterwards.
+    gitea.outwaitReacquireOnRead = true;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
     });

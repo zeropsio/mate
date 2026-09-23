@@ -21,7 +21,8 @@
  * {@link GiteaSessions.clientFor} hands out a client whose every request carries the token held
  * when it is sent. A 401 is reported with the token that request carried, so a late 401 for a
  * token already replaced never ends the new one; the request then waits up to
- * {@link REQUEST_QUEUE_MS} for the reacquired token and is sent once more.
+ * {@link REQUEST_QUEUE_MS} for the reacquired token and is sent once more. A 401 that no token
+ * recovered is told to the client's reader, whose read then answered nothing.
  */
 import { acquireGiteaPersonToken, MateCredentialError } from "../../authorization/giteaBroker.ts";
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
@@ -82,9 +83,11 @@ export interface GiteaSessions {
   readonly subscribe: (listener: () => void) => () => void;
   /**
    * A client that acts as the person there, or `null` while no token is held or on its way after
-   * a 401 — also while what was read still stands without one.
+   * a 401 — also while what was read still stands without one. `onUnauthorized` is told each time
+   * one of its requests ends in Gitea's 401 that no token recovered: whatever that request's
+   * reader made of it is not an answer.
    */
-  readonly clientFor: (giteaOrigin: string) => GiteaClient | null;
+  readonly clientFor: (giteaOrigin: string, onUnauthorized?: () => void) => GiteaClient | null;
   /** §6.4's visible wake: waits for Gitea or the broker are tried again now. */
   readonly wake: () => void;
   /** The tab is visible again after a short hide: what came due while it was hidden runs now. */
@@ -312,19 +315,25 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
   };
 
   const fetchAsPerson =
-    (origin: string): typeof globalThis.fetch =>
+    (origin: string, onUnauthorized: () => void): typeof globalThis.fetch =>
     async (input, init) => {
       const sent = await tokenFor(origin);
       if (sent === undefined) {
+        onUnauthorized();
         throw new GiteaApiError("You are not signed in to Gitea.", 401);
       }
       const response = await ports.fetch(input, withBearer(init, sent));
       if (response.status !== 401) return response;
       dispatch(origin, { type: "UNAUTHORIZED", token: sent });
       const next = await tokenFor(origin);
-      if (next === undefined || next === sent) return response;
+      if (next === undefined || next === sent) {
+        onUnauthorized();
+        return response;
+      }
       void response.body?.cancel().catch(() => undefined);
-      return ports.fetch(input, withBearer(init, next));
+      const retried = await ports.fetch(input, withBearer(init, next));
+      if (retried.status === 401) onUnauthorized();
+      return retried;
     };
 
   const entryFor = (origin: string): Entry => {
@@ -369,7 +378,7 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
         listeners.delete(listener);
       };
     },
-    clientFor: (giteaOrigin) => {
+    clientFor: (giteaOrigin, onUnauthorized = () => undefined) => {
       const origin = normalize(giteaOrigin);
       const entry = entries.get(origin);
       if (entry === undefined || !giteaSessionReadable(entry.machine)) return null;
@@ -377,7 +386,7 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
         origin,
         // Replaced per request by the token `fetchAsPerson` waited for.
         token: () => giteaSessionToken(entry.machine) ?? "",
-        fetch: fetchAsPerson(origin),
+        fetch: fetchAsPerson(origin, onUnauthorized),
       });
     },
     wake: () => toEvery({ type: "WAKE" }),

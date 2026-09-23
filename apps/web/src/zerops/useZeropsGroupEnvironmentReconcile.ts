@@ -85,9 +85,13 @@ export function useZeropsGroupEnvironmentReconcile(input: {
     void (async () => {
       for (const [index, entry] of pending.entries()) {
         if (controller.signal.aborted) return release(index);
+        let unauthorized = false;
+        const gitea = giteaClientFor(giteaOrigin, () => {
+          unauthorized = true;
+        });
         const outcome = await addGroupEnvironment({
           client,
-          gitea: giteaClientFor(giteaOrigin),
+          gitea,
           clientId,
           giteaProjectId,
           registry: registry.current,
@@ -103,9 +107,9 @@ export function useZeropsGroupEnvironmentReconcile(input: {
         // An abort during the repair leaves it unfinished, so this entry is
         // given back too: the next effect is what tries it again.
         if (controller.signal.aborted) return release(index);
-        // Its Gitea half ran without the token, and says only that: not an
-        // outcome, a repair the next enabled run makes.
-        if (giteaClientFor(giteaOrigin) === null) return release(index);
+        // Its Gitea half ran without a token, or met a 401 no token recovered,
+        // and says only that: not an outcome, a repair the next enabled run makes.
+        if (gitea === null || unauthorized) return release(index);
         if (outcome !== undefined) onOutcome.current?.(entry, outcome);
       }
       if (!controller.signal.aborted) refresh.current();
