@@ -175,12 +175,34 @@ function targetsOf(input: {
   });
 }
 
-/** A remembered target whose credential is still on its way. */
+/**
+ * A remembered target whose credential is on its way: not yet judged, exchanging, or waiting for
+ * a slot or the grant. A target that waits on its presence or its container, or backs off, has
+ * no end the route gate could wait for — its reachability says why (the gate reads it in 0.9c).
+ */
 const restoring = (machine: EnvironmentMachine | undefined): boolean => {
   if (machine === undefined) return true;
-  const kind = machine.credential.kind;
-  return kind === "none" || kind === "waiting" || kind === "exchanging" || kind === "backoff";
+  const credential = machine.credential;
+  switch (credential.kind) {
+    case "none":
+    case "exchanging":
+      return true;
+    case "waiting":
+      return credential.on === "budget" || credential.on === "access";
+    case "backoff":
+    case "refused":
+    case "held":
+    case "retired":
+      return false;
+  }
 };
+
+/** The route's remembered target once the driver knows it, otherwise every remembered target. */
+function restorePendingOf(machines: ReadonlyMap<string, EnvironmentMachine>): boolean {
+  const records = readRememberedEnvironments().map((record) => record.key);
+  const routed = records.filter((key) => machines.get(key)?.guards.routeTarget === true);
+  return (routed.length > 0 ? routed : records).some((key) => restoring(machines.get(key)));
+}
 
 // ── The shell ────────────────────────────────────────────────────────────────────────────────
 
@@ -275,10 +297,7 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   }, [environments, identityVersion, registry]);
 
   const machines = useSyncExternalStore(driver.subscribe, driver.machines);
-  const restorePending = useMemo(
-    () => readRememberedEnvironments().some((record) => restoring(machines.get(record.key))),
-    [machines, identityVersion],
-  );
+  const restorePending = useMemo(() => restorePendingOf(machines), [machines, identityVersion]);
 
   const allowed = useMemo(
     () =>

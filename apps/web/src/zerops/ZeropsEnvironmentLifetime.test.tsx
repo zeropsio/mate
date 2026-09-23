@@ -1,4 +1,4 @@
-import { act, StrictMode, useEffect } from "react";
+import { act, StrictMode, useContext, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { ExchangeAnswer } from "@t3tools/client-runtime/zerops/identityExchange";
@@ -11,6 +11,7 @@ import {
 import { InventoryContext, type Inventory } from "./inventoryContext";
 import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
 import { beginEnvironmentIdentityExchange, rememberEnvironment } from "./rememberedEnvironments";
+import { ExchangeDriverContext } from "./useZeropsIdentityExchange";
 
 const mock = vi.hoisted(() => ({
   exchange: vi.fn(),
@@ -186,8 +187,18 @@ function ObserveRestore() {
   }, [pending]);
   return null;
 }
+/** Stands in for the router's emitter: the route's target is demand on the driver. */
+let routeKeys: ReadonlyArray<string> = [];
+function RouteDemand() {
+  const driver = useContext(ExchangeDriverContext);
+  useEffect(() => {
+    driver?.setDemand("route", routeKeys);
+  });
+  return null;
+}
 beforeEach(() => {
   installTestDom();
+  routeKeys = [];
   const values = new Map<string, string>();
   Object.assign(window, {
     localStorage: {
@@ -224,6 +235,7 @@ async function mount() {
         <StrictMode>
           <InventoryContext value={liveInventory}>
             <ZeropsEnvironmentLifetime>
+              <RouteDemand />
               <ObserveRestore />
             </ZeropsEnvironmentLifetime>
           </InventoryContext>
@@ -297,6 +309,72 @@ it("does not repeat an in-flight restore when another inventory snapshot arrives
   await act(async () => complete(admitted()));
   expect(mock.exchange).toHaveBeenCalledTimes(1);
   expect(restorePending).toBe(false);
+});
+
+describe("a restore is pending only while a remembered target's exchange is on its way", () => {
+  const second = { ...service, id: "second" };
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    readonly services: ReadonlyArray<typeof service>;
+    readonly records: ReadonlyArray<string>;
+    readonly route: ReadonlyArray<string>;
+    /** The answer each exchange gets; `hang` never answers. */
+    readonly answer: (request: ExchangeRequest) => ExchangeAnswer<unknown> | "hang";
+    readonly pending: boolean;
+  }> = [
+    {
+      name: "its project's Mate is stopped: it waits on presence",
+      services: [{ ...service, status: "STOPPED" }],
+      records: ["project:service"],
+      route: [],
+      answer: () => admitted(),
+      pending: false,
+    },
+    {
+      name: "its exchange failed and backs off",
+      services: [service],
+      records: ["project:service"],
+      route: [],
+      answer: () => doorFailed(503),
+      pending: false,
+    },
+    {
+      name: "its exchange is in flight",
+      services: [service],
+      records: ["project:service"],
+      route: [],
+      answer: () => "hang",
+      pending: true,
+    },
+    {
+      name: "the route's target is connected while another target's exchange is in flight",
+      services: [service, second],
+      records: ["project:service", "project:second"],
+      route: ["project:service"],
+      answer: (request) => (request.key === "project:service" ? admitted() : "hang"),
+      pending: false,
+    },
+  ];
+
+  it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    for (const key of row.records) {
+      rememberEnvironment({ key, environmentId: EnvironmentId.make(key) });
+    }
+    routeKeys = row.route;
+    liveInventory = {
+      ...inventory(),
+      services: new Map([[project.id, { status: "resolved", services: [...row.services] }]]),
+    };
+    mock.exchange.mockImplementation((request: ExchangeRequest) => {
+      const answer = row.answer(request);
+      return answer === "hang" ? new Promise(() => undefined) : Promise.resolve(answer);
+    });
+    const render = await mount();
+    await render();
+    await render();
+
+    expect(restorePending).toBe(row.pending);
+  });
 });
 
 it("retains a registration published before its remembered identity is written", async () => {
