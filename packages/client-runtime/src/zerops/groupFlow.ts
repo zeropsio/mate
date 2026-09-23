@@ -217,6 +217,8 @@ export const PRODUCTION_NOTHING_LIVE = "Nothing live yet";
 export const PRODUCTION_ADDED_HERE = "Production is added here, not by the Mate.";
 /** The verb that adds it. */
 export const ADD_PRODUCTION_LABEL = "Add production";
+/** The step that asks for it. */
+export const MAIN_WITHOUT_PRODUCTION = "main has code, no production yet";
 
 /** Newest first — the one a person is most likely waiting on. */
 function byNewest(left: FlowPullRequest, right: FlowPullRequest): number {
@@ -338,7 +340,7 @@ function nextStepOf(
   if (production.kind === "absent" && production.addable)
     return {
       kind: "add-production",
-      text: "main has code, no production yet",
+      text: MAIN_WITHOUT_PRODUCTION,
       verb: ADD_PRODUCTION_LABEL,
       target: { kind: "add-production" },
     };
