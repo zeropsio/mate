@@ -2626,10 +2626,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   };
 
   /**
-   * A project's own quiet actions: its name, and the environments a person
-   * adds to it — another Mate, and a stage, which is optional and never a
-   * step before production (D16, D28). Production is not here: it is added
-   * where the flow asks for it, as the project's next step.
+   * A project's own quiet actions: its name, the environments a person adds
+   * to it — another Mate, a stage, which is optional and never a step before
+   * production (D16, D28) — and, where the recipe still has room for one, a
+   * production.
+   *
+   * The flow's own `add-production` next step stays the usual way there: it
+   * needs `main` to have code, which today is read only from a merged code
+   * pull request still in the recent list (`groupFlowInputOf`'s own
+   * `mainHasCode`/`mainHead` go unread for every group). That misses the code
+   * a recipe planted at birth and any merge that has since scrolled off, so
+   * the menu offers the same verb on the one thing this account can always
+   * answer — whether the role is still there to take (`creatableRoles`) and
+   * whether this person may create one at all — rather than only on a signal
+   * that is silent for most groups.
    */
   const renderGroupMenu = (group: ZeropsGroup) => (
     <ZeropsProjectMenu
@@ -2657,6 +2667,18 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 disabled: creationRunning,
                 onSelect: () => {
                   requestEnvironment(group.groupId, "stage");
+                },
+              },
+            ]
+          : []),
+        ...(mayCreate && creatableRoles(group).includes("prod")
+          ? [
+              {
+                id: "add-production",
+                label: "Add production",
+                disabled: creationRunning,
+                onSelect: () => {
+                  requestEnvironment(group.groupId, "prod");
                 },
               },
             ]

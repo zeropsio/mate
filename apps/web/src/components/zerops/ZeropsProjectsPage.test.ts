@@ -802,13 +802,19 @@ describe("a project's next step on the projects page", () => {
     expect(groupDetailSource).toContain("export function ZeropsReleaseVerb(");
   });
 
-  it("offers production where the flow asks for it and nowhere else", () => {
-    // No missing-tier rows ("not set up yet") and no foot of add verbs: the
-    // project's menu adds a Mate or a stage, and production is its next step.
+  it("offers production as the flow's next step, and again from the project's menu", () => {
+    // No missing-tier rows ("not set up yet") and no foot of add verbs: a
+    // project's menu adds a Mate or a stage as before. Production is its
+    // flow's own next step (`groupFlow`'s `add-production`) *and* the menu's
+    // own verb — `mainHasCode`/`mainHead` go unread for every group today, so
+    // the flow's own gate stays silent for a group whose code arrived another
+    // way (a recipe's own birth, or a merge that scrolled off); the menu's
+    // verb answers on `creatableRoles` instead, which is always read.
     expect(projectsPageSource).toContain('requestEnvironment(group.groupId, "prod")');
     expect(projectsPageSource.match(/requestEnvironment\(group\.groupId, "prod"\)/gu)).toHaveLength(
-      1,
+      2,
     );
+    expect(projectsPageSource).toContain('creatableRoles(group).includes("prod")');
     expect(projectsPageSource).not.toContain("?.missing ??");
   });
 });
