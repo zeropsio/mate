@@ -1,11 +1,7 @@
-import { EnvironmentId } from "@t3tools/contracts";
-import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  interimRouteTarget,
   routeGatePhrase,
   selectRouteGate,
-  type InterimRegistration,
+  type Reachability,
   type RouteContent,
 } from "@t3tools/client-runtime/zerops/environments";
 import { act, useEffect } from "react";
@@ -15,36 +11,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { TestNode } from "../zerops/__fixtures__/testDom";
 import { RouteGateView } from "./-routeGate";
 
-const ORIGIN = "https://zcp-1-abc.prg1.zerops.app";
-const ENV_A = EnvironmentId.make("env-a");
+const READY: Reachability = { kind: "ready", notice: null };
+const RESTARTING_UNDER_LINK: Reachability = {
+  kind: "ready",
+  notice: { level: "restarting", by: "platform", overdue: false },
+};
+const RESTARTING: Reachability = {
+  kind: "container",
+  container: { level: "restarting", by: "platform", overdue: false },
+};
 
-/** The route's Mate as the inventory lists it, with its zcp service in `status`. */
-const mate = (status: string): ZeropsCandidate => ({
-  key: "project-1:service-1",
-  project: { id: "project-1", name: "shop", status: "ACTIVE" } as ZeropsProject,
-  group: status === "ACTIVE" ? "ready" : "provisioning",
-  service: { id: "service-1", name: "zcp", status },
-  ...(status === "ACTIVE" ? { containerOrigin: ORIGIN } : {}),
-});
-
-/** The gate `__root` renders for what today's shell holds about the route's environment. */
-function gateFor(
-  connection: InterimRegistration["connection"],
-  serviceStatus: string,
-  content: RouteContent,
-) {
-  const gate = selectRouteGate(
-    interimRouteTarget({
-      environmentId: ENV_A,
-      registration: { origin: ORIGIN, connection },
-      recordKey: "project-1:service-1",
-      candidates: [mate(serviceStatus)],
-      exchangePending: () => false,
-      restoring: false,
-      organization: "chosen",
-      content,
-    }),
-  );
+/** The gate `__root` renders for the route environment's verdict and content. */
+function gateFor(reachability: Reachability, content: RouteContent) {
+  const gate = selectRouteGate({ kind: "resolved", reachability, content });
   return { gate, phrase: routeGatePhrase(gate, { nowMs: 0, mateName: "shop" }) };
 }
 
@@ -71,7 +50,7 @@ afterEach(() => {
 });
 
 describe("RouteGateView", () => {
-  it("platform RESTARTING while connected keeps the ChatView instance", () => {
+  it("a restart under a live link, then with the link down, keeps the ChatView instance", () => {
     const mounts: Array<number> = [];
     let next = 0;
     function ChatView() {
@@ -91,13 +70,13 @@ describe("RouteGateView", () => {
       );
     const texts: Array<string> = [];
 
-    render(gateFor("connected", "ACTIVE", "live"));
+    render(gateFor(READY, "live"));
     texts.push(container.textContent);
-    render(gateFor("connected", "RESTARTING", "live"));
+    render(gateFor(RESTARTING_UNDER_LINK, "live"));
     texts.push(container.textContent);
-    render(gateFor("reconnecting", "RESTARTING", "live"));
+    render(gateFor(RESTARTING, "live"));
     texts.push(container.textContent);
-    render(gateFor("connected", "ACTIVE", "live"));
+    render(gateFor(READY, "live"));
     texts.push(container.textContent);
 
     expect(mounts).toEqual([1]);
@@ -121,15 +100,11 @@ describe("RouteGateView", () => {
       }, []);
       return "conversation";
     }
-    const refused = selectRouteGate({
-      kind: "resolved",
-      reachability: { kind: "refused-role" },
-      content: "live",
-    });
+    const refused = gateFor({ kind: "refused-role" }, "live");
 
     act(() =>
       root.render(
-        <RouteGateView {...gateFor("connected", "ACTIVE", "live")} projectId="project-1">
+        <RouteGateView {...gateFor(READY, "live")} projectId="project-1">
           <ChatView />
         </RouteGateView>,
       ),
@@ -137,11 +112,7 @@ describe("RouteGateView", () => {
     expect(mounted).toBe(true);
     act(() =>
       root.render(
-        <RouteGateView
-          gate={refused}
-          phrase={routeGatePhrase(refused, { nowMs: 0, mateName: "shop" })}
-          projectId="project-1"
-        >
+        <RouteGateView {...refused} projectId="project-1">
           <ChatView />
         </RouteGateView>,
       ),

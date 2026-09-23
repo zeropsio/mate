@@ -7,28 +7,19 @@
  * An interim shell: the account runtime replaces it (3.4).
  */
 import { RegistryContext } from "@effect/atom-react";
-import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   interimContainerVerdict,
   makeExchangeDriver,
   type ExchangeDriver,
   type ExchangeTarget,
-  type EnvironmentMachine,
   type Presence,
   type ServiceTransition,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { EnvironmentId } from "@t3tools/contracts";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import { useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { environmentCatalog } from "../connection/catalog";
 import { useEnvironments } from "../state/environments";
@@ -36,7 +27,6 @@ import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { inventoryCandidates, type Inventory } from "./inventoryContext";
 import {
   hasPendingEnvironmentIdentityExchange,
-  isCurrentEnvironmentTarget,
   readRememberedEnvironments,
   useEnvironmentIdentityVersion,
 } from "./rememberedEnvironments";
@@ -48,11 +38,6 @@ import {
 } from "./useZeropsIdentityExchange";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-
-const RestoreContext = createContext(false);
-const AvailableContext = createContext<ReadonlySet<string>>(new Set());
-export const useEnvironmentRestorePending = () => useContext(RestoreContext);
-export const useAvailableEnvironmentIds = () => useContext(AvailableContext);
 
 /** A tab hidden at least this long wakes its retries when it is shown again (§6.4). */
 const WAKE_AFTER_HIDDEN_MS = 30_000;
@@ -175,42 +160,6 @@ function targetsOf(input: {
   });
 }
 
-/**
- * A remembered target whose credential is on its way: not yet judged, exchanging, answered but
- * not yet installed, waiting for a slot or the grant, or on a presence not read yet (the
- * inventory's read ends it). A target whose presence was read and is not there, that waits on
- * its container, or backs off, has no end the route gate could wait for — its reachability
- * says why (the gate reads it in 0.9c).
- */
-const restoring = (machine: EnvironmentMachine | undefined): boolean => {
-  if (machine === undefined) return true;
-  const credential = machine.credential;
-  switch (credential.kind) {
-    case "none":
-    case "exchanging":
-      return true;
-    case "waiting":
-      return (
-        credential.on === "budget" ||
-        credential.on === "access" ||
-        (credential.on === "presence" && machine.presence.kind === "unknown")
-      );
-    case "held":
-      return !credential.installed;
-    case "backoff":
-    case "refused":
-    case "retired":
-      return false;
-  }
-};
-
-/** The route's remembered target once the driver knows it, otherwise every remembered target. */
-function restorePendingOf(machines: ReadonlyMap<string, EnvironmentMachine>): boolean {
-  const records = readRememberedEnvironments().map((record) => record.key);
-  const routed = records.filter((key) => machines.get(key)?.guards.routeTarget === true);
-  return (routed.length > 0 ? routed : records).some((key) => restoring(machines.get(key)));
-}
-
 // ── The shell ────────────────────────────────────────────────────────────────────────────────
 
 /** Only stable project/service records validated by today's inventory can be
@@ -303,42 +252,5 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
     }
   }, [environments, identityVersion, registry]);
 
-  const machines = useSyncExternalStore(driver.subscribe, driver.machines);
-  const restorePending = useMemo(() => restorePendingOf(machines), [machines, identityVersion]);
-
-  const allowed = useMemo(
-    () =>
-      new Set(
-        candidates.flatMap((candidate) =>
-          candidate.containerOrigin &&
-          candidate.group !== "unavailable" &&
-          candidate.group !== "provisioning"
-            ? [normalizeOrigin(candidate.containerOrigin)]
-            : [],
-        ),
-      ),
-    [candidates],
-  );
-  const availableEnvironmentIds = useMemo(
-    () =>
-      new Set(
-        environments
-          .filter(
-            (environment) =>
-              environment.displayUrl &&
-              allowed.has(normalizeOrigin(environment.displayUrl)) &&
-              isCurrentEnvironmentTarget(environment, readRememberedEnvironments(), candidates),
-          )
-          .map((environment) => String(environment.environmentId)),
-      ),
-    [allowed, candidates, environments, identityVersion],
-  );
-
-  return (
-    <ExchangeDriverContext value={driver}>
-      <RestoreContext value={restorePending}>
-        <AvailableContext value={availableEnvironmentIds}>{children}</AvailableContext>
-      </RestoreContext>
-    </ExchangeDriverContext>
-  );
+  return <ExchangeDriverContext value={driver}>{children}</ExchangeDriverContext>;
 }

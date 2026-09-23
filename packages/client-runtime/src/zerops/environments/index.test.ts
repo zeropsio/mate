@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as environments from "./index.ts";
 
 describe("@t3tools/client-runtime/zerops/environments", () => {
-  it("exports the machine, its driver, the reachability projection, the route gate and the interim regions", () => {
+  it("exports the machine, its driver, the reachability projection, the route gate and the interim container region", () => {
     expect(typeof environments.initialEnvironment).toBe("function");
     expect(typeof environments.makeExchangeDriver).toBe("function");
     expect(typeof environments.transitionEnvironment).toBe("function");
@@ -14,7 +14,5 @@ describe("@t3tools/client-runtime/zerops/environments", () => {
     expect(typeof environments.interimContainerVerdict).toBe("function");
     expect(typeof environments.selectRouteGate).toBe("function");
     expect(typeof environments.routeGatePhrase).toBe("function");
-    expect(typeof environments.interimReachability).toBe("function");
-    expect(typeof environments.interimRouteTarget).toBe("function");
   });
 });

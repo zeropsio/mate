@@ -1,16 +1,18 @@
-import { act, StrictMode, useContext, useEffect } from "react";
+import { act, StrictMode, useContext, useEffect, useSyncExternalStore } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { ExchangeAnswer } from "@t3tools/client-runtime/zerops/identityExchange";
-import type { ExchangeRequest } from "@t3tools/client-runtime/zerops/environments";
+import type { ExchangeDriver, ExchangeRequest } from "@t3tools/client-runtime/zerops/environments";
 
-import {
-  ZeropsEnvironmentLifetime,
-  useEnvironmentRestorePending,
-} from "./ZeropsEnvironmentLifetime";
+import { discoveryPending } from "../routes/-environmentTargets";
+import { ZeropsEnvironmentLifetime } from "./ZeropsEnvironmentLifetime";
 import { InventoryContext, type Inventory } from "./inventoryContext";
 import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
-import { beginEnvironmentIdentityExchange, rememberEnvironment } from "./rememberedEnvironments";
+import {
+  beginEnvironmentIdentityExchange,
+  readRememberedEnvironments,
+  rememberEnvironment,
+} from "./rememberedEnvironments";
 import { ExchangeDriverContext } from "./useZeropsIdentityExchange";
 
 const mock = vi.hoisted(() => ({
@@ -54,6 +56,7 @@ vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: mock.environments }),
 }));
 vi.mock("../connection/catalog", () => ({ environmentCatalog: { remove: {} } }));
+vi.mock("../state/shell", () => ({ environmentShell: {} }));
 vi.mock("@t3tools/client-runtime/state/runtime", () => ({
   runAtomCommand: (...args: unknown[]) => mock.remove(...args),
 }));
@@ -179,26 +182,22 @@ const roleRefused: ExchangeAnswer<unknown> = {
 /** Mutated by a test that needs `render()` to pick up a new inventory snapshot. */
 let liveInventory: Inventory = inventory();
 let unmount: (() => Promise<void>) | undefined;
+/** Whether a route to an environment no target names would still wait (§4.8 RG2). */
 let restorePending = false;
 function ObserveRestore() {
-  const pending = useEnvironmentRestorePending();
+  const driver = useContext(ExchangeDriverContext) as ExchangeDriver;
+  const machines = useSyncExternalStore(driver.subscribe, driver.machines);
+  const pending = discoveryPending(
+    machines,
+    readRememberedEnvironments().map((record) => record.key),
+  );
   useEffect(() => {
     restorePending = pending;
   }, [pending]);
   return null;
 }
-/** Stands in for the router's emitter: the route's target is demand on the driver. */
-let routeKeys: ReadonlyArray<string> = [];
-function RouteDemand() {
-  const driver = useContext(ExchangeDriverContext);
-  useEffect(() => {
-    driver?.setDemand("route", routeKeys);
-  });
-  return null;
-}
 beforeEach(() => {
   installTestDom();
-  routeKeys = [];
   const values = new Map<string, string>();
   Object.assign(window, {
     localStorage: {
@@ -235,7 +234,6 @@ async function mount() {
         <StrictMode>
           <InventoryContext value={liveInventory}>
             <ZeropsEnvironmentLifetime>
-              <RouteDemand />
               <ObserveRestore />
             </ZeropsEnvironmentLifetime>
           </InventoryContext>
@@ -311,15 +309,13 @@ it("does not repeat an in-flight restore when another inventory snapshot arrives
   expect(restorePending).toBe(false);
 });
 
-describe("a restore is pending only while a remembered target's exchange is on its way", () => {
-  const second = { ...service, id: "second" };
+describe("discovery waits only while a remembered target's exchange is on its way", () => {
   const rows: ReadonlyArray<{
     readonly name: string;
     readonly services: ReadonlyArray<typeof service>;
     /** Replaces parts of the settled inventory the services are read into. */
     readonly inventory?: Partial<Inventory>;
     readonly records: ReadonlyArray<string>;
-    readonly route: ReadonlyArray<string>;
     /** The answer each exchange gets; `hang` never answers. */
     readonly answer: (request: ExchangeRequest) => ExchangeAnswer<unknown> | "hang";
     /** The registry never answers the install. */
@@ -330,7 +326,6 @@ describe("a restore is pending only while a remembered target's exchange is on i
       name: "its project's Mate is stopped: it waits on presence",
       services: [{ ...service, status: "STOPPED" }],
       records: ["project:service"],
-      route: [],
       answer: () => admitted(),
       pending: false,
     },
@@ -338,7 +333,6 @@ describe("a restore is pending only while a remembered target's exchange is on i
       name: "its exchange failed and backs off",
       services: [service],
       records: ["project:service"],
-      route: [],
       answer: () => doorFailed(503),
       pending: false,
     },
@@ -347,7 +341,6 @@ describe("a restore is pending only while a remembered target's exchange is on i
       services: [service],
       inventory: { projects: [], services: new Map(), isLoading: true },
       records: ["project:service"],
-      route: [],
       answer: () => admitted(),
       pending: true,
     },
@@ -356,7 +349,6 @@ describe("a restore is pending only while a remembered target's exchange is on i
       services: [service],
       inventory: { services: new Map() },
       records: ["project:service"],
-      route: [],
       answer: () => admitted(),
       pending: true,
     },
@@ -364,7 +356,6 @@ describe("a restore is pending only while a remembered target's exchange is on i
       name: "its exchange is in flight",
       services: [service],
       records: ["project:service"],
-      route: [],
       answer: () => "hang",
       pending: true,
     },
@@ -372,18 +363,9 @@ describe("a restore is pending only while a remembered target's exchange is on i
       name: "its credential is answered and its install is on its way",
       services: [service],
       records: ["project:service"],
-      route: [],
       answer: () => admitted(),
       installHangs: true,
       pending: true,
-    },
-    {
-      name: "the route's target is connected while another target's exchange is in flight",
-      services: [service, second],
-      records: ["project:service", "project:second"],
-      route: ["project:service"],
-      answer: (request) => (request.key === "project:service" ? admitted() : "hang"),
-      pending: false,
     },
   ];
 
@@ -391,7 +373,6 @@ describe("a restore is pending only while a remembered target's exchange is on i
     for (const key of row.records) {
       rememberEnvironment({ key, environmentId: EnvironmentId.make(key) });
     }
-    routeKeys = row.route;
     liveInventory = {
       ...inventory(),
       services: new Map([[project.id, { status: "resolved", services: [...row.services] }]]),

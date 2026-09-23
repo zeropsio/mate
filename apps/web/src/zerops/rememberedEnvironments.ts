@@ -79,23 +79,3 @@ export function rememberEnvironment(value: RememberedEnvironment): void {
   accountLocalStorage.setItem(KEY, JSON.stringify([...values, value]));
   notifyIdentityChange();
 }
-
-/** Names and addresses cannot make a replacement service inherit an old target. */
-export function isCurrentEnvironmentTarget(
-  environment: { readonly environmentId: string; readonly displayUrl?: string | null },
-  remembered: ReadonlyArray<RememberedEnvironment>,
-  candidates: ReadonlyArray<{ readonly key: string; readonly containerOrigin?: string | null }>,
-): boolean {
-  if (!environment.displayUrl) return false;
-  const origin = normalizeOrigin(environment.displayUrl);
-  return remembered.some(
-    (entry) =>
-      entry.environmentId === environment.environmentId &&
-      candidates.some(
-        (candidate) =>
-          candidate.key === entry.key &&
-          candidate.containerOrigin != null &&
-          normalizeOrigin(candidate.containerOrigin) === origin,
-      ),
-  );
-}
