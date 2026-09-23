@@ -134,6 +134,20 @@ const ROWS: ReadonlyArray<Row> = [
     targets: [{ key: KEY, presence: null, record: ENV }],
   },
   {
+    name: "its organization's complete listing lacks the project of a remembered Mate while another's is read: unknown, no longer looked for at its record's origin (A16)",
+    listings: [known([]), { state: "reading", sinceMs: 0, attempt: 1 }],
+    records: [KEY],
+    last: [[KEY, REMEMBERED]],
+    targets: [{ key: KEY, presence: { kind: "unknown" }, record: ENV }],
+  },
+  {
+    name: "its organization's partial listing lacks the project of a remembered Mate while another's is read: held",
+    listings: [known([], "partial"), { state: "reading", sinceMs: 0, attempt: 1 }],
+    records: [KEY],
+    last: [[KEY, REMEMBERED]],
+    targets: [{ key: KEY, presence: null, record: ENV }],
+  },
+  {
     name: "its own organization's projects still being read beside another's complete listing: remembered (A16)",
     listings: [{ state: "reading", sinceMs: 0, attempt: 1 }, known([])],
     records: [KEY],

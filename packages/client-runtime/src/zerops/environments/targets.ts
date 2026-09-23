@@ -13,8 +13,9 @@
  *   without it, it is `gone` only once a direct read of those services, finished after the
  *   omission was seen, lacks it too (§9 C19): a service the listing drops for a moment keeps its
  *   Mate.
- * - A remembered target its project's services were read without is `unknown` until then, whether
- *   or not the listings settled: that read replaces what its record kept (A16).
+ * - A remembered target its project's services were read without, or whose organization's complete
+ *   listing lacks its project, is `unknown` until then, whether or not the other listings settled:
+ *   that read replaces what its record kept (A16).
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -107,6 +108,14 @@ export function listTargets(input: {
         (record?.projectRef == null || record.projectRef.orgId === organizationId) &&
         (listing.state === "unread" || listing.state === "reading"),
     );
+  /** The record's organization's listing is known and complete: a project it lacks is not there. */
+  const ownComplete = (record: RegistrationRecord | undefined): boolean =>
+    input.listings.some(
+      ({ organizationId, listing }) =>
+        record?.projectRef?.orgId === organizationId &&
+        listing.state === "known" &&
+        listing.coverage === "complete",
+    );
   const listed = new Set(rows.map((row) => row.project.id));
   const unread = new Set(
     rows.filter((row) => row.presence === "unknown").map((row) => row.project.id),
@@ -131,13 +140,14 @@ export function listTargets(input: {
       absences.set(key, held);
       return null;
     }
-    // Its project's services were read without it: where its record kept it no longer answers
-    // (A16), and anything else it was is held.
+    // Its project's services were read without it, or its organization's complete listing lacks
+    // the project: where its record kept it no longer answers (A16), and anything else it was is
+    // held.
     const omitted =
       input.lastPresence(key)?.kind === "remembered" ? ({ kind: "unknown" } as const) : null;
     if (!settled) {
       if (held !== undefined) absences.set(key, held);
-      if (listed.has(projectId)) return omitted;
+      if (listed.has(projectId) || ownComplete(record)) return omitted;
       return unanswered(record) ? remembered : null;
     }
     if (!listed.has(projectId)) return GONE;
