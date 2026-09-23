@@ -75,6 +75,19 @@ describe("createGroupAnswers", () => {
     expect(reads.map((read) => read.groupId)).toEqual(["g2", "g3"]);
   });
 
+  it("a group is never read twice at once, even with a slot free", async () => {
+    const { answers, reads, settle, next } = harness();
+    answers.setGroups([G1, G2]);
+    next("g2").resolve(() => answer("g2"));
+    await settle();
+    // G1 is still in flight and a slot is free: the tick reads G2 now and owes G1 after its read.
+    answers.refresh();
+    expect(reads.map((read) => read.groupId)).toEqual(["g1", "g2"]);
+    next("g1").resolve(() => answer("g1"));
+    await settle();
+    expect(reads.map((read) => read.groupId)).toEqual(["g2", "g1"]);
+  });
+
   it("G2 resolving leaves G1's stops", async () => {
     const { answers, published, settle, next } = harness();
     answers.setGroups([G1, G2]);
