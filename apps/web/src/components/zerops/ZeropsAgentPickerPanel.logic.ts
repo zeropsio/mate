@@ -2,6 +2,8 @@
  * What the model picker's per-agent panel says and offers, for every
  * `ZeropsAgentAvailability` kind except `ready` (a ready agent renders its
  * models, never this panel — see `ChatComposer`'s `renderInstancePanel`).
+ * An agent whose sign-in is `unknown` says so through `knownPresentation`:
+ * "Checking…" while it is read, the cause once a read failed.
  *
  * Pure view logic, mirroring the split every other Zerops dialog/card uses
  * (`ZeropsAgentAuthorizationDialog.logic.ts`, `ZeropsGroupTree.logic.ts`):
@@ -9,9 +11,11 @@
  */
 import { ZEROPS_AGENT_NAMES } from "./ZeropsAgentAuthorizationDialog.logic";
 import type {
+  ZeropsAgentAuthUnknown,
   ZeropsAgentAvailability,
   ZeropsAgentSignInKind,
 } from "@t3tools/client-runtime/zerops/agentAvailability";
+import { knownPresentation } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsAgentId } from "@t3tools/contracts";
 
 export type ZeropsAgentPickerPanelPrimaryActionKind = "sign-in" | "continue" | "use-my-account";
@@ -25,8 +29,12 @@ export interface ZeropsAgentPickerPanelPrimaryAction {
 export interface ZeropsAgentPickerPanelView {
   readonly agentName: string;
   readonly statusLine: string;
-  /** Every non-`ready` kind has one action — disabled for `registering`, which can only wait. */
-  readonly primaryAction: ZeropsAgentPickerPanelPrimaryAction;
+  /**
+   * One action for every known non-`ready` kind — disabled for `registering`,
+   * which can only wait. `null` while the sign-in is `unknown`: nothing here
+   * moves it, the feed answers on its own.
+   */
+  readonly primaryAction: ZeropsAgentPickerPanelPrimaryAction | null;
   readonly showCancel: boolean;
   /**
    * Shown when this instance is ALSO locked out of the current session (a
@@ -59,6 +67,27 @@ const SIGN_IN_STATUS: Readonly<Record<ZeropsAgentSignInKind, (agentName: string)
   "needs-reauth": (agentName) => `${agentName} no longer accepts this sign-in.`,
 };
 
+/**
+ * What the panel says while the agent's sign-in is not known. Only the
+ * message is used, and each state it renders (unread, reading, failed)
+ * carries one; none of them reads the clock, and the Mate's update offer is
+ * not known here, so none is made.
+ */
+function unknownStatus(agentName: string, read: ZeropsAgentAuthUnknown): string {
+  const presentation = knownPresentation(
+    read,
+    {
+      subject: `${agentName}'s sign-in`,
+      entity: "agent",
+      source: "mate",
+      checking: `Checking whether ${agentName} is signed in…`,
+      negative: null,
+    },
+    { nowMs: 0, updateOffered: false },
+  );
+  return presentation.message?.text ?? "";
+}
+
 /** The line shown when nobody but the signer can run this agent (D6). */
 export function zeropsAgentPickerSomeoneElseStatus(signerName: string | undefined): string {
   const name = signerName?.trim() ?? "";
@@ -87,6 +116,14 @@ export function resolveZeropsAgentPickerPanelView(input: {
       : `This session runs on ${input.lockedToAgentName}. ${agentName} is used in a New session.`;
 
   switch (availability.kind) {
+    case "unknown":
+      return {
+        agentName,
+        statusLine: unknownStatus(agentName, availability.read),
+        primaryAction: null,
+        showCancel: false,
+        sessionLockNotice,
+      };
     case "registering":
       return {
         agentName,

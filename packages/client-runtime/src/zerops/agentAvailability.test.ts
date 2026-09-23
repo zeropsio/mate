@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   resolveZeropsAgentAvailability,
   zeropsAgentAvailabilityIsRunnable,
+  type ZeropsAgentAuthFacts,
+  type ZeropsAgentAuthRead,
   type ZeropsAgentAvailability,
-  type ZeropsAgentAvailabilityInput,
 } from "./agentAvailability.ts";
+import type { FailureReason, Freshness } from "./knowledge/index.ts";
 
 const JAN = "jan-user-id";
 const EVA = "eva-user-id";
@@ -23,14 +25,26 @@ const tokenAgent = {
   flagToken: true,
 } as const;
 
-function input(
-  agent: Pick<ZeropsAgentAvailabilityInput, "state" | "providerAuth" | "credPresent" | "flagToken">,
-  signer: string | undefined,
-  subject: string | undefined,
-): ZeropsAgentAvailabilityInput {
+type AgentRow = Pick<ZeropsAgentAuthFacts, "state" | "providerAuth" | "credPresent" | "flagToken">;
+
+/** The agent's row as the feed delivers it: complete, and live unless said otherwise. */
+const known = (
+  facts: ZeropsAgentAuthFacts,
+  freshness: Freshness = { kind: "live" },
+): ZeropsAgentAuthRead => ({
+  state: "known",
+  value: facts,
+  asOf: { ordinal: 1, atMs: 1_000 },
+  coverage: "complete",
+  freshness,
+});
+
+function input(agent: AgentRow, signer: string | undefined, subject: string | undefined) {
   return {
-    ...agent,
-    authorizedBy: signer === undefined ? undefined : { subject: signer },
+    agent: known({
+      ...agent,
+      authorizedBy: signer === undefined ? undefined : { subject: signer },
+    }),
     viewerSubject: subject,
   };
 }
@@ -116,13 +130,7 @@ describe("resolveZeropsAgentAvailability — agrees with turnRefusal", () => {
       { kind: "needs-sign-in", signInKind: "needs-reauth" },
     ],
   ] satisfies ReadonlyArray<
-    [
-      string,
-      Pick<ZeropsAgentAvailabilityInput, "state" | "providerAuth" | "credPresent" | "flagToken">,
-      string | undefined,
-      string | undefined,
-      ZeropsAgentAvailability,
-    ]
+    [string, AgentRow, string | undefined, string | undefined, ZeropsAgentAvailability]
   >)("%s", (_name, agent, signer, subject, expected) => {
     expect(resolveZeropsAgentAvailability(input(agent, signer, subject))).toEqual(expected);
   });
@@ -132,12 +140,14 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
   it("a login session in progress is signing-in even over a stale not-authorized state", () => {
     expect(
       resolveZeropsAgentAvailability({
-        state: "not-authorized",
-        providerAuth: "unknown",
-        credPresent: false,
-        flagToken: false,
+        agent: known({
+          state: "not-authorized",
+          providerAuth: "unknown",
+          credPresent: false,
+          flagToken: false,
+          loginPhase: "awaiting-browser",
+        }),
         viewerSubject: JAN,
-        loginPhase: "awaiting-browser",
       }),
     ).toEqual({ kind: "signing-in" });
   });
@@ -145,9 +155,11 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
   it("a token-authorized agent is ready even mid-login (token wins over an in-progress session)", () => {
     expect(
       resolveZeropsAgentAvailability({
-        ...tokenAgent,
+        agent: known({
+          ...tokenAgent,
+          loginPhase: "awaiting-code",
+        }),
         viewerSubject: JAN,
-        loginPhase: "awaiting-code",
       }),
     ).toEqual({ kind: "ready" });
   });
@@ -155,12 +167,14 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
   it("a cancelled login session falls back to the baseline classification", () => {
     expect(
       resolveZeropsAgentAvailability({
-        state: "not-authorized",
-        providerAuth: "unknown",
-        credPresent: false,
-        flagToken: false,
+        agent: known({
+          state: "not-authorized",
+          providerAuth: "unknown",
+          credPresent: false,
+          flagToken: false,
+          loginPhase: "cancelled",
+        }),
         viewerSubject: JAN,
-        loginPhase: "cancelled",
       }),
     ).toEqual({ kind: "needs-sign-in", signInKind: "not-authorized" });
   });
@@ -168,8 +182,10 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
   it("recordFailed never overrides an authorizedBy tag the server already reads (naming the viewer)", () => {
     expect(
       resolveZeropsAgentAvailability({
-        ...signedIn,
-        authorizedBy: { subject: JAN },
+        agent: known({
+          ...signedIn,
+          authorizedBy: { subject: JAN },
+        }),
         viewerSubject: JAN,
         recordFailed: true,
       }),
@@ -179,8 +195,10 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
   it("recordFailed never overrides an authorizedBy tag naming someone else", () => {
     expect(
       resolveZeropsAgentAvailability({
-        ...signedIn,
-        authorizedBy: { subject: EVA },
+        agent: known({
+          ...signedIn,
+          authorizedBy: { subject: EVA },
+        }),
         viewerSubject: JAN,
         recordFailed: true,
       }),
@@ -190,8 +208,10 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
   it("recordFailed with nothing recorded at all is still unrecorded", () => {
     expect(
       resolveZeropsAgentAvailability({
-        ...signedIn,
-        authorizedBy: undefined,
+        agent: known({
+          ...signedIn,
+          authorizedBy: undefined,
+        }),
         viewerSubject: JAN,
         recordFailed: true,
       }),
@@ -201,10 +221,12 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
   it("a login in progress does not override an agent this viewer can already run (5a)", () => {
     expect(
       resolveZeropsAgentAvailability({
-        ...signedIn,
-        authorizedBy: { subject: JAN },
+        agent: known({
+          ...signedIn,
+          authorizedBy: { subject: JAN },
+          loginPhase: "awaiting-browser",
+        }),
         viewerSubject: JAN,
-        loginPhase: "awaiting-browser",
       }),
     ).toEqual({ kind: "ready" });
   });
@@ -212,12 +234,69 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
   it("a login in progress still overrides an agent this viewer cannot otherwise run", () => {
     expect(
       resolveZeropsAgentAvailability({
-        ...signedIn,
-        authorizedBy: { subject: EVA },
+        agent: known({
+          ...signedIn,
+          authorizedBy: { subject: EVA },
+          loginPhase: "awaiting-browser",
+        }),
         viewerSubject: JAN,
-        loginPhase: "awaiting-browser",
       }),
     ).toEqual({ kind: "signing-in" });
+  });
+});
+
+const TIMEOUT: FailureReason = { kind: "timeout", afterMs: 15_000 };
+const UNSUPPORTED: FailureReason = { kind: "unsupported", capability: "subscribeZeropsAgentAuth" };
+
+describe("resolveZeropsAgentAvailability — agent auth not known yet", () => {
+  it.each([
+    ["unread", { state: "unread", waitingFor: null }],
+    ["waiting for the Mate", { state: "unread", waitingFor: "mate-session" }],
+    ["reading", { state: "reading", sinceMs: 1_000, attempt: 1 }],
+    ["failed", { state: "failed", failure: TIMEOUT, atMs: 2_000, attempt: 1, retryAtMs: null }],
+    [
+      "failed on an old Mate",
+      { state: "failed", failure: UNSUPPORTED, atMs: 2_000, attempt: 1, retryAtMs: null },
+    ],
+  ] satisfies ReadonlyArray<[string, ZeropsAgentAuthRead]>)(
+    "unread agent auth never reads needs-sign-in: %s",
+    (_name, agent) => {
+      for (const viewerSubject of [JAN, undefined]) {
+        for (const recordFailed of [false, true]) {
+          const availability = resolveZeropsAgentAvailability({
+            agent,
+            viewerSubject,
+            recordFailed,
+          });
+          expect(availability).toEqual({ kind: "unknown", read: agent });
+        }
+      }
+    },
+  );
+
+  it("a failed read keeps its cause for the copy", () => {
+    const agent: ZeropsAgentAuthRead = {
+      state: "failed",
+      failure: TIMEOUT,
+      atMs: 2_000,
+      attempt: 1,
+      retryAtMs: null,
+    };
+    const availability = resolveZeropsAgentAvailability({ agent, viewerSubject: JAN });
+    expect(availability.kind === "unknown" && availability.read).toMatchObject({
+      state: "failed",
+      failure: TIMEOUT,
+    });
+  });
+
+  it("a stale known row still answers from its kept value", () => {
+    const agent = known(
+      { ...signedIn, authorizedBy: { subject: JAN } },
+      { kind: "stale", reason: { kind: "source-recovering", retryAtMs: null }, sinceMs: 3_000 },
+    );
+    expect(resolveZeropsAgentAvailability({ agent, viewerSubject: JAN })).toEqual({
+      kind: "ready",
+    });
   });
 });
 
@@ -229,6 +308,7 @@ describe("zeropsAgentAvailabilityIsRunnable", () => {
     [{ kind: "needs-sign-in", signInKind: "not-authorized" }, false],
     [{ kind: "someone-else", signerId: undefined }, false],
     [{ kind: "unrecorded" }, false],
+    [{ kind: "unknown", read: { state: "reading", sinceMs: 1_000, attempt: 1 } }, false],
   ] satisfies ReadonlyArray<[ZeropsAgentAvailability, boolean]>)(
     "%o → %s",
     (availability, expected) => {

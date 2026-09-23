@@ -2337,14 +2337,14 @@ export default function ChatView(props: ChatViewProps) {
     () =>
       resolveZeropsProviderAvailability({
         entries: providerInstanceEntries,
-        agentAuth: zeropsAgentAuth,
+        agentAuth: zeropsAgentAuthRead,
         viewerSubject: zeropsViewerSubject,
         localSigners: zeropsLocalSigners,
         recordFailed: zeropsSignInDialog.recordFailed,
       }),
     [
       providerInstanceEntries,
-      zeropsAgentAuth,
+      zeropsAgentAuthRead,
       zeropsLocalSigners,
       zeropsSignInDialog.recordFailed,
       zeropsViewerSubject,
@@ -3777,14 +3777,9 @@ export default function ChatView(props: ChatViewProps) {
   // began with even when it is not runnable (the picker offers sign-in
   // there); Send is disabled with that agent's own reason instead — see
   // `resolveZeropsOwnedAgentSendBlockReason` (ChatView.logic.ts).
-  const zeropsOwnedInstanceId = activeProviderInstanceId ?? activeThread?.modelSelection.instanceId;
-  const zeropsOwnedAgentAvailability =
-    zeropsOwnedInstanceId != null
-      ? zeropsAgentAvailabilityByInstanceId?.get(zeropsOwnedInstanceId)
-      : undefined;
   const zeropsSendBlockReason = resolveZeropsOwnedAgentSendBlockReason({
-    agentId: zeropsOwnedAgent?.agentId,
-    availability: zeropsOwnedAgentAvailability,
+    instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
+    availabilityByInstanceId: zeropsAgentAvailabilityByInstanceId,
   });
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(

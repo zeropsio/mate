@@ -99,6 +99,57 @@ describe("resolveZeropsAgentPickerPanelView", () => {
         showCancel: false,
       },
     },
+    {
+      name: "unknown while the sign-in is being read says it is checking, with nothing to press",
+      agentId: "claude-code",
+      availability: { kind: "unknown", read: { state: "reading", sinceMs: 1_000, attempt: 1 } },
+      expected: {
+        agentName: "Claude Code",
+        statusLine: "Checking whether Claude Code is signed in…",
+        primaryAction: null,
+        showCancel: false,
+      },
+    },
+    {
+      name: "unknown after a failed read names the cause, never 'Not signed in'",
+      agentId: "codex",
+      availability: {
+        kind: "unknown",
+        read: {
+          state: "failed",
+          failure: { kind: "timeout", afterMs: 15_000 },
+          atMs: 2_000,
+          attempt: 1,
+          retryAtMs: null,
+        },
+      },
+      expected: {
+        agentName: "Codex",
+        statusLine: "Couldn't read Codex's sign-in. This Mate didn't answer.",
+        primaryAction: null,
+        showCancel: false,
+      },
+    },
+    {
+      name: "unknown on an old Mate says it is too old",
+      agentId: "codex",
+      availability: {
+        kind: "unknown",
+        read: {
+          state: "failed",
+          failure: { kind: "unsupported", capability: "subscribeZeropsAgentAuth" },
+          atMs: 2_000,
+          attempt: 1,
+          retryAtMs: null,
+        },
+      },
+      expected: {
+        agentName: "Codex",
+        statusLine: "This Mate is too old for this. Updating it adds it.",
+        primaryAction: null,
+        showCancel: false,
+      },
+    },
   ] satisfies ReadonlyArray<{
     name: string;
     agentId: "claude-code" | "codex";

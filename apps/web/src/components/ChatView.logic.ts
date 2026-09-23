@@ -6,6 +6,7 @@ import {
   zeropsAgentAvailabilityIsRunnable,
   type ZeropsAgentAvailability,
 } from "@t3tools/client-runtime/zerops/agentAvailability";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   agentIdForProviderInstance,
   ANTIGRAVITY_DEFAULT_MODEL,
@@ -406,34 +407,59 @@ export function resolveComposerProviderSelection(input: {
 
 /**
  * Per-instance zerops runnability (D6), derived once from the agent-auth
- * snapshot so the composer's selection gate and the model picker's panels
- * read the same answer for the same instance. `undefined` when this is not
- * a Zerops environment (no feed, or `available: false`) — every caller then
- * falls back to pre-zerops behavior.
+ * feed so the composer's selection gate and the model picker's panels read
+ * the same answer for the same instance. `undefined` when nothing gates the
+ * agents — no environment to read, a non-Zerops environment
+ * (`available: false`), or a failed read, an old Mate's `unsupported`
+ * included: the composer offers no retry for one, so gating on it would
+ * hide the models with no way out, and the server's turn refusal stays the
+ * authority. Every caller then falls back to pre-zerops behavior. While the
+ * snapshot is still being read, every agent instance is `unknown` with that
+ * read — never `needs-sign-in`.
  */
 export function resolveZeropsProviderAvailability(input: {
   readonly entries: ReadonlyArray<ProviderInstanceEntry>;
-  readonly agentAuth: ZeropsAgentAuthSnapshot | undefined;
+  readonly agentAuth: Known<ZeropsAgentAuthSnapshot> | undefined;
   readonly viewerSubject: string | undefined;
   readonly localSigners: LocalAgentSigners;
   readonly recordFailed: ReadonlySet<ZeropsAgentId>;
 }): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
-  if (input.agentAuth === undefined || !input.agentAuth.available) return undefined;
+  const agentAuth = input.agentAuth;
+  if (agentAuth === undefined || agentAuth.state === "gone" || agentAuth.state === "failed") {
+    return undefined;
+  }
+  if (agentAuth.state === "known" && !agentAuth.value.available) return undefined;
   const map = new Map<ProviderInstanceId, ZeropsAgentAvailability>();
   for (const entry of input.entries) {
     const agentId = agentIdForProviderInstance(entry.instanceId);
     if (agentId === undefined) continue;
-    const agent = input.agentAuth.agents.find((candidate) => candidate.agentId === agentId);
+    if (agentAuth.state !== "known") {
+      map.set(
+        entry.instanceId,
+        resolveZeropsAgentAvailability({ agent: agentAuth, viewerSubject: input.viewerSubject }),
+      );
+      continue;
+    }
+    const agent = agentAuth.value.agents.find((candidate) => candidate.agentId === agentId);
     if (agent === undefined) continue;
     map.set(
       entry.instanceId,
       resolveZeropsAgentAvailability({
-        credPresent: agent.credPresent,
-        flagToken: agent.flagToken,
-        providerAuth: agent.providerAuth,
-        state: agent.state,
-        loginPhase: agent.login?.phase,
-        authorizedBy: resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, input.localSigners),
+        agent: {
+          ...agentAuth,
+          value: {
+            credPresent: agent.credPresent,
+            flagToken: agent.flagToken,
+            providerAuth: agent.providerAuth,
+            state: agent.state,
+            loginPhase: agent.login?.phase,
+            authorizedBy: resolveAgentAuthorizer(
+              agent.agentId,
+              agent.authorizedBy,
+              input.localSigners,
+            ),
+          },
+        },
         viewerSubject: input.viewerSubject,
         recordFailed: input.recordFailed.has(agent.agentId),
       }),
@@ -446,39 +472,45 @@ export function resolveZeropsProviderAvailability(input: {
  * Whether the composer's zerops gate should treat `instanceId` as runnable.
  * An instance with no entry in the map — a non-Zerops environment, or a
  * driver Mate never signs anybody in to — is always runnable: there is
- * nothing here to gate it.
+ * nothing here to gate it. Nor does an `unknown` sign-in move a selection:
+ * only a known answer can say the viewer cannot run the agent, and Send
+ * waits on it meanwhile (`resolveZeropsOwnedAgentSendBlockReason`).
  */
 export function isZeropsInstanceRunnable(
   availabilityByInstanceId: ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined,
   instanceId: ProviderInstanceId,
 ): boolean {
   const availability = availabilityByInstanceId?.get(instanceId);
-  return availability === undefined || zeropsAgentAvailabilityIsRunnable(availability);
+  return (
+    availability === undefined ||
+    availability.kind === "unknown" ||
+    zeropsAgentAvailabilityIsRunnable(availability)
+  );
 }
 
 /**
- * Why Send is disabled on a started thread whose locked agent this viewer
- * cannot run (D6) — `undefined` when there is nothing owned to check yet, or
- * when the owned agent is runnable (`ready`, or `registering`: the server
- * lets that one through for the signer too, so it must never read as
- * blocked here). Reuses the picker panel's own status line — one piece of
- * copy per state, wherever it shows.
+ * Why Send is disabled for the instance this composer would spend (D6) —
+ * `undefined` when that instance is not gated (no instance, not a Zerops
+ * agent, or nothing mapped for it), or when its agent is runnable (`ready`,
+ * or `registering`: the server lets that one through for the signer too, so
+ * it must never read as blocked here). An `unknown` sign-in holds Send while
+ * it is read. Reuses the picker panel's own status line — one piece of copy
+ * per state, wherever it shows.
  */
 export function resolveZeropsOwnedAgentSendBlockReason(input: {
-  readonly agentId: ZeropsAgentId | undefined;
-  readonly availability: ZeropsAgentAvailability | undefined;
+  readonly instanceId: ProviderInstanceId | null | undefined;
+  readonly availabilityByInstanceId:
+    | ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability>
+    | undefined;
 }): string | undefined {
-  if (input.agentId === undefined || input.availability === undefined) return undefined;
-  if (
-    input.availability.kind === "ready" ||
-    zeropsAgentAvailabilityIsRunnable(input.availability)
-  ) {
+  if (input.instanceId == null) return undefined;
+  const agentId = agentIdForProviderInstance(input.instanceId);
+  const availability = input.availabilityByInstanceId?.get(input.instanceId);
+  if (agentId === undefined || availability === undefined) return undefined;
+  if (availability.kind === "ready" || zeropsAgentAvailabilityIsRunnable(availability)) {
     return undefined;
   }
-  return resolveZeropsAgentPickerPanelView({
-    agentId: input.agentId,
-    availability: input.availability,
-  }).statusLine;
+  return resolveZeropsAgentPickerPanelView({ agentId, availability }).statusLine;
 }
 
 /** Keep restored drafts and every plan control on the selected instance's supported mode. */

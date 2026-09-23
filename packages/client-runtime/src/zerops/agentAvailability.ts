@@ -40,6 +40,15 @@
  * one recovery offered either way is running the sign-in flow again, which
  * re-attempts the record write on success.
  *
+ * ## Known inputs
+ *
+ * The agent's row comes from the project's agent-auth feed as `Known`
+ * (DESIGN §2.C C13b). Until a row is known the answer is `unknown`, carrying
+ * the read so its copy can say "Checking…" or name why the read failed —
+ * never `needs-sign-in` or `someone-else`, which only a known row can earn.
+ * A known row answers from its value however stale it is: the value is kept
+ * for exactly that.
+ *
  * @module agentAvailability
  */
 import {
@@ -50,6 +59,7 @@ import {
 import type { ZeropsAgentLoginPhase } from "@t3tools/contracts";
 
 import type { ZeropsAgentAuthorizer } from "./agentOwnership.ts";
+import type { Known } from "./knowledge/index.ts";
 
 /** The auth kind behind a `needs-sign-in` answer — what button copy to show. */
 export type ZeropsAgentSignInKind = Exclude<
@@ -67,7 +77,9 @@ export type ZeropsAgentAvailability =
   /** Someone else signed this agent in — or the viewer could not be identified (turnRefusal treats both alike). */
   | { readonly kind: "someone-else"; readonly signerId: string | undefined }
   /** Signed in on the project, but no signer was recorded for it (or this browser's own record write failed, H13). */
-  | { readonly kind: "unrecorded" };
+  | { readonly kind: "unrecorded" }
+  /** The agent's row is not known yet, or its read failed: the read says which. */
+  | { readonly kind: "unknown"; readonly read: ZeropsAgentAuthUnknown };
 
 const IN_PROGRESS_LOGIN_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
   "starting",
@@ -76,11 +88,25 @@ const IN_PROGRESS_LOGIN_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
   "awaiting-code",
 ]);
 
-export interface ZeropsAgentAvailabilityInput extends ZeropsAgentAuthFields {
+/** One agent's row of the agent-auth feed (C13), with the signer of record (C14). */
+export interface ZeropsAgentAuthFacts extends ZeropsAgentAuthFields {
   readonly flagToken: boolean;
   /** Only the phase matters here — the rest of the login session is presentation. */
   readonly loginPhase?: ZeropsAgentLoginPhase | undefined;
   readonly authorizedBy?: ZeropsAgentAuthorizer | undefined;
+}
+
+/**
+ * The agent's row as read. A Mate feed never proves absence, so there is no
+ * `gone`: an agent the Mate does not carry has no availability to resolve.
+ */
+export type ZeropsAgentAuthRead = Exclude<Known<ZeropsAgentAuthFacts>, { readonly state: "gone" }>;
+
+/** A read that holds no row yet: unread, reading, or failed with its cause. */
+export type ZeropsAgentAuthUnknown = Exclude<ZeropsAgentAuthRead, { readonly state: "known" }>;
+
+export interface ZeropsAgentAvailabilityInput {
+  readonly agent: ZeropsAgentAuthRead;
   /** The signed-in Zerops user's id, or `undefined` when nobody is signed in. */
   readonly viewerSubject: string | undefined;
   /** This browser's own signer-record write for this agent has failed and not yet succeeded (H13). */
@@ -90,18 +116,27 @@ export interface ZeropsAgentAvailabilityInput extends ZeropsAgentAuthFields {
 export function resolveZeropsAgentAvailability(
   input: ZeropsAgentAvailabilityInput,
 ): ZeropsAgentAvailability {
+  if (input.agent.state !== "known") return { kind: "unknown", read: input.agent };
+  const agent = input.agent.value;
   // classifyZeropsAgentAuth decides FIRST, exactly like `turnRefusal`: a
   // token agent whose own CLI probe says unauthenticated is refused as
   // not-signed-in before `flagToken` is ever consulted — the token bypasses
   // ownership, never the sign-in check itself.
-  const auth = classifyZeropsAgentAuth(input).kind;
+  const auth = classifyZeropsAgentAuth(agent).kind;
 
   const otherwise: ZeropsAgentAvailability =
     auth !== "authorized" && auth !== "registering"
       ? { kind: "needs-sign-in", signInKind: auth }
-      : input.flagToken
+      : agent.flagToken
         ? { kind: "ready" }
-        : resolveZeropsAgentOwnership(input, auth);
+        : resolveZeropsAgentOwnership(
+            {
+              authorizedBy: agent.authorizedBy,
+              viewerSubject: input.viewerSubject,
+              recordFailed: input.recordFailed,
+            },
+            auth,
+          );
 
   // A server-driven login session in progress only matters when this viewer
   // could not otherwise run the agent: the server does not care that
@@ -111,8 +146,8 @@ export function resolveZeropsAgentAvailability(
   // would still go through.
   if (
     !zeropsAgentAvailabilityIsRunnable(otherwise) &&
-    input.loginPhase !== undefined &&
-    IN_PROGRESS_LOGIN_PHASES.has(input.loginPhase)
+    agent.loginPhase !== undefined &&
+    IN_PROGRESS_LOGIN_PHASES.has(agent.loginPhase)
   ) {
     return { kind: "signing-in" };
   }
@@ -129,7 +164,8 @@ export function resolveZeropsAgentAvailability(
  * or somebody else — is the truth regardless of a stale local failure flag.
  */
 function resolveZeropsAgentOwnership(
-  input: Pick<ZeropsAgentAvailabilityInput, "authorizedBy" | "viewerSubject" | "recordFailed">,
+  input: Pick<ZeropsAgentAuthFacts, "authorizedBy"> &
+    Pick<ZeropsAgentAvailabilityInput, "viewerSubject" | "recordFailed">,
   auth: Extract<ZeropsAgentAuthKind["kind"], "authorized" | "registering">,
 ): ZeropsAgentAvailability {
   const signer = input.authorizedBy?.subject;

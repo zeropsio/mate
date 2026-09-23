@@ -74,15 +74,17 @@ export function ZeropsAgentPickerPanel({
       <ZeropsAgentPickerLogo agentId={agentId} />
       <p className="text-sm font-medium leading-snug text-foreground">{view.agentName}</p>
       <p className="text-xs leading-snug text-muted-foreground">{view.statusLine}</p>
-      <Button
-        disabled={view.primaryAction.disabled}
-        onClick={() =>
-          invokeZeropsAgentPickerPrimaryAction({ agentId, requestClosePicker, onOpenDialog })
-        }
-        size="sm"
-      >
-        {view.primaryAction.label}
-      </Button>
+      {view.primaryAction === null ? null : (
+        <Button
+          disabled={view.primaryAction.disabled}
+          onClick={() =>
+            invokeZeropsAgentPickerPrimaryAction({ agentId, requestClosePicker, onOpenDialog })
+          }
+          size="sm"
+        >
+          {view.primaryAction.label}
+        </Button>
+      )}
       {view.showCancel ? (
         <Button onClick={() => onCancel(agentId)} size="sm" variant="outline">
           Cancel

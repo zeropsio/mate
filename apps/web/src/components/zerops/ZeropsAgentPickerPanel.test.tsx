@@ -24,6 +24,23 @@ describe("ZeropsAgentPickerPanel", () => {
     expect(html).not.toContain("Cancel");
   });
 
+  it("renders an agent whose sign-in is still being read as checking, with no button", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsAgentPickerPanel
+        agentId="claude-code"
+        availability={{ kind: "unknown", read: { state: "unread", waitingFor: null } }}
+        onCancel={noop}
+        onOpenDialog={noop}
+        requestClosePicker={noop}
+      />,
+    );
+
+    expect(html).toContain("Checking whether Claude Code is signed in…");
+    expect(html).toContain('data-zerops-agent-availability="unknown"');
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("Not signed in.");
+  });
+
   it("renders a signing-in agent with continue and cancel", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentPickerPanel
