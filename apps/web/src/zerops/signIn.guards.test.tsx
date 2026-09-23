@@ -68,7 +68,16 @@ describe("deep link after sign-in", () => {
     expectLanding(landing);
   });
 
-  it.each(["/", "/zerops", "/pair", "/zerops/x?y=1", "//elsewhere.example/zerops"])(
+  it("returns a hand-over started on a deep link with a query to that route, without the query", async () => {
+    const { signInByHandover } = await signedOutTab("/zerops/project/p1?tab=services#logs");
+
+    const landing = await signInByHandover();
+
+    expect(landing).toBe(DEEP_LINK);
+    expectLanding(landing);
+  });
+
+  it.each(["/", "/zerops", "/pair", "//elsewhere.example/zerops"])(
     "returns a hand-over started at %s to /zerops",
     async (path) => {
       const { signInByHandover } = await signedOutTab(path);

@@ -76,6 +76,21 @@ export interface MountTabOptions {
   readonly page?: () => Promise<ReactNode>;
 }
 
+/**
+ * A URL path as `location` splits it. Split by hand rather than by `URL`,
+ * which would read `//host/path` as another origin where a browser keeps it
+ * as this origin's pathname.
+ */
+function splitPath(path: string) {
+  const [beforeHash, ...afterHash] = path.split("#");
+  const [pathname, ...afterQuery] = beforeHash!.split("?");
+  return {
+    pathname: pathname!,
+    search: afterQuery.length === 0 ? "" : `?${afterQuery.join("?")}`,
+    hash: afterHash.length === 0 ? "" : `#${afterHash.join("#")}`,
+  };
+}
+
 function tabWindow(tab: HarnessTab, path: string, reload: () => void) {
   const document = new TestNode("#document", null, 9);
   Object.defineProperty(document, "visibilityState", {
@@ -83,7 +98,7 @@ function tabWindow(tab: HarnessTab, path: string, reload: () => void) {
   });
   const window = Object.assign(new EventTarget(), {
     document,
-    location: { pathname: path, search: "", hash: "", reload },
+    location: { ...splitPath(path), reload },
     localStorage: tab.localStorage,
     sessionStorage: tab.sessionStorage,
     navigator: { locks: tab.locks },
