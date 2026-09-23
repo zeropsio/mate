@@ -106,7 +106,7 @@ describe("spans", () => {
     const superseded = diagnostics.span("access-round", { round: 7 });
     time.advance(10);
     superseded.drop();
-    superseded.end({ outcome: "verified", requests: 3 });
+    superseded.end({ outcome: "verified", reads: 3 });
     expect(diagnostics.snapshot()).toEqual([
       { t: 100, kind: "flow-pass", phase: "start", pass: "forge", groups: 2 },
       {

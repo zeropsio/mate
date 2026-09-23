@@ -267,15 +267,15 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     let cancelled = false;
     const currentRevision = ++revision.current;
     const round = mateDiagnostics.span("access-round", { round: currentRevision });
-    // The user read, then each listing and project read the round makes.
-    let requests = 1;
+    // The user read, then each organization's listing and each project read.
+    let reads = 1;
     const counted: Parameters<typeof verifyOperableProjects>[0] = {
       listAccessibleClientProjects: (clientId) => {
-        requests++;
+        reads++;
         return client.listAccessibleClientProjects(clientId);
       },
       fetchProject: (projectId) => {
-        requests++;
+        reads++;
         return client.fetchProject(projectId);
       },
     };
@@ -311,7 +311,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         })),
       );
       lastVerifiedProjects.current = projects;
-      round.end({ outcome: "verified", requests });
+      round.end({ outcome: "verified", reads });
       setVerification({
         status: "verified",
         revision: currentRevision,
@@ -320,7 +320,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     })().catch((cause: unknown) => {
       if (cancelled) return;
       const error = zeropsErrorMessage(cause);
-      round.end({ outcome: "failed", requests, ...diagnosticFailure(cause) });
+      round.end({ outcome: "failed", reads, ...diagnosticFailure(cause) });
       setVerification({ status: "failed", revision: currentRevision, error });
       void Effect.runPromise(
         runtime.observeAccess({

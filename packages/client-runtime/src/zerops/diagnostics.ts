@@ -61,15 +61,17 @@ interface MateDiagnosticSpans {
       | ({ readonly outcome: "failure"; readonly retryable: boolean } & DiagnosticFailure);
   };
   /**
-   * One round of the access grant's REST evidence. `requests` counts the
-   * platform calls the round made: the user read, each organization's
-   * project listing and each project read.
+   * One round of the access grant's REST evidence. `reads` counts what the
+   * round asked the platform for: the user, each organization's projects and
+   * each project. It is a floor on the requests on the wire — a listing that
+   * spans pages or falls back to the project search for a Developer or Guest
+   * membership is one read here and several requests there.
    */
   readonly "access-round": {
     readonly start: { readonly round: number };
     readonly end:
-      | { readonly outcome: "verified"; readonly requests: number }
-      | ({ readonly outcome: "failed"; readonly requests: number } & DiagnosticFailure);
+      | { readonly outcome: "verified"; readonly reads: number }
+      | ({ readonly outcome: "failed"; readonly reads: number } & DiagnosticFailure);
   };
   /** One pass over every group of the project flow; `answered` is how many groups it read. */
   readonly "flow-pass": {
