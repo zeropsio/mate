@@ -119,6 +119,8 @@ import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
+import { withheldProjectNotice } from "~/zerops/inventoryContext";
+import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useAccountGitea } from "~/zerops/giteaProject";
 
@@ -148,6 +150,30 @@ function useGroup(groupId: string): ZeropsGroup | undefined {
       )?.group,
     [groupId, listing],
   );
+}
+
+/**
+ * What a stop says in place of its content while the grant withholds its
+ * project (DESIGN §3.4), and the stops whose content may be read — what the
+ * attention panel is drawn from.
+ */
+function useWithheldStops(environments: ReadonlyArray<EnvironmentRow> | undefined): {
+  readonly withheldNotice: (projectId: string) => string | null;
+  readonly shown: ReadonlyArray<EnvironmentRow>;
+} {
+  const inventory = useZeropsInventory();
+  const withheldNotice = useCallback(
+    (projectId: string) => withheldProjectNotice(inventory, projectId),
+    [inventory],
+  );
+  const shown = useMemo(
+    () =>
+      environments === undefined
+        ? EMPTY_STOPS
+        : environments.filter((environment) => withheldNotice(environment.projectId) === null),
+    [environments, withheldNotice],
+  );
+  return { withheldNotice, shown };
 }
 
 /** What the group is called — never the raw group id. */
@@ -565,8 +591,9 @@ export function ZeropsGroupAnswer({
   const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
   const release = useReleaseOffer(groupId);
   const { mates } = useGroupMates(groupId);
+  const { shown } = useWithheldStops(flow?.environments);
   const attention = useProjectAttention(groupId, mates, {
-    environments: flow?.environments ?? [],
+    environments: shown,
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
     notLive: waiting.total,
     canRelease: release.offered,
@@ -609,8 +636,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const names = useHistoryNames(groupName);
   const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
   const openMate = useOpenMate();
+  const { withheldNotice, shown } = useWithheldStops(environments);
   const attention = useProjectAttention(groupId, mates, {
-    environments,
+    environments: shown,
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
     notLive: waiting.total,
     canRelease: release.offered,
@@ -656,6 +684,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       readDetail={readDetail}
       repo={repo}
       waiting={waiting}
+      withheldNotice={withheldNotice}
     />
   );
 }
@@ -690,6 +719,7 @@ export function ZeropsGroupPane({
   release,
   repo,
   waiting,
+  withheldNotice,
 }: {
   readonly commits: ZeropsCommitsState;
   readonly environments: ReadonlyArray<EnvironmentRow>;
@@ -725,8 +755,21 @@ export function ZeropsGroupPane({
   readonly trouble?: string | null;
   readonly onOpenMate: (projectId: string) => void;
   readonly waiting: ReleaseContentsSummary;
+  /**
+   * What a stop says in place of its content while the grant withholds its
+   * project (DESIGN §3.4); `null` while it may be shown. Absent, every stop is.
+   */
+  readonly withheldNotice?: (projectId: string) => string | null;
 }) {
-  const deployed = useMemo(() => deployedShas(environments), [environments]);
+  const deployed = useMemo(
+    () =>
+      deployedShas(
+        environments.filter(
+          (environment) => (withheldNotice?.(environment.projectId) ?? null) === null,
+        ),
+      ),
+    [environments, withheldNotice],
+  );
   return (
     <DetailShell
       // *Release* left the header when the panel below got a working one: a
@@ -793,6 +836,7 @@ export function ZeropsGroupPane({
                 groupId={groupId}
                 groupName={name}
                 key={environment.projectId}
+                notice={withheldNotice?.(environment.projectId) ?? null}
               />
             ))
           )}
@@ -858,7 +902,11 @@ export function ZeropsStopDetailPage({
   const environments = flow?.environments ?? [];
   const stop = environments.find((entry) => entry.projectId === projectId);
   const repo = stop?.versionRepository;
-  const deployed = useMemo(() => deployedShas(environments), [environments]);
+  // A stop whose project the grant withholds draws nothing of it (DESIGN §3.4),
+  // nor marks what it runs in another stop's history.
+  const { withheldNotice, shown } = useWithheldStops(flow?.environments);
+  const withheld = withheldNotice(projectId);
+  const deployed = useMemo(() => deployedShas(shown), [shown]);
   const commits = useZeropsRepositoryCommits(
     flow === undefined || repo === undefined
       ? null
@@ -894,6 +942,13 @@ export function ZeropsStopDetailPage({
     return (
       <DetailShell crumbs={crumbs} title="Environment">
         <Note>This environment has not been read yet.</Note>
+      </DetailShell>
+    );
+  }
+  if (withheld !== null) {
+    return (
+      <DetailShell crumbs={crumbs} title={stop.tier}>
+        <Note>{withheld}</Note>
       </DetailShell>
     );
   }
@@ -1405,6 +1460,7 @@ const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
 const EMPTY_REMARKS: ReadonlyArray<ChangeRemark> = [];
 const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
 const EMPTY_PULLS: ReadonlyArray<FlowPullRequest> = [];
+const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 
 /**
  * Where a detail page sits, outermost first — a containment trail, not a way
@@ -1776,11 +1832,17 @@ function StopLine({
   environment,
   groupId,
   groupName,
+  notice,
 }: {
   readonly environment: EnvironmentRow;
   readonly groupId: string;
   /** The project's name, so a stop under it does not repeat it. */
   readonly groupName: string | undefined;
+  /**
+   * Said in place of the stop while the grant withholds its project: its
+   * tier stays, and its name, what it runs and its page do not (DESIGN §3.4).
+   */
+  readonly notice: string | null;
 }) {
   const navigate = useNavigate();
   const word = deployWord(environment.tone);
@@ -1791,6 +1853,14 @@ function StopLine({
       params: { groupId, projectId: environment.projectId },
     });
   }, [environment.projectId, groupId, navigate]);
+  if (notice !== null) {
+    return (
+      <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
+        <span className="shrink-0 text-sm font-medium text-foreground">{environment.tier}</span>
+        <span className="truncate text-xs text-muted-foreground">{notice}</span>
+      </li>
+    );
+  }
   return (
     <li>
       <button

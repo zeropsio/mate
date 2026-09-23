@@ -45,7 +45,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
@@ -74,7 +74,7 @@ import {
   useZeropsData,
   zeropsKnowledgeArraysEqual,
 } from "./zeropsDataContext";
-import { projectAuthority } from "./inventoryContext";
+import { HeldInventoryContext, projectAuthority } from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -251,17 +251,20 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   /**
    * Every group the registry knows, with the projects the account tags into
-   * it and their runtime services — the account's half of every row.
+   * it and their runtime services — the account's half of every row. Read from
+   * the inventory as held: a project the grant withholds is still in its group
+   * (DESIGN M7), and its stop renders withheld where it is drawn.
    */
+  const held = useContext(HeldInventoryContext);
   const groups = useMemo<ReadonlyArray<ZeropsDeployGroup>>(
     () =>
       registry.registry.groups.map((entry) => ({
         groupId: entry.groupId,
         slug: entry.slug,
-        projects: inventory.projects
+        projects: (held === null ? [] : held.projects)
           .filter((project) => readZeropsGroupTags(project.tagList ?? []).groupId === entry.groupId)
           .map((project) => {
-            const services = inventory.services.get(project.id);
+            const services = held?.services.get(project.id);
             const tags = readZeropsGroupTags(project.tagList ?? []);
             return {
               projectId: project.id,
@@ -279,7 +282,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             };
           }),
       })),
-    [inventory.projects, inventory.services, registry.registry.groups],
+    [held, registry.registry.groups],
   );
   const forgeGroups = useMemo(
     () => groups.map(({ groupId, slug }) => ({ groupId, slug })),

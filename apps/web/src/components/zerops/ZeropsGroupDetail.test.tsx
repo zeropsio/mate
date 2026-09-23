@@ -9,11 +9,17 @@ vi.mock("@tanstack/react-router", async (actual) => ({
   useNavigate: () => () => undefined,
 }));
 
-const environment = (projectId: string, name: string): EnvironmentRow =>
+const CHECKING = "Checking your access to this project…";
+
+const environment = (
+  projectId: string,
+  name: string,
+  tier: EnvironmentRow["tier"] = "stage",
+): EnvironmentRow =>
   ({
     projectId,
     name,
-    tier: "stage",
+    tier,
     source: "main",
     tone: "good",
     version: {
@@ -46,15 +52,18 @@ function render(
       mate("iris", "Iris", "Split the checkout"),
     ],
   },
+  stops: Pick<React.ComponentProps<typeof ZeropsGroupPane>, "environments" | "withheldNotice"> = {
+    environments: [environment("stage", "stage"), environment("prod", "production")],
+  },
 ) {
   return renderToStaticMarkup(
     <ZeropsGroupPane
       attention={[]}
       commits={{ kind: "no-gitea" }}
       crumbs={[]}
-      environments={[environment("stage", "stage"), environment("prod", "production")]}
       groupId="shop"
       {...who}
+      {...stops}
       name="Shop"
       names={{ mateNames: new Map(), groupName: "Shop" }}
       onAct={() => {}}
@@ -83,6 +92,24 @@ describe("ZeropsGroupPane", () => {
     expect(markup).toContain("Split the checkout");
     expect(markup).toContain("Cache the link previews");
     expect(markup).toContain("production");
+  });
+
+  // DESIGN §3.4, M7: a stop the grant withholds keeps its place in the list and nothing of its
+  // project — neither its name, what it runs, nor a way into it.
+  it("draws a stop the grant withholds as its tier and why", () => {
+    const markup = render(undefined, {
+      environments: [
+        environment("stage", "Shop stage"),
+        environment("prod", "Harbor live", "production"),
+      ],
+      withheldNotice: (projectId) => (projectId === "prod" ? CHECKING : null),
+    });
+
+    expect(markup).toContain("production");
+    expect(markup).toContain(CHECKING);
+    expect(markup).not.toContain("Harbor live");
+    expect(markup.match(/3f9c1b2/g)).toHaveLength(1);
+    expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
   });
 
   const NO_MATE = "No Mate is working on this project yet.";

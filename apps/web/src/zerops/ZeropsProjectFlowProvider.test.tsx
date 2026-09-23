@@ -1,6 +1,8 @@
+import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import { ZeropsProjectFlowProvider } from "./ZeropsProjectFlowProvider";
 
@@ -66,8 +68,19 @@ vi.mock("./useZeropsRegistry", () => ({
 vi.mock("./useZeropsDeployedVersion", () => ({
   useZeropsDeployedVersionReader: () => async () => undefined,
 }));
+/** The groups the deploy half was last asked to read. */
+const deployReads = vi.hoisted(() => ({
+  groups: [] as ReadonlyArray<{
+    readonly groupId: string;
+    readonly projects: ReadonlyArray<{ readonly projectId: string }>;
+  }>,
+}));
+
 vi.mock("./useZeropsGroupDeploys", () => ({
-  useZeropsGroupDeploys: () => ({ deploys: new Map(), failures: new Map(), invalidate: () => {} }),
+  useZeropsGroupDeploys: (input: { readonly groups: typeof deployReads.groups }) => {
+    deployReads.groups = input.groups;
+    return { deploys: new Map(), failures: new Map(), invalidate: () => {} };
+  },
 }));
 vi.mock("./useZeropsGroupForge", () => ({
   useZeropsGroupForge: () => ({
@@ -185,6 +198,47 @@ describe("ZeropsProjectFlowProvider", () => {
     });
     expect([...(seen.at(-1)?.flows.keys() ?? [])]).toEqual(["g1"]);
     expect([...(seen.at(-1)?.slugs.keys() ?? [])]).toEqual(["g1"]);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  // DESIGN M7: withholding is not loss. A project the grant withholds alone leaves every shown
+  // read, and its group's deploy read keeps it, so its tier is never offered as missing again.
+  it("a project the grant withholds alone stays in its group's deploy read", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const held = {
+      projects: [
+        {
+          id: "prod-1",
+          clientId: "org-1",
+          name: "harbor-prod",
+          status: "ACTIVE",
+          tagList: ["mate:g:g1", "mate:role:prod"],
+        } as ZeropsProject,
+      ],
+      services: new Map(),
+    };
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(
+          HeldInventoryContext,
+          { value: held },
+          createElement(ZeropsProjectFlowProvider, null, null),
+        ),
+      );
+    });
+
+    expect(
+      deployReads.groups.map(({ groupId, projects }) => [
+        groupId,
+        projects.map(({ projectId }) => projectId),
+      ]),
+    ).toEqual([["g1", ["prod-1"]]]);
 
     await act(async () => {
       root.unmount();
