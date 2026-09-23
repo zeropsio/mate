@@ -59,6 +59,8 @@ export interface MountedTab {
   readonly text: () => string;
   /** The page's root node, to find a control on it. */
   readonly container: () => TestNode;
+  /** Where the tab's page is. */
+  readonly location: () => { readonly pathname: string };
   /** Runs page code (a session call, a click) in this tab, inside React's act. */
   readonly run: <T>(work: () => T | Promise<T>) => Promise<T>;
   readonly unmount: () => Promise<void>;
@@ -186,6 +188,7 @@ export async function mountTab(
       if (container === null) throw new Error(`${tab.id} has no page.`);
       return container;
     },
+    location: () => window.location,
     run: async (work) => {
       activate();
       let result!: Awaited<ReturnType<typeof work>>;
