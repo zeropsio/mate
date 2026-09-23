@@ -597,4 +597,23 @@ describe("forge store backstops (DESIGN §6.3)", () => {
     await clock.advance(FORGE_LIST_BACKSTOP_MS);
     expect(sent("branch shop/app main")).toHaveLength(2);
   });
+
+  it("shows an invalidation only while a view demands a fact under its key", async () => {
+    const { clock, store, pending } = rig();
+    const release = store.demand(openPulls("shop", "app"));
+    await clock.advance(0);
+    await pending("pulls shop/app open").answer([pull(4)]);
+    const app = { topic: "forge-repo", origin: ORIGIN, owner: "shop", repo: "app" } as const;
+
+    expect(store.shows(app)).toBe(true);
+    // The pull request its demanded list names is shown too.
+    expect(
+      store.shows({ topic: "forge-pr", origin: ORIGIN, owner: "shop", repo: "app", number: 4 }),
+    ).toBe(true);
+    expect(store.shows({ ...app, repo: "web" })).toBe(false);
+    expect(store.shows({ topic: "forge-org", origin: ORIGIN, org: "shop" })).toBe(false);
+
+    release();
+    expect(store.shows(app)).toBe(false);
+  });
 });

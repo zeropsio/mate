@@ -166,6 +166,8 @@ export interface ForgeStore {
   /** Told the key of every fact whose shown state changed. */
   readonly subscribe: (listener: (fact: ForgeFact) => void) => () => void;
   readonly invalidate: (invalidation: ForgeInvalidation) => void;
+  /** Whether a view demands a fact under the invalidation's key. */
+  readonly shows: (invalidation: ForgeInvalidation) => boolean;
   readonly setVisible: (visible: boolean) => void;
   /** §6.4's visible wake. */
   readonly wake: () => void;
@@ -244,6 +246,19 @@ const sameRepository = (fact: ForgeFact, repository: Repository): boolean =>
   fact.origin === repository.origin &&
   fact.owner === repository.owner &&
   fact.repo === repository.repo;
+
+/** Whether the invalidation names facts under the fact's key. */
+function invalidates(invalidation: ForgeInvalidation, fact: ForgeFact): boolean {
+  const origin = normalize(invalidation.origin);
+  if (invalidation.topic === "forge-org") {
+    return fact.kind === "repos" && fact.origin === origin && fact.org === invalidation.org;
+  }
+  return (
+    sameRepository(fact, { origin, owner: invalidation.owner, repo: invalidation.repo }) &&
+    (invalidation.topic === "forge-repo" ||
+      (fact.kind === "pull" && fact.number === invalidation.number))
+  );
+}
 
 /** What a failed read means for the fact. */
 export function forgeFailure(cause: unknown): FailureReason {
@@ -829,23 +844,15 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
     },
     invalidate: (invalidation) => {
       if (disposed) return;
-      const origin = normalize(invalidation.origin);
       for (const entry of entries.values()) {
-        const fact = entry.fact;
-        const hit =
-          invalidation.topic === "forge-org"
-            ? fact.kind === "repos" && fact.origin === origin && fact.org === invalidation.org
-            : sameRepository(fact, {
-                origin,
-                owner: invalidation.owner,
-                repo: invalidation.repo,
-              }) &&
-              (invalidation.topic === "forge-repo" ||
-                (fact.kind === "pull" && fact.number === invalidation.number));
-        if (hit) invalidateEntry(entry);
+        if (invalidates(invalidation, entry.fact)) invalidateEntry(entry);
       }
       kick();
     },
+    shows: (invalidation) =>
+      [...entries.values()].some(
+        (entry) => rankOf(entry) !== null && invalidates(invalidation, entry.fact),
+      ),
     setVisible: (next) => {
       if (disposed) return;
       visible = next;

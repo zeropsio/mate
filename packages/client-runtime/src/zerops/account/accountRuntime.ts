@@ -13,14 +13,15 @@
  *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate environments —
  *   the registration records, the container store with its probe store, and the exchange driver,
- *   joined and fed by `environments.ts`.
+ *   joined and fed by `environments.ts` — and the project flow's stores: the deployment store,
+ *   and on a host that gives the forge its ports the person's Gitea sessions, the forge store and
+ *   the flow's command attempts, fed by `flow.ts`.
  *
  * It hands the tab's signals (§6.4, the PlatformSignals port) to the grant, the bus and the
  * post-grant stage: the page's visibility, its network and the coalesced wake become the grant's
  * events, the bus's signals and the stores' own.
  *
- * Modules of the post-grant stage are constructed here and nowhere else (§7.2 rule 6). The Gitea
- * sessions are still built in the web.
+ * Modules of the post-grant stage are constructed here and nowhere else (§7.2 rule 6).
  */
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -45,6 +46,19 @@ import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
 import { makeContainerStore } from "../environments/containerStore.ts";
 import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
 import { makeRegistrationRecords } from "../environments/records.ts";
+import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentStore.ts";
+import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
+import { makeFlowCommands } from "../flow/flowCommands.ts";
+import { makeForgeStore } from "../forge/forgeStore.ts";
+import { makeGiteaSessions } from "../forge/giteaSession.ts";
+import {
+  deploymentStorePorts,
+  envelopeServices,
+  makeForgeWiring,
+  type AccountForge,
+  type AccountForgePorts,
+  type ForgeStage,
+} from "./flow.ts";
 import { holdInventoryDemand } from "./inventoryDemand.ts";
 import {
   makeEnvironmentWiring,
@@ -61,6 +75,7 @@ export type {
   DoorRequest,
   RegisteredEnvironment,
 } from "./environments.ts";
+export type { AccountForge, AccountForgePorts } from "./flow.ts";
 export {
   evidenceProjectRefs,
   heldEvidence,
@@ -78,11 +93,19 @@ export interface AccountRuntimePorts {
   readonly atomRegistry: AtomRegistry.AtomRegistry;
   /** What the post-grant stage's Mate environments reach their sources through. */
   readonly environments: AccountEnvironmentPorts;
+  /** What the person's Gitea is reached through; a host without Gitea surfaces gives none. */
+  readonly forge?: AccountForgePorts;
 }
 
 /** The epoch's post-grant stage, as surfaces read it. */
 export interface PostGrantStage {
   readonly environments: AccountEnvironments;
+  /** What each stop's services run (D6). */
+  readonly deployments: DeploymentStore;
+  /** The person's Gitea; `null` on a host that gave the forge no ports. */
+  readonly forge: AccountForge | null;
+  /** The services a Mate's envelope names by hostname, as the account holds them (§6.1). */
+  readonly services: EnvelopeServices;
 }
 
 export interface AccountRuntime {
@@ -125,7 +148,11 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const demandScope = yield* Scope.make();
   const postGrant = yield* Deferred.make<PostGrantStage>();
   const services = yield* Effect.context<never>();
-  let stage: EnvironmentStage | null = null;
+  let stage: {
+    readonly environments: EnvironmentStage;
+    readonly forge: ForgeStage | null;
+    readonly deployments: DeploymentStore;
+  } | null = null;
   let closed = false;
   const busSignals = yield* PubSub.unbounded<InvalidationSignal>();
 
@@ -150,6 +177,12 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
             descriptor.kind !== "organization-inventory" &&
             projectKeyOf(descriptor.project) === projectKeyOf(invalidation.project),
         );
+      case "forge-org":
+      case "forge-repo":
+      case "forge-pr":
+        return stage?.forge?.shows(invalidation) ?? false;
+      case "deployment":
+        return stage?.deployments.shows(invalidation.service) ?? false;
       default:
         // No store of this account shows the other topics yet.
         return false;
@@ -180,19 +213,54 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       containers: makeContainerStore(wiring.containerPorts),
       driver: makeExchangeDriver(wiring.driverPorts),
     });
+    const deployments = makeDeploymentStore(deploymentStorePorts(data, ports.atomRegistry));
+    const forge =
+      ports.forge === undefined
+        ? null
+        : (() => {
+            const forgeWiring = makeForgeWiring({
+              ports: ports.forge,
+              signals,
+              invalidations,
+              services,
+            });
+            const sessions = makeGiteaSessions(forgeWiring.sessionPorts);
+            return forgeWiring.start({
+              sessions,
+              store: makeForgeStore(forgeWiring.storePorts(sessions)),
+              commands: makeFlowCommands(forgeWiring.commandPorts(sessions)),
+            });
+          })();
+    // Finalizers run in reverse: the Gitea tokens are forgotten first, then the stores end.
     yield* Scope.addFinalizer(postGrantScope, Effect.sync(built.dispose));
-    // A container intent reads its target again (§6.2).
+    yield* Scope.addFinalizer(postGrantScope, Effect.sync(deployments.dispose));
+    if (forge !== null) yield* Scope.addFinalizer(postGrantScope, Effect.sync(forge.dispose));
+    // Each owner of pull-based facts reads again what an invalidation names (§6.2).
     const subscription = yield* invalidations.subscribe.pipe(Scope.provide(postGrantScope));
     yield* PubSub.take(subscription).pipe(
       Effect.flatMap((invalidation) =>
         Effect.sync(() => {
-          if (invalidation.topic === "container") built.request(invalidation.target);
+          switch (invalidation.topic) {
+            case "container":
+              built.request(invalidation.target);
+              return;
+            case "deployment":
+              deployments.invalidate(invalidation);
+              return;
+            case "forge-org":
+            case "forge-repo":
+            case "forge-pr":
+              forge?.invalidate(invalidation);
+              return;
+            default:
+              return;
+          }
         }),
       ),
       Effect.forever,
       Effect.forkIn(postGrantScope),
     );
-    return built;
+    return { environments: built, forge, deployments };
   });
 
   const follow = (view: AccessGrantView): Effect.Effect<void> =>
@@ -201,13 +269,21 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       if (stage === null) {
         if (view.machine.phase.phase !== "granted") return;
         stage = yield* buildPostGrant;
-        yield* Deferred.succeed(postGrant, { environments: stage.environments });
+        yield* Deferred.succeed(postGrant, {
+          environments: stage.environments.environments,
+          deployments: stage.deployments,
+          forge: stage.forge?.forge ?? null,
+          services: envelopeServices(data, ports.atomRegistry),
+        });
       }
-      stage.grant(view);
+      stage.environments.grant(view);
     });
 
   const hear = (signal: PlatformSignal): Effect.Effect<void> =>
-    Effect.sync(() => stage?.hear(signal)).pipe(Effect.andThen(heardByAccount(signal)));
+    Effect.sync(() => {
+      stage?.environments.hear(signal);
+      stage?.forge?.hear(signal);
+    }).pipe(Effect.andThen(heardByAccount(signal)));
 
   const heardByAccount = (signal: PlatformSignal): Effect.Effect<void> => {
     switch (signal.type) {

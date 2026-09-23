@@ -40,8 +40,17 @@ import { makeDeadlineClock, type DeadlineClock } from "../testing/deadlineClock.
 import { makeFakeDatastream } from "../testing/fakeDatastream.ts";
 import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
 import {
+  fetchAcross,
+  HARNESS_BROKER_ORIGIN,
+  HARNESS_GITEA_ORIGIN,
+  makeAccountHarness,
+} from "../testing/accountHarness.ts";
+import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
+import type { ForgeFact } from "../forge/forgeStore.ts";
+import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
+  type AccountForgePorts,
   type CatalogListener,
   type DoorCredential,
   type DoorRequest,
@@ -957,6 +966,37 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  it.effect(
+    "the deployment store follows a stop's listing and hears deployment invalidations",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { clock, built } = yield* granted([]);
+          const { deployments, forge, services } = yield* built.postGrant;
+          // The Mate's own container is the one service there: a stop that runs nothing.
+          const projectA = project(A_MATE.projectId);
+          deployments.demand(projectA);
+          yield* clock.advance(SECOND);
+          yield* settle;
+          expect(deployments.stop(projectA)).toMatchObject({ state: "known", value: [] });
+          expect(forge).toBeNull();
+
+          const zcp = services.serviceOf(A_MATE.projectId, "zcp");
+          if (zcp === null) throw new Error("the account holds project A's zcp service");
+          expect(zcp.serviceId).toBe(A_MATE.service.id);
+          expect(services.serviceOf(A_MATE.projectId, "appdev")).toBeNull();
+          const heard: Array<string> = [];
+          deployments.subscribe((ref) => heard.push(ref.projectId));
+          yield* built.invalidations
+            .invalidate({ topic: "deployment", service: zcp })
+            .pipe(Effect.provideService(Clock.Clock, clock));
+          yield* clock.advance(SECOND);
+          yield* settle;
+          expect(heard).toEqual([A_MATE.projectId]);
+        }),
+      ),
+  );
+
   it.effect("a sign-out disposes every environment machine", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1325,5 +1365,167 @@ describe("the post-grant stage's Mate environments", () => {
           expect(rig.removed).toEqual([]);
         }),
       ),
+  );
+});
+
+describe("the post-grant stage's forge", () => {
+  const throwaways: ZeropsThrowawayPlatform = {
+    mint: async () => ({ id: "throwaway", token: "the-throwaway" }),
+    remove: async () => undefined,
+  };
+  const TAGS: ForgeFact = {
+    kind: "tags",
+    origin: HARNESS_GITEA_ORIGIN,
+    owner: "acme",
+    repo: "group",
+  };
+
+  /**
+   * An account runtime whose forge reaches a fake Gitea and broker; every Gitea read after `hold`
+   * waits, and ends only by its signal. The forge's timers run on the test's clock.
+   */
+  const openAccount = Effect.fnUntraced(function* () {
+    const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+    const registry = AtomRegistry.make();
+    const page = yield* makePage(clock);
+    const grant = heldVerifier();
+    const harness = makeAccountHarness({ people: [] });
+    harness.gitea.setTags("acme", "group", ["v1.0.0"]);
+    const direct = fetchAcross(harness.gitea, harness.broker);
+    const sent: Array<string> = [];
+    const held: Array<AbortSignal> = [];
+    let holding = false;
+    /** The forge's timers, fired by `turn` once the clock reaches them. */
+    const timers = new Set<{ readonly at: number; readonly fire: () => void }>();
+    const forge: AccountForgePorts = {
+      fetch: async (input, init) => {
+        const url = String(input);
+        sent.push(url);
+        if (holding && url.startsWith(HARNESS_GITEA_ORIGIN)) {
+          const signal = init?.signal ?? new AbortController().signal;
+          held.push(signal);
+          return new Promise<Response>((_resolve, reject) =>
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+          );
+        }
+        return direct(input, init);
+      },
+      now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
+      random: () => 0.5,
+      nonce: () => "nonce",
+      setTimer: (delayMs, fire) => {
+        const timer = { at: clock.monoMs() + delayMs, fire };
+        timers.add(timer);
+        return () => void timers.delete(timer);
+      },
+    };
+    const built = yield* Effect.gen(function* () {
+      const data = yield* makeZeropsDataRuntime({
+        scope: scope(),
+        adapter: inertAdapter,
+        atomRegistry: registry,
+        makeOpaqueId: (() => {
+          let next = 0;
+          return () => `opaque-${++next}`;
+        })(),
+      });
+      return yield* makeAccountRuntime({
+        data,
+        verifier: grant.verifier,
+        signals: page.signals,
+        atomRegistry: registry,
+        environments: inertEnvironments(clock),
+        forge,
+      });
+    }).pipe(Effect.provideService(Clock.Clock, clock));
+    yield* Effect.addFinalizer(() => built.close("application-close"));
+    return {
+      clock,
+      page,
+      grant,
+      built,
+      sent,
+      held,
+      hold: () => {
+        holding = true;
+      },
+      /** Lets the forge's answers land and fires the timers they arm that are due. */
+      turn: Effect.gen(function* () {
+        for (let step = 0; step < 10; step++) {
+          for (const timer of timers) {
+            if (timer.at > clock.monoMs()) continue;
+            timers.delete(timer);
+            timer.fire();
+          }
+          yield* settle;
+        }
+      }),
+    };
+  });
+
+  it.effect("the forge store is built only after the first grant and disposed at sign-out", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, grant, built, sent, held, hold, turn } = yield* openAccount();
+        const postGrant = yield* Effect.forkChild(built.postGrant);
+        yield* clock.advance(SECOND);
+        yield* settle;
+        // Nothing of the forge stands, and nothing reached Gitea or its broker.
+        expect(postGrant.pollUnsafe()).toBeUndefined();
+        expect(sent).toEqual([]);
+
+        yield* grant.answer();
+        yield* clock.advance(SECOND);
+        yield* settle;
+        const { forge } = yield* Fiber.join(postGrant);
+        if (forge === null) throw new Error("the web host gives the forge its ports");
+        forge.sessions.demand({
+          giteaOrigin: HARNESS_GITEA_ORIGIN,
+          brokerOrigin: HARNESS_BROKER_ORIGIN,
+          clientId: "org-1",
+          platform: throwaways,
+        });
+        forge.store.demand(TAGS);
+        yield* turn;
+        expect(forge.store.read(TAGS).state).toBe("known");
+
+        // A re-read on the bus is in flight when the person signs out.
+        hold();
+        yield* built.invalidations
+          .invalidate({
+            topic: "forge-repo",
+            origin: HARNESS_GITEA_ORIGIN,
+            owner: "acme",
+            repo: "group",
+          })
+          .pipe(Effect.provideService(Clock.Clock, clock));
+        yield* clock.advance(SECOND);
+        yield* turn;
+        expect(held).toHaveLength(1);
+
+        yield* built.close("logout");
+
+        expect(held.map((signal) => signal.aborted)).toEqual([true]);
+        expect(forge.store.read(TAGS).state).toBe("unread");
+        expect(forge.sessions.view(HARNESS_GITEA_ORIGIN).signedIn).toBe(false);
+        expect(forge.sessions.capability(HARNESS_GITEA_ORIGIN)).toEqual({
+          allowed: false,
+          reason: "epoch-closed",
+          waitable: false,
+        });
+        expect(
+          yield* Effect.promise(() =>
+            forge.commands.run({
+              kind: "release",
+              origin: HARNESS_GITEA_ORIGIN,
+              slug: "acme",
+              groupId: "g1",
+              tag: "v1.0.1",
+              message: "",
+            }),
+          ),
+        ).toMatchObject({ phase: "refused", refusal: { reason: "epoch-closed" } });
+      }),
+    ),
   );
 });
