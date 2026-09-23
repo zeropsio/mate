@@ -7,6 +7,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
@@ -76,6 +77,8 @@ const makePage = Effect.fnUntraced(function* () {
         ),
       ),
     },
+    /** How many listeners hear the page now. */
+    listening: () => listeners.size,
     emit: (signal: PageSignal) =>
       Effect.suspend(() => {
         if (signal.type === "visibility") hidden = signal.hidden;
@@ -250,6 +253,39 @@ describe("the account runtime", () => {
           expect(grant.rounds()).toBe(7);
         }),
       ),
+  );
+
+  it.effect("an account runtime whose grant cannot start fails and leaves nothing running", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        const page = yield* makePage();
+        const grant = heldVerifier();
+        const exit = yield* Effect.gen(function* () {
+          const data = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: inertAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+          });
+          yield* Effect.addFinalizer(() => data.shutdown("application-close"));
+          // Something else started the epoch's grant first.
+          yield* data.access.start({ verifier: grant.verifier, hidden: false, online: true });
+          return yield* makeAccountRuntime({
+            data,
+            verifier: grant.verifier,
+            page: page.port,
+            writes: makeWrites().port,
+            atomRegistry: registry,
+          }).pipe(Effect.exit);
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* settle;
+
+        expect(Exit.isFailure(exit)).toBe(true);
+        expect(page.listening()).toBe(0);
+      }),
+    ),
   );
 
   it.effect(

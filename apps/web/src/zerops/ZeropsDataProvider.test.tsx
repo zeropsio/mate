@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import { act, Children, isValidElement, StrictMode, useContext, useEffect } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -19,6 +20,7 @@ class TestNode {
   readonly tagName: string;
   readonly namespaceURI = "http://www.w3.org/1999/xhtml";
   readonly style = {};
+  readonly attributes = new Map<string, string>();
 
   constructor(
     name: string,
@@ -59,8 +61,19 @@ class TestNode {
 
   addEventListener() {}
   removeEventListener() {}
-  setAttribute() {}
-  removeAttribute() {}
+  setAttribute(name: string, value: string) {
+    this.attributes.set(name, value);
+  }
+  removeAttribute(name: string) {
+    this.attributes.delete(name);
+  }
+}
+
+/** Whether a node under `node` has the ARIA `role`. */
+function hasRole(node: TestNode, role: string): boolean {
+  return (
+    node.attributes.get("role") === role || node.childNodes.some((child) => hasRole(child, role))
+  );
 }
 
 function installTestDom(): void {
@@ -241,6 +254,33 @@ describe("ZeropsDataProvider ownership (M8)", () => {
       await act(() => secondRoot.unmount());
       closeAccountLifetime();
     }
+  });
+
+  it("shows the startup failure and shuts the data runtime down when its account runtime cannot start", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { factory, handles } = makeFakeRuntimeFactory({
+      startGrant: Effect.die("The access grant started twice."),
+    });
+    session.current = sessionFor("account-1");
+    const container = document.createElement("div") as unknown as TestNode;
+    const root = createRoot(container as unknown as Element);
+    try {
+      await act(async () => {
+        root.render(<ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>);
+      });
+      await flushEffects();
+      await flushEffects();
+
+      expect(handles).toHaveLength(1);
+      expect(handles[0]?.shutdownReasons).toEqual(["account-replaced"]);
+      expect(hasRole(container, "alert")).toBe(true);
+    } finally {
+      await act(() => root.unmount());
+      closeAccountLifetime();
+    }
+    // The unmount finds the runtime already shut down.
+    expect(handles[0]?.shutdownReasons).toEqual(["account-replaced"]);
   });
 
   it("aborts a startup that never settles once the provider unmounts (H4)", async () => {

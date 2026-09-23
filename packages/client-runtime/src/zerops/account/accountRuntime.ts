@@ -216,18 +216,25 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       }
     });
 
-  // The page is heard from the moment its state is read, one signal at a time.
-  const signals = yield* Queue.unbounded<PageSignal>();
-  const unlisten = page.listen((signal) => Queue.offerUnsafe(signals, signal));
-  yield* Scope.addFinalizer(epoch, Effect.sync(unlisten));
-  yield* Queue.take(signals).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
-  // The views stream replays the latest, so it misses nothing the start publishes.
-  yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));
-  yield* data.access.start({
-    verifier: ports.verifier,
-    hidden: page.hidden(),
-    online: page.online(),
-  });
+  yield* Effect.gen(function* () {
+    // The page is heard from the moment its state is read, one signal at a time.
+    const signals = yield* Queue.unbounded<PageSignal>();
+    const unlisten = page.listen((signal) => Queue.offerUnsafe(signals, signal));
+    yield* Scope.addFinalizer(epoch, Effect.sync(unlisten));
+    yield* Queue.take(signals).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
+    // The views stream replays the latest, so it misses nothing the start publishes.
+    yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));
+    yield* data.access.start({
+      verifier: ports.verifier,
+      hidden: page.hidden(),
+      online: page.online(),
+    });
+    // An epoch that cannot start leaves nothing of its own running; its host closes the data.
+  }).pipe(
+    Effect.onError(() =>
+      Scope.close(postGrantScope, Exit.void).pipe(Effect.andThen(Scope.close(epoch, Exit.void))),
+    ),
+  );
 
   return {
     data,

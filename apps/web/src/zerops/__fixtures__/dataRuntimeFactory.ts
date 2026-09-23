@@ -34,9 +34,14 @@ export interface FakeRuntimeHandle {
  * - "immediate" (default): resolves on the next microtask.
  * - "manual": the test drives resolution/rejection itself via the returned
  *   handle, held in `handles`.
+ *
+ * `startGrant` is what starting each runtime's grant does; by default nothing.
  */
 export function makeFakeRuntimeFactory(
-  options: { readonly resolveMode?: "immediate" | "manual" } = {},
+  options: {
+    readonly resolveMode?: "immediate" | "manual";
+    readonly startGrant?: Effect.Effect<void>;
+  } = {},
 ) {
   const handles: FakeRuntimeHandle[] = [];
   const factory: MakeZeropsDataRuntime = ({ scope, signal }) => {
@@ -50,7 +55,7 @@ export function makeFakeRuntimeFactory(
     const runtime = {
       scope,
       access: {
-        start: () => Effect.void,
+        start: () => options.startGrant ?? Effect.void,
         signal: () => Effect.void,
         view: Atom.make(view),
         changes: Stream.make(view),

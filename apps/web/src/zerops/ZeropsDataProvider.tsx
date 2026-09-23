@@ -250,7 +250,11 @@ export function ZeropsDataProvider({
     let shutdownPromise: Promise<void> | null = null;
     const shutdown = (created: ManagedZeropsDataRuntime, reason: "account-replaced" | "logout") => {
       shutdownPromise ??= (account ?? Promise.resolve(null))
-        .then((built) => Effect.runPromise(built?.close(reason) ?? created.shutdown(reason)))
+        .then(
+          (built) => Effect.runPromise(built?.close(reason) ?? created.shutdown(reason)),
+          // An account runtime that never stood leaves only the data runtime to close.
+          () => Effect.runPromise(created.shutdown(reason)),
+        )
         .finally(taskScheduler.dispose);
       return shutdownPromise;
     };
@@ -281,14 +285,20 @@ export function ZeropsDataProvider({
             atomRegistry: registry,
           }),
         );
-        void account.then(() => {
-          // A cleanup before the account runtime stood closes it through `shutdown`.
-          if (cancelled) return;
-          removeLifetimeClose = onAccountLifetimeClose(() => {
-            void shutdown(created, "logout");
-          });
-          setRuntime(created);
-        });
+        void account.then(
+          () => {
+            // A cleanup before the account runtime stood closes it through `shutdown`.
+            if (cancelled) return;
+            removeLifetimeClose = onAccountLifetimeClose(() => {
+              void shutdown(created, "logout");
+            });
+            setRuntime(created);
+          },
+          (cause: unknown) => {
+            void shutdown(created, "account-replaced");
+            if (!cancelled) setStartupFailure({ accountId, message: zeropsErrorMessage(cause) });
+          },
+        );
       },
       (cause: unknown) => {
         // Also reached when `abort` fires on unmount before startup settled
