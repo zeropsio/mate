@@ -7,17 +7,19 @@
  * backoff and waits for an input change after a refusal. No navigation, no
  * composed first prompt, no provisioning wait — an environment simply becomes
  * one of ours, its socket comes up, and its row lights up. Why a container
- * would not connect is its reachability, which the projects screen reads.
+ * would not connect is its reachability, which the projects screen reads. A
+ * Mate whose birth has not closed its project off yet is never wanted here.
  */
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { selectAutoConnectTargets } from "@t3tools/client-runtime/zerops";
+import { unhardenedBirths } from "@t3tools/client-runtime/zerops/birth";
 
-import { pendingCreationProjects } from "./creationHandoffStorage";
 import { useExchangeDriver } from "./useZeropsIdentityExchange";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
+import { useZeropsBirths } from "./zeropsBirths";
 
 export function useZeropsAutoConnect(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
@@ -25,6 +27,9 @@ export function useZeropsAutoConnect(input: {
   readonly enabled: boolean;
 }): void {
   const driver = useExchangeDriver();
+  // A birth moving past its harden is what lets its Mate be wanted.
+  const { births } = useZeropsBirths();
+  const unhardened = useMemo(() => unhardenedBirths(births), [births]);
 
   useEffect(() => {
     driver.setDemand(
@@ -33,11 +38,11 @@ export function useZeropsAutoConnect(input: {
         ? selectAutoConnectTargets({
             candidates: input.candidates,
             health: input.health,
-            birthProjectIds: new Set(pendingCreationProjects()),
+            birthProjectIds: unhardened,
           })
         : [],
     );
-  }, [driver, input.candidates, input.enabled, input.health]);
+  }, [driver, input.candidates, input.enabled, input.health, unhardened]);
 
   useEffect(() => () => driver.setDemand("auto-connect", []), [driver]);
 }

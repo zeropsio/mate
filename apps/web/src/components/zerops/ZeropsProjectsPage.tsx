@@ -55,13 +55,16 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
-import {
-  forgetPendingCreation,
-  pendingCreationProjects,
-  rememberCreationHandoff,
-} from "~/zerops/creationHandoffStorage";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
+import {
+  beginBirth,
+  birthEnabled,
+  forgetBirth,
+  retryBirth,
+  useZeropsBirths,
+  type BirthsSnapshot,
+} from "~/zerops/zeropsBirths";
 import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
@@ -72,7 +75,6 @@ import {
 } from "~/zerops/useZeropsGroupReach";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
-import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -120,7 +122,6 @@ import {
   type ZeropsProjectOrder,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
-import { creationRefreshWanted, useCreationInventoryRefresh } from "~/zerops/creationRefresh";
 
 import { StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -142,10 +143,7 @@ import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
-import { registerMateInGroup } from "~/zerops/brokerGrant";
 import { findAccountGitea } from "~/zerops/giteaProject";
-import { giteaClientFor } from "~/zerops/accountGiteaSessions";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
@@ -248,10 +246,10 @@ export function readContainerAfter(
 
 /**
  * Takes a project the platform failed to create off the account. The delete
- * comes first; only once the platform has accepted it is the creation's
- * handoff forgotten (nothing will ever connect to this project) and the
- * list re-read. A refused delete leaves both as they were, so the row keeps
- * offering the verb and says why it did not work.
+ * comes first; only once the platform has accepted it is the project's birth
+ * forgotten (nothing will ever connect to this project) and the list re-read.
+ * A refused delete leaves both as they were, so the row keeps offering the
+ * verb and says why it did not work.
  */
 export async function removeFailedZeropsProject(input: {
   readonly projectId: string;
@@ -297,44 +295,34 @@ export function nextZeropsBirthRetryDelayMs(attempt: number): number {
 }
 
 /**
- * Whether a connect attempt is the birth's own: the container this page's
- * provisioning wait is on, for the project that wait names, with a creation
- * hand-off still pending for it (`creationHandoffStorage.ts`). Only there does
- * a retryable identity-exchange failure loop silently instead of landing on
- * the card as an error — a click-triggered connect on an ordinary candidate
- * (Enable, Start, the same-origin bootstrap) keeps today's one-shot behavior.
+ * Whether a connect attempt is a birth's own: the container one of the
+ * account's births found (`zeropsBirths.ts`). Only there does a retryable
+ * identity-exchange failure loop silently instead of landing on the card as an
+ * error — a click-triggered connect on a Mate that exists (Open, Enable, the
+ * same-origin bootstrap) keeps today's one-shot behavior.
  */
 export function isZeropsBirthConnectTarget(input: {
   readonly containerOrigin: string;
-  readonly waited: {
-    readonly containerOrigin: string | null;
-    readonly projectId: string | null;
-  } | null;
-  readonly pendingCreationProjectIds: ReadonlySet<string>;
+  readonly births: ReadonlyArray<{ readonly origin: string | null }>;
 }): boolean {
-  const waited = input.waited;
-  if (waited === null || waited.containerOrigin === null || waited.projectId === null) {
-    return false;
-  }
-  if (normalizeOrigin(waited.containerOrigin) !== normalizeOrigin(input.containerOrigin)) {
-    return false;
-  }
-  return input.pendingCreationProjectIds.has(waited.projectId);
+  const origin = normalizeOrigin(input.containerOrigin);
+  return input.births.some(
+    (birth) => birth.origin !== null && normalizeOrigin(birth.origin) === origin,
+  );
 }
 
 /**
  * Whether a Mate's card shows its birth checklist: only while it is being born
- * in this browser — a creation hand-off still pending for its project, the
- * same test `isZeropsBirthConnectTarget` makes. Opening a Mate that exists
- * also runs a wait and a connect, and the checklist then flashed on every
- * click, "Opening the Mate" with a clock counting from the project's creation
- * (28 min on a day-old Mate, 2026-09-22); there the face carries the boot.
+ * — a birth of this account for its project. Opening a Mate that exists also
+ * runs a wait and a connect, and the checklist then flashed on every click,
+ * "Opening the Mate" with a clock counting from the project's creation (28 min
+ * on a day-old Mate, 2026-09-22); there the face carries the boot.
  */
 export function showsZeropsBirthLine(input: {
   readonly projectId: string;
-  readonly pendingCreationProjectIds: ReadonlySet<string>;
+  readonly birthProjectIds: ReadonlySet<string>;
 }): boolean {
-  return input.pendingCreationProjectIds.has(input.projectId);
+  return input.birthProjectIds.has(input.projectId);
 }
 
 /**
@@ -352,10 +340,9 @@ export function showsZeropsBirthLine(input: {
 export function hasNoZeropsProject(input: {
   readonly listing: Known<ReadonlyArray<ZeropsCandidate>>;
   /**
-   * A creation this client made and has not connected to yet. The wizard
-   * navigates here the moment the project exists, before the inventory lists
-   * it — painting the invitation in that gap is the flash the roster then
-   * takes back.
+   * A birth of this account (`zeropsBirths.ts`). The wizard navigates here the
+   * moment the project exists, before the inventory lists it — painting the
+   * invitation in that gap is the flash the roster then takes back.
    */
   readonly creationPending?: boolean;
 }): boolean {
@@ -530,53 +517,73 @@ export function ZeropsProjectsHeader({
   );
 }
 
+/** A Mate that exists, which a person asked to open. */
+interface OpeningTarget {
+  readonly key: string;
+  readonly projectId: string;
+  readonly origin: string;
+  readonly organizationId: string | null;
+}
+
 /**
- * The wait → connect machinery shared by this page (waiting on an existing
- * candidate) and the `/zerops/new` wizard (waiting on the project it just
- * created — the only project-creating caller). Everything before "start
- * waiting" — picking a candidate, filling in the create form — is
- * caller-specific and stays with the caller.
+ * The connect machinery of this page: the Mate a person asked to open, connected once its
+ * container answers ready, and the account's births (`zeropsBirths.ts`), each connected once its
+ * wait in this tab answers ready. Either lands the person in the conversation. A birth another
+ * tab drives is connected by auto-connect once its harden is done, and that late success ends it
+ * here all the same.
  */
 export function useZeropsProjectConnection(): {
-  readonly creatingIn: string | null;
-  readonly setCreatingIn: (clientId: string | null) => void;
-  readonly provisioning: ReturnType<typeof useZeropsProvisioning>;
+  readonly births: BirthsSnapshot;
+  readonly opening: OpeningTarget | null;
+  /** Opens a Mate that exists; a Mate still being born is connected by its birth. */
+  readonly open: (candidate: ZeropsCandidate) => void;
   readonly upgradeRecovery: UpgradeRecovery | null;
   readonly serverVersion: string | undefined;
   readonly connectError: string | null;
   readonly setConnectError: (error: string | null) => void;
   readonly connectingOrigin: string | null;
+  /** The container whose connect failed last; its row carries the failure. */
+  readonly failedOrigin: string | null;
   readonly retryProjectConnection: () => void;
   readonly connectContainer: (containerOrigin: string) => Promise<void>;
-  /** Forgets the last container this hook auto-connected to, so starting a
-   * fresh wait that settles back on that same origin connects again instead
-   * of being read as already handled. */
-  readonly resetConnectingTarget: () => void;
   /**
-   * Ends a birth on an admitted environment, from wherever it was admitted:
-   * this hook's own `connectContainer`, or a late success this page only
-   * observed (the sidebar's own connector reached the door first). Cancels
-   * the wait, clears any scheduled birth retry, and lands the person in the
-   * conversation — exactly what a successful `connectContainer` always did.
+   * Ends a birth or an opening on an admitted environment, from wherever it was admitted: this
+   * hook's own `connectContainer`, or a late success this page only observed (auto-connect
+   * reached the door first). The organization it was made in is read again, and the person lands
+   * in the conversation — exactly what a successful `connectContainer` always does.
    */
-  readonly finishBirth: (environmentId: EnvironmentId) => Promise<void>;
+  readonly finishBirth: (
+    environmentId: EnvironmentId,
+    organizationId: string | null,
+  ) => Promise<void>;
 } {
-  const [creatingIn, setCreatingIn] = useState<string | null>(null);
-  const provisioning = useZeropsProvisioning(creatingIn);
+  const births = useZeropsBirths();
+  const { health } = useZeropsContainers();
   const { organizationRef } = useZeropsData();
   const exchangeZeropsIdentity = useZeropsIdentityExchange("user");
   const navigate = useNavigate();
+  const [opening, setOpening] = useState<OpeningTarget | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [serverVersion, setServerVersion] = useState<string | undefined>();
   const [upgradeOrigin, setUpgradeOrigin] = useState<string | null>(null);
   const [connectingOrigin, setConnectingOrigin] = useState<string | null>(null);
-  // One connect per settled provisioning wait, however many renders that takes.
-  const connectingRef = useRef<string | null>(null);
+  /** The container whose connect failed: "Try again" connects it again. */
+  const [failedOrigin, setFailedOrigin] = useState<string | null>(null);
+  // What the connect reads without re-creating itself on every birth write.
+  const birthsRef = useRef(births.births);
+  const openingRef = useRef(opening);
+  useEffect(() => {
+    birthsRef.current = births.births;
+    openingRef.current = opening;
+  }, [births.births, opening]);
+  // One connect per wait that answered ready, however many renders that takes.
+  const connectedForRef = useRef(new Set<string>());
+  const openedRef = useRef<OpeningTarget | null>(null);
   // The birth's own retry loop: a timer plus how many attempts it has made,
   // so the backoff (`nextZeropsBirthRetryDelayMs`) is read once per schedule
   // and not restarted by an unrelated render. Kept in refs, not state — a
-  // scheduled retry is not something any render needs to show; the wait's
-  // own words ("Coming up.", "Almost there.") already carry it.
+  // scheduled retry is not something any render needs to show; the birth's
+  // own line already carries it.
   const birthRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const birthRetryAttemptRef = useRef(0);
 
@@ -590,44 +597,42 @@ export function useZeropsProjectConnection(): {
 
   // Every scheduled retry unmounts through this, whatever ended it first —
   // the tab closing, the component unmounting mid-birth, or (via the effect
-  // below) the wait itself being cancelled.
+  // below) the last birth ending.
   useEffect(() => clearBirthRetry, [clearBirthRetry]);
 
   const finishBirth = useCallback(
-    async (environmentId: EnvironmentId) => {
+    async (environmentId: EnvironmentId, organizationId: string | null) => {
       clearBirthRetry();
-      // `useZeropsIdentityExchange` remembers this connect's project/org
-      // ref itself now (H12) — every path that can land an environment
-      // (connect, auto-connect, restore, repair) writes it the same way,
-      // so it is never skipped again by only one of them doing it here.
-      //
-      // The birth's one restart (`projectIsolation.ts`, spec-mate §3
-      // B-1/B-2/B-3) already ran before this admission, in
-      // `provisioning.ts`'s `hardening` phase: the identity exchange above
-      // only succeeds once `awaiting-health` accepts a `ready` verdict
-      // that postdates it. Nothing here closes the project off again —
-      // doing it here, after the person is already in, would be the
-      // second write sharing the birth's restart budget.
       // The environment is real now. When the lists last read it — right
       // after the creation writes — the project was still NEW with no
       // container, which the left menu rightly leaves out; here it is ACTIVE
       // with a zcp, so its organization's inventory is read again and the row
       // appears.
-      if (creatingIn !== null) {
-        invalidateZerops({ topic: "inventory", organization: organizationRef(creatingIn) });
+      if (organizationId !== null) {
+        invalidateZerops({ topic: "inventory", organization: organizationRef(organizationId) });
       }
-      provisioning.cancel();
-      setCreatingIn(null);
+      setOpening(null);
       setConnectError(null);
       await navigate({ to: "/", search: { environmentId: String(environmentId) } });
     },
-    [clearBirthRetry, creatingIn, navigate, organizationRef, provisioning],
+    [clearBirthRetry, navigate, organizationRef],
   );
 
+  /** The organization the connected container's birth or opening was in. */
+  const organizationOf = useCallback((containerOrigin: string): string | null => {
+    const origin = normalizeOrigin(containerOrigin);
+    const birth = birthsRef.current.find(
+      (entry) => entry.origin !== null && normalizeOrigin(entry.origin) === origin,
+    );
+    if (birth !== undefined) return birth.organizationId;
+    const target = openingRef.current;
+    return target !== null && normalizeOrigin(target.origin) === origin
+      ? target.organizationId
+      : null;
+  }, []);
+
   // Fed by `scheduleBirthRetry` below and read by the timer it sets — a ref
-  // so the timer always calls this hook's latest `connectContainer`, whatever
-  // its own identity is doing (`provisioning` is a fresh object every render,
-  // per `useZeropsProvisioning`, so `connectContainer` is too).
+  // so the timer always calls this hook's latest `connectContainer`.
   const connectContainerRef = useRef<(containerOrigin: string) => Promise<void>>(() =>
     Promise.resolve(),
   );
@@ -651,87 +656,109 @@ export function useZeropsProjectConnection(): {
       try {
         const result = await exchangeZeropsIdentity(containerOrigin);
         if (result._tag === "Failure") {
-          const isBirth = isZeropsBirthConnectTarget({
-            containerOrigin,
-            waited: provisioning.state,
-            pendingCreationProjectIds: new Set(pendingCreationProjects()),
-          });
-          if (result.retryable && isBirth) {
+          if (
+            result.retryable &&
+            isZeropsBirthConnectTarget({ containerOrigin, births: birthsRef.current })
+          ) {
             // B-2: "overdue is not a state." A fault a retry might clear on
-            // its own never dead-ends the card while its hand-off is still
-            // pending — no `connectError`, so the card stays on its
-            // progress and this loops until it settles or the wait ends.
+            // its own never dead-ends a birth's card — no `connectError`, so
+            // the card stays on its progress and this loops until it settles
+            // or the birth ends.
             scheduleBirthRetry(containerOrigin);
             return;
           }
           clearBirthRetry();
+          setFailedOrigin(containerOrigin);
           setConnectError(result.error);
           setServerVersion(result.serverVersion);
           setUpgradeOrigin(result.upgradeRequired ? containerOrigin : null);
           return;
         }
-        await finishBirth(result.environmentId);
+        await finishBirth(result.environmentId, organizationOf(containerOrigin));
       } finally {
         setConnectingOrigin(null);
       }
     },
-    [clearBirthRetry, exchangeZeropsIdentity, finishBirth, provisioning.state, scheduleBirthRetry],
+    [clearBirthRetry, exchangeZeropsIdentity, finishBirth, organizationOf, scheduleBirthRetry],
   );
 
   useEffect(() => {
     connectContainerRef.current = connectContainer;
   }, [connectContainer]);
 
-  const readyOrigin =
-    provisioning.state?.phase === "ready" ? provisioning.state.containerOrigin : null;
+  // A birth this tab drives connects the moment its Mate answers ready.
+  useEffect(() => {
+    for (const [projectId, wait] of births.waits) {
+      if (wait.phase !== "ready" || wait.containerOrigin === null) continue;
+      const key = `${projectId}@${wait.phaseStartedAtMs}`;
+      if (connectedForRef.current.has(key)) continue;
+      connectedForRef.current.add(key);
+      void connectContainer(wait.containerOrigin);
+    }
+  }, [births.waits, connectContainer]);
 
+  // A Mate being opened connects the moment its container answers ready.
+  const openingReady = opening !== null && health.get(opening.key) === "ready";
+  useEffect(() => {
+    if (opening === null || !openingReady || openedRef.current === opening) return;
+    openedRef.current = opening;
+    void connectContainer(opening.origin);
+  }, [connectContainer, opening, openingReady]);
+
+  // The last birth ending always cancels a birth retry along with it: nothing
+  // should still be reaching for a container nobody is waiting on.
+  useEffect(() => {
+    if (births.births.length === 0) clearBirthRetry();
+  }, [births.births, clearBirthRetry]);
+
+  const open = useCallback(
+    (candidate: ZeropsCandidate) => {
+      if (candidate.containerOrigin === undefined) return;
+      // A Mate still being born is connected by its birth, once it is closed off.
+      if (birthsRef.current.some((birth) => birth.projectId === candidate.project.id)) return;
+      setConnectError(null);
+      clearBirthRetry();
+      setOpening({
+        key: candidate.key,
+        projectId: candidate.project.id,
+        origin: candidate.containerOrigin,
+        organizationId: candidate.project.clientId ?? null,
+      });
+    },
+    [clearBirthRetry],
+  );
+
+  const waits = births.waits;
   const retryProjectConnection = useCallback(() => {
     retryZeropsProjectConnection({
       connectError,
-      readyOrigin,
+      readyOrigin: failedOrigin,
       retryIdentity: (containerOrigin) => {
         void connectContainer(containerOrigin);
       },
-      retryProvisioning: provisioning.retry,
+      retryProvisioning: () => {
+        for (const projectId of waits.keys()) retryBirth(projectId);
+      },
     });
-  }, [connectContainer, connectError, provisioning.retry, readyOrigin]);
+  }, [connectContainer, connectError, failedOrigin, waits]);
 
   const upgradeRecovery = useZeropsUpgradeRestart(
     connectError ? upgradeOrigin : null,
     retryProjectConnection,
   );
 
-  useEffect(() => {
-    if (!readyOrigin || connectingRef.current === readyOrigin) return;
-    connectingRef.current = readyOrigin;
-    void connectContainer(readyOrigin);
-  }, [connectContainer, readyOrigin]);
-
-  // The wait ending — "Stop waiting", a settled creation failure, a fresh
-  // wait replacing this one — always cancels a birth retry along with it:
-  // nothing should still be reaching for a container nobody is waiting on.
-  const waitedState = provisioning.state;
-  useEffect(() => {
-    if (waitedState === null) clearBirthRetry();
-  }, [waitedState, clearBirthRetry]);
-
-  const resetConnectingTarget = useCallback(() => {
-    connectingRef.current = null;
-    clearBirthRetry();
-  }, [clearBirthRetry]);
-
   return {
-    creatingIn,
-    setCreatingIn,
-    provisioning,
+    births,
+    opening,
+    open,
     connectError,
     upgradeRecovery,
     serverVersion,
     setConnectError,
     connectingOrigin,
+    failedOrigin,
     retryProjectConnection,
     connectContainer,
-    resetConnectingTarget,
     finishBirth,
   };
 }
@@ -766,27 +793,33 @@ function ZeropsProjectsContent() {
   const taken = useMemo(() => takenBotNames(listing), [listing]);
   const nowMs = useNowMs();
   const {
-    creatingIn,
-    setCreatingIn,
-    provisioning,
+    births,
+    opening,
+    open,
     connectError,
     upgradeRecovery,
     setConnectError,
     connectingOrigin,
+    failedOrigin,
     retryProjectConnection,
     connectContainer,
-    resetConnectingTarget,
     finishBirth,
   } = useZeropsProjectConnection();
+  const birthProjectIds = useMemo(
+    () => new Set(births.births.map((birth) => birth.projectId)),
+    [births.births],
+  );
   // A project on its way up is read against the platform's verdict on its
   // creation: one whose `project.create` failed is not coming up, however
   // long the page waits, and its row says so instead. H20: also re-asked
-  // periodically for the one project a live provisioning wait is watching,
-  // so a creation that fails late still turns "Coming up." into "Could not
-  // be created." on its own.
+  // periodically for a birth of the organization on show that is not closed
+  // off yet, so a creation that fails late still turns "Coming up." into
+  // "Could not be created." on its own.
   const creationVerdicts = useZeropsCreationVerdicts(
     observedCandidates,
-    provisioning.state?.projectId ?? null,
+    births.births.find(
+      (birth) => birth.organizationId === activeOrganization?.id && birth.step !== "health",
+    )?.projectId ?? null,
   );
   const candidates = useMemo(
     () =>
@@ -795,38 +828,36 @@ function ZeropsProjectsContent() {
       ),
     [creationVerdicts, observedCandidates],
   );
-  // A late success still ends the birth. The sidebar's own connector
-  // (`useZeropsAutoConnect`) can reach the door before this page's retry
-  // does — it never navigates by design — so this watches for the project
-  // this page is itself waiting on, or one this browser wrote a creation
-  // hand-off for, turning up connected, and finishes the birth from here
-  // instead. Gated strictly on this browser's own wait/hand-off: an ordinary
-  // auto-connected environment that is neither must never pull anyone into a
-  // thread. `provisioning.state?.projectId` is read on its own — not only
-  // through the pending hand-off — because a successful exchange on either
-  // path promotes the hand-off (`promoteCreationHandoff`) as its very first
-  // write, which would otherwise empty `pendingCreationProjects()` out from
-  // under this check before it ever got to run.
+  // A late success still ends the birth. Auto-connect (`useZeropsAutoConnect`)
+  // can reach the door before this page's own connect does — it never
+  // navigates by design — so this watches for a project this page saw being
+  // born, or one it is opening, turning up connected, and finishes from here
+  // instead. Gated strictly on those: an ordinary auto-connected environment
+  // must never pull anyone into a thread. A birth is remembered for as long as
+  // the page is mounted, because the exchange that connects it promotes it
+  // (`promoteBirth`) as its very first write, which would otherwise take it out
+  // of the ledger before this check ever got to run.
+  const seenBirthsRef = useRef(new Set<string>());
   const finishedBirthProjectsRef = useRef(new Set<string>());
   useEffect(() => {
+    for (const birth of births.births) seenBirthsRef.current.add(birth.projectId);
     // A connect this page's own `connectContainer` is mid-flight on will
     // reach `finishBirth` itself; racing in here would only navigate twice.
     if (connectingOrigin !== null) return;
-    const watchedProjectIds = new Set(pendingCreationProjects());
-    const waitedProjectId = provisioning.state?.projectId ?? null;
-    if (waitedProjectId !== null) watchedProjectIds.add(waitedProjectId);
-    if (watchedProjectIds.size === 0) return;
+    const watched = new Set(seenBirthsRef.current);
+    if (opening !== null) watched.add(opening.projectId);
+    if (watched.size === 0) return;
     const admitted = candidates.find(
       (candidate) =>
-        watchedProjectIds.has(candidate.project.id) &&
+        watched.has(candidate.project.id) &&
         candidate.group === "connected" &&
         candidate.environmentId !== undefined &&
         !finishedBirthProjectsRef.current.has(candidate.project.id),
     );
     if (admitted?.environmentId === undefined) return;
     finishedBirthProjectsRef.current.add(admitted.project.id);
-    void finishBirth(admitted.environmentId);
-  }, [candidates, connectingOrigin, finishBirth, provisioning.state?.projectId]);
+    void finishBirth(admitted.environmentId, admitted.project.clientId ?? null);
+  }, [births.births, candidates, connectingOrigin, finishBirth, opening]);
   // Every row's container as the container store holds it (DESIGN §4.5): the
   // platform's processes hold a boot's cap (H7/R9), and the Mate flag is read
   // only for a container that predates Mate (H9).
@@ -843,29 +874,11 @@ function ZeropsProjectsContent() {
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
   const autoConnectingRef = useRef(false);
-  // Entering the wait on its own happens at most once per mount: a dismissed
-  // wait must never be reopened behind the user's back.
-  const autoEnteredRef = useRef(false);
   // One-shot resource reads (readZeropsResourceOnce) hold their lease under
   // this signal, so a component unmounted mid-read releases immediately.
   const unmountRef = useRef<AbortController>(undefined);
   if (unmountRef.current === undefined) unmountRef.current = new AbortController();
   useEffect(() => () => unmountRef.current?.abort(), []);
-
-  const startWaitFor = useCallback(
-    (candidate: ZeropsCandidate) => {
-      if (!candidate.containerOrigin) return;
-      setConnectError(null);
-      resetConnectingTarget();
-      setCreatingIn(candidate.project.clientId ?? null);
-      provisioning.startForContainer({
-        projectId: candidate.project.id,
-        serviceId: candidate.service?.id ?? null,
-        containerOrigin: candidate.containerOrigin,
-      });
-    },
-    [provisioning, resetConnectingTarget, setConnectError, setCreatingIn],
-  );
 
   const [toolError, setToolError] = useState<string | null>(null);
   const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
@@ -919,57 +932,30 @@ function ZeropsProjectsContent() {
   });
   const members = assignableMembers;
 
-  /**
-   * The container this page is waiting on: the wait a click or a creation
-   * started (`provisioning.state`) and the identity exchange it ends in
-   * (`connectingOrigin`). One at a time, so one row at most reads as waited on.
-   */
-  const waitedOn = (candidate: ZeropsCandidate): boolean => {
-    const origin =
-      candidate.containerOrigin === undefined ? null : normalizeOrigin(candidate.containerOrigin);
-    const waited = provisioning.state;
-    if (waited !== null) {
-      if (waited.projectId !== null && waited.projectId === candidate.project.id) return true;
-      if (
-        origin !== null &&
-        waited.containerOrigin !== null &&
-        normalizeOrigin(waited.containerOrigin) === origin
-      ) {
-        return true;
-      }
-    }
-    return (
-      origin !== null && connectingOrigin !== null && normalizeOrigin(connectingOrigin) === origin
-    );
-  };
+  /** A birth of the organization on show: the page is not empty while one is on its way. */
+  const activeBirths = births.births.some(
+    (birth) => birth.organizationId === activeOrganization?.id,
+  );
+
+  /** The row whose connect failed: its line carries the failure and the retry. */
+  const connectFailedOn = (candidate: ZeropsCandidate): boolean =>
+    failedOrigin !== null &&
+    candidate.containerOrigin !== undefined &&
+    normalizeOrigin(candidate.containerOrigin) === normalizeOrigin(failedOrigin);
 
   /**
-   * The projects this browser created and has not connected to yet
-   * (`creationHandoff.ts`). A reload mid-provisioning lands here with the
-   * handoff still in storage: the page reads it as its own wait — the line
-   * says how long, nothing is offered to click — and picks the wait up the
-   * moment the container answers ready (below).
+   * Whether this page waits on the row: its birth, the Mate a person asked to
+   * open, or the identity exchange either ends in (`connectingOrigin`).
    */
-  // Read on every render rather than memoized: the store is the connect's
-  // to spend, and nothing this component holds changes when it does.
-  const pendingCreations = new Set(pendingCreationProjects());
-  const creationPending = pendingCreations.size > 0;
-  // A creation's container reaches this page through the pushed inventory,
-  // and a push can be missed: the card then waits at "Almost there." on a Mate
-  // that answered minutes ago, while a reload finds it at once (the owner's
-  // run of 2026-09-17). While a creation is on its way, its organization's
-  // inventory is asked for on a clock as well (`creationRefresh.ts`).
-  const creationOrganizationId = creationRefreshWanted({
-    creationPending,
-    waitPhase: provisioning.state?.phase ?? null,
-  })
-    ? (creatingIn ?? activeOrganization?.id ?? null)
-    : null;
-  const creationOrganization = useMemo(
-    () => (creationOrganizationId === null ? null : organizationRef(creationOrganizationId)),
-    [creationOrganizationId, organizationRef],
-  );
-  useCreationInventoryRefresh(creationOrganization);
+  const waitedOn = (candidate: ZeropsCandidate): boolean => {
+    if (birthProjectIds.has(candidate.project.id)) return true;
+    if (opening !== null && opening.projectId === candidate.project.id) return true;
+    return (
+      candidate.containerOrigin !== undefined &&
+      connectingOrigin !== null &&
+      normalizeOrigin(connectingOrigin) === normalizeOrigin(candidate.containerOrigin)
+    );
+  };
 
   const rowInput = (
     candidate: ZeropsCandidatePresentation,
@@ -981,9 +967,7 @@ function ZeropsProjectsContent() {
       visibility === "listed"
         ? resolveMateOwnerName({ project: candidate.project, members })
         : undefined;
-    const waiting =
-      candidate.group !== "connected" &&
-      (waitedOn(candidate) || pendingCreations.has(candidate.project.id));
+    const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
       candidate,
@@ -1006,11 +990,6 @@ function ZeropsProjectsContent() {
 
   const [settingUpKey, setSettingUpKey] = useState<string | null>(null);
 
-  /**
-   * Gives a project that has none a Mate container — and an agent's name, so
-   * the row it earns in the left menu is somebody — then hands the wait to
-   * the provisioning machinery from the project's known id.
-   */
   /**
    * The agents a group's existing environments are signed in with, so a Mate
    * born into that group offers the same ones instead of the platform's whole
@@ -1077,12 +1056,17 @@ function ZeropsProjectsContent() {
         if (!isCurrent()) return;
         const project = projectRef(activeOrganization.id, projectId);
         await runZeropsCommand(runtime.commands.importDevelopmentContainer({ project, agents }));
+        // The container is accepted: its birth closes the project off before
+        // anyone is let in, whatever happens to the rest of this.
+        beginBirth({
+          projectId,
+          organizationId: activeOrganization.id,
+          registration: null,
+          container: true,
+          handoff: null,
+        });
         if (!isCurrent()) return;
         await runZeropsCommand(runtime.commands.nameProjectAgent(project, botName));
-        if (!isCurrent()) return;
-        resetConnectingTarget();
-        setCreatingIn(activeOrganization.id);
-        provisioning.startForProject({ projectId });
       } catch (cause) {
         if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
       } finally {
@@ -1098,11 +1082,8 @@ function ZeropsProjectsContent() {
       activeOrganization,
       groupTree.groups,
       projectRef,
-      provisioning,
       readGroupAgents,
-      resetConnectingTarget,
       setConnectError,
-      setCreatingIn,
       settingUpKey,
       runtime.commands,
       taken,
@@ -1187,8 +1168,8 @@ function ZeropsProjectsContent() {
   /**
    * The wait this page holds, as the waited-on Mate's own line: a connect
    * that failed, in the failed tone with the one verb that retries it; an
-   * older server, with the restart that updates it; a wait that ran out.
-   * Nothing while the wait simply runs — the face is asleep and the row
+   * older server, with the restart that updates it; a birth that ran past its
+   * cap. Nothing while the wait simply runs — the face is asleep and the row
    * logic's line says how long.
    */
   const renderWaitLine = (candidate: ZeropsCandidatePresentation): React.ReactNode => {
@@ -1206,40 +1187,44 @@ function ZeropsProjectsContent() {
         {text}
       </span>
     );
-    const busy = provisioning.busy || connectingOrigin !== null;
-    if (upgradeRecovery !== null && connectError !== null) {
-      switch (upgradeRecovery.state) {
-        case "confirm":
-          return (
-            <>
-              {quiet("Restarting interrupts work running in it.")}
-              <ZeropsMateVerb disabled={busy} label="Restart" onClick={upgradeRecovery.confirm} />
-              <ZeropsMateVerb label="Cancel" onClick={upgradeRecovery.cancel} />
-            </>
-          );
-        case "waiting":
-          return quiet("Restarting to update.");
-        case "failed":
-          return (
-            <>
-              {failed(upgradeRecovery.error ?? "Could not restart.")}
-              <ZeropsMateVerb disabled={busy} label="Try again" onClick={upgradeRecovery.request} />
-            </>
-          );
-        case "idle":
-          return (
-            <>
-              {failed("This Mate runs an older server. A restart updates it.")}
-              <ZeropsMateVerb
-                disabled={busy}
-                label="Restart to update"
-                onClick={upgradeRecovery.request}
-              />
-            </>
-          );
+    const busy = connectingOrigin !== null;
+    if (connectError !== null && connectFailedOn(candidate)) {
+      if (upgradeRecovery !== null) {
+        switch (upgradeRecovery.state) {
+          case "confirm":
+            return (
+              <>
+                {quiet("Restarting interrupts work running in it.")}
+                <ZeropsMateVerb disabled={busy} label="Restart" onClick={upgradeRecovery.confirm} />
+                <ZeropsMateVerb label="Cancel" onClick={upgradeRecovery.cancel} />
+              </>
+            );
+          case "waiting":
+            return quiet("Restarting to update.");
+          case "failed":
+            return (
+              <>
+                {failed(upgradeRecovery.error ?? "Could not restart.")}
+                <ZeropsMateVerb
+                  disabled={busy}
+                  label="Try again"
+                  onClick={upgradeRecovery.request}
+                />
+              </>
+            );
+          case "idle":
+            return (
+              <>
+                {failed("This Mate runs an older server. A restart updates it.")}
+                <ZeropsMateVerb
+                  disabled={busy}
+                  label="Restart to update"
+                  onClick={upgradeRecovery.request}
+                />
+              </>
+            );
+        }
       }
-    }
-    if (connectError !== null) {
       return (
         <>
           {failed(connectFailureLine(connectError))}
@@ -1247,42 +1232,41 @@ function ZeropsProjectsContent() {
         </>
       );
     }
-    const state = provisioning.state;
-    if (state === null) return undefined;
-    if (provisioning.error !== null) {
-      return (
-        <>
-          {failed(provisioning.error)}
-          <ZeropsMateVerb disabled={busy} label="Try again" onClick={provisioning.retry} />
-        </>
-      );
-    }
-    // B-2: a cap running out is words, never a stop — the wait stays in its
-    // phase (a missed push still resumes it) and only grows this line's
-    // "Taking longer than usual." plus the two verbs that end a wait for
-    // good (H4/H5): "Keep waiting" clears it and restarts the phase's own
-    // clock, "Stop waiting" cancels and leaves the row to its own words.
-    const overdueLine = state.overdue ? (
-      <>
-        {quiet("Taking longer than usual.")}
-        <ZeropsMateVerb disabled={busy} label="Keep waiting" onClick={provisioning.retry} />
-        <ZeropsMateVerb label="Stop waiting" onClick={provisioning.cancel} />
-      </>
-    ) : null;
-    if (state.phase === "not-yet-available") {
-      // H4/H5: no wait dead-ends. "Keep waiting" asks the platform again
-      // (the container it was about survives the ask); "Stop waiting" leaves
-      // the hand-off in place and lets the row fall back to its own words.
-      // A settled verdict, not a cap: `overdue` cannot be true here.
+    const wait = births.waits.get(candidate.project.id);
+    if (wait === undefined) return undefined;
+    const keepWaiting = (
+      <ZeropsMateVerb
+        disabled={busy}
+        label="Keep waiting"
+        onClick={() => {
+          retryBirth(candidate.project.id);
+        }}
+      />
+    );
+    if (wait.phase === "not-yet-available") {
+      // H4/H5: no wait dead-ends. "Keep waiting" asks the platform again —
+      // the container it was about survives the ask. A settled verdict, not
+      // a cap: `overdue` cannot be true here.
       return (
         <>
           {quiet("This container's release does not carry Mate yet.")}
-          <ZeropsMateVerb disabled={busy} label="Keep waiting" onClick={provisioning.retry} />
-          <ZeropsMateVerb label="Stop waiting" onClick={provisioning.cancel} />
+          {keepWaiting}
         </>
       );
     }
-    if (overdueLine) return overdueLine;
+    // B-2: a cap running out is words, never a stop — the birth stays on its
+    // step (a missed push still resumes it) and only grows this line's
+    // "Taking longer than usual." and "Keep waiting", which restarts the
+    // step's own clock. A birth is never stopped from here: nobody is let into
+    // its Mate before it is closed off.
+    if (wait.overdue) {
+      return (
+        <>
+          {quiet("Taking longer than usual.")}
+          {keepWaiting}
+        </>
+      );
+    }
     return undefined;
   };
 
@@ -1318,10 +1302,10 @@ function ZeropsProjectsContent() {
     if (
       showsZeropsBirthLine({
         projectId: candidate.project.id,
-        pendingCreationProjectIds: pendingCreations,
+        birthProjectIds,
       })
     ) {
-      const waited = waitedOn(candidate) ? provisioning.state : null;
+      const waited = births.waits.get(candidate.project.id) ?? null;
       return (
         <ZeropsMateBirthLine
           input={{
@@ -1406,7 +1390,7 @@ function ZeropsProjectsContent() {
           void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
           return;
         }
-        startWaitFor(candidate);
+        open(candidate);
         return;
       case "set-up-mate":
         void setUpMate(candidate);
@@ -1436,7 +1420,10 @@ function ZeropsProjectsContent() {
         )
           .then(() => {
             intendContainer(candidate.key, { kind: "enable" });
-            startWaitFor(candidate);
+            // A birth follows the restart it asked for; a Mate that exists
+            // is opened once it answers.
+            if (birthProjectIds.has(candidate.project.id)) birthEnabled(candidate.project.id);
+            else open(candidate);
           })
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
@@ -1516,7 +1503,7 @@ function ZeropsProjectsContent() {
           organization,
           deleteProject: (projectId) =>
             runZeropsCommand(runtime.commands.deleteProject({ organization, projectId })),
-          forgetCreation: forgetPendingCreation,
+          forgetCreation: forgetBirth,
         })
           .then((outcome) => {
             if (!outcome.ok) setConnectError(outcome.error);
@@ -1578,6 +1565,17 @@ function ZeropsProjectsContent() {
     giteaProjectId: giteaProjectId,
     enabled: status === "signed-in",
   });
+
+  // A birth's group writes change the registry: it is read again as each
+  // birth moves on, so the tree is not left one version behind.
+  const birthSteps = births.births.map((birth) => `${birth.projectId}:${birth.step}`).join(",");
+  const readBirthStepsRef = useRef(birthSteps);
+  const refreshRegistry = registryState.refresh;
+  useEffect(() => {
+    if (readBirthStepsRef.current === birthSteps) return;
+    readBirthStepsRef.current = birthSteps;
+    refreshRegistry();
+  }, [birthSteps, refreshRegistry]);
 
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
@@ -1898,52 +1896,59 @@ function ZeropsProjectsContent() {
 
       if (!isCurrent()) return;
 
-      // What this environment is for, said once, where the Mate that has to do
-      // it will read it (`creationHandoff.ts`). Written against the project
-      // because that is all a creation knows; the connect moves it onto the
-      // environment id. Written as soon as the project exists: a Mate whose
-      // creation failed a step later still opens on its own job, not on the
-      // generic opening line (Fen, 2026-09-17).
+      // The project exists: from here on it is a birth (`zeropsBirths.ts`,
+      // DESIGN §4.5), which the account's worker finishes whatever this page
+      // does next. It carries what this environment is for, said once where
+      // the Mate that has to do it will read it (`creationHandoff.ts`) — a
+      // Mate whose creation failed a step later still opens on its own job
+      // (Fen, 2026-09-17) — and the group writes this person makes:
+      //
+      // - A Mate an owner or an admin makes is registered as soon as its
+      //   project exists, the way *New project* registers the first — a
+      //   creation that failed past that point included (Fen, 2026-09-17).
+      //   Without the entry the broker gives it no bot. A member cannot write
+      //   the registry; their Mate waits on the card's *Register in {group}*
+      //   (guide 4.2).
+      // - A stage or a production is a **group environment**: it goes in the
+      //   registry, the broker's token has to reach it, and its sources are
+      //   declared on the group repo before the broker deploys anything
+      //   (guide 5.2) — once its creation went through.
       if (outcome.projectId !== undefined) {
-        rememberCreationHandoff(outcome.projectId, {
-          environmentName: name,
-          groupName: group.name,
-          role,
-          source:
-            choice.recipe.kind === "tier"
-              ? // Imported `startWithoutCode`: the services that build from a
-                // repository exist and run nothing until their first deploy. A
-                // managed service needs none, so it is not named.
-                { kind: "tier", services: Object.keys(choice.recipe.sources) }
-              : { kind: "none" },
-        });
-      }
-
-      // A Mate an owner or an admin makes is registered as soon as its project
-      // exists, the way *New project* registers the first — a creation that
-      // failed past that point included (Fen, 2026-09-17: a step after the
-      // project failed and the Mate ran unregistered, with no bot and no
-      // token). Without the entry the broker gives it no bot, and its agent
-      // cannot push to the group's repositories. A member cannot write the
-      // registry; their Mate waits on the card's *Register in {group}*
-      // (guide 4.2).
-      if (
-        role === "dev" &&
-        outcome.projectId !== undefined &&
-        giteaProjectId !== undefined &&
-        canWriteRegistry(activeOrganization)
-      ) {
-        const outstanding = await registerMateInGroup({
-          client,
-          clientId: activeOrganization.id,
-          giteaProjectId,
-          registry: registryState.registry,
-          groupId,
+        const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
+        const registers =
+          tier === null ? role === "dev" && canWriteRegistry(activeOrganization) : outcome.ok;
+        if (tier !== null && registers && giteaProjectId === undefined) {
+          setToolError("Your account's Gitea is still being set up.");
+        }
+        beginBirth({
           projectId: outcome.projectId,
+          organizationId: activeOrganization.id,
+          registration:
+            registers && giteaProjectId !== undefined
+              ? {
+                  giteaProjectId,
+                  giteaOrigin: tier === null ? null : (giteaOrigin ?? null),
+                  groupId,
+                  kind: tier ?? "mate",
+                  displayName: name,
+                }
+              : null,
+          container: outcome.ok
+            ? outcome.awaitingAgent
+            : plan.steps.some((step) => step.kind === "await-ready" && step.withAgent),
+          handoff: {
+            environmentName: name,
+            groupName: group.name,
+            role,
+            source:
+              choice.recipe.kind === "tier"
+                ? // Imported `startWithoutCode`: the services that build from a
+                  // repository exist and run nothing until their first deploy. A
+                  // managed service needs none, so it is not named.
+                  { kind: "tier", services: Object.keys(choice.recipe.sources) }
+                : { kind: "none" },
+          },
         });
-        registryState.refresh();
-        if (!isCurrent()) return;
-        if (outstanding !== null) setToolError(outstanding);
       }
 
       if (!outcome.ok) {
@@ -1962,40 +1967,11 @@ function ZeropsProjectsContent() {
         return;
       }
 
-      // A stage or a production is a **group environment**: it goes in the
-      // registry, the broker's token has to reach it, and its sources have to
-      // be declared on the group repo before the broker will deploy anything
-      // (guide 5.2). A Mate is none of those things.
-      if (role === "stage" || role === "prod") {
-        const written = await addGroupEnvironment({
-          client,
-          gitea: giteaOrigin === undefined ? null : giteaClientFor(giteaOrigin),
-          clientId: activeOrganization.id,
-          giteaProjectId,
-          registry: registryState.registry,
-          groupId,
-          slug: registryGroupSlug(registryState.registry, groupId),
-          environment: {
-            displayName: name,
-            tier: role === "prod" ? "production" : "stage",
-            project: outcome.projectId,
-          },
-        });
-        registryState.refresh();
-        if (!isCurrent()) return;
-        // Not a failed creation: the project exists and runs, and what is
-        // outstanding is named so the person knows what is waiting on whom.
-        if (written.failed !== undefined) setToolError(written.failed.reason);
-      }
-
       if (outcome.awaitingAgent) {
-        // The imports were accepted; the container wait is the provisioning
-        // machinery's, which also does the connect and the hand-over to `/`.
+        // The imports were accepted; the rest is the birth's, which the Mate's
+        // card shows and whose connect lands the person in the conversation.
         setCreation(null);
         setConnectError(null);
-        resetConnectingTarget();
-        setCreatingIn(activeOrganization.id);
-        provisioning.startForProject({ projectId: outcome.projectId });
         return;
       }
       setCreation((current) =>
@@ -2009,18 +1985,14 @@ function ZeropsProjectsContent() {
       creationRequest?.groupId,
       creationRunning,
       groupTree.groups,
-      provisioning,
       readGroupAgents,
       organizationRef,
       projectRef,
-      resetConnectingTarget,
       setConnectError,
-      setCreatingIn,
       runtime.commands,
       client,
       giteaOrigin,
       giteaProjectId,
-      registryState,
     ],
   );
 
@@ -2152,78 +2124,51 @@ function ZeropsProjectsContent() {
     });
   }, [authGate, candidates, client.session?.accessToken, connectContainer, status]);
 
-  // Resumes a creation. The wizard hands its project over and comes here
-  // without waiting (`rememberCreationHandoff`); a reload mid-provisioning
-  // lands here too. Either way, the wait is started with `startForProject`,
-  // never `startForContainer` — the birth's one restart (`provisioning.ts`'s
-  // `hardening` phase) has not run yet for a project this fresh, and only
-  // `startForProject`'s `awaiting-container` → `awaiting-settled` →
-  // `hardening` → `awaiting-health` chain runs it. Started as soon as the
-  // project is listed at all (MC-4: `awaiting-container` tolerates its
-  // absence too, so a hand-off is resumed on mount even before the pushed
-  // inventory has it) — once per project per mount, and never over a wait
-  // that is already running or a project already connected.
-  const resumedRef = useRef(new Set<string>());
+  // A birth whose project the platform failed to create can never end: the
+  // container it waits for will not be made. The moment the verdict is in, the
+  // birth is forgotten and the row's own line takes over.
   useEffect(() => {
-    if (provisioning.state !== null || connectingOrigin !== null) return;
-    const projectId = pendingCreationProjects().find((id) => !resumedRef.current.has(id));
-    if (projectId === undefined) return;
-    const existing = candidates.find((entry) => entry.project.id === projectId);
-    // Already connected: this hand-off is done, nothing to resume.
-    if (existing?.connection !== undefined) return;
-    // The wait polls only inside an organization scope; a project the pushed
-    // inventory does not list yet has none of its own, so the active
-    // organization — the one the hand-off was made in — is the scope.
-    const scope = existing?.project.clientId ?? activeOrganization?.id ?? null;
-    if (scope === null) return;
-    resumedRef.current.add(projectId);
-    setCreatingIn(scope);
-    provisioning.startForProject({ projectId });
-  }, [activeOrganization?.id, candidates, connectingOrigin, provisioning, setCreatingIn]);
+    for (const candidate of candidates) {
+      if (candidate.creationFailed !== undefined && birthProjectIds.has(candidate.project.id)) {
+        forgetBirth(candidate.project.id);
+      }
+    }
+  }, [birthProjectIds, candidates]);
 
-  // A wait on a project the platform failed to create can never end: the
-  // container it waits for will not be made. The moment the verdict is in,
-  // the wait stops and the row's own line takes over.
+  // The two-hop registration flow: the platform's own word on what it claimed
+  // for the new account, preferred over inferring it from a candidate's
+  // status. A returning account never infers a new setup flow from an
+  // unrelated provisioning project in the inventory. The claimed project is
+  // born like any other once the inventory lists it: a claim hands over a
+  // brand-new project, so the newest one of its organization is it.
+  const claimRef = useRef<string | null>(null);
   useEffect(() => {
-    const waitedProjectId = provisioning.state?.projectId ?? null;
-    if (waitedProjectId === null) return;
-    const failed = candidates.some(
-      (candidate) =>
-        candidate.project.id === waitedProjectId && candidate.creationFailed !== undefined,
-    );
-    if (!failed) return;
-    provisioning.cancel();
-    setCreatingIn(null);
-  }, [candidates, provisioning, setCreatingIn]);
-
-  // The registration flow's one dead end: no ready-made project to wait on,
-  // so the only way forward is to create one.
-  useEffect(() => {
-    if (provisioning.state?.phase !== "pool-exhausted") return;
-    provisioning.cancel();
-    setCreatingIn(null);
-    void navigate({ to: "/zerops/new" });
-  }, [navigate, provisioning, setCreatingIn]);
-
-  // Enters the provisioning wait without the user clicking anything, for the
-  // two-hop registration flow only. A returning account never infers a new
-  // setup flow from an unrelated provisioning project in the inventory.
-  useEffect(() => {
-    if (autoEnteredRef.current || creatingIn) return;
-
-    // The registration response is the platform's own word on what it
-    // claimed — preferred over inferring it from a candidate's status.
     if (lastRegistration) {
-      autoEnteredRef.current = true;
       const { clientId, zcpClaimed } = deriveProvisioningStart(lastRegistration);
       clearLastRegistration();
-      if (clientId) {
-        setCreatingIn(clientId);
-        provisioning.start(zcpClaimed === undefined ? {} : { zcpClaimed });
+      if (!clientId) return;
+      // No ready-made project to wait on: the only way forward is to create one.
+      if (zcpClaimed === false) {
+        void navigate({ to: "/zerops/new" });
+        return;
       }
-      return;
+      claimRef.current = clientId;
     }
-  }, [clearLastRegistration, creatingIn, lastRegistration, provisioning]);
+    const claimIn = claimRef.current;
+    if (claimIn === null) return;
+    const claimed = inventory.projects
+      .filter((project) => project.clientId === claimIn)
+      .toSorted((left, right) => (right.created ?? "").localeCompare(left.created ?? ""))[0];
+    if (claimed === undefined) return;
+    claimRef.current = null;
+    beginBirth({
+      projectId: claimed.id,
+      organizationId: claimIn,
+      registration: null,
+      container: true,
+      handoff: null,
+    });
+  }, [clearLastRegistration, inventory.projects, lastRegistration, navigate]);
 
   if (status === "loading") {
     return (
@@ -2255,7 +2200,7 @@ function ZeropsProjectsContent() {
   // A wait is never a page of its own: the waited-on Mate's card carries it
   // — the face asleep, the line saying how long, a failure and its retry on
   // the same line — and the rest of the roster stays where it was.
-  const connectErrorOnRow = connectError !== null && candidates.some(waitedOn);
+  const connectErrorOnRow = connectError !== null && candidates.some(connectFailedOn);
   const listingNotice = projectsListingNotice(listing, nowMs);
   const pageError = projectsPageError({
     connectError: connectErrorOnRow ? null : connectError,
@@ -2319,7 +2264,7 @@ function ZeropsProjectsContent() {
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={
-          hasNoZeropsProject({ listing, creationPending })
+          hasNoZeropsProject({ listing, creationPending: activeBirths })
             ? () => {
                 void navigate({ to: "/zerops/new" });
               }
@@ -2756,9 +2701,12 @@ function ZeropsProjectsContent() {
           {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
         />
       )}
-      {toolError === null && renameGroup.trouble === null && route.trouble === null ? null : (
+      {toolError === null &&
+      births.outstanding === null &&
+      renameGroup.trouble === null &&
+      route.trouble === null ? null : (
         <p className="text-sm text-[var(--zerops-status-failed-text)]">
-          {toolError ?? renameGroup.trouble ?? route.trouble}
+          {toolError ?? births.outstanding ?? renameGroup.trouble ?? route.trouble}
         </p>
       )}
     </div>
@@ -2774,9 +2722,10 @@ export function ZeropsProjectsPage() {
   // First run owns the page: an account with nothing in it gets the
   // invitation and no title row over it — a "Projects" heading with a reload
   // over nothing frames emptiness as a failed list.
+  const { births } = useZeropsBirths();
   const firstRun = hasNoZeropsProject({
     listing,
-    creationPending: pendingCreationProjects().length > 0,
+    creationPending: births.some((birth) => birth.organizationId === activeOrganization?.id),
   });
 
   return (

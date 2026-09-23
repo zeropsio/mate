@@ -39,14 +39,6 @@ export interface ZeropsCreationHandoff {
    * carried verbatim from *Add project* (D17). Absent when they wrote nothing.
    */
   readonly brief?: string | undefined;
-  /**
-   * When the creation wrote this, epoch ms. A pending handoff is what makes
-   * the projects page treat a project the inventory does not list yet as
-   * real; one that outlived any boot (a project removed elsewhere, a tab
-   * that never came back) must not hold that power, so a pending read is
-   * age-bounded. Absent on records from before this field: never pending.
-   */
-  readonly createdAtMs?: number | undefined;
 }
 
 /** The role as it reads mid-sentence: "the stage environment of Aurora". */
@@ -96,30 +88,13 @@ export function creationHandoffPrompt(handoff: ZeropsCreationHandoff): string {
   return lines.join(" ");
 }
 
-export const ZEROPS_CREATION_HANDOFF_STORAGE_KEY = "zerops-mate.creation-handoff.v1";
-
-/**
- * Handoffs waiting to be said, by key.
- *
- * Two key shapes, because the two ends of the journey know different things: a
- * creation has a Zerops **project** id and no environment yet, and the compose
- * that says the prompt has an **environment** id and no project. The connect
- * in between is the only place both are in hand, so that is where a handoff
- * moves from one key to the other ({@link withCreationHandoffPromoted}).
- */
-export type ZeropsCreationHandoffs = Readonly<Record<string, ZeropsCreationHandoff>>;
-
-export type ZeropsCreationHandoffKey =
-  | { readonly projectId: string; readonly environmentId?: undefined }
-  | { readonly environmentId: string; readonly projectId?: undefined };
-
-function keyOf(key: ZeropsCreationHandoffKey): string {
-  return key.projectId === undefined ? `env:${key.environmentId}` : `project:${key.projectId}`;
-}
-
 const ROLES: ReadonlySet<ZeropsEnvironmentRole> = new Set(["dev", "devstage", "stage", "prod"]);
 
-/** A stored hand-off this version knows how to say, or undefined for anything else. */
+/**
+ * A stored hand-off this version knows how to say, or undefined for anything
+ * else. A creation's birth keeps it until the connect names the environment,
+ * and the environment keeps it until the job is said (`birth/birthStore.ts`).
+ */
 export function parseCreationHandoff(value: unknown): ZeropsCreationHandoff | undefined {
   return isHandoff(value) ? value : undefined;
 }
@@ -131,111 +106,13 @@ function isHandoff(value: unknown): value is ZeropsCreationHandoff {
   if (typeof source !== "object" || source === null) return false;
   const kind = (source as Record<string, unknown>)["kind"];
   const brief = record["brief"];
-  const createdAtMs = record["createdAtMs"];
   return (
     typeof record["environmentName"] === "string" &&
     typeof record["groupName"] === "string" &&
     ROLES.has(record["role"] as ZeropsEnvironmentRole) &&
     (brief === undefined || typeof brief === "string") &&
-    (createdAtMs === undefined || typeof createdAtMs === "number") &&
     (kind === "tier" || kind === "none")
   );
-}
-
-/** Parses the store, treating anything unexpected as "nothing waiting". */
-export function parseCreationHandoffs(raw: string | null): ZeropsCreationHandoffs {
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(
-        (entry): entry is [string, ZeropsCreationHandoff] => isHandoff(entry[1]),
-      ),
-    );
-  } catch {
-    return {};
-  }
-}
-
-export function readCreationHandoff(
-  handoffs: ZeropsCreationHandoffs,
-  key: ZeropsCreationHandoffKey,
-): ZeropsCreationHandoff | undefined {
-  return handoffs[keyOf(key)];
-}
-
-export function withCreationHandoff(
-  handoffs: ZeropsCreationHandoffs,
-  key: ZeropsCreationHandoffKey,
-  handoff: ZeropsCreationHandoff,
-): ZeropsCreationHandoffs {
-  return { ...handoffs, [keyOf(key)]: handoff };
-}
-
-/**
- * Moves a handoff from the project that was created onto the environment that
- * connect returned. The project key is spent in the same breath, so a later
- * reconnect to the same container does not raise the job a second time.
- */
-export function withCreationHandoffPromoted(
-  handoffs: ZeropsCreationHandoffs,
-  projectId: string,
-  environmentId: string,
-): ZeropsCreationHandoffs {
-  const handoff = handoffs[keyOf({ projectId })];
-  if (handoff === undefined) return handoffs;
-  const { [keyOf({ projectId })]: _spent, ...rest } = handoffs;
-  return { ...rest, [keyOf({ environmentId })]: handoff };
-}
-
-/**
- * The projects created and never connected to — every handoff still under its
- * project key. A creation's wait ends with the connect that promotes the key;
- * a reload mid-wait leaves it here, and the projects page reads this to pick
- * the wait up again rather than asking for a click the creation never needed.
- */
-/**
- * The projects a creation made and never connected to. With a bound, only
- * those young enough to still be booting: a handoff older than that is a
- * project removed some other way or a tab that never came back, and it must
- * not keep the page from saying the account is empty.
- */
-export function pendingCreationProjectIds(
-  handoffs: ZeropsCreationHandoffs,
-  bound?: { readonly nowMs: number; readonly maxAgeMs: number },
-): ReadonlyArray<string> {
-  const prefix = keyOf({ projectId: "" });
-  return Object.entries(handoffs)
-    .filter(
-      ([key, handoff]) =>
-        key.startsWith(prefix) &&
-        (bound === undefined ||
-          (handoff.createdAtMs !== undefined &&
-            bound.nowMs - handoff.createdAtMs <= bound.maxAgeMs)),
-    )
-    .map(([key]) => key.slice(prefix.length));
-}
-
-export function withoutCreationHandoff(
-  handoffs: ZeropsCreationHandoffs,
-  environmentId: string,
-): ZeropsCreationHandoffs {
-  const { [keyOf({ environmentId })]: _done, ...rest } = handoffs;
-  return rest;
-}
-
-/**
- * Forgets a creation that never became an environment — the project the
- * platform failed to make, removed from the account. Nothing will connect to
- * it, so nothing must keep waiting for it.
- */
-export function withoutPendingCreationHandoff(
-  handoffs: ZeropsCreationHandoffs,
-  projectId: string,
-): ZeropsCreationHandoffs {
-  const { [keyOf({ projectId })]: _gone, ...rest } = handoffs;
-  return rest;
 }
 
 /**

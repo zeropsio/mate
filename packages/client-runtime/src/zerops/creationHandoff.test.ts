@@ -3,14 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   creationJobSendable,
   creationHandoffPrompt,
-  parseCreationHandoffs,
-  readCreationHandoff,
   creationJobToStart,
-  pendingCreationProjectIds,
-  withCreationHandoff,
-  withCreationHandoffPromoted,
-  withoutCreationHandoff,
-  withoutPendingCreationHandoff,
   type ZeropsCreationHandoff,
 } from "./creationHandoff.ts";
 
@@ -78,121 +71,6 @@ describe("creationHandoffPrompt", () => {
   it("ends by asking for a report, so the run has somewhere to land", () => {
     expect(creationHandoffPrompt(FROM_TIER).trimEnd()).toMatch(/\.$/u);
     expect(creationHandoffPrompt(FROM_TIER)).toContain("tell me");
-  });
-});
-
-describe("creation handoff storage", () => {
-  const handoff: ZeropsCreationHandoff = FROM_TIER;
-
-  it("keeps a handoff against the project, which is all a creation knows", () => {
-    const stored = withCreationHandoff({}, { projectId: "proj-1" }, handoff);
-    expect(readCreationHandoff(stored, { projectId: "proj-1" })).toEqual(handoff);
-    expect(readCreationHandoff(stored, { environmentId: "env-1" })).toBeUndefined();
-  });
-
-  it("moves it onto the environment id the connect hands back", () => {
-    const stored = withCreationHandoffPromoted(
-      withCreationHandoff({}, { projectId: "proj-1" }, handoff),
-      "proj-1",
-      "env-1",
-    );
-    expect(readCreationHandoff(stored, { environmentId: "env-1" })).toEqual(handoff);
-    // The project key is spent: a reconnect must not raise the job again.
-    expect(readCreationHandoff(stored, { projectId: "proj-1" })).toBeUndefined();
-  });
-
-  it("leaves a connect for a project nobody created alone", () => {
-    expect(withCreationHandoffPromoted({}, "proj-9", "env-9")).toEqual({});
-  });
-
-  it("forgets a handoff once its job has been started", () => {
-    const stored = withCreationHandoffPromoted(
-      withCreationHandoff({}, { projectId: "proj-1" }, handoff),
-      "proj-1",
-      "env-1",
-    );
-    expect(
-      readCreationHandoff(withoutCreationHandoff(stored, "env-1"), { environmentId: "env-1" }),
-    ).toBeUndefined();
-  });
-
-  it.each([
-    ["nothing", {}, []],
-    [
-      "one creation nobody has connected to",
-      withCreationHandoff({}, { projectId: "proj-1" }, handoff),
-      ["proj-1"],
-    ],
-    [
-      "two, in the order they were written",
-      withCreationHandoff(
-        withCreationHandoff({}, { projectId: "proj-1" }, handoff),
-        { projectId: "proj-2" },
-        handoff,
-      ),
-      ["proj-1", "proj-2"],
-    ],
-    [
-      "only the one still waiting once the other has connected",
-      withCreationHandoffPromoted(
-        withCreationHandoff(
-          withCreationHandoff({}, { projectId: "proj-1" }, handoff),
-          { projectId: "proj-2" },
-          handoff,
-        ),
-        "proj-1",
-        "env-1",
-      ),
-      ["proj-2"],
-    ],
-  ] as const)(
-    "names the projects created and never connected to: %s",
-    (_case, stored, expected) => {
-      // The projects page resumes these: a creation whose wait a reload cut
-      // short still lands in the conversation when its container answers.
-      expect(pendingCreationProjectIds(stored)).toEqual(expected);
-    },
-  );
-
-  it.each([
-    ["written just now", { createdAtMs: 1_000_000 }, true],
-    ["fourteen minutes old", { createdAtMs: 1_000_000 - 14 * 60_000 }, true],
-    ["sixteen minutes old", { createdAtMs: 1_000_000 - 16 * 60_000 }, false],
-    ["from before the field existed", {}, false],
-  ] as const)("with a bound, a handoff %s is pending: %s", (_case, stamp, expected) => {
-    // A pending handoff makes the page treat an unlisted project as real; a
-    // project deleted elsewhere must not hide the empty account forever.
-    const stored = withCreationHandoff({}, { projectId: "proj-1" }, { ...FROM_TIER, ...stamp });
-    expect(pendingCreationProjectIds(stored, { nowMs: 1_000_000, maxAgeMs: 15 * 60_000 })).toEqual(
-      expected ? ["proj-1"] : [],
-    );
-  });
-
-  it("forgets a creation whose project was removed, and only that one", () => {
-    const stored = withCreationHandoff(
-      withCreationHandoff({}, { projectId: "proj-1" }, FROM_TIER),
-      { projectId: "proj-2" },
-      FROM_TIER,
-    );
-    const next = withoutPendingCreationHandoff(stored, "proj-1");
-    expect(pendingCreationProjectIds(next)).toEqual(["proj-2"]);
-    // Forgetting what is not there changes nothing.
-    expect(withoutPendingCreationHandoff(next, "proj-9")).toEqual(next);
-  });
-
-  it("reads anything unexpected as nothing stored", () => {
-    for (const raw of [null, "", "[]", "{oops", '{"env:1":{"role":"nope"}}']) {
-      expect(
-        readCreationHandoff(parseCreationHandoffs(raw), { environmentId: "1" }),
-      ).toBeUndefined();
-    }
-  });
-
-  it("survives a round trip through the string it is stored as", () => {
-    const stored = withCreationHandoff({}, { projectId: "proj-1" }, handoff);
-    expect(
-      readCreationHandoff(parseCreationHandoffs(JSON.stringify(stored)), { projectId: "proj-1" }),
-    ).toEqual(handoff);
   });
 });
 

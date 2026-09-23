@@ -33,7 +33,6 @@ import {
 import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
-import { isAccessNotYetVerified } from "~/zerops/useZeropsProvisioning";
 import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
@@ -382,67 +381,42 @@ describe("nextZeropsBirthRetryDelayMs", () => {
 // flashed on every click with a clock from the project's creation.
 describe("showsZeropsBirthLine", () => {
   it.each([
-    { name: "a Mate this browser is creating", pending: ["p1"], expected: true },
-    { name: "a Mate that exists, being opened", pending: [], expected: false },
-    { name: "another project's creation", pending: ["p2"], expected: false },
-  ])("$name: $expected", ({ pending, expected }) => {
-    expect(
-      showsZeropsBirthLine({ projectId: "p1", pendingCreationProjectIds: new Set(pending) }),
-    ).toBe(expected);
+    { name: "a Mate being born", births: ["p1"], expected: true },
+    { name: "a Mate that exists, being opened", births: [], expected: false },
+    { name: "another project's birth", births: ["p2"], expected: false },
+  ])("$name: $expected", ({ births, expected }) => {
+    expect(showsZeropsBirthLine({ projectId: "p1", birthProjectIds: new Set(births) })).toBe(
+      expected,
+    );
   });
 });
 
 describe("isZeropsBirthConnectTarget", () => {
   const ORIGIN = "https://zcp-demo-8080.prg1.zerops.app";
-
-  it("is the birth's own connect: the provisioning wait's own origin, with a hand-off still pending", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: ORIGIN,
-        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
-        pendingCreationProjectIds: new Set(["proj-1"]),
-      }),
-    ).toBe(true);
-  });
-
-  it("is not a birth when nothing is waited on", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: ORIGIN,
-        waited: null,
-        pendingCreationProjectIds: new Set(["proj-1"]),
-      }),
-    ).toBe(false);
-  });
-
-  it("is not a birth for a different origin than the one being waited on", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: "https://another-container.example",
-        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
-        pendingCreationProjectIds: new Set(["proj-1"]),
-      }),
-    ).toBe(false);
-  });
-
-  it("is not a birth when the waited project has no pending creation hand-off — Enable/Start on an existing candidate", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: ORIGIN,
-        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
-        pendingCreationProjectIds: new Set(),
-      }),
-    ).toBe(false);
-  });
-
-  it("is not a birth when the wait carries no project id", () => {
-    expect(
-      isZeropsBirthConnectTarget({
-        containerOrigin: ORIGIN,
-        waited: { containerOrigin: ORIGIN, projectId: null },
-        pendingCreationProjectIds: new Set(["proj-1"]),
-      }),
-    ).toBe(false);
+  it.each([
+    {
+      name: "the container a birth found is the birth's own connect",
+      births: [{ origin: ORIGIN }],
+      expected: true,
+    },
+    {
+      name: "the same origin written differently is the same container",
+      births: [{ origin: `${ORIGIN}/` }],
+      expected: true,
+    },
+    { name: "no birth — Open or Enable on a Mate that exists", births: [], expected: false },
+    {
+      name: "a birth of another container",
+      births: [{ origin: "https://another-container.example" }],
+      expected: false,
+    },
+    {
+      name: "a birth that has not found its container yet",
+      births: [{ origin: null }],
+      expected: false,
+    },
+  ])("$name", ({ births, expected }) => {
+    expect(isZeropsBirthConnectTarget({ containerOrigin: ORIGIN, births })).toBe(expected);
   });
 });
 
@@ -825,25 +799,5 @@ describe("the tools card", () => {
     // who went looking for it in Zerops to a project that is not there.
     expect(projectsPageSource).toContain("name={candidate.project.name || TOOL_LABEL[kind]}");
     expect(projectsPageSource).not.toContain("name={TOOL_LABEL[kind]}");
-  });
-});
-
-describe("isAccessNotYetVerified", () => {
-  it("tells a round in flight from an answer", () => {
-    // Only the first is worth waiting out. A denial is the account's answer,
-    // and an expiry needs a new verification, not another go at the same one.
-    expect(
-      isAccessNotYetVerified({
-        _tag: "ZeropsCommandAdmissionError",
-        reason: "access-unverified",
-        message: "Platform write access is not verified.",
-      }),
-    ).toBe(true);
-    for (const reason of ["access-denied", "access-expired"]) {
-      expect(isAccessNotYetVerified({ _tag: "ZeropsCommandAdmissionError", reason })).toBe(false);
-    }
-    for (const cause of [null, undefined, "access-unverified", new Error("access-unverified")]) {
-      expect(isAccessNotYetVerified(cause)).toBe(false);
-    }
   });
 });

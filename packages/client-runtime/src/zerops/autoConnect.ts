@@ -40,12 +40,10 @@ export function selectAutoConnectTargets(input: {
   /** What each container answered, by candidate key; absent = still asking. */
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
   /**
-   * Projects a birth is watching (the page's own provisioning wait, or a
-   * hand-off this browser wrote — `creationHandoffStorage.ts`). Skipped here
-   * so a birth is wanted only through the page's own Connect, once its wait
-   * has settled: that Connect is what lands the person in the conversation,
-   * and an exchange started earlier on auto-connect's behalf would spend the
-   * hand-off out from under a card still waiting for it.
+   * Projects whose birth has not closed them off yet (`birth/birthStore.ts`
+   * `unhardenedBirths`). Skipped however long the birth takes: nobody is let
+   * into a Mate before its harden, and a birth past it is wanted like any
+   * other ready container.
    */
   readonly birthProjectIds?: ReadonlySet<string>;
   readonly limit?: number;

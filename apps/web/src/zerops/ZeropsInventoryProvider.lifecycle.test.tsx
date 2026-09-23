@@ -35,7 +35,6 @@ import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { CREATION_REFRESH_MS, useCreationInventoryRefresh } from "./creationRefresh";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
 import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
@@ -517,41 +516,6 @@ it.live("an inventory intent re-reads its organization and verifies nothing", ()
       yield* harness.advance(250);
       expect(harness.refreshed()).toEqual([harness.organization]);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
-    }),
-  ),
-);
-
-it.live("creation triggers no verification rounds", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory();
-      const heard: Array<Invalidation> = [];
-      const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
-      yield* Effect.addFinalizer(() => Effect.sync(stop));
-      // A creation on its way, with its clock running, for longer than a birth takes.
-      function CreationClock() {
-        useCreationInventoryRefresh(harness.organization);
-        return null;
-      }
-      const { createRoot } = yield* Effect.promise(() => import("react-dom/client"));
-      const clock = createRoot(document.createElement("div"));
-      yield* Effect.promise(async () => act(async () => clock.render(<CreationClock />)));
-      yield* harness.advance(10 * 60_000 + 250);
-      yield* Effect.promise(async () => act(async () => clock.unmount()));
-
-      const ticks = (10 * 60_000) / CREATION_REFRESH_MS;
-      expect(heard).toEqual(
-        Array.from({ length: ticks }, () => ({
-          topic: "inventory",
-          organization: harness.organization,
-        })),
-      );
-      // Each tick re-reads the organization: a fresh receiver, or a wake of the one recovering.
-      expect(harness.refreshed().length).toBeGreaterThan(0);
-      for (const organization of harness.refreshed())
-        expect(organization).toEqual(harness.organization);
-      expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
-      expect(harness.grants).toHaveLength(1);
     }),
   ),
 );

@@ -19,12 +19,14 @@ import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
  *
  * The name. No brief — the Mate opens on its own onboarding line — and no
  * agent pick: the container offers every agent when `ZCP_AGENTS` is absent,
- * which an empty selection is (`newProject.ts`). The handoff is still written
- * so the projects page can resume the creation on a reload.
+ * which an empty selection is (`newProject.ts`).
  *
- * The wait — polling, the ready → connect identity exchange, retry — is the
- * projects page's; a successful create marks the organization as creating
- * and goes there.
+ * The rest is the Mate's birth (`zeropsBirths.ts`, DESIGN §4.5), begun the
+ * moment the platform accepts the project: its registry entry, the broker's
+ * grant, its harden and its health are the account's birth worker's, so a
+ * reload, an organization switch or leaving the page never strands them. The
+ * form goes to the projects page, which shows the birth and lands the person
+ * in the conversation once the Mate answers.
  */
 
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -37,7 +39,6 @@ import { useContext, useEffect, useMemo, useState } from "react";
 import {
   generateBotName,
   generateZeropsGroupId,
-  planGroupMembership,
   planGroupRegistration,
   resolveAddProjectVerb,
   type ZeropsAgentType,
@@ -49,10 +50,9 @@ import {
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
-import { registerMateProject } from "~/zerops/brokerGrant";
-import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
 import { findAccountGitea } from "~/zerops/giteaProject";
 import { InventoryContext } from "~/zerops/inventoryContext";
+import { beginBirth } from "~/zerops/zeropsBirths";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 
 import { Button } from "../ui/button";
@@ -109,7 +109,8 @@ export type ZeropsNewProjectPhase = "gitea" | "project";
 
 /**
  * Stands the account's Gitea up if it has none, registers the group, then
- * creates its first Mate inside it.
+ * creates its first Mate inside it. The Mate's own registration is its birth's
+ * (`onCreated`), not this call's.
  *
  * Kept free of React so the order — and every way it can stop half-way — is
  * directly testable. The order is the point: the registry lives on the Gitea
@@ -135,17 +136,6 @@ export async function submitZeropsNewProject(input: {
     readonly groupId: string;
     readonly tagList: ReadonlyArray<string>;
   }) => Promise<void>;
-  /**
-   * Writes `mate:gm:{groupId}:{projectId}:mate` — the entry that gives the new
-   * Mate its reach and its Gitea bot (guide 4.2) — and gives the broker's
-   * token the Mate's project, so its rights loop can deliver that bot's
-   * access (D20, `brokerGrant.ts`).
-   */
-  readonly registerMate: (registration: {
-    readonly giteaProjectId: string;
-    readonly projectId: string;
-    readonly tagList: ReadonlyArray<string>;
-  }) => Promise<void>;
   readonly createProject: (args: {
     readonly clientId: string;
     readonly name: string;
@@ -169,10 +159,10 @@ export async function submitZeropsNewProject(input: {
   readonly onPhase?: (phase: ZeropsNewProjectPhase) => void;
   readonly onStartWaiting: () => void;
   /**
-   * The project exists. Called before the wait starts, so what this project is
-   * for can be written down while its id is in hand (`creationHandoff.ts`).
+   * The platform accepted the project: its birth begins here, with the Gitea
+   * project its registry entry goes on (DESIGN §4.5).
    */
-  readonly onCreated?: (projectId: string, slug: string) => void;
+  readonly onCreated?: (projectId: string, giteaProjectId: string) => void;
   readonly onError: (message: string) => void;
   readonly onUncertain?: () => void;
 }): Promise<void> {
@@ -223,38 +213,7 @@ export async function submitZeropsNewProject(input: {
       group: { groupId: input.groupId, role: "dev", label: groupName },
       botName: input.botName,
     });
-    input.onCreated?.(created.project.id, registration.plan.slug);
-    // The membership entry, off the registry this call just wrote — not off a
-    // re-read, which would race the platform's own write.
-    const membership = planGroupMembership({
-      registry: {
-        ...gitea.registry,
-        groups: [
-          ...gitea.registry.groups,
-          {
-            groupId: input.groupId,
-            slug: registration.plan.slug,
-            projects: [],
-            matesMayRelease: false,
-          },
-        ],
-      },
-      groupId: input.groupId,
-      projectId: created.project.id,
-      kind: "mate",
-    });
-    // A membership write that fails leaves a Mate waiting for an owner, which
-    // is a state the rows already say — never a reason to fail a creation that
-    // produced a project that exists and runs.
-    if (membership.ok) {
-      await input
-        .registerMate({
-          giteaProjectId: gitea.projectId,
-          projectId: created.project.id,
-          tagList: membership.tagList,
-        })
-        .catch(() => undefined);
-    }
+    input.onCreated?.(created.project.id, gitea.projectId);
     input.onStartWaiting();
   } catch (cause) {
     if (isUncertainCreateFailure(cause)) input.onUncertain?.();
@@ -438,6 +397,9 @@ function ZeropsNewProjectContent() {
     setCreating(true);
     setCreateError(null);
     const botName = generateBotName([], (bytes) => crypto.getRandomValues(bytes));
+    const groupId = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
+    const environmentName = `${name.trim()} - ${botName}`;
+    const organizationId = activeOrganization.id;
     void submitZeropsNewProject({
       gitea: home,
       // The first project brings Git hosting along: the same stand-up the
@@ -458,19 +420,6 @@ function ZeropsNewProjectContent() {
       registerGroup: async ({ giteaProjectId, tagList }) => {
         await client.writeGroupRegistry({ giteaProjectId, tagList });
       },
-      // What did not go through is not reported here: a Mate the registry
-      // does not name waits for its owner on the projects page, and one the
-      // broker does not reach yet is what the broker's loop reports and the
-      // next registration retries.
-      registerMate: async ({ giteaProjectId, projectId, tagList }) => {
-        await registerMateProject({
-          client,
-          clientId: activeOrganization.id,
-          giteaProjectId,
-          projectId,
-          tagList,
-        });
-      },
       onPhase: setPhase,
       createProject: ({ clientId: _clientId, ...args }) =>
         runZeropsCommand(
@@ -484,25 +433,33 @@ function ZeropsNewProjectContent() {
       locationId,
       // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
       agents: [],
-      groupId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
+      groupId,
       botName,
-      onCreated: (projectId) => {
-        // What this project is, written down while its id is in hand: the
-        // projects page reads it to resume the creation, and the Mate opens
-        // on its own onboarding line — nothing typed here is sent for the
-        // person.
-        rememberCreationHandoff(projectId, {
-          environmentName: `${name.trim()} - ${botName}`,
-          groupName: name.trim(),
-          role: "dev",
-          source: { kind: "none" },
+      onCreated: (projectId, giteaProjectId) => {
+        // The birth owes the Mate's registry entry and the broker's grant,
+        // then its harden and its health. What this project is goes with it:
+        // the Mate opens on its own onboarding line — nothing typed here is
+        // sent for the person.
+        beginBirth({
+          projectId,
+          organizationId,
+          registration: {
+            giteaProjectId,
+            giteaOrigin: null,
+            groupId,
+            kind: "mate",
+            displayName: environmentName,
+          },
+          container: true,
+          handoff: {
+            environmentName,
+            groupName: name.trim(),
+            role: "dev",
+            source: { kind: "none" },
+          },
         });
       },
-      // The projects page seeds its own wait from the creation hand-off
-      // (`ZeropsProjectsPage.tsx`'s resume effect, since 87fe752c4) — this
-      // used to also poke a throwaway `useZeropsProjectConnection` instance
-      // just to call its `setCreatingIn`, which did nothing that resume
-      // effect does not already do on its own (H19).
+      // The projects page shows the birth and opens the Mate once it answers.
       onStartWaiting: () => {
         void navigate({ to: "/zerops" });
       },

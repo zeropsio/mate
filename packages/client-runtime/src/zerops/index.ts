@@ -111,19 +111,10 @@ export {
 } from "./recipeTier.ts";
 export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
 export {
-  ZEROPS_CREATION_HANDOFF_STORAGE_KEY,
   creationHandoffPrompt,
-  parseCreationHandoffs,
-  readCreationHandoff,
   creationJobSendable,
   creationJobToStart,
-  pendingCreationProjectIds,
-  withCreationHandoff,
-  withCreationHandoffPromoted,
-  withoutCreationHandoff,
-  withoutPendingCreationHandoff,
   type ZeropsCreationHandoff,
-  type ZeropsCreationHandoffs,
   type ZeropsCreationSource,
 } from "./creationHandoff.ts";
 export {

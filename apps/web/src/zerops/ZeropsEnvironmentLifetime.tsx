@@ -3,7 +3,8 @@
  * epoch, fed the targets the inventory and the remembered records name, the account's guards
  * and the tab's visibility. Restore is the records' demand on it; auto-connect, repair and the
  * user's Connect are demand from their own emitters. Region C of every target is the container
- * store's verdict (§4.5), which this shell feeds the platform's statuses and processes.
+ * store's verdict (§4.5), which this shell feeds the platform's statuses and processes. The
+ * account's births (§4.5) run here too, so none of them waits for a page to be open.
  *
  * An interim shell: the account runtime replaces it (3.4).
  */
@@ -38,6 +39,7 @@ import {
 } from "./useZeropsIdentityExchange";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { bindBirthInputs } from "./zeropsBirths";
 import {
   bindContainerInputs,
   containerTargetsOf,
@@ -165,7 +167,7 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   const inventory = useZeropsInventory();
   const { environments } = useEnvironments();
   const { client, activeOrganization } = useZeropsSession();
-  const { organizationRef, runtime, signals } = useZeropsData();
+  const { organizationRef, projectRef, runtime, signals } = useZeropsData();
   const registry = useContext(RegistryContext);
   const recordsVersion = useRegistrationVersion();
   const candidates = useMemo(
@@ -182,6 +184,9 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
     containers.setTargets(containerTargetsOf(candidates));
   }, [candidates, containers]);
   useContainerProcesses(containers, candidates, inventory, activeOrganization?.id);
+  useEffect(() => {
+    bindBirthInputs({ client, runtime, organizationRef, projectRef, atoms: registry });
+  }, [client, organizationRef, projectRef, registry, runtime]);
   // A container intent reads its target again (DESIGN §6.2).
   useEffect(
     () =>

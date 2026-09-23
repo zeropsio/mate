@@ -111,7 +111,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea: neverEnsure(),
       registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "zerops-mate",
@@ -135,7 +134,7 @@ describe("submitZeropsNewProject", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("hands the created project's id back so its job can be written down", async () => {
+  it("hands the created project back with the Gitea project its birth registers it on", async () => {
     const createProject = vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" });
     const onCreated = vi.fn();
 
@@ -143,7 +142,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea: neverEnsure(),
       registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "zerops-mate",
@@ -156,7 +154,7 @@ describe("submitZeropsNewProject", () => {
       onError: vi.fn(),
     });
 
-    expect(onCreated).toHaveBeenCalledWith("project-1", "zerops-mate");
+    expect(onCreated).toHaveBeenCalledWith("project-1", "gitea-1");
   });
 
   it("says nothing was created when the create fails", async () => {
@@ -166,7 +164,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea: neverEnsure(),
       registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject: vi.fn().mockRejectedValue(new Error("nope")),
       clientId: "client-1",
       name: "zerops-mate",
@@ -189,7 +186,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea: neverEnsure(),
       registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject: vi.fn().mockRejectedValue({
         _tag: "ZeropsDataAdapterError",
         kind: "uncertain",
@@ -216,7 +212,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea: neverEnsure(),
       registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "zerops-mate",
@@ -247,7 +242,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea: neverEnsure(),
       registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "zerops-mate",
@@ -277,7 +271,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea: neverEnsure(),
       registerGroup,
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "Acme CRM",
@@ -300,7 +293,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea: neverEnsure(),
       registerGroup: vi.fn().mockRejectedValue(new Error("Only owners write tags.")),
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "Acme CRM",
@@ -318,7 +310,6 @@ describe("submitZeropsNewProject", () => {
 
   it("numbers the slug when another project already took the name", async () => {
     const registerGroup = vi.fn().mockResolvedValue(undefined);
-    const onCreated = vi.fn();
 
     await submitZeropsNewProject({
       gitea: {
@@ -327,7 +318,6 @@ describe("submitZeropsNewProject", () => {
       },
       ensureGitea: neverEnsure(),
       registerGroup,
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject: vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" }),
       clientId: "client-1",
       name: "Acme",
@@ -335,7 +325,6 @@ describe("submitZeropsNewProject", () => {
       groupId: "g-1",
       botName: "Nia",
       agents: [],
-      onCreated,
       onStartWaiting: vi.fn(),
       onError: vi.fn(),
     });
@@ -344,34 +333,6 @@ describe("submitZeropsNewProject", () => {
       giteaProjectId: "gitea-1",
       groupId: "g-1",
       tagList: ["mate:gn:g-1:acme-2", "mate:gn:g-old:acme", "mate:tool:gitea"],
-    });
-    expect(onCreated).toHaveBeenCalledWith("project-1", "acme-2");
-  });
-
-  it("registers the new Mate in its group as soon as it exists", async () => {
-    const registerMate = vi.fn().mockResolvedValue(undefined);
-
-    await submitZeropsNewProject({
-      gitea: GITEA,
-      ensureGitea: neverEnsure(),
-      registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate,
-      createProject: vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" }),
-      clientId: "client-1",
-      name: "Acme",
-      locationId: null,
-      groupId: "g-1",
-      botName: "Nia",
-      agents: [],
-      onStartWaiting: vi.fn(),
-      onError: vi.fn(),
-    });
-
-    // With the project itself, so the broker's token can be given it (D20).
-    expect(registerMate).toHaveBeenCalledWith({
-      giteaProjectId: "gitea-1",
-      projectId: "project-1",
-      tagList: ["mate:gm:g-1:project-1:mate", "mate:gn:g-1:acme", "mate:tool:gitea"],
     });
   });
 
@@ -403,7 +364,6 @@ describe("submitZeropsNewProject", () => {
       gitea: undefined,
       ensureGitea,
       registerGroup,
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "Acme CRM",
@@ -435,7 +395,6 @@ describe("submitZeropsNewProject", () => {
       gitea: undefined,
       ensureGitea: vi.fn().mockRejectedValue(new Error("No room in this account.")),
       registerGroup,
-      registerMate: vi.fn(),
       createProject,
       clientId: "client-1",
       name: "Acme CRM",
@@ -459,7 +418,6 @@ describe("submitZeropsNewProject", () => {
       gitea: GITEA,
       ensureGitea,
       registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate: vi.fn().mockResolvedValue(undefined),
       createProject: vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" }),
       clientId: "client-1",
       name: "Acme",
@@ -472,29 +430,5 @@ describe("submitZeropsNewProject", () => {
     });
 
     expect(ensureGitea).not.toHaveBeenCalled();
-  });
-
-  it("does not fail a creation whose membership write was refused", async () => {
-    const onStartWaiting = vi.fn();
-    const onError = vi.fn();
-
-    await submitZeropsNewProject({
-      gitea: GITEA,
-      ensureGitea: neverEnsure(),
-      registerGroup: vi.fn().mockResolvedValue(undefined),
-      registerMate: vi.fn().mockRejectedValue(new Error("nope")),
-      createProject: vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" }),
-      clientId: "client-1",
-      name: "Acme",
-      locationId: null,
-      groupId: "g-1",
-      botName: "Nia",
-      agents: [],
-      onStartWaiting,
-      onError,
-    });
-
-    expect(onStartWaiting).toHaveBeenCalledTimes(1);
-    expect(onError).not.toHaveBeenCalled();
   });
 });

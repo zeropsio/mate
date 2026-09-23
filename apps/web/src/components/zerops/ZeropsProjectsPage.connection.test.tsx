@@ -35,9 +35,17 @@ vi.mock("~/zerops/zeropsDataContext", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useZeropsData: () => ({ organizationRef }),
 }));
-vi.mock("~/zerops/useZeropsProvisioning", async (importOriginal) => ({
+vi.mock("~/zerops/zeropsBirths", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useZeropsProvisioning: () => ({ state: null, cancel: () => undefined, retry: () => undefined }),
+  useZeropsBirths: () => ({ births: [], waits: new Map(), outstanding: null }),
+}));
+vi.mock("~/zerops/zeropsContainers", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useZeropsContainers: () => ({
+    health: new Map(),
+    serverVersions: new Map(),
+    mateFlags: new Map(),
+  }),
 }));
 vi.mock("~/zerops/useZeropsIdentityExchange", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -56,11 +64,11 @@ describe("useZeropsProjectConnection", () => {
   it.each([
     {
       name: "a finished birth reads its organization's inventory again",
-      creatingIn: "org-1",
+      organizationId: "org-1",
       want: [{ topic: "inventory", organization: organizationRef("org-1") }],
     },
-    { name: "a connect that was no birth asks for nothing", creatingIn: null, want: [] },
-  ])("$name", async ({ creatingIn, want }) => {
+    { name: "a connect that was no birth asks for nothing", organizationId: null, want: [] },
+  ])("$name", async ({ organizationId, want }) => {
     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
     vi.spyOn(process.hrtime, "bigint").mockImplementation(() =>
       BigInt(Math.round(performance.now() * 1_000_000)),
@@ -84,9 +92,8 @@ describe("useZeropsProjectConnection", () => {
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
       act(() => root.render(<Connection />));
-      act(() => connection.setCreatingIn(creatingIn));
 
-      await act(() => connection.finishBirth(EnvironmentId.make("environment-1")));
+      await act(() => connection.finishBirth(EnvironmentId.make("environment-1"), organizationId));
       await act(() => vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS));
       expect(heard).toEqual(want);
     } finally {

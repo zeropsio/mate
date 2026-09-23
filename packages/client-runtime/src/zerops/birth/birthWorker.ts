@@ -215,7 +215,6 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
         state,
         await readProvisioning({
           state,
-          projects: [],
           project: reading.project,
           services: reading.services,
           probeHealth: ports.probeHealth,
@@ -253,7 +252,6 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
     }
     let event: ProvisioningEvent = await readProvisioning({
       state,
-      projects: [],
       project: undefined,
       services: undefined,
       probeHealth: ports.probeHealth,

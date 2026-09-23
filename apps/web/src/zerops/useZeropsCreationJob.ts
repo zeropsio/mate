@@ -34,7 +34,7 @@ import { useEffect, useRef } from "react";
 import { creationJobToStart } from "@t3tools/client-runtime/zerops";
 
 import { useComposerDraftStore } from "../composerDraftStore";
-import { creationHandoffFor, forgetCreationHandoff } from "./creationHandoffStorage";
+import { creationJobFor, forgetCreationJob } from "./zeropsBirths";
 
 /**
  * How long to keep offering the job to a composer that is not ready yet, and
@@ -77,7 +77,7 @@ export function useZeropsCreationJob(input: {
   useEffect(() => {
     const job = creationJobToStart({
       environmentId,
-      handoff: environmentId === null ? undefined : creationHandoffFor(environmentId),
+      handoff: environmentId === null ? undefined : creationJobFor(environmentId),
       hasTarget: target !== null,
       ready,
       agentSignInRequired,
@@ -94,7 +94,7 @@ export function useZeropsCreationJob(input: {
       // would rewrite the composer over whatever the person has since typed,
       // on every reconnect.
       startedFor.current = environmentId;
-      forgetCreationHandoff(environmentId);
+      forgetCreationJob(environmentId);
       return;
     }
 
@@ -105,7 +105,7 @@ export function useZeropsCreationJob(input: {
         // Spent only once it is actually said, so a refused send is retried
         // rather than lost.
         startedFor.current = environmentId;
-        forgetCreationHandoff(environmentId);
+        forgetCreationJob(environmentId);
         return;
       }
       if (Date.now() < deadline) timer = setTimeout(attempt, AUTOSTART_RETRY_MS);

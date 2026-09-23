@@ -50,7 +50,7 @@ describe("central Zerops data bindings", () => {
       "../components/zerops/ZeropsNewProjectWizard.tsx",
       "../components/zerops/ZeropsProjectsPage.tsx",
       "./useZeropsGroupReach.ts",
-      "./useZeropsProvisioning.ts",
+      "./zeropsBirths.ts",
       "./useZeropsUpgradeRestart.ts",
     ];
     const legacyMethods = [

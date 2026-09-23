@@ -2173,8 +2173,8 @@ describe("makeZeropsDataRuntime", () => {
         });
         yield* Deferred.succeed(allowSecondWrite, undefined);
         const failure = yield* Fiber.join(execution);
-        // A round in flight is a "not yet" the caller can wait out
-        // (`useZeropsProvisioning`'s `isAccessNotYetVerified`); the adapter's
+        // A round in flight is a "not yet" the caller can wait out (the web
+        // birth ports' `birthStepFailure`); the adapter's
         // own wrapping of the guard's refusal must not turn it into an answer.
         expect(failure).toMatchObject({
           _tag: "ZeropsCommandAdmissionError",

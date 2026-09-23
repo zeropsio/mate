@@ -45,10 +45,10 @@ import { randomUUID } from "~/lib/utils";
 
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { promoteCreationHandoff } from "./creationHandoffStorage";
 import { inventoryCandidates } from "./inventoryContext";
 import { beginEnvironmentIdentityExchange, rememberRegistration } from "./registrationRecords";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
+import { promoteBirth } from "./zeropsBirths";
 
 export type { ZeropsIdentityExchangeResult };
 
@@ -193,9 +193,8 @@ export function webExchangePorts(
               : { projectId: candidate.project.id, orgId },
           name: candidate?.project.name ?? null,
         });
-        if (candidate !== undefined) {
-          promoteCreationHandoff(candidate.project.id, String(environmentId));
-        }
+        // The birth is over: its opening job waits on the environment the exchange named.
+        if (candidate !== undefined) promoteBirth(candidate.project.id, String(environmentId));
         return { ok: true };
       } finally {
         finish();
