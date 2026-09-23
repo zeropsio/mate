@@ -7,8 +7,11 @@ import {
   entry,
   FLOW_PROPS,
   MERGING,
+  PROD,
+  PRODUCTION_STOP,
   RELEASING,
   STAGE,
+  STAGE_STOP,
   WREN,
   type Item,
 } from "./flowTestFixtures";
@@ -82,6 +85,18 @@ describe("the Projects card", () => {
       }
     },
   );
+
+  it("merges once: the step's verb, not a second Merge on the row it names", () => {
+    expect(step(card(MERGING), "pull-requests")).toContain(
+      'data-test-compact="true" data-test-pull="1" data-test-with-merge="false"',
+    );
+  });
+
+  it("gives the stage its own menu and production its own", () => {
+    const html = card(entry([WREN, STAGE, PROD], { stops: [STAGE_STOP, PRODUCTION_STOP] }));
+    expect(step(html, "main")).toContain('data-test-stop-menu="fixture-stage"');
+    expect(step(html, "production")).toContain('data-test-stop-menu="fixture-prod"');
+  });
 
   it("says an empty step's word in the muted hand", () => {
     const html = card(entry([WREN], { mainHasCode: false }));
