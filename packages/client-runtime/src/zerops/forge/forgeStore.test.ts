@@ -8,6 +8,7 @@ import {
   type GiteaRepository,
 } from "../giteaClient.ts";
 import {
+  FORGE_COMMITS_READ,
   FORGE_DECLARATIONS_BACKSTOP_MS,
   FORGE_HOST_CONCURRENCY,
   FORGE_LIST_BACKSTOP_MS,
@@ -118,9 +119,20 @@ function rig() {
       listAllTags: (owner: string, repo: string) => at(`tags ${owner}/${repo}`),
       getBranch: (owner: string, repo: string, branch: string) =>
         at(`branch ${owner}/${repo} ${branch}`),
-      readFile: (owner: string, repo: string, path: string) => at(`file ${owner}/${repo} ${path}`),
+      readFile: (owner: string, repo: string, path: string, ref?: string) =>
+        at(`file ${owner}/${repo} ${path}${ref === undefined ? "" : `@${ref}`}`),
       listCommitStatuses: (owner: string, repo: string, sha: string) =>
         at(`statuses ${owner}/${repo}@${sha}`),
+      listCommits: (owner: string, repo: string, options?: { readonly limit?: number }) =>
+        at(`commits ${owner}/${repo} ${String(options?.limit)}`),
+      getRepository: (owner: string, repo: string) => at(`repository ${owner}/${repo}`),
+      listUserRepositories: () => at("user repos"),
+      searchPullRequests: () => at("pull search"),
+      getOrganization: (slug: string) => at(`org ${slug}`),
+      compareCommits: (owner: string, repo: string, base: string, head: string) =>
+        at(`compare ${owner}/${repo} ${base}...${head}`),
+      commitDetail: (owner: string, repo: string, sha: string) =>
+        at(`commit ${owner}/${repo}@${sha}`),
     } as unknown as GiteaClient;
   };
   let view: GiteaSessionView = { ...GITEA_SIGNED_OUT, signedIn: true, readable: true };
@@ -177,6 +189,9 @@ const pull = (number: number, over: Partial<GiteaPullRequest> = {}): GiteaPullRe
   base: { ref: "main", sha: "b1" },
   ...over,
 });
+
+/** Where a branch of `shop/app` itself lives. */
+const APP = { full_name: "shop/app" };
 
 const openPulls = (owner: string, repoName: string): ForgeFact => ({
   kind: "open-pulls",
@@ -615,5 +630,275 @@ describe("forge store backstops (DESIGN §6.3)", () => {
 
     release();
     expect(store.shows(app)).toBe(false);
+  });
+});
+
+describe("forge store facts the flow's surfaces read (DESIGN §2.D D3)", () => {
+  it("a repository's recent commits are unread until read, known after, and read again at the list backstop", async () => {
+    const { clock, store, sent, pending } = rig();
+    const fact: ForgeFact = { kind: "commits", origin: ORIGIN, owner: "shop", repo: "app" };
+    expect(store.read(fact)).toEqual({ state: "unread", waitingFor: null });
+    store.demand(fact);
+    await clock.advance(0);
+    const commits = [{ sha: "c2", subject: "Add cart" }];
+    await pending(`commits shop/app ${String(FORGE_COMMITS_READ)}`).answer(commits);
+    expect(store.read(fact)).toMatchObject({
+      state: "known",
+      value: commits,
+      coverage: "complete",
+    });
+    await clock.advance(FORGE_LIST_BACKSTOP_MS);
+    expect(sent(`commits shop/app ${String(FORGE_COMMITS_READ)}`)).toHaveLength(2);
+  });
+
+  it("a repository with the person's permissions is unread until read, known after, and one the broker has not made yet is pending on the ladder until it is made", async () => {
+    const { clock, store, sent, pending } = rig();
+    const app: ForgeFact = { kind: "repository", origin: ORIGIN, owner: "shop", repo: "app" };
+    const web: ForgeFact = { kind: "repository", origin: ORIGIN, owner: "shop", repo: "web" };
+    expect(store.read(app)).toEqual({ state: "unread", waitingFor: null });
+    store.demand(app);
+    store.demand(web);
+    await clock.advance(0);
+    const permitted = { ...repo("app"), permissions: { admin: false, push: true, pull: true } };
+    await pending("repository shop/app").answer(permitted);
+    await pending("repository shop/web").answer(undefined);
+    expect(store.read(app)).toMatchObject({
+      state: "known",
+      value: { kind: "made", repository: permitted },
+    });
+    expect(store.read(web)).toMatchObject({ state: "known", value: { kind: "pending" } });
+
+    // A group seconds old: the broker makes its repositories shortly, so it is asked again at
+    // 2 s, then 4 s after that.
+    await clock.advance(1_999);
+    expect(sent("repository shop/web")).toHaveLength(1);
+    await clock.advance(1);
+    await pending("repository shop/web").answer(undefined);
+    await clock.advance(3_999);
+    expect(sent("repository shop/web")).toHaveLength(2);
+    await clock.advance(1);
+    await pending("repository shop/web").answer(repo("web"));
+    expect(store.read(web)).toMatchObject({
+      state: "known",
+      value: { kind: "made", repository: repo("web") },
+    });
+
+    // A made repository's permissions can change: it is read again at the list backstop.
+    await clock.advance(FORGE_LIST_BACKSTOP_MS);
+    expect(sent("repository shop/app")).toHaveLength(2);
+    expect(sent("repository shop/web")).toHaveLength(4);
+  });
+
+  it("a head branch's pull requests, whatever their state, are unread until read, known after, each with its MergeState", async () => {
+    const { clock, store, sent, pending } = rig();
+    const fact: ForgeFact = {
+      kind: "branch-pulls",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      branch: "mate/ada",
+    };
+    expect(store.read(fact)).toEqual({ state: "unread", waitingFor: null });
+    store.demand(fact);
+    await clock.advance(0);
+    await pending("pulls shop/app all").answer([
+      pull(5, { head: { ref: "mate/bob", sha: "h5", repo: APP } }),
+      pull(4, { head: { ref: "mate/ada", sha: "h4", repo: APP }, mergeable: false }),
+      pull(3, { head: { ref: "mate/ada", sha: "h3", repo: APP }, state: "closed", merged: true }),
+    ]);
+    expect(store.read(fact)).toMatchObject({ state: "known", value: [4, 3], coverage: "complete" });
+    expect(mergeability(store.mergeState(pullKey(4)))).toBe("checking");
+    expect(store.mergeState(pullKey(5))).toEqual({ state: "unread", waitingFor: null });
+
+    // The pull request the demanded list names is rechecked while it is checking.
+    await clock.advance(2_000);
+    await pending("pull shop/app#4").answer(
+      pull(4, { head: { ref: "mate/ada", sha: "h4", repo: APP } }),
+    );
+    expect(mergeability(store.mergeState(pullKey(4)))).toBe("mergeable");
+    await clock.advance(FORGE_LIST_BACKSTOP_MS);
+    expect(sent("pulls shop/app all")).toHaveLength(2);
+  });
+
+  it("a head branch's pull requests are this repository's own, never a fork's branch of the same name", async () => {
+    const { clock, store, pending } = rig();
+    const fact: ForgeFact = {
+      kind: "branch-pulls",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      branch: "main",
+    };
+    store.demand(fact);
+    await clock.advance(0);
+    const from = (fullName: string | null) => ({
+      ref: "main",
+      sha: "h",
+      repo: fullName === null ? null : { full_name: fullName },
+    });
+    await pending("pulls shop/app all").answer([
+      pull(7, { head: from("mallory/app") }),
+      pull(6, { head: from("Shop/App") }),
+      // A fork deleted since: nothing names where its branch lived.
+      pull(5, { head: from(null) }),
+    ]);
+    expect(store.read(fact)).toMatchObject({ state: "known", value: [6] });
+  });
+
+  it("the person's repositories and the pull request search are unread until read, known after, each on its own", async () => {
+    const { clock, store, sent, pending } = rig();
+    const repositories: ForgeFact = { kind: "user-repos", origin: ORIGIN };
+    const search: ForgeFact = { kind: "pull-search", origin: ORIGIN };
+    expect(store.read(repositories)).toEqual({ state: "unread", waitingFor: null });
+    store.demand(repositories);
+    store.demand(search);
+    await clock.advance(0);
+    await pending("user repos").answer([repo("app")]);
+    await pending("pull search").fail(new GiteaApiError("Gitea refused.", 503));
+    expect(store.read(repositories)).toMatchObject({ state: "known", value: [repo("app")] });
+    expect(store.read(search)).toMatchObject({ state: "failed" });
+
+    // A pull request landing anywhere on the Gitea changes what the search finds.
+    await clock.advance(2_000);
+    await pending("pull search").answer([{ number: 4, title: "x", state: "open" }]);
+    store.invalidate({ topic: "forge-pr", origin: ORIGIN, owner: "shop", repo: "app", number: 4 });
+    await clock.advance(0);
+    expect(sent("pull search")).toHaveLength(3);
+    expect(sent("user repos")).toHaveLength(1);
+    await clock.advance(FORGE_LIST_BACKSTOP_MS);
+    expect(sent("user repos")).toHaveLength(2);
+  });
+
+  it("an organization the broker has not made yet is pending, never missing, and asked about on the ladder until it is made", async () => {
+    const { clock, store, sent, pending } = rig();
+    const fact: ForgeFact = { kind: "organization", origin: ORIGIN, org: "shop" };
+    expect(store.read(fact)).toEqual({ state: "unread", waitingFor: null });
+    store.demand(fact);
+    await clock.advance(0);
+    await pending("org shop").answer(undefined);
+    expect(store.read(fact)).toMatchObject({ state: "known", value: { kind: "pending" } });
+
+    // The broker takes about eighty seconds: asked again at 2 s, then 4 s after that.
+    await clock.advance(1_999);
+    expect(sent("org shop")).toHaveLength(1);
+    await clock.advance(1);
+    await pending("org shop").answer(undefined);
+    await clock.advance(3_999);
+    expect(sent("org shop")).toHaveLength(2);
+    await clock.advance(1);
+    const made = { id: 7, username: "shop" };
+    await pending("org shop").answer(made);
+    expect(store.read(fact)).toMatchObject({
+      state: "known",
+      value: { kind: "made", organization: made },
+    });
+
+    // Made is final: nothing but an invalidation asks again.
+    await clock.advance(FORGE_LIST_BACKSTOP_MS * 5);
+    store.wake();
+    await clock.advance(0);
+    expect(sent("org shop")).toHaveLength(3);
+  });
+
+  it("a file at main is unread until read, known after, and one main does not hold is known as none until it lands", async () => {
+    const { clock, store, sent, pending } = rig();
+    const stage: ForgeFact = {
+      kind: "file",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "group",
+      path: "3 — Stage/import.yaml",
+    };
+    expect(store.read(stage)).toEqual({ state: "unread", waitingFor: null });
+    store.demand(stage);
+    await clock.advance(0);
+    await pending("file shop/group 3 — Stage/import.yaml@main").answer(undefined);
+    expect(store.read(stage)).toMatchObject({ state: "known", value: null, coverage: "complete" });
+
+    // The broker merges the recipe onto main minutes after the Mate is up.
+    await clock.advance(FORGE_LIST_BACKSTOP_MS);
+    await pending("file shop/group 3 — Stage/import.yaml@main").answer({
+      path: "3 — Stage/import.yaml",
+      content: "services: []",
+      sha: "f1",
+    });
+    expect(store.read(stage)).toMatchObject({ state: "known", value: "services: []" });
+    expect(sent("file shop/group 3 — Stage/import.yaml@main")).toHaveLength(2);
+  });
+
+  it("what one commit has over another is unread until read, known after, and never read again", async () => {
+    const { clock, store, sent, pending } = rig();
+    const fact: ForgeFact = {
+      kind: "compare",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      base: "b1",
+      head: "h2",
+    };
+    expect(store.read(fact)).toEqual({ state: "unread", waitingFor: null });
+    store.demand(fact);
+    await clock.advance(0);
+    const commits = [{ sha: "h2", subject: "Add cart" }];
+    await pending("compare shop/app b1...h2").answer(commits);
+    expect(store.read(fact)).toMatchObject({ state: "known", value: commits });
+
+    // Two commits never change what one has over the other.
+    await clock.advance(FORGE_LIST_BACKSTOP_MS * 5);
+    store.wake();
+    await clock.advance(0);
+    expect(sent("compare shop/app b1...h2")).toHaveLength(1);
+  });
+
+  it("a commit's detail is unread until read, known after, gone when Gitea has none, and never read again", async () => {
+    const { clock, store, sent, pending } = rig();
+    const fact = (sha: string): ForgeFact => ({
+      kind: "commit",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      sha,
+    });
+    expect(store.read(fact("h2"))).toEqual({ state: "unread", waitingFor: null });
+    store.demand(fact("h2"));
+    store.demand(fact("h9"));
+    await clock.advance(0);
+    const detail = {
+      sha: "h2",
+      subject: "Add cart",
+      files: [],
+      additions: 3,
+      deletions: 1,
+    };
+    await pending("commit shop/app@h2").answer(detail);
+    await pending("commit shop/app@h9").answer(undefined);
+    expect(store.read(fact("h2"))).toMatchObject({ state: "known", value: detail });
+    expect(store.read(fact("h9"))).toMatchObject({ state: "gone", evidence: "direct-not-found" });
+
+    await clock.advance(FORGE_LIST_BACKSTOP_MS * 5);
+    store.wake();
+    await clock.advance(0);
+    expect(sent("commit shop/app@h2")).toHaveLength(1);
+  });
+
+  it("a pull request first read as landed long ago puts no open one back to checking", async () => {
+    const { clock, store, sent, pending } = rig();
+    store.demand(openPulls("shop", "app"));
+    store.demand({
+      kind: "branch-pulls",
+      origin: ORIGIN,
+      owner: "shop",
+      repo: "app",
+      branch: "mate/ada",
+    });
+    await clock.advance(0);
+    await pending("pulls shop/app open").answer([pull(5)]);
+    await pending("pulls shop/app all").answer([
+      pull(3, { head: { ref: "mate/ada", sha: "h3" }, state: "closed", merged: true }),
+    ]);
+
+    expect(mergeability(store.mergeState(pullKey(5)))).toBe("mergeable");
+    await clock.advance(0);
+    expect(sent("pull shop/app#5")).toHaveLength(0);
   });
 });

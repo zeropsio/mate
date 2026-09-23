@@ -324,7 +324,9 @@ describe("the account's project flow in the web", () => {
     const source = {
       entry: { groupId: "g1", slug: "harbor", projects: [], matesMayRelease: false },
       giteaOrigin: GITEA,
-      members: known([{ projectId: "p-stage", name: "harbor stage", project: PROJECT }]),
+      members: known([
+        { projectId: "p-stage", name: "harbor stage", role: undefined, project: PROJECT },
+      ]),
       mayRelease: true,
     };
     /** Every flow the surface rendered, the latest last. */
@@ -339,7 +341,9 @@ describe("the account's project flow in the web", () => {
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
       root.render(<Surface />);
-      await vi.waitFor(() => expect(rig.demanded()).toEqual(["repos", "declarations", "tags"]));
+      await vi.waitFor(() =>
+        expect(rig.demanded()).toEqual(["repos", "declarations", "tags", "file", "file"]),
+      );
       expect(rig.stopDemands).toEqual(["p-stage"]);
       expect(flow()?.pullRequests.state).toBe("unread");
 

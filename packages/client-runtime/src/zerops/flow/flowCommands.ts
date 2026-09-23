@@ -1,7 +1,7 @@
 /**
- * The flow's verbs as command attempts (DESIGN §4.9, §4.7 "Verbs", §2.D D8): Merge, Release and
- * Roll back, each keyed by its target, so a refusal on one pull request or group never shows on
- * another.
+ * The flow's verbs as command attempts (DESIGN §4.9, §4.7 "Verbs", §2.D D8): Merge, Open,
+ * Release and Roll back, each keyed by its target, so a refusal on one pull request, branch or
+ * group never shows on another.
  *
  * ```
  *  requested ─[capability waitable]─► awaiting-capability (≤ 30 s) ─allowed─► pending
@@ -14,7 +14,8 @@
  * - The capability is the Gitea session's (§4.3 `forge(origin)`), asked before the attempt and
  *   again before each write of a compound command; waiting for it never counts against a write.
  * - Settlement invalidates exactly what the verb changed: a merge, its repository and the stage
- *   deployments that repository's `main` feeds; a release or a roll back, the group repo.
+ *   deployments that repository's `main` feeds; opening a pull request, its repository; a release
+ *   or a roll back, the group repo.
  * - A write is never sent twice: a second press while one runs is the same attempt, and an
  *   attempt whose answer was lost is `uncertain`, never retried.
  *
@@ -43,6 +44,16 @@ export type FlowCommand =
       readonly number: number;
       /** The stage services the repository's `main` deploys to (`GroupFlow.feeds`). */
       readonly feeds: ReadonlyArray<ServiceRef>;
+    }
+  | {
+      readonly kind: "open";
+      readonly origin: string;
+      readonly slug: string;
+      readonly repository: string;
+      /** The branch it opens from, onto `base`. */
+      readonly head: string;
+      readonly base: string;
+      readonly title: string;
     }
   | {
       readonly kind: "release";
@@ -103,6 +114,8 @@ export interface FlowCommands {
   readonly run: (command: FlowCommand) => Promise<FlowAttempt>;
   /** The latest attempt on the command's target; `null` before the first. */
   readonly attempt: (command: FlowCommand) => FlowAttempt | null;
+  /** The latest attempt on each target in the group with this slug, by `flowVerbKey`. */
+  readonly attemptsIn: (slug: string) => ReadonlyMap<string, FlowAttempt>;
   /** Told the key of every target whose attempt changed. */
   readonly subscribe: (listener: (key: string) => void) => () => void;
   /** The account closed: waits end refused; writes in flight finish and settle unheard. */
@@ -122,6 +135,15 @@ export function flowCommandInvalidations(command: FlowCommand): ReadonlyArray<In
         },
         ...command.feeds.map((service): Invalidation => ({ topic: "deployment", service })),
       ];
+    case "open":
+      return [
+        {
+          topic: "forge-repo",
+          origin: command.origin,
+          owner: command.slug,
+          repo: command.repository,
+        },
+      ];
     case "release":
     case "roll-back":
       return [
@@ -135,21 +157,19 @@ export function flowCommandInvalidations(command: FlowCommand): ReadonlyArray<In
   }
 }
 
-/** Merging one of the group's pull requests, with the stages its repository feeds. */
+/**
+ * Merging one of the group's pull requests, with the stages its repository feeds; `null` while
+ * those are not known — a merge that named none would leave the stage it deploys to unread.
+ */
 export function mergeCommand(
   flow: GroupFlow,
   origin: string,
   repository: string,
   number: number,
-): FlowCommand {
-  return {
-    kind: "merge",
-    origin,
-    slug: flow.slug,
-    repository,
-    number,
-    feeds: flow.feeds(repository),
-  };
+): FlowCommand | null {
+  const feeds = flow.feeds(repository);
+  if (feeds.state !== "known") return null;
+  return { kind: "merge", origin, slug: flow.slug, repository, number, feeds: feeds.value };
 }
 
 /** Tagging what the release offer showed; `null` while the offer is not known. */
@@ -164,6 +184,50 @@ export function releaseCommand(flow: GroupFlow, origin: string): FlowCommand | n
     tag: releaseTagName(offer.suggestion.replace(/^v/u, "")),
     message: releaseMessage(offer.entries),
   };
+}
+
+/** A verb as a surface asks for it: a pull request by its group's slug, a release by its group. */
+export type FlowRequest =
+  | {
+      readonly kind: "merge";
+      readonly slug: string;
+      readonly repository: string;
+      readonly number: number;
+    }
+  | Omit<Extract<FlowCommand, { readonly kind: "open" }>, "origin">
+  | { readonly kind: "release"; readonly groupId: string }
+  | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
+
+/**
+ * The command a surface's request is, over the flows read: `null` for a verb on a group whose
+ * flow is not read, a merge whose stages it feeds are not known, or a release whose offer is not.
+ */
+export function flowCommandFor(
+  request: FlowRequest,
+  flows: Iterable<GroupFlow>,
+  origin: string,
+): FlowCommand | null {
+  const groups = [...flows];
+  switch (request.kind) {
+    case "merge": {
+      const flow = groups.find(({ slug }) => slug === request.slug);
+      return flow === undefined
+        ? null
+        : mergeCommand(flow, origin, request.repository, request.number);
+    }
+    case "open":
+      return { ...request, origin };
+    case "release": {
+      const flow = groups.find(({ groupId }) => groupId === request.groupId);
+      return flow === undefined ? null : releaseCommand(flow, origin);
+    }
+    case "roll-back": {
+      const flow = groups.find(({ groupId }) => groupId === request.groupId);
+      return flow === undefined
+        ? null
+        : { kind: "roll-back", origin, slug: flow.slug, groupId: flow.groupId, tag: request.tag };
+    }
+  }
 }
 
 type Refused = Extract<Capability, { readonly allowed: false }>;
@@ -217,15 +281,20 @@ const nothingToDo = (words: string): FlowAttempt => ({
 });
 
 export function makeFlowCommands(ports: FlowCommandPorts): FlowCommands {
-  const attempts = new Map<string, FlowAttempt>();
+  /** The latest attempt on each target, with the command that made it. */
+  const attempts = new Map<
+    string,
+    { readonly command: FlowCommand; readonly attempt: FlowAttempt }
+  >();
   const running = new Map<string, Promise<FlowAttempt>>();
   const listeners = new Set<(key: string) => void>();
   /** Every capability wait still open, ended at once by `dispose`. */
   const waits = new Set<() => void>();
   let disposed = false;
 
-  const set = (key: string, attempt: FlowAttempt): void => {
-    attempts.set(key, attempt);
+  const set = (command: FlowCommand, attempt: FlowAttempt): void => {
+    const key = flowVerbKey(command);
+    attempts.set(key, { command, attempt });
     for (const listener of listeners) listener(key);
   };
 
@@ -299,6 +368,20 @@ export function makeFlowCommands(ports: FlowCommandPorts): FlowCommands {
             (error) => `Gitea would not merge it: ${error.detail ?? error.message}`,
           );
         }
+      case "open":
+        try {
+          await client.createPullRequest(command.slug, command.repository, {
+            head: command.head,
+            base: command.base,
+            title: command.title,
+          });
+          return { phase: "accepted" };
+        } catch (cause) {
+          return writeSettled(
+            cause,
+            (error) => `Gitea would not open the pull request: ${error.detail ?? error.message}`,
+          );
+        }
       case "release":
         return tag(command, client, command.tag, command.message);
       case "roll-back": {
@@ -325,13 +408,13 @@ export function makeFlowCommands(ports: FlowCommandPorts): FlowCommands {
     }
   };
 
-  const attemptOf = async (key: string, command: FlowCommand): Promise<FlowAttempt> => {
-    if (!ports.capability(command.origin).allowed) set(key, { phase: "awaiting-capability" });
+  const attemptOf = async (command: FlowCommand): Promise<FlowAttempt> => {
+    if (!ports.capability(command.origin).allowed) set(command, { phase: "awaiting-capability" });
     const capability = await admitted(command.origin);
     if (!capability.allowed) return capabilityRefusal(capability);
     const client = clientForWrite(command.origin);
     if (!("mergePullRequest" in client)) return client;
-    set(key, { phase: "pending" });
+    set(command, { phase: "pending" });
     const settled = await act(command, client);
     if (!disposed && (settled.phase === "accepted" || settled.phase === "uncertain")) {
       for (const invalidation of flowCommandInvalidations(command)) ports.invalidate(invalidation);
@@ -349,15 +432,21 @@ export function makeFlowCommands(ports: FlowCommandPorts): FlowCommands {
           capabilityRefusal({ allowed: false, reason: "epoch-closed", waitable: false }),
         );
       }
-      const settled = attemptOf(key, command).then((attempt) => {
+      const settled = attemptOf(command).then((attempt) => {
         running.delete(key);
-        if (!disposed) set(key, attempt);
+        if (!disposed) set(command, attempt);
         return attempt;
       });
       running.set(key, settled);
       return settled;
     },
-    attempt: (command) => attempts.get(flowVerbKey(command)) ?? null,
+    attempt: (command) => attempts.get(flowVerbKey(command))?.attempt ?? null,
+    attemptsIn: (slug) =>
+      new Map(
+        [...attempts].flatMap(([key, { command, attempt }]) =>
+          command.slug === slug ? [[key, attempt] as const] : [],
+        ),
+      ),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
