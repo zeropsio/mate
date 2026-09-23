@@ -284,7 +284,7 @@ async function readFact(client: GiteaClient, fact: ForgeFact): Promise<Outcome> 
     case "tags":
       return {
         kind: "value",
-        value: await client.listTags(fact.owner, fact.repo),
+        value: await client.listAllTags(fact.owner, fact.repo),
         coverage: "complete",
       };
     case "declarations": {

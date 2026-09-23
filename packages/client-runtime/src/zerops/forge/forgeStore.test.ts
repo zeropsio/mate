@@ -115,7 +115,7 @@ function rig() {
         at(`pulls ${owner}/${repo} ${options?.state ?? "open"}`),
       getPullRequest: (owner: string, repo: string, number: number) =>
         at(`pull ${owner}/${repo}#${String(number)}`),
-      listTags: (owner: string, repo: string) => at(`tags ${owner}/${repo}`),
+      listAllTags: (owner: string, repo: string) => at(`tags ${owner}/${repo}`),
       readFile: (owner: string, repo: string, path: string) => at(`file ${owner}/${repo} ${path}`),
       listCommitStatuses: (owner: string, repo: string, sha: string) =>
         at(`statuses ${owner}/${repo}@${sha}`),

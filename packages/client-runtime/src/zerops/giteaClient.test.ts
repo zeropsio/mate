@@ -281,14 +281,14 @@ describe("GiteaClient request shapes", () => {
     expect(calls[0]?.body).toEqual({ tag_name: "v1.2.0", target: "abc", message: "api abc" });
   });
 
-  it("lists a repository's tags, message and all", async () => {
+  it("lists one page of a repository's tags, message and all", async () => {
     const { client, calls } = fake([
       { body: [{ name: "v1.2.0", message: "api abc", commit: { sha: "abc" } }] },
     ]);
     expect(await client.listTags("acme", "group")).toHaveLength(1);
-    expect(calls[0]?.url.slice(ORIGIN.length)).toBe(
-      "/api/v1/repos/acme/group/tags?limit=50&page=1",
-    );
+    expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
+      "/api/v1/repos/acme/group/tags",
+    ]);
   });
 
   it("reads commit statuses, runs, jobs, a rerun and logs", async () => {
@@ -339,7 +339,7 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     });
   }
 
-  it("a request Gitea has not answered in 15 s ends as a timeout", async () => {
+  it("a read Gitea has not answered in 15 s ends as a timeout", async () => {
     vi.useFakeTimers();
     const read = silent().listTags("acme", "group");
     const outcome = read.then(
@@ -355,6 +355,22 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(await outcome).toBe("TimeoutError");
+  });
+
+  it("a write has no deadline: a merge Gitea is slow to answer may still land", async () => {
+    vi.useFakeTimers();
+    const merge = silent().mergePullRequest("acme", "app", 4, { style: "squash" });
+    let settled = false;
+    void merge.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(GITEA_REQUEST_DEADLINE_MS * 4);
+    expect(settled).toBe(false);
   });
 
   it("the caller's signal still ends a request before its deadline", async () => {
@@ -397,7 +413,7 @@ describe("GiteaClient pull request shas (DESIGN A7)", () => {
   it("lists every tag, page by page, until a page comes back short", async () => {
     const full = Array.from({ length: 50 }, (_, index) => ({ name: `v0.0.${index}` }));
     const { client, calls } = fake([{ body: full }, { body: [{ name: "v0.1.0" }] }]);
-    expect(await client.listTags("acme", "group")).toHaveLength(51);
+    expect(await client.listAllTags("acme", "group")).toHaveLength(51);
     expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
       "/api/v1/repos/acme/group/tags?limit=50&page=1",
       "/api/v1/repos/acme/group/tags?limit=50&page=2",
