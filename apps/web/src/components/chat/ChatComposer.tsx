@@ -146,7 +146,7 @@ import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
-import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
+import { resolveComposerMenuActiveItemId, useComposerMenuHighlight } from "./composerMenuHighlight";
 import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
@@ -1195,12 +1195,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger | null>(() =>
     detectComposerTrigger(prompt, prompt.length),
   );
-  const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
   // Active ArrowUp recall. Cleared on edit and on thread switch.
   const promptHistoryPositionRef = useRef<ComposerPromptHistoryPosition | null>(null);
-  const [composerHighlightedSearchKey, setComposerHighlightedSearchKey] = useState<string | null>(
-    null,
-  );
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
@@ -1429,6 +1425,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerMenuSearchKey = composerTrigger
     ? `${composerTrigger.kind}:${composerTrigger.query.trim().toLowerCase()}`
     : null;
+  const {
+    highlightedItemId: composerHighlightedItemId,
+    setHighlightedItemId: setComposerHighlightedItemId,
+    highlightedSearchKey: composerHighlightedSearchKey,
+    setHighlightedSearchKey: setComposerHighlightedSearchKey,
+  } = useComposerMenuHighlight({
+    menuOpen: composerMenuOpen,
+    items: composerMenuItems,
+    searchKey: composerMenuSearchKey,
+  });
   const activeComposerMenuItem = useMemo(() => {
     const activeItemId = resolveComposerMenuActiveItemId({
       items: composerMenuItems,
@@ -1657,35 +1663,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useEffect(() => {
     composerTerminalContextsRef.current = composerTerminalContexts;
   }, [composerTerminalContexts, composerTerminalContextsRef]);
-
-  // ------------------------------------------------------------------
-  // Composer menu highlight sync
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    if (!composerMenuOpen) {
-      setComposerHighlightedItemId(null);
-      setComposerHighlightedSearchKey(null);
-      return;
-    }
-    const nextActiveItemId = resolveComposerMenuActiveItemId({
-      items: composerMenuItems,
-      highlightedItemId: composerHighlightedItemId,
-      currentSearchKey: composerMenuSearchKey,
-      highlightedSearchKey: composerHighlightedSearchKey,
-    });
-    setComposerHighlightedItemId((existing) =>
-      existing === nextActiveItemId ? existing : nextActiveItemId,
-    );
-    setComposerHighlightedSearchKey((existing) =>
-      existing === composerMenuSearchKey ? existing : composerMenuSearchKey,
-    );
-  }, [
-    composerHighlightedItemId,
-    composerHighlightedSearchKey,
-    composerMenuItems,
-    composerMenuOpen,
-    composerMenuSearchKey,
-  ]);
 
   const lastSyncedPendingInputRef = useRef<{
     requestId: string | null;
