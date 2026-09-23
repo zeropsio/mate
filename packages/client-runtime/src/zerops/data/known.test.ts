@@ -136,6 +136,29 @@ describe("inventory knowledge", () => {
     expect(knownProjectTags(projectRead(presentation), NOW)).toEqual(tags);
   });
 
+  it.each<{
+    readonly reason: Extract<
+      EntityKnowledge<ProjectRecord>,
+      { readonly knowledge: "unavailable" }
+    >["reason"];
+    readonly evidence: string;
+  }>([
+    { reason: "forbidden", evidence: "direct-forbidden" },
+    { reason: "access-revoked", evidence: "direct-forbidden" },
+    { reason: "not-found", evidence: "direct-not-found" },
+  ])("an unavailable project ($reason) has tags gone ($evidence)", ({ reason, evidence }) => {
+    const read: EntityRead<ProjectRecord> = {
+      ...projectRead(makeUnresolvedProject(project()).presentation),
+      value: { knowledge: "unavailable", ref: project(), reason, since: stamp(6) },
+    };
+
+    expect(knownProjectTags(read, NOW)).toEqual({
+      state: "gone",
+      evidence,
+      asOf: { ordinal: 6, atMs: 60 },
+    });
+  });
+
   describe("a services listing", () => {
     const owner = project();
     const key = interestKeyOf({ kind: "project-inventory", project: owner });
@@ -303,6 +326,93 @@ describe("inventory knowledge", () => {
         asOf: { ordinal: 4, atMs: 40 },
         coverage: "complete",
         freshness,
+      });
+    });
+
+    it.each<{
+      readonly name: string;
+      readonly interests: ReadonlyArray<InterestState>;
+      readonly known: object;
+    }>([
+      { name: "no interest feeds it: unread", interests: [], known: { state: "unread" } },
+      {
+        name: "establishing: reading since it started",
+        interests: [
+          { status: "establishing", identity: id, startedAtMs: 40, deadlineMs: 900, progress },
+        ],
+        known: { state: "reading", sinceMs: 40, attempt: 1 },
+      },
+      {
+        name: "recovering: reading, on its attempt",
+        interests: [
+          {
+            status: "recovering",
+            identity: id,
+            reason: "disconnect",
+            attempt: 2,
+            nextRetryAtMs: 7_000,
+            progress,
+          },
+        ],
+        known: { state: "reading", attempt: 2 },
+      },
+      {
+        name: "paused in the background: waiting to be visible",
+        interests: [{ status: "paused", identity: id, reason: "background" }],
+        known: { state: "unread", waitingFor: "visible" },
+      },
+      {
+        name: "paused offline: waiting to be online",
+        interests: [{ status: "paused", identity: id, reason: "offline" }],
+        known: { state: "unread", waitingFor: "online" },
+      },
+      {
+        name: "paused because nobody leases it: unread",
+        interests: [{ status: "paused", identity: id, reason: "no-leases" }],
+        known: { state: "unread", waitingFor: null },
+      },
+    ])("an unanswered listing is never [] (§3.5): $name", ({ interests, known }) => {
+      const unread = selectServicesOf(makeInitialZeropsDataState(scope()), owner);
+      const read = { ...unread, observation: { ...unread.observation, required: interests } };
+
+      expect(knownServicesOf(read, NOW)).toMatchObject(known);
+    });
+
+    it.each<{
+      readonly name: string;
+      readonly coverage: Exclude<QueryCoverage, { readonly kind: "none" }>;
+      readonly known: string;
+    }>([
+      {
+        name: "a traversal to the end is complete",
+        coverage: {
+          kind: "exhausted-traversal",
+          traversedPages: 1,
+          observedTotal: 1,
+          guarantee: "non-atomic",
+        },
+        known: "complete",
+      },
+      {
+        name: "a window is partial",
+        coverage: {
+          kind: "partial-window",
+          offset: 0,
+          limit: 1,
+          traversedPages: 1,
+          observedTotal: 4,
+        },
+        known: "partial",
+      },
+      {
+        name: "a read that stopped short is partial",
+        coverage: { kind: "partial", reason: "read-failed" },
+        known: "partial",
+      },
+    ])("coverage: $name", ({ coverage, known }) => {
+      expect(knownServicesOf(listing([], [running], coverage), NOW)).toMatchObject({
+        state: "known",
+        coverage: known,
       });
     });
 
