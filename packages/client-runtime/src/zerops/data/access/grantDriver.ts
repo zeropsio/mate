@@ -255,7 +255,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
   });
 
   /** Runs one effect after the view that asked for it is published. */
-  const interpret = (effect: GrantEffect, at: Instant): Effect.Effect<void> => {
+  const interpret = (effect: GrantEffect): Effect.Effect<void> => {
     switch (effect.kind) {
       case "run": {
         const port = verifier!;
@@ -293,18 +293,17 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
           )
           .pipe(Effect.asVoid);
       }
-      case "schedule": {
-        const delayMs = Math.max(0, Math.min(effect.at.wall - at.wall, effect.at.mono - at.mono));
+      case "schedule":
         return Effect.gen(function* () {
           yield* cancelTimer;
           // The timer only wakes the queue: interrupting it never cuts a transition short.
           timer = yield* options.fork(
-            clock
-              .sleep(Duration.millis(delayMs))
-              .pipe(Effect.andThen(options.fork(send({ type: "TICK" }))), Effect.asVoid),
+            untilReached(effect.at).pipe(
+              Effect.andThen(options.fork(send({ type: "TICK" }))),
+              Effect.asVoid,
+            ),
           );
         });
-      }
       case "cancel":
         return cancelTimer;
       case "invalidate":
@@ -317,6 +316,20 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
         return Effect.void;
     }
   };
+
+  /**
+   * Sleeps until `at` on either clock. A sleep can end short of it on the clock
+   * it did not count — a system clock set back, a timer fired a little early —
+   * and the machine only re-arms a timer whose instant changed, so the wait
+   * goes on until the instant has truly come.
+   */
+  const untilReached = (at: Instant): Effect.Effect<void> =>
+    Effect.flatMap(now, (current) => {
+      const waitMs = Math.min(at.wall - current.wall, at.mono - current.mono);
+      return waitMs <= 0
+        ? Effect.void
+        : clock.sleep(Duration.millis(waitMs)).pipe(Effect.andThen(untilReached(at)));
+    });
 
   const cancelTimer = Effect.suspend(() => {
     const running = timer;
@@ -345,7 +358,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
         }
         yield* observeTransition(before, effects, at);
         yield* publish;
-        for (const effect of effects) yield* interpret(effect, at);
+        for (const effect of effects) yield* interpret(effect);
       }),
     );
   }
@@ -355,12 +368,15 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
       lock
         .withPermit(
           Effect.gen(function* () {
+            // An epoch that ended before its grant started never starts it.
+            if (machine.phase.phase === "closed") return false;
             if (verifier !== null) return yield* Effect.die("The access grant started twice.");
             verifier = start.verifier;
             machine = initialGrant({ hidden: start.hidden, online: start.online }, yield* now);
+            return true;
           }),
         )
-        .pipe(Effect.andThen(send({ type: "START" }))),
+        .pipe(Effect.flatMap((started) => (started ? send({ type: "START" }) : Effect.void))),
     signal: (event) => send(event),
     view,
     changes: SubscriptionRef.changes(views),
@@ -369,6 +385,17 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
 
   return {
     grant,
-    close: send({ type: "EPOCH_CLOSED" }).pipe(Effect.andThen(cancelTimer)),
+    close: lock
+      .withPermit(
+        Effect.gen(function* () {
+          machine = transitionGrant(
+            machine,
+            { type: "EPOCH_CLOSED" },
+            { now: yield* now, policy },
+          ).state;
+          yield* publish;
+        }),
+      )
+      .pipe(Effect.andThen(cancelTimer)),
   } satisfies GrantDriver;
 });

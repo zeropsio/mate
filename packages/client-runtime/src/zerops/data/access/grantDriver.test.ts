@@ -143,8 +143,14 @@ const settle = Effect.gen(function* () {
   }
 });
 
-/** One tab's data runtime with its grant started at the start of the test's time. */
-const tab = Effect.fnUntraced(function* (platform: Platform) {
+/**
+ * One tab's data runtime with its grant started at the start of the test's time; `clocks` may
+ * replace the clock the runtime reads.
+ */
+const tab = Effect.fnUntraced(function* (
+  platform: Platform,
+  clocks: (clock: DeadlineClock) => Clock.Clock = (clock) => clock,
+) {
   const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
   const registry = AtomRegistry.make();
   let opaque = 0;
@@ -153,7 +159,7 @@ const tab = Effect.fnUntraced(function* (platform: Platform) {
     adapter: inertAdapter,
     atomRegistry: registry,
     makeOpaqueId: () => `opaque-${++opaque}`,
-  }).pipe(Effect.provideService(Clock.Clock, clock));
+  }).pipe(Effect.provideService(Clock.Clock, clocks(clock)));
   yield* Effect.addFinalizer(() => runtime.shutdown("application-close"));
   /** Every access status the runtime published, in order. */
   const statuses: Array<AccessState["status"]> = [];
@@ -641,6 +647,60 @@ describe("the access grant inside the data runtime", () => {
         yield* opened.runtime.access.signal({ type: "USER_RETRY" });
         yield* settle;
         expect(opened.platform.rounds).toHaveLength(2);
+      }),
+    ),
+  );
+
+  it.effect("a timer that wakes short of its instant on both clocks waits on until it comes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // The monotonic clock the runtime reads drifts from the one its timers sleep on, as
+        // `process.hrtime` drifts from a faked `Date` in a test, or a corrected system clock.
+        let driftMs = 0;
+        const opened = yield* tab(healthy(), (clock) => ({
+          ...clock,
+          monotonicTimeNanosUnsafe: () => BigInt(Math.round((clock.monoMs() + driftMs) * 1e6)),
+          monotonicTimeNanos: Effect.sync(() =>
+            BigInt(Math.round((clock.monoMs() + driftMs) * 1e6)),
+          ),
+        }));
+        // Ahead when the renewal timer is armed, so it is armed 5 ms short...
+        driftMs = 5;
+        yield* opened.pass(2 * SECOND);
+        expect(opened.phase()).toBe("granted");
+        // ...and behind when it wakes, so neither clock has reached the renewal then.
+        driftMs = -10;
+
+        yield* opened.pass(12 * MINUTE);
+
+        expect(opened.platform.rounds).toHaveLength(2);
+      }),
+    ),
+  );
+
+  it.effect("never starts the grant of a runtime that shut down first", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        const platform = healthy();
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: scope(),
+          adapter: inertAdapter,
+          atomRegistry: registry,
+          makeOpaqueId: () => "opaque",
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* runtime.shutdown("logout");
+
+        yield* runtime.access.start({
+          verifier: fakeVerifier(platform, clock, makeNetwork(clock)),
+          hidden: false,
+          online: true,
+        });
+        yield* settle;
+
+        expect(registry.get(runtime.access.view).machine.phase.phase).toBe("closed");
+        expect(platform.rounds).toEqual([]);
       }),
     ),
   );

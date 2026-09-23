@@ -3157,7 +3157,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     atomRegistry: options.atomRegistry,
     access: Ref.get(model).pipe(Effect.map((state) => state.access)),
     observe: observeAccess,
-    fork: (work) => forkOwned(work),
+    // A timer is armed, and a read is sent, in the turn that asked for it.
+    fork: (work) =>
+      work.pipe(
+        Effect.forkIn(runtimeScope, { startImmediately: true }),
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      ),
   });
 
   const shutdown: ZeropsDataRuntime["shutdown"] = (_reason) =>
