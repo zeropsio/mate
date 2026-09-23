@@ -1,64 +1,144 @@
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
-import { projectZeropsCandidates } from "@t3tools/client-runtime/zerops/candidateLoading";
+import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  OrganizationRef,
+  knownProjectsOf,
+  knownServicesOf,
   projectKeyOf,
-  type InterestLease,
-  type ProjectRef,
   ZeropsOrganizationId,
+  ZeropsServiceId,
+  type CollectionRead,
+  type InterestLease,
+  type OrganizationRef,
+  type ProjectRecord,
+  type ProjectRef,
+  type ServiceRecord,
 } from "@t3tools/client-runtime/zerops/data";
+import type { ContainerMachine, TargetKey } from "@t3tools/client-runtime/zerops/environments";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import {
+  heldCandidates,
+  selectCandidates,
+  type CandidateRow,
+} from "@t3tools/client-runtime/zerops/projections";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { useEnvironments } from "../../state/environments";
-import { candidateAfterHealthProbe, probeCandidateHealthBatch } from "./candidate-loading";
+import { mobileCandidates, type MobileCandidate } from "./candidate-listing";
 import { connectedZeropsOrigins } from "./candidate-origins";
-import { useZeropsData } from "./ZeropsDataProvider";
+import type { MobileContainerTarget } from "./containers";
+import { useZeropsData, type ZeropsDataBinding } from "./ZeropsDataProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
+/** A read, and the moment this device saw it change (`known.ts` dates a read with no value by it). */
+interface StampedRead<Read> {
+  readonly read: Read;
+  readonly atMs: number;
+}
+
+/** The inventory's reads the listing is made of, as last published. */
+interface InventoryReads {
+  /** Each organization's projects, in the session's order. */
+  readonly projects: ReadonlyArray<StampedRead<CollectionRead<ProjectRecord>>>;
+  /** The services of each project this view holds the inventory of, by project key. */
+  readonly services: ReadonlyMap<string, StampedRead<CollectionRead<ServiceRecord>>>;
+  readonly atMs: number;
+}
+
+const UNREAD: Known<never> = { state: "unread", waitingFor: null };
+const NO_MACHINES: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
+const NO_SUBSCRIPTION = () => () => undefined;
+const noMachines = () => NO_MACHINES;
+
+/** The read held until it changes, so its stamp does not tick with every publication. */
+function stamped<Read>(previous: StampedRead<Read> | undefined, read: Read): StampedRead<Read> {
+  return previous !== undefined && previous.read === read ? previous : { read, atMs: Date.now() };
+}
+
+const isActiveProject = (
+  member: CollectionRead<ProjectRecord>["value"][number],
+): member is Extract<typeof member, { readonly knowledge: "observed" }> =>
+  member.knowledge === "observed" &&
+  member.record.lifecycle.knowledge === "observed" &&
+  member.record.lifecycle.fields.status === "ACTIVE";
+
+/** The session's organizations, in the account the binding holds. */
+function organizationRefsOf(
+  binding: ZeropsDataBinding,
+  organizationIdsKey: string,
+): ReadonlyArray<OrganizationRef> {
+  return organizationIdsKey === ""
+    ? []
+    : organizationIdsKey.split(",").map((organizationId) => ({
+        kind: "organization",
+        account: binding.account.account,
+        organizationId: ZeropsOrganizationId.make(organizationId),
+      }));
+}
+
+/** Each listed Mate as the container store's target, on the service its flag is read on. */
+function containerTargetsOf(
+  organizations: ReadonlyArray<Known<ReadonlyArray<CandidateRow>>>,
+  projectRefs: ReadonlyMap<string, ProjectRef>,
+): ReadonlyArray<MobileContainerTarget> {
+  return organizations.flatMap((listing) =>
+    heldCandidates(listing).rows.flatMap((row): ReadonlyArray<MobileContainerTarget> => {
+      const project = projectRefs.get(row.project.id);
+      if (row.service === undefined || project === undefined) return [];
+      return [
+        {
+          key: row.key,
+          origin: row.containerOrigin ?? null,
+          platform: { project: row.project.status, service: row.service.status },
+          service: { kind: "service", project, serviceId: ZeropsServiceId.make(row.service.id) },
+        },
+      ];
+    }),
+  );
+}
+
 export function useZeropsCandidates(): {
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  readonly isLoading: boolean;
+  /**
+   * Every organization's candidates as knowledge (DESIGN §3), each with its container's verdict:
+   * "no projects" is only ever read off a known, complete listing (`candidatePickerBody`).
+   */
+  readonly listing: Known<ReadonlyArray<MobileCandidate>>;
+  /** When the listing's reads last changed: the moment its notice is worded at. */
+  readonly readAtMs: number;
   readonly error: string | null;
+  /** Reads every organization's inventory again; retries the demand a failure refused. */
   readonly refresh: () => void;
 } {
   const { status, organizations } = useZeropsSession();
   const { binding, error: runtimeError } = useZeropsData();
   const { environments } = useEnvironments();
-  const [candidates, setCandidates] = useState<ReadonlyArray<ZeropsCandidate>>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [reads, setReads] = useState<InventoryReads | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [reloadCount, setReloadCount] = useState(0);
+  const [demandAttempt, setDemandAttempt] = useState(0);
   const organizationIdsKey = organizations.map((organization) => organization.id).join(",");
-  const connectedOrigins = useMemo(() => connectedZeropsOrigins(environments), [environments]);
 
+  // The view's demand on the inventory: each organization's projects and each active project's
+  // services. It follows the account and its organizations only — never a connection's phase.
   useEffect(() => {
     if (status !== "signed-in" || binding === null) {
-      setCandidates([]);
-      setIsLoading(false);
+      setReads(null);
       setError(runtimeError?.message ?? null);
       return;
     }
 
+    const { runtime, registry } = binding;
+    const organizationRefs = organizationRefsOf(binding, organizationIdsKey);
     let cancelled = false;
     let scope: Scope.Closeable | null = null;
     let scopeClosed = false;
-    let healthGeneration = 0;
-    let lastHealthOriginsKey: string | null = null;
-    const lastHealthByKey = new Map<string, ZeropsContainerHealth>();
     const inventoryLeases = new Map<string, InterestLease>();
     const pendingInventory = new Map<string, Promise<InterestLease>>();
     const projectUnsubscribes: Array<() => void> = [];
     const serviceUnsubscribes = new Map<string, () => void>();
     let desiredInventory = new Map<string, ProjectRef>();
-    const organizationRefs = organizations.map((organization): OrganizationRef => ({
-      kind: "organization",
-      account: binding.account.account,
-      organizationId: ZeropsOrganizationId.make(organization.id),
-    }));
+    let projectReads: ReadonlyArray<StampedRead<CollectionRead<ProjectRecord>>> = [];
+    let serviceReads = new Map<string, StampedRead<CollectionRead<ServiceRecord>>>();
 
     // Scope creation is asynchronous. Cleanup can win that race, so closing is
     // centralized and guarded before this hook starts any demand acquisition.
@@ -75,6 +155,9 @@ export function useZeropsCandidates(): {
       serviceUnsubscribes.clear();
     };
 
+    const refused = (cause: unknown) =>
+      setError(cause instanceof Error ? cause.message : "Could not load Zerops projects.");
+
     const reconcileInventoryDemand = () => {
       for (const [key, lease] of inventoryLeases) {
         if (desiredInventory.has(key)) continue;
@@ -85,9 +168,7 @@ export function useZeropsCandidates(): {
       for (const [key, project] of desiredInventory) {
         if (inventoryLeases.has(key) || pendingInventory.has(key)) continue;
         const pending = Effect.runPromise(
-          binding.runtime
-            .acquire({ kind: "project-inventory", project })
-            .pipe(Scope.provide(scope)),
+          runtime.acquire({ kind: "project-inventory", project }).pipe(Scope.provide(scope)),
         );
         pendingInventory.set(key, pending);
         void pending.then(
@@ -98,14 +179,11 @@ export function useZeropsCandidates(): {
               return;
             }
             inventoryLeases.set(key, lease);
-            setError(null);
             publish();
           },
           (cause: unknown) => {
             pendingInventory.delete(key);
-            if (cancelled) return;
-            setError(cause instanceof Error ? cause.message : "Could not load Zerops projects.");
-            setIsLoading(false);
+            if (!cancelled) refused(cause);
           },
         );
       }
@@ -121,93 +199,42 @@ export function useZeropsCandidates(): {
         if (serviceUnsubscribes.has(key)) continue;
         serviceUnsubscribes.set(
           key,
-          binding.registry.subscribe(binding.runtime.reads.servicesOf(project), publish, {
+          registry.subscribe(runtime.reads.servicesOf(project), publish, {
             immediate: false,
           }),
         );
       }
     };
 
-    const publish = () => {
+    function publish(): void {
       if (cancelled) return;
-      const projections = organizationRefs.map((organization) =>
-        projectZeropsCandidates(
-          binding.registry.get(binding.runtime.reads.projectsOf(organization)),
-          (project) => {
-            const services = binding.registry.get(binding.runtime.reads.servicesOf(project.ref));
-            // A service collection only becomes a candidate inventory once this
-            // view owns its project inventory interest. The organization baseline alone
-            // cannot establish existing service membership.
-            return inventoryLeases.has(projectKeyOf(project.ref))
-              ? services
-              : ({
-                  ...services,
-                  query: { ...services.query, status: "unresolved" },
-                } as typeof services);
-          },
-          connectedOrigins,
-        ),
+      projectReads = organizationRefs.map((organization, index) =>
+        stamped(projectReads[index], registry.get(runtime.reads.projectsOf(organization))),
       );
       desiredInventory = new Map(
-        projections.flatMap((projection) =>
-          projection.projects.value.flatMap((project) =>
-            project.knowledge === "observed" &&
-            project.record.lifecycle.knowledge === "observed" &&
-            project.record.lifecycle.fields.status === "ACTIVE"
-              ? [[projectKeyOf(project.record.ref), project.record.ref] as const]
-              : [],
-          ),
+        projectReads.flatMap(({ read }) =>
+          read.value
+            .filter(isActiveProject)
+            .map((project) => [projectKeyOf(project.record.ref), project.record.ref] as const),
         ),
       );
       synchronizeServiceSubscriptions();
       reconcileInventoryDemand();
-      const platformCandidates = projections.flatMap((projection) => projection.candidates);
-      setCandidates(
-        platformCandidates.map((candidate) =>
-          candidateAfterHealthProbe(candidate, lastHealthByKey.get(candidate.key)),
-        ),
+      // A project's services are this listing's only while it holds their inventory: the
+      // organization's baseline alone cannot say which containers a project has.
+      serviceReads = new Map(
+        [...desiredInventory]
+          .filter(([key]) => inventoryLeases.has(key))
+          .map(([key, project]) => [
+            key,
+            stamped(serviceReads.get(key), registry.get(runtime.reads.servicesOf(project))),
+          ]),
       );
-      setIsLoading(
-        projections.some(
-          (projection) =>
-            projection.projects.query.status !== "observed" ||
-            projection.unresolvedProjects.length > 0 ||
-            projection.unresolvedServiceProjects.length > 0,
-        ),
-      );
-      const ready = platformCandidates.filter(
-        (candidate): candidate is ZeropsCandidate & { readonly containerOrigin: string } =>
-          candidate.group === "ready" && candidate.containerOrigin !== undefined,
-      );
-      const readyOriginsKey = ready
-        .map((candidate) => candidate.containerOrigin)
-        .sort()
-        .join(",");
-      // Re-probing on every publish re-hits containers whose reachability has not
-      // changed; only the ready-origin set moving is a reason to ask again.
-      if (readyOriginsKey === lastHealthOriginsKey) return;
-      lastHealthOriginsKey = readyOriginsKey;
-      const generation = ++healthGeneration;
-      void probeCandidateHealthBatch(ready).then((results) => {
-        if (cancelled || generation !== healthGeneration) return;
-        const healthByKey = new Map(results.map((result) => [result.candidate.key, result]));
-        for (const [key, result] of healthByKey) lastHealthByKey.set(key, result.health);
-        setCandidates((current) =>
-          current.map((candidate) => {
-            const result = healthByKey.get(candidate.key);
-            return result === undefined
-              ? candidate
-              : candidateAfterHealthProbe(result.candidate, result.health);
-          }),
-        );
-      });
-    };
+      setReads({ projects: projectReads, services: serviceReads, atMs: Date.now() });
+    }
 
-    // Inventory ownership remains in the shared runtime. These leases only
-    // state the candidate view's interest; this hook performs no platform I/O.
-    setIsLoading(true);
     setError(null);
-    setCandidates([]);
+    setReads(null);
 
     void Effect.runPromise(Scope.make()).then(async (nextScope) => {
       scope = nextScope;
@@ -219,7 +246,7 @@ export function useZeropsCandidates(): {
         await Promise.all(
           organizationRefs.map((organization) =>
             Effect.runPromise(
-              binding.runtime
+              runtime
                 .acquire({ kind: "organization-inventory", organization })
                 .pipe(Scope.provide(nextScope)),
             ),
@@ -228,17 +255,14 @@ export function useZeropsCandidates(): {
         if (cancelled) return;
         projectUnsubscribes.push(
           ...organizationRefs.map((organization) =>
-            binding.registry.subscribe(binding.runtime.reads.projectsOf(organization), publish, {
+            registry.subscribe(runtime.reads.projectsOf(organization), publish, {
               immediate: false,
             }),
           ),
         );
         publish();
       } catch (cause) {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : "Could not load Zerops projects.");
-          setIsLoading(false);
-        }
+        if (!cancelled) refused(cause);
       }
     });
 
@@ -250,8 +274,79 @@ export function useZeropsCandidates(): {
       inventoryLeases.clear();
       if (scope !== null) closeScope(scope);
     };
-  }, [binding, connectedOrigins, organizationIdsKey, reloadCount, runtimeError, status]);
+  }, [binding, demandAttempt, organizationIdsKey, runtimeError, status]);
 
-  const refresh = useCallback(() => setReloadCount((count) => count + 1), []);
-  return { candidates, isLoading, error, refresh };
+  const organizationListings = useMemo(
+    (): ReadonlyArray<Known<ReadonlyArray<CandidateRow>>> | null =>
+      reads === null
+        ? null
+        : reads.projects.map(({ read, atMs }) =>
+            selectCandidates(knownProjectsOf(read, atMs), (project) => {
+              const services = reads.services.get(projectKeyOf(project));
+              return services === undefined
+                ? UNREAD
+                : knownServicesOf(services.read, services.atMs);
+            }),
+          ),
+    [reads],
+  );
+
+  const containers = binding?.containers ?? null;
+  const targets = useMemo((): ReadonlyArray<MobileContainerTarget> => {
+    if (reads === null || organizationListings === null) return [];
+    const projectRefs = new Map<string, ProjectRef>(
+      reads.projects.flatMap(({ read }) =>
+        read.value.flatMap((member) =>
+          member.knowledge === "observed"
+            ? [[member.record.ref.projectId, member.record.ref] as const]
+            : [],
+        ),
+      ),
+    );
+    return containerTargetsOf(organizationListings, projectRefs);
+  }, [organizationListings, reads]);
+  const connectedOrigins = useMemo(() => connectedZeropsOrigins(environments), [environments]);
+
+  useEffect(() => {
+    containers?.setTargets(targets);
+  }, [containers, targets]);
+  // A Mate this device holds a socket to is up, whatever a probe last guessed (§4.5).
+  useEffect(() => {
+    if (containers === null) return;
+    for (const target of targets) {
+      const origin = target.origin === null ? null : normalizeOrigin(target.origin);
+      containers.store.link(target.key, origin !== null && connectedOrigins.has(origin));
+    }
+  }, [connectedOrigins, containers, targets]);
+
+  const machines = useSyncExternalStore(
+    containers?.store.subscribe ?? NO_SUBSCRIPTION,
+    containers?.store.machines ?? noMachines,
+  );
+
+  const listing = useMemo(
+    (): Known<ReadonlyArray<MobileCandidate>> =>
+      status !== "signed-in" || reads === null || organizationListings === null
+        ? UNREAD
+        : mobileCandidates({
+            organizations: organizationListings,
+            connectedOrigins,
+            containers: machines,
+            nowMs: reads.atMs,
+          }),
+    [connectedOrigins, machines, organizationListings, reads, status],
+  );
+
+  const refresh = useCallback(() => {
+    if (error !== null) {
+      setDemandAttempt((attempt) => attempt + 1);
+      return;
+    }
+    if (binding === null) return;
+    for (const organization of organizationRefsOf(binding, organizationIdsKey)) {
+      void Effect.runPromise(binding.runtime.refresh(organization));
+    }
+  }, [binding, error, organizationIdsKey]);
+
+  return { listing, readAtMs: reads?.atMs ?? 0, error, refresh };
 }

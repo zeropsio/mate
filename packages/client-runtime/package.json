@@ -239,10 +239,6 @@
       "types": "./src/zerops/browserStream.ts",
       "default": "./src/zerops/browserStream.ts"
     },
-    "./zerops/candidateLoading": {
-      "types": "./src/zerops/candidateLoading.ts",
-      "default": "./src/zerops/candidateLoading.ts"
-    },
     "./zerops/giteaSignIn": {
       "types": "./src/zerops/giteaSignIn.ts",
       "default": "./src/zerops/giteaSignIn.ts"

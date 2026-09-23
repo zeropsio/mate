@@ -28,6 +28,13 @@ import {
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/data";
 
+import {
+  makeMobileContainers,
+  mobileContainerPorts,
+  type MobileContainers,
+  type MobileVisibility,
+} from "./containers";
+
 export interface MobileZeropsDataAccount {
   readonly client: ZeropsApiClient;
   /** This is the verified Zerops principal ID, never an access token. */
@@ -38,6 +45,8 @@ export interface ZeropsDataBinding {
   readonly account: AccountScope;
   readonly runtime: ManagedZeropsDataRuntime;
   readonly registry: AtomRegistry.AtomRegistry;
+  /** The account's container store: every Mate row's container verdict. */
+  readonly containers: MobileContainers;
 }
 
 export interface ZeropsDataValue {
@@ -87,6 +96,17 @@ export function mobileZeropsVisibility(): ZeropsVisibility {
   };
 }
 
+/** The foreground as the container store hears it. */
+const appStateVisibility: MobileVisibility = {
+  current: () => toVisibilityState(AppState.currentState) === "visible",
+  subscribe: (listener) => {
+    const subscription = AppState.addEventListener("change", (nextState) =>
+      listener(toVisibilityState(nextState) === "visible"),
+    );
+    return () => subscription.remove();
+  },
+};
+
 const createRuntime: RuntimeFactory = ({ account, client, registry }) =>
   Effect.runPromise(
     makeZeropsDataRuntime({
@@ -108,6 +128,7 @@ const createRuntime: RuntimeFactory = ({ account, client, registry }) =>
 
 async function closeBinding(binding: ZeropsDataBinding, reason: "logout" | "account-replaced") {
   try {
+    binding.containers.dispose();
     // Runtime shutdown marks the scope closed before it interrupts transport or
     // releases atoms, so late callbacks cannot publish into a later account.
     await Effect.runPromise(binding.runtime.shutdown(reason));
@@ -183,7 +204,14 @@ export function ZeropsDataProvider({
           return;
         }
         const runtime = await runtimeFactory({ account: scope, client: account.client, registry });
-        binding = { account: scope, runtime, registry };
+        binding = {
+          account: scope,
+          runtime,
+          registry,
+          containers: makeMobileContainers(
+            mobileContainerPorts(runtime.resources, appStateVisibility),
+          ),
+        };
         if (!active) {
           await disposeOnce();
           return;

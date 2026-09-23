@@ -87,6 +87,26 @@ describe("ZeropsDataProvider account lifecycle", () => {
   beforeEach(() => {
     hooks.reset();
     effects.length = 0;
+    appStateMock.listeners.length = 0;
+  });
+
+  it("holds one container store per account and closes it with the account", async () => {
+    const runtimeFactory = vi.fn(
+      async ({ account: scope }) =>
+        ({
+          scope,
+          shutdown: () => Effect.void,
+        }) as unknown as ManagedZeropsDataRuntime,
+    );
+
+    const cleanup = render(account("account-a"), runtimeFactory);
+    await settle();
+    // The store listens for the app coming back to the foreground.
+    expect(appStateMock.listeners).toHaveLength(1);
+
+    cleanup();
+    await settle();
+    expect(appStateMock.listeners).toHaveLength(0);
   });
 
   it("fences and disposes the old account before starting a replacement", async () => {

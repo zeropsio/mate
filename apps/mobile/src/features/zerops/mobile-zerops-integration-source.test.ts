@@ -1,9 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off -- This architecture test verifies native route wiring.
 import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
 const mobileRoot = new URL("../../../", import.meta.url);
+const repositoryRoot = NodePath.resolve(new URL("../../", mobileRoot).pathname);
 const readSource = (relativePath: string) =>
   NodeFS.readFileSync(new URL(relativePath, mobileRoot), "utf8");
 
@@ -18,16 +20,51 @@ describe("mobile Zerops integration", () => {
     expect(app).not.toContain('from "./Stack"');
   });
 
-  it("uses the central runtime projection without retaining a mobile inventory fetch owner", () => {
+  it("reads the shared candidate selector over the runtime's knowledge", () => {
     const candidates = readSource("src/features/zerops/useZeropsCandidates.ts");
 
-    expect(candidates).toContain("projectZeropsCandidates");
+    expect(candidates).toContain("selectCandidates");
+    expect(candidates).toContain("knownProjectsOf");
+    expect(candidates).toContain("knownServicesOf");
     expect(candidates).toContain("organization-inventory");
-    expect(candidates).toContain("reads.projectsOf");
-    expect(candidates).toContain("reads.servicesOf");
     expect(candidates).not.toContain("runtime.stateAtom");
-    expect(candidates).not.toContain("loadZeropsCandidates");
-    expect(candidates).not.toContain("resolveWithConcurrency");
+  });
+
+  it("leaves the deleted raw candidate path with no importer anywhere", () => {
+    const self = NodePath.resolve(new URL(import.meta.url).pathname);
+    const roots = ["apps/mobile/src", "apps/web/src", "packages/client-runtime/src"].map((root) =>
+      NodePath.join(repositoryRoot, root),
+    );
+    const importers = roots.flatMap((root) =>
+      (NodeFS.readdirSync(root, { recursive: true }) as ReadonlyArray<string>)
+        .map((file) => NodePath.join(root, file))
+        .filter((file) => /\.tsx?$/u.test(file) && file !== self)
+        .filter((file) =>
+          /zerops\/candidateLoading|\.\/candidate-loading|projectZeropsCandidates/u.test(
+            NodeFS.readFileSync(file, "utf8"),
+          ),
+        )
+        .map((file) => NodePath.relative(repositoryRoot, file)),
+    );
+    const clientRuntime = JSON.parse(
+      NodeFS.readFileSync(
+        NodePath.join(repositoryRoot, "packages/client-runtime/package.json"),
+        "utf8",
+      ),
+    ) as { readonly exports: Record<string, unknown> };
+
+    expect(importers).toEqual([]);
+    expect(clientRuntime.exports["./zerops/candidateLoading"]).toBeUndefined();
+    expect(
+      NodeFS.existsSync(
+        NodePath.join(repositoryRoot, "packages/client-runtime/src/zerops/candidateLoading.ts"),
+      ),
+    ).toBe(false);
+    expect(
+      NodeFS.existsSync(
+        NodePath.join(repositoryRoot, "apps/mobile/src/features/zerops/candidate-loading.ts"),
+      ),
+    ).toBe(false);
   });
 
   it("retains the dormant native connection source for a future account lifecycle implementation", () => {
