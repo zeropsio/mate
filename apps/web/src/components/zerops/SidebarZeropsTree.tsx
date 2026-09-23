@@ -956,7 +956,7 @@ function PullRequestRow({
           checks beside it; where Gitea refuses, the reason is written out —
           a red dot alone was the row saying nothing at exactly the moment it
           had something to say (seen in the harness, 2026-09-19). */}
-      {pull.mergeable ? (
+      {pull.mergeability === "mergeable" ? (
         <>
           {tone === undefined || pull.checkWord === undefined ? null : (
             <Tooltip>

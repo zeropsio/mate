@@ -49,6 +49,7 @@
 import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
+import type { MergeabilityKind } from "./forge/mergeState.ts";
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { branchLabel } from "./mateIdentity.ts";
@@ -98,9 +99,16 @@ export interface GitForgeState {
   /** `undefined` while nothing has been asked — not "it is not there". */
   readonly repository: GiteaRepository | undefined;
   /** The pull request whose head is this branch, open or freshly merged. */
-  readonly pullRequest: GiteaPullRequest | undefined;
+  readonly pullRequest: GitForgePullRequest | undefined;
   /** Every commit status on the pull request's head. */
   readonly checks: ReadonlyArray<GiteaCommitStatus>;
+}
+
+/** A pull request as Gitea sent it, with how it merges over the reads so far. */
+export interface GitForgePullRequest {
+  readonly pull: GiteaPullRequest;
+  /** From `forge/mergeState.ts`, never from `pull.mergeable` on its own. */
+  readonly mergeability: MergeabilityKind;
 }
 
 /**
@@ -296,7 +304,7 @@ export function checkWord(tone: GitCheckTone): string | undefined {
  */
 export function pullRequestBlockedReason(pull: {
   readonly number: number;
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly checks: GitCheckTone;
 }): string | null {
   return pullRequestBlocked(pull)?.word ?? null;
@@ -304,7 +312,7 @@ export function pullRequestBlockedReason(pull: {
 
 /** Why a pull request offers no *Merge*, the tone that says it, and who moves it. */
 export interface PullRequestBlocked {
-  readonly kind: "checks-running" | "checks-failed" | "behind";
+  readonly kind: "checks-running" | "checks-failed" | "checking" | "behind";
   readonly word: string;
   readonly tone: ServiceStatusToneId;
   /**
@@ -333,11 +341,10 @@ export interface PullRequestBlocked {
  */
 export function pullRequestBlocked(pull: {
   readonly number: number;
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly checks: GitCheckTone;
 }): PullRequestBlocked | null {
-  if (pull.mergeable) return null;
-  const change = `pull request #${pull.number}`;
+  if (pull.mergeability === "mergeable") return null;
   if (pull.checks === "pending")
     return { kind: "checks-running", word: "checks running", tone: "busy", ask: undefined };
   if (pull.checks === "failing")
@@ -345,8 +352,13 @@ export function pullRequestBlocked(pull: {
       kind: "checks-failed",
       word: "checks failed",
       tone: "failed",
-      ask: `The checks on ${change} are failing. Find out why, fix them, and push.`,
+      ask: checksFailedAsk(pull.number),
     };
+  // Gitea answers "no" for a moment after every push while it works the
+  // answer out again (A11): that is nobody's to act on, and a rebase asked for
+  // on the strength of it would be work invented by the surface.
+  if (pull.mergeability === "checking")
+    return { kind: "checking", word: "checking", tone: "busy", ask: undefined };
   return {
     kind: "behind",
     word: "needs a rebase",
@@ -355,6 +367,11 @@ export function pullRequestBlocked(pull: {
     // as written into a composer, and a page does not open mid-sentence.
     ask: `Pull request #${pull.number} no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.`,
   };
+}
+
+/** What to ask the Mate about a pull request whose checks are failing. */
+export function checksFailedAsk(number: number): string {
+  return `The checks on pull request #${number} are failing. Find out why, fix them, and push.`;
 }
 
 /**
@@ -426,7 +443,7 @@ export function gitVerdict(input: {
   readonly checkout: GitCheckoutState;
   readonly pullRequestNumber: number | undefined;
   /** Whether the forge would take the merge. Not whether it is a good idea. */
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly baseBranch: string;
   readonly trouble: string;
 }): GitVerdict | undefined {
@@ -453,7 +470,7 @@ export function gitVerdict(input: {
       // (`changeVerdict.test.ts`). Only the words are shorter: the number and
       // the branch are already on the line above this panel.
       return {
-        ...IN_REVIEW[input.mergeable ? "mergeable" : "refused"][input.checks],
+        ...IN_REVIEW[input.mergeability][input.checks],
         ask: inReviewAsk(input),
       };
     case "behind": {
@@ -495,20 +512,20 @@ export function gitVerdict(input: {
  *
  * A change the forge *would* take and whose checks went red is still worth
  * somebody's time, so it is offered the same words a refused one is — which is
- * what `changeVerdict` does, and why the mergeable flag is forced here. A
- * change with nothing wrong with it asks for nothing: passing it to the Mate
- * anyway would be work invented by the surface reporting it.
+ * what `changeVerdict` does. A change with nothing wrong with it asks for
+ * nothing: passing it to the Mate anyway would be work invented by the surface
+ * reporting it.
  */
 function inReviewAsk(input: {
   readonly checks: GitCheckTone;
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly pullRequestNumber: number | undefined;
 }): string | undefined {
   if (input.pullRequestNumber === undefined) return undefined;
-  if (input.mergeable && input.checks !== "failing") return undefined;
+  if (input.checks === "failing") return checksFailedAsk(input.pullRequestNumber);
   return pullRequestBlocked({
     number: input.pullRequestNumber,
-    mergeable: false,
+    mergeability: input.mergeability,
     checks: input.checks,
   })?.ask;
 }
@@ -520,16 +537,23 @@ function inReviewAsk(input: {
  * A forge refuses a merge when required checks failed, and allows one when
  * nothing required them; the first says it cannot land, the second says only
  * that the checks failed, because greying out a verb the forge would accept is
- * a lie and leaving it lit with no explanation is a trap.
+ * a lie and leaving it lit with no explanation is a trap. While Gitea is still
+ * working out whether it merges, that is what it says, never a rebase.
  */
-const IN_REVIEW: Record<"mergeable" | "refused", Record<GitCheckTone, Omit<GitVerdict, "ask">>> = {
+const IN_REVIEW: Record<MergeabilityKind, Record<GitCheckTone, Omit<GitVerdict, "ask">>> = {
   mergeable: {
     failing: { tone: "failed", text: "Its checks failed." },
     pending: { tone: "busy", text: "Its checks are still running." },
     none: { tone: "off", text: "No checks ran. Nothing is stopping it." },
     passing: { tone: "ok", text: "The checks passed. Nothing is stopping it." },
   },
-  refused: {
+  checking: {
+    failing: { tone: "failed", text: "Its checks failed, and it cannot land until they pass." },
+    pending: { tone: "busy", text: "Its checks are still running." },
+    none: { tone: "busy", text: "Checking whether it merges cleanly." },
+    passing: { tone: "busy", text: "Checking whether it merges cleanly." },
+  },
+  conflicting: {
     failing: { tone: "failed", text: "Its checks failed, and it cannot land until they pass." },
     pending: { tone: "busy", text: "Its checks are still running." },
     none: { tone: "attention", text: "It no longer merges cleanly." },
@@ -569,8 +593,8 @@ function runsInTheContainer(action: GitBlockAction): boolean {
 function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockState {
   if (!forge.read) return "unread";
   if (!checkout.isRepo || forge.repository === undefined) return "no-repository";
-  if (forge.pullRequest?.merged === true) return "merged";
-  if (forge.pullRequest !== undefined && forge.pullRequest.state === "open") return "in-review";
+  if (forge.pullRequest?.pull.merged === true) return "merged";
+  if (forge.pullRequest?.pull.state === "open") return "in-review";
   if (!checkout.hasUpstream || checkout.aheadCount > 0) return "unpushed";
   if (checkout.behindCount > 0) return "behind";
   return "untouched";
@@ -604,7 +628,7 @@ function actionOf(
   if (state === "in-review") {
     // Gitea decides whether this person may merge; the app only offers it
     // where Gitea already said yes for that branch.
-    return forge.pullRequest?.mergeable === true
+    return forge.pullRequest?.mergeability === "mergeable"
       ? { kind: "merge", label: "Merge", running: "Merging…", ownerOnly: false }
       : undefined;
   }
@@ -632,7 +656,7 @@ export function gitBlock(input: {
   const tone = checkTone(forge.checks);
   // A merge lands on the pull request's base; without one, on the branch
   // itself — which is what a push to a source branch already does.
-  const target = forge.pullRequest?.base?.ref ?? checkout.headRef;
+  const target = forge.pullRequest?.pull.base?.ref ?? checkout.headRef;
   const environment =
     state === "unread" || state === "no-repository"
       ? // Where the branch lands is local knowledge, but its wording is not:
@@ -657,8 +681,9 @@ export function gitBlock(input: {
     state,
     checks: tone,
     checkout,
-    pullRequestNumber: forge.pullRequest?.number,
-    mergeable: forge.pullRequest?.mergeable !== false,
+    pullRequestNumber: forge.pullRequest?.pull.number,
+    // Read only in review, which has a pull request.
+    mergeability: forge.pullRequest?.mergeability ?? "checking",
     baseBranch,
     trouble,
   });
@@ -672,8 +697,8 @@ export function gitBlock(input: {
     checkWord: checkWord(tone),
     checkRows: gitChecks(forge.checks),
     changed: checkout.changed,
-    pullRequestNumber: forge.pullRequest?.number,
-    pullRequestUrl: forge.pullRequest?.html_url,
+    pullRequestNumber: forge.pullRequest?.pull.number,
+    pullRequestUrl: forge.pullRequest?.pull.html_url,
     baseBranch,
     destination: picksUp,
     action:

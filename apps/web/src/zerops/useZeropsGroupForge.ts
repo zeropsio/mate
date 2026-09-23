@@ -9,7 +9,9 @@
  * its read completes (`flow/groupAnswers.ts`), every group is read again every
  * sixty seconds, and a verb re-reads at once only the part it changed
  * (`flow/verbs.ts`). Gitea has no event stream, so a clock is the only
- * freshness there is. A part that does not answer keeps what it had. A
+ * freshness there is. Whether a pull request merges is what its reads so far
+ * came to (`forge/mergeState.ts`), never one answer: Gitea says "no" for a
+ * moment after every push. A part that does not answer keeps what it had. A
  * repository never read is left out of what the answer holds, rather than
  * held as having no pull requests — `repositories` names the ones its pull
  * requests cover — and releases that did not answer carry why, whether or not
@@ -30,6 +32,8 @@ import {
   type FlowPullRequest,
   type FlowRelease,
   type GiteaClient,
+  type GiteaCommitStatus,
+  type GiteaPullRequest,
 } from "@t3tools/client-runtime/zerops";
 import {
   createGroupAnswers,
@@ -38,6 +42,11 @@ import {
   type GroupUpdate,
 } from "@t3tools/client-runtime/zerops/flow";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import {
+  createMergeabilityTracker,
+  mergeReadOf,
+  type MergeabilityTracker,
+} from "@t3tools/client-runtime/zerops/forge";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { giteaClientFor } from "./accountGiteaSessions";
@@ -88,6 +97,7 @@ export function useZeropsGroupForge(input: {
   /** A Gitea request can go out now (`GiteaSessionView.readable`); a read runs only then. */
   readonly readable: boolean;
 }): ZeropsGroupForge {
+  const [mergeability] = useState(createMergeabilityTracker);
   const { answers, failures, invalidate } = useGroupAnswers<
     { readonly groupId: string; readonly slug: string },
     ForgeScope,
@@ -100,7 +110,7 @@ export function useZeropsGroupForge(input: {
     groups: input.groups,
     refreshMs: GROUP_FORGE_REFRESH_MS,
     keyOf: (group) => group.slug,
-    read: (client, group, scope) => readForge(client, group.slug, scope),
+    read: (client, group, scope) => readForge(client, group.slug, scope, mergeability),
   });
   return { forges: answers, failures, invalidate };
 }
@@ -262,15 +272,17 @@ async function answered<T>(read: () => Promise<T>): Promise<Answered<T>> {
  * Reads one scope of a group's forge. A whole read keeps, per repository and
  * for the releases, what is held where that part did not answer. A repository
  * that did not answer and was never read is left out; releases that did not
- * answer say why, beside the ones kept from an earlier read.
+ * answer say why, beside the ones kept from an earlier read. `mergeability`
+ * holds the reads of every pull request before this one.
  */
 export async function readForge(
   client: GiteaClient,
   slug: string,
   scope: ForgeScope | "group",
+  mergeability: MergeabilityTracker,
 ): Promise<GroupUpdate<ZeropsGroupForgeState>> {
   if (scope !== "group" && scope.kind === "repository") {
-    const pulls = await readRepositoryPulls(client, slug, scope.repository);
+    const pulls = await readRepositoryPulls(client, slug, scope.repository, mergeability);
     return (held) =>
       held === undefined
         ? undefined
@@ -291,7 +303,7 @@ export async function readForge(
   );
   const read = new Map<string, RepositoryPulls>();
   for (const repository of repositories) {
-    const pulls = await answered(() => readRepositoryPulls(client, slug, repository));
+    const pulls = await answered(() => readRepositoryPulls(client, slug, repository, mergeability));
     if ("value" in pulls) read.set(repository, pulls.value);
   }
   const releases = await answered(() => readReleases(client, slug));
@@ -330,25 +342,38 @@ async function readRepositoryPulls(
   client: GiteaClient,
   slug: string,
   repository: string,
+  mergeability: MergeabilityTracker,
 ): Promise<RepositoryPulls> {
+  const row = (pull: GiteaPullRequest, atMs: number, checks: ReadonlyArray<GiteaCommitStatus>) =>
+    flowPullRequest({
+      repository,
+      pull,
+      checks,
+      mergeability: mergeability.after(
+        `${slug}/${repository}#${String(pull.number)}`,
+        mergeReadOf(pull, atMs),
+      ).kind,
+    });
   const pullRequests: Array<FlowPullRequest> = [];
+  const openAt = Date.now();
   for (const pull of await client.listPullRequests(slug, repository, { state: "open" })) {
     const head = pull.head?.sha;
     const checks =
       head === undefined
         ? []
         : await client.listCommitStatuses(slug, repository, head).catch(() => []);
-    pullRequests.push(flowPullRequest({ repository, pull, checks }));
+    pullRequests.push(row(pull, openAt, checks));
   }
   // The landed ones, so a conversation can place its own work landing on its
   // timeline. No checks are read for them: a change that is over is not waiting
   // on CI. Capped, because a long-lived group's closed list is unbounded and
   // only the recent ones sit inside a conversation anybody still has open.
+  const closedAt = Date.now();
   const closed = await client.listPullRequests(slug, repository, { state: "closed" });
   const merged = closed
     .slice(0, MERGED_PER_REPOSITORY)
     .filter((pull) => pull.merged === true)
-    .map((pull) => flowPullRequest({ repository, pull, checks: [] }));
+    .map((pull) => row(pull, closedAt, []));
   return { pullRequests, merged };
 }
 

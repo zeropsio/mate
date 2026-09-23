@@ -39,6 +39,7 @@ import {
   pullRequestBlocked,
   type GitCheckTone,
 } from "./gitTab.ts";
+import type { MergeabilityKind } from "./forge/mergeState.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 import { releaseWord, type ReleaseVerdict } from "./release.ts";
@@ -62,8 +63,11 @@ export interface FlowPullRequest {
   readonly checks: GitCheckTone;
   /** The one word beside the checks' dot; `undefined` where no check ran. */
   readonly checkWord: string | undefined;
-  /** Gitea's answer, never the app's: Merge is offered only where it said yes. */
-  readonly mergeable: boolean;
+  /**
+   * Gitea's answers over the reads so far (`forge/mergeState.ts`), never the
+   * app's: Merge is offered only where it is `mergeable`.
+   */
+  readonly mergeability: MergeabilityKind;
   /**
    * Whether it has already landed.
    *
@@ -91,6 +95,8 @@ export function flowPullRequest(input: {
   readonly pull: GiteaPullRequest;
   /** Every commit status on the pull request's head. */
   readonly checks: ReadonlyArray<GiteaCommitStatus>;
+  /** How it merges over the reads of it so far (`forge/mergeState.ts`). */
+  readonly mergeability: MergeabilityKind;
 }): FlowPullRequest {
   const { pull, repository } = input;
   const kind: FlowPullRequestKind = repository === GROUP_REPOSITORY ? "recipe" : "code";
@@ -113,7 +119,7 @@ export function flowPullRequest(input: {
     url: pull.html_url,
     checks: tone,
     checkWord: checkWord(tone),
-    mergeable: pull.mergeable === true,
+    mergeability: input.mergeability,
     merged: pull.merged === true,
     mergedAt: pull.merged_at,
     headSha: pull.head?.sha,
@@ -414,7 +420,7 @@ export interface ChangeState {
  */
 export function changeState(pull: {
   readonly number: number;
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly checks: GitCheckTone;
 }): ChangeState | undefined {
   const blocked = pullRequestBlocked(pull);
@@ -466,7 +472,7 @@ export function mergeConsequence(pull: {
  */
 export function pullRequestMergeLine(pull: {
   readonly number: number;
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly checks: GitCheckTone;
   readonly baseBranch: string;
 }): string {
@@ -474,6 +480,7 @@ export function pullRequestMergeLine(pull: {
   if (blocked === null) return `Cleanly, into ${pull.baseBranch}`;
   if (blocked.kind === "checks-running") return "Once the checks have finished";
   if (blocked.kind === "checks-failed") return "Not while the checks are failing";
+  if (blocked.kind === "checking") return "Still checking whether it can";
   return `Not until it is rebased on ${pull.baseBranch}`;
 }
 

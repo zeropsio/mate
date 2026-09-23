@@ -28,7 +28,8 @@
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
-import { pullRequestBlocked, type GitCheckTone } from "./gitTab.ts";
+import type { MergeabilityKind } from "./forge/mergeState.ts";
+import { checksFailedAsk, pullRequestBlocked, type GitCheckTone } from "./gitTab.ts";
 
 export type ChangeVerdictKind =
   | "merged"
@@ -36,6 +37,7 @@ export type ChangeVerdictKind =
   | "unchecked"
   | "checks-running"
   | "checks-failed"
+  | "checking"
   | "behind";
 
 /** Where a change stands, as its own page says it. */
@@ -64,7 +66,7 @@ export interface ChangeVerdict {
 
 export function changeVerdict(pull: {
   readonly number: number;
-  readonly mergeable: boolean;
+  readonly mergeability: MergeabilityKind;
   readonly checks: GitCheckTone;
   /** Whether it has already landed; `undefined` reads as not. */
   readonly merged?: boolean | undefined;
@@ -101,7 +103,7 @@ export function changeVerdict(pull: {
         kind: "checks-failed",
         tone: "failed",
         text: "The checks failed.",
-        ask: pullRequestBlocked({ ...pull, mergeable: false })?.ask,
+        ask: checksFailedAsk(pull.number),
         canMerge: true,
         offersMerge: true,
       };
@@ -137,8 +139,9 @@ export function changeVerdict(pull: {
 }
 
 /** What the forge's refusal means, said to a person rather than to a client. */
-const REFUSED_TEXT: Record<"checks-running" | "checks-failed" | "behind", string> = {
+const REFUSED_TEXT: Record<"checks-running" | "checks-failed" | "checking" | "behind", string> = {
   "checks-running": "The checks are still running.",
   "checks-failed": "The checks failed, and this change cannot land until they pass.",
+  checking: "Checking whether this change merges cleanly.",
   behind: "This change no longer merges cleanly.",
 };

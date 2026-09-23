@@ -23,7 +23,8 @@ export interface MateReviewOffer {
 }
 
 /**
- * The Mate's own open request, when it is this Mate's and Gitea says it merges.
+ * The Mate's own open request, when it is this Mate's and it merges
+ * (`forge/mergeState.ts`) — a landed one Gitea still calls mergeable is over.
  *
  * A recipe change is not offered here: it is the group's document, not this
  * Mate's work, and it lands on the projects screen where the group lives. The
@@ -39,7 +40,10 @@ export function mateReviewOffer(input: {
   if (input.mateProjectId === undefined) return undefined;
   const mine = input.pullRequests.filter(
     (pull) =>
-      pull.mateProjectId === input.mateProjectId && pull.kind === "code" && pull.mergeable === true,
+      pull.mateProjectId === input.mateProjectId &&
+      pull.kind === "code" &&
+      !pull.merged &&
+      pull.mergeability === "mergeable",
   );
   const pull = [...mine].sort((left, right) => right.number - left.number)[0];
   if (pull === undefined) return undefined;

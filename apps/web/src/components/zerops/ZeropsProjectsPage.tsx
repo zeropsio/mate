@@ -1707,7 +1707,7 @@ function ZeropsProjectsContent() {
     return (
       <ZeropsPullRequestRow
         action={
-          pull.mergeable && slug !== undefined ? (
+          pull.mergeability === "mergeable" && slug !== undefined ? (
             <ZeropsMateVerb
               disabled={merging}
               label={flowVerbLabel("merge", merging)}

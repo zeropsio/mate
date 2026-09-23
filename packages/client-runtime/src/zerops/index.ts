@@ -287,6 +287,7 @@ export {
   type GitCheckoutState,
   type GitCheckRow,
   type GitCheckTone,
+  type GitForgePullRequest,
   type GitForgeState,
   type GitVerdict,
   type PullRequestBlocked,

@@ -14,7 +14,7 @@ function pull(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     url: "https://gitea.example/notes/appdev/pulls/4",
     checks: "none",
     checkWord: undefined,
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -37,7 +37,9 @@ describe("what a Mate's conversation offers to merge", () => {
   });
 
   it.each([
-    { name: "a request Gitea will not merge", pulls: [pull({ mergeable: false })] },
+    { name: "a request Gitea will not merge", pulls: [pull({ mergeability: "conflicting" })] },
+    { name: "a request Gitea is still checking", pulls: [pull({ mergeability: "checking" })] },
+    { name: "a landed one Gitea still calls mergeable", pulls: [pull({ merged: true })] },
     {
       name: "the group's recipe, which is not this Mate's work",
       pulls: [pull({ kind: "recipe" })],

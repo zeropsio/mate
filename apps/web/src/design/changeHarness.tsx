@@ -76,7 +76,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     headBranch: "mate/p-theo",
     headSha: "b21d904cb21d904cb21d904cb21d904cb21d904c",
     url: "https://gitea.example/links/appdev/pulls/5",
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     checks: "passing",
     checkWord: "checks passed",
@@ -183,7 +183,11 @@ function Harness() {
           crumbs={CRUMBS}
           names={NAMES}
           onMerge={() => {}}
-          pull={pull({ checks: "failing", checkWord: "checks failed", mergeable: false })}
+          pull={pull({
+            checks: "failing",
+            checkWord: "checks failed",
+            mergeability: "conflicting",
+          })}
           readDetail={undefined}
           remarks={[]}
           trouble={null}
@@ -225,7 +229,11 @@ function Harness() {
           crumbs={CRUMBS}
           names={NAMES}
           onMerge={() => {}}
-          pull={pull({ checks: "pending", checkWord: "checks running", mergeable: false })}
+          pull={pull({
+            checks: "pending",
+            checkWord: "checks running",
+            mergeability: "conflicting",
+          })}
           readDetail={undefined}
           remarks={[]}
           trouble={null}
@@ -272,7 +280,7 @@ function Harness() {
           crumbs={CRUMBS}
           names={NAMES}
           onMerge={() => {}}
-          pull={pull({ mergeable: false })}
+          pull={pull({ mergeability: "conflicting" })}
           readDetail={undefined}
           remarks={[]}
           trouble={null}

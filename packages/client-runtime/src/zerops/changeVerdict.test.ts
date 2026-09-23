@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { changeVerdict } from "./changeVerdict.ts";
+import type { MergeabilityKind } from "./forge/mergeState.ts";
 import { gitVerdict, type GitCheckoutState, type GitCheckTone } from "./gitTab.ts";
 
-const change = (over: { mergeable?: boolean; checks?: GitCheckTone; merged?: boolean } = {}) => ({
+const change = (
+  over: { mergeability?: MergeabilityKind; checks?: GitCheckTone; merged?: boolean } = {},
+) => ({
   number: 4,
-  mergeable: true,
+  mergeability: "mergeable" as MergeabilityKind,
   checks: "passing" as GitCheckTone,
   ...over,
 });
@@ -26,14 +29,14 @@ describe("changeVerdict", () => {
     // what is in the way. A change that has landed has nothing ahead of it, so
     // the verb is not drawn at all.
     expect(changeVerdict(change({ merged: true })).offersMerge).toBe(false);
-    const behind = changeVerdict(change({ mergeable: false }));
+    const behind = changeVerdict(change({ mergeability: "conflicting" }));
     expect(behind.canMerge).toBe(false);
     expect(behind.offersMerge).toBe(true);
     expect(changeVerdict(change()).offersMerge).toBe(true);
   });
 
   it("says a branch that has fallen behind cannot land, and hands it back", () => {
-    const verdict = changeVerdict(change({ mergeable: false }));
+    const verdict = changeVerdict(change({ mergeability: "conflicting" }));
     expect(verdict.kind).toBe("behind");
     expect(verdict.tone).toBe("attention");
     expect(verdict.canMerge).toBe(false);
@@ -43,7 +46,7 @@ describe("changeVerdict", () => {
 
   it("separates checks that failed from checks that failed and blocked the merge", () => {
     // Gitea refuses it: the branch is protected and the checks are required.
-    const blocked = changeVerdict(change({ mergeable: false, checks: "failing" }));
+    const blocked = changeVerdict(change({ mergeability: "conflicting", checks: "failing" }));
     expect(blocked.canMerge).toBe(false);
     expect(blocked.text).toBe("The checks failed, and this change cannot land until they pass.");
     // Gitea allows it: nothing required them. The page says so rather than
@@ -57,8 +60,8 @@ describe("changeVerdict", () => {
   });
 
   it("asks for nothing while the checks are still running: waiting is the move", () => {
-    for (const mergeable of [true, false]) {
-      const verdict = changeVerdict(change({ mergeable, checks: "pending" }));
+    for (const mergeability of ["mergeable", "checking", "conflicting"] as const) {
+      const verdict = changeVerdict(change({ mergeability, checks: "pending" }));
       expect(verdict.kind).toBe("checks-running");
       expect(verdict.tone).toBe("busy");
       expect(verdict.text).toBe("The checks are still running.");
@@ -77,8 +80,9 @@ describe("changeVerdict", () => {
 
   it("never offers a merge it knows the forge would refuse", () => {
     for (const checks of ["none", "pending", "passing", "failing"] as const) {
-      expect(changeVerdict(change({ mergeable: false, checks })).canMerge).toBe(false);
-      expect(changeVerdict(change({ mergeable: true, checks })).canMerge).toBe(true);
+      expect(changeVerdict(change({ mergeability: "conflicting", checks })).canMerge).toBe(false);
+      expect(changeVerdict(change({ mergeability: "checking", checks })).canMerge).toBe(false);
+      expect(changeVerdict(change({ mergeability: "mergeable", checks })).canMerge).toBe(true);
     }
   });
 });
@@ -103,23 +107,21 @@ describe("the same change, wherever it is read", () => {
    * blue on the other has been told two things about one fact. That is the
    * mistake a release's amber chip was (2026-09-19), caught here instead.
    */
-  it.each([
-    { mergeable: true, checks: "passing" },
-    { mergeable: true, checks: "pending" },
-    { mergeable: true, checks: "failing" },
-    { mergeable: true, checks: "none" },
-    { mergeable: false, checks: "passing" },
-    { mergeable: false, checks: "pending" },
-    { mergeable: false, checks: "failing" },
-    { mergeable: false, checks: "none" },
-  ] as const)("agrees on the colour of mergeable=$mergeable checks=$checks", (pull) => {
+  it.each(
+    (["mergeable", "checking", "conflicting"] as const).flatMap((mergeability) =>
+      (["passing", "pending", "failing", "none"] as const).map((checks) => ({
+        mergeability,
+        checks,
+      })),
+    ),
+  )("agrees on the colour of $mergeability checks=$checks", (pull) => {
     expect(
       gitVerdict({
         state: "in-review",
         checks: pull.checks,
         checkout,
         pullRequestNumber: 4,
-        mergeable: pull.mergeable,
+        mergeability: pull.mergeability,
         baseBranch: "main",
         trouble: "",
       })?.tone,
@@ -131,7 +133,9 @@ describe("a change that has already landed", () => {
   it("says so, and offers no merge whatever the forge would take", () => {
     // Read from the forge by number rather than from the flow, which carries
     // only the open ones. *Merge* on it would be a lie twice over.
-    expect(changeVerdict(change({ merged: true, mergeable: true, checks: "passing" }))).toEqual({
+    expect(
+      changeVerdict(change({ merged: true, mergeability: "mergeable", checks: "passing" })),
+    ).toEqual({
       kind: "merged",
       tone: "ok",
       text: "This change has landed.",
@@ -144,7 +148,7 @@ describe("a change that has already landed", () => {
   it.each(["none", "pending", "passing", "failing"] as const)(
     "does not reopen the question of %s checks",
     (checks) => {
-      const verdict = changeVerdict(change({ merged: true, mergeable: false, checks }));
+      const verdict = changeVerdict(change({ merged: true, mergeability: "conflicting", checks }));
       expect(verdict.kind).toBe("merged");
       expect(verdict.canMerge).toBe(false);
       expect(verdict.ask).toBeUndefined();

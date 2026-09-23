@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { GiteaPullRequest } from "../giteaClient.ts";
 import {
+  createMergeabilityTracker,
   MERGE_CHECKING_WINDOW_MS,
   mergeabilityAfter,
   mergeStateOf,
@@ -112,6 +113,14 @@ describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7, A11)", () =
     expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 10_500, falseReads: 1 });
     track = mergeabilityAfter(track, read(null, 11_000, { head: "h2", base: "b2" }));
     expect(track.mergeability).toEqual({ kind: "checking", sinceMs: 11_000, falseReads: 0 });
+  });
+
+  it("a tracker keeps each pull request's reads apart", () => {
+    const tracker = createMergeabilityTracker();
+    expect(tracker.after("app#4", read(false, 0)).kind).toBe("checking");
+    expect(tracker.after("app#5", read(false, 5_000)).kind).toBe("checking");
+    expect(tracker.after("app#4", read(false, 5_000)).kind).toBe("conflicting");
+    expect(tracker.after("app#5", read(true, 6_000)).kind).toBe("mergeable");
   });
 
   it("a landed pull request says when and as what, a closed one only that it closed", () => {

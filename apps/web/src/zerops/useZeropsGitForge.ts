@@ -14,12 +14,21 @@
  * sixty seconds while the tab is open. A poll that ran while the tab was closed
  * would cost a request a minute for a panel nobody is looking at.
  *
+ * Whether its pull request merges is what the reads so far came to
+ * (`forge/mergeState.ts`), never one answer: Gitea says "no" for a moment
+ * after every push.
+ *
  * A read that fails answers nothing rather than something: an empty forge state
  * is a block that says the checkout and stops, which is what a person who is
  * signed out of Gitea should see too.
  */
 
 import type { GiteaClient, GitForgeState } from "@t3tools/client-runtime/zerops";
+import {
+  createMergeabilityTracker,
+  mergeReadOf,
+  type MergeabilityTracker,
+} from "@t3tools/client-runtime/zerops/forge";
 import { useEffect, useState } from "react";
 
 import { giteaClientFor } from "./accountGiteaSessions";
@@ -80,6 +89,7 @@ export function useZeropsGitForge(input: {
     readonly forges: ZeropsGitForgeStates;
   } | null>(null);
   const [tick, setTick] = useState(0);
+  const [mergeability] = useState(createMergeabilityTracker);
 
   useEffect(() => {
     if (key === "") return;
@@ -97,7 +107,9 @@ export function useZeropsGitForge(input: {
     void (async () => {
       const forges = new Map<string, GitForgeState>();
       for (const target of input.targets) {
-        const state = await readForge(client, owner, target).catch(() => UNREAD_FORGE);
+        const state = await readForge(client, owner, target, mergeability).catch(
+          () => UNREAD_FORGE,
+        );
         if (controller.signal.aborted) return;
         forges.set(target.repository, state);
       }
@@ -108,7 +120,7 @@ export function useZeropsGitForge(input: {
     };
     // `key` carries every target; `generation` and `tick` are the two reasons
     // to ask again for the same one.
-  }, [generation, giteaOrigin, input.targets, key, owner, tick]);
+  }, [generation, giteaOrigin, input.targets, key, mergeability, owner, tick]);
 
   return answer?.key === key ? answer.forges : EMPTY;
 }
@@ -117,16 +129,28 @@ async function readForge(
   client: GiteaClient,
   owner: string,
   target: ZeropsGitForgeTarget,
+  mergeability: MergeabilityTracker,
 ): Promise<GitForgeState> {
   const repository = await client.getRepository(owner, target.repository);
   if (repository === undefined) return NO_REPOSITORY;
   if (target.branch === null) return { read: true, repository, pullRequest: undefined, checks: [] };
   // Gitea has no "pull requests by head branch" filter worth trusting across
   // versions, so the open list is matched here — it is a handful of entries.
+  const readAt = Date.now();
   const pulls = await client.listPullRequests(owner, target.repository, { state: "all" });
-  const pullRequest = pulls.find((pull) => pull.head?.ref === target.branch);
-  const head = pullRequest?.head?.sha;
+  const pull = pulls.find((candidate) => candidate.head?.ref === target.branch);
+  const head = pull?.head?.sha;
   const checks =
     head === undefined ? [] : await client.listCommitStatuses(owner, target.repository, head);
+  const pullRequest =
+    pull === undefined
+      ? undefined
+      : {
+          pull,
+          mergeability: mergeability.after(
+            `${owner}/${target.repository}#${String(pull.number)}`,
+            mergeReadOf(pull, readAt),
+          ).kind,
+        };
   return { read: true, repository, pullRequest, checks };
 }

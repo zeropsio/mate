@@ -385,7 +385,7 @@ describe("the project's flow under it", () => {
     url: `https://gitea.example/crm/appdev/pulls/${number}`,
     checks: "passing",
     checkWord: "Passing",
-    mergeable: true,
+    mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -453,7 +453,10 @@ describe("the project's flow under it", () => {
   });
 
   it("hands a change nobody here can fix back to the Mate that wrote it", () => {
-    const stale = flow({ pullRequests: [pull(4, { mergeable: false })], onAsk: () => {} });
+    const stale = flow({
+      pullRequests: [pull(4, { mergeability: "conflicting" })],
+      onAsk: () => {},
+    });
     const html = withFlow([CRM_DEV, CRM_STAGE], stale);
     // The words that name the problem are the way to hand it over: a rebase
     // happens in the Mate's checkout, not in this menu.
@@ -468,14 +471,19 @@ describe("the project's flow under it", () => {
     // Without a way to ask, the state stays a label rather than becoming a
     // verb that goes nowhere.
     expect(
-      withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [pull(4, { mergeable: false })] })),
+      withFlow(
+        [CRM_DEV, CRM_STAGE],
+        flow({ pullRequests: [pull(4, { mergeability: "conflicting" })] }),
+      ),
     ).not.toContain('data-zerops-primary-action="Ask"');
     // Checks still running are the one refusal with nothing to ask for.
     expect(
       withFlow(
         [CRM_DEV, CRM_STAGE],
         flow({
-          pullRequests: [pull(4, { mergeable: false, checks: "pending", checkWord: "Pending" })],
+          pullRequests: [
+            pull(4, { mergeability: "conflicting", checks: "pending", checkWord: "Pending" }),
+          ],
           onAsk: () => {},
         }),
       ),
@@ -485,7 +493,10 @@ describe("the project's flow under it", () => {
   it("offers Merge only where Gitea said the branch merges", () => {
     expect(withFlow([CRM_DEV, CRM_STAGE])).toContain('data-zerops-primary-action="Merge"');
     expect(
-      withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [pull(4, { mergeable: false })] })),
+      withFlow(
+        [CRM_DEV, CRM_STAGE],
+        flow({ pullRequests: [pull(4, { mergeability: "conflicting" })] }),
+      ),
     ).not.toContain('data-zerops-primary-action="Merge"');
   });
 
@@ -567,14 +578,14 @@ describe("the project's flow under it", () => {
   it("says why a pull request offers no Merge rather than leaving a dead end", () => {
     const running = withFlow(
       [CRM_DEV, CRM_STAGE],
-      flow({ pullRequests: [pull(4, { mergeable: false, checks: "pending" })] }),
+      flow({ pullRequests: [pull(4, { mergeability: "conflicting", checks: "pending" })] }),
     );
     expect(running).toContain('data-zerops-surface="sidebar-pull-request-blocked"');
     expect(running).toContain("checks running");
 
     const stale = withFlow(
       [CRM_DEV, CRM_STAGE],
-      flow({ pullRequests: [pull(4, { mergeable: false, checks: "passing" })] }),
+      flow({ pullRequests: [pull(4, { mergeability: "conflicting", checks: "passing" })] }),
     );
     expect(stale).toContain("needs a rebase");
 
@@ -583,7 +594,9 @@ describe("the project's flow under it", () => {
     const failed = withFlow(
       [CRM_DEV, CRM_STAGE],
       flow({
-        pullRequests: [pull(4, { mergeable: false, checks: "failing", checkWord: "Failing" })],
+        pullRequests: [
+          pull(4, { mergeability: "conflicting", checks: "failing", checkWord: "Failing" }),
+        ],
       }),
     );
     expect(failed).toContain('data-zerops-surface="sidebar-pull-request-blocked"');

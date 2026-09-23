@@ -103,6 +103,26 @@ export function mergeabilityAfter(
   return { mergeability: { ...checking, falseReads }, ...next };
 }
 
+/**
+ * The mergeability of every pull request one surface reads, over the reads it has made — for a
+ * surface that reads Gitea itself rather than through the forge store. Keys are the surface's
+ * own, one per pull request.
+ */
+export interface MergeabilityTracker {
+  readonly after: (key: string, read: MergeRead) => Mergeability;
+}
+
+export function createMergeabilityTracker(): MergeabilityTracker {
+  const tracks = new Map<string, MergeabilityTrack>();
+  return {
+    after: (key, read) => {
+      const track = mergeabilityAfter(tracks.get(key) ?? null, read);
+      tracks.set(key, track);
+      return track.mergeability;
+    },
+  };
+}
+
 /** The pull request as every surface sees it: landed, closed, or open and how it merges. */
 export function mergeStateOf(
   pull: GiteaPullRequest,
