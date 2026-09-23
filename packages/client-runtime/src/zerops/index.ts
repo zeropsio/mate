@@ -361,6 +361,27 @@ export {
   type HistoryEntry,
 } from "./groupHistory.ts";
 export {
+  ADD_PRODUCTION_LABEL,
+  groupFlow,
+  pairPreviewRoute,
+  PRODUCTION_ADDED_HERE,
+  PRODUCTION_AFTER_FIRST_MERGE,
+  PRODUCTION_NOT_SET_UP,
+  PRODUCTION_NOTHING_LIVE,
+  type GroupFlow,
+  type GroupFlowInput,
+  type GroupFlowMain,
+  type GroupFlowMate,
+  type GroupFlowProduction,
+  type GroupFlowPullRequest,
+  type GroupFlowStop,
+  type GroupFlowStopInput,
+  type GroupFlowStopState,
+  type GroupNextStep,
+  type GroupNextStepKind,
+  type GroupNextStepTarget,
+} from "./groupFlow.ts";
+export {
   environmentAttention,
   PROJECT_ALL_CLEAR,
   projectAttention,
