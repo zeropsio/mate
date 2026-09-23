@@ -747,6 +747,212 @@ function collectOneWayViolations(
   });
 }
 
+// Rule 5: `Cell`, `newCell`, `advance` and `read` stay private to the stores
+// (docs/internals/zerops/client-state-model.md, "Module boundaries"). A store is
+// the knowledge kernel itself, the store kit, the data runtime (one store whose
+// internals hold its cells) or a module named `…Store`. Every edge counts, a
+// type-only `Cell` included, and a namespace, star or dynamic import of the
+// module counts as importing all of it. Test files are not part of the graph.
+const KNOWN_MODULE = "knowledge/known";
+const KNOWN_PACKAGE_SPECIFIER = "@t3tools/client-runtime/zerops/knowledge/known";
+const STORE_PRIVATE_KNOWLEDGE: ReadonlySet<string> = new Set([
+  "Cell",
+  "newCell",
+  "advance",
+  "read",
+]);
+const CELL_IMPORT_SCAN_ROOTS = ["packages/client-runtime/src", "apps/web/src", "apps/mobile/src"];
+
+function isStoreModule(zeropsRelativeFile: string): boolean {
+  return (
+    zeropsRelativeFile.startsWith("knowledge/") ||
+    zeropsRelativeFile.startsWith("store/") ||
+    zeropsRelativeFile.startsWith("data/") ||
+    /Store\.tsx?$/u.test(zeropsRelativeFile)
+  );
+}
+
+// The names a clause binds from its module, or undefined when it binds the
+// whole module (`* as X`, `export *`).
+function importedNames(clause: string): ReadonlyArray<string> | undefined {
+  if (clause.trim() === "*" || /\*\s+as\s/u.test(clause)) {
+    return undefined;
+  }
+  const braced = /\{([^}]*)\}/u.exec(clause)?.[1] ?? "";
+  return braced
+    .split(",")
+    .map((binding) => binding.trim().replace(/^type\s+/u, ""))
+    .filter((binding) => binding.length > 0)
+    .map((binding) => binding.split(/\s+as\s+/u)[0]!);
+}
+
+interface CellImportViolation {
+  readonly file: string;
+  readonly specifier: string;
+  readonly reason: string;
+}
+
+function collectCellImportViolations(
+  root: string,
+): Effect.Effect<
+  ReadonlyArray<CellImportViolation>,
+  PlatformError,
+  FileSystem.FileSystem | Path.Path
+> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const zeropsDir = path.join(root, CLIENT_RUNTIME_ZEROPS_DIR);
+    const knownModule = path.join(zeropsDir, KNOWN_MODULE);
+    const withoutExtension = (specifier: string): string =>
+      specifier.replace(/\.(?:[cm]?[jt]sx?)$/u, "");
+    const namesKnownModule = (file: string, specifier: string): boolean =>
+      specifier.startsWith(".")
+        ? withoutExtension(path.resolve(path.dirname(file), specifier)) === knownModule
+        : withoutExtension(specifier) === KNOWN_PACKAGE_SPECIFIER;
+
+    const violations: Array<CellImportViolation> = [];
+    for (const scanRoot of CELL_IMPORT_SCAN_ROOTS) {
+      for (const file of yield* collectTsFiles(path.join(root, scanRoot))) {
+        const zeropsRelative = path.relative(zeropsDir, file).split(path.sep).join("/");
+        if (
+          isTestFile(file) ||
+          (!zeropsRelative.startsWith("..") && isStoreModule(zeropsRelative))
+        ) {
+          continue;
+        }
+        const source = yield* fs.readFileString(file);
+        const report = (specifier: string, reason: string) =>
+          violations.push({
+            file: path.relative(root, file).split(path.sep).join("/"),
+            specifier,
+            reason,
+          });
+        const whole = "imports the whole knowledge/known module outside a store";
+
+        for (const statement of collectImportStatements(source)) {
+          if (!namesKnownModule(file, statement.specifier)) {
+            continue;
+          }
+          // A side-effect or dynamic import has no clause; dynamic ones are
+          // reported below, side-effect ones bind nothing.
+          if (statement.clause === "" && !statement.reexport) {
+            continue;
+          }
+          const names = importedNames(statement.clause);
+          if (names === undefined) {
+            report(statement.specifier, whole);
+            continue;
+          }
+          for (const name of names) {
+            if (STORE_PRIVATE_KNOWLEDGE.has(name)) {
+              report(statement.specifier, `imports ${name} outside a store`);
+            }
+          }
+        }
+        for (const argument of collectDynamicImportArguments(source)) {
+          if (isPlainStringLiteral(argument) && namesKnownModule(file, argument.slice(1, -1))) {
+            report(argument.slice(1, -1), whole);
+          }
+        }
+      }
+    }
+
+    return violations.sort(
+      (left, right) =>
+        left.file.localeCompare(right.file) ||
+        left.specifier.localeCompare(right.specifier) ||
+        left.reason.localeCompare(right.reason),
+    );
+  });
+}
+
+// Rule 5, second half: a Known's `.value` is read only in `cr/zerops` — the
+// knowledge kernel, the stores' selectors and the projections — so web and
+// mobile render presentations and view models, never a raw value. Without
+// types a Known is recognised by its narrowing: an expression compared with
+// `.state === "known"` (or `!==`, or switched on with a `case "known"`) whose
+// `.value` the same file reads. A Known destructured (`const { value } = …`),
+// passed through a helper, or read in a file that never narrows it is a gap;
+// inside `cr/zerops` a selector and its store share modules, so no file split
+// is checked there.
+const KNOWN_VALUE_SCAN_ROOTS = ["apps/web/src", "apps/mobile/src"];
+const NARROWED_EXPRESSION = String.raw`[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*`;
+const KNOWN_NARROWING_PATTERNS = [
+  new RegExp(String.raw`(${NARROWED_EXPRESSION})\??\.state\s*[!=]==?\s*["']known["']`, "gu"),
+  new RegExp(String.raw`["']known["']\s*[!=]==?\s*(${NARROWED_EXPRESSION})\??\.state`, "gu"),
+];
+const KNOWN_SWITCH_PATTERN = new RegExp(
+  String.raw`switch\s*\(\s*(${NARROWED_EXPRESSION})\??\.state\s*\)`,
+  "gu",
+);
+const KNOWN_CASE_PATTERN = /case\s*["']known["']/u;
+
+// Known-value reads outside `cr/zerops` that a named slice removes. Each entry
+// must still match a read, so a fixed site's entry goes with the fix.
+const KNOWN_VALUE_READ_EXCEPTIONS: ReadonlyMap<string, string> = new Map([
+  [
+    "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx deployment.value",
+    "state-model 4.4: the deployment store answers which services run nothing as a selector",
+  ],
+]);
+
+interface KnownValueRead {
+  readonly file: string;
+  readonly read: string;
+}
+
+function knownNarrowings(source: string): ReadonlySet<string> {
+  const narrowed = new Set<string>();
+  for (const pattern of KNOWN_NARROWING_PATTERNS) {
+    for (const match of source.matchAll(pattern)) {
+      narrowed.add(match[1]!.replaceAll("?.", "."));
+    }
+  }
+  if (KNOWN_CASE_PATTERN.test(source)) {
+    for (const match of source.matchAll(KNOWN_SWITCH_PATTERN)) {
+      narrowed.add(match[1]!.replaceAll("?.", "."));
+    }
+  }
+  return narrowed;
+}
+
+function collectKnownValueReads(
+  root: string,
+): Effect.Effect<ReadonlyArray<KnownValueRead>, PlatformError, FileSystem.FileSystem | Path.Path> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const reads: Array<KnownValueRead> = [];
+    for (const scanRoot of KNOWN_VALUE_SCAN_ROOTS) {
+      for (const file of yield* collectTsFiles(path.join(root, scanRoot))) {
+        if (isTestFile(file)) {
+          continue;
+        }
+        const source = yield* fs.readFileString(file);
+        for (const expression of knownNarrowings(source)) {
+          const segments = expression
+            .split(".")
+            .map((segment) => segment.replaceAll("$", String.raw`\$`));
+          const valueRead = new RegExp(
+            String.raw`(?<![\w$.])${segments.join(String.raw`\??\.`)}\??\.value(?![\w$])`,
+            "u",
+          );
+          if (valueRead.test(source)) {
+            reads.push({
+              file: path.relative(root, file).split(path.sep).join("/"),
+              read: `${expression}.value`,
+            });
+          }
+        }
+      }
+    }
+    return reads.sort(
+      (left, right) => left.file.localeCompare(right.file) || left.read.localeCompare(right.read),
+    );
+  });
+}
+
 // Keep this list identical to t3code/no-infinite-motion's protected roots.
 const PROTECTED_ROOTS = [
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
@@ -1145,6 +1351,20 @@ const makeClientRuntimeZeropsFixture = Effect.fn("makeClientRuntimeZeropsFixture
   const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "mate-zerops-zones-" });
   for (const [relativePath, source] of Object.entries(files)) {
     const file = path.join(fixtureRoot, CLIENT_RUNTIME_ZEROPS_DIR, relativePath);
+    yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+    yield* fs.writeFileString(file, source);
+  }
+  return fixtureRoot;
+});
+
+const makeRepoFixture = Effect.fn("makeRepoFixture")(function* (
+  files: Readonly<Record<string, string>>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "mate-repo-zones-" });
+  for (const [relativePath, source] of Object.entries(files)) {
+    const file = path.join(fixtureRoot, relativePath);
     yield* fs.makeDirectory(path.dirname(file), { recursive: true });
     yield* fs.writeFileString(file, source);
   }
@@ -2317,6 +2537,147 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     Effect.gen(function* () {
       const root = yield* repoRoot;
       assert.deepStrictEqual(yield* collectOneWayViolations(root), []);
+    }),
+  );
+
+  it.effect("rule 5 fixture: Cell, newCell, advance and read stay inside their store", () =>
+    Effect.gen(function* () {
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      const fixtureRoot = yield* makeRepoFixture({
+        [`${zerops}/forge/forgeStore.ts`]:
+          'import { advance, newCell, type Cell } from "../knowledge/known.ts";\n',
+        [`${zerops}/store/kit.ts`]: 'import { read } from "../knowledge/known";\n',
+        [`${zerops}/data/resources.ts`]: 'import { advance } from "../knowledge/known.ts";\n',
+        [`${zerops}/knowledge/presentation.ts`]: 'import type { Known } from "./known.ts";\n',
+        [`${zerops}/forge/forgeStore.test.ts`]:
+          'import { advance } from "../knowledge/known.ts";\n',
+        [`${zerops}/flow/deployment.ts`]: [
+          'import type { Cell, Known, Shown } from "../knowledge/known.ts";',
+          'import { knownPresentation } from "../knowledge/presentation.ts";',
+          "",
+        ].join("\n"),
+        [`${zerops}/projections/banner.ts`]: 'import { advance } from "../knowledge/known.ts";\n',
+        [`${zerops}/environments/gate.ts`]: 'import * as Knowledge from "../knowledge/known.ts";\n',
+        [`${zerops}/flow/release.ts`]: 'export { read } from "../knowledge/known.ts";\n',
+        [`${zerops}/flow/groupFlow.ts`]:
+          'export const load = () => import("../knowledge/known.ts");\n',
+        "apps/web/src/zerops/useThing.ts":
+          'import { newCell } from "@t3tools/client-runtime/zerops/knowledge/known";\n',
+        "apps/mobile/src/features/zerops/thing.ts":
+          'import { advance as step } from "@t3tools/client-runtime/zerops/knowledge/known.ts";\n',
+      });
+
+      const violations = yield* collectCellImportViolations(fixtureRoot);
+
+      assert.deepStrictEqual(violations, [
+        {
+          file: "apps/mobile/src/features/zerops/thing.ts",
+          specifier: "@t3tools/client-runtime/zerops/knowledge/known.ts",
+          reason: "imports advance outside a store",
+        },
+        {
+          file: "apps/web/src/zerops/useThing.ts",
+          specifier: "@t3tools/client-runtime/zerops/knowledge/known",
+          reason: "imports newCell outside a store",
+        },
+        {
+          file: `${zerops}/environments/gate.ts`,
+          specifier: "../knowledge/known.ts",
+          reason: "imports the whole knowledge/known module outside a store",
+        },
+        {
+          file: `${zerops}/flow/deployment.ts`,
+          specifier: "../knowledge/known.ts",
+          reason: "imports Cell outside a store",
+        },
+        {
+          file: `${zerops}/flow/groupFlow.ts`,
+          specifier: "../knowledge/known.ts",
+          reason: "imports the whole knowledge/known module outside a store",
+        },
+        {
+          file: `${zerops}/flow/release.ts`,
+          specifier: "../knowledge/known.ts",
+          reason: "imports read outside a store",
+        },
+        {
+          file: `${zerops}/projections/banner.ts`,
+          specifier: "../knowledge/known.ts",
+          reason: "imports advance outside a store",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 5: Cell, newCell, advance and read stay inside their store", () =>
+    Effect.gen(function* () {
+      const root = yield* repoRoot;
+      assert.deepStrictEqual(yield* collectCellImportViolations(root), []);
+    }),
+  );
+
+  it.effect("rule 5 fixture: web and mobile never read a Known's value", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeRepoFixture({
+        "apps/web/src/components/zerops/Stop.tsx": [
+          "export const kind = (deployment) =>",
+          '  deployment.state === "known" ? deployment.value.kind : undefined;',
+          "",
+        ].join("\n"),
+        "apps/web/src/zerops/useRows.ts": [
+          "export const rows = (read) =>",
+          '  read.flow?.state !== "known" ? [] : read.flow?.value.rows;',
+          "",
+        ].join("\n"),
+        "apps/mobile/src/features/zerops/rows.ts": [
+          "export const rows = (shown) => {",
+          "  switch (shown.state) {",
+          '    case "known":',
+          "      return shown.value;",
+          "    default:",
+          "      return undefined;",
+          "  }",
+          "};",
+          "",
+        ].join("\n"),
+        "apps/web/src/zerops/listing.ts":
+          "export const same = (left, right) => left.value === right.value;\n",
+        "apps/web/src/zerops/useRows.test.ts": [
+          'if (shown.state === "known") expect(shown.value).toEqual([]);',
+          "",
+        ].join("\n"),
+        [`${CLIENT_RUNTIME_ZEROPS_DIR}/flow/deployment.ts`]: [
+          "export const running = (deployment) =>",
+          '  deployment.state === "known" && deployment.value.kind === "running";',
+          "",
+        ].join("\n"),
+      });
+
+      const violations = yield* collectKnownValueReads(fixtureRoot);
+
+      assert.deepStrictEqual(violations, [
+        { file: "apps/mobile/src/features/zerops/rows.ts", read: "shown.value" },
+        { file: "apps/web/src/components/zerops/Stop.tsx", read: "deployment.value" },
+        { file: "apps/web/src/zerops/useRows.ts", read: "read.flow.value" },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rule 5: web and mobile never read a Known's value", () =>
+    Effect.gen(function* () {
+      const root = yield* repoRoot;
+      const reads = (yield* collectKnownValueReads(root)).map(
+        ({ file, read }) => `${file} ${read}`,
+      );
+      assert.deepStrictEqual(
+        reads.filter((read) => !KNOWN_VALUE_READ_EXCEPTIONS.has(read)),
+        [],
+      );
+      assert.deepStrictEqual(
+        [...KNOWN_VALUE_READ_EXCEPTIONS.keys()].filter((exception) => !reads.includes(exception)),
+        [],
+        "an exception that no longer matches a read must be deleted",
+      );
     }),
   );
 });
