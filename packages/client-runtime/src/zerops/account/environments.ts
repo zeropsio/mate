@@ -5,10 +5,10 @@
  *
  * - Every target's presence comes from the account's listings, the data runtime's projects and
  *   services of every organization the grant names (B4), and from the records (C1). A remembered
- *   Mate its project's services were read without has that organization's inventory read again,
- *   and is gone only once that direct read lacks it too (§9 C19). No React holds a fact here: the
- *   web and mobile hand over ports and send intents — the route, the active organization, a
- *   Connect.
+ *   Mate is looked for where its record kept it until its project's services are read (A16); one
+ *   they were read without has that organization's inventory read again, and is gone only once
+ *   that direct read lacks it too (§9 C19). No React holds a fact here: the web and mobile hand
+ *   over ports and send intents — the route, the active organization, a Connect.
  * - The account's guards come from its grant, the tab from the account's signals, a container's
  *   re-read from the account's bus.
  * - Restore is the records' demand, auto-connect the active organization's ready Mates (D13), and
@@ -265,6 +265,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let absences: ReadonlyMap<TargetKey, Absence> = new Map();
   let registered: ReadonlyArray<RegisteredEnvironment> = [];
   let route: EnvironmentId | null = null;
+  /** The route's target, as `updateRoute` last found it; its container is read first. */
+  let routeKey: TargetKey | null = null;
   let activeOrganization: string | null = null;
   /** Installs in flight, by the Mate origin they exchanged at. */
   const installing = new Map<string, number>();
@@ -283,6 +285,9 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const listeners = new Set<() => void>();
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
+  /** The target's project as a listing names it, whether or not its services are read. */
+  const projectOf = (key: TargetKey) =>
+    rows.find((row) => row.project.id === targetProject(key))?.project;
   const organizationRef = (organizationId: string): OrganizationRef => ({
     kind: "organization",
     account: data.scope.account,
@@ -352,9 +357,9 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   /** The records, or the installs that write them, changed. */
   const registrationsChanged = () => {
+    updateRoute();
     updateTargets();
     release();
-    updateRoute();
     notify();
   };
 
@@ -370,20 +375,18 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       if (!outcome.ok || closed || stores === null) return outcome;
       // The signer's tag, the review and the Git tab read the project off this record (H12):
       // every exchange that installs an environment writes it the same way.
-      const row = rowOf(key);
-      const organizationId = row === undefined ? null : organizationOf(key);
+      const project = projectOf(key);
+      const organizationId = organizationOf(key);
       stores.records.remember({
         targetKey: key,
         environmentId,
         origin: at,
         projectRef:
-          row === undefined || organizationId === null
-            ? null
-            : { projectId: row.project.id, orgId: organizationId },
-        name: row?.project.name ?? null,
+          organizationId === null ? null : { projectId: targetProject(key), orgId: organizationId },
+        name: project?.name ?? null,
       });
       // The birth is over: its opening job waits on the environment the exchange named.
-      if (row !== undefined) ports.births.promote(row.project.id, environmentId);
+      if (project !== undefined) ports.births.promote(project.id, environmentId);
       return outcome;
     } finally {
       if (at !== null) {
@@ -398,10 +401,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const driverPorts: ExchangeDriverPorts<DoorCredential> = {
     clock: ports.clock,
     exchange: (request) => {
-      const row = rowOf(request.key);
-      const listed = row === undefined ? undefined : listingOf(row.project.id);
+      const organizationId = organizationOf(request.key);
+      // A target read at the origin its record kept is exchanged in the project its key names.
+      const remembered = stores?.driver.machine(request.key)?.presence.kind === "remembered";
       // The inventory no longer names this target: its presence is read again.
-      if (row === undefined || listed === undefined) {
+      if ((!remembered && rowOf(request.key) === undefined) || organizationId === null) {
         return Promise.resolve({
           ok: false,
           failure: { class: "refusal", reason: { kind: "project-mismatch" } },
@@ -412,8 +416,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       if (at !== null) exchangedAt.set(request.key, at);
       return ports.door.exchange({
         ...request,
-        projectId: row.project.id,
-        organizationId: listed.organizationId,
+        projectId: targetProject(request.key),
+        organizationId,
       });
     },
     install,
@@ -446,7 +450,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const updateTargets = () => {
     if (stores === null || closed) return;
     const records = stores.records.list();
-    stores.containers.setTargets(containerTargetsOf(rows));
     const listed = listTargets({
       listings: listings.map(({ listing }) => listing),
       records,
@@ -454,6 +457,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       absences,
     });
     absences = listed.absences;
+    stores.containers.setTargets(containerTargetsOf(rows, listed.targets, routeKey));
     for (const key of listed.confirm) driverPorts.refreshPresence(key);
     stores.driver.setTargets(
       listed.targets.map((target) => ({
@@ -505,6 +509,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (stores === null || closed) return;
     if (swept.route !== route) swept = { route, keys: new Map() };
     if (route === null) {
+      routeKey = null;
       stores.driver.setDemand("route", []);
       return;
     }
@@ -514,6 +519,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const key =
       stores.records.list().find((record) => record.environmentId === route)?.targetKey ??
       resolved?.key;
+    routeKey = key ?? null;
     stores.driver.setDemand("route", key === undefined ? [] : [key]);
     if (resolved !== undefined) return;
     const unswept = index.failed.filter((failed) => !swept.keys.has(failed));
@@ -662,9 +668,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         (next) => {
           listings = next;
           rows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
+          // The route's target first, so its container is read before any other's.
+          updateRoute();
           updateTargets();
           updateAutoConnect();
-          updateRoute();
         },
         { immediate: true },
       ),

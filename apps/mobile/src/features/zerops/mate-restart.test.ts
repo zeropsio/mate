@@ -243,7 +243,8 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
           },
         };
       },
-      readDescriptor: () => new Promise(() => undefined),
+      // The Mate the record remembers answers where it kept it (A16).
+      readDescriptor: async () => ready(null).descriptor,
       retryLink: (environmentId) => void retried.push(environmentId),
       remove: () => undefined,
     },

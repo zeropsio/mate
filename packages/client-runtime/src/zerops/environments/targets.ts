@@ -5,7 +5,9 @@
  * - A row the inventory read names its target's presence: present at its origin, in a platform
  *   transition, inactive, or without a public address.
  * - A row whose project's services are not read yet says nothing of any Mate in it: those
- *   targets' presence is `unknown`, whatever a record remembers of them.
+ *   targets' presence is `unknown`. A target a record names there, like one whose project no
+ *   listing has read yet, is `remembered` at the origin the record kept (A16): its Mate is looked
+ *   for there before the services are read, never found gone.
  * - A target only a record names holds its last value until every listing is known and complete.
  *   Then it is `gone` when its project is not listed. When its project's services were read
  *   without it, it is `gone` only once a direct read of those services, finished after the
@@ -87,6 +89,10 @@ export function listTargets(input: {
   const settled = input.listings.every(
     (listing) => listing.state === "known" && listing.coverage === "complete",
   );
+  /** A listing no read has answered yet: the projects it will name are not read either. */
+  const unanswered = input.listings.some(
+    (listing) => listing.state === "unread" || listing.state === "reading",
+  );
   const listed = new Set(rows.map((row) => row.project.id));
   const unread = new Set(
     rows.filter((row) => row.presence === "unknown").map((row) => row.project.id),
@@ -96,19 +102,24 @@ export function listTargets(input: {
   const absences = new Map<TargetKey, Absence>();
   const confirm: TargetKey[] = [];
   /** Region P for a target no row names. */
-  const unlisted = (key: TargetKey): Presence | null => {
+  const unlisted = (key: TargetKey, record: RegistrationRecord | undefined): Presence | null => {
     const projectId = targetProject(key);
     const held = input.absences.get(key);
+    // Where its record kept it, while no read of its project's services has said anything (A16).
+    const remembered =
+      held === undefined && record?.origin != null
+        ? ({ kind: "remembered", origin: record.origin } as const)
+        : null;
     // Services not read yet say nothing of a Mate in the project, unless a direct read already
     // confirmed it gone; a listing that cannot say holds the absence as it was.
     if (unread.has(projectId)) {
-      if (held?.kind !== "confirmed") return { kind: "unknown" };
+      if (held?.kind !== "confirmed") return remembered ?? { kind: "unknown" };
       absences.set(key, held);
       return null;
     }
     if (!settled) {
       if (held !== undefined) absences.set(key, held);
-      return null;
+      return unanswered && !listed.has(projectId) ? remembered : null;
     }
     if (!listed.has(projectId)) return GONE;
     const read = input.directReads.get(projectId) ?? null;
@@ -130,19 +141,41 @@ export function listTargets(input: {
   };
   const targets = [...new Set([...byKey.keys(), ...recorded.keys()])].map((key) => {
     const row = byKey.get(key);
-    const presence = row !== undefined ? candidatePresence(row) : unlisted(key);
+    const presence = row !== undefined ? candidatePresence(row) : unlisted(key, recorded.get(key));
     return { key, presence, record: recorded.get(key)?.environmentId ?? null };
   });
   return { targets, absences, confirm };
 }
 
-/** Each row as the container store's target: its origin and its platform statuses. */
+/**
+ * The container store's targets: each row, at its origin and with its platform statuses, and each
+ * remembered target of a listed project at the origin its record kept, its service unread (A16).
+ * `first` — the route's target — is read before any other.
+ */
 export function containerTargetsOf(
   rows: ReadonlyArray<CandidateRow>,
+  targets: ReadonlyArray<ListedTarget>,
+  first: TargetKey | null,
 ): ReadonlyArray<ContainerTarget> {
-  return rows.map((row) => ({
+  const projects = new Map(rows.map((row) => [row.project.id, row.project] as const));
+  const remembered = targets.flatMap((target): ReadonlyArray<ContainerTarget> => {
+    const project = projects.get(targetProject(target.key));
+    return target.presence?.kind === "remembered" && project !== undefined
+      ? [
+          {
+            key: target.key,
+            origin: target.presence.origin,
+            platform: { project: project.status, service: null },
+          },
+        ]
+      : [];
+  });
+  const listed = rows.map((row) => ({
     key: row.key,
     origin: row.containerOrigin ?? null,
     platform: { project: row.project.status, service: row.service?.status ?? null },
   }));
+  const all = [...remembered, ...listed];
+  const route = all.find((target) => target.key === first);
+  return route === undefined ? all : [route, ...all.filter((target) => target !== route)];
 }

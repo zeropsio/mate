@@ -60,6 +60,7 @@ const INPUTS: ReadonlyArray<EnvironmentEvent> = [
   ...GUARD_VARIANTS.map((guards): EnvironmentEvent => ({ type: "GUARDS", guards })),
   { type: "PRESENCE", presence: { kind: "unknown" } },
   { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+  { type: "PRESENCE", presence: { kind: "remembered", origin: ORIGIN } },
   { type: "PRESENCE", presence: { kind: "transitioning", status: "RESTARTING" } },
   { type: "PRESENCE", presence: { kind: "no-origin", reason: "subdomain-off" } },
   { type: "PRESENCE", presence: { kind: "gone", evidence: "direct-not-found" } },
@@ -209,21 +210,30 @@ const violations = (
     (effect): effect is Extract<EnvironmentEffect, { kind: "run" }> =>
       effect.kind === "run" && effect.op.kind === "exchange",
   );
-  // I5: at most one exchange at a time, and none while P ≠ present, before the first grant, or
-  // while `identityMint` is not allowed.
+  // I5: at most one exchange at a time, and none while P ≠ present — but for a remembered Mate
+  // whose descriptor names its record (A16) — before the first grant, or while `identityMint` is
+  // not allowed.
   if (exchanges.length > 1) found.push(`I5: ${exchanges.length} exchanges in one step`);
   for (const exchange of exchanges) {
     if (credential.kind !== "exchanging" || credential.attempt !== exchange.attempt) {
       found.push("I5: an exchange runs that the machine does not track");
     }
+    const held = before.machine.credential;
     if (
-      before.machine.credential.kind === "exchanging" &&
-      before.machine.credential.attempt !== exchange.attempt &&
+      held.kind === "exchanging" &&
+      held.attempt !== exchange.attempt &&
+      // A remembered Mate's descriptor probe hands its attempt on to the exchange it admits.
+      before.machine.probing !== held.attempt &&
       !(before.machine.timer !== null && after.nowMs >= before.machine.timer.wall)
     ) {
       found.push("I5: a second exchange started before the first ended");
     }
-    if (machine.presence.kind !== "present") found.push("I5: exchange while P ≠ present");
+    const remembered =
+      machine.presence.kind === "remembered" &&
+      machine.descriptor?.environmentId === machine.record;
+    if (machine.presence.kind !== "present" && !remembered) {
+      found.push("I5: exchange while P ≠ present");
+    }
     if (!machine.guards.postGrant) found.push("I5: exchange before the first grant");
     if (!machine.guards.identityMint.allowed) found.push("I5: exchange while identityMint refuses");
   }

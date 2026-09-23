@@ -591,3 +591,55 @@ describe("the link's drop (C1b)", () => {
     expect(never.machine.linkLostAt).toBeNull();
   });
 });
+
+// DESIGN A16: a target a record names is probed at the recorded origin before its project's
+// services are read, and exchanged there only when that Mate is the one the record names.
+describe("a remembered target (A16)", () => {
+  const REMEMBERED = { kind: "remembered", origin: ORIGIN } as const;
+
+  /** A remembered, wanted target, after the descriptor probe it starts has been sent. */
+  const probing = (): Run =>
+    drive(initialEnvironment({ record: ENV_A }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "PRESENCE", presence: REMEMBERED },
+    ]);
+
+  const probeOf = (run: Run): Extract<EnvironmentEffect, { kind: "run" }> => {
+    const read = run.effects.find(
+      (effect): effect is Extract<EnvironmentEffect, { kind: "run" }> =>
+        effect.kind === "run" && effect.op.kind === "read-descriptor",
+    );
+    if (read === undefined) throw new Error("no descriptor probe");
+    return read;
+  };
+
+  it("a remembered target whose descriptor names another environment waits for presence", () => {
+    const started = probing();
+    const read = drive(
+      started.machine,
+      [
+        {
+          type: "DESCRIPTOR_READ",
+          attempt: probeOf(started).attempt,
+          result: { ok: true, descriptor: descriptor({ environmentId: ENV_B }) },
+        },
+      ],
+      started.nowMs,
+    );
+
+    expect(read.effects.some((effect) => effect.kind === "run")).toBe(false);
+    expect(read.machine.credential).toEqual({ kind: "waiting", on: "presence", reconnect: false });
+    // Only the services read moves it: time and wakes do not.
+    const waited = drive(read.machine, [{ type: "TICK" }, { type: "WAKE", visible: true }]);
+    expect(waited.machine.credential.kind).toBe("waiting");
+    const listed = drive(waited.machine, [
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    expect(listed.effects).toContainEqual(
+      expect.objectContaining({
+        kind: "run",
+        op: { kind: "exchange", origin: ORIGIN, expected: ENV_A },
+      }),
+    );
+  });
+});

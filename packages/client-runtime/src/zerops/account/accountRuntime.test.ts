@@ -31,6 +31,7 @@ import {
   type ProjectRef,
   type ZeropsDataAdapter,
 } from "../data/types.ts";
+import type { DescriptorFacts } from "../environments/environmentMachine.ts";
 import type { ProbeReading } from "../environments/probeStore.ts";
 import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
@@ -218,6 +219,7 @@ const answering = (environmentId: EnvironmentId, projectId: string): ProbeReadin
  */
 const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<RegistrationRecord>) => {
   const exchanges: Array<Pending<DoorRequest, ExchangeAnswer<DoorCredential>>> = [];
+  const descriptors: Array<Pending<string, DescriptorFacts>> = [];
   const probes: Array<Pending<string, ProbeReading>> = [];
   const removed: Array<EnvironmentId> = [];
   const promoted: Array<readonly [string, EnvironmentId]> = [];
@@ -234,7 +236,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     },
     door: {
       exchange: (request) => pending(exchanges, request, request.signal),
-      readDescriptor: (_origin, signal) => pending([], null, signal),
+      readDescriptor: (origin, signal) => pending(descriptors, origin, signal),
       retryLink: () => undefined,
       remove: (environmentId) => void removed.push(environmentId),
     },
@@ -267,6 +269,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   return {
     ports,
     exchanges,
+    descriptors,
     probes,
     removed,
     promoted,
@@ -933,6 +936,54 @@ describe("the post-grant stage's Mate environments", () => {
     return { ...opened, environments: stage.environments };
   });
 
+  /**
+   * A platform whose reads of the kinds named wait: `release` lets every one of them through, and
+   * those never released never answer.
+   */
+  const heldQueries = (
+    platform: ZeropsDataAdapter,
+    kinds: ReadonlyArray<EntityQueryDescriptor["kind"]>,
+  ) => {
+    let release: () => void = () => undefined;
+    const opened = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const held = (descriptor: unknown) =>
+      kinds.includes((descriptor as EntityQueryDescriptor).kind);
+    const adapter: ZeropsDataAdapter = {
+      ...platform,
+      register: (receiver, request, context) =>
+        request.descriptor.kind === "query-membership" && held(request.descriptor.query)
+          ? Effect.promise(() => opened).pipe(
+              Effect.andThen(platform.register(receiver, request, context)),
+            )
+          : platform.register(receiver, request, context),
+      read: (ticket, context) =>
+        ticket.target.kind === "query" && held(ticket.target.descriptor)
+          ? Effect.promise(() => opened).pipe(Effect.andThen(platform.read(ticket, context)))
+          : platform.read(ticket, context),
+    };
+    return { adapter, release: () => release() };
+  };
+
+  /** The descriptor a Mate serving this environment answers with. */
+  const describing = (environmentId: EnvironmentId): DescriptorFacts => ({
+    environmentId,
+    serverVersion: "0.12.0",
+    update: null,
+    identity: "ok",
+    identityCheckedAt: null,
+  });
+
+  /** Answers the one descriptor probe of a remembered Mate still out: it serves `environmentId`. */
+  const answerDescriptor = (rig: ReturnType<typeof environmentRig>, environmentId: EnvironmentId) =>
+    Effect.gen(function* () {
+      const probe = rig.descriptors.at(-1);
+      if (probe === undefined) throw new Error("No descriptor probe is in flight.");
+      probe.answer(describing(environmentId));
+      yield* settle;
+    });
+
   it.effect("no exchange before the first grant (I10, AL-04), with no React", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -951,6 +1002,9 @@ describe("the post-grant stage's Mate environments", () => {
         yield* settle;
 
         const stage = yield* Fiber.join(postGrant);
+        // Remembered, it is looked for where its record kept it before anything else (A16).
+        expect(rig.descriptors.map(({ input }) => input)).toEqual([MATE_ORIGIN]);
+        yield* answerDescriptor(rig, ENV_A);
         expect(
           rig.exchanges.map(({ input: { key, origin, projectId, organizationId } }) => ({
             key,
@@ -1019,6 +1073,7 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { clock, page, rig, built, environments } = yield* granted([REMEMBERED_A]);
+        yield* answerDescriptor(rig, ENV_A);
         const connect = environments.connect(MATE, "user");
         yield* settle;
         expect(rig.exchanges).toHaveLength(1);
@@ -1127,6 +1182,7 @@ describe("the post-grant stage's Mate environments", () => {
         let finish: (ok: boolean) => void = () => undefined;
         if (row.install !== null) {
           if (row.remembered.length === 0) void environments.connect(MATE, "user");
+          else yield* answerDescriptor(rig, ENV_A);
           yield* settle;
           rig.exchanges[0]!.answer(
             admitted(
@@ -1265,6 +1321,7 @@ describe("the post-grant stage's Mate environments", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const { clock, rig, built } = yield* granted([REMEMBERED_A]);
+          yield* answerDescriptor(rig, ENV_A);
           const heard: Array<Invalidation> = [];
           const subscription = yield* built.invalidations.subscribe;
           yield* Stream.fromSubscription(subscription).pipe(
@@ -1383,6 +1440,83 @@ describe("the post-grant stage's Mate environments", () => {
           expect(rig.removed).toEqual([]);
         }),
       ),
+  );
+
+  it.effect(
+    "a remembered route target is probed and exchanged at the grant, before its project's services are read",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
+          const { rig, environments } = yield* granted([REMEMBERED_A], [A_MATE], platform.adapter);
+          environments.setRoute(ENV_A);
+          yield* settle;
+
+          // Nothing has read the project's services: the Mate is looked for where the record kept it.
+          expect(environments.machines().get(MATE)?.presence).toEqual({
+            kind: "remembered",
+            origin: MATE_ORIGIN,
+          });
+          expect(rig.descriptors.map(({ input }) => input)).toEqual([MATE_ORIGIN]);
+          expect(rig.exchanges).toEqual([]);
+
+          rig.descriptors[0]!.answer(describing(ENV_A));
+          yield* settle;
+
+          expect(
+            rig.exchanges.map(
+              ({ input: { key, origin, expected, projectId, organizationId } }) => ({
+                key,
+                origin,
+                expected,
+                projectId,
+                organizationId,
+              }),
+            ),
+          ).toEqual([
+            {
+              key: MATE,
+              origin: MATE_ORIGIN,
+              expected: ENV_A,
+              projectId: A_MATE.projectId,
+              organizationId: "org-1",
+            },
+          ]);
+          expect(environments.machines().get(MATE)?.presence.kind).toBe("remembered");
+        }),
+      ),
+  );
+
+  it.effect("the route is set before the first probe of a listing change", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const mates = [mate("1"), mate("2"), mate("3")];
+        const route = mates[2]!;
+        const ENV_ROUTE = EnvironmentId.make("env-3");
+        const records = mates.map((listed, index): RegistrationRecord => ({
+          targetKey: listed.key,
+          environmentId: listed === route ? ENV_ROUTE : EnvironmentId.make(`env-${index}`),
+          origin: listed.origin,
+          projectRef: { projectId: listed.projectId, orgId: "org-1" },
+          name: listed.project.name,
+        }));
+        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
+        const projects = heldQueries(services.adapter, ["projects-of-organization"]);
+        const { rig, environments } = yield* granted(records, mates, projects.adapter);
+        environments.setRoute(ENV_ROUTE);
+        yield* settle;
+        expect(rig.probes).toEqual([]);
+
+        // The organization's projects are read: every remembered Mate's container is read at
+        // once, the route's first.
+        projects.release();
+        yield* settle;
+        expect(rig.probes.map(({ input }) => input)[0]).toBe(route.origin);
+        expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
+          mates.map(({ origin }) => origin).toSorted(),
+        );
+      }),
+    ),
   );
 });
 

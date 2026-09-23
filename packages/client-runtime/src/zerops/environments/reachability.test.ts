@@ -373,6 +373,16 @@ describe("selectReachability (DESIGN §4.4 table, over the container verdict)", 
       );
     });
   }
+
+  it("a remembered Mate reads as a present one in every row, never as unknown or gone (A16)", () => {
+    for (const row of ROWS.filter(({ machine: listed }) => listed.presence.kind === "present")) {
+      const remembered = machine({
+        ...row.machine,
+        presence: { kind: "remembered", origin: ORIGIN },
+      });
+      expect(selectReachability(remembered, row.asked ?? ENV_A)).toEqual(row.verdict);
+    }
+  });
 });
 
 /** Feeds events one second apart from `NOW`; `TICK` lands on the machine's timer. */

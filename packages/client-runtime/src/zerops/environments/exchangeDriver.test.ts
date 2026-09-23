@@ -390,6 +390,40 @@ describe("exchange driver (DESIGN §4.4)", () => {
     ]);
   });
 
+  it("a remembered target's descriptor probe counts against the minute's mints (A16)", async () => {
+    const spent = Array.from({ length: DOOR_MINTS_PER_MINUTE - 1 }, (_, index) =>
+      mate(`s${index}`),
+    );
+    const remembered = [mate("r1"), mate("r2")];
+    const { driver, exchanges } = rig([...spent, ...remembered]);
+    driver.setAccount(GRANTED);
+    driver.setVisible(true);
+    driver.setTargets([
+      ...spent.map((listed) => ({
+        key: keyOf(listed),
+        presence: { kind: "present", origin: listed.origin } as const,
+        container: { level: "ready" } as const,
+        record: null,
+      })),
+      ...remembered.map((listed) => ({
+        key: keyOf(listed),
+        presence: { kind: "remembered", origin: listed.origin } as const,
+        container: { level: "unknown" } as const,
+        record: listed.descriptor().environmentId,
+      })),
+    ]);
+    driver.setDemand("auto-connect", spent.map(keyOf));
+    await flush();
+    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE - 1);
+
+    // Both are looked for where their records kept them: one mint is left for the two.
+    driver.setDemand("record", remembered.map(keyOf));
+    await flush();
+
+    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE);
+    expect(exchanges.at(-1)?.key).toBe(keyOf(remembered[0]!));
+  });
+
   it("a revoked session re-exchanges with backoff, repeatedly", async () => {
     const shop = mate("shop");
     const { driver, clock, exchanges, installs, logs, start, reach } = rig([shop]);

@@ -461,10 +461,15 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       return kind === "none" || kind === "waiting" || kind === "backoff";
     });
 
+  /** An exchange still reading a remembered Mate's descriptor: its mint is still to come (A16). */
+  const probing = (machine: EnvironmentMachine): boolean =>
+    machine.credential.kind === "exchanging" && machine.probing === machine.credential.attempt;
+
   /**
    * Hands the free slots, in priority order, to the targets a slot would start, and takes the
    * budget back from every other one — so a slot is never held by a target that waits on
-   * something else, and nothing starts past the concurrency or the minute's mints.
+   * something else, and nothing starts past the concurrency or the minute's mints, counting the
+   * mint each descriptor probe in flight may still spend.
    */
   const allocate = (): void => {
     const now = clock.now();
@@ -473,15 +478,15 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     let mintBound = false;
     for (const key of ordered) {
       const entry = entries.get(key)!;
-      const exchanging = [...entries.values()].filter(
-        (other) => other.machine.credential.kind === "exchanging",
-      ).length;
+      const running = [...entries.values()].map((other) => other.machine);
+      const exchanging = running.filter((other) => other.credential.kind === "exchanging").length;
+      const owed = running.filter(probing).length;
       const reserved = rank(key) > ROUTE_RANK && routePending() ? 1 : 0;
       const mints = DOOR_MINTS_PER_MINUTE - reserved;
       let budget = false;
       if (entry.machine.credential.kind === "exchanging") {
         budget = entry.machine.guards.budget;
-      } else if (exchanging < EXCHANGE_CONCURRENCY - reserved && minted.length < mints) {
+      } else if (exchanging < EXCHANGE_CONCURRENCY - reserved && minted.length + owed < mints) {
         const trial = transitionEnvironment(
           entry.machine,
           { type: "GUARDS", guards: guardsFor(key, true) },
