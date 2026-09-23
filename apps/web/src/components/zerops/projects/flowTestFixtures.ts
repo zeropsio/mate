@@ -1,4 +1,7 @@
-/** The groups, entries and slot defaults the projects-flow tests share. */
+/**
+ * The groups, entries and slot defaults the projects-flow tests share. Plain
+ * TypeScript, not TSX: it is no component, so no surface claims it.
+ */
 
 import {
   buildZeropsGroupTree,
@@ -9,7 +12,7 @@ import {
   type ZeropsGroup,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
-import { act, type ReactElement } from "react";
+import { act, createElement as h, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { vi } from "vite-plus/test";
@@ -199,28 +202,30 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
   groups: [],
   isMate: (value) => value.mate === true,
   onRetryContainers: () => {},
-  renderEnvironment: (value) => <li data-test-environment={value.project.id} />,
-  renderGroupMenu: (group) => <span data-test-menu={group.groupId} />,
+  renderEnvironment: (value) => h("li", { "data-test-environment": value.project.id }),
+  renderGroupMenu: (group) => h("span", { "data-test-menu": group.groupId }),
   renderGroupRows: () => null,
-  renderMate: (value) => <div data-test-mate={value.project.id} />,
-  renderMateFace: (value, size) => <span data-test-face={value.project.id} data-test-size={size} />,
+  renderMate: (value) => h("div", { "data-test-mate": value.project.id }),
+  renderMateFace: (value, size) =>
+    h("span", { "data-test-face": value.project.id, "data-test-size": size }),
   openMate: () => undefined,
   renderNextStep: (value) =>
-    value.flow.nextStep.verb === undefined ? null : (
-      <button data-test-verb={value.flow.nextStep.kind} type="button">
-        {value.flow.nextStep.verb}
-      </button>
-    ),
-  renderReleaseVerb: () => <button data-test-release-verb="true" type="button" />,
-  renderPullRequest: (_group, value, options) => (
-    <li
-      data-test-compact={String(options.compact)}
-      data-test-pull={value.number}
-      data-test-with-merge={String(options.withMerge)}
-    />
-  ),
-  renderStopMenu: (value) => <span data-test-stop-menu={value.project.id} />,
-  renderTool: (value) => <span data-test-tool={value.project.id} />,
+    value.flow.nextStep.verb === undefined
+      ? null
+      : h(
+          "button",
+          { "data-test-verb": value.flow.nextStep.kind, type: "button" },
+          value.flow.nextStep.verb,
+        ),
+  renderReleaseVerb: () => h("button", { "data-test-release-verb": "true", type: "button" }),
+  renderPullRequest: (_group, value, options) =>
+    h("li", {
+      "data-test-compact": String(options.compact),
+      "data-test-pull": value.number,
+      "data-test-with-merge": String(options.withMerge),
+    }),
+  renderStopMenu: (value) => h("span", { "data-test-stop-menu": value.project.id }),
+  renderTool: (value) => h("span", { "data-test-tool": value.project.id }),
   tools: [],
   ungrouped: [],
   view: "overview",
@@ -238,5 +243,5 @@ export function mount(element: ReactElement): ReactTestRenderer {
 
 /** The whole flow's markup, every slot a marker unless the test says otherwise. */
 export function renderFlow(props: Partial<ZeropsProjectsFlowProps<Item>> = {}): string {
-  return renderToStaticMarkup(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} {...props} />);
+  return renderToStaticMarkup(h(ZeropsProjectsFlow<Item>, { ...FLOW_PROPS, ...props }));
 }
