@@ -487,6 +487,35 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(reach(shop)).toEqual({ kind: "ready", notice: null });
   });
 
+  it("an answer to an exchange started before the target was retired is never installed", async () => {
+    const shop = mate("shop");
+    const { driver, exchanges, installs, logs, release, start } = rig([shop], { hold: true });
+    await start({ records: [shop] });
+    const target = (presence: Presence) => ({
+      key: keyOf(shop),
+      presence,
+      container: { level: "ready" } as const,
+      record: EnvironmentId.make("env-shop"),
+    });
+    driver.setTargets([target({ kind: "gone", evidence: "complete-scope-omits-verified" })]);
+    await flush();
+    driver.setTargets([target({ kind: "present", origin: shop.origin })]);
+    await flush();
+    expect(exchanges).toHaveLength(2);
+
+    // The first exchange's port did not honour the abort: its late answer is stale.
+    await release();
+    expect(installs).toEqual([]);
+    expect(driver.machine(keyOf(shop))?.credential.kind).toBe("exchanging");
+    expect(logs).toContainEqual({
+      key: keyOf(shop),
+      diagnostic: { kind: "stale-result", attempt: 1 },
+    });
+
+    await release();
+    expect(installs).toHaveLength(1);
+  });
+
   it("the user's Connect answers once the credential is installed, or with why it is not", async () => {
     const shop = mate("shop");
     const readOnly = mate("ro");

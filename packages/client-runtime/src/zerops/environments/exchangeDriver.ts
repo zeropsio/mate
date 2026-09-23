@@ -276,6 +276,16 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     entry.cancelTimer = clock.setTimer(delayMs, () => enqueue(() => step(key, { type: "TICK" })));
   };
 
+  /**
+   * An op's answer counts only for the entry that started it: a target that started over keeps
+   * its key but restarts its attempts, so an older entry's answer is stale.
+   */
+  const startedBy = (key: TargetKey, entry: Entry, attempt: number): boolean => {
+    if (entries.get(key) === entry) return true;
+    ports.log?.(key, { kind: "stale-result", attempt });
+    return false;
+  };
+
   const run = (key: TargetKey, entry: Entry, effect: EnvironmentEffect) => {
     switch (effect.kind) {
       case "schedule":
@@ -306,10 +316,10 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
             signal: controller.signal,
           })
           .then(
-            (answer) => enqueue(() => answered(key, attempt, answer)),
+            (answer) => enqueue(() => answered(key, entry, attempt, answer)),
             () =>
               enqueue(() =>
-                answered(key, attempt, {
+                answered(key, entry, attempt, {
                   ok: false,
                   failure: { class: "retryable", cause: { kind: "network" } },
                   descriptor: null,
@@ -321,17 +331,14 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       case "read-descriptor": {
         const controller = new AbortController();
         entry.inFlight.set(attempt, controller);
+        const read = (result: Extract<EnvironmentEvent, { type: "DESCRIPTOR_READ" }>["result"]) =>
+          enqueue(() => {
+            if (startedBy(key, entry, attempt))
+              step(key, { type: "DESCRIPTOR_READ", attempt, result });
+          });
         ports.readDescriptor(op.origin, controller.signal).then(
-          (descriptor) =>
-            enqueue(() =>
-              step(key, {
-                type: "DESCRIPTOR_READ",
-                attempt,
-                result: { ok: true, descriptor },
-              }),
-            ),
-          () =>
-            enqueue(() => step(key, { type: "DESCRIPTOR_READ", attempt, result: { ok: false } })),
+          (descriptor) => read({ ok: true, descriptor }),
+          () => read({ ok: false }),
         );
         return;
       }
@@ -374,9 +381,13 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     for (const effect of effects) run(key, entry, effect);
   };
 
-  const answered = (key: TargetKey, attempt: number, answer: ExchangeAnswer<C>): void => {
-    const entry = entries.get(key);
-    if (entry === undefined) return;
+  const answered = (
+    key: TargetKey,
+    entry: Entry,
+    attempt: number,
+    answer: ExchangeAnswer<C>,
+  ): void => {
+    if (!startedBy(key, entry, attempt)) return;
     if (!answer.ok) {
       step(key, {
         type: "EXCHANGE_FAILED",
@@ -404,7 +415,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     const installed = (outcome: InstallOutcome) =>
       enqueue(() => {
         // A newer accepted credential's install owns the entry now.
-        if (entries.get(key) !== entry || entry.installing !== attempt) return;
+        if (!startedBy(key, entry, attempt) || entry.installing !== attempt) return;
         entry.installing = null;
         step(key, {
           type: outcome.ok ? "INSTALLED" : "INSTALL_FAILED",
