@@ -4,8 +4,8 @@
  * module-level state such as the account lifetime is per tab, the way two
  * browser tabs keep it.
  *
- * The tabs share one JavaScript realm, so `window`, `document` and `fetch`
- * are the globals of one tab at a time. The fixture points them at a tab for
+ * The tabs share one JavaScript realm, so `window`, `document`, `history`
+ * and `fetch` are the globals of one tab at a time. The fixture points them at a tab for
  * each piece of that tab's code it starts — mounting, `run`, delivering a
  * browser signal, a reload — and a signal or a reload gives them back to the
  * tab that had them when it is done, so the tab whose `run` caused it keeps
@@ -23,7 +23,7 @@ import type {
   BrowserSignal,
   HarnessTab,
 } from "@t3tools/client-runtime/zerops/testing";
-import { act, createElement, Fragment, useEffect, type ReactNode } from "react";
+import { act, createElement, Fragment, useEffect, type ComponentType, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { vi } from "vite-plus/test";
 
@@ -32,6 +32,9 @@ import { TestNode } from "./testDom";
 
 /** Real task boundaries, even when a test fakes the timers. */
 const nextTask = () => new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+
+/** The origin every harness tab is served from. */
+const ORIGIN = "https://mate.example.test";
 
 /** A page that reloads itself this often in one test is in a loop. */
 const RELOAD_LOOP = 10;
@@ -71,21 +74,49 @@ export interface MountedTab {
   /** The page's root node, to find a control on it. */
   readonly container: () => TestNode;
   /** Where the tab's page is. */
-  readonly location: () => { readonly pathname: string };
+  readonly location: () => {
+    readonly pathname: string;
+    readonly search: string;
+    readonly hash: string;
+  };
+  /**
+   * Every navigation the tab's code asked the browser for, in order. The
+   * fixture records them and leaves the tab where it is.
+   */
+  readonly navigations: () => ReadonlyArray<TabNavigation>;
   /** Runs page code (a session call, a click) in this tab, inside React's act. */
   readonly run: <T>(work: () => T | Promise<T>) => Promise<T>;
   readonly unmount: () => Promise<void>;
 }
 
-export interface MountTabOptions {
+export interface TabNavigation {
+  readonly via: "assign" | "replace" | "href" | "pushState" | "replaceState";
+  readonly url: string;
+}
+
+/**
+ * What the tab's page is. Either is built on every open, after the tab's
+ * module graph is reset, so it imports what it renders itself.
+ */
+export type MountTabOptions = {
   /** The path the page opens at. */
   readonly path?: string;
-  /**
-   * The page below the session provider. It is built on every open, after
-   * the tab's module graph is reset, so it imports what it renders itself.
-   */
-  readonly page?: () => Promise<ReactNode>;
-}
+} & (
+  | {
+      /** The page below the fixture's session provider, over the tab's storage. */
+      readonly page?: () => Promise<ReactNode>;
+      readonly app?: never;
+    }
+  | {
+      /**
+       * The whole page, bringing its own session provider (`AppRoot`, say).
+       * It places `Probe` inside that provider wherever the session should be
+       * read; `session()` is what a probe last rendered.
+       */
+      readonly app: (Probe: ComponentType) => Promise<ReactNode>;
+      readonly page?: never;
+    }
+);
 
 /**
  * A URL path as `location` splits it. Split by hand rather than by `URL`,
@@ -102,19 +133,52 @@ function splitPath(path: string) {
   };
 }
 
-function tabWindow(tab: HarnessTab, path: string, reload: () => void) {
+function tabWindow(
+  tab: HarnessTab,
+  path: string,
+  reload: () => void,
+  navigations: TabNavigation[],
+) {
   const document = new TestNode("#document", null, 9);
   Object.defineProperty(document, "visibilityState", {
     get: () => tab.signals.state().visibilityState,
   });
+  const at = splitPath(path);
+  const navigate = (via: TabNavigation["via"]) => (url: string | URL | null | undefined) => {
+    navigations.push({ via, url: String(url) });
+  };
+  const location = {
+    ...at,
+    origin: ORIGIN,
+    get href() {
+      return `${ORIGIN}${at.pathname}${at.search}${at.hash}`;
+    },
+    set href(url: string) {
+      navigate("href")(url);
+    },
+    assign: navigate("assign"),
+    replace: navigate("replace"),
+    reload,
+  };
+  const history = {
+    scrollRestoration: "auto",
+    pushState: (_state: unknown, _unused: string, url?: string | URL | null) =>
+      navigate("pushState")(url),
+    replaceState: (_state: unknown, _unused: string, url?: string | URL | null) =>
+      navigate("replaceState")(url),
+  };
   const window = Object.assign(new EventTarget(), {
     document,
-    location: { ...splitPath(path), reload },
+    location,
+    history,
     localStorage: tab.localStorage,
     sessionStorage: tab.sessionStorage,
     navigator: { locks: tab.locks },
     BroadcastChannel: tab.BroadcastChannel,
     HTMLIFrameElement: TestNode,
+    scrollX: 0,
+    scrollY: 0,
+    scrollTo: () => undefined,
     setTimeout: globalThis.setTimeout,
     clearTimeout: globalThis.clearTimeout,
     setInterval: globalThis.setInterval,
@@ -124,8 +188,8 @@ function tabWindow(tab: HarnessTab, path: string, reload: () => void) {
 }
 
 /**
- * Opens `tab`'s page: a `ZeropsSessionProvider` over the tab's storage and the
- * harness platform, with `page` below it.
+ * Opens `tab`'s page over the harness platform: a `ZeropsSessionProvider` over
+ * the tab's storage with `page` below it, or `app` as the whole page.
  */
 export async function mountTab(
   harness: AccountHarness,
@@ -136,15 +200,28 @@ export async function mountTab(
   let graph: TabGraph | null = null;
   let session: ZeropsSessionValue | null = null;
   let container: TestNode | null = null;
-  const window = tabWindow(tab, options.path ?? "/zerops", () => {
-    if (tab.reloads >= RELOAD_LOOP) throw new Error(`${tab.id} reloads in a loop.`);
-    const reload = reloadPage().finally(() => reloading.delete(reload));
-    reloading.add(reload);
-  });
+  const navigations: TabNavigation[] = [];
+  const window = tabWindow(
+    tab,
+    options.path ?? "/zerops",
+    () => {
+      if (tab.reloads >= RELOAD_LOOP) throw new Error(`${tab.id} reloads in a loop.`);
+      const reload = reloadPage().finally(() => reloading.delete(reload));
+      reloading.add(reload);
+    },
+    navigations,
+  );
 
   const activate = () => {
     vi.stubGlobal("window", window);
+    vi.stubGlobal("self", window);
     vi.stubGlobal("document", window.document);
+    vi.stubGlobal("history", window.history);
+    vi.stubGlobal("addEventListener", window.addEventListener.bind(window));
+    vi.stubGlobal("removeEventListener", window.removeEventListener.bind(window));
+    vi.stubGlobal("scrollX", window.scrollX);
+    vi.stubGlobal("scrollY", window.scrollY);
+    vi.stubGlobal("scrollTo", window.scrollTo);
     vi.stubGlobal("fetch", harness.rest.fetchFor(tab));
     vi.stubGlobal("HTMLIFrameElement", TestNode);
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -176,7 +253,6 @@ export async function mountTab(
   async function openPage() {
     activate();
     graph = await loadTabGraph();
-    const below = options.page === undefined ? null : await options.page();
     const { ZeropsSessionProvider, useZeropsSession } = graph;
     function Probe() {
       const value = useZeropsSession();
@@ -185,17 +261,24 @@ export async function mountTab(
       }, [value]);
       return null;
     }
+    const content =
+      options.app === undefined
+        ? createElement(ZeropsSessionProvider, {
+            storage: tab.zeropsStorage,
+            children: createElement(
+              Fragment,
+              null,
+              createElement(Probe),
+              options.page === undefined ? null : await options.page(),
+            ),
+          })
+        : await options.app(Probe);
     tab.signals.subscribe(deliver);
     activate();
     container = new TestNode("div", window.document);
     root = createRoot(container as never);
     await act(async () => {
-      root!.render(
-        createElement(ZeropsSessionProvider, {
-          storage: tab.zeropsStorage,
-          children: createElement(Fragment, null, createElement(Probe), below),
-        }),
-      );
+      root!.render(content);
     });
   }
 
@@ -231,6 +314,7 @@ export async function mountTab(
       return container;
     },
     location: () => window.location,
+    navigations: () => [...navigations],
     run: async (work) => {
       activate();
       let result!: Awaited<ReturnType<typeof work>>;

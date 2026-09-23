@@ -3,36 +3,21 @@
  * (`ZeropsAccountDataBoundary`), with the account's data runtime built over the
  * harness datastream instead of a platform socket.
  *
- * Lives outside `*.test.*` on purpose: it runs `Effect.runSync` and
- * `Effect.runPromise`, which `no-manual-effect-runtime-in-tests` forbids in
- * test files. A harness tab imports it after its module graph is reset, so
- * every module it renders is the tab's own.
+ * Lives outside `*.test.*` on purpose: it runs `Effect.runSync`, which
+ * `no-manual-effect-runtime-in-tests` forbids in test files. A harness tab
+ * imports it after its module graph is reset, so every module it renders is
+ * the tab's own.
  */
 import { RegistryContext } from "@effect/atom-react";
-import { makeZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
-import * as Scheduler from "effect/Scheduler";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { createElement, useEffect, useState, type ReactNode } from "react";
 
-import { ZeropsDataProvider, type MakeZeropsDataRuntime } from "../ZeropsDataProvider";
+import { ZeropsDataProvider } from "../ZeropsDataProvider";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
 import { useZeropsData } from "../zeropsDataContext";
-
-function harnessRuntime(datastream: FakeDatastream): MakeZeropsDataRuntime {
-  let opaque = 0;
-  return ({ scope, registry, scheduler, signal }) =>
-    Effect.runPromise(
-      makeZeropsDataRuntime({
-        scope,
-        adapter: datastream.adapter,
-        atomRegistry: registry,
-        makeOpaqueId: () => `opaque-${++opaque}`,
-      }).pipe(Effect.provideService(Scheduler.Scheduler, scheduler)),
-      { signal },
-    );
-}
+import { harnessRuntime } from "./harnessRuntime";
 
 export function AccountProduct({
   datastream,

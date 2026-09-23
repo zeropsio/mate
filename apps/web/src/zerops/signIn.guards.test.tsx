@@ -1,9 +1,50 @@
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
-import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
+import { makeAccountHarness, type FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
+import type { ComponentType, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import type { AppRouter } from "../router";
 import { resolveZeropsAccountGate } from "../routes/-accountGate";
 import { mountTab, unmountTabs } from "./__fixtures__/harnessTabs";
+
+/**
+ * What `AppRoot`'s tree reaches outside itself in a harness tab: the fixture's
+ * session probe, placed where the landing and the routes render, and the
+ * harness datastream the account's data runtime is built over.
+ */
+const seams = vi.hoisted(() => ({
+  Probe: (() => null) as ComponentType,
+  datastream: null as FakeDatastream | null,
+}));
+
+vi.mock("../components/zerops/landing/ZeropsHostedLanding", async () => {
+  const { createElement, Fragment } = await import("react");
+  return {
+    ZeropsHostedLanding: () =>
+      createElement(Fragment, null, "Sign in to Zerops", createElement(seams.Probe)),
+  };
+});
+
+vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
+  ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
+}));
+
+vi.mock("./ZeropsDataProvider", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ZeropsDataProvider")>();
+  const [{ useState }, { harnessRuntime }] = await Promise.all([
+    import("react"),
+    import("./__fixtures__/harnessRuntime"),
+  ]);
+  return {
+    ...actual,
+    ZeropsDataProvider: ({ children }: { readonly children: ReactNode }) => {
+      const [makeRuntime] = useState(() => harnessRuntime(seams.datastream!));
+      return (
+        <actual.ZeropsDataProvider makeRuntime={makeRuntime}>{children}</actual.ZeropsDataProvider>
+      );
+    },
+  };
+});
 
 const person: ZeropsUser = {
   id: "user-1",
@@ -100,14 +141,38 @@ describe("deep link after sign-in", () => {
     expect(landing).toBe(DEEP_LINK);
     expectLanding(landing);
   });
+});
 
-  it("keeps a password sign-in on the deep link it was opened at", async () => {
-    const { tab } = await signedOutTab(DEEP_LINK);
+describe("password sign-in in AppRoot", () => {
+  it("keeps a password sign-in on the deep link it was opened at, with that route on screen", async () => {
+    const harness = makeAccountHarness({
+      people: [{ user: person, password: "secret" }],
+      projects: [{ id: "p1", clientId: "org-1", name: "One", status: "ACTIVE" }],
+    });
+    seams.datastream = harness.datastream;
+    let router!: AppRouter;
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      path: DEEP_LINK,
+      app: async (Probe) => {
+        seams.Probe = Probe;
+        const [{ AppRoot }, { productRouter }, { createElement }] = await Promise.all([
+          import("../AppRoot"),
+          import("./__fixtures__/productRoutes"),
+          import("react"),
+        ]);
+        router = productRouter(DEEP_LINK, Probe);
+        return createElement(AppRoot, { router });
+      },
+    });
+    expect(tab.text()).toContain("Sign in to Zerops");
 
     await tab.run(() => tab.session().signIn("person@example.test", "secret"));
 
+    expect(tab.text()).toContain("Project p1");
+    expect(tab.text()).not.toContain("Sign in to Zerops");
     expect(tab.session().status).toBe("signed-in");
-    expect(tab.location().pathname).toBe(DEEP_LINK);
-    expectLanding(tab.location().pathname);
+    expect(router.state.location.pathname).toBe(DEEP_LINK);
+    expect(tab.navigations()).toEqual([]);
+    expectLanding(router.state.location.pathname);
   });
 });
