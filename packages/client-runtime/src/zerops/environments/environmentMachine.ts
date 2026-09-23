@@ -123,6 +123,9 @@ export type ExchangeFailure =
   | { readonly class: "retryable"; readonly cause: ExchangeCause }
   | { readonly class: "refusal"; readonly reason: RefusalReason };
 
+/** The blocks a descriptor re-read answers: a redeploy, or a server version with no facts yet. */
+export type RereadBlock = Extract<ConnectionBlockedReason, "configuration" | "unsupported">;
+
 export type Credential =
   | {
       readonly kind: "none";
@@ -146,8 +149,17 @@ export type Credential =
   | {
       readonly kind: "held";
       readonly environmentId: EnvironmentId;
-      /** A descriptor re-read after a configuration block; null while nothing is re-evaluated. */
-      readonly rereading: { readonly attempt: number; readonly deadline: Instant } | null;
+      /**
+       * The link's block was published for the credential this one replaced. Installing this one
+       * retries the link (`rotateCredential`), so the next LINK event is the one judged.
+       */
+      readonly staleBlock: boolean;
+      /** A descriptor re-read the link's block asked for; null while nothing is re-evaluated. */
+      readonly rereading: {
+        readonly attempt: number;
+        readonly deadline: Instant;
+        readonly block: RereadBlock;
+      } | null;
     }
   /** Terminal: the target is gone or the user removed it. */
   | { readonly kind: "retired"; readonly evidence: AbsenceEvidence };
@@ -583,30 +595,57 @@ const onBlocked = (
       }
       return { ...next, credential: { kind: "none", reconnect: true } };
     }
-    case "configuration": {
-      if (machine.presence.kind !== "present") return machine;
-      const attempt = machine.nextAttempt;
-      out.push({
-        kind: "run",
-        attempt,
-        op: { kind: "read-descriptor", origin: machine.presence.origin },
-      });
-      return {
-        ...machine,
-        nextAttempt: attempt + 1,
-        credential: {
-          ...credential,
-          rereading: { attempt, deadline: after(ctx.now, DESCRIPTOR_DEADLINE_MS) },
-        },
-      };
-    }
+    case "configuration":
+    case "unsupported":
+      // `judgeDescriptorBlock` answers these, now or once their facts can be read.
+      return machine;
     case "permission":
     case "read-only":
       if (machine.permissionRetried) return refuse(machine, { kind: "role" }, out);
       return { ...machine, permissionRetried: true, credential: { kind: "none", reconnect: true } };
-    case "unsupported":
-      return refuse(machine, { kind: "version" }, out);
   }
+};
+
+/**
+ * A held credential behind a block the descriptor answers: `unsupported` with a descriptor is a
+ * version refusal; otherwise the descriptor is re-read as soon as the Mate has an origin, whichever
+ * of the block, the presence and a probe's descriptor arrived last.
+ */
+const judgeDescriptorBlock = (
+  machine: EnvironmentMachine,
+  ctx: EnvironmentContext,
+  out: Effects,
+): EnvironmentMachine => {
+  const credential = machine.credential;
+  const link = machine.link;
+  if (
+    credential.kind !== "held" ||
+    credential.staleBlock ||
+    credential.rereading !== null ||
+    link.phase !== "blocked"
+  ) {
+    return machine;
+  }
+  const block = link.reason;
+  if (block !== "configuration" && block !== "unsupported") return machine;
+  if (block === "unsupported" && machine.descriptor !== null) {
+    return refuse(machine, { kind: "version" }, out);
+  }
+  if (machine.presence.kind !== "present") return machine;
+  const attempt = machine.nextAttempt;
+  out.push({
+    kind: "run",
+    attempt,
+    op: { kind: "read-descriptor", origin: machine.presence.origin },
+  });
+  return {
+    ...machine,
+    nextAttempt: attempt + 1,
+    credential: {
+      ...credential,
+      rereading: { attempt, deadline: after(ctx.now, DESCRIPTOR_DEADLINE_MS), block },
+    },
+  };
 };
 
 const onLink = (
@@ -615,11 +654,17 @@ const onLink = (
   ctx: EnvironmentContext,
   out: Effects,
 ): EnvironmentMachine => {
+  if (phase.phase === "connected" && machine.link.phase === "connected") return machine;
+  // Whatever the link says now, it says it about the credential held now.
+  const credential =
+    machine.credential.kind === "held"
+      ? { ...machine.credential, staleBlock: false }
+      : machine.credential;
   if (phase.phase === "connected") {
-    if (machine.link.phase === "connected") return machine;
     const next: EnvironmentMachine = {
       ...machine,
       link: { phase: "connected", since: ctx.now },
+      credential,
       permissionRetried: false,
     };
     // A live socket proves the container is up: a wait on it ends.
@@ -627,7 +672,7 @@ const onLink = (
       ? { ...next, failures: 0, ladder: INITIAL_BACKOFF }
       : next;
   }
-  const next: EnvironmentMachine = { ...machine, link: phase };
+  const next: EnvironmentMachine = { ...machine, link: phase, credential };
   return phase.phase === "blocked" ? onBlocked(next, phase.reason, ctx, out) : next;
 };
 
@@ -723,14 +768,16 @@ const apply = (
       }
       const read = event.result.descriptor;
       const next = ingestDescriptor(machine, read, ctx);
-      const replaced = read.environmentId !== credential.environmentId;
-      return {
-        ...next,
-        superseded: replaced
-          ? supersede(next.superseded, credential.environmentId, read.environmentId)
-          : next.superseded,
-        credential: { kind: "none", reconnect: !replaced },
-      };
+      if (read.environmentId !== credential.environmentId) {
+        return {
+          ...next,
+          superseded: supersede(next.superseded, credential.environmentId, read.environmentId),
+          credential: { kind: "none", reconnect: false },
+        };
+      }
+      return credential.rereading.block === "unsupported"
+        ? refuse(next, { kind: "version" }, out)
+        : { ...next, credential: { kind: "none", reconnect: true } };
     }
     case "EXCHANGE_SUCCEEDED": {
       if (credential.kind !== "exchanging" || credential.attempt !== event.attempt) {
@@ -748,7 +795,12 @@ const apply = (
             : next.superseded,
         failures: 0,
         ladder: INITIAL_BACKOFF,
-        credential: { kind: "held", environmentId: event.environmentId, rereading: null },
+        credential: {
+          kind: "held",
+          environmentId: event.environmentId,
+          staleBlock: machine.link.phase === "blocked",
+          rereading: null,
+        },
       };
     }
     case "EXCHANGE_FAILED": {
@@ -845,6 +897,7 @@ export const transitionEnvironment = (
   let next = settle(machine, ctx);
   next = apply(next, event, ctx, out);
   next = settle(next, ctx);
+  next = judgeDescriptorBlock(next, ctx, out);
   // Every input can move a guard: an idle or waiting credential is re-judged after each event.
   next = evaluate(next, ctx, out);
   next = reschedule(next, out);

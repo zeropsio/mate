@@ -12,6 +12,7 @@ import {
   type EnvironmentGuards,
   type EnvironmentMachine,
 } from "./environmentMachine.ts";
+import { selectReachability } from "./reachability.ts";
 
 const ORIGIN = "https://zcp-1-abc.prg1.zerops.app";
 const ENV_A = EnvironmentId.make("env-a");
@@ -110,6 +111,28 @@ describe("environment machine (DESIGN §4.4)", () => {
     ]);
     expect(reread.machine.superseded.get(ENV_A)).toBe(ENV_B);
     expect(reread.machine.credential.kind).toBe("exchanging");
+  });
+
+  it("a configuration block during a redeploy re-reads the descriptor once the Mate is present again", () => {
+    const blocked = drive(connected(), [
+      { type: "PRESENCE", presence: { kind: "transitioning", status: "RESTARTING" } },
+      { type: "LINK", link: { phase: "connecting" } },
+      { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
+    ]);
+    // No origin to read from while the service restarts.
+    expect(blocked.effects).toEqual([]);
+    const present = drive(
+      blocked.machine,
+      [{ type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } }],
+      blocked.nowMs,
+    );
+    expect(present.effects).toContainEqual(
+      expect.objectContaining({ kind: "run", op: { kind: "read-descriptor", origin: ORIGIN } }),
+    );
+    expect(selectReachability(present.machine, ENV_A)).toEqual({
+      kind: "connecting",
+      waitingOn: "descriptor",
+    });
   });
 
   it("counts one auth rejection per rotated credential and backs off on the third within two minutes", () => {

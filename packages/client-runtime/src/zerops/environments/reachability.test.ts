@@ -70,7 +70,7 @@ const machine = (overrides: Partial<EnvironmentMachine>): EnvironmentMachine => 
   ...overrides,
 });
 
-const HELD = { kind: "held", environmentId: ENV_A, rereading: null } as const;
+const HELD = { kind: "held", environmentId: ENV_A, staleBlock: false, rereading: null } as const;
 const CONNECTED = { phase: "connected", since: at(NOW - 5_000) } as const;
 
 /**
@@ -105,7 +105,7 @@ const ROWS: ReadonlyArray<{
     row: 2,
     name: "the asked environment was replaced by a redeploy",
     machine: machine({
-      credential: { kind: "held", environmentId: ENV_B, rereading: null },
+      credential: { kind: "held", environmentId: ENV_B, staleBlock: false, rereading: null },
       link: CONNECTED,
       superseded: new Map([[ENV_A, ENV_B]]),
     }),
@@ -165,7 +165,8 @@ const ROWS: ReadonlyArray<{
       credential: {
         kind: "held",
         environmentId: ENV_A,
-        rereading: { attempt: 3, deadline: at(NOW + 8_000) },
+        staleBlock: false,
+        rereading: { attempt: 3, deadline: at(NOW + 8_000), block: "configuration" },
       },
       link: { phase: "blocked", reason: "configuration" },
     }),
@@ -408,6 +409,48 @@ describe("reachability over the machine's own transitions", () => {
       ]).machine;
       expect(selectReachability(old, ENV_A)).toEqual(verdict);
     }
+  });
+
+  it("blocked(unsupported) with no descriptor read yet reads one before the floor verdict", () => {
+    const opened = drive(initialEnvironment({ record: null }), OPENING).machine;
+    const blocked = drive(opened, [
+      {
+        type: "EXCHANGE_SUCCEEDED",
+        attempt: attemptOf(opened),
+        environmentId: ENV_A,
+        descriptor: null,
+      },
+      { type: "LINK", link: { phase: "blocked", reason: "unsupported" } },
+    ]).machine;
+    expect(selectReachability(blocked, ENV_A)).toEqual({
+      kind: "connecting",
+      waitingOn: "descriptor",
+    });
+    const credential = blocked.credential;
+    if (credential.kind !== "held" || credential.rereading === null) throw new Error("no re-read");
+    const read = drive(blocked, [
+      {
+        type: "DESCRIPTOR_READ",
+        attempt: credential.rereading.attempt,
+        result: {
+          ok: true,
+          descriptor: descriptor({
+            serverVersion: "0.10.4",
+            update: {
+              installed: "0.10.4",
+              latest: "0.12.0",
+              available: true,
+              checkedAt: "2026-09-23T10:00:00.000Z",
+            },
+          }),
+        },
+      },
+    ]).machine;
+    expect(selectReachability(read, ENV_A)).toEqual({
+      kind: "update-required",
+      actual: "0.10.4",
+      minimum: "0.11.0",
+    });
   });
 
   it("blocked(permission) twice → refused(role) (T-L22)", () => {

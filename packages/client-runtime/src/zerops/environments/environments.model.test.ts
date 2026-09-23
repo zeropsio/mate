@@ -213,6 +213,21 @@ const violations = (
       found.push(`I7: waiting(${credential.on}) was stranded; its inputs already allow more`);
     }
   }
+  // A held credential behind a blocked link: the block is being re-read, its re-read waits on
+  // presence, or the block predates the credential and installing it retries the link.
+  if (
+    credential.kind === "held" &&
+    machine.link.phase === "blocked" &&
+    credential.rereading === null &&
+    !credential.staleBlock
+  ) {
+    const reason = machine.link.reason;
+    const needsRead =
+      reason === "configuration" || (reason === "unsupported" && machine.descriptor === null);
+    if (!needsRead || machine.presence.kind === "present") {
+      found.push(`I7: held behind blocked(${reason}) with nothing in flight`);
+    }
+  }
   // I9: a terminal verdict only with its evidence; K held ∧ L connected ∧ C ≠ inactive ⇒ ready.
   for (const asked of [ENV_A, ENV_B]) {
     const verdict = selectReachability(machine, asked);
