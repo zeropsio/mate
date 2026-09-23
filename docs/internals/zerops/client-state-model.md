@@ -580,7 +580,7 @@ carries it. "Live" means it holds on `main` today.
 | Rights-less throwaway mint no longer waits for the account window                                 | Live                                                                                   |
 | Mate commands need the Mate session only                                                          | 2.5, after S.0 is released                                                             |
 | First mount on the first grant alone                                                              | Live                                                                                   |
-| Registration records, followed across tabs                                                        | Live; legacy keys deleted in 5.4                                                       |
+| Registration records, followed across tabs                                                        | Live; the legacy keys are no longer read                                               |
 | Probe store, container machine, persisted intents                                                 | Live                                                                                   |
 | A Mate leaves the catalog only after a direct project-services read confirms its absence (C19)    | Live                                                                                   |
 | Descriptor index and full sweep; `replaced`                                                       | Live                                                                                   |
@@ -599,9 +599,9 @@ carries it. "Live" means it holds on `main` today.
 | Signer re-read before refusing a turn                                                             | Live from the first release after 0.11.41                                              |
 | A turn failing authentication re-probes the agent's sign-in                                       | Live from the first release after 0.11.41                                              |
 | Agent login reports its exit                                                                      | Live from the first release after 0.11.41                                              |
-| A deploy operation becomes uncertain after its cap                                                | 4.4–4.5 (S.5)                                                                          |
+| A deploy operation becomes uncertain after its cap                                                | Live                                                                                   |
 | Descriptor boot identity, server state stream, identity verdict split, close reasons              | S.6                                                                                    |
-| Persisted UI keys under the account key; the last route through the gate                          | 5.2                                                                                    |
+| Persisted UI keys under the account key; the last route through the gate                          | Live                                                                                   |
 | Zone tests: one owner per fact family, no component I/O, no data timers                           | 5.5                                                                                    |
 | Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                            | Live                                                                                   |
 | Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)          | Live; zone test "rule 2"                                                               |
