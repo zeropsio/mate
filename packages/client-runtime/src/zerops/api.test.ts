@@ -2053,48 +2053,36 @@ describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
   });
 });
 
-describe("ZeropsApiClient.recordProjectAgentSigner — who signed an agent in (D6)", () => {
+describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {
   const project = {
     id: "p1",
     name: "Fen",
     status: "ACTIVE",
     clientId: "org-1",
+    description: "A Mate",
     tagList: ["mate", "mate:signer:claude-code:old-user"],
+    publicIpV4Shared: true,
+    maxCreditLimit: 40,
+    userRoles: [{ clientUserId: "cu-jan", roleCode: "OWNER" }],
   };
 
-  it("replaces this agent's signer and keeps every other tag", async () => {
+  it("sends the list with the fields the platform would otherwise reset, and never userRoles", async () => {
     const stub = recordingFetch(() => jsonResponse(200, project));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.recordProjectAgentSigner({
-      projectId: "p1",
-      agentId: "claude-code",
-      userId: "jan",
-    });
+    await client.writeProjectTags(project, ["mate", "mate:signer:claude-code:jan"]);
 
-    const body = JSON.parse(stub.requests[1]?.body ?? "{}");
-    expect(body.tagList).toEqual(["mate", "mate:signer:claude-code:jan"]);
+    expect(stub.requests.map((request) => request.method)).toEqual(["PUT"]);
     // A tag write must never carry `userRoles`: the platform replaces what it
     // is sent, and a stale list would silently rewrite who may open the Mate.
-    expect(body.userRoles).toBeUndefined();
-  });
-
-  // Signing in again with the same account costs a read and nothing more.
-  it("writes nothing when the record already says the same thing", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, { ...project, tagList: ["mate", "mate:signer:claude-code:jan"] }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.recordProjectAgentSigner({
-      projectId: "p1",
-      agentId: "claude-code",
-      userId: "jan",
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
+      name: "Fen",
+      description: "A Mate",
+      tagList: ["mate", "mate:signer:claude-code:jan"],
+      publicIpV4Shared: true,
+      maxCreditLimit: 40,
     });
-
-    expect(stub.requests.map((request) => request.method)).toEqual(["GET"]);
   });
 });
 

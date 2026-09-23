@@ -310,7 +310,7 @@ import {
   resolveAgentAuthorizer,
   useLocalAgentSigners,
   useZeropsAgentSignerRecord,
-  useZeropsEnvironmentProjectId,
+  useZeropsEnvironmentProject,
 } from "~/zerops/useZeropsAgentSigner";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -3704,7 +3704,7 @@ export default function ChatView(props: ChatViewProps) {
   useZeropsAgentSignerRecord({
     environmentId: activeThreadEnvironmentId,
     snapshot: zeropsAgentAuth.snapshot,
-    projectId: useZeropsEnvironmentProjectId(activeThreadEnvironmentId),
+    project: useZeropsEnvironmentProject(activeThreadEnvironmentId),
   });
   const zeropsMateReview = useZeropsMateReview(activeThreadRef);
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {

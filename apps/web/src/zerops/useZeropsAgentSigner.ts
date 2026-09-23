@@ -27,10 +27,20 @@
  * passing network blip clears without anyone pressing anything.
  */
 
+import type { RecordProjectRef } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { useRegistrationRecord } from "./registrationRecords";
+import { runZeropsCommand, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /**
@@ -181,10 +191,14 @@ export function useZeropsAgentSignerRecord(input: {
   readonly environmentId: EnvironmentId | null;
   readonly snapshot: ZeropsAgentAuthSnapshot | null;
   /** The Zerops project this Mate is, when the client knows which one. */
-  readonly projectId: string | undefined;
+  readonly project: RecordProjectRef | undefined;
 }): ZeropsAgentSignerRecordState {
-  const { client, user } = useZeropsSession();
-  const { environmentId, snapshot, projectId } = input;
+  const { user } = useZeropsSession();
+  // Absent before the account is verified: there is no runtime to write with yet.
+  const data = useContext(ZeropsDataContext);
+  const { environmentId, snapshot, project } = input;
+  const projectId = project?.projectId;
+  const orgId = project?.orgId;
   const userId = user?.id;
   const [recordFailed, setRecordFailed] = useState<ReadonlySet<ZeropsAgentId>>(new Set());
 
@@ -194,9 +208,17 @@ export function useZeropsAgentSignerRecord(input: {
 
   const writeRecord = useCallback(
     async (agentId: ZeropsAgentId, signal: AbortSignal): Promise<boolean> => {
-      if (projectId === undefined || !userId) return false;
+      if (projectId === undefined || orgId === undefined || !userId || data === null) return false;
       try {
-        await client.recordProjectAgentSigner({ projectId, agentId, userId }, signal);
+        // A patch the TagWriter applies to the project as it is now: a list that already names
+        // this signer costs a read and nothing more.
+        await runZeropsCommand(
+          data.runtime.commands.updateProjectTags(data.projectRef(orgId, projectId), {
+            kind: "agent-signer",
+            agentId,
+            userId,
+          }),
+        );
         rememberLocalAgentSigner(agentId, userId);
         setRecordFailed((current) => {
           if (!current.has(agentId)) return current;
@@ -214,7 +236,7 @@ export function useZeropsAgentSignerRecord(input: {
         return false;
       }
     },
-    [client, projectId, userId],
+    [data, orgId, projectId, userId],
   );
 
   // The writes live as long as the view, not as long as one snapshot: a
@@ -320,8 +342,8 @@ export function useZeropsAgentSignerRecord(input: {
  * Which Zerops project a connected environment is, from its registration record. `undefined`
  * until it is known — a tag write that guessed the project would be a tag on somebody else's.
  */
-export function useZeropsEnvironmentProjectId(
+export function useZeropsEnvironmentProject(
   environmentId: EnvironmentId | null,
-): string | undefined {
-  return useRegistrationRecord(environmentId)?.projectRef?.projectId;
+): RecordProjectRef | undefined {
+  return useRegistrationRecord(environmentId)?.projectRef ?? undefined;
 }

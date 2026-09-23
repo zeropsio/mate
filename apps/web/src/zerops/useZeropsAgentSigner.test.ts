@@ -13,14 +13,25 @@ import {
 } from "./useZeropsAgentSigner";
 
 const mock = vi.hoisted(() => ({
-  recordProjectAgentSigner: vi.fn(),
+  updateProjectTags: vi.fn(),
 }));
 vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({
-    client: { recordProjectAgentSigner: mock.recordProjectAgentSigner },
-    user: { id: "user-a" },
-  }),
+  useZeropsSession: () => ({ user: { id: "user-a" } }),
 }));
+// The account's runtime, whose one tag command the record goes through; a command here is the
+// promise the mock answers.
+vi.mock("./zeropsDataContext", async () => {
+  const { createContext } = await import("react");
+  return {
+    ZeropsDataContext: createContext({
+      runtime: { commands: { updateProjectTags: mock.updateProjectTags } },
+      projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
+    }),
+    runZeropsCommand: (command: Promise<unknown>) => command,
+  };
+});
+
+const PROJECT = { projectId: "project-1", orgId: "org-1" };
 
 const snapshot = (
   logins: Readonly<
@@ -305,16 +316,19 @@ const succeeded = (agentId: "claude-code" | "codex"): ZeropsAgentAuthSnapshot =>
 describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swallowed)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    mock.recordProjectAgentSigner.mockReset();
+    mock.updateProjectTags.mockReset();
   });
 
-  async function render(projectId: string, snapshot: ZeropsAgentAuthSnapshot) {
+  async function render(
+    project: { readonly projectId: string; readonly orgId: string },
+    snapshot: ZeropsAgentAuthSnapshot,
+  ) {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const { useZeropsAgentSignerRecord } = await import("./useZeropsAgentSigner");
     let latest: ReturnType<typeof useZeropsAgentSignerRecord> | undefined;
     function Probe({ current }: { readonly current: ZeropsAgentAuthSnapshot }) {
-      latest = useZeropsAgentSignerRecord({ environmentId: null, snapshot: current, projectId });
+      latest = useZeropsAgentSignerRecord({ environmentId: null, snapshot: current, project });
       return null;
     }
     const root = createRoot(document.createElement("div") as unknown as Element);
@@ -332,12 +346,12 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
   }
 
   it("a sign-in whose record failed says so and can be retried", async () => {
-    mock.recordProjectAgentSigner.mockRejectedValueOnce(new Error("network"));
-    const { result, unmount } = await render("project-1", succeeded("claude-code"));
+    mock.updateProjectTags.mockRejectedValueOnce(new Error("network"));
+    const { result, unmount } = await render(PROJECT, succeeded("claude-code"));
 
     expect(result().recordFailed.has("claude-code")).toBe(true);
 
-    mock.recordProjectAgentSigner.mockResolvedValueOnce(undefined);
+    mock.updateProjectTags.mockResolvedValueOnce(undefined);
     await act(async () => {
       result().retry("claude-code");
       await Promise.resolve();
@@ -351,17 +365,17 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
   it("a failed write is tried again on its own, and clears when it lands", async () => {
     vi.useFakeTimers();
     try {
-      mock.recordProjectAgentSigner
+      mock.updateProjectTags
         .mockRejectedValueOnce(new Error("network"))
         .mockResolvedValueOnce(undefined);
-      const { result, unmount } = await render("project-1", succeeded("codex"));
+      const { result, unmount } = await render(PROJECT, succeeded("codex"));
       expect(result().recordFailed.has("codex")).toBe(true);
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2_000);
       });
 
-      expect(mock.recordProjectAgentSigner).toHaveBeenCalledTimes(2);
+      expect(mock.updateProjectTags).toHaveBeenCalledTimes(2);
       expect(result().recordFailed.has("codex")).toBe(false);
       await unmount();
     } finally {
@@ -370,12 +384,17 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
   });
 
   it("writes once per login, not on every republish", async () => {
-    mock.recordProjectAgentSigner.mockResolvedValue(undefined);
-    const { rerender, unmount } = await render("project-1", succeeded("codex"));
+    mock.updateProjectTags.mockResolvedValue(undefined);
+    const { rerender, unmount } = await render(PROJECT, succeeded("codex"));
     await rerender({ ...succeeded("codex") });
     await rerender({ ...succeeded("codex") });
 
-    expect(mock.recordProjectAgentSigner).toHaveBeenCalledTimes(1);
+    expect(mock.updateProjectTags).toHaveBeenCalledTimes(1);
+    // A patch on the Mate's own project, applied by the TagWriter to what the project holds now.
+    expect(mock.updateProjectTags).toHaveBeenCalledWith(
+      { organizationId: "org-1", projectId: "project-1" },
+      { kind: "agent-signer", agentId: "codex", userId: "user-a" },
+    );
     await unmount();
   });
 
@@ -383,14 +402,14 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
   // than the one recorder: they read how it went by environment.
   it("publishes its state for the environment's rows, and withdraws it on unmount", async () => {
     installTestDom();
-    mock.recordProjectAgentSigner.mockRejectedValueOnce(new Error("network"));
+    mock.updateProjectTags.mockRejectedValueOnce(new Error("network"));
     const { createRoot } = await import("react-dom/client");
     const { useZeropsAgentSignerRecord, useZeropsAgentSignerRecordState } =
       await import("./useZeropsAgentSigner");
     const environmentId = EnvironmentId.make("env-rows");
     let seen: ReadonlySet<string> = new Set();
     function Recorder() {
-      useZeropsAgentSignerRecord({ environmentId, snapshot: succeeded("codex"), projectId: "p" });
+      useZeropsAgentSignerRecord({ environmentId, snapshot: succeeded("codex"), project: PROJECT });
       return null;
     }
     function Row() {
@@ -411,8 +430,8 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
   });
 
   it("a successful write never appears as failed", async () => {
-    mock.recordProjectAgentSigner.mockResolvedValueOnce(undefined);
-    const { result, unmount } = await render("project-1", succeeded("codex"));
+    mock.updateProjectTags.mockResolvedValueOnce(undefined);
+    const { result, unmount } = await render(PROJECT, succeeded("codex"));
 
     expect(result().recordFailed.size).toBe(0);
 
