@@ -14,10 +14,11 @@ import {
 } from "./useZeropsGroupDeploys";
 
 /**
- * Whether this tab holds a Gitea token now, and how often the group repo's pulls were read. A
- * client handed out earlier answers 401 once the token is gone.
+ * Whether this tab holds a Gitea token now, how often the group repo's pulls were read, and
+ * whether the next read meets a 401 whose reacquire fails — the session loses its token mid-pass.
+ * A client handed out earlier answers 401 once the token is gone.
  */
-const gitea = vi.hoisted(() => ({ readable: true, pullReads: 0 }));
+const gitea = vi.hoisted(() => ({ readable: true, pullReads: 0, loseTokenOnRead: false }));
 
 vi.mock("./accountGiteaSessions", () => {
   const refuse = () => Promise.reject(new Error("Gitea answered 401"));
@@ -26,6 +27,10 @@ vi.mock("./accountGiteaSessions", () => {
     listPullRequests: async () => {
       if (!gitea.readable) return refuse();
       gitea.pullReads += 1;
+      if (gitea.loseTokenOnRead) {
+        gitea.readable = false;
+        throw new Error("You are not signed in to Gitea.");
+      }
       return [{ number: 7, title: "Stage follows main" }];
     },
     listCommitStatuses: async () => (gitea.readable ? [] : refuse()),
@@ -361,6 +366,7 @@ describe("useZeropsGroupDeploys", () => {
   afterEach(() => {
     gitea.readable = true;
     gitea.pullReads = 0;
+    gitea.loseTokenOnRead = false;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -382,6 +388,7 @@ describe("useZeropsGroupDeploys", () => {
           giteaOrigin: "https://gitea.example.test",
           readVersion,
           enabled: true,
+          readable: true,
         }),
       );
       return null;
@@ -403,6 +410,96 @@ describe("useZeropsGroupDeploys", () => {
     });
     expect(seen.at(-1)?.deploys.get("g1")?.pullRequests).toHaveLength(1);
     expect(gitea.pullReads).toBe(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps what it read when a 401 and a failed reacquire land inside one pass", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGroupDeployAnswers> = [];
+    const groups: ReadonlyArray<ZeropsDeployGroup> = [
+      { groupId: "g1", slug: "harbor", projects: [] },
+    ];
+    const readVersion = async () => undefined;
+
+    function Probe() {
+      seen.push(
+        useZeropsGroupDeploys({
+          groups,
+          giteaOrigin: "https://gitea.example.test",
+          readVersion,
+          enabled: true,
+          readable: true,
+        }),
+      );
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(seen.at(-1)?.deploys.get("g1")?.pullRequests).toHaveLength(1);
+
+    // The clock's pass starts with a token; its read meets the 401 and the reacquire fails.
+    gitea.loseTokenOnRead = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_DEPLOYS_REFRESH_MS);
+    });
+    expect(gitea.pullReads).toBe(2);
+    expect(seen.at(-1)?.deploys.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.failures.get("g1")).toBeUndefined();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("reads again the moment the token is back, not on the next tick", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGroupDeployAnswers> = [];
+    const groups: ReadonlyArray<ZeropsDeployGroup> = [
+      { groupId: "g1", slug: "harbor", projects: [] },
+    ];
+    const readVersion = async () => undefined;
+
+    function Probe({ readable }: { readonly readable: boolean }) {
+      seen.push(
+        useZeropsGroupDeploys({
+          groups,
+          giteaOrigin: "https://gitea.example.test",
+          readVersion,
+          enabled: true,
+          readable,
+        }),
+      );
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    const render = async (readable: boolean) => {
+      gitea.readable = readable;
+      await act(async () => {
+        root.render(createElement(Probe, { readable }));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    };
+    await render(true);
+    expect(gitea.pullReads).toBe(1);
+
+    await render(false);
+    expect(seen.at(-1)?.deploys.get("g1")?.pullRequests).toHaveLength(1);
+    await render(true);
+    expect(gitea.pullReads).toBe(2);
 
     await act(async () => {
       root.unmount();

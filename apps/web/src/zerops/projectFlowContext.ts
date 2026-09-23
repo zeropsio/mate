@@ -68,6 +68,11 @@ export interface ZeropsProjectFlowValue {
    */
   readonly signedIn: boolean;
   /**
+   * A Gitea request can go out as the person now. False while the flows stand with no token held:
+   * a surface starts no Gitea read or write then, and runs one once this turns true.
+   */
+  readonly readable: boolean;
+  /**
    * Why there is no session: a refusal at once, a Gitea or broker that does not answer only after
    * two failed tries.
    */

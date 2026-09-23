@@ -19,6 +19,7 @@ import {
   makeGiteaSessions,
   type GiteaSessions,
   type GiteaSessionsPorts,
+  type GiteaSessionView,
 } from "@t3tools/client-runtime/zerops/forge";
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -90,11 +91,21 @@ export function accountGiteaSessions(): GiteaSessions | null {
   return current;
 }
 
+function useGiteaView(giteaOrigin: string | undefined): GiteaSessionView {
+  return useSyncExternalStore(
+    subscribe,
+    () =>
+      current === null || giteaOrigin === undefined ? GITEA_SIGNED_OUT : current.view(giteaOrigin),
+    () => GITEA_SIGNED_OUT,
+  );
+}
+
 /**
  * Wants the account's Gitea signed in while the calling surface is mounted, and says how that
  * stands: `signedIn` says what was read still stands — through a 401's reacquire and the first
- * two failed tries after a token was held — and `trouble` names a refusal at once and a Gitea or
- * broker that does not answer after two failed tries.
+ * two failed tries after a token was held — `readable` says a request can go out now, and
+ * `trouble` names a refusal at once and a Gitea or broker that does not answer after two failed
+ * tries.
  */
 export function useGiteaSession(input: {
   readonly giteaOrigin: string | undefined;
@@ -102,17 +113,10 @@ export function useGiteaSession(input: {
   /** The org that owns the Gitea — where the throwaway is minted. */
   readonly clientId: string | undefined;
   readonly platform: ZeropsThrowawayPlatform | undefined;
-}): { readonly signedIn: boolean; readonly trouble: string | null } {
+}): { readonly signedIn: boolean; readonly readable: boolean; readonly trouble: string | null } {
   const { brokerOrigin, clientId, giteaOrigin, platform } = input;
   const sessions = useSyncExternalStore(subscribe, accountGiteaSessions, () => null);
-  const view = useSyncExternalStore(
-    subscribe,
-    () =>
-      sessions === null || giteaOrigin === undefined
-        ? GITEA_SIGNED_OUT
-        : sessions.view(giteaOrigin),
-    () => GITEA_SIGNED_OUT,
-  );
+  const view = useGiteaView(giteaOrigin);
 
   useEffect(() => {
     if (
@@ -127,7 +131,7 @@ export function useGiteaSession(input: {
     return sessions.demand({ giteaOrigin, brokerOrigin, clientId, platform });
   }, [sessions, giteaOrigin, brokerOrigin, clientId, platform]);
 
-  return { signedIn: view.signedIn, trouble: view.trouble };
+  return { signedIn: view.signedIn, readable: view.readable, trouble: view.trouble };
 }
 
 /**

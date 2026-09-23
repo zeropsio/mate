@@ -13,6 +13,9 @@
  * (`flow/groupAnswers.ts`). A group repo that does not answer fails the
  * group's read, and the group keeps the rows it already had; a version read
  * that does not answer keeps the version that service was last read with.
+ * With no Gitea token in this tab no group is read, and a read that loses the
+ * token part-way — a 401 whose reacquire fails — is not an answer: every
+ * group keeps its rows, and the token coming back reads them again.
  * Whether anything runs at all is the platform's pushed answer
  * (`flow/deployment.ts`), not this read's. A row's height never depends on
  * which of the three landed (`environmentRow`), so the page does not move
@@ -157,6 +160,8 @@ export function useZeropsGroupDeploys(input: {
   readonly giteaOrigin: string | undefined;
   readonly readVersion: ZeropsDeployedVersionReader;
   readonly enabled: boolean;
+  /** A Gitea request can go out now (`GiteaSessionView.readable`); a read runs only then. */
+  readonly readable: boolean;
 }): ZeropsGroupDeployAnswers {
   const { answers, failures, invalidate } = useGroupAnswers<
     ZeropsDeployGroup,
@@ -166,6 +171,7 @@ export function useZeropsGroupDeploys(input: {
     pass: "deploys",
     giteaOrigin: input.giteaOrigin,
     enabled: input.enabled,
+    readable: input.readable,
     groups: input.groups,
     refreshMs: GROUP_DEPLOYS_REFRESH_MS,
     keyOf: deployGroupKey,

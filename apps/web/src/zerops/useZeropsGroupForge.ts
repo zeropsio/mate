@@ -13,7 +13,9 @@
  * repository never read is left out of what the answer holds, rather than
  * held as having no pull requests — `repositories` names the ones its pull
  * requests cover — and releases that did not answer carry why, whether or not
- * earlier ones are kept.
+ * earlier ones are kept. A read that loses the Gitea token part-way — a 401
+ * whose reacquire fails — is not an answer, and the token coming back reads
+ * every group again.
  *
  * What an environment runs is not read here: that is the account's to prove
  * (`useZeropsGroupDeploys`), and the two are joined in the provider.
@@ -84,6 +86,8 @@ export function useZeropsGroupForge(input: {
   readonly giteaOrigin: string | undefined;
   readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
   readonly enabled: boolean;
+  /** A Gitea request can go out now (`GiteaSessionView.readable`); a read runs only then. */
+  readonly readable: boolean;
 }): ZeropsGroupForge {
   const { answers, failures, invalidate } = useGroupAnswers<
     { readonly groupId: string; readonly slug: string },
@@ -93,6 +97,7 @@ export function useZeropsGroupForge(input: {
     pass: "forge",
     giteaOrigin: input.giteaOrigin,
     enabled: input.enabled,
+    readable: input.readable,
     groups: input.groups,
     refreshMs: GROUP_FORGE_REFRESH_MS,
     keyOf: (group) => group.slug,
@@ -106,12 +111,15 @@ export function useZeropsGroupForge(input: {
  * tab holds a Gitea session with this origin — the React half of
  * `createGroupAnswers`, shared by the flow's two halves, with why each
  * failing group's reads fail. Losing the session stops the reads and keeps
- * what was read; another Gitea starts from nothing.
+ * what was read; another Gitea starts from nothing. No token to read with
+ * (`readable` false) stops them too, and its return reads every group again.
  */
 export function useGroupAnswers<Group extends { readonly groupId: string }, Scope, Answer>(input: {
   readonly pass: "forge" | "deploys";
   readonly giteaOrigin: string | undefined;
   readonly enabled: boolean;
+  /** A Gitea request can go out now (`GiteaSessionView.readable`). */
+  readonly readable: boolean;
   readonly groups: ReadonlyArray<Group>;
   readonly refreshMs: number;
   readonly keyOf: (group: Group) => string;
@@ -127,7 +135,7 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   readonly failures: ReadonlyMap<string, string>;
   readonly invalidate: (groupId: string, scope: Scope | "group") => void;
 } {
-  const { enabled, giteaOrigin, groups, pass, refreshMs } = input;
+  const { enabled, giteaOrigin, groups, pass, readable, refreshMs } = input;
   const [held, setHeld] = useState<{
     readonly origin: string | undefined;
     readonly answers: ReadonlyMap<string, Answer>;
@@ -145,7 +153,7 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   const driver = useRef<GroupAnswers<Group, Scope> | null>(null);
 
   useEffect(() => {
-    if (!enabled || giteaOrigin === undefined) return;
+    if (!enabled || giteaOrigin === undefined || !readable) return;
     const client = giteaClientFor(giteaOrigin);
     if (client === null) return;
     const kept =
@@ -154,8 +162,19 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
       pass,
       idOf: (group) => group.groupId,
       keyOf: (group) => latest.current.input.keyOf(group),
-      read: (group, scope, signal, previous) =>
-        latest.current.input.read(client, group, scope, signal, previous),
+      read: async (group, scope, signal, previous) => {
+        // A read that met a 401 whose reacquire failed answered nothing, and
+        // every read after it had no token: it is not an answer, and the group
+        // keeps what it had without a cause of its own.
+        const lost = () => giteaClientFor(giteaOrigin) === null;
+        try {
+          const update = await latest.current.input.read(client, group, scope, signal, previous);
+          return lost() ? () => undefined : update;
+        } catch (cause) {
+          if (lost()) return () => undefined;
+          throw cause;
+        }
+      },
       publish: (groupId, answer) => {
         setHeld((current) => {
           const same = current.origin === giteaOrigin;
@@ -200,7 +219,7 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
       answers.dispose();
       driver.current = null;
     };
-  }, [enabled, giteaOrigin, pass, refreshMs]);
+  }, [enabled, giteaOrigin, pass, readable, refreshMs]);
 
   useEffect(() => {
     driver.current?.setGroups(groups);

@@ -234,7 +234,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     enabled: signedInToMate,
   });
   const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
-  const { signedIn, trouble: signInTrouble } = useGiteaSession({
+  const {
+    signedIn,
+    readable,
+    trouble: signInTrouble,
+  } = useGiteaSession({
     giteaOrigin,
     brokerOrigin,
     clientId,
@@ -318,6 +322,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     giteaOrigin,
     readVersion,
     enabled,
+    readable,
   });
   const {
     forges,
@@ -327,6 +332,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     giteaOrigin,
     groups: forgeGroups,
     enabled,
+    readable,
   });
 
   /**
@@ -541,6 +547,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     () => ({
       giteaOrigin,
       signedIn,
+      readable,
       signInTrouble,
       flows,
       deployments,
@@ -561,6 +568,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       mateNames,
       mergePullRequest,
       pending,
+      readable,
       release,
       rollBack,
       signInTrouble,
