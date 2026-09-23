@@ -29,6 +29,12 @@ import {
 } from "./grant.ts";
 import { explore } from "../../testing/explore.ts";
 
+/**
+ * Every sequence to depth N is enumerated on the CPU alone: ~1-3 s locally, but CI runs the whole
+ * workspace's suites at once and has taken more than 30 s.
+ */
+const EXHAUSTIVE_TIMEOUT_MS = 120_000;
+
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
 const WINDOW = 15 * MINUTE;
@@ -1299,7 +1305,7 @@ describe("access grant invariants over enumerated event sequences", () => {
 
   it(
     "holds I3, I4, I6, I11, G2, G6, G12 and round liveness after every step of every sequence to depth 6",
-    { timeout: 30_000 },
+    { timeout: EXHAUSTIVE_TIMEOUT_MS },
     () => {
       const roots: Array<GrantNode> = [
         { state: initialGrant({ hidden: false, online: true }, T0), now: T0 },

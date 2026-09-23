@@ -13,6 +13,12 @@ import {
 import type { ProbeReading } from "./probeStore.ts";
 
 /**
+ * Every sequence to depth N is enumerated on the CPU alone: ~1-3 s locally, but CI runs the whole
+ * workspace's suites at once and has taken more than 30 s.
+ */
+const EXHAUSTIVE_TIMEOUT_MS = 120_000;
+
+/**
  * DESIGN §11.3 I13 over every event sequence the container store can send one target, breadth
  * first to depth 6, deduplicated by state: no level changes on a timer, and a cap only sets
  * `overdue`. Time stands still between events, moves a few seconds on `LATER`, and jumps to the
@@ -163,7 +169,7 @@ const violations = (before: ModelState, event: ModelEvent, after: ModelState): A
 };
 
 describe("container invariants (DESIGN §11.3 I13) over enumerated event sequences", () => {
-  it(`holds for every sequence to depth ${DEPTH}`, { timeout: 30_000 }, () => {
+  it(`holds for every sequence to depth ${DEPTH}`, { timeout: EXHAUSTIVE_TIMEOUT_MS }, () => {
     const report = explore({
       roots: [{ machine: initialContainer(), nowMs: START_MS }],
       depth: DEPTH,

@@ -15,6 +15,12 @@ import type { Instant } from "../data/access/grant.ts";
 import { explore } from "../testing/explore.ts";
 
 /**
+ * Every sequence to depth N is enumerated on the CPU alone: ~1-3 s locally, but CI runs the whole
+ * workspace's suites at once and has taken more than 30 s.
+ */
+const EXHAUSTIVE_TIMEOUT_MS = 120_000;
+
+/**
  * DESIGN §11.3 I5, I7 and I9's reachability half over every event sequence the driver can send one target, breadth first
  * to depth 6, deduplicated by state. Time stands still between events and jumps to the machine's
  * own timer on `TICK`, so a state's instants stay few and the layers stay bounded. An answer is
@@ -313,7 +319,7 @@ const violations = (
 };
 
 describe("environment invariants (DESIGN §11.3 I5, I7, I9) over enumerated event sequences", () => {
-  it(`holds for every sequence to depth ${DEPTH}`, { timeout: 30_000 }, () => {
+  it(`holds for every sequence to depth ${DEPTH}`, { timeout: EXHAUSTIVE_TIMEOUT_MS }, () => {
     const report = explore({
       roots: [{ machine: initialEnvironment({ record: ENV_A }), nowMs: 100_000 }],
       depth: DEPTH,
