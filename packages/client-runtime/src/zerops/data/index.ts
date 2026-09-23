@@ -1,3 +1,4 @@
+export * from "./access/grant.ts";
 export * from "./dto.ts";
 export * from "./atoms.ts";
 export * from "./commands.ts";
