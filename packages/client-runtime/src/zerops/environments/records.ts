@@ -10,9 +10,11 @@ import type { TargetKey } from "./exchangeDriver.ts";
 export const REGISTRATION_RECORDS_KEY = "zerops-mate.registration-records.v1";
 
 /**
- * The keys records replace. The third, the door list `zerops-mate.zerops-environments.v1`, adds
- * nothing to a record: every record comes from a door exchange, and an environment the targets
- * list lacks has no target key.
+ * The keys records replace and 5.4 deletes; until then nothing writes or deletes them:
+ * - `environment-targets:v1` and `zerops-mate.zerops-environment-project-ref.v1`, imported once;
+ * - the door list `zerops-mate.zerops-environments.v1`, never read: it adds nothing to a record,
+ *   because every record comes from a door exchange and an environment the targets list lacks has
+ *   no target key.
  */
 export const LEGACY_REGISTRATION_KEYS = {
   /** `[{ key, environmentId }]`. */
@@ -42,7 +44,10 @@ export interface RecordsStorage {
 }
 
 export interface RegistrationRecords {
-  /** Every record this account keeps; the same array until the stored records change. */
+  /**
+   * Every record this account keeps, read from storage on each call, so another tab's write shows
+   * on the next read; the same array until the stored records change.
+   */
   readonly list: () => ReadonlyArray<RegistrationRecord>;
   /**
    * Stores the record in place of its target's older one, keeping what the older one knew and
