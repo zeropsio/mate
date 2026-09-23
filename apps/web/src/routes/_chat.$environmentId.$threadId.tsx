@@ -22,7 +22,6 @@ function ChatThreadRouteView() {
   const serverThreadShell = useThreadShell(threadRef);
   const serverThreadDetail = useThreadDetail(threadRef);
   const serverThreadStatus = useThreadStatus(threadRef);
-  const bootstrapComplete = shell.data?.snapshot._tag === "Some";
   const draftThreadExists = useComposerDraftStore((store) =>
     threadRef ? store.getDraftThreadByRef(threadRef) !== null : false,
   );
@@ -30,7 +29,7 @@ function ChatThreadRouteView() {
     threadRef ? store.getDraftThreadByRef(threadRef) : null,
   );
   const renderState = resolveThreadRouteRenderState({
-    bootstrapComplete,
+    shell: shell.data?.status ?? "empty",
     serverThreadShellExists: serverThreadShell !== null,
     serverThreadDetailExists: serverThreadDetail !== null,
     serverThreadDetailDeleted: serverThreadStatus === "deleted",
