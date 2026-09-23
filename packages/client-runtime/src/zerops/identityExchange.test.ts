@@ -8,7 +8,12 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
 import { ZeropsApiError } from "./api.ts";
 import { mateDiagnostics } from "./diagnostics.ts";
-import { exchangeZeropsContainerIdentity, type ZeropsDoorThrowaway } from "./identityExchange.ts";
+import {
+  exchangeAtDoor,
+  exchangeZeropsContainerIdentity,
+  type ZeropsDoorThrowaway,
+} from "./identityExchange.ts";
+import { makeFakeMate, type FakeMate } from "./testing/fakeMate.ts";
 
 const CONTAINER_ORIGIN = "https://zcp-demo-8080.prg1.zerops.app";
 const CLIENT_ID = "an-org";
@@ -411,5 +416,159 @@ describe("the exchange's diagnostics", () => {
       },
     ]);
     expect(JSON.stringify(mateDiagnostics.snapshot())).not.toContain(MINTED);
+  });
+});
+
+describe("exchangeAtDoor: every answer read into the machine's failure classes (DESIGN §4.4)", () => {
+  const ENV = "env-door" as EnvironmentId;
+  const mintFailing = (error: ZeropsApiError): ZeropsThrowawayPlatform => ({
+    mint: async () => {
+      throw error;
+    },
+    remove: async () => undefined,
+  });
+
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    readonly mate?: Partial<Parameters<typeof makeFakeMate>[0]>;
+    readonly arrange?: (mate: FakeMate) => void;
+    readonly platform?: ZeropsThrowawayPlatform | null;
+    readonly answer: unknown;
+    readonly minted: boolean;
+  }> = [
+    {
+      name: "the door admits: the credential and the descriptor it was judged on",
+      answer: {
+        ok: true,
+        environmentId: ENV,
+        credential: { environmentId: ENV, generation: 1 },
+        descriptor: {
+          environmentId: ENV,
+          serverVersion: "0.12.0",
+          update: null,
+          identity: "ok",
+          identityCheckedAt: "2026-09-23T10:00:00.000Z",
+        },
+      },
+      minted: true,
+    },
+    {
+      name: "the door answers 500: retryable",
+      arrange: (mate) => mate.scriptDoor("500"),
+      answer: {
+        ok: false,
+        failure: { class: "retryable", cause: { kind: "server", status: 500 } },
+      },
+      minted: true,
+    },
+    {
+      name: "the door refuses READ_ONLY: a role refusal",
+      arrange: (mate) => mate.scriptDoor("read-only"),
+      answer: { ok: false, failure: { class: "refusal", reason: { kind: "role" } } },
+      minted: true,
+    },
+    {
+      name: "the door refuses access: a role refusal",
+      arrange: (mate) => mate.scriptDoor("permission"),
+      answer: { ok: false, failure: { class: "refusal", reason: { kind: "role" } } },
+      minted: true,
+    },
+    {
+      name: "the descriptor is unreachable: retryable, nothing minted",
+      arrange: (mate) => mate.setReachable(false),
+      answer: {
+        ok: false,
+        failure: { class: "retryable", cause: { kind: "descriptor-unreachable" } },
+        descriptor: null,
+      },
+      minted: false,
+    },
+    {
+      name: "the Mate's own key failed to prove anyone: retryable, nothing minted",
+      arrange: (mate) => mate.setIdentity("failed", "2026-09-23T10:05:00.000Z"),
+      answer: {
+        ok: false,
+        failure: { class: "retryable", cause: { kind: "identity-failed" } },
+        descriptor: { identity: "failed", identityCheckedAt: "2026-09-23T10:05:00.000Z" },
+      },
+      minted: false,
+    },
+    {
+      name: "the server is below the client floor: a version refusal on the descriptor",
+      mate: { serverVersion: "0.10.4" },
+      answer: {
+        ok: false,
+        failure: { class: "refusal", reason: { kind: "version" } },
+        descriptor: { serverVersion: "0.10.4" },
+      },
+      minted: false,
+    },
+    {
+      name: "the origin serves another project's Mate: a mismatch refusal",
+      mate: { projectId: "another-project" },
+      answer: { ok: false, failure: { class: "refusal", reason: { kind: "project-mismatch" } } },
+      minted: false,
+    },
+    {
+      name: "an old 0.11.0 Mate reports no identity: it is exchanged",
+      mate: { oldServer: true },
+      answer: { ok: true, descriptor: { serverVersion: "0.11.0", identity: "unknown" } },
+      minted: true,
+    },
+    {
+      name: "the mint waited out the account window: retryable",
+      platform: mintFailing(new ZeropsApiError("Still checking.", "access-unverified")),
+      answer: { ok: false, failure: { class: "retryable", cause: { kind: "access-unverified" } } },
+      minted: false,
+    },
+    {
+      name: "the mint answered 429: retryable",
+      platform: mintFailing(new ZeropsApiError("Slow down.", "unexpected", 429)),
+      answer: { ok: false, failure: { class: "retryable", cause: { kind: "mint", status: 429 } } },
+      minted: false,
+    },
+    {
+      name: "the mint found the session ended: refused until the account changes",
+      platform: mintFailing(new ZeropsApiError("Signed out.", "expired-session", 401)),
+      answer: {
+        ok: false,
+        failure: { class: "refusal", reason: { kind: "access", reason: "epoch-closed" } },
+      },
+      minted: false,
+    },
+    {
+      name: "nobody is signed in: refused until the account changes",
+      platform: null,
+      answer: {
+        ok: false,
+        failure: { class: "refusal", reason: { kind: "access", reason: "epoch-closed" } },
+      },
+      minted: false,
+    },
+  ];
+
+  it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const mate = makeFakeMate({
+      origin: CONTAINER_ORIGIN,
+      projectId: PROJECT_ID,
+      environmentId: ENV,
+      ...row.mate,
+    });
+    row.arrange?.(mate);
+    const recording = recordingPlatform();
+    const platform = row.platform === undefined ? recording.platform : row.platform;
+    const answer = await exchangeAtDoor(
+      {
+        throwaway: platform === null ? null : throwaway(platform),
+        readDescriptor: mate.readDescriptor,
+        prepare: mate.prepare,
+        environmentOf: (credential) => credential.environmentId,
+      },
+      CONTAINER_ORIGIN,
+      { reason: "restore", expectedProjectId: PROJECT_ID },
+    );
+    expect(answer).toMatchObject(row.answer as object);
+    expect(mate.doorCalls().length > 0).toBe(row.minted && row.platform === undefined);
+    expect(recording.minted.length > 0).toBe(row.minted && row.platform === undefined);
   });
 });

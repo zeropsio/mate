@@ -15,12 +15,14 @@ import { makeFakeZeropsRest, type FakeZeropsRest } from "./fakeZeropsRest.ts";
 export * from "./browserTabs.ts";
 export * from "./deadlineClock.ts";
 export * from "./fakeDatastream.ts";
+export * from "./fakeMate.ts";
 export * from "./fakeZeropsRest.ts";
 
 /**
  * Each source the account reads has its fake here, over one shared platform.
- * A source a later slice needs joins as a field of its own: `FakeMate` with the
- * exchange driver (0.9b), `FakeGitea` and `FakeBroker` with the Gitea session (0.13).
+ * A source a later slice needs joins as a field of its own: `FakeGitea` and
+ * `FakeBroker` with the Gitea session (0.13). A Mate answers on its own
+ * (`makeFakeMate`), so no platform is shared with it.
  */
 export interface AccountHarness {
   readonly browser: HarnessBrowser;
