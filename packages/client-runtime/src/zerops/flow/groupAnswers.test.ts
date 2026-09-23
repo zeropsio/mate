@@ -137,6 +137,65 @@ describe("createGroupAnswers", () => {
     expect(failures.at(-1)).toEqual({ groupId: "g1", cause: null });
   });
 
+  it("a part that failed takes its failure back when that same part answers", async () => {
+    const { answers, failures, settle, next } = harness();
+    answers.setGroups([G1]);
+    next("g1").resolve(() => answer("g1"));
+    await settle();
+    answers.invalidate("g1", { kind: "repository", repository: "appdev" });
+    next("g1").reject(new Error("Gitea did not answer"));
+    await settle();
+    // Another repository answering says nothing about appdev.
+    answers.invalidate("g1", { kind: "repository", repository: "apidev" });
+    next("g1").resolve((held) => held);
+    await settle();
+    expect(failures).toEqual([{ groupId: "g1", cause: "Gitea did not answer" }]);
+    answers.invalidate("g1", { kind: "repository", repository: "appdev" });
+    next("g1").resolve((held) => held);
+    await settle();
+    expect(failures.at(-1)).toEqual({ groupId: "g1", cause: null });
+  });
+
+  it("two parts failing leave only a whole read to take the failure back", async () => {
+    const { answers, failures, settle, next } = harness(new Map([["g1", answer("g1")]]));
+    answers.setGroups([G1]);
+    next("g1").resolve((held) => held);
+    await settle();
+    answers.invalidate("g1", { kind: "repository", repository: "appdev" });
+    next("g1").reject(new Error("Gitea did not answer"));
+    await settle();
+    answers.invalidate("g1", { kind: "repository", repository: "apidev" });
+    next("g1").reject(new Error("Gitea did not answer"));
+    await settle();
+    // apidev answering says nothing about appdev, which still fails.
+    answers.invalidate("g1", { kind: "repository", repository: "apidev" });
+    next("g1").resolve((held) => held);
+    await settle();
+    expect(failures).toEqual([{ groupId: "g1", cause: "Gitea did not answer" }]);
+    answers.refresh();
+    next("g1").resolve((held) => held);
+    await settle();
+    expect(failures.at(-1)).toEqual({ groupId: "g1", cause: null });
+  });
+
+  it("a whole read takes back the failure even when a newer part's answer was accepted first", async () => {
+    const { answers, published, failures, settle, next } = harness(new Map([["g1", answer("g1")]]));
+    answers.setGroups([G1]);
+    next("g1").reject(new Error("Gitea did not answer"));
+    await settle();
+    answers.refresh();
+    const whole = next("g1");
+    answers.invalidate("g1", { kind: "repository", repository: "appdev" });
+    next("g1").resolve(() => answer("g1, appdev merged"));
+    await settle();
+    // The whole read started after the failure and answered: the group reads
+    // again, though its older answer gives way to the part accepted first.
+    whole.resolve(() => answer("g1, whole"));
+    await settle();
+    expect(failures.at(-1)).toEqual({ groupId: "g1", cause: null });
+    expect(published.at(-1)).toEqual({ groupId: "g1", answer: answer("g1, appdev merged") });
+  });
+
   it("a pass longer than 60 s still publishes", async () => {
     const { answers, reads, published, settle, next } = harness();
     answers.setGroups([G1, G2]);

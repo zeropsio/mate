@@ -13,9 +13,10 @@
  * before a newer one of the same group had its answer accepted is suppressed
  * (M2). Only `dispose` aborts — the owner is gone.
  *
- * A group whose reads fail says why, once, and takes it back when a whole
- * read answers: a failure beside a kept answer is not the same as a fresh
- * one, and a verb's read of one part proves nothing about the rest.
+ * A group whose reads fail says why, once, and takes it back when a read
+ * covering what failed answers: a whole read, or the one part whose read
+ * failed. A failure beside a kept answer is not the same as a fresh one, and
+ * a verb's read of one part proves nothing about the rest.
  *
  * UI-free and platform-free (rule R1): the owner supplies the reads and the clock.
  *
@@ -60,7 +61,7 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   ) => Promise<GroupUpdate<Answer>>;
   readonly publish: (groupId: string, answer: Answer) => void;
   readonly forget: (groupIds: ReadonlyArray<string>) => void;
-  /** A group's reads started failing with `cause`, or a whole read answered again (`null`). */
+  /** A group's reads started failing with `cause`, or a read covering what failed answered (`null`). */
   readonly failure: (groupId: string, cause: string | null) => void;
   /** What an earlier owner already published, kept until a read replaces it. */
   readonly initial?: ReadonlyMap<string, Answer>;
@@ -70,8 +71,14 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   for (const [groupId, answer] of options.initial ?? []) held.set(groupId, { ticket: 0, answer });
   const groups = new Map<string, Group>();
   const keys = new Map<string, string>();
-  /** Why each failing group's latest read failed, and which read that was. */
-  const failing = new Map<string, { readonly ticket: number; readonly cause: string }>();
+  /**
+   * Why each failing group's latest read failed, which read that was, and
+   * what a read must cover to take it back.
+   */
+  const failing = new Map<
+    string,
+    { readonly ticket: number; readonly cause: string; readonly scope: Scope | "group" }
+  >();
   /** Groups owed a whole read, in the order they became due. */
   const due = new Set<string>();
   let tickets = 0;
@@ -91,19 +98,28 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
     }
     if (controller.signal.aborted || !groups.has(groupId)) return false;
     const previous = held.get(groupId);
-    if (previous !== undefined && previous.ticket > ticket) return false;
     const failed = failing.get(groupId);
     if (typeof update !== "function") {
+      if (previous !== undefined && previous.ticket > ticket) return false;
       if (failed !== undefined && failed.ticket > ticket) return false;
-      failing.set(groupId, { ticket, cause: update.failed });
+      // A part failing beside another part's failure leaves only a whole read to clear both.
+      const cleared = failed === undefined || sameScope(failed.scope, scope) ? scope : "group";
+      failing.set(groupId, { ticket, cause: update.failed, scope: cleared });
       if (failed?.cause !== update.failed) options.failure(groupId, update.failed);
       return false;
     }
-    // A read that started before the failure, or read only a part, proves nothing about it.
-    if (scope === "group" && failed !== undefined && failed.ticket < ticket) {
+    // A read that started before the failure, or read a part it does not
+    // cover, proves nothing about it; one that did not, does, even when a
+    // newer answer wins.
+    if (
+      failed !== undefined &&
+      failed.ticket < ticket &&
+      (scope === "group" || sameScope(failed.scope, scope))
+    ) {
       failing.delete(groupId);
       options.failure(groupId, null);
     }
+    if (previous !== undefined && previous.ticket > ticket) return false;
     const answer = update(previous?.answer);
     if (answer === undefined || answer === previous?.answer) return false;
     held.set(groupId, { ticket, answer });
@@ -173,3 +189,13 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
 }
 
 const first = (set: ReadonlySet<string>): string | undefined => set.values().next().value;
+
+/** Scopes are flat records: two name the same part when every field agrees. */
+function sameScope<Scope>(a: Scope | "group", b: Scope | "group"): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every((key) => left[key] === right[key]);
+}
