@@ -450,6 +450,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       records,
       directReads: new Map(listings.flatMap(({ directReads }) => [...directReads])),
       absences,
+      lastPresence: (key) => stores!.driver.machine(key)?.presence ?? null,
     });
     absences = listed.absences;
     stores.containers.setTargets(containerTargetsOf(rows, listed.targets, routeKey));

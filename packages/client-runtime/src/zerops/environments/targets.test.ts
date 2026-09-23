@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsProject } from "../api.ts";
 import type { Known } from "../knowledge/known.ts";
 import type { CandidateRow } from "../projections/candidates.ts";
+import type { Presence } from "./environmentMachine.ts";
 import type { RegistrationRecord } from "./records.ts";
 import { containerTargetsOf, listTargets, type Absence, type ListedTarget } from "./targets.ts";
 import type { TargetKey } from "./exchangeDriver.ts";
@@ -64,6 +65,8 @@ interface Row {
   readonly directReads?: ReadonlyArray<readonly [string, number]>;
   /** The absences before this evaluation. */
   readonly absences?: ReadonlyArray<readonly [TargetKey, Absence]>;
+  /** Each target's presence before this evaluation. */
+  readonly last?: ReadonlyArray<readonly [TargetKey, Presence]>;
   readonly targets: ReadonlyArray<ListedTarget>;
   /** The absences after it. */
   readonly after?: ReadonlyArray<readonly [TargetKey, Absence]>;
@@ -188,6 +191,42 @@ const ROWS: ReadonlyArray<Row> = [
     confirm: [OLD],
   },
   {
+    name: "the project's services read without a remembered one: unknown, no longer looked for at its record's origin (A16)",
+    listings: [known([mateRow("ACTIVE")])],
+    records: [OLD],
+    directReads: [[project.id, 3]],
+    last: [[OLD, REMEMBERED]],
+    targets: [
+      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
+      { key: OLD, presence: { kind: "unknown" }, record: ENV },
+    ],
+    after: [[OLD, waiting(3)]],
+    confirm: [OLD],
+  },
+  {
+    name: "the project's services read without a remembered one while a listing is partial: unknown (A16)",
+    listings: [known([mateRow("ACTIVE")], "partial")],
+    records: [OLD],
+    last: [[OLD, REMEMBERED]],
+    targets: [
+      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
+      { key: OLD, presence: { kind: "unknown" }, record: ENV },
+    ],
+  },
+  {
+    name: "the project's services read without a Mate last present: held",
+    listings: [known([mateRow("ACTIVE")])],
+    records: [OLD],
+    directReads: [[project.id, 3]],
+    last: [[OLD, { kind: "present", origin: ORIGIN }]],
+    targets: [
+      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
+      { key: OLD, presence: null, record: ENV },
+    ],
+    after: [[OLD, waiting(3)]],
+    confirm: [OLD],
+  },
+  {
     name: "a direct read no newer than the omission holds it",
     listings: [known([mateRow("ACTIVE")])],
     records: [OLD],
@@ -282,6 +321,7 @@ describe("listTargets: region P from the listings and the records (§4.4, §9 C1
         ),
         directReads: new Map(row.directReads ?? []),
         absences: new Map(row.absences ?? []),
+        lastPresence: (key) => new Map(row.last ?? []).get(key) ?? null,
       }),
     ).toEqual({
       targets: row.targets,

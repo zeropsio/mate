@@ -13,6 +13,8 @@
  *   without it, it is `gone` only once a direct read of those services, finished after the
  *   omission was seen, lacks it too (§9 C19): a service the listing drops for a moment keeps its
  *   Mate.
+ * - A remembered target its project's services were read without is `unknown` until then, whether
+ *   or not the listings settled: that read replaces what its record kept (A16).
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -88,6 +90,8 @@ export function listTargets(input: {
   readonly directReads: ReadonlyMap<string, number>;
   /** The absences the last evaluation answered. */
   readonly absences: ReadonlyMap<TargetKey, Absence>;
+  /** Each target's presence as last set; null for a target none was set for. */
+  readonly lastPresence: (key: TargetKey) => Presence | null;
 }): ListedTargets {
   const rows = input.listings.flatMap(({ listing }) => heldCandidates(listing).rows);
   const settled = input.listings.every(
@@ -127,9 +131,14 @@ export function listTargets(input: {
       absences.set(key, held);
       return null;
     }
+    // Its project's services were read without it: where its record kept it no longer answers
+    // (A16), and anything else it was is held.
+    const omitted =
+      input.lastPresence(key)?.kind === "remembered" ? ({ kind: "unknown" } as const) : null;
     if (!settled) {
       if (held !== undefined) absences.set(key, held);
-      return unanswered(record) && !listed.has(projectId) ? remembered : null;
+      if (listed.has(projectId)) return omitted;
+      return unanswered(record) ? remembered : null;
     }
     if (!listed.has(projectId)) return GONE;
     const read = input.directReads.get(projectId) ?? null;
@@ -147,7 +156,7 @@ export function listTargets(input: {
     if (next.kind === "confirmed") return GONE;
     if (held === undefined || (held.kind === "waiting" && held.past !== next.past))
       confirm.push(key);
-    return null;
+    return omitted;
   };
   const targets = [...new Set([...byKey.keys(), ...recorded.keys()])].map((key) => {
     const row = byKey.get(key);
