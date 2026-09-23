@@ -18,7 +18,7 @@ import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.t
 import { squashAtomCommandFailure, type AtomCommandResult } from "../state/runtime.ts";
 import { ZeropsApiError } from "./api.ts";
 import { zeropsMateBaseUrl } from "./candidates.ts";
-import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
+import { diagnosticFailure, mateDiagnostics, type IdentityExchangeReason } from "./diagnostics.ts";
 import { connectThroughThrowaway } from "./doorThrowaway.ts";
 import { zeropsErrorMessage } from "./errors.ts";
 
@@ -95,13 +95,17 @@ export async function exchangeZeropsContainerIdentity<E>(
   deps: ZeropsIdentityExchangeDeps<E>,
   containerOrigin: string,
   options: {
+    readonly reason: IdentityExchangeReason;
     readonly servedApp?: {
       readonly origin: string;
       readonly basePath: string;
     };
-  } = {},
+  },
 ): Promise<ZeropsIdentityExchangeResult> {
-  const span = mateDiagnostics.span("identity-exchange", { origin: containerOrigin });
+  const span = mateDiagnostics.span("identity-exchange", {
+    origin: containerOrigin,
+    reason: options.reason,
+  });
   const throwaway = deps.throwaway;
   if (!throwaway) {
     span.end({ outcome: "failure", retryable: false, code: "signed-out" });

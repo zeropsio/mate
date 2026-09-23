@@ -12,6 +12,7 @@ import {
   type ZeropsDoorThrowaway,
   type ZeropsIdentityExchangeResult,
 } from "@t3tools/client-runtime/zerops/identityExchange";
+import type { IdentityExchangeReason } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useCallback } from "react";
 
@@ -30,6 +31,7 @@ export type { ZeropsIdentityExchangeResult };
 
 export async function exchangeZeropsContainerIdentity<E>(input: {
   readonly containerOrigin: string;
+  readonly reason: IdentityExchangeReason;
   readonly appOrigin: string;
   readonly basePath: string;
   readonly throwaway: ZeropsDoorThrowaway | null;
@@ -41,7 +43,7 @@ export async function exchangeZeropsContainerIdentity<E>(input: {
   return exchangeZeropsContainerIdentityShared(
     { throwaway: input.throwaway, connect: input.connect },
     input.containerOrigin,
-    { servedApp: { origin: input.appOrigin, basePath: input.basePath } },
+    { reason: input.reason, servedApp: { origin: input.appOrigin, basePath: input.basePath } },
   );
 }
 
@@ -76,7 +78,7 @@ export async function rememberExchangedProjectRef(
   }
 }
 
-export function useZeropsIdentityExchange() {
+export function useZeropsIdentityExchange(reason: IdentityExchangeReason) {
   const { client, activeOrganization } = useZeropsSession();
   const inventory = useZeropsInventory();
   const connect = useAtomCommand(connectZeropsIdentity, { reportFailure: false });
@@ -102,6 +104,7 @@ export function useZeropsIdentityExchange() {
       try {
         const result = await exchangeZeropsContainerIdentity({
           containerOrigin,
+          reason,
           appOrigin: window.location.origin,
           basePath: appBasePath(),
           throwaway:
@@ -131,6 +134,14 @@ export function useZeropsIdentityExchange() {
         finish();
       }
     },
-    [activeOrganization, client, connect, inventory.projects, inventory.services, inventory.error],
+    [
+      activeOrganization,
+      client,
+      connect,
+      inventory.projects,
+      inventory.services,
+      inventory.error,
+      reason,
+    ],
   );
 }

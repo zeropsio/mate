@@ -34,7 +34,7 @@ export const useAvailableEnvironmentIds = () => useContext(AvailableContext);
 export function ZeropsEnvironmentLifetime({ children }: { readonly children: ReactNode }) {
   const inventory = useZeropsInventory();
   const { environments } = useEnvironments();
-  const exchange = useZeropsIdentityExchange();
+  const exchange = useZeropsIdentityExchange("restore");
   const registry = useContext(RegistryContext);
   const [restoring, setRestoring] = useState(true);
   const restoreAttempts = useRef(new Map<string, string>());

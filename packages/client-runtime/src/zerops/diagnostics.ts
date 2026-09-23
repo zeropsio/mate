@@ -41,13 +41,21 @@ export interface DiagnosticFailure {
 export type ThrowawayPurpose = "door" | "gitea";
 
 /**
+ * Why an exchange at a Mate's door was attempted: the reload's restore, the
+ * auto-connect of ready Mates, the repair of a session the door stopped
+ * accepting, or the projects page's connect (a person's click or retry, a
+ * creation's birth, the served environment's one automatic connect).
+ */
+export type IdentityExchangeReason = "restore" | "auto-connect" | "repair" | "user";
+
+/**
  * The things measured from start to end. A span that never ends — its read
  * superseded by a newer key, its component gone — ends as `dropped`.
  */
 interface MateDiagnosticSpans {
   /** One exchange at a Mate's door (`identityExchange.ts`). */
   readonly "identity-exchange": {
-    readonly start: { readonly origin: string };
+    readonly start: { readonly origin: string; readonly reason: IdentityExchangeReason };
     readonly end:
       | { readonly outcome: "success" }
       | ({ readonly outcome: "failure"; readonly retryable: boolean } & DiagnosticFailure);

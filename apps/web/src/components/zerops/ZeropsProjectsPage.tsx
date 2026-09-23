@@ -465,7 +465,7 @@ export function useZeropsProjectConnection(): {
 } {
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
   const provisioning = useZeropsProvisioning(creatingIn);
-  const exchangeZeropsIdentity = useZeropsIdentityExchange();
+  const exchangeZeropsIdentity = useZeropsIdentityExchange("user");
   const navigate = useNavigate();
   const [connectError, setConnectError] = useState<string | null>(null);
   const [serverVersion, setServerVersion] = useState<string | undefined>();

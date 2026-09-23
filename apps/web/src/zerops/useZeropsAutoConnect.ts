@@ -27,7 +27,7 @@ export function useZeropsAutoConnect(input: {
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
   readonly enabled: boolean;
 }): { readonly failures: ReadonlyMap<string, string> } {
-  const exchange = useZeropsIdentityExchange();
+  const exchange = useZeropsIdentityExchange("auto-connect");
   // Once per origin per session, success or failure: a container that refused
   // us is not asked again until the page reloads, and a registered one is
   // recognised by its candidate, not by this set.

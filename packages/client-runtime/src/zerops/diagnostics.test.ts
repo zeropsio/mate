@@ -125,7 +125,10 @@ describe("spans", () => {
 
   it("measures nothing while the recorder is off", () => {
     const diagnostics = createMateDiagnostics({ now: clock().now });
-    const span = diagnostics.span("identity-exchange", { origin: "https://a.zerops.app" });
+    const span = diagnostics.span("identity-exchange", {
+      origin: "https://a.zerops.app",
+      reason: "restore",
+    });
     span.end({ outcome: "success" });
     expect(diagnostics.snapshot()).toEqual([]);
   });

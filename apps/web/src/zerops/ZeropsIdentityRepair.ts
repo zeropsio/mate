@@ -54,7 +54,7 @@ function ZeropsIdentityRepairEnvironment({
 }) {
   const { data: state } = useEnvironmentConnectionState(environment.environmentId);
   const { client } = useZeropsSession();
-  const exchange = useZeropsIdentityExchange();
+  const exchange = useZeropsIdentityExchange("repair");
   const origin = environment.displayUrl === null ? null : normalizeOrigin(environment.displayUrl);
 
   useEffect(() => {

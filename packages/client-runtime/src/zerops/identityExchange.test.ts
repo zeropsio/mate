@@ -59,6 +59,7 @@ describe("exchangeZeropsContainerIdentity", () => {
         },
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
 
     expect(result).toEqual({
@@ -77,6 +78,7 @@ describe("exchangeZeropsContainerIdentity", () => {
         connect: async () => AsyncResult.success("environment-1" as EnvironmentId),
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
 
     expect(minted).toEqual([{ clientId: CLIENT_ID, name: `mate-door:${PROJECT_ID}:a1b2c3` }]);
@@ -94,6 +96,7 @@ describe("exchangeZeropsContainerIdentity", () => {
         },
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
 
     expect(seenToken).toBe(MINTED);
@@ -123,6 +126,7 @@ describe("exchangeZeropsContainerIdentity", () => {
       await exchangeZeropsContainerIdentity(
         { throwaway: throwaway(platform), connect: connect as never },
         CONTAINER_ORIGIN,
+        { reason: "user" },
       ).catch(() => undefined);
 
       expect(removed).toEqual(["token-1"]);
@@ -139,6 +143,7 @@ describe("exchangeZeropsContainerIdentity", () => {
         onOrphanedThrowaway: (cause) => orphaned.push(cause),
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
 
     expect(result).toMatchObject({ _tag: "Success" });
@@ -157,6 +162,7 @@ describe("exchangeZeropsContainerIdentity", () => {
         },
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
 
     expect(connected).toBe(false);
@@ -174,6 +180,7 @@ describe("exchangeZeropsContainerIdentity", () => {
     await exchangeZeropsContainerIdentity(
       { throwaway: throwaway(platform), connect },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
     expect(seenBaseUrl).toBe(`${CONTAINER_ORIGIN}/mate`);
 
@@ -181,7 +188,7 @@ describe("exchangeZeropsContainerIdentity", () => {
     await exchangeZeropsContainerIdentity(
       { throwaway: throwaway(platform), connect },
       CONTAINER_ORIGIN,
-      { servedApp: { origin: CONTAINER_ORIGIN, basePath: "/preview/mate" } },
+      { reason: "user", servedApp: { origin: CONTAINER_ORIGIN, basePath: "/preview/mate" } },
     );
     expect(seenBaseUrl).toBe(`${CONTAINER_ORIGIN}/preview/mate`);
 
@@ -190,6 +197,7 @@ describe("exchangeZeropsContainerIdentity", () => {
       { throwaway: throwaway(platform), connect },
       CONTAINER_ORIGIN,
       {
+        reason: "user",
         servedApp: { origin: "https://zcp-other-8080.prg1.zerops.app", basePath: "/preview/mate" },
       },
     );
@@ -202,6 +210,7 @@ describe("exchangeZeropsContainerIdentity", () => {
     const result = await exchangeZeropsContainerIdentity(
       { throwaway: throwaway(platform), connect: async () => AsyncResult.success(environmentId) },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
 
     expect(result).toEqual({ _tag: "Success", environmentId });
@@ -225,6 +234,7 @@ describe("exchangeZeropsContainerIdentity", () => {
         connect: async () => AsyncResult.success("e" as EnvironmentId),
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
     expect(result).toMatchObject({ _tag: "Failure", retryable });
   });
@@ -277,6 +287,7 @@ describe("exchangeZeropsContainerIdentity", () => {
         connect: async () => AsyncResult.failure(Cause.fail(cause)),
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
     expect(result).toMatchObject({ _tag: "Failure", retryable });
   });
@@ -299,6 +310,7 @@ describe("exchangeZeropsContainerIdentity", () => {
           ),
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
     expect(result).toMatchObject({
       _tag: "Failure",
@@ -309,6 +321,33 @@ describe("exchangeZeropsContainerIdentity", () => {
 });
 
 describe("the exchange's diagnostics", () => {
+  it.each(["restore", "auto-connect", "repair", "user"] as const)(
+    "names why the exchange was attempted: %s",
+    async (reason) => {
+      mateDiagnostics.enable();
+      mateDiagnostics.clear();
+      const { platform } = recordingPlatform();
+      await exchangeZeropsContainerIdentity(
+        {
+          throwaway: throwaway(platform),
+          connect: async () => AsyncResult.success("environment-1" as EnvironmentId),
+        },
+        CONTAINER_ORIGIN,
+        { reason },
+      );
+
+      expect(
+        mateDiagnostics
+          .snapshot()
+          .filter((entry) => entry.kind === "identity-exchange")
+          .map((entry) => (entry.kind === "identity-exchange" ? [entry.phase, entry.reason] : [])),
+      ).toEqual([
+        ["start", reason],
+        ["end", reason],
+      ]);
+    },
+  );
+
   it("records each exchange's outcome and failure code, never the throwaway's value", async () => {
     mateDiagnostics.enable();
     mateDiagnostics.clear();
@@ -319,6 +358,7 @@ describe("the exchange's diagnostics", () => {
         connect: async () => AsyncResult.success("environment-1" as EnvironmentId),
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
     await exchangeZeropsContainerIdentity(
       {
@@ -329,10 +369,12 @@ describe("the exchange's diagnostics", () => {
           ),
       },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
     await exchangeZeropsContainerIdentity(
       { throwaway: null, connect: async () => AsyncResult.success("e" as EnvironmentId) },
       CONTAINER_ORIGIN,
+      { reason: "user" },
     );
 
     const ends = mateDiagnostics
@@ -340,11 +382,18 @@ describe("the exchange's diagnostics", () => {
       .filter((entry) => entry.kind === "identity-exchange" && entry.phase === "end")
       .map(({ t: _t, durationMs: _durationMs, ...event }) => event);
     expect(ends).toEqual([
-      { kind: "identity-exchange", phase: "end", origin: CONTAINER_ORIGIN, outcome: "success" },
       {
         kind: "identity-exchange",
         phase: "end",
         origin: CONTAINER_ORIGIN,
+        reason: "user",
+        outcome: "success",
+      },
+      {
+        kind: "identity-exchange",
+        phase: "end",
+        origin: CONTAINER_ORIGIN,
+        reason: "user",
         outcome: "failure",
         retryable: false,
         code: "ConnectionBlockedError:authentication",
@@ -353,6 +402,7 @@ describe("the exchange's diagnostics", () => {
         kind: "identity-exchange",
         phase: "end",
         origin: CONTAINER_ORIGIN,
+        reason: "user",
         outcome: "failure",
         retryable: false,
         code: "signed-out",

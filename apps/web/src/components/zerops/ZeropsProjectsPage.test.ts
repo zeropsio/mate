@@ -293,6 +293,7 @@ describe("same-origin Zerops identity bootstrap", () => {
 
     const result = await exchangeZeropsContainerIdentity({
       containerOrigin: APP_ORIGIN,
+      reason: "user",
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
       throwaway: TEST_THROWAWAY,
@@ -315,6 +316,7 @@ describe("same-origin Zerops identity bootstrap", () => {
 
     const result = await exchangeZeropsContainerIdentity({
       containerOrigin: APP_ORIGIN,
+      reason: "user",
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
       throwaway: null,
@@ -335,6 +337,7 @@ describe("same-origin Zerops identity bootstrap", () => {
 
     const result = await exchangeZeropsContainerIdentity({
       containerOrigin: APP_ORIGIN,
+      reason: "user",
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
       throwaway: TEST_THROWAWAY,

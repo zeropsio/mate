@@ -20,5 +20,7 @@ export async function exchangeZeropsContainerIdentity<E>(input: {
   return exchangeZeropsContainerIdentityShared(
     { throwaway: input.throwaway, connect: input.connect },
     input.containerOrigin,
+    // Mobile's one exchange is the connect screen's tap.
+    { reason: "user" },
   );
 }
