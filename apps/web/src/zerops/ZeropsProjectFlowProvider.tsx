@@ -13,7 +13,8 @@
  *
  * Signed in to Mate is signed in to Gitea (D21): the provider signs the tab
  * in by itself, and until that lands every flow is empty and the surfaces
- * say so where they stand.
+ * say so where they stand. What each stop runs is the platform's pushed
+ * answer (`flow/deployment.ts`) and needs no Gitea at all.
  */
 import {
   botDisplayName,
@@ -31,7 +32,14 @@ import {
   type FlowPullRequest,
   type FlowVerb,
 } from "@t3tools/client-runtime/zerops";
-import { flowReleaseGate, flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
+import type { CollectionRead, ServiceRecord } from "@t3tools/client-runtime/zerops/data";
+import {
+  flowReleaseGate,
+  flowVerbInvalidations,
+  stopDeployment,
+  type Deployment,
+} from "@t3tools/client-runtime/zerops/flow";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -57,11 +65,32 @@ import {
   type ZeropsGroupForges,
 } from "./useZeropsGroupForge";
 import { useZeropsRegistry } from "./useZeropsRegistry";
+import {
+  stabilizeZeropsAtom,
+  useZeropsAtomSelections,
+  useZeropsData,
+  zeropsKnowledgeArraysEqual,
+} from "./zeropsDataContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
 const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
+
+/** A service listing whose members, membership and sources did not change. */
+function sameServiceListing(
+  left: CollectionRead<ServiceRecord>,
+  right: CollectionRead<ServiceRecord>,
+): boolean {
+  return (
+    left.query === right.query &&
+    zeropsKnowledgeArraysEqual(left.value, right.value) &&
+    left.observation.required.length === right.observation.required.length &&
+    left.observation.required.every(
+      (interest, index) => interest.status === right.observation.required[index]?.status,
+    )
+  );
+}
 
 /** Stands for a half a group has no answer for, as a key of {@link joinedFlows}. */
 const UNREAD_HALF = {};
@@ -201,6 +230,31 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     () => groups.map(({ groupId, slug }) => ({ groupId, slug })),
     [groups],
   );
+
+  /**
+   * What each project's stops run, from the platform's own service listing:
+   * the same reads the inventory holds demand for, selected here without a
+   * second lease.
+   */
+  const { runtime } = useZeropsData();
+  const serviceReadEntries = useMemo(
+    () =>
+      [...inventory.projectRefs.values()].map(
+        (ref) =>
+          [
+            ref.projectId,
+            stabilizeZeropsAtom(runtime.reads.servicesOf(ref), sameServiceListing),
+          ] as const,
+      ),
+    [inventory.projectRefs, runtime],
+  );
+  const serviceReads = useZeropsAtomSelections<CollectionRead<ServiceRecord>>(serviceReadEntries);
+  const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(() => {
+    const nowMs = Date.now();
+    return new Map(
+      [...serviceReads].map(([projectId, read]) => [projectId, stopDeployment(read, nowMs)]),
+    );
+  }, [serviceReads]);
 
   const [trouble, setTrouble] = useState<string | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
@@ -423,6 +477,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       signedIn,
       signInTrouble,
       flows,
+      deployments,
       slugs,
       mateNames,
       pending,
@@ -434,6 +489,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     }),
     [
       createPullRequest,
+      deployments,
       flows,
       giteaOrigin,
       mateNames,

@@ -19,6 +19,8 @@ import type {
   ReleaseEntry,
   ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
+import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { createContext, useContext } from "react";
 
 import type { ReleaseContent } from "./useZeropsGroupDeploys";
@@ -65,6 +67,11 @@ export interface ZeropsProjectFlowValue {
   /** Why the sign-in was refused, when it was; a Gitea still setting up is not a refusal. */
   readonly signInTrouble: string | null;
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
+  /**
+   * What each Zerops project's stop runs, by project id — the platform's
+   * answer, read whether or not Gitea is. A project missing here is unread.
+   */
+  readonly deployments: ReadonlyMap<string, Shown<Deployment>>;
   /** Each group's Gitea org, from the registry — known before its flow has been read. */
   readonly slugs: ReadonlyMap<string, string>;
   /** Every Mate's name by its project, for a surface that meets a bot login (`mate-{projectId}`). */

@@ -35,7 +35,6 @@ import {
   botDisplayName,
   flowVerbLabel,
   buildZeropsGroupTree,
-  deployWord,
   environmentNameUnderGroup,
   hasMate,
   mateEnvironmentsEmptyReason,
@@ -50,7 +49,6 @@ import {
   selectMateEnvironments,
   sidebarChangeLabel,
   stopAttention,
-  type DeployedVersion,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupRowTone,
@@ -62,6 +60,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { stopView, type Deployment, type StopView } from "@t3tools/client-runtime/zerops/flow";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
@@ -80,6 +80,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace, StatusDot } from "./primitives";
@@ -1202,8 +1203,8 @@ const STOP_BADGE_CLASS: Record<GroupRowTone, string> = {
   neutral: "bg-sidebar-row-hover text-sidebar-muted-foreground",
 };
 
-/** What a stop's row says it is running, when nothing has been deployed there. */
-const NOTHING_DEPLOYED = "nothing deployed yet";
+/** A stop whose project the flow has no listing for: not read, never "nothing". */
+const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null };
 
 /** How many waiting changes a stop's menu lists before it counts the rest. */
 const MENU_CHANGES_SHOWN = 8;
@@ -1220,23 +1221,25 @@ const MENU_CHANGES_SHOWN = 8;
  */
 function StopMenu({
   name,
-  version,
+  stop,
   routes,
   waiting,
   onOpenProject,
   onOpenStop,
 }: {
   readonly name: string;
-  readonly version: DeployedVersion | undefined;
+  /** What the stop runs, or the line that stands in for it while that is not known. */
+  readonly stop: StopView;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly waiting: ReleaseContentsSummary | undefined;
   readonly onOpenProject: () => void;
   readonly onOpenStop: (() => void) | undefined;
 }) {
   // `v1.4.0 · 77ab0e1 · tagged by ada` — the whole of what one row abbreviates.
+  const version = stop.version;
   const detail =
     version?.label === undefined
-      ? NOTHING_DEPLOYED
+      ? stop.line
       : [
           version.label,
           version.name === undefined ? undefined : version.commit,
@@ -1327,16 +1330,29 @@ function EnvironmentRows<T extends RosterCandidate>({
   // The hover shows four because it floats over the menu; the stop's own menu
   // is a list and can hold the ones a person is actually looking for.
   const waitingInMenu = releaseContentsSummary(flow?.releaseContents ?? [], MENU_CHANGES_SHOWN);
+  // What each stop runs is the platform's answer, joined with the row the
+  // deploy half read (`stopView`): a stop not yet read holds its line and
+  // never reads as one with nothing deployed.
+  const deployments = useZeropsProjectFlowOptional()?.deployments;
+  // Only a countdown reads the clock, and a stop's line carries none; the
+  // time the rows were first drawn is enough.
+  const [nowMs] = useState(Date.now);
+  const viewOf = (projectId: string) =>
+    stopView({
+      deployment: deployments?.get(projectId) ?? UNREAD_DEPLOYMENT,
+      row: flow?.environments.get(projectId),
+      nowMs,
+    });
   const folded = environments.map(({ item, role }) => {
     const declared = flow?.environments.get(item.project.id);
-    const tone = declared?.tone ?? "neutral";
+    const stop = viewOf(item.project.id);
     return {
       key: item.project.id,
       name: environmentNameUnderGroup(groupName, item.project.name),
-      tone,
-      word: deployWord(tone) ?? NOTHING_DEPLOYED,
+      tone: stop.tone,
+      word: stop.word,
       attention: stopAttention({
-        failed: tone === "bad",
+        failed: stop.tone === "bad",
         production: declared?.tier === "production",
         waiting: behind.total,
       }),
@@ -1400,12 +1416,11 @@ function EnvironmentRows<T extends RosterCandidate>({
             const tag = environmentRoleTag(role);
             const name = environmentNameUnderGroup(groupName, item.project.name);
             const declared = flow?.environments.get(item.project.id);
-            const tone = declared?.tone ?? "neutral";
-            const word = deployWord(tone) ?? NOTHING_DEPLOYED;
+            const stop = viewOf(item.project.id);
             const production = declared?.tier === "production";
             const release = flow !== undefined && flow.releaseOffered && production;
             const routes = item.routes ?? [];
-            const version = declared?.version;
+            const version = stop.version;
             const openStop =
               declared === undefined || flow?.onOpenStop === undefined
                 ? undefined
@@ -1425,7 +1440,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                 {/* The production is the last stop, so the spine ends on its badge
                 rather than running past it into the gap under the group. */}
                 <RailCell cap={index === environments.length - 1 ? "end" : undefined}>
-                  <StopBadge tone={tone} word={word} />
+                  <StopBadge tone={stop.tone} word={stop.word} />
                 </RailCell>
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
                   <span className="flex min-w-0 items-center gap-2">
@@ -1468,7 +1483,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                         onOpenStop={openStop}
                         onOpenProject={onOpenProject}
                         routes={routes}
-                        version={version}
+                        stop={stop}
                         waiting={production ? waitingInMenu : undefined}
                       />
                     </span>
@@ -1485,11 +1500,17 @@ function EnvironmentRows<T extends RosterCandidate>({
                       <span
                         className={cn(
                           "min-w-0 truncate",
-                          version?.name === undefined && "tabular-nums",
+                          version !== undefined && version.name === undefined && "tabular-nums",
+                          // A placeholder waits a beat before it says anything,
+                          // so a quick answer never flickers "Checking…".
+                          stop.afterMs > 0 && "animate-zerops-appear",
                         )}
                         data-zerops-surface="sidebar-environment-version"
+                        style={
+                          stop.afterMs > 0 ? { animationDelay: `${stop.afterMs}ms` } : undefined
+                        }
                       >
-                        {version?.label ?? NOTHING_DEPLOYED}
+                        {stop.line}
                       </span>
                     ) : (
                       <button

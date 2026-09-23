@@ -1,9 +1,12 @@
 import type { EnvironmentRow, FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
 
 function candidate(
@@ -624,6 +627,71 @@ describe("the project's flow under it", () => {
     // A change is not a node on the line — it branches off one. Drawn as a
     // node it read as one more Mate however small its dot.
     expect(count('data-zerops-rail="fork"')).toBe(changes);
+  });
+});
+
+describe("a stop's deployment", () => {
+  const known = (value: Deployment): Shown<Deployment> => ({
+    state: "known",
+    value,
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  /** The tree under a flow provider that knows only each stop's deployment. */
+  const withDeployments = (deployments: ReadonlyMap<string, Shown<Deployment>>) =>
+    renderToStaticMarkup(
+      <ZeropsProjectFlowContext.Provider
+        value={{ deployments, flows: new Map() } as unknown as ZeropsProjectFlowValue}
+      >
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, CRM_STAGE, CRM_PROD]}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+  const stop = (html: string, id: string) =>
+    html.slice(html.indexOf(`data-zerops-project="${id}"`)).split("</li>")[0]!;
+
+  it("never says nothing is deployed while it has not read what runs there", () => {
+    const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    expect(html.toLowerCase()).not.toContain("nothing deployed yet");
+    expect(stop(html, "crm-stage")).toContain("Checking what runs here…");
+  });
+
+  it("says nothing is deployed where the platform says a stop runs nothing", () => {
+    const html = withDeployments(
+      new Map([
+        ["crm-stage", known({ kind: "none" })],
+        ["crm-prod", { state: "unread", waitingFor: null }],
+      ]),
+    );
+    expect(stop(html, "crm-stage")).toContain("Nothing deployed yet");
+    expect(stop(html, "crm-prod")).not.toContain("Nothing deployed yet");
+  });
+
+  it("names what the platform says a stop runs before Gitea has answered", () => {
+    const html = withDeployments(
+      new Map([
+        [
+          "crm-stage",
+          known({
+            kind: "running",
+            activatedAt: null,
+            version: {
+              name: "v1.4.0",
+              commit: "3f9c1b2",
+              sha: "3f9c1b2000000000000000000000000000000000",
+              taggedBy: undefined,
+              label: "v1.4.0",
+            },
+          }),
+        ],
+      ]),
+    );
+    expect(stop(html, "crm-stage")).toContain("v1.4.0");
+    expect(stop(html, "crm-stage")).toContain('aria-label="Running"');
   });
 });
 
