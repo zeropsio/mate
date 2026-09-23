@@ -26,7 +26,11 @@ import {
   type VerifiedAccessGrant,
   type ViewObservation,
 } from "@t3tools/client-runtime/zerops/data";
-import { diagnosticFailure, mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
+import {
+  diagnosticFailure,
+  mateDiagnostics,
+  type MateDiagnosticSpan,
+} from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import * as Effect from "effect/Effect";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -325,8 +329,11 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       now(),
     );
 
+    /** The round in flight; one cut off by the epoch's end is dropped, never verified. */
+    let roundSpan: MateDiagnosticSpan<"access-round"> | null = null;
     const runRound = (round: number, carried: ReadonlyArray<ProjectRef>, first: boolean) => {
       const span = mateDiagnostics.span("access-round", { round });
+      roundSpan = span;
       let reads = 1;
       setRoundFailure(null);
       if (first) {
@@ -516,6 +523,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     return () => {
       dispatch.current({ type: "EPOCH_CLOSED" });
       alive = false;
+      roundSpan?.drop();
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("resume", wake);

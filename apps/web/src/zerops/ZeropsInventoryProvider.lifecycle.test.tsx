@@ -29,6 +29,7 @@ import {
   type VerifiedAccessGrant,
   type ManagedZeropsDataRuntime,
 } from "@t3tools/client-runtime/zerops/data";
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
@@ -348,6 +349,7 @@ const mountInventory = Effect.fn(function* (
     grants,
     projectRef,
     inventory: () => inventory,
+    unmount: () => Effect.promise(async () => act(async () => root.unmount())),
     inventoryPublications: () => inventoryPublications,
     grantsWhenChildMounted: () => grantsWhenChildMounted,
     pushProject: (id: string, name: string) =>
@@ -389,6 +391,8 @@ const mountInventory = Effect.fn(function* (
       registrationGate = Deferred.makeUnsafe<void>();
       admitted = signal();
       return {
+        /** The round's REST reads answer. */
+        release: () => gate.resolve(),
         /** The round's REST reads answer; resolves once its grant reached the runtime. */
         verify: () =>
           Effect.promise(async () =>
@@ -461,6 +465,26 @@ it.live("a renewal drops a deleted project without blocking the remaining projec
       yield* renewal.establish();
       expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
       expect(harness.inventory()?.error).toBeNull();
+    }),
+  ),
+);
+
+it.live("a round cut off by sign-out is recorded as dropped", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory();
+      mateDiagnostics.enable();
+      mateDiagnostics.clear();
+      const renewal = harness.holdRenewal();
+      yield* harness.advance(RENEWAL_DUE_MS);
+      yield* harness.unmount();
+      renewal.release();
+      yield* harness.advance(0);
+
+      const rounds = mateDiagnostics
+        .snapshot()
+        .filter((entry) => entry.kind === "access-round" && entry.phase !== "start");
+      expect(rounds.map((entry) => "phase" in entry && entry.phase)).toEqual(["dropped"]);
     }),
   ),
 );
