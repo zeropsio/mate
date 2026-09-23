@@ -6,7 +6,8 @@
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees no environments.
  */
 import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
-import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
+import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type { IdentityExchangeReason } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   reachabilityPhrase,
@@ -19,6 +20,7 @@ import {
 import type { ZeropsIdentityExchangeResult } from "@t3tools/client-runtime/zerops/identityExchange";
 import { useCallback, useSyncExternalStore } from "react";
 
+import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { inventoryCandidates } from "./inventoryContext";
 import { batchedPerTask } from "./taskBatch";
@@ -185,31 +187,59 @@ export function connectResult(outcome: ConnectOutcome): ZeropsIdentityExchangeRe
 }
 
 /**
- * The user's Connect on a container, by its origin: a demand on the account's exchange driver,
- * which runs the exchange, installs the credential and answers with the environment — or with why
- * it did not. `reason` names the exchange in diagnostics.
+ * What a Connect names: a Mate's target, when the caller knows it (a birth's harden found its
+ * service), or the origin a person saw the Mate at, with the organization it was seen in.
  */
+export type MateConnectTarget =
+  | { readonly key: TargetKey }
+  | { readonly origin: string; readonly organization: OrganizationRef | null };
+
+/**
+ * The user's Connect: a demand on the account's exchange driver, which runs the exchange,
+ * installs the credential and answers with the environment — or with why it did not. A target
+ * key is connected as it is: while its presence is unknown the driver waits on it and answers a
+ * retryable verdict. An origin the inventory does not list yet is presence unknown too (§0A law
+ * 3), never absence: the answer is retryable, and the organization named is read again.
+ */
+export async function connectMate(input: {
+  readonly environments: AccountEnvironments | null;
+  readonly candidates: ReadonlyArray<Pick<ZeropsCandidate, "key" | "containerOrigin">>;
+  readonly target: MateConnectTarget;
+  readonly reason: IdentityExchangeReason;
+}): Promise<ZeropsIdentityExchangeResult> {
+  const { target } = input;
+  let key: TargetKey;
+  if ("key" in target) {
+    key = target.key;
+  } else {
+    const origin = normalizeOrigin(target.origin);
+    const candidate = input.candidates.find(
+      (entry) => entry.containerOrigin && normalizeOrigin(entry.containerOrigin) === origin,
+    );
+    if (candidate === undefined) {
+      if (target.organization !== null) {
+        invalidateZerops({ topic: "inventory", organization: target.organization });
+      }
+      return {
+        _tag: "Failure",
+        error: "This Mate isn't listed in your projects yet. Try again in a moment.",
+        retryable: true,
+      };
+    }
+    key = candidate.key;
+  }
+  if (input.environments === null) return connectResult({ _tag: "Closed" });
+  return connectResult(await input.environments.connect(key, input.reason));
+}
+
+/** The user's Connect as a surface asks it; `reason` names the exchange in diagnostics. */
 export function useConnectMate(reason: IdentityExchangeReason) {
   const environments = useAccountEnvironments();
   const inventory = useZeropsInventory();
 
   return useCallback(
-    async (containerOrigin: string): Promise<ZeropsIdentityExchangeResult> => {
-      const candidate = inventoryCandidates(inventory).find(
-        (entry) =>
-          entry.containerOrigin &&
-          normalizeOrigin(entry.containerOrigin) === normalizeOrigin(containerOrigin),
-      );
-      if (candidate === undefined) {
-        return {
-          _tag: "Failure",
-          error: "This environment is not in your verified Zerops projects.",
-          retryable: false,
-        };
-      }
-      if (environments === null) return connectResult({ _tag: "Closed" });
-      return connectResult(await environments.connect(candidate.key, reason));
-    },
+    (target: MateConnectTarget): Promise<ZeropsIdentityExchangeResult> =>
+      connectMate({ environments, candidates: inventoryCandidates(inventory), target, reason }),
     [environments, inventory, reason],
   );
 }

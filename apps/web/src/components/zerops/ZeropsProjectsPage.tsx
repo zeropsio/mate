@@ -55,7 +55,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
-import { useConnectMate } from "~/zerops/accountEnvironments";
+import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import {
   beginBirth,
@@ -635,21 +635,54 @@ export function useZeropsProjectConnection(): {
       : null;
   }, []);
 
+  /**
+   * What a connect of this container names: its birth's target once harden found the service —
+   * the birth worker read it from REST, and the inventory may not list it yet — else the origin,
+   * with the organization of the birth or opening it belongs to.
+   */
+  const targetOf = useCallback(
+    (containerOrigin: string): MateConnectTarget => {
+      const origin = normalizeOrigin(containerOrigin);
+      const birth = birthsRef.current.find(
+        (entry) => entry.origin !== null && normalizeOrigin(entry.origin) === origin,
+      );
+      if (birth !== undefined && birth.serviceId !== null) {
+        return { key: `${birth.projectId}:${birth.serviceId}` };
+      }
+      const organizationId = organizationOf(containerOrigin);
+      return {
+        origin: containerOrigin,
+        organization: organizationId === null ? null : organizationRef(organizationId),
+      };
+    },
+    [organizationOf, organizationRef],
+  );
+
   // Fed by `scheduleBirthRetry` below and read by the timer it sets — a ref
   // so the timer always calls this hook's latest `connectContainer`.
   const connectContainerRef = useRef<(containerOrigin: string) => Promise<void>>(() =>
     Promise.resolve(),
   );
 
-  const scheduleBirthRetry = useCallback((containerOrigin: string) => {
-    if (birthRetryTimerRef.current !== null) clearTimeout(birthRetryTimerRef.current);
-    const attempt = birthRetryAttemptRef.current;
-    birthRetryAttemptRef.current = attempt + 1;
-    birthRetryTimerRef.current = setTimeout(() => {
-      birthRetryTimerRef.current = null;
-      void connectContainerRef.current(containerOrigin);
-    }, nextZeropsBirthRetryDelayMs(attempt));
-  }, []);
+  const scheduleBirthRetry = useCallback(
+    (containerOrigin: string) => {
+      // Until the birth's Mate is listed its connect waits on presence, and nothing else reads
+      // the birth's organization again: a project still NEW at the last read, or a missed push,
+      // would keep it unlisted. One read per rung of the ladder.
+      const organizationId = organizationOf(containerOrigin);
+      if (organizationId !== null) {
+        invalidateZerops({ topic: "inventory", organization: organizationRef(organizationId) });
+      }
+      if (birthRetryTimerRef.current !== null) clearTimeout(birthRetryTimerRef.current);
+      const attempt = birthRetryAttemptRef.current;
+      birthRetryAttemptRef.current = attempt + 1;
+      birthRetryTimerRef.current = setTimeout(() => {
+        birthRetryTimerRef.current = null;
+        void connectContainerRef.current(containerOrigin);
+      }, nextZeropsBirthRetryDelayMs(attempt));
+    },
+    [organizationOf, organizationRef],
+  );
 
   const connectContainer = useCallback(
     async (containerOrigin: string) => {
@@ -658,7 +691,7 @@ export function useZeropsProjectConnection(): {
       setServerVersion(undefined);
       setConnectingOrigin(containerOrigin);
       try {
-        const result = await exchangeZeropsIdentity(containerOrigin);
+        const result = await exchangeZeropsIdentity(targetOf(containerOrigin));
         if (result._tag === "Failure") {
           if (
             result.retryable &&
@@ -683,7 +716,14 @@ export function useZeropsProjectConnection(): {
         setConnectingOrigin(null);
       }
     },
-    [clearBirthRetry, exchangeZeropsIdentity, finishBirth, organizationOf, scheduleBirthRetry],
+    [
+      clearBirthRetry,
+      exchangeZeropsIdentity,
+      finishBirth,
+      organizationOf,
+      scheduleBirthRetry,
+      targetOf,
+    ],
   );
 
   useEffect(() => {
