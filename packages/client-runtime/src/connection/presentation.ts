@@ -83,6 +83,56 @@ export function connectionStatusTitle(connection: EnvironmentConnectionPresentat
   return connectionStatusText({ ...connection, error: null });
 }
 
+export interface ConnectionBannerCopy {
+  readonly title: string;
+  readonly description: string | null;
+  /** The banner's one verb; the component renders it exactly once. */
+  readonly action: string;
+}
+
+/**
+ * What a banner over a conversation says about its connection: the cause
+ * class alone — the network, the Mate not answering, the Mate refusing —
+ * named after the Mate. The failure's own detail names hosts, URLs and error
+ * classes; it stays on the presentation for diagnostics and never reaches
+ * this copy. Without a known Mate the copy names no one: the environment's
+ * label is a host name. A connected environment has no banner.
+ */
+export function connectionBannerCopy(
+  connection: EnvironmentConnectionPresentation,
+  mateName: string | null,
+): ConnectionBannerCopy | null {
+  const subject = mateName ?? "It";
+  const to = mateName === null ? "" : ` to ${mateName}`;
+  switch (connection.phase) {
+    case "connected":
+      return null;
+    case "available":
+      return { title: `Not connected${to}`, description: null, action: "Connect" };
+    case "offline":
+      return {
+        title: "You're offline",
+        description: `${subject} reconnects when your network is back.`,
+        action: "Try now",
+      };
+    case "connecting":
+      return { title: `Connecting${to}…`, description: null, action: "Try now" };
+    case "reconnecting":
+      return {
+        title: `Reconnecting${to}…`,
+        description:
+          connection.error === null ? null : `${subject} isn't answering. It may be restarting.`,
+        action: "Try now",
+      };
+    case "error":
+      return {
+        title: `Couldn't connect${to}`,
+        description: `${subject} refused the connection.`,
+        action: "Try again",
+      };
+  }
+}
+
 export function presentEnvironmentConnection(
   state: SupervisorConnectionState,
 ): EnvironmentConnectionPresentation {
