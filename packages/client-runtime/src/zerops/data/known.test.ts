@@ -1,7 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import { EMPTY_ADMISSION, makeUnresolvedProject, makeUnresolvedService } from "./inventory.ts";
-import { knownProjectsOf, knownProjectTags, knownServicesOf } from "./known.ts";
+import {
+  knownProjectsOf,
+  knownProjectTags,
+  knownServicesOf,
+  projectsSourceOf,
+  servicesSourceOf,
+} from "./known.ts";
 import { selectProjectsOf, selectServicesOf } from "./projection.ts";
 import { interestKeyOf } from "./runtime.ts";
 import { makeInitialZeropsDataState } from "./state.ts";
@@ -522,6 +528,60 @@ describe("inventory knowledge", () => {
       },
     ])("an unavailable member: $name", ({ members, known }) => {
       expect(knownServicesOf(listing([], members), NOW)).toEqual(expect.objectContaining(known));
+    });
+  });
+
+  describe("the interest a read's currency comes from", () => {
+    const owner = project();
+    const topology: InterestState = {
+      status: "failed",
+      identity: {
+        ...identity(),
+        key: interestKeyOf({
+          kind: "project-topology",
+          project: owner,
+          includeCurrentMetrics: false,
+        }),
+      },
+      reason: "topology refused",
+      retryable: true,
+      attempts: 1,
+      retryAtMs: 9_000,
+    };
+    const inventory: InterestState = {
+      status: "observing",
+      identity: {
+        ...identity(),
+        key: interestKeyOf({ kind: "project-inventory", project: owner }),
+      },
+      guarantee: "source-order-unverified",
+      sinceReceiptOrdinal: stamp(1).receiptOrdinal,
+    };
+    const observing = organizationObserving();
+
+    it("is the organization's inventory interest for its projects, never another interest", () => {
+      const read = selectProjectsOf(makeInitialZeropsDataState(scope()), organization);
+
+      expect(
+        projectsSourceOf({
+          ...read,
+          observation: { ...read.observation, required: [topology, observing] },
+        }),
+      ).toBe(observing);
+      expect(
+        projectsSourceOf({ ...read, observation: { ...read.observation, required: [topology] } }),
+      ).toBeNull();
+    });
+
+    it("is the best-placed of a project's own feeders for its services", () => {
+      const read = selectServicesOf(makeInitialZeropsDataState(scope()), owner);
+
+      expect(
+        servicesSourceOf({
+          ...read,
+          observation: { ...read.observation, required: [topology, inventory, observing] },
+        }),
+      ).toBe(inventory);
     });
   });
 });

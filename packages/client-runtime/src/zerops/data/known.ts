@@ -134,10 +134,9 @@ function freshnessOf(source: InterestState | null, asOf: Stamp): Freshness {
 
 function knownCollection<Record extends ProjectRecord | ServiceRecord>(
   read: CollectionRead<Record>,
-  feeders: ReadonlySet<InterestKey>,
+  source: InterestState | null,
   nowMs: number,
 ): Known<ReadonlyArray<Record>> {
-  const source = sourceOf(read.observation, feeders);
   const query: QueryState = read.query;
   if (query.status !== "observed") return notYetKnown(source, nowMs);
   const records: Record[] = [];
@@ -163,17 +162,25 @@ function knownCollection<Record extends ProjectRecord | ServiceRecord>(
   };
 }
 
+/**
+ * The interest an organization's projects read is as current as: its inventory interest. A reader
+ * that holds a read until it changes compares this too, because that interest failing or
+ * recovering changes the read's knowledge while its query stays as it was.
+ */
+export function projectsSourceOf(read: CollectionRead<ProjectRecord>): InterestState | null {
+  const { organization } = read.query.descriptor;
+  return sourceOf(
+    read.observation,
+    new Set([interestKeyOf({ kind: "organization-inventory", organization })]),
+  );
+}
+
 /** An organization's projects: fed by its inventory interest. */
 export function knownProjectsOf(
   read: CollectionRead<ProjectRecord>,
   nowMs: number,
 ): Known<ReadonlyArray<ProjectRecord>> {
-  const { organization } = read.query.descriptor;
-  return knownCollection(
-    read,
-    new Set([interestKeyOf({ kind: "organization-inventory", organization })]),
-    nowMs,
-  );
+  return knownCollection(read, projectsSourceOf(read), nowMs);
 }
 
 /** The interests that read one project and its services directly. */
@@ -183,12 +190,17 @@ const projectFeeders = (project: ProjectRef): ReadonlyArray<InterestKey> => [
   interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: true }),
 ];
 
+/** The interest a project's services read is as current as, like `projectsSourceOf`. */
+export function servicesSourceOf(read: CollectionRead<ServiceRecord>): InterestState | null {
+  return sourceOf(read.observation, new Set(projectFeeders(read.query.descriptor.project)));
+}
+
 /** A project's services: fed by its inventory interest or by its topology. */
 export function knownServicesOf(
   read: CollectionRead<ServiceRecord>,
   nowMs: number,
 ): Known<ReadonlyArray<ServiceRecord>> {
-  return knownCollection(read, new Set(projectFeeders(read.query.descriptor.project)), nowMs);
+  return knownCollection(read, servicesSourceOf(read), nowMs);
 }
 
 type Unavailable = Extract<
