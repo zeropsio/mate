@@ -90,6 +90,17 @@ export function EmptyStep({ children }: { readonly children: string }) {
 }
 
 /**
+ * A row's cell on a medium container, where four steps share little room: its
+ * first line runs the cell's width and the verb takes the second line's end,
+ * beside what that line says.
+ */
+const MEDIUM_ROW_CLASS =
+  "@2xl/flow:@max-5xl/flow:grid @2xl/flow:@max-5xl/flow:grid-cols-[minmax(0,1fr)_auto]";
+const MEDIUM_LINES_CLASS =
+  "@2xl/flow:@max-5xl/flow:contents @2xl/flow:@max-5xl/flow:[&>:first-child]:col-span-2";
+const MEDIUM_VERB_CLASS = "@2xl/flow:@max-5xl/flow:col-start-2 @2xl/flow:@max-5xl/flow:row-start-2";
+
+/**
  * A cell: its lines, then its verbs. The lines never go under a word: where a
  * verb leaves them less, the verb wraps to the cell's end on a line of its own.
  */
@@ -107,11 +118,24 @@ function Cell({
   readonly className?: string;
 }) {
   const row = (
-    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-      <span className="flex min-w-24 flex-1 flex-col gap-0.5" data-zerops-cell-lines="true">
+    <span
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5",
+        density === "line" && MEDIUM_ROW_CLASS,
+      )}
+    >
+      <span
+        className={cn(
+          "flex min-w-24 flex-1 flex-col gap-0.5",
+          density === "line" && MEDIUM_LINES_CLASS,
+        )}
+        data-zerops-cell-lines="true"
+      >
         {lines}
       </span>
-      <VerbSlot className="ms-auto">{verbs}</VerbSlot>
+      <VerbSlot className={cn("ms-auto", density === "line" && MEDIUM_VERB_CLASS)}>
+        {verbs}
+      </VerbSlot>
     </span>
   );
   if (density === "box") {
@@ -461,4 +485,4 @@ export function GroupName<T>({
  * column's one fact.
  */
 export const OVERVIEW_GRID_CLASS =
-  "@2xl/flow:grid @2xl/flow:grid-cols-[1.75rem_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_1.75rem] @2xl/flow:gap-x-4 @5xl/flow:grid-cols-[1.75rem_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(15rem,1.4fr)_1.75rem]";
+  "@2xl/flow:grid @2xl/flow:grid-cols-[1.75rem_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_1.75rem] @2xl/flow:gap-x-4 @5xl/flow:grid-cols-[1.75rem_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(15rem,1.4fr)_1.75rem]";

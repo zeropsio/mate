@@ -14,7 +14,7 @@ import {
   VerbSlot,
   type Density,
 } from "./flowSteps";
-import { brokenProduction, entry, mount, UMA, WREN } from "./flowTestFixtures";
+import { brokenProduction, entry, mount, pull, UMA, WREN } from "./flowTestFixtures";
 
 describe("an empty step", () => {
   const empty = entry([WREN], { mainHasCode: false });
@@ -170,5 +170,35 @@ describe("a production's state", () => {
     );
     const lines = tree.root.findByProps({ "data-zerops-cell-lines": "true" });
     expect(lines.props.className).toContain("min-w-24");
+  });
+});
+
+describe("a row's cell on a medium container", () => {
+  const MEDIUM = "@2xl/flow:@max-5xl/flow:";
+  it("runs its first line across and sets its verb on the second line's place", () => {
+    const tree = mount(
+      <PullRequestsStep
+        entry={entry([WREN], { pullRequests: [pull()] })}
+        verb={<button data-test="merge" type="button" />}
+      />,
+    );
+    const lines = tree.root.findByProps({ "data-zerops-cell-lines": "true" });
+    expect(lines.props.className).toContain(`${MEDIUM}contents`);
+    expect(lines.props.className).toContain(`${MEDIUM}[&>:first-child]:col-span-2`);
+    const slot = tree.root.findByProps({ "data-zerops-verb-slot": "true" });
+    expect(slot.props.className).toContain(`${MEDIUM}row-start-2`);
+    expect(slot.props.className).toContain(`${MEDIUM}col-start-2`);
+  });
+
+  it("keeps a box's verb beside its lines", () => {
+    const tree = mount(
+      <MainStep
+        density="box"
+        entry={entry([WREN])}
+        verb={<button data-test="fix" type="button" />}
+      />,
+    );
+    const lines = tree.root.findByProps({ "data-zerops-cell-lines": "true" });
+    expect(lines.props.className).not.toContain(MEDIUM);
   });
 });
