@@ -8,7 +8,8 @@
  *   again and re-reads what is old, and the network coming back tries the sessions again.
  * - The forge answers `forge-*` invalidations and the deployment store `deployment` ones (§6.2);
  *   a verb's settlement sends its own through the account's bus.
- * - The deployment store follows the data runtime's service listings; a Mate's envelope names a
+ * - The deployment store follows the data runtime's service listings and, holding the project's
+ *   activity demand while a stop is shown, its running processes; a Mate's envelope names a
  *   service by hostname, which the account's inventory resolves.
  *
  * The stores are constructed by the account runtime alone (§7.2 rule 6); this module only wires
@@ -17,6 +18,7 @@
  */
 import type * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { Instant } from "../data/access/grant.ts";
@@ -131,14 +133,34 @@ export function makeForgeWiring(options: {
   };
 }
 
-/** The deployment store's ports over the data runtime's service listings. */
+/** The deployment store's ports over the data runtime's service and process listings. */
 export function deploymentStorePorts(
   data: ManagedZeropsDataRuntime,
   atomRegistry: AtomRegistry.AtomRegistry,
+  /** The account's services, which the activity demand runs with. */
+  services: Context.Context<never>,
 ): DeploymentStorePorts {
+  const run = Effect.runForkWith(services);
   return {
     services: (project: ProjectRef) => atomRegistry.get(data.reads.servicesOf(project)),
-    watch: (project, changed) => atomRegistry.subscribe(data.reads.servicesOf(project), changed),
+    processes: (project: ProjectRef) => atomRegistry.get(data.reads.runningProcessesOf(project)),
+    follow: (project, changed) => {
+      // The running processes are read only while their demand is held; the services are the
+      // account's inventory demand's.
+      const lease = run(
+        Effect.scoped(
+          data.acquire({ kind: "project-activity", project }).pipe(Effect.andThen(Effect.never)),
+        ).pipe(Effect.ignore),
+      );
+      const unsubscribes = [
+        atomRegistry.subscribe(data.reads.servicesOf(project), changed),
+        atomRegistry.subscribe(data.reads.runningProcessesOf(project), changed),
+      ];
+      return () => {
+        for (const unsubscribe of unsubscribes) unsubscribe();
+        run(Fiber.interrupt(lease));
+      };
+    },
     nowMs: () => data.access.clock.currentTimeMillisUnsafe(),
   };
 }

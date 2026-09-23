@@ -5,6 +5,7 @@ import type { GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
 import type { GroupEnvironment } from "../groupEnvironments.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { FailureReason, Known, Shown } from "../knowledge/known.ts";
+import { RELEASE_NOTHING_NEW_ON_MAIN } from "../release.ts";
 import { CHECKING_RELEASE } from "./release.ts";
 import type { Deployment, StopService } from "./deployment.ts";
 import {
@@ -58,11 +59,21 @@ const MEMBERS: ReadonlyArray<GroupFlowMember> = [
   { projectId: "p-prod", name: "harbor production" },
 ];
 
+const version = (sha: string) => ({
+  name: sha,
+  commit: sha.slice(0, 7),
+  sha,
+  taggedBy: undefined,
+  label: sha.slice(0, 7),
+});
+
 const running = (sha: string): Deployment => ({
   kind: "running",
   activatedAt: "2026-09-23T09:00:00Z",
-  version: { name: sha, commit: sha.slice(0, 7), sha, taggedBy: undefined, label: sha.slice(0, 7) },
+  version: version(sha),
 });
+
+const deploying = (sha: string): Deployment => ({ kind: "deploying", version: version(sha) });
 
 const stopService = (
   projectId: string,
@@ -318,6 +329,45 @@ describe("groupFlow (DESIGN §4.7)", () => {
     const stops = flow.stops.state === "known" ? flow.stops.value : [];
     expect(stops.map(({ deployment }) => deployment?.state)).toEqual(["known", "reading"]);
     expect(stops[0]?.deployment).toMatchObject({ value: { kind: "running" } });
+  });
+
+  it("a stop deploys while any of its services does", () => {
+    const flow = groupFlow(
+      inputs({
+        stops: new Map([
+          [
+            "p-stage",
+            known([
+              stopService("p-stage", "apidev", known(running(PRODUCTION_SHA))),
+              stopService("p-stage", "appdev", known(deploying(MAIN_SHA))),
+            ]),
+          ],
+          ["p-prod", known([stopService("p-prod", "appdev", known(running(PRODUCTION_SHA)))])],
+        ]),
+      }),
+      RELEASER,
+      NOW,
+    );
+
+    const stops = flow.stops.state === "known" ? flow.stops.value : [];
+    expect(stops[0]?.deployment).toMatchObject({
+      value: { kind: "deploying", version: { sha: MAIN_SHA } },
+    });
+  });
+
+  it("a production mid-deploy is measured against the version it deploys", () => {
+    const flow = groupFlow(
+      inputs({
+        stops: new Map([
+          ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
+          ["p-prod", known([stopService("p-prod", "appdev", known(deploying(MAIN_SHA)))])],
+        ]),
+      }),
+      RELEASER,
+      NOW,
+    );
+
+    expect(flow.releaseGate).toEqual({ allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN });
   });
 
   it("a merge into a repository feeds the stages that run it, never production", () => {

@@ -7,10 +7,16 @@
  * source nobody has stated yet is pending, never running and never none. The
  * pass's REST read (`userData`) still names a version where it answered first.
  *
+ * The project's running processes say the rest (A11). While a `stack.build`
+ * runs for a service, the service is deploying the version it builds, whose
+ * name is the commit on a Mate's deploys. Once the active version's id is the
+ * one a build named, that name is what runs, the build over or not.
+ *
  * The one negative, "Nothing deployed yet", is earned: only a complete listing
- * whose every runtime service is observed with no active deploy says it. A
- * facet not yet read is `unread`, and the stop holds its line; a facet the
- * platform will not show fails the stop rather than proving it empty.
+ * whose every runtime service is observed with no active deploy, and a
+ * complete process listing with no build for it, says it. A facet not yet read
+ * is `unread`, and the stop holds its line; a facet the platform will not show
+ * fails the stop rather than proving it empty.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -22,6 +28,7 @@ import type {
   CollectionRead,
   IngestionStamp,
   InterestState,
+  ProcessRecord,
   ServiceDeployInfo,
   ServiceRecord,
   ServiceRef,
@@ -47,7 +54,9 @@ export type Deployment =
       readonly activatedAt: string | null;
       /** The pushed name, and the commit only where the platform named none. */
       readonly version: DeployedVersion;
-    };
+    }
+  /** A build for the service runs: the version it builds, named by the build (A11). */
+  | { readonly kind: "deploying"; readonly version: DeployedVersion };
 
 export const NOTHING_DEPLOYED = "Nothing deployed yet";
 export const CHECKING_WHAT_RUNS = "Checking what runs here…";
@@ -94,6 +103,8 @@ type ServiceAnswer =
   /** The platform shows the service but will not say what it runs: no answer, never a none. */
   | { readonly kind: "withheld"; readonly reason: string; readonly atMs: number }
   | { readonly kind: "none"; readonly asOf: Stamp }
+  /** An active version whose source nobody stated (A14): only a build's name can say it runs. */
+  | { readonly kind: "unstated"; readonly deploy: ServiceDeployInfo; readonly asOf: Stamp }
   | {
       readonly kind: "running";
       readonly hostname: string;
@@ -120,7 +131,7 @@ function serviceAnswer(knowledge: CollectionRead<ServiceRecord>["value"][number]
   if (runsNothing(deploy)) return { kind: "none", asOf };
   // A version whose source nobody stated may be that `NONE` one: a native
   // frame names only its id, status and times (A14). Neither running nor none.
-  if (deploy.source === null) return { kind: "pending" };
+  if (deploy.source === null) return { kind: "unstated", deploy, asOf };
   return { kind: "running", hostname: service.name, deploy, asOf };
 }
 
@@ -265,7 +276,7 @@ export function stopDeployment(
     };
   const listed =
     read.query.status === "observed" && read.query.coverage.kind === "exhausted-traversal";
-  if (!listed || answers.some((answer) => answer.kind === "pending"))
+  if (!listed || answers.some((answer) => answer.kind === "pending" || answer.kind === "unstated"))
     return notYetKnown(source, nowMs);
   const withheld = answers.find((answer) => answer.kind === "withheld");
   if (withheld !== undefined)
@@ -294,6 +305,83 @@ export interface StopService {
   readonly deployment: Shown<Deployment>;
 }
 
+/** What a stop is read from: its project's listings, and what its builds named. */
+export interface StopReads {
+  readonly services: CollectionRead<ServiceRecord>;
+  /** The project's running processes. */
+  readonly processes: CollectionRead<ProcessRecord>;
+  /** Every app version a build named, by id: a name outlives its build (A11). */
+  readonly names: ReadonlyMap<string, string>;
+}
+
+/** A `stack.build` the platform reports running, and the app version it builds (A11). */
+interface RunningBuild {
+  readonly serviceIds: ReadonlyArray<string>;
+  readonly appVersionId: string | null;
+  readonly name: string | null;
+  readonly asOf: Stamp;
+}
+
+/** What the project's processes say of its services' deploys. */
+interface StopBuilds {
+  readonly builds: ReadonlyArray<RunningBuild>;
+  /** Whether the listing is complete enough to prove that no build runs. */
+  readonly complete: boolean;
+}
+
+function runningBuilds(read: CollectionRead<ProcessRecord>): StopBuilds {
+  let complete =
+    read.query.status === "observed" && read.query.coverage.kind === "exhausted-traversal";
+  const builds: Array<RunningBuild> = [];
+  for (const knowledge of read.value) {
+    // A process the platform no longer shows builds nothing anybody can see.
+    if (knowledge.knowledge === "unavailable") continue;
+    const identity = knowledge.knowledge === "observed" ? knowledge.record.identity : null;
+    // A process not read far enough to say what it does may be a build.
+    if (
+      knowledge.knowledge !== "observed" ||
+      identity?.knowledge !== "observed" ||
+      identity.fields.serviceIds === undefined
+    ) {
+      complete = false;
+      continue;
+    }
+    if (identity.fields.actionName !== "stack.build") continue;
+    const pipeline = knowledge.record.pipeline;
+    const appVersion = pipeline.knowledge === "observed" ? pipeline.fields.appVersion : null;
+    builds.push({
+      serviceIds: identity.fields.serviceIds,
+      appVersionId: appVersion?.id ?? null,
+      name: appVersion?.name ?? null,
+      asOf: toStamp(identity.stamp),
+    });
+  }
+  return { builds, complete };
+}
+
+/**
+ * The names the running builds give their app versions, over the ones held: the same map while
+ * no build names anything new.
+ */
+export function buildNames(
+  held: ReadonlyMap<string, string>,
+  processes: CollectionRead<ProcessRecord>,
+): ReadonlyMap<string, string> {
+  return namedBy(held, runningBuilds(processes).builds);
+}
+
+function namedBy(
+  held: ReadonlyMap<string, string>,
+  builds: ReadonlyArray<RunningBuild>,
+): ReadonlyMap<string, string> {
+  let names = held;
+  for (const { appVersionId, name } of builds) {
+    if (appVersionId === null || name === null || names.get(appVersionId) === name) continue;
+    names = new Map([...names, [appVersionId, name]]);
+  }
+  return names;
+}
+
 /** What one listed service contributes to its stop's list. */
 type ListedService =
   | { readonly kind: "not-a-stop" }
@@ -301,49 +389,99 @@ type ListedService =
   | { readonly kind: "unidentified" }
   | { readonly kind: "stop"; readonly stop: StopService };
 
+/** The active version a facet states, whatever its source. */
+function activeVersionId(answer: ServiceAnswer): string | null {
+  return answer.kind === "running" || answer.kind === "unstated" ? answer.deploy.id : null;
+}
+
+/** What a stop's services are measured against: its builds, and every name one gave. */
+interface StopContext extends StopBuilds {
+  readonly names: ReadonlyMap<string, string>;
+  readonly source: SourceState;
+  readonly nowMs: number;
+}
+
+function serviceDeployment(
+  answer: Exclude<ServiceAnswer, { readonly kind: "not-a-stop" }>,
+  serviceId: string,
+  context: StopContext,
+): Shown<Deployment> {
+  const { builds, complete, names, source, nowMs } = context;
+  const known = (value: Deployment, asOf: Stamp): Shown<Deployment> => ({
+    state: "known",
+    value,
+    asOf,
+    coverage: "complete",
+    freshness: freshnessOf(source, nowMs),
+  });
+  const active = activeVersionId(answer);
+  // A build whose version is already the active one has deployed: the service runs it.
+  const build = builds.find(
+    ({ serviceIds, appVersionId }) =>
+      serviceIds.includes(serviceId) && (appVersionId === null || appVersionId !== active),
+  );
+  if (build !== undefined)
+    return known(
+      { kind: "deploying", version: deployedVersion(build.name ?? undefined) },
+      build.asOf,
+    );
+  switch (answer.kind) {
+    case "running":
+    case "unstated": {
+      const named = active === null ? undefined : names.get(active);
+      if (named !== undefined)
+        return known(
+          {
+            kind: "running",
+            activatedAt: answer.deploy.activatedAt,
+            version: deployedVersion(named),
+          },
+          answer.asOf,
+        );
+      return answer.kind === "running"
+        ? known(
+            {
+              kind: "running",
+              activatedAt: answer.deploy.activatedAt,
+              version: pushedVersion(answer.deploy),
+            },
+            answer.asOf,
+          )
+        : notYetKnown(source, nowMs);
+    }
+    case "none":
+      // Nothing active is no proof while a build for it may be running unseen.
+      return complete ? known({ kind: "none" }, answer.asOf) : notYetKnown(source, nowMs);
+    case "withheld":
+      return {
+        state: "failed",
+        failure: { kind: "refused", code: answer.reason, words: "" },
+        atMs: answer.atMs,
+        attempt: 1,
+        retryAtMs: null,
+      };
+    case "pending":
+      return notYetKnown(source, nowMs);
+  }
+}
+
 function listedService(
   knowledge: CollectionRead<ServiceRecord>["value"][number],
-  source: SourceState,
-  nowMs: number,
+  context: StopContext,
 ): ListedService {
   const answer = serviceAnswer(knowledge);
   if (answer.kind === "not-a-stop") return answer;
   if (knowledge.knowledge !== "observed") return { kind: "unidentified" };
   const service = serviceRecordToZeropsService(knowledge.record);
   if (service === null) return { kind: "unidentified" };
-  const deployment: Shown<Deployment> =
-    answer.kind === "running"
-      ? {
-          state: "known",
-          value: {
-            kind: "running",
-            activatedAt: answer.deploy.activatedAt,
-            version: pushedVersion(answer.deploy),
-          },
-          asOf: answer.asOf,
-          coverage: "complete",
-          freshness: freshnessOf(source, nowMs),
-        }
-      : answer.kind === "none"
-        ? {
-            state: "known",
-            value: { kind: "none" },
-            asOf: answer.asOf,
-            coverage: "complete",
-            freshness: freshnessOf(source, nowMs),
-          }
-        : answer.kind === "withheld"
-          ? {
-              state: "failed",
-              failure: { kind: "refused", code: answer.reason, words: "" },
-              atMs: answer.atMs,
-              attempt: 1,
-              retryAtMs: null,
-            }
-          : notYetKnown(source, nowMs);
+  const ref = knowledge.record.ref;
   return {
     kind: "stop",
-    stop: { service: knowledge.record.ref, hostname: service.name, deployment },
+    stop: {
+      service: ref,
+      hostname: service.name,
+      deployment: serviceDeployment(answer, ref.serviceId, context),
+    },
   };
 }
 
@@ -352,13 +490,17 @@ function listedService(
  * project's listing is complete and every listed service is identified; one service still being
  * read holds its own deployment, never its neighbours'.
  */
-export function stopServices(
-  read: CollectionRead<ServiceRecord> | undefined,
-  nowMs: number,
-): Known<ReadonlyArray<StopService>> {
-  if (read === undefined) return { state: "unread", waitingFor: null };
+export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArray<StopService>> {
+  const read = reads.services;
   const source = worstSource(read.observation.required);
-  const listed = read.value.map((knowledge) => listedService(knowledge, source, nowMs));
+  const stopBuilds = runningBuilds(reads.processes);
+  const context: StopContext = {
+    ...stopBuilds,
+    names: namedBy(reads.names, stopBuilds.builds),
+    source,
+    nowMs,
+  };
+  const listed = read.value.map((knowledge) => listedService(knowledge, context));
   if (
     read.query.status !== "observed" ||
     read.query.coverage.kind !== "exhausted-traversal" ||
@@ -419,6 +561,18 @@ export function stopView(input: {
   const { deployment, row } = input;
   if (deployment.state === "known" && deployment.value.kind === "running")
     return runningView(deployment.value.version, row);
+  // A build runs now: what it builds is the stop's answer, whatever the row read before it.
+  if (deployment.state === "known" && deployment.value.kind === "deploying") {
+    const { version } = deployment.value;
+    const word = deployWord("pending") ?? RUNNING_WORD;
+    return {
+      tone: "pending",
+      word,
+      line: version.label ?? word,
+      version: version.label === undefined ? undefined : version,
+      afterMs: 0,
+    };
+  }
   const presentation = knownPresentation(deployment, DEPLOYMENT_SURFACE, {
     nowMs: input.nowMs,
     updateOffered: false,

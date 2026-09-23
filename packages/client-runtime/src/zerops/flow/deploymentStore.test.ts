@@ -4,9 +4,14 @@ import { project, service } from "../data/__fixtures__/index.ts";
 import {
   projectKeyOf,
   type CollectionRead,
+  type ProcessRecord,
   type ProjectRef,
+  type ServiceDeployInfo,
   type ServiceRecord,
 } from "../data/types.ts";
+import type { Shown } from "../knowledge/known.ts";
+import type { StopService } from "./deployment.ts";
+import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
 import { deployed, record, servicesRead } from "./__fixtures__/services.ts";
 import { makeDeploymentStore } from "./deploymentStore.ts";
 
@@ -17,27 +22,77 @@ const PRODUCTION = project("project-production");
 /** The data runtime's listings, which the test changes and publishes. */
 function listings() {
   const reads = new Map<string, CollectionRead<ServiceRecord>>();
+  const processReads = new Map<string, CollectionRead<ProcessRecord>>();
   const watchers = new Map<string, Set<() => void>>();
+  const changed = (ref: ProjectRef) => {
+    for (const listener of watchers.get(projectKeyOf(ref)) ?? []) listener();
+  };
   return {
     ports: {
       services: (ref: ProjectRef) =>
         reads.get(projectKeyOf(ref)) ??
         servicesRead([], { coverage: { kind: "none" }, project: ref }),
-      watch: (ref: ProjectRef, changed: () => void) => {
+      processes: (ref: ProjectRef) =>
+        processReads.get(projectKeyOf(ref)) ??
+        processesRead([], { coverage: { kind: "none" }, project: ref }),
+      follow: (ref: ProjectRef, listener: () => void) => {
         const key = projectKeyOf(ref);
         const set = watchers.get(key) ?? new Set();
-        watchers.set(key, set.add(changed));
-        return () => void set.delete(changed);
+        watchers.set(key, set.add(listener));
+        return () => void set.delete(listener);
       },
       nowMs: () => NOW,
     },
     publish: (ref: ProjectRef, read: CollectionRead<ServiceRecord>) => {
       reads.set(projectKeyOf(ref), read);
-      for (const changed of watchers.get(projectKeyOf(ref)) ?? []) changed();
+      changed(ref);
+    },
+    publishProcesses: (ref: ProjectRef, read: CollectionRead<ProcessRecord>) => {
+      processReads.set(projectKeyOf(ref), read);
+      changed(ref);
     },
     watching: () => [...watchers.values()].reduce((count, set) => count + set.size, 0),
   };
 }
+
+const SHA = "3f9c1b2000000000000000000000000000000000";
+
+/** A runtime's version before its first deploy: `NONE` runs nothing. */
+const NEVER_DEPLOYED: ServiceDeployInfo = {
+  id: "version-1",
+  status: "ACTIVE",
+  source: "NONE",
+  activatedAt: "2026-09-23T09:00:00Z",
+  name: null,
+  branch: null,
+  commit: null,
+  tag: null,
+  repository: null,
+};
+
+/** The one runtime service `app` of the stop, with what the platform says of its deployment. */
+const stage = (deploy: ServiceDeployInfo | null) =>
+  servicesRead([record("app-id", "app", deployed(deploy), { project: STAGE })], {
+    project: STAGE,
+  });
+
+/** The stop's processes: `builds` lists the running builds of `app`. */
+const building = (...builds: ReadonlyArray<{ readonly id: string; readonly name: string }>) =>
+  processesRead(
+    builds.map((appVersion, index) =>
+      runningProcess(`build-${index}`, {
+        serviceIds: ["build-helper", "app-id"],
+        appVersion: { ...appVersion, status: "BUILDING" },
+        project: STAGE,
+      }),
+    ),
+    { project: STAGE },
+  );
+
+const deploymentOf = (stop: Shown<ReadonlyArray<StopService>>, hostname: string) =>
+  stop.state === "known"
+    ? stop.value.find((entry) => entry.hostname === hostname)?.deployment
+    : undefined;
 
 const app = (ref: ProjectRef) =>
   servicesRead([record(`${ref.projectId}-app`, "app", deployed(null), { project: ref })], {
@@ -93,6 +148,77 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     store.invalidate({ topic: "deployment", service: service("project-stage-app", STAGE) });
 
     expect(heard).toEqual(["project-stage"]);
+  });
+
+  it("a deploy in progress reads deploying(sha), never nothing deployed", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    // The runtime's first deploy: the service still carries its NONE version while it builds.
+    platform.publish(STAGE, stage(NEVER_DEPLOYED));
+    platform.publishProcesses(STAGE, building({ id: "version-2", name: SHA }));
+
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: { kind: "deploying", version: { sha: SHA, commit: "3f9c1b2" } },
+    });
+  });
+
+  it("the build process's name becomes the running deployment's name when its version activates", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, source: "GIT", name: "v1.0.0" }));
+    platform.publishProcesses(STAGE, building({ id: "version-2", name: SHA }));
+    // The build ends; the service's next frame names only the new version's id (A11, A14).
+    platform.publishProcesses(STAGE, building());
+    platform.publish(
+      STAGE,
+      stage({
+        ...NEVER_DEPLOYED,
+        id: "version-2",
+        source: null,
+        activatedAt: "2026-09-23T10:01:00Z",
+      }),
+    );
+
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: {
+        kind: "running",
+        activatedAt: "2026-09-23T10:01:00Z",
+        version: { sha: SHA, commit: "3f9c1b2", label: "3f9c1b2" },
+      },
+    });
+  });
+
+  it("a never-deployed runtime stays Nothing deployed", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    platform.publish(STAGE, stage(NEVER_DEPLOYED));
+    // Until the processes are read, a build for it may be running unseen.
+    expect(deploymentOf(store.stop(STAGE), "app")?.state).toBe("unread");
+
+    platform.publishProcesses(
+      STAGE,
+      processesRead(
+        [
+          runningProcess("other-build", {
+            serviceIds: ["api-id"],
+            appVersion: { id: "api-version", name: SHA },
+            project: STAGE,
+          }),
+          runningProcess("restart", { actionName: "stack.restart", serviceIds: ["app-id"] }),
+        ],
+        { project: STAGE },
+      ),
+    );
+
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: { kind: "none" },
+    });
   });
 
   it("a disposed store watches nothing and publishes nothing", () => {

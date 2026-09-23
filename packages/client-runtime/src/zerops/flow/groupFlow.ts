@@ -5,10 +5,11 @@
  * - **The halves are independent.** The pull requests are known once every repository's open
  *   list is; each stop carries its own deployment. Nothing fills a missing half with `[]`.
  * - **The release offer** is known only when every input it is measured from is known — the
- *   declarations, the group repo's tags, each production service's deployment and the head of
- *   `main` it would release, where the repository has one — and is offered only while all of
- *   them are current. Until then the gate says why in the one phrase producer's words
- *   (`knownPresentation`, §3.4): checking, or the cause of the input that failed.
+ *   declarations, the group repo's tags, each production service's deployment (what it runs, or
+ *   what it deploys while a build runs) and the head of `main` it would release, where the
+ *   repository has one — and is offered only while all of them are current. Until then the gate
+ *   says why in the one phrase producer's words (`knownPresentation`, §3.4): checking, or the
+ *   cause of the input that failed.
  * - **What a stop is (D7):** `environments.yaml` declares which stops exist and in what order,
  *   the project tags which Zerops projects are members. A declared stop without a member project
  *   is missing its project; a member without a declaration is not declared yet. Either takes
@@ -219,15 +220,18 @@ function pullRequestsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowP
 }
 
 /**
- * What a stop runs, from its services: the first running one by hostname, else the first that
- * is not known, else none — which only services that each run none prove.
+ * What a stop runs, from its services: the first deploying one by hostname, else the first
+ * running one, else the first that is not known, else none — which only services that each run
+ * none prove.
  */
 function stopDeploymentOf(services: Shown<ReadonlyArray<StopService>>): Shown<Deployment> {
   if (!isKnown(services)) return services as Shown<never>;
-  const running = services.value.find(
-    ({ deployment }) => deployment.state === "known" && deployment.value.kind === "running",
-  );
-  if (running !== undefined) return running.deployment;
+  const first = (kind: Deployment["kind"]) =>
+    services.value.find(
+      ({ deployment }) => deployment.state === "known" && deployment.value.kind === kind,
+    );
+  const answer = first("deploying") ?? first("running");
+  if (answer !== undefined) return answer.deployment;
   const combined = combine([
     { shown: services, source: "zerops" },
     ...services.value.map(({ deployment }) => ({ shown: deployment, source: "zerops" as const })),
@@ -315,9 +319,10 @@ function releaseOf(
       // A service with no repository of its name (or none on Gitea at all) has no candidate:
       // it is left out of the release, never a reason to hold the others.
       if (head.state !== "gone") parts.push({ shown: head, source: "gitea" });
+      // A production mid-deploy is measured against what it deploys: that is what it will run.
       if (
         isKnown(deployment) &&
-        deployment.value.kind === "running" &&
+        deployment.value.kind !== "none" &&
         deployment.value.version.sha !== undefined
       ) {
         production.set(hostname, deployment.value.version.sha);

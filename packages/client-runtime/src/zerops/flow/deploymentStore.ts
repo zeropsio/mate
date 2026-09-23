@@ -3,28 +3,28 @@
  * fact per service, for the account epoch's post-grant stage.
  *
  * A stop is one Zerops project of a group. A view demands it; while it does, the store follows
- * the data runtime's listing of that project's services — the platform's pushed deployment facet
- * is where existence, time, name and commit come from (§6.1) — and publishes the stop each time
- * the listing changes, with each service's deployment beside it (`stopServices`). A stop nobody
- * demands shows `unread`.
+ * the data runtime's listings of that project's services — the platform's pushed deployment facet
+ * is where existence and time come from (§6.1) — and of its running processes, whose builds say
+ * what deploys now and name the version they build (A11). It publishes the stop each time either
+ * listing changes, with each service's deployment beside it (`stopServices`). The names the
+ * builds gave are kept while the stop is demanded: a version that activates after its build
+ * ended is still named by it. A stop nobody demands shows `unread`.
  *
- * A `deployment` invalidation (§6.2) publishes the stop holding that service again. The pushed
- * facet is the store's one source so far: what a deploy that finished changed arrives as a push,
- * and the invalidation is where the build process frames and the read of the active app version
- * by id join (A11).
+ * A `deployment` invalidation (§6.2) publishes the stop holding that service again.
  *
  * @module flow/deploymentStore
  */
 import {
   projectKeyOf,
   type CollectionRead,
+  type ProcessRecord,
   type ProjectRef,
   type ServiceRecord,
   type ServiceRef,
 } from "../data/types.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import type { Shown } from "../knowledge/known.ts";
-import { stopServices, type StopService } from "./deployment.ts";
+import { buildNames, stopServices, type StopService } from "./deployment.ts";
 
 /** The invalidations the deployment store answers (§6.2). */
 export type DeploymentInvalidation = Extract<Invalidation, { readonly topic: "deployment" }>;
@@ -32,8 +32,13 @@ export type DeploymentInvalidation = Extract<Invalidation, { readonly topic: "de
 export interface DeploymentStorePorts {
   /** The project's service listing, as the data runtime holds it now. */
   readonly services: (project: ProjectRef) => CollectionRead<ServiceRecord>;
-  /** Tells `changed` each time that listing changes, until the returned stop. */
-  readonly watch: (project: ProjectRef, changed: () => void) => () => void;
+  /** The project's running processes, as the data runtime holds them now. */
+  readonly processes: (project: ProjectRef) => CollectionRead<ProcessRecord>;
+  /**
+   * Holds the demand both listings need and tells `changed` each time either changes, until the
+   * returned stop.
+   */
+  readonly follow: (project: ProjectRef, changed: () => void) => () => void;
   readonly nowMs: () => number;
 }
 
@@ -54,8 +59,10 @@ export interface DeploymentStore {
 interface Entry {
   readonly project: ProjectRef;
   leases: number;
+  /** Every app version a build of the stop named while it was demanded, by id. */
+  names: ReadonlyMap<string, string>;
   shown: Shown<ReadonlyArray<StopService>>;
-  readonly unwatch: () => void;
+  readonly unfollow: () => void;
 }
 
 const UNREAD: Shown<never> = { state: "unread", waitingFor: null };
@@ -65,8 +72,18 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
   const listeners = new Set<(project: ProjectRef) => void>();
   let disposed = false;
 
+  /** The stop as its listings stand now, and the names its builds gave. */
+  const read = (entry: Entry): void => {
+    const processes = ports.processes(entry.project);
+    entry.names = buildNames(entry.names, processes);
+    entry.shown = stopServices(
+      { services: ports.services(entry.project), processes, names: entry.names },
+      ports.nowMs(),
+    );
+  };
+
   const publish = (entry: Entry): void => {
-    entry.shown = stopServices(ports.services(entry.project), ports.nowMs());
+    read(entry);
     for (const listener of listeners) listener(entry.project);
   };
 
@@ -79,9 +96,11 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         const created: Entry = {
           project,
           leases: 0,
-          shown: stopServices(ports.services(project), ports.nowMs()),
-          unwatch: ports.watch(project, () => publish(created)),
+          names: new Map(),
+          shown: UNREAD,
+          unfollow: ports.follow(project, () => publish(created)),
         };
+        read(created);
         entries.set(key, created);
         entry = created;
       }
@@ -93,7 +112,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         released = true;
         held.leases -= 1;
         if (held.leases > 0) return;
-        held.unwatch();
+        held.unfollow();
         entries.delete(key);
       };
     },
@@ -113,7 +132,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      for (const entry of entries.values()) entry.unwatch();
+      for (const entry of entries.values()) entry.unfollow();
       entries.clear();
       listeners.clear();
     },

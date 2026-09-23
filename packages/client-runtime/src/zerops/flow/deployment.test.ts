@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { identity, project, service } from "../data/__fixtures__/index.ts";
-import type { CollectionRead, ServiceDeployInfo, ServiceRecord } from "../data/types.ts";
+import type {
+  CollectionRead,
+  ProcessRecord,
+  ServiceDeployInfo,
+  ServiceRecord,
+} from "../data/types.ts";
 import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
 import type { EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
 import { projectTopology } from "../topology.ts";
 import {
+  buildNames,
   CHECKING_WHAT_RUNS,
   NOTHING_DEPLOYED,
   stopDeployment,
@@ -15,6 +21,7 @@ import {
   stopView,
   type Deployment,
 } from "./deployment.ts";
+import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
 import {
   deployed,
   record,
@@ -93,6 +100,7 @@ const STATES: ReadonlyArray<{ readonly name: string; readonly shown: Shown<Deplo
     }),
   },
   { name: "known running", shown: known(RUNNING) },
+  { name: "known deploying", shown: known({ kind: "deploying", version: RUNNING.version }) },
 ];
 
 const row = (version: EnvironmentRow["version"], tone: EnvironmentRow["tone"]): EnvironmentRow => ({
@@ -172,6 +180,30 @@ describe("stopView", () => {
   it("lets the platform's none win over a version the deploy half read earlier", () => {
     const view = stopView({ deployment: known({ kind: "none" }), row: ROWS[2]!.row, nowMs: NOW });
     expect(view).toMatchObject({ tone: "neutral", line: NOTHING_DEPLOYED, version: undefined });
+  });
+
+  it("says what a running build deploys, over what the deploy half read before it", () => {
+    const deploying = known({ kind: "deploying", version: RUNNING.version });
+    for (const entry of ROWS) {
+      expect(
+        stopView({ deployment: deploying, row: entry.row, nowMs: NOW }),
+        entry.name,
+      ).toMatchObject({ tone: "pending", word: "Deploying", line: "v1.4.0", afterMs: 0 });
+    }
+    const unnamed = known({
+      kind: "deploying",
+      version: {
+        name: undefined,
+        commit: undefined,
+        sha: undefined,
+        taggedBy: undefined,
+        label: undefined,
+      },
+    });
+    expect(stopView({ deployment: unnamed, row: undefined, nowMs: NOW })).toMatchObject({
+      line: "Deploying",
+      version: undefined,
+    });
   });
 
   it("takes a version the deploy half read as running while the platform is still unread", () => {
@@ -431,14 +463,22 @@ describe("stopServices", () => {
     records: ReadonlyArray<ServiceRecord | "unresolved">,
     options: Parameters<typeof servicesRead>[1] = {},
   ) => servicesRead(records, { project: PROJECT, ...options });
+  const NO_PROCESSES = processesRead([], { project: PROJECT });
+  const build = (appVersion?: { readonly id: string; readonly name?: string }) =>
+    runningProcess("build", {
+      serviceIds: ["build-helper", "s1"],
+      project: PROJECT,
+      ...(appVersion === undefined ? {} : { appVersion }),
+    });
 
   const cases: ReadonlyArray<{
     readonly name: string;
-    readonly read: CollectionRead<ServiceRecord> | undefined;
+    readonly read: CollectionRead<ServiceRecord>;
+    readonly processes?: CollectionRead<ProcessRecord>;
+    readonly names?: ReadonlyMap<string, string>;
     /** The list's state, else each listed service's hostname and deployment. */
     readonly expected: string | ReadonlyArray<readonly [string, string]>;
   }> = [
-    { name: "nothing read for the project", read: undefined, expected: "unread" },
     {
       name: "a listing still being read",
       read: listed([], { coverage: { kind: "none" } }),
@@ -472,10 +512,54 @@ describe("stopServices", () => {
       ]),
       expected: [],
     },
+    {
+      name: "nothing active proves none only once the processes are read",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead([], { coverage: { kind: "none" }, project: PROJECT }),
+      expected: [["app", "unread"]],
+    },
+    {
+      name: "a process not yet read may be a build",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead(["unresolved"], { project: PROJECT }),
+      expected: [["app", "unread"]],
+    },
+    {
+      name: "a running build deploys over what runs",
+      read: listed([record("s1", "app", deployed(PUSHED))]),
+      processes: processesRead([build({ id: "next", name: SHA })], { project: PROJECT }),
+      expected: [["app", "deploying"]],
+    },
+    {
+      name: "a build not yet read far enough to name its version still deploys",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead([build()], { project: PROJECT }),
+      expected: [["app", "deploying"]],
+    },
+    {
+      name: "a build whose version is already active has deployed",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      processes: processesRead([build({ id: UNSTATED.id!, name: SHA })], { project: PROJECT }),
+      expected: [["app", "running"]],
+    },
+    {
+      name: "a version a build named runs by that name after the build ended",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      names: new Map([[UNSTATED.id!, SHA]]),
+      expected: [["app", "running"]],
+    },
+    {
+      name: "a version nobody named or sourced stays pending",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      expected: [["app", "unread"]],
+    },
   ];
 
-  it.each(cases)("$name", ({ read, expected }) => {
-    const stops = stopServices(read, NOW);
+  it.each(cases)("$name", ({ read, processes, names, expected }) => {
+    const stops = stopServices(
+      { services: read, processes: processes ?? NO_PROCESSES, names: names ?? new Map() },
+      NOW,
+    );
     if (typeof expected === "string") {
       expect(stops.state).toBe(expected);
       return;
@@ -491,11 +575,55 @@ describe("stopServices", () => {
 
   it("names each service by its ref", () => {
     const stops = stopServices(
-      listed([record("s1", "app", deployed(PUSHED), { project: PROJECT })]),
+      {
+        services: listed([record("s1", "app", deployed(PUSHED), { project: PROJECT })]),
+        processes: NO_PROCESSES,
+        names: new Map(),
+      },
       NOW,
     );
     expect(stops.state === "known" ? stops.value[0]?.service : undefined).toEqual(
       service("s1", PROJECT),
     );
+  });
+
+  it("names a running version by its build over the name the platform pushed", () => {
+    const stops = stopServices(
+      {
+        services: listed([record("s1", "app", deployed(PUSHED))]),
+        processes: NO_PROCESSES,
+        names: new Map([[PUSHED.id!, SHA]]),
+      },
+      NOW,
+    );
+    expect(stops.state === "known" ? stops.value[0]?.deployment : undefined).toMatchObject({
+      state: "known",
+      value: { kind: "running", version: { sha: SHA, label: "3f9c1b2" } },
+    });
+  });
+});
+
+describe("buildNames", () => {
+  const PROJECT = project("project-stage");
+  const builds = (...appVersions: ReadonlyArray<{ readonly id: string; readonly name?: string }>) =>
+    processesRead(
+      appVersions.map((appVersion, index) =>
+        runningProcess(`build-${index}`, { serviceIds: ["s1"], appVersion, project: PROJECT }),
+      ),
+      { project: PROJECT },
+    );
+
+  it("keeps what earlier builds named and adds what a running build names", () => {
+    const held = new Map([["v1", "first"]]);
+    expect([...buildNames(held, builds({ id: "v2", name: SHA }))]).toEqual([
+      ["v1", "first"],
+      ["v2", SHA],
+    ]);
+  });
+
+  it("is the same map while no build names anything new", () => {
+    const held = new Map([["v1", "first"]]);
+    expect(buildNames(held, builds({ id: "v1", name: "first" }))).toBe(held);
+    expect(buildNames(held, builds({ id: "v3" }))).toBe(held);
   });
 });
