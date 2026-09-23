@@ -5,12 +5,14 @@
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import {
   makeRegistrationRecords,
+  REGISTRATION_RECORDS_KEY,
   type RegistrationRecord,
 } from "@t3tools/client-runtime/zerops/environments";
 import { useMemo, useSyncExternalStore } from "react";
 
 import {
   accountLocalStorage,
+  accountStorageKey,
   captureAccountLifetime,
   onAccountLifetimeClose,
   onAccountLifetimeOpen,
@@ -47,10 +49,30 @@ function subscribe(listener: () => void) {
 }
 const versionSnapshot = () => version;
 
+/**
+ * Another tab's write of this account's records (DESIGN §6.7): the list re-reads storage on its
+ * next read, so its readers only need to hear it. A cleared storage names no key.
+ */
+function followOtherTabs(): () => void {
+  const target = window;
+  const recordsKey = accountStorageKey(REGISTRATION_RECORDS_KEY);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === recordsKey) notify();
+  };
+  target.addEventListener("storage", onStorage);
+  return () => target.removeEventListener("storage", onStorage);
+}
+
 /** Exchanges whose credential is being installed, by container origin. */
 const pendingExchanges = new Map<string, number>();
-onAccountLifetimeOpen(notify);
+let unfollowOtherTabs: (() => void) | null = null;
+onAccountLifetimeOpen(() => {
+  unfollowOtherTabs = followOtherTabs();
+  notify();
+});
 onAccountLifetimeClose(() => {
+  unfollowOtherTabs?.();
+  unfollowOtherTabs = null;
   pendingExchanges.clear();
   notify();
 });
