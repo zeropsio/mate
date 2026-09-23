@@ -448,6 +448,53 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges.every((request) => request.reason === "auto-connect")).toBe(true);
   });
 
+  it("a route target whose container turns ready exchanges within the minute its records spent", async () => {
+    const records = Array.from({ length: 11 }, (_, index) => mate(`r${index}`));
+    const route = mate("route");
+    const { driver, clock, exchanges, start } = rig([...records, route]);
+    const restarting: ContainerVerdict = { level: "restarting", by: "you", overdue: false };
+    const routeTarget = (container: ContainerVerdict) => ({
+      key: keyOf(route),
+      presence: { kind: "present", origin: route.origin } as const,
+      container,
+      record: route.descriptor().environmentId,
+    });
+    // The reload finds our restart under way: the route's container is not ready yet.
+    const started = start({ records: [...records, route], route });
+    driver.setTargets([routeTarget(restarting)]);
+    await started;
+    expect(exchanges.some((request) => request.key === keyOf(route))).toBe(false);
+
+    await clock.advance(5_000);
+    driver.setTargets([routeTarget({ level: "ready" })]);
+    await flush();
+    expect(driver.machine(keyOf(route))?.credential).toMatchObject({ kind: "held" });
+    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE);
+  });
+
+  it("records held back by the route target's mint start once the minute's mints age out", async () => {
+    const records = Array.from({ length: 11 }, (_, index) => mate(`r${index}`));
+    const route = mate("route");
+    const { driver, clock, exchanges, start } = rig([...records, route]);
+    const started = start({ records: [...records, route], route });
+    driver.setTargets([
+      {
+        key: keyOf(route),
+        presence: { kind: "present", origin: route.origin },
+        container: { level: "restarting", by: "you", overdue: false },
+        record: route.descriptor().environmentId,
+      },
+    ]);
+    await started;
+    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE - 1);
+
+    await clock.advance(60_000);
+    expect(exchanges.map((request) => request.key).slice(DOOR_MINTS_PER_MINUTE - 1)).toEqual([
+      keyOf(records[9]!),
+      keyOf(records[10]!),
+    ]);
+  });
+
   it("a container turning ready kicks a link in backoff", async () => {
     const shop = mate("shop");
     const { driver, retriedLinks, start } = rig([shop]);
