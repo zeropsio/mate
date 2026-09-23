@@ -312,7 +312,7 @@ export function ProductionStep<T>({
           {cell.empty ? (
             <EmptyStep>{cell.line}</EmptyStep>
           ) : (
-            <StatusDot className={LINE_ONE_CLASS} label={cell.line} sentence tone={cell.tone} />
+            <StatusDot className="min-w-0 text-sm" label={cell.line} sentence tone={cell.tone} />
           )}
           {cell.detail === undefined ? null : (
             <span className={lineTwoClass(density)}>{cell.detail}</span>

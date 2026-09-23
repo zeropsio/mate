@@ -14,7 +14,7 @@ import {
   VerbSlot,
   type Density,
 } from "./flowSteps";
-import { entry, mount, UMA, WREN } from "./flowTestFixtures";
+import { brokenProduction, entry, mount, UMA, WREN } from "./flowTestFixtures";
 
 describe("an empty step", () => {
   const empty = entry([WREN], { mainHasCode: false });
@@ -146,5 +146,16 @@ describe("a group's Mates", () => {
       ["wren-dev", "wren-dev", "Wren"],
       ["uma-dev", "uma-dev", "Uma"],
     ]);
+  });
+});
+
+describe("a production's state", () => {
+  it("keeps its dot a gap apart from its word, at the cell's size", () => {
+    const html = renderToStaticMarkup(
+      <ProductionStep density="line" entry={brokenProduction()} releaseVerb={null} verb={null} />,
+    );
+    expect(html).toContain(
+      'class="inline-flex items-center gap-1.5 min-w-0 text-sm" data-zerops-primitive="status-dot"',
+    );
   });
 });

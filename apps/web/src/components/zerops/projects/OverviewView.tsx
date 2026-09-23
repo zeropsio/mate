@@ -245,7 +245,7 @@ function OverviewRow<T>({
       >
         <button
           aria-expanded={open}
-          className="flex min-w-0 items-center gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring @2xl/flow:col-span-2 @2xl/flow:row-start-1 @2xl/flow:grid @2xl/flow:grid-cols-subgrid @5xl/flow:row-span-1"
+          className="flex min-w-0 items-center gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring @2xl/flow:col-span-2 @2xl/flow:row-start-1 @2xl/flow:grid @2xl/flow:grid-cols-subgrid @2xl/flow:gap-x-4 @5xl/flow:row-span-1"
           onClick={onToggle}
           type="button"
           {...{ [ROW_TOGGLE]: "true" }}
