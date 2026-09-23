@@ -6,7 +6,8 @@
  *   list is; each stop carries its own deployment. Nothing fills a missing half with `[]`.
  * - **The release offer** is known only when every input it is measured from is known — the
  *   declarations, the group repo's tags, each production service's deployment and the head of
- *   `main` it would release — and is offered only while all of them are current. Until then
+ *   `main` it would release, where the repository has one — and is offered only while all of
+ *   them are current. Until then
  *   the gate says why in the one phrase producer's words (`knownPresentation`, §3.4): checking,
  *   or the cause of the input that failed.
  * - **What a stop is (D7):** `environments.yaml` declares which stops exist and in what order,
@@ -295,7 +296,10 @@ function releaseOf(
     if (!isKnown(services)) continue;
     for (const { hostname, deployment } of services.value) {
       const head = inputs.mainHeads.get(hostname) ?? UNREAD;
-      parts.push({ shown: deployment, source: "zerops" }, { shown: head, source: "gitea" });
+      parts.push({ shown: deployment, source: "zerops" });
+      // A service with no repository of its name (or none on Gitea at all) has no candidate:
+      // it is left out of the release, never a reason to hold the others.
+      if (head.state !== "gone") parts.push({ shown: head, source: "gitea" });
       if (
         isKnown(deployment) &&
         deployment.value.kind === "running" &&

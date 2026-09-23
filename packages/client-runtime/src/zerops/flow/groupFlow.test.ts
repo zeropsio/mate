@@ -197,6 +197,38 @@ describe("groupFlow (DESIGN §4.7)", () => {
     expect(stale.releaseGate).toEqual({ allowed: false, reason: "Not up to date." });
   });
 
+  it("a production service with no repository of its name has no candidate and holds nothing", () => {
+    const flow = groupFlow(
+      inputs({
+        mainHeads: new Map([
+          ["appdev", known(MAIN_SHA)],
+          [
+            "static",
+            { state: "gone", evidence: "direct-not-found", asOf: { ordinal: 1, atMs: NOW - 10 } },
+          ],
+        ]),
+        stops: new Map([
+          ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
+          [
+            "p-prod",
+            known([
+              stopService("p-prod", "appdev", known(running(PRODUCTION_SHA))),
+              stopService("p-prod", "static", known(running(PRODUCTION_SHA))),
+            ]),
+          ],
+        ]),
+      }),
+      RELEASER,
+      NOW,
+    );
+
+    expect(flow.release.state).toBe("known");
+    expect(flow.releaseGate).toEqual({ allowed: true });
+    expect(flow.release.state === "known" ? flow.release.value.entries : []).toEqual([
+      { service: "appdev", commit: MAIN_SHA },
+    ]);
+  });
+
   it("the pull requests wait for every repository's open list, not for the other half", () => {
     const flow = groupFlow(
       inputs({
