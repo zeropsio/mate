@@ -756,7 +756,8 @@ function collectOneWayViolations(
 // registration records, the container store (with its probe store) and the exchange driver — are
 // constructed by the account runtime only. A call of a constructor anywhere else is reported; its
 // declaration is not, nor a test's or a test fixture's. The Gitea sessions are still built in the
-// web, named below with their constructor.
+// web, and mobile, which runs no account runtime, hosts its own container store (§7.5, A10); each
+// is named below with its constructor.
 const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
 const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeInvalidationBus",
@@ -766,8 +767,9 @@ const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeExchangeDriver",
   "makeGiteaSessions",
 ];
-const POST_GRANT_BUILT_IN_THE_WEB: ReadonlyMap<string, string> = new Map([
+const POST_GRANT_BUILT_OUTSIDE_IT: ReadonlyMap<string, string> = new Map([
   ["apps/web/src/zerops/accountGiteaSessions.ts", "makeGiteaSessions"],
+  ["apps/mobile/src/features/zerops/containers.ts", "makeContainerStore"],
 ]);
 
 interface ConstructionViolation {
@@ -799,7 +801,7 @@ function collectAccountRuntimeConstructionViolations(
         const code = scanSourceLiterals(yield* fs.readFileString(file)).jsxSource;
         for (const constructor of ACCOUNT_RUNTIME_CONSTRUCTORS) {
           const call = new RegExp(`(?<![\\w$])(?<!function\\s+)${constructor}\\s*\\(`, "u");
-          if (call.test(code) && POST_GRANT_BUILT_IN_THE_WEB.get(label) !== constructor) {
+          if (call.test(code) && POST_GRANT_BUILT_OUTSIDE_IT.get(label) !== constructor) {
             violations.push({
               file: label,
               reason: `constructs ${constructor}, a module of the account runtime, outside it`,
