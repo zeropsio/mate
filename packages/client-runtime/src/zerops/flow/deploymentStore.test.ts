@@ -4,6 +4,7 @@ import { project, service } from "../data/__fixtures__/index.ts";
 import {
   projectKeyOf,
   type CollectionRead,
+  type LeaseAdmissionError,
   type ProcessRecord,
   type ProjectRef,
   type ServiceDeployInfo,
@@ -24,6 +25,7 @@ function listings() {
   const reads = new Map<string, CollectionRead<ServiceRecord>>();
   const processReads = new Map<string, CollectionRead<ProcessRecord>>();
   const watchers = new Map<string, Set<() => void>>();
+  const refusals = new Map<string, (reason: LeaseAdmissionError["reason"]) => void>();
   const changed = (ref: ProjectRef) => {
     for (const listener of watchers.get(projectKeyOf(ref)) ?? []) listener();
   };
@@ -35,10 +37,15 @@ function listings() {
       processes: (ref: ProjectRef) =>
         processReads.get(projectKeyOf(ref)) ??
         processesRead([], { coverage: { kind: "none" }, project: ref }),
-      follow: (ref: ProjectRef, listener: () => void) => {
+      follow: (
+        ref: ProjectRef,
+        listener: () => void,
+        refused: (reason: LeaseAdmissionError["reason"]) => void,
+      ) => {
         const key = projectKeyOf(ref);
         const set = watchers.get(key) ?? new Set();
         watchers.set(key, set.add(listener));
+        refusals.set(key, refused);
         return () => void set.delete(listener);
       },
       nowMs: () => NOW,
@@ -51,6 +58,9 @@ function listings() {
       processReads.set(projectKeyOf(ref), read);
       changed(ref);
     },
+    /** The platform takes no demand for the project's running processes. */
+    refuse: (ref: ProjectRef, reason: LeaseAdmissionError["reason"]) =>
+      refusals.get(projectKeyOf(ref))?.(reason),
     watching: () => [...watchers.values()].reduce((count, set) => count + set.size, 0),
   };
 }
@@ -218,6 +228,43 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
       state: "known",
       value: { kind: "none" },
+    });
+  });
+
+  it("a refused process demand fails the none it could not prove, never checks forever", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    const heard: Array<string> = [];
+    store.subscribe((ref) => heard.push(ref.projectId));
+    platform.publish(STAGE, stage(NEVER_DEPLOYED));
+
+    platform.refuse(STAGE, "account-capacity");
+
+    expect(heard).toEqual([STAGE.projectId, STAGE.projectId]);
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "failed",
+      failure: { kind: "refused", code: "account-capacity" },
+      retryAtMs: null,
+    });
+  });
+
+  it("a process demand refused as it is taken fails the none too", () => {
+    const platform = listings();
+    platform.publish(STAGE, stage(NEVER_DEPLOYED));
+    const store = makeDeploymentStore({
+      ...platform.ports,
+      follow: (_ref, _changed, refused) => {
+        refused("account-mismatch");
+        return () => undefined;
+      },
+    });
+
+    store.demand(STAGE);
+
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "failed",
+      failure: { kind: "refused", code: "account-mismatch" },
     });
   });
 

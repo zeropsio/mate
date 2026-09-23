@@ -19,6 +19,7 @@ import {
   stopServices,
   stopView,
   type Deployment,
+  type StopReads,
 } from "./deployment.ts";
 import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
 import {
@@ -243,7 +244,7 @@ const UNSTATED: ServiceDeployInfo = {
 /** The one listed service's deployment, its processes read and none of them a build. */
 function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deployment> | undefined {
   const stops = stopServices(
-    { services: read, processes: processesRead([]), names: new Map() },
+    { services: read, processes: processesRead([]), names: new Map(), refused: null },
     NOW,
   );
   return stops.state === "known" ? stops.value[0]?.deployment : stops;
@@ -393,6 +394,7 @@ describe("stopServices", () => {
     readonly read: CollectionRead<ServiceRecord>;
     readonly processes?: CollectionRead<ProcessRecord>;
     readonly names?: ReadonlyMap<string, string>;
+    readonly refused?: StopReads["refused"];
     /** The list's state, else each listed service's hostname and deployment. */
     readonly expected: string | ReadonlyArray<readonly [string, string]>;
   }> = [
@@ -471,6 +473,13 @@ describe("stopServices", () => {
       expected: [["app", "failed"]],
     },
     {
+      name: "a refused process demand fails the none it could not prove",
+      read: listed([record("s1", "app", deployed(null))]),
+      processes: processesRead([], { coverage: { kind: "none" }, project: PROJECT }),
+      refused: "account-capacity",
+      expected: [["app", "failed"]],
+    },
+    {
       name: "a process not yet read may be a build",
       read: listed([record("s1", "app", deployed(null))]),
       processes: processesRead(["unresolved"], { project: PROJECT }),
@@ -507,9 +516,14 @@ describe("stopServices", () => {
     },
   ];
 
-  it.each(cases)("$name", ({ read, processes, names, expected }) => {
+  it.each(cases)("$name", ({ read, processes, names, refused, expected }) => {
     const stops = stopServices(
-      { services: read, processes: processes ?? NO_PROCESSES, names: names ?? new Map() },
+      {
+        services: read,
+        processes: processes ?? NO_PROCESSES,
+        names: names ?? new Map(),
+        refused: refused ?? null,
+      },
       NOW,
     );
     if (typeof expected === "string") {
@@ -531,6 +545,7 @@ describe("stopServices", () => {
         services: listed([record("s1", "app", deployed(PUSHED), { project: PROJECT })]),
         processes: NO_PROCESSES,
         names: new Map(),
+        refused: null,
       },
       NOW,
     );
@@ -545,6 +560,7 @@ describe("stopServices", () => {
         services: listed([record("s1", "app", deployed(PUSHED))]),
         processes: NO_PROCESSES,
         names: new Map([[PUSHED.id!, SHA]]),
+        refused: null,
       },
       NOW,
     );

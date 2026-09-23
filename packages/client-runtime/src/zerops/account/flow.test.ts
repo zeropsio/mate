@@ -1,11 +1,17 @@
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { project } from "../data/__fixtures__/index.ts";
+import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
+import type { LeaseAdmissionError } from "../data/types.ts";
 import type { FlowCommands } from "../flow/flowCommands.ts";
 import type { ForgeStore } from "../forge/forgeStore.ts";
 import type { GiteaSessions } from "../forge/giteaSession.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
-import { makeForgeWiring } from "./flow.ts";
+import { deploymentStorePorts, makeForgeWiring } from "./flow.ts";
 
 /** The forge's stores, as spies. */
 function forge() {
@@ -106,5 +112,31 @@ describe("the post-grant stage's forge and the tab (DESIGN §6.4)", () => {
     wiring(false).start(stores).dispose();
 
     expect(order).toEqual(["sessions", "commands", "store"]);
+  });
+});
+
+describe("the deployment store's ports (DESIGN §2.D D6)", () => {
+  it("tells the store why the platform took no demand for a stop's processes", () => {
+    const refusal: LeaseAdmissionError = {
+      _tag: "ZeropsLeaseAdmissionError",
+      reason: "account-capacity",
+      message: "too many interests",
+    };
+    const listing = Atom.make(null);
+    const data = {
+      reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
+      acquire: () => Effect.fail(refusal),
+    } as unknown as ManagedZeropsDataRuntime;
+    const ports = deploymentStorePorts(data, AtomRegistry.make(), Context.empty());
+    const refused: Array<string> = [];
+
+    const unfollow = ports.follow(
+      project("project-stage"),
+      () => undefined,
+      (reason) => refused.push(reason),
+    );
+
+    expect(refused).toEqual(["account-capacity"]);
+    unfollow();
   });
 });

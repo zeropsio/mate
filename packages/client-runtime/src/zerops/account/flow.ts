@@ -144,13 +144,14 @@ export function deploymentStorePorts(
   return {
     services: (project: ProjectRef) => atomRegistry.get(data.reads.servicesOf(project)),
     processes: (project: ProjectRef) => atomRegistry.get(data.reads.runningProcessesOf(project)),
-    follow: (project, changed) => {
+    follow: (project, changed, refused) => {
       // The running processes are read only while their demand is held; the services are the
-      // account's inventory demand's.
+      // account's inventory demand's. A demand the platform refuses is never read: the store
+      // hears why, so the stop fails what it could not prove.
       const lease = run(
         Effect.scoped(
           data.acquire({ kind: "project-activity", project }).pipe(Effect.andThen(Effect.never)),
-        ).pipe(Effect.ignore),
+        ).pipe(Effect.catch((error) => Effect.sync(() => refused(error.reason)))),
       );
       const unsubscribes = [
         atomRegistry.subscribe(data.reads.servicesOf(project), changed),

@@ -8,7 +8,8 @@
  * what deploys now and name the version they build (A11). It publishes the stop each time either
  * listing changes, with each service's deployment beside it (`stopServices`). The names the
  * builds gave are kept while the stop is demanded: a version that activates after its build
- * ended is still named by it. A stop nobody demands shows `unread`.
+ * ended is still named by it. A process demand the platform refuses fails what it could not
+ * prove, rather than checking forever. A stop nobody demands shows `unread`.
  *
  * A `deployment` invalidation (§6.2) publishes the stop holding that service again.
  *
@@ -17,6 +18,7 @@
 import {
   projectKeyOf,
   type CollectionRead,
+  type LeaseAdmissionError,
   type ProcessRecord,
   type ProjectRef,
   type ServiceRecord,
@@ -36,9 +38,13 @@ export interface DeploymentStorePorts {
   readonly processes: (project: ProjectRef) => CollectionRead<ProcessRecord>;
   /**
    * Holds the demand both listings need and tells `changed` each time either changes, until the
-   * returned stop.
+   * returned stop; tells `refused` once when the platform takes no demand for the processes.
    */
-  readonly follow: (project: ProjectRef, changed: () => void) => () => void;
+  readonly follow: (
+    project: ProjectRef,
+    changed: () => void,
+    refused: (reason: LeaseAdmissionError["reason"]) => void,
+  ) => () => void;
   readonly nowMs: () => number;
 }
 
@@ -61,8 +67,10 @@ interface Entry {
   leases: number;
   /** Every app version a build of the stop named while it was demanded, by id. */
   names: ReadonlyMap<string, string>;
+  /** Why the platform took no demand for the stop's running processes. */
+  refused: LeaseAdmissionError["reason"] | null;
   shown: Shown<ReadonlyArray<StopService>>;
-  readonly unfollow: () => void;
+  unfollow: () => void;
 }
 
 const UNREAD: Shown<never> = { state: "unread", waitingFor: null };
@@ -77,7 +85,12 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
     const processes = ports.processes(entry.project);
     entry.names = buildNames(entry.names, processes);
     entry.shown = stopServices(
-      { services: ports.services(entry.project), processes, names: entry.names },
+      {
+        services: ports.services(entry.project),
+        processes,
+        names: entry.names,
+        refused: entry.refused,
+      },
       ports.nowMs(),
     );
   };
@@ -97,11 +110,21 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
           project,
           leases: 0,
           names: new Map(),
+          refused: null,
           shown: UNREAD,
-          unfollow: ports.follow(project, () => publish(created)),
+          unfollow: () => undefined,
         };
-        read(created);
+        // Held before it is followed: a demand refused as it is taken reaches the entry.
         entries.set(key, created);
+        created.unfollow = ports.follow(
+          project,
+          () => publish(created),
+          (reason) => {
+            created.refused = reason;
+            publish(created);
+          },
+        );
+        read(created);
         entry = created;
       }
       const held = entry;

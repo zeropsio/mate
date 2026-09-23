@@ -28,6 +28,7 @@ import type {
   CollectionRead,
   IngestionStamp,
   InterestState,
+  LeaseAdmissionError,
   ProcessRecord,
   ServiceDeployInfo,
   ServiceRecord,
@@ -42,7 +43,7 @@ import {
   type EnvironmentRow,
   type GroupRowTone,
 } from "../groupRows.ts";
-import type { Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
+import type { FailureReason, Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
 import { knownPresentation, type KnownSurface } from "../knowledge/presentation.ts";
 
 export type Deployment =
@@ -127,7 +128,7 @@ function serviceAnswer(knowledge: CollectionRead<ServiceRecord>["value"][number]
   return { kind: "running", deploy, asOf };
 }
 
-/** The worst of the interests the listing needs, which is what vouches for it. */
+/** The worst of the reads a stop needs, which is what vouches for it. */
 type SourceState =
   | { readonly kind: "observing" }
   | { readonly kind: "establishing"; readonly sinceMs: number }
@@ -135,7 +136,7 @@ type SourceState =
   | { readonly kind: "recovering"; readonly retryAtMs: number; readonly attempt: number }
   | {
       readonly kind: "failed";
-      readonly reason: string;
+      readonly failure: FailureReason;
       readonly attempts: number;
       readonly retryAtMs: number | null;
     };
@@ -161,7 +162,7 @@ function sourceOf(interest: InterestState): SourceState {
     case "failed":
       return {
         kind: "failed",
-        reason: interest.reason,
+        failure: { kind: "transport", detail: interest.reason },
         attempts: interest.attempts,
         retryAtMs: interest.retryAtMs,
       };
@@ -197,7 +198,7 @@ function freshnessOf(source: SourceState, nowMs: number): Freshness {
         kind: "stale",
         reason: {
           kind: "revalidation-failed",
-          failure: { kind: "transport", detail: source.reason },
+          failure: source.failure,
           attempt: source.attempts,
           retryAtMs: source.retryAtMs,
         },
@@ -228,7 +229,7 @@ function notYetKnown<T>(source: SourceState, nowMs: number): Known<T> {
     case "failed":
       return {
         state: "failed",
-        failure: { kind: "transport", detail: source.reason },
+        failure: source.failure,
         atMs: nowMs,
         attempt: source.attempts,
         retryAtMs: source.retryAtMs,
@@ -250,6 +251,8 @@ export interface StopReads {
   readonly processes: CollectionRead<ProcessRecord>;
   /** Every app version a build named, by id: a name outlives its build (A11). */
   readonly names: ReadonlyMap<string, string>;
+  /** Why the platform took no demand for the running processes; they are never read then. */
+  readonly refused: LeaseAdmissionError["reason"] | null;
 }
 
 /** A `stack.build` the platform reports running, and the app version it builds (A11). */
@@ -436,7 +439,15 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
     ...stopBuilds,
     names: namedBy(reads.names, stopBuilds.builds),
     // A service's deployment stands on both listings: its builds are the processes'.
-    source: worstSource([...read.observation.required, ...reads.processes.observation.required]),
+    source:
+      reads.refused === null
+        ? worstSource([...read.observation.required, ...reads.processes.observation.required])
+        : {
+            kind: "failed",
+            failure: { kind: "refused", code: reads.refused, words: "" },
+            attempts: 1,
+            retryAtMs: null,
+          },
     nowMs,
   };
   const listed = read.value.map((knowledge) => listedService(knowledge, context));
