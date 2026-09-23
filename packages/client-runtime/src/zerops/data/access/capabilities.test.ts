@@ -221,11 +221,13 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
       }),
     /** Whether the runtime's command admission lets a write on the project run now. */
     commandable: (target: ProjectRef) =>
-      Effect.map(
-        runtime.state,
-        ({ access }) =>
-          commandAdmissionError(runtime.scope, access, target, clock.wallMs()) === null,
-      ),
+      Effect.gen(function* () {
+        const { access } = yield* runtime.state;
+        const account = yield* capabilities.check({ kind: "account" });
+        return (
+          commandAdmissionError(runtime.scope, access, target, clock.wallMs(), account) === null
+        );
+      }),
   };
 });
 
@@ -440,6 +442,23 @@ describe("capabilities over the access grant", () => {
           }
         }),
       ),
+  );
+
+  // Between the grant's timer ticks, the runtime's access still holds the evidence as last
+  // published; only the grant's own clocks see that the wall clock went back (G5).
+  it.effect("a wall clock set back an hour refuses commands as it refuses the capability", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const opened = yield* tab(answering());
+        yield* firstRound(opened);
+        opened.clock.skewWall(-60 * MINUTE);
+
+        expect({
+          write: yield* opened.check({ kind: "platformWrite", project: A.projectId }),
+          commandable: yield* opened.commandable(A),
+        }).toEqual({ write: refused("access-lapsed", true), commandable: false });
+      }),
+    ),
   );
 
   it.effect("a waitable refusal resolves within 30 s when the grant arrives", () =>

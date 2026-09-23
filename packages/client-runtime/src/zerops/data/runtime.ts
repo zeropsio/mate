@@ -16,6 +16,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
 import { createZeropsDataAtoms } from "./atoms.ts";
+import { grantCapabilities } from "./access/capabilities.ts";
 import { commandAdmissionError, commandTarget } from "./commands.ts";
 import { BuildLogTransportError, type BuildLogTransport } from "./logTransport.ts";
 import { makeBuildLogRegistry, type BuildLogRegistry } from "./logs.ts";
@@ -2746,6 +2747,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       );
     });
 
+  /** The grant's account capability now, on its own clocks (`commandAdmissionError`). */
+  const accountCapability = Effect.suspend(() =>
+    grantCapabilities(grant.grant).check({ kind: "account" }),
+  );
+
   const prepareCommand = (
     intent: PlatformCommandIntent,
   ): Effect.Effect<PlatformCommand, CommandAdmissionError> =>
@@ -2778,6 +2784,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           current.access,
           commandTarget(intent),
           now,
+          yield* accountCapability,
         );
         if (admission !== null) return yield* Effect.fail(admission);
         receiptOrdinal += 1;
@@ -2821,6 +2828,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           current.access,
           commandTarget(command),
           now,
+          yield* accountCapability,
         );
         if (admission !== null) return yield* Effect.fail(admission);
         if ((yield* Ref.get(closed)) || current.closed) {

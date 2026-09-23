@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import type { GrantCapability } from "./access/grant.ts";
 import { commandAdmissionError } from "./commands.ts";
 import {
   AccountEpoch,
@@ -46,13 +47,50 @@ const verified = (overrides: Partial<Extract<AccessState, { status: "verified" }
     ...overrides,
   }) satisfies AccessState;
 
+const ALLOWED: GrantCapability = { allowed: true };
+
 describe("commandAdmissionError", () => {
   it("admits a current project-scoped grant", () => {
-    expect(commandAdmissionError(scope, verified(), service, 999)).toBeNull();
+    expect(commandAdmissionError(scope, verified(), service, 999, ALLOWED)).toBeNull();
   });
 
   it("rejects an expired grant at the execution clock", () => {
-    expect(commandAdmissionError(scope, verified(), service, 1_000)?.reason).toBe("access-expired");
+    expect(commandAdmissionError(scope, verified(), service, 1_000, ALLOWED)?.reason).toBe(
+      "access-expired",
+    );
+  });
+
+  it.each([
+    ["access-lapsed", "access-expired"],
+    ["epoch-closed", "runtime-closed"],
+  ] as const)(
+    "refuses a verified access its grant's own clocks say is %s, as %s",
+    (grantReason, reason) => {
+      expect(
+        commandAdmissionError(scope, verified(), service, 500, {
+          allowed: false,
+          reason: grantReason,
+          waitable: grantReason === "access-lapsed",
+        }),
+      ).toEqual({
+        _tag: "ZeropsCommandAdmissionError",
+        reason,
+        message:
+          grantReason === "access-lapsed"
+            ? "Project access could not be verified."
+            : "This Zerops sign-in has ended.",
+      });
+    },
+  );
+
+  it("leaves an account its grant has not verified to the runtime's access", () => {
+    expect(
+      commandAdmissionError(scope, verified(), service, 500, {
+        allowed: false,
+        reason: "access-unverified",
+        waitable: true,
+      }),
+    ).toBeNull();
   });
 
   it("rejects a stale account epoch even if the API client object is reused", () => {
@@ -62,14 +100,15 @@ describe("commandAdmissionError", () => {
         verified({ accountEpoch: AccountEpoch.make(2), deadlineMs: 10_000 }),
         service,
         500,
+        ALLOWED,
       )?.reason,
     ).toBe("access-expired");
   });
 
   it("requires an effective project mutation grant", () => {
-    expect(commandAdmissionError(scope, verified({ projects: [] }), service, 500)?.reason).toBe(
-      "access-denied",
-    );
+    expect(
+      commandAdmissionError(scope, verified({ projects: [] }), service, 500, ALLOWED)?.reason,
+    ).toBe("access-denied");
   });
 
   it("does not reuse a same-ID grant from another organization", () => {
@@ -88,13 +127,15 @@ describe("commandAdmissionError", () => {
         }),
         service,
         500,
+        ALLOWED,
       )?.reason,
     ).toBe("access-denied");
   });
 
   it("rejects when mutations are disallowed at the account level despite an admitted project", () => {
     expect(
-      commandAdmissionError(scope, verified({ mutationsAllowed: false }), service, 500)?.reason,
+      commandAdmissionError(scope, verified({ mutationsAllowed: false }), service, 500, ALLOWED)
+        ?.reason,
     ).toBe("access-denied");
   });
 
@@ -106,6 +147,7 @@ describe("commandAdmissionError", () => {
         { status: "verifying", accountEpoch: scope.epoch, previous },
         service,
         500,
+        ALLOWED,
       )?.reason,
     ).toBe("access-unverified");
   });
@@ -126,12 +168,13 @@ describe("commandAdmissionError", () => {
         },
         service,
         500,
+        ALLOWED,
       )?.reason,
     ).toBe("access-unverified");
   });
 
   it("requires the exact organization capability for account-level creation", () => {
-    expect(commandAdmissionError(scope, verified(), project.organization, 500)).toBeNull();
+    expect(commandAdmissionError(scope, verified(), project.organization, 500, ALLOWED)).toBeNull();
     expect(
       commandAdmissionError(
         scope,
@@ -148,6 +191,7 @@ describe("commandAdmissionError", () => {
         }),
         project.organization,
         500,
+        ALLOWED,
       )?.reason,
     ).toBe("access-denied");
   });
