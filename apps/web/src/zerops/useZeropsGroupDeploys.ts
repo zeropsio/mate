@@ -43,6 +43,7 @@ import {
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useEffect, useRef, useState } from "react";
 
 import { giteaClientFor } from "./giteaSession";
@@ -186,6 +187,10 @@ export function useZeropsGroupDeploys(input: {
     if (key === "" || giteaOrigin === undefined) return;
     const client = giteaClientFor(giteaOrigin);
     const controller = new AbortController();
+    const pass = mateDiagnostics.span("flow-pass", {
+      pass: "deploys",
+      groups: latest.current.groups.length,
+    });
 
     void (async () => {
       const { groups, readVersion } = latest.current;
@@ -325,10 +330,12 @@ export function useZeropsGroupDeploys(input: {
         });
       }
       if (!controller.signal.aborted) setAnswer({ key, deploys });
+      pass.end({ answered: deploys.size });
     })();
 
     return () => {
       controller.abort();
+      pass.drop();
     };
     // `key` is the serialisation of `groups`, which is what the reads depend
     // on; keying on the array's identity would read the whole account again

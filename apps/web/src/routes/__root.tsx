@@ -5,6 +5,7 @@ import {
 } from "../zerops/ZeropsEnvironmentLifetime";
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Link,
@@ -119,9 +120,25 @@ function SignedInRootRouteView() {
   const primaryEnvironmentAuthenticated = door.session === "authenticated";
   const restoring = useEnvironmentRestorePending();
   const availableEnvironmentIds = useAvailableEnvironmentIds();
+  const targetEnvironmentId = environmentIdFromPathname(pathname);
+  const routeVerdict =
+    door.shell === "bare" ||
+    targetEnvironmentId === null ||
+    availableEnvironmentIds.has(targetEnvironmentId)
+      ? "outlet"
+      : restoring
+        ? "restoring"
+        : "unavailable";
   useEffect(() => {
     rememberAccountRoute(pathname);
   }, [pathname]);
+  useEffect(() => {
+    mateDiagnostics.record({
+      kind: "route-gate",
+      verdict: routeVerdict,
+      environmentId: targetEnvironmentId,
+    });
+  }, [routeVerdict, targetEnvironmentId]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -141,15 +158,13 @@ function SignedInRootRouteView() {
     );
   }
 
-  const targetEnvironmentId = environmentIdFromPathname(pathname);
-
   const appShell = (
     <CommandPalette>
       <AppSidebarLayout>
-        {targetEnvironmentId !== null && !availableEnvironmentIds.has(targetEnvironmentId) ? (
+        {routeVerdict !== "outlet" ? (
           <div className="flex flex-col items-start gap-3 p-8">
             <p className="text-sm text-muted-foreground">
-              {restoring
+              {routeVerdict === "restoring"
                 ? "Checking this environment…"
                 : "This environment is not reachable right now. It may be restarting, or it may be gone."}
             </p>
@@ -161,7 +176,7 @@ function SignedInRootRouteView() {
               projects were just deleted — advice you cannot follow. The
               projects screen always exists.
             */}
-            {restoring ? null : (
+            {routeVerdict === "restoring" ? null : (
               <Button render={<Link to="/zerops" />} size="sm" variant="secondary">
                 Go to projects
               </Button>

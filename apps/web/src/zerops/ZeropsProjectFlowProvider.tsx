@@ -28,9 +28,10 @@ import {
   GROUP_REPOSITORY,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { findAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./giteaSession";
@@ -158,6 +159,14 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     }
     return next;
   }, [deploys, enabled, forges, groups, mayRelease]);
+
+  // Time to the first pull request row, per group, for diagnostics.
+  useEffect(() => {
+    for (const flow of flows.values()) {
+      if (flow.pullRequests.length > 0)
+        mateDiagnostics.recordOnce({ kind: "flow-pr-row", groupId: flow.groupId });
+    }
+  }, [flows]);
 
   const settled = useCallback(() => {
     setGeneration((current) => current + 1);

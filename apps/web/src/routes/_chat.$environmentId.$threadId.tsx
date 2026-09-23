@@ -1,3 +1,4 @@
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 
@@ -47,6 +48,14 @@ function ChatThreadRouteView() {
     }
     finalizePromotedDraftThreadByRef(threadRef);
   }, [draftThread, serverThreadStarted, threadRef]);
+  // Once per thread this route shows: `t` after a reload is the reload's latency.
+  const contentReady = renderState === "ready";
+  const environmentId = threadRef?.environmentId;
+  const threadId = threadRef?.threadId;
+  useEffect(() => {
+    if (contentReady && environmentId !== undefined && threadId !== undefined)
+      mateDiagnostics.record({ kind: "thread-content", environmentId, threadId });
+  }, [contentReady, environmentId, threadId]);
 
   if (!threadRef) {
     return null;

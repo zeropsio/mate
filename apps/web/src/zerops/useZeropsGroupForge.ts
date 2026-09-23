@@ -26,6 +26,7 @@ import {
   type FlowRelease,
   type GiteaClient,
 } from "@t3tools/client-runtime/zerops";
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useEffect, useState } from "react";
 
 import { giteaClientFor } from "./giteaSession";
@@ -88,6 +89,7 @@ export function useZeropsGroupForge(input: {
     if (client === null) return;
     const controller = new AbortController();
     const groups = input.groups;
+    const pass = mateDiagnostics.span("flow-pass", { pass: "forge", groups: groups.length });
     void (async () => {
       const forges = new Map<string, ZeropsGroupForgeState>();
       for (const group of groups) {
@@ -96,9 +98,11 @@ export function useZeropsGroupForge(input: {
         if (state !== undefined) forges.set(group.groupId, state);
       }
       if (!controller.signal.aborted) setAnswer({ key, forges });
+      pass.end({ answered: forges.size });
     })();
     return () => {
       controller.abort();
+      pass.drop();
     };
     // `key` carries every group; `generation` and `tick` are the two reasons
     // to read the same ones again.

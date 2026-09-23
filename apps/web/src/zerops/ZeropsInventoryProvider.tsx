@@ -15,6 +15,7 @@ import {
   type RuntimeInterestDescriptor,
   type ViewObservation,
 } from "@t3tools/client-runtime/zerops/data";
+import { diagnosticFailure, mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import * as Effect from "effect/Effect";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -265,6 +266,19 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   useEffect(() => {
     let cancelled = false;
     const currentRevision = ++revision.current;
+    const round = mateDiagnostics.span("access-round", { round: currentRevision });
+    // The user read, then each listing and project read the round makes.
+    let requests = 1;
+    const counted: Parameters<typeof verifyOperableProjects>[0] = {
+      listAccessibleClientProjects: (clientId) => {
+        requests++;
+        return client.listAccessibleClientProjects(clientId);
+      },
+      fetchProject: (projectId) => {
+        requests++;
+        return client.fetchProject(projectId);
+      },
+    };
     setVerification({ status: "loading", revision: currentRevision });
     setAccountActionsAllowed(false);
     client.setWritesAllowed(false);
@@ -286,7 +300,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       const perOrganization = await Promise.all(
         currentOrganizations.map(async (organization) => ({
           organization,
-          projects: await verifyOperableProjects(client, organization, previousProjects),
+          projects: await verifyOperableProjects(counted, organization, previousProjects),
         })),
       );
       if (cancelled) return;
@@ -297,6 +311,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         })),
       );
       lastVerifiedProjects.current = projects;
+      round.end({ outcome: "verified", requests });
       setVerification({
         status: "verified",
         revision: currentRevision,
@@ -305,6 +320,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     })().catch((cause: unknown) => {
       if (cancelled) return;
       const error = zeropsErrorMessage(cause);
+      round.end({ outcome: "failed", requests, ...diagnosticFailure(cause) });
       setVerification({ status: "failed", revision: currentRevision, error });
       void Effect.runPromise(
         runtime.observeAccess({
@@ -318,6 +334,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     });
     return () => {
       cancelled = true;
+      round.drop();
     };
   }, [client, projectRef, refreshKey, runtime, updateVerifiedMemberships]);
 
@@ -597,6 +614,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       }),
     )
       .then(() => {
+        mateDiagnostics.record({ kind: "access-grant", round: verification.revision });
         setReadWindowExpired(false);
         setAdmission({ revision: verification.revision, verifiedAtMs });
         setAccountActionsAllowed(true, deadlineMs);
@@ -622,6 +640,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     if (admission === null) return;
     const remaining = Math.max(0, admission.verifiedAtMs + ACCESS_WINDOW_MS - Date.now());
     const timeout = window.setTimeout(() => {
+      mateDiagnostics.record({ kind: "access-timer", timer: "expiry" });
       setAccountActionsAllowed(false);
       client.setWritesAllowed(false);
       setReadWindowExpired(true);
@@ -642,7 +661,10 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       0,
       admission.verifiedAtMs + ACCESS_WINDOW_MS - ACCESS_RENEWAL_LEAD_MS - Date.now(),
     );
-    const timeout = window.setTimeout(refreshZeropsCandidates, remaining);
+    const timeout = window.setTimeout(() => {
+      mateDiagnostics.record({ kind: "access-timer", timer: "renewal" });
+      refreshZeropsCandidates();
+    }, remaining);
     return () => window.clearTimeout(timeout);
   }, [admission]);
 
