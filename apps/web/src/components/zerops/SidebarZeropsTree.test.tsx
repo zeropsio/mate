@@ -638,12 +638,12 @@ describe("a stop's deployment", () => {
     coverage: "complete",
     freshness: { kind: "live" },
   });
-  /** The tree under a flow provider that knows only each stop's deployment. */
-  const withDeployments = (deployments: ReadonlyMap<string, Shown<Deployment>>) =>
-    renderToStaticMarkup(
-      <ZeropsProjectFlowContext.Provider
-        value={{ deployments, flows: new Map() } as unknown as ZeropsProjectFlowValue}
-      >
+  /** A flow provider's value that knows only each stop's deployment. */
+  const deploymentsOnly = (deployments: ReadonlyMap<string, Shown<Deployment>>) =>
+    ({ deployments, flows: new Map() }) as unknown as ZeropsProjectFlowValue;
+  const withDeployments = (flow: ZeropsProjectFlowValue) => {
+    return renderToStaticMarkup(
+      <ZeropsProjectFlowContext.Provider value={flow}>
         <SidebarZeropsTree
           candidates={[CRM_DEV, CRM_STAGE, CRM_PROD]}
           onBrowseProjects={() => {}}
@@ -651,6 +651,7 @@ describe("a stop's deployment", () => {
         />
       </ZeropsProjectFlowContext.Provider>,
     );
+  };
   const stop = (html: string, id: string) =>
     html.slice(html.indexOf(`data-zerops-project="${id}"`)).split("</li>")[0]!;
 
@@ -662,10 +663,12 @@ describe("a stop's deployment", () => {
 
   it("says nothing is deployed where the platform says a stop runs nothing", () => {
     const html = withDeployments(
-      new Map([
-        ["crm-stage", known({ kind: "none" })],
-        ["crm-prod", { state: "unread", waitingFor: null }],
-      ]),
+      deploymentsOnly(
+        new Map([
+          ["crm-stage", known({ kind: "none" })],
+          ["crm-prod", { state: "unread", waitingFor: null }],
+        ]),
+      ),
     );
     expect(stop(html, "crm-stage")).toContain("Nothing deployed yet");
     expect(stop(html, "crm-prod")).not.toContain("Nothing deployed yet");
@@ -673,22 +676,24 @@ describe("a stop's deployment", () => {
 
   it("names what the platform says a stop runs before Gitea has answered", () => {
     const html = withDeployments(
-      new Map([
-        [
-          "crm-stage",
-          known({
-            kind: "running",
-            activatedAt: null,
-            version: {
-              name: "v1.4.0",
-              commit: "3f9c1b2",
-              sha: "3f9c1b2000000000000000000000000000000000",
-              taggedBy: undefined,
-              label: "v1.4.0",
-            },
-          }),
-        ],
-      ]),
+      deploymentsOnly(
+        new Map([
+          [
+            "crm-stage",
+            known({
+              kind: "running",
+              activatedAt: null,
+              version: {
+                name: "v1.4.0",
+                commit: "3f9c1b2",
+                sha: "3f9c1b2000000000000000000000000000000000",
+                taggedBy: undefined,
+                label: "v1.4.0",
+              },
+            }),
+          ],
+        ]),
+      ),
     );
     expect(stop(html, "crm-stage")).toContain("v1.4.0");
     expect(stop(html, "crm-stage")).toContain('aria-label="Running"');
