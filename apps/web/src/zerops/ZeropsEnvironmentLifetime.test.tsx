@@ -32,7 +32,7 @@ vi.mock("./useZeropsIdentityExchange", async () => {
       clock: systemExchangeClock,
       exchange: (request: ExchangeRequest) => mock.exchange(request),
       install: async (input: { key: string; environmentId: EnvironmentId }) => {
-        mock.install(input);
+        await mock.install(input);
         remember({ key: input.key, environmentId: String(input.environmentId) });
         return { ok: true };
       },
@@ -322,6 +322,8 @@ describe("a restore is pending only while a remembered target's exchange is on i
     readonly route: ReadonlyArray<string>;
     /** The answer each exchange gets; `hang` never answers. */
     readonly answer: (request: ExchangeRequest) => ExchangeAnswer<unknown> | "hang";
+    /** The registry never answers the install. */
+    readonly installHangs?: boolean;
     readonly pending: boolean;
   }> = [
     {
@@ -367,6 +369,15 @@ describe("a restore is pending only while a remembered target's exchange is on i
       pending: true,
     },
     {
+      name: "its credential is answered and its install is on its way",
+      services: [service],
+      records: ["project:service"],
+      route: [],
+      answer: () => admitted(),
+      installHangs: true,
+      pending: true,
+    },
+    {
       name: "the route's target is connected while another target's exchange is in flight",
       services: [service, second],
       records: ["project:service", "project:second"],
@@ -390,6 +401,7 @@ describe("a restore is pending only while a remembered target's exchange is on i
       const answer = row.answer(request);
       return answer === "hang" ? new Promise(() => undefined) : Promise.resolve(answer);
     });
+    if (row.installHangs === true) mock.install.mockReturnValue(new Promise(() => undefined));
     const render = await mount();
     await render();
     await render();

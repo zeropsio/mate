@@ -176,10 +176,11 @@ function targetsOf(input: {
 }
 
 /**
- * A remembered target whose credential is on its way: not yet judged, exchanging, waiting for
- * a slot or the grant, or on a presence not read yet (the inventory's read ends it). A target
- * whose presence was read and is not there, that waits on its container, or backs off, has no
- * end the route gate could wait for — its reachability says why (the gate reads it in 0.9c).
+ * A remembered target whose credential is on its way: not yet judged, exchanging, answered but
+ * not yet installed, waiting for a slot or the grant, or on a presence not read yet (the
+ * inventory's read ends it). A target whose presence was read and is not there, that waits on
+ * its container, or backs off, has no end the route gate could wait for — its reachability
+ * says why (the gate reads it in 0.9c).
  */
 const restoring = (machine: EnvironmentMachine | undefined): boolean => {
   if (machine === undefined) return true;
@@ -194,9 +195,10 @@ const restoring = (machine: EnvironmentMachine | undefined): boolean => {
         credential.on === "access" ||
         (credential.on === "presence" && machine.presence.kind === "unknown")
       );
+    case "held":
+      return !credential.installed;
     case "backoff":
     case "refused":
-    case "held":
     case "retired":
       return false;
   }
