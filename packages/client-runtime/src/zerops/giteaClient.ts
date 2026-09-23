@@ -25,6 +25,13 @@
  * function so a session that refreshes mid-flight does not have to rebuild the
  * client.
  *
+ * ## Deadlines
+ *
+ * Every request ends by {@link GITEA_REQUEST_DEADLINE_MS} as a `TimeoutError`,
+ * or earlier when the caller's signal ends it. A Gitea that stops answering is
+ * then a failure the reader can retry, never a read that holds its place
+ * forever (DESIGN §2.D D3).
+ *
  * @module giteaClient
  */
 
@@ -215,14 +222,21 @@ export interface GiteaPullRequest {
   readonly title: string;
   readonly state: string;
   readonly html_url?: string | undefined;
-  readonly mergeable?: boolean | undefined;
+  /**
+   * Gitea's answer to "does it merge", which it recomputes after every push to
+   * either side: `false` or `null` for a while after one is not yet a verdict
+   * (`forge/mergeState.ts`).
+   */
+  readonly mergeable?: boolean | null | undefined;
   readonly merged?: boolean | undefined;
   readonly head?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
-  readonly base?: { readonly ref?: string | undefined };
+  readonly base?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
   readonly user?: { readonly login?: string | undefined } | undefined;
   readonly updated_at?: string | undefined;
   /** When it landed. Absent on a change that is still open, or was closed unmerged. */
   readonly merged_at?: string | undefined;
+  /** The commit it landed as. Absent unless it merged. */
+  readonly merge_commit_sha?: string | null | undefined;
 }
 
 /** One tag of a repository — `GET /repos/{o}/{r}/tags`. */
@@ -359,10 +373,13 @@ export interface GiteaClient {
     },
   ): Promise<void>;
 
+  /** One page: Gitea's default length, or `limit` where it is given. */
   listPullRequests(
     owner: string,
     repo: string,
-    options?: { readonly state?: "open" | "closed" | "all" } | undefined,
+    options?:
+      | { readonly state?: "open" | "closed" | "all"; readonly limit?: number | undefined }
+      | undefined,
   ): Promise<ReadonlyArray<GiteaPullRequest>>;
   /**
    * One pull request by number, whatever state it is in — `undefined` when
@@ -418,7 +435,7 @@ export interface GiteaClient {
     },
   ): Promise<void>;
 
-  /** Newest first, as Gitea orders them. */
+  /** Every tag, page by page; newest first, as Gitea orders them. */
   listTags(owner: string, repo: string): Promise<ReadonlyArray<GiteaTag>>;
 
   listCommitStatuses(
@@ -477,6 +494,8 @@ export interface GiteaClient {
 }
 
 const API_PREFIX = "/api/v1";
+/** One request answers within this, from the moment it is sent. */
+export const GITEA_REQUEST_DEADLINE_MS = 15_000;
 /** Gitea's default page cap; a page this long may have a next one. */
 const PAGE_SIZE = 50;
 /** More pages than any account here has repositories for; a stop, not a target. */
@@ -486,30 +505,39 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
   const base = `${options.origin.trim().replace(/\/+$/u, "")}${API_PREFIX}`;
   const tokenOf = () => (typeof options.token === "function" ? options.token() : options.token);
 
-  async function send(input: {
-    readonly method: string;
-    readonly path: string;
-    readonly query?: Readonly<Record<string, string | number | undefined>> | undefined;
-    readonly body?: unknown;
-    readonly accept?: string;
-    readonly signal?: AbortSignal | undefined;
-  }): Promise<Response> {
+  /** Sends one request and reads its answer with `answer`, both inside the request's deadline. */
+  async function send<T>(
+    input: {
+      readonly method: string;
+      readonly path: string;
+      readonly query?: Readonly<Record<string, string | number | undefined>> | undefined;
+      readonly body?: unknown;
+      readonly accept?: string;
+      readonly signal?: AbortSignal | undefined;
+    },
+    answer: (response: Response) => Promise<T>,
+  ): Promise<T> {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(input.query ?? {})) {
       if (value !== undefined) query.set(key, String(value));
     }
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    const signal = input.signal ?? options.signal;
-    return options.fetch(`${base}${input.path}${suffix}`, {
-      method: input.method,
-      headers: {
-        authorization: `Bearer ${tokenOf()}`,
-        accept: input.accept ?? "application/json",
-        ...(input.body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
-      ...(signal === undefined ? {} : { signal }),
-    });
+    const { signal, done } = withDeadline(input.signal ?? options.signal);
+    try {
+      const response = await options.fetch(`${base}${input.path}${suffix}`, {
+        method: input.method,
+        headers: {
+          authorization: `Bearer ${tokenOf()}`,
+          accept: input.accept ?? "application/json",
+          ...(input.body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
+        signal,
+      });
+      return await answer(response);
+    } finally {
+      done();
+    }
   }
 
   async function fail(response: Response, what: string): Promise<never> {
@@ -529,40 +557,36 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     throw new GiteaApiError(`Gitea refused to ${what}.${said}`, response.status, detail);
   }
 
-  async function json<T>(input: Parameters<typeof send>[0], what: string): Promise<T> {
-    const response = await send(input);
-    if (!response.ok) return fail(response, what);
-    return (await response.json()) as T;
-  }
+  type Request = Parameters<typeof send>[0];
+
+  const json = <T>(input: Request, what: string): Promise<T> =>
+    send(input, async (response) => {
+      if (!response.ok) return fail(response, what);
+      return (await response.json()) as T;
+    });
 
   /** A `404` is the answer "not there", which several callers need to act on. */
-  async function optional<T>(
-    input: Parameters<typeof send>[0],
-    what: string,
-  ): Promise<T | undefined> {
-    const response = await send(input);
-    if (response.status === 404) {
-      await response.body?.cancel().catch(() => undefined);
-      return undefined;
-    }
-    if (!response.ok) return fail(response, what);
-    return (await response.json()) as T;
-  }
+  const optional = <T>(input: Request, what: string): Promise<T | undefined> =>
+    send(input, async (response) => {
+      if (response.status === 404) {
+        await response.body?.cancel().catch(() => undefined);
+        return undefined;
+      }
+      if (!response.ok) return fail(response, what);
+      return (await response.json()) as T;
+    });
 
-  async function nothing(input: Parameters<typeof send>[0], what: string): Promise<void> {
-    const response = await send(input);
-    if (!response.ok) await fail(response, what);
-  }
+  const nothing = (input: Request, what: string): Promise<void> =>
+    send(input, async (response) => {
+      if (!response.ok) await fail(response, what);
+    });
 
   /**
    * Every page of a list, in order, until one comes back short. Gitea caps a
    * page at its own maximum (50 by default) whatever `limit` asks for, so a
    * page shorter than the one asked for is the last one.
    */
-  async function paged<T>(
-    input: Parameters<typeof send>[0],
-    what: string,
-  ): Promise<ReadonlyArray<T>> {
+  async function paged<T>(input: Request, what: string): Promise<ReadonlyArray<T>> {
     const items: Array<T> = [];
     for (let page = 1; page <= MAX_PAGES; page += 1) {
       const answer = await json<ReadonlyArray<T>>(
@@ -676,7 +700,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         {
           method: "GET",
           path: `/repos/${enc(owner)}/${enc(repo)}/pulls`,
-          query: { state: listOptions?.state ?? "open" },
+          query: { state: listOptions?.state ?? "open", limit: listOptions?.limit },
         },
         "list the pull requests",
       ),
@@ -751,7 +775,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       ),
 
     listTags: (owner, repo) =>
-      json<ReadonlyArray<GiteaTag>>(
+      paged<GiteaTag>(
         { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/tags` },
         "list the tags",
       ),
@@ -851,14 +875,48 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         "rerun the job",
       ),
 
-    actionJobLogs: async (owner, repo, jobId) => {
-      const response = await send({
-        method: "GET",
-        path: `/repos/${enc(owner)}/${enc(repo)}/actions/jobs/${jobId}/logs`,
-        accept: "text/plain",
-      });
-      if (!response.ok) await fail(response, "hand over the logs");
-      return response.text();
+    actionJobLogs: (owner, repo, jobId) =>
+      send(
+        {
+          method: "GET",
+          path: `/repos/${enc(owner)}/${enc(repo)}/actions/jobs/${jobId}/logs`,
+          accept: "text/plain",
+        },
+        async (response) => {
+          if (!response.ok) await fail(response, "hand over the logs");
+          return response.text();
+        },
+      ),
+  };
+}
+
+/**
+ * The caller's signal, ended as well by {@link GITEA_REQUEST_DEADLINE_MS}. `done` lets both go
+ * once the answer has been read.
+ */
+function withDeadline(caller: AbortSignal | undefined): {
+  readonly signal: AbortSignal;
+  readonly done: () => void;
+} {
+  const controller = new AbortController();
+  const deadline = AbortSignal.timeout(GITEA_REQUEST_DEADLINE_MS);
+  const end = (from: AbortSignal) => () => controller.abort(from.reason);
+  const onDeadline = end(deadline);
+  deadline.addEventListener("abort", onDeadline, { once: true });
+  if (caller === undefined) {
+    return {
+      signal: controller.signal,
+      done: () => deadline.removeEventListener("abort", onDeadline),
+    };
+  }
+  const onCaller = end(caller);
+  if (caller.aborted) onCaller();
+  else caller.addEventListener("abort", onCaller, { once: true });
+  return {
+    signal: controller.signal,
+    done: () => {
+      deadline.removeEventListener("abort", onDeadline);
+      caller.removeEventListener("abort", onCaller);
     },
   };
 }

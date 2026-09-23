@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   base64Decode,
   base64Encode,
   createGiteaClient,
   GiteaApiError,
+  GITEA_REQUEST_DEADLINE_MS,
   type GiteaClient,
 } from "./giteaClient.ts";
 
@@ -285,7 +286,9 @@ describe("GiteaClient request shapes", () => {
       { body: [{ name: "v1.2.0", message: "api abc", commit: { sha: "abc" } }] },
     ]);
     expect(await client.listTags("acme", "group")).toHaveLength(1);
-    expect(calls[0]?.url.slice(ORIGIN.length)).toBe("/api/v1/repos/acme/group/tags");
+    expect(calls[0]?.url.slice(ORIGIN.length)).toBe(
+      "/api/v1/repos/acme/group/tags?limit=50&page=1",
+    );
   });
 
   it("reads commit statuses, runs, jobs, a rerun and logs", async () => {
@@ -314,6 +317,90 @@ describe("GiteaClient request shapes", () => {
       "GET /api/v1/repos/acme/api/actions/runs/7/jobs",
       "POST /api/v1/repos/acme/api/actions/jobs/9/rerun",
       "GET /api/v1/repos/acme/api/actions/jobs/9/logs",
+    ]);
+  });
+});
+
+describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A Gitea that never answers; a request ends only when its signal does. */
+  function silent(signal?: AbortSignal): GiteaClient {
+    return createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      ...(signal === undefined ? {} : { signal }),
+      fetch: (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    });
+  }
+
+  it("a request Gitea has not answered in 15 s ends as a timeout", async () => {
+    vi.useFakeTimers();
+    const read = silent().listTags("acme", "group");
+    const outcome = read.then(
+      () => "answered",
+      (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
+    );
+    await vi.advanceTimersByTimeAsync(GITEA_REQUEST_DEADLINE_MS - 1);
+    let settled = false;
+    void outcome.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await outcome).toBe("TimeoutError");
+  });
+
+  it("the caller's signal still ends a request before its deadline", async () => {
+    const controller = new AbortController();
+    const read = silent(controller.signal).listTags("acme", "group");
+    controller.abort(new DOMException("The account closed.", "AbortError"));
+    await expect(read).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("GiteaClient pull request shas (DESIGN A7)", () => {
+  it("a pull request carries its head and base shas and the commit it merged as", async () => {
+    const { client } = fake([
+      {
+        body: {
+          number: 4,
+          title: "Add a due date",
+          state: "closed",
+          merged: true,
+          mergeable: null,
+          head: { ref: "mate/x", sha: "head-sha" },
+          base: { ref: "main", sha: "base-sha" },
+          merge_commit_sha: "merge-sha",
+        },
+      },
+    ]);
+    const pull = await client.getPullRequest("acme", "app", 4);
+    expect(pull?.head?.sha).toBe("head-sha");
+    expect(pull?.base?.sha).toBe("base-sha");
+    expect(pull?.merge_commit_sha).toBe("merge-sha");
+    expect(pull?.mergeable).toBeNull();
+  });
+
+  it("reads one page of pull requests as long as it is asked for", async () => {
+    const { client, calls } = fake([{ body: [] }]);
+    await client.listPullRequests("acme", "app", { state: "closed", limit: 20 });
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/app/pulls?state=closed&limit=20`);
+  });
+
+  it("lists every tag, page by page, until a page comes back short", async () => {
+    const full = Array.from({ length: 50 }, (_, index) => ({ name: `v0.0.${index}` }));
+    const { client, calls } = fake([{ body: full }, { body: [{ name: "v0.1.0" }] }]);
+    expect(await client.listTags("acme", "group")).toHaveLength(51);
+    expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
+      "/api/v1/repos/acme/group/tags?limit=50&page=1",
+      "/api/v1/repos/acme/group/tags?limit=50&page=2",
     ]);
   });
 });
