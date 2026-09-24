@@ -7,7 +7,7 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
  *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
-import { useEffect, useReducer, type JSX, type ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 import { GlobeIcon } from "lucide-react";
 
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -29,6 +29,7 @@ import {
   type ProcessStep,
 } from "./primitives";
 import { cn } from "~/lib/utils";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 export interface ObservedRegion {
   /** Replaces `operation.steps` for the body while an observation is attached. */
@@ -77,18 +78,6 @@ function headerDurationText(operation: ZeropsOperation, now: number): string | u
   return Number.isFinite(settledAtMs)
     ? formatStepDuration(Math.max(0, settledAtMs - startedAtMs))
     : undefined;
-}
-
-/** Re-renders once a second while `active` — a text update, never an animation (R6). */
-function useTick(active: boolean): void {
-  const [, forceRender] = useReducer((count: number) => count + 1, 0);
-  useEffect(() => {
-    if (!active) {
-      return;
-    }
-    const id = setInterval(forceRender, 1_000);
-    return () => clearInterval(id);
-  }, [active]);
 }
 
 function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
@@ -257,7 +246,7 @@ export function ZeropsOperationCard(props: {
   readonly live?: boolean;
   /** Opens the right-panel Browser surface — absent thread, absent click target. */
   readonly threadRef?: ScopedThreadRef | null;
-  /** For tests; defaults to `Date.now()` via a 1 s tick while running. */
+  /** For tests; defaults to a clock that moves once a second while running — a text update, never an animation (R6). */
   readonly now?: number;
 }): JSX.Element {
   const {
@@ -271,8 +260,8 @@ export function ZeropsOperationCard(props: {
   } = props;
   const tone = operationTone(operation);
   const isRunning = operation.phase === "running";
-  useTick(props.now === undefined && isRunning);
-  const now = props.now ?? Date.now();
+  const tickNow = useSecondsNowMs(props.now === undefined && isRunning);
+  const now = props.now ?? tickNow;
   const durationText = headerDurationText(operation, now);
   const isBrowser = operation.kind === "browser";
 

@@ -36,6 +36,7 @@ import type {
   LiveBrowserFrame,
   ObservedRegion,
 } from "../../components/zerops/ZeropsOperationCard";
+import { useSecondsNowMs } from "../useNowMs.ts";
 import { useZeropsBrowserStream, useZeropsTopology } from "../useZeropsFeeds.ts";
 import { useOperationObservation, type ObservationTarget } from "./useOperationObservation.ts";
 
@@ -242,7 +243,8 @@ export function useOperationCard(
   const liveField =
     operation.kind === "browser" ? { live, ...(liveFrame === undefined ? {} : { liveFrame }) } : {};
 
-  const region = deriveObservedStepsRegion(operation.phase, state, history, Date.now());
+  const nowMs = useSecondsNowMs(operation.phase === "running");
+  const region = deriveObservedStepsRegion(operation.phase, state, history, nowMs);
   if (region === undefined) {
     return { ...devServerUrlField, ...browserScreenshotField, ...liveField };
   }

@@ -27,6 +27,7 @@ import { cn } from "~/lib/utils";
 import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
+import { useNowMs } from "~/zerops/useNowMs";
 
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 
@@ -56,6 +57,9 @@ export function ZeropsHistoryView({
   /** Opens what a commit changed. Absent, a row is a line and nothing more. */
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
 }) {
+  // One clock for the whole list, the app's minute tick: rows age together and
+  // move on as the minute turns, not only when something else re-renders them.
+  const now = useNowMs();
   if (commits.kind === "no-gitea") {
     return <HistoryNote>Sign in to Gitea to read this repository&rsquo;s history.</HistoryNote>;
   }
@@ -65,9 +69,6 @@ export function ZeropsHistoryView({
   if (commits.kind === "reading") {
     return <HistoryNote>Reading the history&hellip;</HistoryNote>;
   }
-  // One clock for the whole list: rows read a moment apart must not age
-  // against different nows and disagree by a minute.
-  const now = Date.now();
   const entries = groupHistory({
     commits: commits.commits,
     deployed: request.deployed,

@@ -34,6 +34,10 @@ vi.mock("../useZeropsFeeds.ts", () => ({
   useZeropsBrowserStream: browserStreamSpy,
 }));
 
+vi.mock("../useNowMs.ts", () => ({
+  useSecondsNowMs: () => Date.parse("2026-09-01T00:00:42.000Z"),
+}));
+
 vi.mock("./useOperationObservation.ts", () => ({
   useOperationObservation: () => ({
     state: { kind: "off", reason: "not-found" },
