@@ -52,6 +52,7 @@ const verbs = vi.hoisted(() => ({
     released: { releases: [], tags: [] },
   } as unknown,
   invalidated: [] as Array<readonly [string, unknown]>,
+  forgeFailures: new Map<string, string>(),
 }));
 
 vi.mock("./accountGiteaSessions", () => ({
@@ -132,7 +133,7 @@ vi.mock("./useZeropsGroupDeploys", () => ({
 vi.mock("./useZeropsGroupForge", () => ({
   useZeropsGroupForge: () => ({
     forges: new Map([["g1", verbs.forge]]),
-    failures: new Map(),
+    failures: verbs.forgeFailures,
     invalidate: (groupId: string, scope: unknown) => {
       verbs.invalidated.push([groupId, scope]);
     },
@@ -216,6 +217,7 @@ describe("ZeropsProjectFlowProvider", () => {
     verbs.client = null;
     verbs.deploys = null;
     verbs.invalidated = [];
+    verbs.forgeFailures = new Map();
     vi.unstubAllGlobals();
   });
 
@@ -637,12 +639,62 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     });
 
+    it("a failed re-read after a tag does not leave Release pending", async () => {
+      const { seen, render, root } = await mountReleasable();
+      const key = flowVerbKey({ kind: "release", groupId: "g1" });
+      await act(async () => {
+        await seen.at(-1)!.release("g1");
+      });
+      expect(seen.at(-1)?.pending.has(key)).toBe(true);
+      // The re-read the tag asked for fails: the forge answer stays the one the tag was made against.
+      verbs.forgeFailures = new Map([["g1", "Gitea did not answer"]]);
+      await render();
+      expect(seen.at(-1)?.pending.has(key)).toBe(false);
+      // The failure clearing does not bring back a wait that already ended.
+      verbs.forgeFailures = new Map();
+      await render();
+      expect(seen.at(-1)?.pending.has(key)).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
     it("Release tags the sha the offer showed even after main moved", async () => {
       const { seen, tags, root } = await mountReleasable();
       await act(async () => {
         await seen.at(-1)!.release("g1");
       });
       expect(tags.map(({ target }) => target)).toEqual([SHOWN]);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+    it("Release keeps waiting when the group's tags answer again while the tag is being made", async () => {
+      const { seen, render, root } = await mountReleasable();
+      let finish = () => {};
+      const client = verbs.client as Record<string, unknown>;
+      verbs.client = {
+        ...client,
+        createTag: () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      };
+      let pressed: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pressed = seen.at(-1)!.release("g1");
+      });
+      // A pass that started before the tag existed answers while it is being made.
+      verbs.forge = { ...(verbs.forge as object) };
+      await render();
+      await act(async () => {
+        finish();
+        await pressed;
+      });
+      expect(seen.at(-1)?.pending.has(flowVerbKey({ kind: "release", groupId: "g1" }))).toBe(true);
+      verbs.forge = { ...(verbs.forge as object) };
+      await render();
+      expect(seen.at(-1)?.pending.has(flowVerbKey({ kind: "release", groupId: "g1" }))).toBe(false);
       await act(async () => {
         root.unmount();
       });

@@ -496,8 +496,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   /**
    * A tag made, by the verb's key, with the group's forge answer it was made against. The verb
-   * stays pending until that answer is replaced: until the tag is read back, the flow still
-   * offers the release it just made.
+   * stays pending until that answer is replaced or the group's forge read fails: until the tag is
+   * read back, the flow still offers the release it just made. A settled entry is dropped.
    */
   const [tagged, setTagged] = useState<
     ReadonlyMap<
@@ -505,14 +505,22 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       { readonly groupId: string; readonly against: ZeropsGroupForgeState | undefined }
     >
   >(() => new Map());
-  const markTagged = useCallback(
-    (verb: FlowVerb, groupId: string) => {
-      setTagged((current) =>
-        new Map(current).set(flowVerbKey(verb), { groupId, against: forges.get(groupId) }),
-      );
-    },
-    [forges],
-  );
+  /**
+   * The forge answers as drawn last. A tag is marked when its POST returns, against the answer
+   * current then — a pass that answered while the POST ran did not read the new tag either.
+   */
+  const latestForges = useRef(forges);
+  useEffect(() => {
+    latestForges.current = forges;
+  }, [forges]);
+  const markTagged = useCallback((verb: FlowVerb, groupId: string) => {
+    setTagged((current) =>
+      new Map(current).set(flowVerbKey(verb), {
+        groupId,
+        against: latestForges.current.get(groupId),
+      }),
+    );
+  }, []);
 
   const slugs = useMemo(
     () => new Map(registry.registry.groups.map((entry) => [entry.groupId, entry.slug])),
@@ -689,12 +697,29 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   // While the account's access lapses, the groups the registry names and what was read of them
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
+  // A tag waits for the group's next forge answer, or for its re-read to fail: while the forge
+  // half fails no Release is offered (`flowReleaseGate`), so the wait has nothing left to hold.
+  const settledTags = useMemo(
+    () =>
+      [...tagged].filter(
+        ([, { groupId, against }]) => forges.get(groupId) !== against || forgeFailures.has(groupId),
+      ),
+    [forgeFailures, forges, tagged],
+  );
+  useEffect(() => {
+    if (settledTags.length === 0) return;
+    setTagged((current) => {
+      const next = new Map(current);
+      for (const [key, entry] of settledTags) if (next.get(key) === entry) next.delete(key);
+      return next;
+    });
+  }, [settledTags]);
   const pendingOrTagged = useMemo<ReadonlySet<string>>(() => {
-    const waiting = [...tagged].filter(
-      ([, { groupId, against }]) => forges.get(groupId) === against,
+    const waiting = [...tagged.keys()].filter(
+      (key) => !settledTags.some(([settled]) => settled === key),
     );
-    return waiting.length === 0 ? pending : new Set([...pending, ...waiting.map(([key]) => key)]);
-  }, [forges, pending, tagged]);
+    return waiting.length === 0 ? pending : new Set([...pending, ...waiting]);
+  }, [pending, settledTags, tagged]);
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
       giteaOrigin,
