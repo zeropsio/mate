@@ -254,6 +254,32 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       },
     );
 
+    // A browser timer rounds its delay down to whole milliseconds and may fire before either clock
+    // reaches its instant: that TICK finds nothing due, and the one timer the machine held is spent.
+    it.each([
+      {
+        name: "a retry rung",
+        from: () =>
+          play([
+            [DEMAND, 0],
+            [failed(1, BROKER_DOWN), 0],
+          ]).machine,
+        dueMs: 2 * S,
+        op: "liveness",
+      },
+      {
+        name: "a renewal",
+        from: () => signedIn(10 * MIN).machine,
+        dueMs: 10 * MIN - 1 * MIN,
+        op: "acquire",
+      },
+    ])("a TICK that fires before its deadline re-arms and the session renews: $name", (row) => {
+      const early = play([[TICK, row.dueMs - 1]], row.from());
+      expect(runs(early.last)).toEqual([]);
+      expect(scheduled(early.last)).toEqual([row.dueMs]);
+      expect(runs(play([[TICK, row.dueMs]], early.machine).last)).toEqual([row.op]);
+    });
+
     it("waits on the Zerops session on the common ladder and counts no failure", () => {
       const run = play([
         [DEMAND, 0],

@@ -6,7 +6,8 @@
  *   `attempt`; arm the one timer per `schedule`, which delivers `TICK`; `cancel` it.
  * - An answer for any attempt but the one in flight is dropped (§4.0); after `CLOSE` every event
  *   is dropped, silently.
- * - Timers are hints: every event first settles what has come due on either clock.
+ * - Timers are hints: every event first settles what has come due on either clock, and a `TICK`
+ *   finds its timer spent — one that fired before its instant is armed again.
  * - Every non-terminal state holds a timer, waits for demand, or waits for a visible tab (I7).
  *
  * "Gitea still setting up" and "the broker does not answer" are separate waits, each re-mint
@@ -497,13 +498,15 @@ function dueAt(machine: GiteaSessionMachine, ctx: GiteaSessionContext): Instant 
 const sameInstant = (a: Instant | null, b: Instant | null): boolean =>
   a === b || (a !== null && b !== null && a.wall === b.wall && a.mono === b.mono);
 
+/** `spent`: a TICK is the timer firing, or stands in for it — whatever is still due is armed again. */
 function reschedule(
   machine: GiteaSessionMachine,
+  spent: boolean,
   ctx: GiteaSessionContext,
   out: Effects,
 ): GiteaSessionMachine {
   const due = dueAt(machine, ctx);
-  if (sameInstant(due, machine.timer)) return machine;
+  if (sameInstant(due, machine.timer) && !(spent && due !== null)) return machine;
   out.push(due === null ? { kind: "cancel" } : { kind: "schedule", at: due });
   return { ...machine, timer: due };
 }
@@ -523,7 +526,7 @@ export function transitionGiteaSession(
   let next = settle(machine, ctx, out);
   next = apply(next, event, ctx, out);
   next = settle(next, ctx, out);
-  next = reschedule(next, ctx, out);
+  next = reschedule(next, event.type === "TICK", ctx, out);
   return { state: next, effects: out };
 }
 

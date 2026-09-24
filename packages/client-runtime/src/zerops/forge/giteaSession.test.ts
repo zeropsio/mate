@@ -83,7 +83,16 @@ function recordingPlatform() {
 
 type Fetch = typeof globalThis.fetch;
 
-function world(options: { readonly wrapFetch?: (fetch: Fetch) => Fetch } = {}) {
+function world(
+  options: {
+    readonly wrapFetch?: (fetch: Fetch) => Fetch;
+    /**
+     * How much sooner than asked a timer fires, as a browser's whole-millisecond one can — never
+     * sooner than a millisecond after it was armed.
+     */
+    readonly timersEarlyMs?: number;
+  } = {},
+) {
   const harness = makeAccountHarness({ people: [] });
   const time = manualTime();
   const throwaways = recordingPlatform();
@@ -95,7 +104,8 @@ function world(options: { readonly wrapFetch?: (fetch: Fetch) => Fetch } = {}) {
     visible: () => visible,
     random: () => 0.5,
     nonce: () => "nonce",
-    setTimer: time.setTimer,
+    setTimer: (delayMs, fire) =>
+      time.setTimer(Math.min(delayMs, Math.max(1, delayMs - (options.timersEarlyMs ?? 0))), fire),
   });
   const demand = () =>
     sessions.demand({
@@ -359,6 +369,48 @@ describe("the account's Gitea sessions", () => {
     if (shown.state === "known") expect(shown.value).toEqual([1]);
     forge.dispose();
   });
+
+  it.each([
+    {
+      name: "a network failure, as a browser sees a 502 without CORS headers",
+      answer: () => Promise.reject(new TypeError("Failed to fetch")),
+    },
+    {
+      name: "a 502 the broker answered",
+      answer: () => Promise.resolve(new Response("", { status: 502 })),
+    },
+  ])(
+    "a network/502 failure of the person-token call is retried and the session becomes ready without a reload: $name",
+    async ({ answer }) => {
+      let failures = 1;
+      const w = world({
+        // The browser fires every timer a millisecond before its instant.
+        timersEarlyMs: 1,
+        wrapFetch: (fetch) =>
+          (async (input: string | URL | Request, init?: RequestInit) => {
+            if (new URL(String(input)).pathname === "/person/token" && failures > 0) {
+              failures -= 1;
+              return answer();
+            }
+            return fetch(input, init);
+          }) as Fetch,
+      });
+      w.demand();
+      await w.time.advance(0);
+      expect(w.throwaways.minted).toHaveLength(1);
+      expect(w.view().signedIn).toBe(false);
+
+      await w.time.advance(6 * S);
+      expect(livenessChecks(w)).toHaveLength(1);
+      expect(w.throwaways.minted).toHaveLength(2);
+      expect(w.view()).toEqual({
+        signedIn: true,
+        readable: true,
+        login: "u-person",
+        trouble: null,
+      });
+    },
+  );
 
   it("asks a refusal again every 5 minutes while the tab is visible, in the refuser's words", async () => {
     const w = world();
