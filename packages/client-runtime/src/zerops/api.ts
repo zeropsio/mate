@@ -146,6 +146,8 @@ export interface ZeropsOrganizationMember {
     readonly firstName?: string;
     readonly lastName?: string;
     readonly email?: string;
+    /** The same record `GET /user/info` carries; the official app draws members with it. */
+    readonly avatar?: ZeropsUserAvatar | null;
   };
 }
 

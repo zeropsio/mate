@@ -5,6 +5,7 @@ import {
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateSignerTag,
+  resolveMateOwner,
   resolveMateOwnerName,
   resolveMateVerbs,
   resolveMateVisibility,
@@ -131,6 +132,45 @@ describe("resolveMateOwnerName", () => {
   it("prefers a full name over an e-mail it also has", () => {
     expect(mateMemberName(members[0]!)).toBe("Jan Novák");
   });
+});
+
+describe("resolveMateOwner", () => {
+  const jan = {
+    id: "cu-jan",
+    user: {
+      fullName: "Jan Novák",
+      avatar: { smallAvatarUrl: "https://example.com/jan.png" },
+    },
+  };
+  const owned = (userRoles: ReadonlyArray<{ clientUserId: string; roleCode: string }>) => ({
+    id: PROJECT,
+    clientId: ORG,
+    userRoles,
+  });
+
+  // The whole member row, picture included: the menu wears the owner's face,
+  // not just their name.
+  it("is the member the project raised to OWNER, picture and all", () => {
+    expect(
+      resolveMateOwner({
+        project: owned([
+          { clientUserId: ME, roleCode: "ADMIN" },
+          { clientUserId: "cu-jan", roleCode: "OWNER" },
+        ]),
+        members: [jan],
+      }),
+    ).toBe(jan);
+  });
+
+  for (const [name, userRoles] of [
+    ["the project names no OWNER", [{ clientUserId: "cu-jan", roleCode: "ADMIN" }]],
+    ["the member list does not have them", [{ clientUserId: "cu-gone", roleCode: "OWNER" }]],
+    ["the project names nobody at all", []],
+  ] as const) {
+    it(`is nobody when ${name}`, () => {
+      expect(resolveMateOwner({ project: owned(userRoles), members: [jan] })).toBeUndefined();
+    });
+  }
 });
 
 describe("the signer tag (D6)", () => {

@@ -234,6 +234,14 @@ export interface MateOwnerCandidate {
         readonly firstName?: string | undefined;
         readonly lastName?: string | undefined;
         readonly email?: string | undefined;
+        readonly avatar?:
+          | {
+              readonly smallAvatarUrl?: string | null | undefined;
+              readonly largeAvatarUrl?: string | null | undefined;
+              readonly externalAvatarUrl?: string | null | undefined;
+            }
+          | null
+          | undefined;
       }
     | undefined;
 }
@@ -260,15 +268,24 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
  * answer wanted here is "whose Mate", not "who could get in".
  *
  * `undefined` when the project names no owner of its own, or when the member
- * list does not have them. The row then says the same thing without a name.
+ * list does not have them. A row then says the same thing without a name, and
+ * a face goes without the owner's beside it.
  */
+export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
+  readonly project: MateAccessProject;
+  readonly members: ReadonlyArray<M>;
+}): M | undefined {
+  const ownerEntry = input.project.userRoles?.find((entry) => entry.roleCode === "OWNER");
+  if (ownerEntry === undefined) return undefined;
+  return input.members.find((entry) => entry.id === ownerEntry.clientUserId);
+}
+
+/** The owner's name, for "Jan's Mate — only Jan opens it" (D5). */
 export function resolveMateOwnerName(input: {
   readonly project: MateAccessProject;
   readonly members: ReadonlyArray<MateOwnerCandidate>;
 }): string | undefined {
-  const ownerEntry = input.project.userRoles?.find((entry) => entry.roleCode === "OWNER");
-  if (ownerEntry === undefined) return undefined;
-  const member = input.members.find((entry) => entry.id === ownerEntry.clientUserId);
+  const member = resolveMateOwner(input);
   return member === undefined ? undefined : mateMemberName(member);
 }
 
