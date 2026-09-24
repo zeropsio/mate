@@ -178,6 +178,7 @@ describe("readGroupDeploys", () => {
     const held: ZeropsGroupDeployState = {
       declarations: [],
       environments: [],
+      groupHead: undefined,
       pullRequests: [],
       missing: [],
       mainHeadRepositories: new Map([
@@ -234,6 +235,7 @@ describe("readGroupDeploys", () => {
     const held: ZeropsGroupDeployState = {
       declarations: [],
       environments: [],
+      groupHead: undefined,
       pullRequests: [],
       missing: [],
       mainHeadRepositories: new Map([["app", "appdev"]]),

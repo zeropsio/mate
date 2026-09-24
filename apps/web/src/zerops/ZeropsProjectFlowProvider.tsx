@@ -44,7 +44,15 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { useStopDeployments } from "./accountForge";
 import { useAccountGitea } from "./giteaProject";
@@ -232,6 +240,7 @@ function projectFlow(
     release: {
       ...offer,
       inFlight: release.inFlight,
+      target: deployed?.groupHead,
       gate:
         productionWithheld === undefined
           ? flowReleaseGate(offer.gate, {
@@ -446,14 +455,23 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [invalidateDeploys, invalidateForge],
   );
 
+  /**
+   * The verbs running now, by key. A second press before React draws the first as pending would
+   * otherwise act twice — for a release, a second tag.
+   */
+  const running = useRef(new Set<string>());
+
   /** Holds the verb's key in `pending` while it runs, then re-reads what it changed. */
   const run = useCallback(
     async (verb: FlowVerb, groupId: string | undefined, act: () => Promise<void>) => {
       const key = flowVerbKey(verb);
+      if (running.current.has(key)) return;
+      running.current.add(key);
       setPending((current) => new Set(current).add(key));
       try {
         await act();
       } finally {
+        running.current.delete(key);
         setPending((current) => {
           const next = new Set(current);
           next.delete(key);
@@ -463,6 +481,26 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       }
     },
     [reread],
+  );
+
+  /**
+   * A tag made, by the verb's key, with the group's forge answer it was made against. The verb
+   * stays pending until that answer is replaced: until the tag is read back, the flow still
+   * offers the release it just made.
+   */
+  const [tagged, setTagged] = useState<
+    ReadonlyMap<
+      string,
+      { readonly groupId: string; readonly against: ZeropsGroupForgeState | undefined }
+    >
+  >(() => new Map());
+  const markTagged = useCallback(
+    (verb: FlowVerb, groupId: string) => {
+      setTagged((current) =>
+        new Map(current).set(flowVerbKey(verb), { groupId, against: forges.get(groupId) }),
+      );
+    },
+    [forges],
   );
 
   const slugs = useMemo(
@@ -548,26 +586,31 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [actingClient, groupOfSlug, run],
   );
 
-  /** A tag on the group repo's `main`, as the person; Gitea's tag protection is the real gate. */
+  /**
+   * A tag on the group repo's `main` as the flow read it — never a head read at the press, which
+   * may hold what the person was not shown — as the person; Gitea's tag protection is the real
+   * gate. Whether the tag was made.
+   */
   const tagAs = useCallback(
-    async (slug: string, tag: string, message: string) => {
+    async (flow: ZeropsProjectFlow, tag: string, message: string): Promise<boolean> => {
       const client = actingClient();
-      if (client === null) return;
-      const head = await client.getBranch(slug, GROUP_REPOSITORY, "main").catch(() => undefined);
-      const target = head?.commit?.id;
+      if (client === null) return false;
+      const target = flow.release.target;
       if (target === undefined) {
         setTrouble("The group repository has no main to tag.");
-        return;
+        return false;
       }
       try {
-        await client.createTag(slug, GROUP_REPOSITORY, { tag, target, message });
+        await client.createTag(flow.slug, GROUP_REPOSITORY, { tag, target, message });
         setTrouble(null);
+        return true;
       } catch (cause) {
         setTrouble(
           cause instanceof Error && "status" in cause && cause.status === 403
             ? "Only releasers can tag."
             : "Gitea would not create the tag.",
         );
+        return false;
       }
     },
     [actingClient],
@@ -581,15 +624,17 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       // differ for a project releasing what is merged (D28).
       const entries = flow.release.entries;
       if (entries.length === 0) return;
-      await run({ kind: "release", groupId }, groupId, () =>
-        tagAs(
-          flow.slug,
+      const verb: FlowVerb = { kind: "release", groupId };
+      await run(verb, groupId, async () => {
+        const made = await tagAs(
+          flow,
           releaseTagName(flow.release.suggestion.replace(/^v/u, "")),
           releaseMessage(entries),
-        ),
-      );
+        );
+        if (made) markTagged(verb, groupId);
+      });
     },
-    [flows, run, tagAs],
+    [flows, markTagged, run, tagAs],
   );
 
   const rollBack = useCallback(
@@ -598,7 +643,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (flow === undefined) return;
       const client = actingClient();
       if (client === null) return;
-      await run({ kind: "roll-back", groupId, tag: earlier }, groupId, async () => {
+      const verb: FlowVerb = { kind: "roll-back", groupId, tag: earlier };
+      await run(verb, groupId, async () => {
         const tags = await client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => []);
         const found = tags.find((entry) => entry.name === earlier);
         const plan =
@@ -613,15 +659,21 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           setTrouble(`${earlier} does not list commits this build can read.`);
           return;
         }
-        await tagAs(flow.slug, plan.tag, plan.message);
+        if (await tagAs(flow, plan.tag, plan.message)) markTagged(verb, groupId);
       });
     },
-    [actingClient, flows, run, tagAs],
+    [actingClient, flows, markTagged, run, tagAs],
   );
 
   // While the account's access lapses, the groups the registry names and what was read of them
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
+  const pendingOrTagged = useMemo<ReadonlySet<string>>(() => {
+    const waiting = [...tagged].filter(
+      ([, { groupId, against }]) => forges.get(groupId) === against,
+    );
+    return waiting.length === 0 ? pending : new Set([...pending, ...waiting.map(([key]) => key)]);
+  }, [forges, pending, tagged]);
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
       giteaOrigin,
@@ -632,7 +684,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       deployments,
       slugs: lapsed ? EMPTY_SLUGS : slugs,
       mateNames,
-      pending,
+      pending: pendingOrTagged,
       // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
       trouble: (signedIn ? signInTrouble : null) ?? trouble,
       mergePullRequest,
@@ -648,7 +700,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       lapsed,
       mateNames,
       mergePullRequest,
-      pending,
+      pendingOrTagged,
       readable,
       release,
       rollBack,

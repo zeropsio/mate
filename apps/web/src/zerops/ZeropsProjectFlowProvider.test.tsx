@@ -1,4 +1,4 @@
-import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
+import { flowVerbKey, type ZeropsProject } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -38,9 +38,25 @@ const access = vi.hoisted(() => ({
     | { readonly kind: "withheld"; readonly reason: "access-lapsed"; readonly cause: null },
 }));
 
+/**
+ * What the verbs act on: the client they act as, and what each half answers for `g1` — `null`
+ * leaves the half unread, as the tests above expect.
+ */
+const verbs = vi.hoisted(() => ({
+  client: null as unknown,
+  deploys: null as unknown,
+  forge: {
+    repositories: [],
+    pullRequests: [],
+    merged: [],
+    released: { releases: [], tags: [] },
+  } as unknown,
+  invalidated: [] as Array<readonly [string, unknown]>,
+}));
+
 vi.mock("./accountGiteaSessions", () => ({
   useGiteaSession: () => ({ signedIn: true, readable: gitea.readable, trouble: gitea.trouble }),
-  giteaClientFor: () => null,
+  giteaClientFor: () => verbs.client,
 }));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
@@ -106,24 +122,20 @@ const deployReads = vi.hoisted(() => ({
 vi.mock("./useZeropsGroupDeploys", () => ({
   useZeropsGroupDeploys: (input: { readonly groups: typeof deployReads.groups }) => {
     deployReads.groups = input.groups;
-    return { deploys: new Map(), failures: new Map(), invalidate: () => {} };
+    return {
+      deploys: verbs.deploys === null ? new Map() : new Map([["g1", verbs.deploys]]),
+      failures: new Map(),
+      invalidate: () => {},
+    };
   },
 }));
 vi.mock("./useZeropsGroupForge", () => ({
   useZeropsGroupForge: () => ({
-    forges: new Map([
-      [
-        "g1",
-        {
-          repositories: [],
-          pullRequests: [],
-          merged: [],
-          released: { releases: [], tags: [] },
-        },
-      ],
-    ]),
+    forges: new Map([["g1", verbs.forge]]),
     failures: new Map(),
-    invalidate: () => {},
+    invalidate: (groupId: string, scope: unknown) => {
+      verbs.invalidated.push([groupId, scope]);
+    },
   }),
 }));
 
@@ -201,6 +213,9 @@ describe("ZeropsProjectFlowProvider", () => {
     inventoryRefs.projects = [];
     inventoryRefs.authority = new Map();
     registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
+    verbs.client = null;
+    verbs.deploys = null;
+    verbs.invalidated = [];
     vi.unstubAllGlobals();
   });
 
@@ -549,6 +564,88 @@ describe("ZeropsProjectFlowProvider", () => {
 
     await act(async () => {
       root.unmount();
+    });
+  });
+
+  describe("release", () => {
+    const SHOWN = "a".repeat(40);
+    const MOVED = "b".repeat(40);
+    const MERGED = "2".repeat(40);
+
+    /** A releasable group whose group repo `main` was at `SHOWN` when it was read. */
+    async function mountReleasable() {
+      gitea.readable = true;
+      const tags: Array<{ tag: string; target: string; message?: string | undefined }> = [];
+      verbs.client = {
+        getBranch: async () => ({ name: "main", commit: { id: MOVED } }),
+        createTag: async (_owner: string, _repo: string, input: (typeof tags)[number]) => {
+          tags.push(input);
+        },
+      };
+      verbs.deploys = {
+        declarations: [],
+        environments: [],
+        pullRequests: [],
+        missing: [],
+        mainHeadRepositories: new Map([["app", "appdev"]]),
+        mainHeads: new Map([["app", MERGED]]),
+        groupHead: SHOWN,
+        releaseContents: [],
+      };
+      installTestDom();
+      const { createRoot } = await import("react-dom/client");
+      const seen: Array<ZeropsProjectFlowValue> = [];
+      function Probe() {
+        seen.push(useZeropsProjectFlow());
+        return null;
+      }
+      const root = createRoot(document.createElement("div") as unknown as Element);
+      const render = () =>
+        act(async () => {
+          root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+        });
+      await render();
+      expect(seen.at(-1)?.flows.get("g1")?.release.gate).toEqual({ allowed: true });
+      return { seen, tags, render, root };
+    }
+
+    it("one click creates one tag", async () => {
+      const { seen, tags, root } = await mountReleasable();
+      const value = seen.at(-1)!;
+      await act(async () => {
+        await Promise.all([value.release("g1"), value.release("g1")]);
+      });
+      expect(tags).toHaveLength(1);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    it("the group is re-read right after a release tag is created, and Release waits for it", async () => {
+      const { seen, render, root } = await mountReleasable();
+      await act(async () => {
+        await seen.at(-1)!.release("g1");
+      });
+      expect(verbs.invalidated).toEqual([["g1", { kind: "tags" }]]);
+      // The tag is made; until the group's tags answer again Release stays pressed.
+      expect(seen.at(-1)?.pending.has(flowVerbKey({ kind: "release", groupId: "g1" }))).toBe(true);
+      verbs.forge = { ...(verbs.forge as object) };
+      await render();
+      expect(seen.at(-1)?.pending.has(flowVerbKey({ kind: "release", groupId: "g1" }))).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    it("Release tags the sha the offer showed even after main moved", async () => {
+      const { seen, tags, root } = await mountReleasable();
+      await act(async () => {
+        await seen.at(-1)!.release("g1");
+      });
+      expect(tags.map(({ target }) => target)).toEqual([SHOWN]);
+      await act(async () => {
+        root.unmount();
+      });
     });
   });
 });

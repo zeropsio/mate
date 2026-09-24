@@ -111,6 +111,8 @@ export interface ZeropsGroupDeployState {
    * otherwise, where the stage's own deploys are the release's candidate.
    */
   readonly mainHeads: ReadonlyMap<string, string>;
+  /** The group repo's `main` head, read with the rest — what a release tag points at. */
+  readonly groupHead: string | undefined;
   /**
    * What a release would carry: per production service, the commits `main` has
    * that the service is not running. With squash merges each one is a task
@@ -229,6 +231,7 @@ export async function readGroupDeploys(input: {
   const missing = missingEnvironmentRows({ tiersOnMain, declarations, filledTiers });
   if (declarations.length === 0 && pullRequests.length === 0 && missing.length === 0)
     return () => NOTHING_DECLARED;
+  const groupHead = (await client.getBranch(group.slug, GROUP_REPOSITORY, "main"))?.commit?.id;
 
   const services: ReadonlyArray<GroupEnvironmentService> = group.projects.flatMap((project) =>
     project.services.map((service) => ({
@@ -300,6 +303,7 @@ export async function readGroupDeploys(input: {
     missing,
     mainHeadRepositories,
     mainHeads,
+    groupHead,
     releaseContents,
     environments: rowInputs,
   };
@@ -313,6 +317,7 @@ const NOTHING_DECLARED: ZeropsGroupDeployState = {
   missing: [],
   mainHeadRepositories: new Map(),
   mainHeads: new Map(),
+  groupHead: undefined,
   releaseContents: [],
   environments: [],
 };

@@ -35,6 +35,8 @@ export interface ZeropsReleaseOffer {
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
   readonly inFlight: string | undefined;
+  /** The group repo's `main` head this offer was read with — the commit its tag points at. */
+  readonly target: string | undefined;
   /**
    * What pressing it would carry: per service, the commits `main` has that the
    * service is not running. With squash merges each is one task delivered.
