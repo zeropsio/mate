@@ -13,10 +13,20 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
+
+// The groups whose stops a person folded away, as storage would hand them back.
+const stored = vi.hoisted(() => ({ folded: new Set<string>() }));
+vi.mock("~/zerops/collapsedStops", () => ({
+  readCollapsedStops: () => stored.folded,
+  writeCollapsedStops: () => undefined,
+}));
+afterEach(() => {
+  stored.folded = new Set();
+});
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
@@ -915,7 +925,7 @@ describe("the project's flow under it", () => {
     // Open by default, and the fold is a verb of its own rather than a state
     // a project is handed.
     expect(html).toContain('data-zerops-surface="sidebar-stops-fold"');
-    expect(html).toContain("Hide the stages and the production");
+    expect(html).toContain("Hide the production");
   });
 
   it("draws one spine, and branches a change off it instead of onto it", () => {
@@ -939,11 +949,42 @@ describe("the project's flow under it", () => {
     // first face of every group 24px above its row and every last badge 17px
     // below it.
     expect(painted + blank).toBe(rows * 2);
-    // Unpainted only at the two ends: the first node of the group and the last.
-    expect(blank).toBe(2);
+    // Unpainted only at the two ends — the first node of the group and the
+    // last, production — and across the stage's muted line after it, which
+    // branches off `main` rather than standing on the line.
+    expect(blank).toBe(4);
+    const stage = html.slice(html.indexOf('data-zerops-project="crm-stage"'));
+    expect(stage).not.toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
     // A change is not a node on the line — it branches off one. Drawn as a
     // node it read as one more Mate however small its dot.
     expect(count('data-zerops-rail="fork"')).toBe(changes);
+  });
+
+  it("draws no fold and no line to a stage that is the group's only stop", () => {
+    // A Mate and a stage, no production yet. The fold stood on the line as a
+    // node of its own over one muted line it could not shorten, and the line
+    // ran on to it: a flow that read as stuck half-way (the owner, 2026-09-24).
+    const html = render([CRM_DEV, CRM_STAGE]);
+    expect(html).not.toContain('data-zerops-surface="sidebar-stops-fold"');
+    // One node, so no line at all — as for a Mate with nothing after it.
+    expect(html).not.toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
+    expect(html).toContain("↳ crm-stage · follows main");
+  });
+
+  it("folds production alone; the stage stays its muted line and never wears a badge", () => {
+    stored.folded = new Set(["aaa"]);
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    expect(html).toContain('aria-expanded="false"');
+    const fold = html.slice(
+      html.indexOf('data-zerops-surface="sidebar-stops-fold"'),
+      html.indexOf('data-zerops-project="crm-stage"'),
+    );
+    expect(fold).toContain(">crm-prod<");
+    expect(fold).not.toContain("crm-stage");
+    const stage = html.slice(html.indexOf('data-zerops-project="crm-stage"'));
+    expect(stage).toContain("↳ crm-stage · follows main");
+    expect(stage).not.toContain('data-zerops-surface="sidebar-stop-badge"');
+    expect(stage).not.toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
   });
 
   it("keeps a recipe change out of the Mate's own pull-request list — only code moves through the shared flow", () => {

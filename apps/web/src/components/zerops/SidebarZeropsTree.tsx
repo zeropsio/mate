@@ -514,7 +514,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         member.kind === "mate" ? [] : [{ kind: "creating", member, tier: member.kind }],
       ),
     ].sort((a, b) => stopTierRank(a.tier) - stopTierRank(b.tier));
-    const endsOnMates = stopRows.length === 0 && otherPulls.length === 0;
+    // A stage branches off `main` rather than standing on the line, so only
+    // the other stops can be where the line ends.
+    const lineStops = stopRows.filter((row) => row.tier !== "stage");
+    const stageLines = stopRows.filter((row) => row.tier === "stage");
+    const endsOnMates = lineStops.length === 0 && otherPulls.length === 0;
     return (
       <>
         {renderHeader(projectFlow?.nextStep)}
@@ -579,7 +583,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 onOpenChange={flow.onOpenChange}
                 pull={pull}
                 railCap={
-                  stopRows.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
+                  lineStops.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
                 }
                 underMate={false}
               />
@@ -597,7 +601,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               toggleStops(id);
             }}
             production={projectFlow?.production}
-            stops={stopRows}
+            stages={stageLines}
+            stops={lineStops}
           />
         ) : null}
       </>
@@ -1631,7 +1636,9 @@ function StopMenu({
 /**
  * The project's other stops, drawn as the peers of the Mates above them:
  * production first, then any group stage as its muted side branch —
- * `groupFlow`'s own order (the owner, 2026-09-23), never the tags'.
+ * `groupFlow`'s own order (the owner, 2026-09-23), never the tags'. Only the
+ * stops that stand on the line fold, and only they end it; the stages hang
+ * after them, off the line and out of the fold.
  *
  * Production is two lines, like a Mate: the badge and the name, then what it
  * is actually running. What it runs is the version's **name** where Zerops
@@ -1647,6 +1654,7 @@ function StopMenu({
  */
 function EnvironmentRows<T extends RosterCandidate>({
   stops,
+  stages,
   flow,
   groupName,
   deployments,
@@ -1655,8 +1663,10 @@ function EnvironmentRows<T extends RosterCandidate>({
   collapsed,
   onToggle,
 }: {
-  /** Production first, then a stage — the order `groupFlow` draws (`section`). */
+  /** The stops on the line — production first (`section`); none is a stage. */
   readonly stops: ReadonlyArray<StopRow<T>>;
+  /** The group's stages, listed or being set up, drawn after `stops`. */
+  readonly stages: ReadonlyArray<StopRow<T>>;
   /**
    * `groupFlow`'s production, where the flow was read: what is under way on
    * it — a release, a deploy — is its line's first words, as on the page.
@@ -1701,6 +1711,14 @@ function EnvironmentRows<T extends RosterCandidate>({
       ? { tone: "pending" as const, word: productionInFlight }
       : { tone: stop.tone, word: stop.word };
   };
+  const openStopOf = (projectId: string) => {
+    const declared = flow?.environments.get(projectId);
+    return declared === undefined || flow?.onOpenStop === undefined
+      ? undefined
+      : () => {
+          flow.onOpenStop?.(declared);
+        };
+  };
   const folded = stops.map((row) => {
     if (row.kind === "creating") {
       return {
@@ -1731,85 +1749,71 @@ function EnvironmentRows<T extends RosterCandidate>({
     <ul className="flex flex-col" data-zerops-surface="sidebar-environment-rows">
       {/* The stops are the part of a project that stays put while the Mates
           change, so they are the part worth folding away. Folded, the group
-          still says it has a stage and a production and whether either needs
-          somebody — two full rows become one line (the owner, 2026-09-19). */}
-      <li>
-        <button
-          aria-expanded={!collapsed}
-          // The same height either way. Folded it drew the compacted stops and
-          // stood 28px tall; unfolded it drew a glyph and stood 16, so every
-          // press shoved everything under it by 12px.
-          className="flex h-7 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-sidebar-row-hover"
-          data-zerops-surface="sidebar-stops-fold"
-          onClick={onToggle}
-          type="button"
-        >
-          <RailCell cap={collapsed ? "end" : undefined}>
-            <FoldGlyph open={!collapsed} />
-          </RailCell>
-          {collapsed ? (
-            <span className="flex min-w-0 flex-1 items-center gap-2.5">
-              {folded.map((stop) => (
-                <span className="flex min-w-0 items-center gap-1" key={stop.key}>
-                  <StopBadge size="xs" tone={stop.tone} word={stop.word} />
-                  <span className="truncate text-[11px] leading-4 text-sidebar-muted-foreground">
-                    {stop.name}
-                  </span>
-                  {stop.attention === undefined ? null : (
-                    <span
-                      className={cn(BUBBLE_CLASS, COUNT_TONE_CLASS[stop.attention.tone])}
-                      data-zerops-surface="sidebar-stop-attention"
-                    >
-                      {stop.attention.count}
+          still says it has a production and whether it needs somebody — a
+          full row becomes one line (the owner, 2026-09-19). A stage is
+          already one muted line: folding it saved nothing and dressed it in
+          the badge it never wears, and a fold over it alone stood on the line
+          as a node with nothing after it (the owner, 2026-09-24). */}
+      {stops.length === 0 ? null : (
+        <li>
+          <button
+            aria-expanded={!collapsed}
+            // The same height either way. Folded it drew the compacted stops and
+            // stood 28px tall; unfolded it drew a glyph and stood 16, so every
+            // press shoved everything under it by 12px.
+            className="flex h-7 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-sidebar-row-hover"
+            data-zerops-surface="sidebar-stops-fold"
+            onClick={onToggle}
+            type="button"
+          >
+            <RailCell cap={collapsed ? "end" : undefined}>
+              <FoldGlyph open={!collapsed} />
+            </RailCell>
+            {collapsed ? (
+              <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                {folded.map((stop) => (
+                  <span className="flex min-w-0 items-center gap-1" key={stop.key}>
+                    <StopBadge size="xs" tone={stop.tone} word={stop.word} />
+                    <span className="truncate text-[11px] leading-4 text-sidebar-muted-foreground">
+                      {stop.name}
                     </span>
-                  )}
-                </span>
-              ))}
+                    {stop.attention === undefined ? null : (
+                      <span
+                        className={cn(BUBBLE_CLASS, COUNT_TONE_CLASS[stop.attention.tone])}
+                        data-zerops-surface="sidebar-stop-attention"
+                      >
+                        {stop.attention.count}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span aria-hidden="true" className="flex flex-1 py-2" />
+            )}
+            <span className="sr-only">
+              {collapsed ? "Show the production" : "Hide the production"}
             </span>
-          ) : (
-            <span aria-hidden="true" className="flex flex-1 py-2" />
-          )}
-          <span className="sr-only">
-            {collapsed
-              ? "Show the stages and the production"
-              : "Hide the stages and the production"}
-          </span>
-        </button>
-      </li>
+          </button>
+        </li>
+      )}
       {collapsed
         ? null
         : stops.map((row, index) => {
-            const last = index === stops.length - 1;
+            const railCap = index === stops.length - 1 ? "end" : undefined;
             if (row.kind === "creating") {
               return (
                 <CreatingStopRow
                   key={row.member.projectId}
                   member={row.member}
-                  railCap={last ? "end" : undefined}
+                  railCap={railCap}
                   tier={row.tier}
                 />
               );
             }
             const { item, role, tier } = row;
             const name = environmentNameUnderGroup(groupName, item.project.name);
-            const declared = flow?.environments.get(item.project.id);
-            const openStop =
-              declared === undefined || flow?.onOpenStop === undefined
-                ? undefined
-                : () => {
-                    flow.onOpenStop?.(declared);
-                  };
-            if (tier === "stage") {
-              return (
-                <GroupStageRow
-                  key={item.project.id}
-                  name={name}
-                  onOpenStop={openStop}
-                  projectId={item.project.id}
-                  railCap={last ? "end" : undefined}
-                />
-              );
-            }
+            const openStop = openStopOf(item.project.id);
             const tag = environmentRoleTag(role);
             const stop = viewOf(item.project.id);
             const badge = badgeOf(item.project.id, tier);
@@ -1828,9 +1832,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                 {/* Centred on the row, because the Mate face directly above it is:
                 two neighbouring rows may not have two rules for their first
                 column. It was pinned to the first line, 11px high of centre. */}
-                {/* Production is the last full stop on the spine unless a muted
-                stage follows it, so its badge ends the line only then. */}
-                <RailCell cap={last ? "end" : undefined}>
+                <RailCell cap={railCap}>
                   <StopBadge tone={badge.tone} word={badge.word} />
                 </RailCell>
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
@@ -1942,6 +1944,18 @@ function EnvironmentRows<T extends RosterCandidate>({
               </li>
             );
           })}
+      {stages.map((row) =>
+        row.kind === "creating" ? (
+          <CreatingStopRow key={row.member.projectId} member={row.member} tier={row.tier} />
+        ) : (
+          <GroupStageRow
+            key={row.item.project.id}
+            name={environmentNameUnderGroup(groupName, row.item.project.name)}
+            onOpenStop={openStopOf(row.item.project.id)}
+            projectId={row.item.project.id}
+          />
+        ),
+      )}
     </ul>
   );
 }
@@ -1975,7 +1989,7 @@ function CreatingStopRow({
         data-zerops-project={member.projectId}
         data-zerops-surface="sidebar-environment-creating"
       >
-        <RailCell cap={railCap} />
+        <RailCell cap="only" />
         <span className="min-w-0 flex-1 truncate">{`↳ ${line}`}</span>
       </li>
     );
@@ -2005,20 +2019,19 @@ function CreatingStopRow({
 /**
  * A group stage: an optional side branch of `main`, never a gate before
  * production (D16/D28/MB-23; the owner, 2026-09-23). It does not compete with
- * production for weight — a single muted line, after production on the
- * spine rather than before it, and never drawn where the group has none: an
- * empty "add" row is the thing this replaces.
+ * production for weight — a single muted line after production rather than
+ * before it, off the line rather than on it and outside the fold, and never
+ * drawn where the group has none: an empty "add" row is the thing this
+ * replaces.
  */
 function GroupStageRow({
   name,
   onOpenStop,
   projectId,
-  railCap,
 }: {
   readonly name: string;
   readonly onOpenStop?: (() => void) | undefined;
   readonly projectId: string;
-  readonly railCap?: RailCap;
 }) {
   const label = `↳ ${name} · follows main`;
   return (
@@ -2027,7 +2040,9 @@ function GroupStageRow({
       data-zerops-project={projectId}
       data-zerops-surface="sidebar-group-stage"
     >
-      <RailCell cap={railCap} />
+      {/* The column keeps the line's width, so the text lines up with the
+          rows on it; the line itself stops before this row. */}
+      <RailCell cap="only" />
       {onOpenStop === undefined ? (
         <span className="min-w-0 flex-1 truncate">{label}</span>
       ) : (
