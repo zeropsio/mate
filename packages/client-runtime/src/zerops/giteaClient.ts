@@ -501,7 +501,8 @@ export interface GiteaClient {
     repo: string,
     runId: number,
   ): Promise<ReadonlyArray<GiteaActionJob>>;
-  rerunActionJob(owner: string, repo: string, jobId: number): Promise<void>;
+  /** Runs one job of a run again (`POST …/actions/runs/{run}/jobs/{job}/rerun`, Gitea 1.27.2). */
+  rerunActionJob(owner: string, repo: string, runId: number, jobId: number): Promise<void>;
   actionJobLogs(owner: string, repo: string, jobId: number): Promise<string>;
 }
 
@@ -909,9 +910,12 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         "list the jobs",
       ).then((answer) => answer.jobs ?? []),
 
-    rerunActionJob: (owner, repo, jobId) =>
+    rerunActionJob: (owner, repo, runId, jobId) =>
       nothing(
-        { method: "POST", path: `/repos/${enc(owner)}/${enc(repo)}/actions/jobs/${jobId}/rerun` },
+        {
+          method: "POST",
+          path: `/repos/${enc(owner)}/${enc(repo)}/actions/runs/${runId}/jobs/${jobId}/rerun`,
+        },
         "rerun the job",
       ),
 

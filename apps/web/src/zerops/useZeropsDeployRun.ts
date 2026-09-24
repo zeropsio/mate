@@ -64,7 +64,7 @@ export interface ZeropsDeployRun {
   readonly state: ZeropsDeployRunState;
   /** Reads one job's log, or its reason for refusing. */
   readonly readLog: (jobId: number) => Promise<string>;
-  /** Runs a job again; the caller re-reads. */
+  /** Runs a job of the run read here again; the caller re-reads. */
   readonly rerun: (jobId: number) => Promise<void>;
   readonly refresh: () => void;
 }
@@ -144,15 +144,17 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
     [giteaOrigin, owner, repo],
   );
 
+  const runId = held.state.kind === "read" ? held.state.runId : undefined;
   const rerun = useCallback(
     async (jobId: number) => {
       if (giteaOrigin === undefined || owner === undefined || repo === undefined) return;
+      if (runId === undefined) return;
       const client = giteaClientFor(giteaOrigin);
       if (client === null) return;
-      await client.rerunActionJob(owner, repo, jobId);
+      await client.rerunActionJob(owner, repo, runId, jobId);
       setGeneration((value) => value + 1);
     },
-    [giteaOrigin, owner, repo],
+    [giteaOrigin, owner, repo, runId],
   );
 
   const refresh = useCallback(() => {

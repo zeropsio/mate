@@ -353,14 +353,15 @@ describe("GiteaClient request shapes", () => {
       { id: 7 },
     ]);
     expect(await client.listActionJobs("acme", "api", 7)).toEqual([{ id: 9, run_id: 7 }]);
-    await client.rerunActionJob("acme", "api", 9);
+    await client.rerunActionJob("acme", "api", 7, 9);
     expect(await client.actionJobLogs("acme", "api", 9)).toBe("step 1\nstep 2\n");
 
     expect(calls.map((call) => `${call.method} ${call.url.slice(ORIGIN.length)}`)).toEqual([
       "GET /api/v1/repos/acme/api/commits/abc/statuses",
       "GET /api/v1/repos/acme/api/actions/runs?branch=main&limit=5",
       "GET /api/v1/repos/acme/api/actions/runs/7/jobs",
-      "POST /api/v1/repos/acme/api/actions/jobs/9/rerun",
+      // Gitea 1.27.2 reruns a job under its run; it has no `/actions/jobs/{id}/rerun`.
+      "POST /api/v1/repos/acme/api/actions/runs/7/jobs/9/rerun",
       "GET /api/v1/repos/acme/api/actions/jobs/9/logs",
     ]);
   });
