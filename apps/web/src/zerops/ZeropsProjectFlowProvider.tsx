@@ -93,6 +93,37 @@ const EMPTY_SLUGS: ReadonlyMap<string, string> = new Map();
 const SIGNING_IN_AGAIN = "Signing in to Gitea again. Try it again in a moment.";
 /** A merge Gitea refused because the pull request's head moved since the person was shown it. */
 export const MERGE_HEAD_MOVED = "This pull request changed since you opened it — review it again.";
+/** How long a verb whose call landed stays pending while the flow has not read its effect back. */
+export const HELD_VERB_MS = 30_000;
+
+/**
+ * What a verb whose call landed waits for in its group's forge answer: any answer after the one
+ * it landed against (a tag), or its pull request gone from the open ones (a merge).
+ */
+type HeldEffect =
+  | { readonly kind: "answer" }
+  | { readonly kind: "closed"; readonly repository: string; readonly number: number };
+
+interface HeldVerb {
+  readonly groupId: string;
+  readonly against: ZeropsGroupForgeState | undefined;
+  readonly effect: HeldEffect;
+  readonly sinceMs: number;
+}
+
+/** Whether the group's forge now shows what the held verb did, or can no longer say. */
+function effectRead(
+  held: HeldVerb,
+  forge: ZeropsGroupForgeState | undefined,
+  failed: boolean,
+): boolean {
+  if (failed) return true;
+  const { effect } = held;
+  if (effect.kind === "answer") return forge !== held.against;
+  return !(forge?.pullRequests ?? []).some(
+    (pull) => pull.repository === effect.repository && pull.number === effect.number,
+  );
+}
 
 function headMoved(cause: unknown): boolean {
   return (
@@ -497,32 +528,48 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   );
 
   /**
-   * A tag made, by the verb's key, with the group's forge answer it was made against. The verb
-   * stays pending until that answer is replaced or the group's forge read fails: until the tag is
-   * read back, the flow still offers the release it just made. A settled entry is dropped.
+   * A verb whose call landed, by its key, with the group's forge answer it landed against and the
+   * effect it waits for. The verb stays pending until the forge shows that effect, the group's
+   * forge read fails, or {@link HELD_VERB_MS} passes: until then the flow still offers what was
+   * just done — the release it just tagged, the pull request it just merged. A settled entry is
+   * dropped.
    */
-  const [tagged, setTagged] = useState<
-    ReadonlyMap<
-      string,
-      { readonly groupId: string; readonly against: ZeropsGroupForgeState | undefined }
-    >
-  >(() => new Map());
+  const [awaiting, setAwaiting] = useState<ReadonlyMap<string, HeldVerb>>(() => new Map());
   /**
-   * The forge answers as drawn last. A tag is marked when its POST returns, against the answer
-   * current then — a pass that answered while the POST ran did not read the new tag either.
+   * The forge answers as drawn last. A verb is held when its call returns, against the answer
+   * current then — a pass that answered while the call ran did not read its effect either.
    */
   const latestForges = useRef(forges);
   useEffect(() => {
     latestForges.current = forges;
   }, [forges]);
-  const markTagged = useCallback((verb: FlowVerb, groupId: string) => {
-    setTagged((current) =>
+  const hold = useCallback((verb: FlowVerb, groupId: string | undefined, effect: HeldEffect) => {
+    if (groupId === undefined) return;
+    setAwaiting((current) =>
       new Map(current).set(flowVerbKey(verb), {
         groupId,
         against: latestForges.current.get(groupId),
+        effect,
+        sinceMs: Date.now(),
       }),
     );
   }, []);
+  const letGo = useCallback((key: string, entry: HeldVerb) => {
+    setAwaiting((current) => {
+      if (current.get(key) !== entry) return current;
+      const next = new Map(current);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    const timers = [...awaiting].map(([key, entry]) =>
+      setTimeout(() => letGo(key, entry), entry.sinceMs + HELD_VERB_MS - Date.now()),
+    );
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+    };
+  }, [awaiting, letGo]);
 
   const slugs = useMemo(
     () => new Map(registry.registry.groups.map((entry) => [entry.groupId, entry.slug])),
@@ -565,24 +612,28 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         setTrouble(MERGE_HEAD_MOVED);
         return;
       }
-      await run(
-        { kind: "merge", slug, repository: pull.repository, number: pull.number },
-        groupOfSlug.get(slug),
-        async () => {
-          try {
-            await client.mergePullRequest(slug, pull.repository, pull.number, head);
-            setTrouble(null);
-          } catch (cause) {
-            setTrouble(
-              headMoved(cause)
-                ? MERGE_HEAD_MOVED
-                : `Gitea would not merge it: ${zeropsErrorMessage(cause)}`,
-            );
-          }
-        },
-      );
+      const verb: FlowVerb = {
+        kind: "merge",
+        slug,
+        repository: pull.repository,
+        number: pull.number,
+      };
+      const groupId = groupOfSlug.get(slug);
+      await run(verb, groupId, async () => {
+        try {
+          await client.mergePullRequest(slug, pull.repository, pull.number, head);
+          setTrouble(null);
+          hold(verb, groupId, { kind: "closed", repository: pull.repository, number: pull.number });
+        } catch (cause) {
+          setTrouble(
+            headMoved(cause)
+              ? MERGE_HEAD_MOVED
+              : `Gitea would not merge it: ${zeropsErrorMessage(cause)}`,
+          );
+        }
+      });
     },
-    [actingClient, groupOfSlug, run],
+    [actingClient, groupOfSlug, hold, run],
   );
 
   const createPullRequest = useCallback(
@@ -668,10 +719,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           releaseTagName(flow.release.suggestion.replace(/^v/u, "")),
           releaseMessage(entries),
         );
-        if (made) markTagged(verb, groupId);
+        if (made) hold(verb, groupId, { kind: "answer" });
       });
     },
-    [flows, markTagged, run, tagAs],
+    [flows, hold, run, tagAs],
   );
 
   const rollBack = useCallback(
@@ -699,39 +750,38 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         const { slug } = flow;
         const head = await client.getBranch(slug, GROUP_REPOSITORY, "main").catch(() => undefined);
         if (await tagAs(slug, head?.commit?.id, plan.tag, plan.message)) {
-          markTagged(verb, groupId);
+          hold(verb, groupId, { kind: "answer" });
         }
       });
     },
-    [actingClient, flows, markTagged, run, tagAs],
+    [actingClient, flows, hold, run, tagAs],
   );
 
   // While the account's access lapses, the groups the registry names and what was read of them
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
-  // A tag waits for the group's next forge answer, or for its re-read to fail: while the forge
-  // half fails no Release is offered (`flowReleaseGate`), so the wait has nothing left to hold.
-  const settledTags = useMemo(
+  // A held verb waits for its effect in the group's forge answer, or for the re-read to fail: a
+  // forge half that fails says so where the verbs are (`flowReleaseGate`, `trouble`), so the wait
+  // has nothing left to hold.
+  const settled = useMemo(
     () =>
-      [...tagged].filter(
-        ([, { groupId, against }]) => forges.get(groupId) !== against || forgeFailures.has(groupId),
+      [...awaiting].filter(([, entry]) =>
+        effectRead(entry, forges.get(entry.groupId), forgeFailures.has(entry.groupId)),
       ),
-    [forgeFailures, forges, tagged],
+    [awaiting, forgeFailures, forges],
   );
   useEffect(() => {
-    if (settledTags.length === 0) return;
-    setTagged((current) => {
+    if (settled.length === 0) return;
+    setAwaiting((current) => {
       const next = new Map(current);
-      for (const [key, entry] of settledTags) if (next.get(key) === entry) next.delete(key);
+      for (const [key, entry] of settled) if (next.get(key) === entry) next.delete(key);
       return next;
     });
-  }, [settledTags]);
-  const pendingOrTagged = useMemo<ReadonlySet<string>>(() => {
-    const waiting = [...tagged.keys()].filter(
-      (key) => !settledTags.some(([settled]) => settled === key),
-    );
+  }, [settled]);
+  const pendingOrHeld = useMemo<ReadonlySet<string>>(() => {
+    const waiting = [...awaiting.keys()].filter((key) => !settled.some(([done]) => done === key));
     return waiting.length === 0 ? pending : new Set([...pending, ...waiting]);
-  }, [pending, settledTags, tagged]);
+  }, [awaiting, pending, settled]);
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
       giteaOrigin,
@@ -742,7 +792,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       deployments,
       slugs: lapsed ? EMPTY_SLUGS : slugs,
       mateNames,
-      pending: pendingOrTagged,
+      pending: pendingOrHeld,
       // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
       trouble: (signedIn ? signInTrouble : null) ?? trouble,
       mergePullRequest,
@@ -758,7 +808,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       lapsed,
       mateNames,
       mergePullRequest,
-      pendingOrTagged,
+      pendingOrHeld,
       readable,
       release,
       rollBack,

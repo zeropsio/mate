@@ -16,7 +16,11 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
-import { MERGE_HEAD_MOVED, ZeropsProjectFlowProvider } from "./ZeropsProjectFlowProvider";
+import {
+  HELD_VERB_MS,
+  MERGE_HEAD_MOVED,
+  ZeropsProjectFlowProvider,
+} from "./ZeropsProjectFlowProvider";
 
 const GITEA = "https://gitea.example.test";
 
@@ -218,6 +222,12 @@ describe("ZeropsProjectFlowProvider", () => {
     verbs.deploys = null;
     verbs.invalidated = [];
     verbs.forgeFailures = new Map();
+    verbs.forge = {
+      repositories: [],
+      pullRequests: [],
+      merged: [],
+      released: { releases: [], tags: [] },
+    };
     vi.unstubAllGlobals();
   });
 
@@ -782,6 +792,102 @@ describe("ZeropsProjectFlowProvider", () => {
         throw refusal;
       });
       expect(value?.trouble).toBe(trouble);
+    });
+
+    const MERGE_KEY = flowVerbKey({ kind: "merge", slug: "harbor", repository: "app", number: 7 });
+    const OPEN = { repository: "app", number: 7, headSha: "c0ffee" };
+
+    /** A group whose forge lists `app#7` open, merged by `merge`; the tree stays mounted. */
+    async function mountOpen(merge: () => Promise<void>) {
+      gitea.readable = true;
+      verbs.client = { mergePullRequest: merge };
+      verbs.forge = { ...(verbs.forge as object), pullRequests: [OPEN] };
+      installTestDom();
+      const { createRoot } = await import("react-dom/client");
+      const seen: Array<ZeropsProjectFlowValue> = [];
+      function Probe() {
+        seen.push(useZeropsProjectFlow());
+        return null;
+      }
+      const root = createRoot(document.createElement("div") as unknown as Element);
+      const render = () =>
+        act(async () => {
+          root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+        });
+      await render();
+      await act(async () => {
+        await seen.at(-1)?.mergePullRequest("harbor", OPEN);
+      });
+      return { seen, render, root };
+    }
+
+    it("Merge stays pending between the merge landing and the forge reading it back", async () => {
+      const { seen, root } = await mountOpen(async () => {});
+      expect(verbs.invalidated.map(([groupId]) => groupId)).toEqual(["g1"]);
+      expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(true);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    it.each([
+      {
+        name: "a forge answer that no longer lists the pull request open",
+        reread: () => {
+          verbs.forge = { ...(verbs.forge as object), pullRequests: [] };
+        },
+      },
+      {
+        name: "a forge re-read that fails",
+        reread: () => {
+          verbs.forgeFailures = new Map([["g1", "Gitea did not answer"]]);
+        },
+      },
+    ])("Merge stops being pending on $name", async ({ reread }) => {
+      const { seen, render, root } = await mountOpen(async () => {});
+      // A pass that still lists it open keeps Merge pending.
+      verbs.forge = { ...(verbs.forge as object) };
+      await render();
+      expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(true);
+      reread();
+      await render();
+      expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    it("a merge Gitea refused stops being pending at once and says why", async () => {
+      const { seen, root } = await mountOpen(async () => {
+        throw new GiteaApiError("Gitea refused to merge the pull request.", 405, "not mergeable");
+      });
+      expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(false);
+      expect(seen.at(-1)?.trouble).toBe(
+        "Gitea would not merge it: Gitea refused to merge the pull request.",
+      );
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    it("Merge stops being pending once the forge has not read it back in time", async () => {
+      vi.useFakeTimers();
+      try {
+        const { seen, root } = await mountOpen(async () => {});
+        await act(async () => {
+          vi.advanceTimersByTime(HELD_VERB_MS - 1);
+        });
+        expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(true);
+        await act(async () => {
+          vi.advanceTimersByTime(1);
+        });
+        expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(false);
+        await act(async () => {
+          root.unmount();
+        });
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
