@@ -8,9 +8,12 @@
  * needs to have read it first.
  *
  * An account with no Gitea has no registry: that is the empty one, not a
- * failure. A read that fails is not reported either — the rows fall back to the
- * per-project `mate:g:` hints they already render from, and the next read tries
- * again.
+ * failure. A read that fails is no answer: the registry last read from the same
+ * Gitea project stands, or, before any, the read stays loading — never the
+ * empty registry settled, which would drop every group from the tree, and
+ * never another project's registry, which a switch of organization leaves
+ * behind. The rows fall back to the per-project `mate:g:` hints they already
+ * render from, and the next read tries again.
  */
 
 import type { ZeropsRegistry } from "@t3tools/client-runtime/zerops";
@@ -22,7 +25,7 @@ const EMPTY: ZeropsRegistry = { groups: [], leaving: [], other: [] };
 
 export interface ZeropsRegistryState {
   readonly registry: ZeropsRegistry;
-  /** True until the first answer, so a verb never writes against a blank. */
+  /** True until this project's registry has been read once. */
   readonly loading: boolean;
   /** Re-reads it — after a write, so the tree is not left one version behind. */
   readonly refresh: () => void;
@@ -38,6 +41,8 @@ export function useZeropsRegistry(input: {
   const [generation, setGeneration] = useState(0);
   const [answer, setAnswer] = useState<{
     readonly key: string;
+    /** The Gitea project this registry was read from. */
+    readonly giteaProjectId: string;
     readonly registry: ZeropsRegistry;
   } | null>(null);
   const key = enabled && giteaProjectId !== undefined ? `${giteaProjectId}:${generation}` : "";
@@ -48,10 +53,11 @@ export function useZeropsRegistry(input: {
     void client
       .readGroupRegistry(giteaProjectId, controller.signal)
       .then((registry) => {
-        if (!controller.signal.aborted) setAnswer({ key, registry });
+        if (!controller.signal.aborted) setAnswer({ key, giteaProjectId, registry });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setAnswer({ key, registry: EMPTY });
+        if (controller.signal.aborted) return;
+        setAnswer((last) => (last?.giteaProjectId === giteaProjectId ? { ...last, key } : last));
       });
     return () => {
       controller.abort();
@@ -63,9 +69,10 @@ export function useZeropsRegistry(input: {
   }, []);
 
   if (key === "") return { registry: EMPTY, loading: false, refresh };
-  return answer?.key === key
-    ? { registry: answer.registry, loading: false, refresh }
-    : { registry: answer?.registry ?? EMPTY, loading: true, refresh };
+  if (answer?.key === key) return { registry: answer.registry, loading: false, refresh };
+  const registry =
+    answer !== null && answer.giteaProjectId === giteaProjectId ? answer.registry : EMPTY;
+  return { registry, loading: true, refresh };
 }
 
 /** The Gitea org a group is registered under, or `undefined` while it is not. */
