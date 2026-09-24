@@ -203,6 +203,7 @@ import { useAddMateIntent } from "../zerops/addMateIntent";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { useAskMate } from "../zerops/useAskMate";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
+import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
@@ -1748,6 +1749,11 @@ export default function Sidebar() {
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
   const zeropsCandidates = zeropsHeld.rows;
+  // Whose each Mate is, for the badge on the corner of its face.
+  const zeropsMateOwner = useZeropsMateOwners({
+    candidates: zeropsCandidates,
+    enabled: zeropsSignedIn,
+  });
   // Each container's health, as the container store holds it — the tree's
   // "some Mate in the group is up" part of *Add production*'s gate.
   const { health: zeropsHealth } = useZeropsContainers();
@@ -3953,6 +3959,7 @@ export default function Sidebar() {
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}
+              getOwner={zeropsMateOwner}
               onOpenGroup={openGroup}
               getActivity={(candidate) =>
                 candidate.environmentId === undefined

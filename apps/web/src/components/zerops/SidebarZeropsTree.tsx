@@ -97,8 +97,9 @@ import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { readCollapsedStops, writeCollapsedStops } from "~/zerops/collapsedStops";
 import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
+import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
-import { MateFace, StatusDot } from "./primitives";
+import { Avatar, MateFace, StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import {
@@ -252,6 +253,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getActivity?: (candidate: T) => ZeropsAgentActivity | undefined;
   /**
+   * Whose this Mate is — the person its project names as `OWNER`, once the
+   * org's member list has been read. Absent, the face goes without a badge.
+   */
+  readonly getOwner?: ((candidate: T) => ZeropsMateOwner | undefined) | undefined;
+  /**
    * The project's flow, when the account has read it (`projectFlowContext`).
    * Absent — signed out of Gitea, nothing read yet — the timeline keeps its
    * shape and simply carries no pull request, no dot and no verb.
@@ -299,6 +305,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onOpenGroup,
   activeProjectId,
   getActivity,
+  getOwner,
   getFlow,
   mayCreate = false,
   health = NO_HEALTH,
@@ -470,6 +477,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 activity={getActivity?.(item)}
                 candidate={item}
                 onSelect={onSelect}
+                owner={getOwner?.(item)}
                 railCap={railCapFor({ first, last: last && ownRow })}
                 tint={tints.get(item.project.id) ?? "slate"}
               />
@@ -798,6 +806,7 @@ function MateRow<T extends RosterCandidate>({
   active,
   activity,
   onSelect,
+  owner,
   railCap,
 }: {
   readonly candidate: T;
@@ -805,6 +814,7 @@ function MateRow<T extends RosterCandidate>({
   readonly active: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
   readonly onSelect: (candidate: T) => void;
+  readonly owner: ZeropsMateOwner | undefined;
   readonly railCap?: RailCap;
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
@@ -823,7 +833,9 @@ function MateRow<T extends RosterCandidate>({
     <button
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+        // The wider gap is the face's: it overhangs the 20px spine column by
+        // 4px a side, and the owner's badge by as much again.
+        "flex w-full min-w-0 cursor-pointer items-center gap-3.5 rounded-md px-2.5 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
         active
           ? "bg-sidebar-row-active text-sidebar-foreground"
           : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
@@ -833,11 +845,39 @@ function MateRow<T extends RosterCandidate>({
       type="button"
     >
       <RailCell cap={railCap}>
-        <MateFace
-          size="sm"
-          state={mateFaceFor(candidate.group === "connected", activity)}
-          tint={tint}
-        />
+        {/* The Mate is the node the rest of its project hangs from, so it
+            wears the card's face rather than a row's, and the person it
+            belongs to rides on its corner (Aleš, 2026-09-24). The column
+            stays 20px: the spine keeps its x, and the face overhangs it. */}
+        <span className="relative flex">
+          <MateFace
+            size="md"
+            state={mateFaceFor(candidate.group === "connected", activity)}
+            tint={tint}
+          />
+          {owner === undefined ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    className="absolute -right-1 -bottom-1 flex"
+                    data-zerops-surface="sidebar-mate-owner"
+                  />
+                }
+              >
+                {/* Cut out of the face by a ring of the menu's own ground. */}
+                <Avatar
+                  className="ring-2 ring-sidebar"
+                  initials={owner.initials}
+                  size="xs"
+                  src={owner.avatarUrl}
+                />
+                <span className="sr-only">{`${owner.name}'s Mate`}</span>
+              </TooltipTrigger>
+              <TooltipPopup side="right">{`${owner.name}'s Mate`}</TooltipPopup>
+            </Tooltip>
+          )}
+        </span>
       </RailCell>
       {/* The row's own vertical padding lives here: the rail has to run the
           full height of the row to meet the rows either side of it. */}
@@ -914,7 +954,7 @@ function RailCell({ children, cap }: { readonly children?: ReactNode; readonly c
 
 /**
  * Half a row's share of the spine. It grows into whatever the node leaves, so
- * it meets the node exactly whether that is a 20px face, a 20px badge or the
+ * it meets the node exactly whether that is a 28px face, a 20px badge or the
  * 6px dot a change wears — and it can never be drawn across one. Positioning
  * the line absolutely behind the node instead drew it straight through every
  * tinted face, which no amount of z-index fixes: the faces are not opaque.

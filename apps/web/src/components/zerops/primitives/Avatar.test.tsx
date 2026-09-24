@@ -24,7 +24,8 @@ describe("Avatar", () => {
     expect(renderToStaticMarkup(<Avatar initials="A" />)).toContain('aria-hidden="true"');
   });
 
-  it("has the bar size and the identity-block size", () => {
+  it("has the badge size, the bar size and the identity-block size", () => {
+    expect(renderToStaticMarkup(<Avatar initials="A" size="xs" />)).toContain("size-3.5");
     expect(renderToStaticMarkup(<Avatar initials="A" />)).toContain("size-6");
     expect(renderToStaticMarkup(<Avatar initials="A" size="md" />)).toContain("size-8");
   });

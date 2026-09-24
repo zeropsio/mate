@@ -37,6 +37,7 @@ import { ThreadId } from "@t3tools/contracts";
 
 import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 
 import "../index.css";
 
@@ -544,6 +545,23 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
   ],
 ]);
 
+/** A picture that needs no network: a flat disc standing in for a photo. */
+const PORTRAIT = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#3b5b7a"/><circle cx="8" cy="6" r="3" fill="#e8c4a8"/><ellipse cx="8" cy="15" rx="6" ry="5" fill="#e8c4a8"/></svg>',
+)}`;
+
+/**
+ * Whose each Mate is: a picture, initials where the account has none, and a
+ * Mate whose owner the member list could not name — which wears no badge.
+ */
+const OWNERS = new Map<string, ZeropsMateOwner>([
+  ["links-enzo", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
+  ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null }],
+  ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
+  ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null }],
+  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
+]);
+
 /**
  * One sidebar at one width. The panel is resizable (`SIDEBAR_WIDTH` is the
  * 256px default, and the owner runs it near 368), so every width in that range
@@ -565,6 +583,7 @@ function Panel({ label, width }: { readonly label: string; readonly width: numbe
           complete
           getActivity={(item) => ACTIVITY.get(item.project.id)}
           getFlow={(groupId) => FLOWS.get(groupId)}
+          getOwner={(item) => OWNERS.get(item.project.id)}
           onBrowseProjects={() => {}}
           onSelect={() => {}}
           activeProjectId="links-enzo"

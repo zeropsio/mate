@@ -16,9 +16,9 @@ export interface ZeropsAccountDisplay {
   readonly avatarUrl: string | null;
 }
 
-type ZeropsAccountSource = Pick<
-  ZeropsUser,
-  "avatar" | "email" | "firstName" | "fullName" | "lastName"
+/** A member row's `user` says as much as `/user/info` does, and may say less. */
+type ZeropsAccountSource = Partial<
+  Pick<ZeropsUser, "avatar" | "email" | "firstName" | "fullName" | "lastName">
 >;
 
 function text(value: string | null | undefined): string | null {

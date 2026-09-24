@@ -121,7 +121,9 @@ describe("SidebarZeropsTree", () => {
 
     expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
     expect(html).toContain('data-zerops-primitive="mate-face"');
-    expect(html).toContain('data-mate-face-size="sm"');
+    // The Mate is the heaviest node on the spine, so its face is the card's
+    // size, not the 20px a name in a row of text gets.
+    expect(html).toContain('data-mate-face-size="md"');
     // The state is the face's: a Mate whose socket is down sleeps, and no
     // word says "Ready" or "Idle" beside it.
     expect(html).toContain('data-mate-face-state="sleep"');
@@ -135,6 +137,31 @@ describe("SidebarZeropsTree", () => {
     expect(row).toContain("rounded-md");
     expect(row).toContain("hover:bg-sidebar-row-hover");
     expect(row).not.toContain("border");
+  });
+
+  it("pins the owner's picture to the corner of the Mate's face", () => {
+    const jan = { name: "Jan Novák", initials: "JN", avatarUrl: "https://cdn/jan.png" };
+    const html = render([CRM_DEV], { getOwner: () => jan });
+    const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
+    const row = html.slice(rowAt, html.indexOf("</button>", rowAt));
+    const ownerAt = row.indexOf('data-zerops-surface="sidebar-mate-owner"');
+    // In the Mate's own row, after the face, so it is painted on top of it.
+    expect(ownerAt).toBeGreaterThan(row.indexOf('data-zerops-primitive="mate-face"'));
+    expect(row).toContain('data-zerops-avatar="picture"');
+    expect(row).toContain('src="https://cdn/jan.png"');
+    // The picture is decoration; whose Mate it is is still said.
+    expect(row).toContain("Jan Novák&#x27;s Mate");
+  });
+
+  it("gives an owner without a picture their initials, and a Mate without one no badge", () => {
+    const quiet = { name: "Eva Dvořák", initials: "ED", avatarUrl: null };
+    const withInitials = render([CRM_DEV], { getOwner: () => quiet });
+    expect(withInitials).toContain('data-zerops-avatar="initials"');
+    expect(withInitials).toContain(">ED<");
+
+    const nobody = render([CRM_DEV], { getOwner: () => undefined });
+    expect(nobody).not.toContain('data-zerops-surface="sidebar-mate-owner"');
+    expect(nobody).not.toContain('data-zerops-primitive="avatar"');
   });
 
   it("keeps saying what a connected Mate is on, or was last on, under its name", () => {

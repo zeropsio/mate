@@ -3,9 +3,11 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-type AvatarSize = "sm" | "md";
+type AvatarSize = "xs" | "sm" | "md";
 
 const SIZE_CLASS: Record<AvatarSize, string> = {
+  /** Pinned to the corner of a Mate's face: whose Mate it is. */
+  xs: "size-3.5 text-[7px]",
   /** Beside 14 px chrome text: the bar. */
   sm: "size-6 text-[10px]",
   /** Beside a name and an email: a menu's identity block, a settings row. */
