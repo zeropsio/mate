@@ -50,7 +50,7 @@ import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { useAccountGitea } from "~/zerops/giteaProject";
-import { beginBirth } from "~/zerops/zeropsBirths";
+import { creationAccepted } from "~/zerops/zeropsBirths";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 
 import { Button } from "../ui/button";
@@ -394,25 +394,29 @@ function ZeropsNewProjectContent() {
       botName,
       onCreated: (projectId, giteaProjectId) => {
         // The birth owes the Mate's registry entry and the broker's grant,
-        // then its harden and its health.
-        beginBirth({
-          projectId,
-          organizationId,
-          registration: {
-            giteaProjectId,
-            giteaOrigin: null,
-            groupId,
-            kind: "mate",
-            displayName: environmentName,
+        // then its harden and its health; the listing is read again so the
+        // project's group catches up with it.
+        creationAccepted(
+          {
+            projectId,
+            organizationId,
+            registration: {
+              giteaProjectId,
+              giteaOrigin: null,
+              groupId,
+              kind: "mate",
+              displayName: environmentName,
+            },
+            container: true,
+            placement: {
+              groupId,
+              groupName: name.trim(),
+              kind: "mate",
+              displayName: environmentName,
+            },
           },
-          container: true,
-          placement: {
-            groupId,
-            groupName: name.trim(),
-            kind: "mate",
-            displayName: environmentName,
-          },
-        });
+          organizationRef(organizationId),
+        );
       },
       // The projects page shows the birth and opens the Mate once it answers.
       onStartWaiting: () => {

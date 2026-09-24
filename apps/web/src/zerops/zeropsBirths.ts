@@ -35,6 +35,7 @@ import {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   ZeropsServiceId,
+  type OrganizationRef,
   type ProjectRef,
   type ProjectActivityRead,
 } from "@t3tools/client-runtime/zerops/data";
@@ -460,6 +461,16 @@ export function beginBirth(input: BeginBirth): void {
   current.live.outstanding = null;
   for (const listener of current.listeners) listener();
   current.store.begin(input);
+}
+
+/**
+ * A creation the platform accepted — New project, an add to a group: its birth starts now, and its
+ * organization is listed again at once, so the group the birth is drawn in catches up with the
+ * project it made rather than waiting for the next push.
+ */
+export function creationAccepted(input: BeginBirth, organization: OrganizationRef): void {
+  beginBirth(input);
+  invalidateZerops({ topic: "inventory", organization });
 }
 
 /** The creation's container import failed: the birth owes its group writes and nothing more. */

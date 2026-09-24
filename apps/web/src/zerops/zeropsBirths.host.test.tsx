@@ -20,7 +20,13 @@ import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { TestNode } from "./__fixtures__/testDom";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { beginBirth, bindBirthInputs, useZeropsBirths, type BirthInputs } from "./zeropsBirths";
+import {
+  beginBirth,
+  bindBirthInputs,
+  creationAccepted,
+  useZeropsBirths,
+  type BirthInputs,
+} from "./zeropsBirths";
 
 // The Mate's health is the probe pool's; these births stop at their harden.
 vi.mock("./zeropsContainers", async (importOriginal) => ({
@@ -157,6 +163,38 @@ afterEach(() => {
   closeAccountLifetime();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe("a creation the platform accepted", () => {
+  // No account tree is bound: the birth waits, and nothing else asks for a listing.
+  it.each([
+    {
+      name: "is listed again at once, so its group catches up with its birth",
+      begin: () =>
+        creationAccepted(
+          {
+            ...mate,
+            placement: { groupId: "group-1", groupName: "Todo", kind: "mate", displayName: "Vera" },
+          },
+          organizationRef("org-1"),
+        ),
+      want: [{ topic: "inventory", organization: organizationRef("org-1") }],
+    },
+    {
+      name: "unlike a birth on a project already listed, which asks for nothing",
+      begin: () => beginBirth(mate),
+      want: [],
+    },
+  ])("$name", async ({ begin, want }) => {
+    const tab = openTab();
+    try {
+      begin();
+      await vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS + 100);
+      expect(tab.heard).toEqual(want);
+    } finally {
+      tab.close();
+    }
+  });
 });
 
 describe("the account's births", () => {

@@ -43,6 +43,7 @@ import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
+import wizardSource from "./ZeropsNewProjectWizard.tsx?raw";
 import gitBlockSource from "./ZeropsGitBlock.tsx?raw";
 import mergeDialogSource from "./ZeropsMergeDialog.tsx?raw";
 import deployRunSource from "./ZeropsDeployRun.tsx?raw";
@@ -855,6 +856,39 @@ describe("a creation under way on the projects page", () => {
     expect(sidebarTreeSource).toContain("pending: group?.pending ?? [],");
     expect(sidebarSource).toContain(
       "placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id)",
+    );
+  });
+
+  it("is under way from the click: the add verbs are off before the group's agents are read", () => {
+    // `creationRunning` disables every add verb, Add production included; a
+    // creation that waited on the agents' read before saying so left the verb
+    // pressable for a second creation of the same production.
+    const start = projectsPageSource.indexOf("const createEnvironment = useCallback(");
+    const body = projectsPageSource.slice(start);
+    const underWay = body.indexOf('setCreation({ name, tier: tier ?? "mate", progress: [] });');
+    expect(underWay).toBeGreaterThan(-1);
+    expect(underWay).toBeLessThan(body.indexOf("await readGroupAgents(entry.environments)"));
+    // A plan refused ends it, so the verbs come back.
+    expect(body.slice(underWay, body.indexOf("setToolError(plan.reason);"))).toContain(
+      "setCreation(null);",
+    );
+  });
+
+  it("lists the organization again the moment a creation is accepted, as New project does", () => {
+    expect(projectsPageSource).toContain("creationAccepted(");
+    expect(projectsPageSource).toContain("organizationRef(organizationId),");
+    expect(wizardSource).toContain("creationAccepted(");
+    expect(wizardSource).not.toContain("beginBirth(");
+  });
+
+  it("says why a merge or a release was refused, in the page's own trouble line", () => {
+    const trouble = projectsPageSource.slice(
+      projectsPageSource.indexOf("const trouble ="),
+      projectsPageSource.indexOf(";", projectsPageSource.indexOf("const trouble =")),
+    );
+    expect(trouble).toContain("projectFlow.trouble");
+    expect(projectsPageSource).toContain(
+      '<p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>',
     );
   });
 

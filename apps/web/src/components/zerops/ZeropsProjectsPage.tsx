@@ -65,6 +65,7 @@ import {
   birthEnabled,
   birthWithoutContainer,
   bornOnAccept,
+  creationAccepted,
   forgetBirth,
   importedContainer,
   placedBirthsIn,
@@ -1994,6 +1995,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       if (entry === undefined) return;
       const { group } = entry;
       const { name } = choice;
+      const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
+      // Under way from the click: every add verb is off (`creationRunning`)
+      // before the group's agents are read, so none is pressed twice.
+      setCreation({ name, tier: tier ?? "mate", progress: [] });
 
       const plan = planEnvironmentCreation({
         clientId: activeOrganization.id,
@@ -2009,6 +2014,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       });
       if (!isCurrent()) return;
       if (!plan.ok) {
+        setCreation(null);
         setToolError(plan.reason);
         return;
       }
@@ -2028,28 +2034,31 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       //   registry, the broker's token has to reach it, and its sources are
       //   declared on the group repo before the broker deploys anything
       //   (guide 5.2).
-      const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
       const registers = tier !== null || canWriteRegistry(activeOrganization);
       const withAgent = plan.steps.some((step) => step.kind === "import-container");
       const organizationId = activeOrganization.id;
+      // The listing is read again at once, so the group catches up with its birth.
       const accepted = (projectId: string) => {
         if (!isCurrent()) return;
-        beginBirth({
-          projectId,
-          organizationId,
-          registration:
-            registers && giteaProjectId !== undefined
-              ? {
-                  giteaProjectId,
-                  giteaOrigin: tier === null ? null : (giteaOrigin ?? null),
-                  groupId,
-                  kind: tier ?? "mate",
-                  displayName: name,
-                }
-              : null,
-          container: withAgent,
-          placement: { groupId, groupName: group.name, kind: tier ?? "mate", displayName: name },
-        });
+        creationAccepted(
+          {
+            projectId,
+            organizationId,
+            registration:
+              registers && giteaProjectId !== undefined
+                ? {
+                    giteaProjectId,
+                    giteaOrigin: tier === null ? null : (giteaOrigin ?? null),
+                    groupId,
+                    kind: tier ?? "mate",
+                    displayName: name,
+                  }
+                : null,
+            container: withAgent,
+            placement: { groupId, groupName: group.name, kind: tier ?? "mate", displayName: name },
+          },
+          organizationRef(organizationId),
+        );
       };
 
       setToolError(
@@ -2058,11 +2067,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           : null,
       );
       setCreationNowMs(Date.now());
-      setCreation({
-        name,
-        tier: tier ?? "mate",
-        progress: plan.steps.map((step) => ({ step, state: "queued" })),
-      });
+      setCreation((current) =>
+        current === null
+          ? current
+          : { ...current, progress: plan.steps.map((step) => ({ step, state: "queued" })) },
+      );
       const outcome = await runEnvironmentCreation({
         clientId: activeOrganization.id,
         steps: plan.steps,
@@ -2959,6 +2968,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       };
     },
   );
+  // The page's one line of trouble: a refusal of something done here — a
+  // merge or a release the project flow refused included — one at a time.
+  const trouble =
+    toolError ?? births.outstanding ?? renameGroup.trouble ?? route.trouble ?? projectFlow.trouble;
   const ungroupedRows = groupTree.ungrouped.map((candidate) => ({
     item: candidate,
     action: deriveZeropsRowAction(rowInput(candidate)).kind,
@@ -3152,13 +3165,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
         />
       )}
-      {toolError === null &&
-      births.outstanding === null &&
-      renameGroup.trouble === null &&
-      route.trouble === null ? null : (
-        <p className="text-sm text-[var(--zerops-status-failed-text)]">
-          {toolError ?? births.outstanding ?? renameGroup.trouble ?? route.trouble}
-        </p>
+      {trouble === null ? null : (
+        <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
       )}
     </div>
   );
