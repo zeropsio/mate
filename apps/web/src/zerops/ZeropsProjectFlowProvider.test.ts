@@ -308,4 +308,119 @@ describe("joinProjectFlows", () => {
     expect(release?.gate).toEqual({ allowed: true });
     expect(release?.suggestion).toBe("v0.1.2");
   });
+
+  // The broker's production deploy of the commit v0.1.1 lists, read through the
+  // stage that runs it; production still runs the old commit. Newest first, as
+  // Gitea sends a commit's statuses.
+  function releaseWithProductionStatuses(
+    production: ReadonlyArray<{
+      readonly state: "pending" | "success" | "failure";
+      readonly created_at?: string;
+    }>,
+  ) {
+    const MERGED = "2".repeat(40);
+    const RUNNING = "1".repeat(40);
+    return joinProjectFlows({
+      groups: GROUPS,
+      deploys: new Map([
+        [
+          "g1",
+          {
+            ...deployState(),
+            environments: [
+              {
+                projectId: "stage-1",
+                name: "harbor stage",
+                tier: "stage" as const,
+                sources: ["main"],
+                environment: "stage",
+                services: [
+                  {
+                    hostname: "app",
+                    appVersionName: MERGED,
+                    statuses: [
+                      { context: "mate/deploy/stage/app", state: "success" as const },
+                      ...production.map((status) => ({
+                        ...status,
+                        context: "mate/deploy/production/app",
+                      })),
+                    ],
+                  },
+                ],
+              },
+              {
+                projectId: "prod-1",
+                name: "harbor production",
+                tier: "production" as const,
+                sources: "release" as const,
+                environment: "production",
+                services: [{ hostname: "app", appVersionName: RUNNING }],
+              },
+            ],
+            mainHeads: new Map([["app", MERGED]]),
+          },
+        ],
+      ]),
+      forges: new Map([
+        [
+          "g1",
+          {
+            ...forgeState(),
+            released: {
+              releases: [{ tag: "v0.1.1", verdict: "approved", detail: undefined, line: "" }],
+              tags: ["v0.1.0", "v0.1.1"],
+              newest: {
+                tag: "v0.1.1",
+                verdict: "approved",
+                entries: [{ service: "app", commit: MERGED }],
+                taggedAt: "2026-09-24T10:00:00Z",
+              },
+            },
+          },
+        ],
+      ]),
+      mayRelease: true,
+      nowMs: NOW,
+      withheld: NOTHING_WITHHELD,
+      failures: NO_FAILURES,
+    }).get("g1")?.release;
+  }
+
+  it("an approved tag whose production deploy failed is not in flight; Release is offered again", () => {
+    const release = releaseWithProductionStatuses([
+      { state: "failure", created_at: "2026-09-24T10:01:00Z" },
+    ]);
+    expect(release?.inFlight).toBeUndefined();
+    expect(release?.gate).toEqual({ allowed: true });
+  });
+
+  it("an old production failure does not end the hold of a retry release of the same commit", () => {
+    const release = releaseWithProductionStatuses([
+      { state: "pending", created_at: "2026-09-24T10:01:00Z" },
+      { state: "failure", created_at: "2026-09-24T09:00:00Z" },
+    ]);
+    expect(release?.inFlight).toBe("v0.1.1");
+  });
+  it.each([
+    {
+      name: "a failure newer than the tag ends the hold",
+      created_at: "2026-09-24T10:01:00Z",
+      inFlight: undefined,
+    },
+    {
+      name: "a failure older than the tag does not end the hold",
+      created_at: "2026-09-24T09:59:00Z",
+      inFlight: "v0.1.1",
+    },
+    {
+      name: "a failure whose time is not read does not end the hold",
+      created_at: undefined,
+      inFlight: "v0.1.1",
+    },
+  ])("$name", ({ created_at, inFlight }) => {
+    const release = releaseWithProductionStatuses([
+      { state: "failure", ...(created_at === undefined ? {} : { created_at }) },
+    ]);
+    expect(release?.inFlight).toBe(inFlight);
+  });
 });

@@ -381,15 +381,20 @@ export const RELEASE_IN_FLIGHT_MS = 30 * 60_000;
 /**
  * The release tag on its way to production, or `undefined`.
  *
- * In flight: the newest tag is not refused, production does not run every
+ * In flight: the newest tag is not refused, no commit it lists failed its
+ * production deploy after the tag was made, production does not run every
  * commit it lists yet, and it was tagged less than {@link RELEASE_IN_FLIGHT_MS}
  * ago. A tag whose time is not read is not held, so a broken read cannot keep
- * Release away. Pure: the caller passes the clock (rule R1).
+ * Release away. A failure whose time is not read, or posted before the tag,
+ * belongs to an earlier release of the same commit and does not end the hold.
+ * Pure: the caller passes the clock (rule R1).
  */
 export function releaseInFlight(input: {
   readonly newest: ReleaseAttempt | undefined;
   /** `{service: full sha}` production runs. */
   readonly production: ReadonlyMap<string, string>;
+  /** `{service}@{full sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
+  readonly failed: ReadonlyMap<string, string | undefined>;
   readonly nowMs: number;
 }): string | undefined {
   const { newest } = input;
@@ -397,6 +402,11 @@ export function releaseInFlight(input: {
     return undefined;
   const taggedMs = Date.parse(newest.taggedAt);
   if (Number.isNaN(taggedMs) || input.nowMs - taggedMs >= RELEASE_IN_FLIGHT_MS) return undefined;
+  const failedAfterTag = newest.entries.some((entry) => {
+    const failedAt = input.failed.get(`${entry.service}@${entry.commit}`);
+    return failedAt !== undefined && Date.parse(failedAt) >= taggedMs;
+  });
+  if (failedAfterTag) return undefined;
   const running = newest.entries.every(
     (entry) => input.production.get(entry.service) === entry.commit,
   );

@@ -222,7 +222,9 @@ describe("readForge", () => {
     expect(state.released).not.toHaveProperty("failure");
     const newest = "newest" in state.released ? state.released.newest : undefined;
     expect(newest).toMatchObject({ tag: "v0.1.1", taggedAt: undefined });
-    expect(releaseInFlight({ newest, production: new Map(), nowMs: Date.now() })).toBeUndefined();
+    expect(
+      releaseInFlight({ newest, production: new Map(), failed: new Map(), nowMs: Date.now() }),
+    ).toBeUndefined();
   });
 
   it("reads a release's tags alone after a release", async () => {

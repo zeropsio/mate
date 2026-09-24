@@ -543,7 +543,9 @@ describe("a release in flight", () => {
       inFlight: undefined,
     },
   ])("$name", ({ release, production, nowMs, inFlight }) => {
-    expect(releaseInFlight({ newest: release, production, nowMs })).toBe(inFlight);
+    expect(releaseInFlight({ newest: release, production, failed: new Map(), nowMs })).toBe(
+      inFlight,
+    );
   });
 
   it("keeps Release from being offered, and says which tag is on its way", () => {

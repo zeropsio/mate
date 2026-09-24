@@ -39,6 +39,7 @@ import type { GiteaCommitStatus } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import {
   deployedCommit,
+  deployStatusContext,
   environmentRow,
   type EnvironmentServiceState,
   type GroupRowTone,
@@ -243,6 +244,13 @@ export interface ReleaseDeploys {
   readonly stage: ReadonlyMap<string, string>;
   /** What production runs, read the same way and never from a release tag. */
   readonly production: ReadonlyMap<string, string>;
+  /**
+   * `{service}@{full sha}` → when the failure was posted (`undefined`: not
+   * read), for every commit whose newest production status for that service is
+   * a failure, from every status read — a stage running the commit a release
+   * lists carries the broker's production status on it too.
+   */
+  readonly failed: ReadonlyMap<string, string | undefined>;
 }
 
 /**
@@ -263,15 +271,33 @@ export function releaseDeploys(
 ): ReleaseDeploys {
   const stage = new Map<string, string>();
   const production = new Map<string, string>();
+  const failed = new Map<string, string | undefined>();
+  const productions = environments
+    .filter((environment) => environment.tier === "production")
+    .map((environment) => environment.environment);
   for (const environment of environments) {
     const side = environment.tier === "production" ? production : stage;
     for (const service of environment.services) {
       const sha = deployedCommit(service.appVersionName);
-      if (sha === undefined || side.has(service.hostname)) continue;
+      if (sha === undefined) continue;
+      // Gitea keeps every status a commit was ever given, newest first: only the
+      // newest of a context says how that deploy went (as `deployTone` reads it).
+      const seen = new Set<string>();
+      for (const status of service.statuses ?? []) {
+        if (seen.has(status.context)) continue;
+        seen.add(status.context);
+        if (status.state !== "failure" && status.state !== "error") continue;
+        for (const name of productions) {
+          const prefix = deployStatusContext(name, "");
+          if (status.context.startsWith(prefix))
+            failed.set(`${status.context.slice(prefix.length)}@${sha}`, status.created_at);
+        }
+      }
+      if (side.has(service.hostname)) continue;
       side.set(service.hostname, sha);
     }
   }
-  return { stage, production };
+  return { stage, production, failed };
 }
 
 /**

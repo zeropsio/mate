@@ -166,9 +166,11 @@ export function joinProjectFlows(input: {
       }),
     );
     const released = forge !== undefined && "tags" in forge.released ? forge.released : undefined;
+    const { production, failed } = releaseDeploys(deployed?.environments ?? []);
     const inFlight = releaseInFlight({
       newest: released?.newest,
-      production: releaseDeploys(deployed?.environments ?? []).production,
+      production,
+      failed,
       nowMs: input.nowMs,
     });
     const key = JSON.stringify([
