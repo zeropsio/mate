@@ -75,6 +75,7 @@ function projectFlow(over: Partial<ZeropsProjectFlow> = {}): ZeropsProjectFlow {
       suggestion: "v0.1.0",
       comparison: [],
       entries: [],
+      inFlight: undefined,
       contents: [],
     },
     ...over,
@@ -125,6 +126,7 @@ describe("zeropsMateGroupFlow", () => {
         suggestion: "v0.2.0",
         comparison: [],
         entries: [],
+        inFlight: undefined,
         contents: [{ service: "app", commits: [{ sha: "a".repeat(40), subject: "Add a field" }] }],
       },
     });

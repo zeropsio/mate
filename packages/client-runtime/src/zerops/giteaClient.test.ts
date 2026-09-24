@@ -277,6 +277,14 @@ describe("GiteaClient request shapes", () => {
     expect(calls[1]?.body).toEqual({ Do: "squash" });
   });
 
+  it("reads when an annotated tag was made from its tagger", async () => {
+    const { client, calls } = fake([
+      { body: { tag: "v0.1.1", tagger: { date: "2026-09-24T10:00:00Z" } } },
+    ]);
+    expect(await client.tagDate("acme", "group", "t-sha")).toBe("2026-09-24T10:00:00Z");
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/git/tags/t-sha`);
+  });
+
   it("lists open pull requests by default", async () => {
     const { client, calls } = fake([{ body: [] }]);
     await client.listPullRequests("acme", "group");

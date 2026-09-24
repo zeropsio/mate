@@ -249,6 +249,8 @@ export interface GiteaPullRequest {
 /** One tag of a repository — `GET /repos/{o}/{r}/tags`. */
 export interface GiteaTag {
   readonly name: string;
+  /** The tag object's sha — what {@link GiteaClient.tagDate} reads. */
+  readonly id?: string | undefined;
   /** An annotated tag's message; empty for a lightweight one. */
   readonly message?: string | undefined;
   readonly commit?: { readonly sha?: string | undefined } | undefined;
@@ -444,6 +446,8 @@ export interface GiteaClient {
 
   /** One page, Gitea's default length; newest first, as Gitea orders them. */
   listTags(owner: string, repo: string): Promise<ReadonlyArray<GiteaTag>>;
+  /** When an annotated tag was made, from its tagger; `undefined` where it says none. */
+  tagDate(owner: string, repo: string, tagSha: string): Promise<string | undefined>;
   /** Every tag, page by page; newest first, as Gitea orders them. */
   listAllTags(owner: string, repo: string): Promise<ReadonlyArray<GiteaTag>>;
 
@@ -802,6 +806,14 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/tags` },
         "list the tags",
       ),
+
+    tagDate: async (owner, repo, tagSha) =>
+      (
+        await json<{ readonly tagger?: { readonly date?: string | undefined } | undefined }>(
+          { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/git/tags/${enc(tagSha)}` },
+          "read the tag",
+        )
+      ).tagger?.date,
 
     listAllTags: (owner, repo) =>
       paged<GiteaTag>(

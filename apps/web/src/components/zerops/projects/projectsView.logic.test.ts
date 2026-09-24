@@ -480,6 +480,24 @@ describe("production's cell", () => {
       tone: "busy",
     });
   });
+
+  it("says the release on its way, and offers none beside it", () => {
+    const flow = flowOf({
+      stops: [PRODUCTION],
+      release: {
+        gate: { allowed: false, reason: "Releasing v0.1.0…" },
+        suggestion: "v0.1.1",
+        waiting: 1,
+        inFlight: "v0.1.0",
+      },
+    });
+    expect(productionCell(flow)).toEqual({
+      empty: false,
+      line: "Checking what runs here…",
+      detail: "Releasing v0.1.0…",
+      tone: "busy",
+    });
+  });
 });
 
 describe("groupFlowInputOf", () => {

@@ -238,6 +238,10 @@ export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
  * release where *nothing* moved is not a release.
  */
 export const RELEASE_NOTHING_NEW_ON_MAIN = "Production already runs what is merged.";
+/** A release tagged and not yet running: another tag now would be a second release of it. */
+export function releaseInFlightReason(tag: string): string {
+  return `Releasing ${tag}…`;
+}
 
 /**
  * Whether to offer *Release* at all.
@@ -255,8 +259,12 @@ export function releaseGate(input: {
    * side is not known — then the gate says nothing about what would move.
    */
   readonly comparison?: ReadonlyArray<ReleaseComparison> | undefined;
+  /** The release tag on its way to production (`releaseInFlight`). */
+  readonly inFlight?: string | undefined;
 }): ReleaseGate {
   if (!input.mayRelease) return { allowed: false, reason: RELEASE_NOT_A_RELEASER };
+  if (input.inFlight !== undefined)
+    return { allowed: false, reason: releaseInFlightReason(input.inFlight) };
   if (input.entries.length === 0) return { allowed: false, reason: RELEASE_NOTHING_MERGED };
   const comparison = input.comparison;
   if (comparison !== undefined && comparison.length > 0 && !comparison.some((row) => row.changed)) {
@@ -280,6 +288,8 @@ export function releaseOffer(input: {
   readonly candidate: ReadonlyMap<string, string>;
   /** `{service: full sha}` production runs. */
   readonly production: ReadonlyMap<string, string>;
+  /** The release tag on its way to production (`releaseInFlight`). */
+  readonly inFlight?: string | undefined;
   /** Every `v*` tag on the group repo, so no name is suggested twice. */
   readonly tags: ReadonlyArray<string>;
 }): {
@@ -294,7 +304,12 @@ export function releaseOffer(input: {
     production: input.production,
   });
   return {
-    gate: releaseGate({ mayRelease: input.mayRelease, entries, comparison }),
+    gate: releaseGate({
+      mayRelease: input.mayRelease,
+      entries,
+      comparison,
+      inFlight: input.inFlight,
+    }),
     suggestion: suggestReleaseTags(input.tags).patch,
     comparison,
     entries,
@@ -345,6 +360,47 @@ export function releaseVerdict(
         ? "refused"
         : "pending";
   return { verdict, detail: status.description };
+}
+
+/** The newest release tag as read, for {@link releaseInFlight}. */
+export interface ReleaseAttempt {
+  readonly tag: string;
+  readonly verdict: ReleaseVerdict;
+  /** What its message lists. */
+  readonly entries: ReadonlyArray<ReleaseEntry>;
+  /** When it was tagged (the annotated tag's tagger date); `undefined` unread. */
+  readonly taggedAt: string | undefined;
+}
+
+/**
+ * How long a tag with no final state holds Release back. A build and deploy
+ * take minutes; a broker that never answers must not hold it for ever.
+ */
+export const RELEASE_IN_FLIGHT_MS = 30 * 60_000;
+
+/**
+ * The release tag on its way to production, or `undefined`.
+ *
+ * In flight: the newest tag is not refused, production does not run every
+ * commit it lists yet, and it was tagged less than {@link RELEASE_IN_FLIGHT_MS}
+ * ago. A tag whose time is not read is not held, so a broken read cannot keep
+ * Release away. Pure: the caller passes the clock (rule R1).
+ */
+export function releaseInFlight(input: {
+  readonly newest: ReleaseAttempt | undefined;
+  /** `{service: full sha}` production runs. */
+  readonly production: ReadonlyMap<string, string>;
+  readonly nowMs: number;
+}): string | undefined {
+  const { newest } = input;
+  if (newest === undefined || newest.verdict === "refused" || newest.taggedAt === undefined)
+    return undefined;
+  const taggedMs = Date.parse(newest.taggedAt);
+  if (Number.isNaN(taggedMs) || input.nowMs - taggedMs >= RELEASE_IN_FLIGHT_MS) return undefined;
+  const running = newest.entries.every(
+    (entry) => input.production.get(entry.service) === entry.commit,
+  );
+  return running ? undefined : newest.tag;
 }
 
 /** The one word beside a release's dot (R5). */

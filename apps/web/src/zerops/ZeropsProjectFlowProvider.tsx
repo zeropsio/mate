@@ -22,6 +22,7 @@ import {
   flowVerbKey,
   readZeropsGroupTags,
   releaseDeploys,
+  releaseInFlight,
   releaseMessage,
   releaseOffer,
   releaseRow,
@@ -53,6 +54,7 @@ import {
   type ZeropsProjectFlow,
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
+import { useNowMs } from "./useNowMs";
 import { useZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
 import {
   useZeropsGroupDeploys,
@@ -113,6 +115,8 @@ export function joinProjectFlows(input: {
   readonly deploys: ZeropsGroupDeploys;
   readonly forges: ZeropsGroupForges;
   readonly mayRelease: boolean;
+  /** The clock a release in flight is bounded by (`releaseInFlight`). */
+  readonly nowMs: number;
   /** Why the grant withholds a project, by project id, for each project it withholds alone. */
   readonly withheld: ReadonlyMap<string, string>;
   readonly failures: FlowFailures;
@@ -142,17 +146,29 @@ export function joinProjectFlows(input: {
         return notice === undefined ? [] : [[projectId, notice] as const];
       }),
     );
+    const released = forge !== undefined && "tags" in forge.released ? forge.released : undefined;
+    const inFlight = releaseInFlight({
+      newest: released?.newest,
+      production: releaseDeploys(deployed?.environments ?? []).production,
+      nowMs: input.nowMs,
+    });
     const key = JSON.stringify([
       group.groupId,
       group.slug,
       input.mayRelease,
+      inFlight ?? null,
       failures.deploys ?? null,
       failures.forge ?? null,
       [...withheld],
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
-      flow = projectFlow(group, { deployed, forge, failures }, input.mayRelease, withheld);
+      flow = projectFlow(
+        group,
+        { deployed, forge, failures },
+        { mayRelease: input.mayRelease, inFlight },
+        withheld,
+      );
       byGroup.set(key, flow);
     }
     flows.set(group.groupId, flow);
@@ -173,7 +189,7 @@ function projectFlow(
     readonly forge: ZeropsGroupForgeState | undefined;
     readonly failures: { readonly deploys: string | undefined; readonly forge: string | undefined };
   },
-  mayRelease: boolean,
+  release: { readonly mayRelease: boolean; readonly inFlight: string | undefined },
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
@@ -197,7 +213,8 @@ function projectFlow(
   // means. Holding production until a stage has the commit is said once,
   // explicitly, as `requireOnStage`.
   const offer = releaseOffer({
-    mayRelease,
+    mayRelease: release.mayRelease,
+    inFlight: release.inFlight,
     candidate: deployed?.mainHeads ?? EMPTY_HEADS,
     production: sides.production,
     tags: released?.tags ?? [],
@@ -214,6 +231,7 @@ function projectFlow(
     releases: (released?.releases ?? []).map((release, index) => releaseRow(release, index)),
     release: {
       ...offer,
+      inFlight: release.inFlight,
       gate:
         productionWithheld === undefined
           ? flowReleaseGate(offer.gate, {
@@ -386,6 +404,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [inventory],
   );
 
+  // A release in flight stops holding Release back once it is old enough (`releaseInFlight`).
+  const nowMs = useNowMs();
   const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
     () =>
       enabled
@@ -394,11 +414,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             deploys,
             forges,
             mayRelease,
+            nowMs,
             withheld,
             failures: { deploys: deployFailures, forge: forgeFailures },
           })
         : EMPTY_FLOWS,
-    [deployFailures, deploys, enabled, forgeFailures, forges, groups, mayRelease, withheld],
+    [deployFailures, deploys, enabled, forgeFailures, forges, groups, mayRelease, nowMs, withheld],
   );
 
   // Time to the first pull request row, per group, for diagnostics.

@@ -33,6 +33,8 @@ export interface ZeropsReleaseOffer {
   readonly comparison: ReadonlyArray<ReleaseComparison>;
   /** What the tag would list — what the verb tags, so it matches what was shown. */
   readonly entries: ReadonlyArray<ReleaseEntry>;
+  /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
+  readonly inFlight: string | undefined;
   /**
    * What pressing it would carry: per service, the commits `main` has that the
    * service is not running. With squash merges each is one task delivered.

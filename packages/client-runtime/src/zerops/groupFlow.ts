@@ -102,6 +102,8 @@ export interface GroupFlowInput {
     readonly suggestion: string;
     /** How many changes are merged and not live (`releaseContentsSummary(...).total`). */
     readonly waiting: number;
+    /** The release tag on its way to production (`releaseInFlight`). */
+    readonly inFlight?: string | undefined;
   };
   /**
    * Whether any of the project's code repositories has a commit on `main`,
@@ -169,6 +171,13 @@ export type GroupFlowProduction =
       readonly stop: GroupFlowStop;
       readonly line: string;
       readonly candidate: { readonly tag: string; readonly waiting: number } | undefined;
+    }
+  | {
+      /** A release is tagged and production does not run it yet; no second one is offered. */
+      readonly kind: "releasing";
+      readonly stop: GroupFlowStop;
+      readonly line: string;
+      readonly tag: string;
     }
   | {
       readonly kind: "ready-to-release";
@@ -288,6 +297,8 @@ function productionOf(
     ? { tag: input.release.suggestion, waiting: input.release.waiting }
     : undefined;
   if (stop.state === "failed") return { kind: "deploy-failed", stop, line, candidate };
+  if (input.release.inFlight !== undefined)
+    return { kind: "releasing", stop, line, tag: input.release.inFlight };
   if (candidate !== undefined) return { kind: "ready-to-release", stop, line, candidate };
   if (stop.state === "checking") return { kind: "checking", stop, line };
   return { kind: stop.state === "empty" ? "empty" : "live", stop, line };

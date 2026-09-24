@@ -1,4 +1,9 @@
-import type { GiteaClient, GiteaPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  releaseInFlight,
+  releaseMessage,
+  type GiteaClient,
+  type GiteaPullRequest,
+} from "@t3tools/client-runtime/zerops";
 import { flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import {
   createMergeabilityTracker,
@@ -195,6 +200,29 @@ describe("readForge", () => {
     // The tags answering again is what takes the failure back.
     const again = await readForge(forge().client, "harbor", "group", createMergeabilityTracker());
     expect(again(stale)?.released).toEqual(held.released);
+  });
+
+  it("a failed tag-date read keeps Release available", async () => {
+    const MERGED = "2".repeat(40);
+    const client = {
+      ...forge().client,
+      listTags: async () => [
+        {
+          name: "v0.1.1",
+          id: "t1",
+          message: releaseMessage([{ service: "app", commit: MERGED }]),
+          commit: { sha: "c1" },
+        },
+      ],
+      tagDate: async () => {
+        throw new Error("Gitea did not answer");
+      },
+    } as unknown as GiteaClient;
+    const state = await readAll(client);
+    expect(state.released).not.toHaveProperty("failure");
+    const newest = "newest" in state.released ? state.released.newest : undefined;
+    expect(newest).toMatchObject({ tag: "v0.1.1", taggedAt: undefined });
+    expect(releaseInFlight({ newest, production: new Map(), nowMs: Date.now() })).toBeUndefined();
   });
 
   it("reads a release's tags alone after a release", async () => {

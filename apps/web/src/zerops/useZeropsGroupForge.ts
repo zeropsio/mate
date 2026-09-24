@@ -31,6 +31,7 @@ import {
   shortCommit,
   type FlowPullRequest,
   type FlowRelease,
+  type ReleaseAttempt,
   type GiteaClient,
   type GiteaCommitStatus,
   type GiteaPullRequest,
@@ -69,6 +70,8 @@ export interface ForgeReleases {
   readonly releases: ReadonlyArray<FlowRelease>;
   /** Every `v*` tag, so the next one can be suggested without reusing a name. */
   readonly tags: ReadonlyArray<string>;
+  /** The newest tag with what it lists and when it was made — what `releaseInFlight` reads. */
+  readonly newest?: ReleaseAttempt | undefined;
   /** Why the latest read of them failed, while the ones read before are kept. */
   readonly failure?: string;
 }
@@ -382,6 +385,7 @@ async function readReleases(client: GiteaClient, slug: string): Promise<ForgeRel
   // Filtered into a fresh array, so the sort touches nothing else.
   const releaseTags = tags.filter((tag) => isReleaseTag(tag.name)).sort(byVersionDescending);
   const releases: Array<FlowRelease> = [];
+  let newest: ReleaseAttempt | undefined;
   for (const tag of releaseTags) {
     const entries = readReleaseMessage(tag.message ?? "");
     const sha = tag.commit?.sha;
@@ -396,8 +400,18 @@ async function readReleases(client: GiteaClient, slug: string): Promise<ForgeRel
       detail: verdict === "refused" ? detail : undefined,
       line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     });
+    if (newest === undefined) {
+      // Only the newest can be in flight; when it was made bounds how long it holds Release.
+      // A lightweight tag has no tagger to read, and lists nothing a release deploys.
+      // A date that does not answer holds nothing: Release stays offered.
+      const taggedAt =
+        tag.id === undefined || entries.length === 0
+          ? undefined
+          : await client.tagDate(slug, GROUP_REPOSITORY, tag.id).catch(() => undefined);
+      newest = { tag: tag.name, verdict, entries, taggedAt };
+    }
   }
-  return { releases, tags: releaseTags.map((tag) => tag.name) };
+  return { releases, tags: releaseTags.map((tag) => tag.name), newest };
 }
 
 /** Newest release first, by version rather than by name. */

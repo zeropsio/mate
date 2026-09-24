@@ -1,3 +1,4 @@
+import { releaseInFlightReason } from "@t3tools/client-runtime/zerops";
 import { CHECKING_RELEASE } from "@t3tools/client-runtime/zerops/flow";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -20,6 +21,7 @@ const deployState = (): ZeropsGroupDeployState => ({
   releaseContents: [],
 });
 
+const NOW = Date.parse("2026-09-24T10:05:00Z");
 const NOTHING_WITHHELD: ReadonlyMap<string, string> = new Map();
 const NO_FAILURES = { deploys: new Map<string, string>(), forge: new Map<string, string>() };
 
@@ -39,6 +41,7 @@ describe("joinProjectFlows", () => {
       deploys: new Map([["g1", g1Deploys]]),
       forges: new Map([["g1", g1Forge]]),
       mayRelease: true,
+      nowMs: NOW,
       withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
@@ -50,6 +53,7 @@ describe("joinProjectFlows", () => {
       ]),
       forges: new Map([["g1", g1Forge]]),
       mayRelease: true,
+      nowMs: NOW,
       withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
@@ -64,6 +68,7 @@ describe("joinProjectFlows", () => {
       deploys,
       forges: new Map(),
       mayRelease: true,
+      nowMs: NOW,
       withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
@@ -76,6 +81,7 @@ describe("joinProjectFlows", () => {
       deploys,
       forges: new Map([["g1", forgeState()]]),
       mayRelease: true,
+      nowMs: NOW,
       withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
@@ -88,6 +94,7 @@ describe("joinProjectFlows", () => {
       deploys: new Map(),
       forges: new Map([["g1", forgeState()]]),
       mayRelease: true,
+      nowMs: NOW,
       withheld: NOTHING_WITHHELD,
       failures: { ...NO_FAILURES, deploys: new Map([["g1", "Gitea did not answer"]]) },
     });
@@ -100,6 +107,7 @@ describe("joinProjectFlows", () => {
       deploys: new Map([["g1", deployState()]]),
       forges: new Map([["g1", { ...forgeState(), released: { failure: "Gitea did not answer" } }]]),
       mayRelease: true,
+      nowMs: NOW,
       withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
@@ -126,6 +134,7 @@ describe("joinProjectFlows", () => {
         ],
       ]),
       mayRelease: true,
+      nowMs: NOW,
       withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
     });
@@ -181,6 +190,7 @@ describe("joinProjectFlows", () => {
       ]),
       forges: new Map([["g1", forgeState()]]),
       mayRelease: true,
+      nowMs: NOW,
       withheld,
       failures: NO_FAILURES,
     });
@@ -189,5 +199,112 @@ describe("joinProjectFlows", () => {
     expect(
       release?.contents.flatMap(({ commits }) => commits.map(({ subject }) => subject)),
     ).toEqual(carried);
+  });
+
+  it("Release is not offered while the newest release tag is pending and production does not run it yet", () => {
+    const production = (sha: string) => ({
+      projectId: "prod-1",
+      name: "harbor production",
+      tier: "production" as const,
+      sources: "release" as const,
+      environment: "production",
+      services: [{ hostname: "app", appVersionName: sha }],
+    });
+    const MERGED = "2".repeat(40);
+    const RUNNING = "1".repeat(40);
+    const join = (runs: string) =>
+      joinProjectFlows({
+        groups: GROUPS,
+        deploys: new Map([
+          [
+            "g1",
+            {
+              ...deployState(),
+              environments: [production(runs)],
+              mainHeads: new Map([["app", MERGED]]),
+            },
+          ],
+        ]),
+        forges: new Map([
+          [
+            "g1",
+            {
+              ...forgeState(),
+              released: {
+                releases: [{ tag: "v0.1.1", verdict: "pending", detail: undefined, line: "" }],
+                tags: ["v0.1.0", "v0.1.1"],
+                newest: {
+                  tag: "v0.1.1",
+                  verdict: "pending",
+                  entries: [{ service: "app", commit: MERGED }],
+                  taggedAt: "2026-09-24T10:00:00Z",
+                },
+              },
+            },
+          ],
+        ]),
+        mayRelease: true,
+        nowMs: NOW,
+        withheld: NOTHING_WITHHELD,
+        failures: NO_FAILURES,
+      }).get("g1")?.release;
+    expect(join(RUNNING)?.gate).toEqual({
+      allowed: false,
+      reason: releaseInFlightReason("v0.1.1"),
+    });
+    expect(join(RUNNING)?.inFlight).toBe("v0.1.1");
+    expect(join(MERGED)?.inFlight).toBeUndefined();
+  });
+
+  it("after a failed production build with an unread version name, Release is offered again", () => {
+    const MERGED = "2".repeat(40);
+    // The platform names no version after a failed build: what production runs is not read.
+    const release = joinProjectFlows({
+      groups: GROUPS,
+      deploys: new Map([
+        [
+          "g1",
+          {
+            ...deployState(),
+            environments: [
+              {
+                projectId: "prod-1",
+                name: "harbor production",
+                tier: "production" as const,
+                sources: "release" as const,
+                environment: "production",
+                services: [{ hostname: "app" }],
+              },
+            ],
+            mainHeads: new Map([["app", MERGED]]),
+          },
+        ],
+      ]),
+      forges: new Map([
+        [
+          "g1",
+          {
+            ...forgeState(),
+            released: {
+              releases: [{ tag: "v0.1.1", verdict: "refused", detail: undefined, line: "" }],
+              tags: ["v0.1.0", "v0.1.1"],
+              newest: {
+                tag: "v0.1.1",
+                verdict: "refused",
+                entries: [{ service: "app", commit: MERGED }],
+                taggedAt: "2026-09-24T10:00:00Z",
+              },
+            },
+          },
+        ],
+      ]),
+      mayRelease: true,
+      nowMs: NOW,
+      withheld: NOTHING_WITHHELD,
+      failures: NO_FAILURES,
+    }).get("g1")?.release;
+    expect(release?.inFlight).toBeUndefined();
+    expect(release?.gate).toEqual({ allowed: true });
+    expect(release?.suggestion).toBe("v0.1.2");
   });
 });

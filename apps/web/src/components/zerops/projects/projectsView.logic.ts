@@ -18,6 +18,7 @@ import {
   pairPreviewRoute,
   readZeropsGroupTags,
   releaseContentsSummary,
+  releaseInFlightReason,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupEnvironmentTier,
@@ -410,6 +411,13 @@ export function productionCell(flow: GroupFlow): ProductionCell {
         detail: `${production.candidate.tag} ready`,
         tone: "busy",
       };
+    case "releasing":
+      return {
+        empty: false,
+        line: production.line,
+        detail: releaseInFlightReason(production.tag),
+        tone: "busy",
+      };
     case "deploy-failed":
       return { empty: false, line: production.line, detail: undefined, tone: "failed" };
     case "live":
@@ -506,6 +514,8 @@ export interface GroupFlowReads {
   readonly release: {
     readonly gate: ReleaseGate;
     readonly suggestion: string;
+    /** The release on its way; the menu, which is told only whether Release is offered, has none. */
+    readonly inFlight?: string | undefined;
     readonly contents: ReadonlyArray<{
       readonly commits: ReadonlyArray<{ sha: string; subject: string }>;
     }>;
@@ -581,6 +591,7 @@ export function groupFlowInputOf(input: {
             gate: flow.release.gate,
             suggestion: flow.release.suggestion,
             waiting: releaseContentsSummary(flow.release.contents).total,
+            inFlight: flow.release.inFlight,
           },
     mainHasCode: undefined,
     mainHead: undefined,

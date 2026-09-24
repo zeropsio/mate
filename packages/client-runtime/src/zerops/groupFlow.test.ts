@@ -485,6 +485,20 @@ describe("groupFlow", () => {
     expect(production).toMatchObject(expected);
   });
 
+  it("says a release is on its way and offers no Release while one is in flight", () => {
+    const flow = groupFlow({
+      ...FSADFDASFSA,
+      release: {
+        gate: { allowed: false, reason: "Releasing v0.1.0…" },
+        suggestion: "v0.1.1",
+        waiting: 1,
+        inFlight: "v0.1.0",
+      },
+    });
+    expect(flow.production).toMatchObject({ kind: "releasing", tag: "v0.1.0" });
+    expect(flow.nextStep.kind).not.toBe("release");
+  });
+
   it("still ranks a failed production above the release, unlike a failed stage", () => {
     const flow = groupFlow({
       ...FSADFDASFSA,

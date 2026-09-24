@@ -9,6 +9,8 @@ import {
   readReleaseMessage,
   releaseEntries,
   releaseGate,
+  releaseInFlight,
+  releaseInFlightReason,
   releaseMessage,
   releaseOffer,
   releaseRow,
@@ -460,5 +462,98 @@ describe("planReleaseReads", () => {
 
   it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
     expect(planReleaseReads(new Map(row.heads), new Map(row.running))).toEqual(row.expected);
+  });
+});
+
+describe("a release in flight", () => {
+  const TAGGED = "2026-09-24T10:00:00Z";
+  const at = (minutes: number) => Date.parse(TAGGED) + minutes * 60_000;
+  const newest = {
+    tag: "v0.1.3",
+    verdict: "pending" as const,
+    entries: [
+      { service: "api", commit: API },
+      { service: "web", commit: WEB },
+    ],
+    taggedAt: TAGGED,
+  };
+  const notYet = new Map([
+    ["api", OLD],
+    ["web", WEB],
+  ]);
+
+  it.each([
+    {
+      name: "Release is not offered while the newest release tag is pending and production does not run it yet",
+      release: newest,
+      production: notYet,
+      nowMs: at(2),
+      inFlight: "v0.1.3",
+    },
+    {
+      name: "an approved tag production does not run yet is still in flight",
+      release: { ...newest, verdict: "approved" as const },
+      production: notYet,
+      nowMs: at(2),
+      inFlight: "v0.1.3",
+    },
+    {
+      name: "a tag the broker has not spoken about yet is in flight",
+      release: { ...newest, verdict: "unknown" as const },
+      production: notYet,
+      nowMs: at(0),
+      inFlight: "v0.1.3",
+    },
+    {
+      name: "a tag production runs is done",
+      release: { ...newest, verdict: "approved" as const },
+      production: new Map([
+        ["api", API],
+        ["web", WEB],
+      ]),
+      nowMs: at(2),
+      inFlight: undefined,
+    },
+    {
+      name: "Release is offered again after the in-flight release failed",
+      release: { ...newest, verdict: "refused" as const },
+      production: notYet,
+      nowMs: at(2),
+      inFlight: undefined,
+    },
+    {
+      name: "a tag older than 30 minutes with no final state stops counting",
+      release: newest,
+      production: notYet,
+      nowMs: at(31),
+      inFlight: undefined,
+    },
+    {
+      name: "a tag whose time is not read is not held in flight",
+      release: { ...newest, taggedAt: undefined },
+      production: notYet,
+      nowMs: at(2),
+      inFlight: undefined,
+    },
+    {
+      name: "no release at all",
+      release: undefined,
+      production: notYet,
+      nowMs: at(2),
+      inFlight: undefined,
+    },
+  ])("$name", ({ release, production, nowMs, inFlight }) => {
+    expect(releaseInFlight({ newest: release, production, nowMs })).toBe(inFlight);
+  });
+
+  it("keeps Release from being offered, and says which tag is on its way", () => {
+    const gate = releaseOffer({
+      mayRelease: true,
+      candidate: new Map([["api", API]]),
+      production: new Map([["api", OLD]]),
+      inFlight: "v0.1.3",
+      tags: ["v0.1.3"],
+    }).gate;
+    expect(gate).toEqual({ allowed: false, reason: releaseInFlightReason("v0.1.3") });
   });
 });
