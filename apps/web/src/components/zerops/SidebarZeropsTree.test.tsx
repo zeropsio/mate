@@ -556,6 +556,33 @@ describe("a creation under way in the menu", () => {
     expect(comingRows(html)).toHaveLength(1);
   });
 
+  it("draws a production being created as setting up, busy, before the stage, with nothing to press", () => {
+    const html = render([CRM_DEV, CRM_STAGE], {
+      births: [birth({ projectId: "crm-prod-new", kind: "production", displayName: "production" })],
+    });
+    const at = html.indexOf('data-zerops-project="crm-prod-new"');
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(html.indexOf('data-zerops-project="crm-stage"'));
+    const row = html.slice(html.lastIndexOf("<li", at)).split("</li>")[0]!;
+    expect(row).toContain('aria-busy="true"');
+    expect(row).toContain('data-zerops-status-tone="pending"');
+    expect(row).toContain(">production<");
+    expect(row).toContain(">Setting up production…<");
+    expect(row).not.toContain("<button");
+    expect(comingRows(html)).toHaveLength(0);
+  });
+
+  it("draws a stage being created as the muted line under the stops", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      births: [birth({ projectId: "crm-stage-new", kind: "stage", displayName: "stage" })],
+    });
+    const at = html.indexOf('data-zerops-project="crm-stage-new"');
+    expect(at).toBeGreaterThan(html.indexOf('data-zerops-project="crm-prod"'));
+    const row = html.slice(html.lastIndexOf("<li", at)).split("</li>")[0]!;
+    expect(row).toContain('aria-busy="true"');
+    expect(row).toContain(">↳ Setting up a stage…<");
+  });
+
   it("draws a first project being created in an account with no Mate listed yet", () => {
     const html = render([], { births: [birth({ groupId: "new", groupName: "Todo" })] });
     expect(html).toContain('data-zerops-group="new"');
@@ -861,6 +888,20 @@ describe("the project's flow under it", () => {
     );
   });
 
+  it("says a release on its way on production's line, where the menu has the tag", () => {
+    const html = withFlow(
+      [CRM_DEV, CRM_STAGE, CRM_PROD],
+      flow({ releaseOffered: false, releaseInFlight: "v0.2.0" }),
+    );
+    const production = html.slice(
+      html.indexOf('data-zerops-project="crm-prod"'),
+      html.indexOf('data-zerops-project="crm-stage"'),
+    );
+    expect(production).toContain(">Releasing v0.2.0…<");
+    expect(production).toContain('data-zerops-status-tone="pending"');
+    expect(production).not.toContain('data-zerops-primary-action="Release"');
+  });
+
   it("keeps the timeline's shape with nothing read: no row, no dot, no verb", () => {
     const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).toContain('data-zerops-surface="sidebar-environment-rows"');
@@ -1011,6 +1052,51 @@ describe("a stop's deployment", () => {
   };
   const stop = (html: string, id: string) =>
     html.slice(html.indexOf(`data-zerops-project="${id}"`)).split("</li>")[0]!;
+
+  it("says a deploy running on production in words on its line, beside what it deploys", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsProjectFlowContext.Provider
+        value={deploymentsOnly(
+          new Map([
+            [
+              "crm-prod",
+              known({
+                kind: "deploying",
+                version: {
+                  name: "v0.2.0",
+                  commit: "055a7e8",
+                  sha: undefined,
+                  taggedBy: undefined,
+                  label: "v0.2.0",
+                },
+                previous: null,
+              }),
+            ],
+          ]),
+        )}
+      >
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, CRM_STAGE, CRM_PROD]}
+          complete
+          getFlow={() => ({
+            pullRequests: [],
+            environments: new Map(),
+            releaseOffered: false,
+            merging: () => false,
+            releasing: false,
+            onMerge: () => {},
+            onRelease: () => {},
+          })}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+    const production = stop(html, "crm-prod");
+    expect(production).toContain(">Deploying…<");
+    expect(production).toContain(">v0.2.0<");
+    expect(production).toContain('data-zerops-status-tone="pending"');
+  });
 
   it("never says nothing is deployed while it has not read what runs there", () => {
     const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);

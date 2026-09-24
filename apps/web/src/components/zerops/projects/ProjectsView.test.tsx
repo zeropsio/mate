@@ -227,6 +227,24 @@ describe("the Projects card", () => {
     expect(mates).not.toContain("No Mate yet");
   });
 
+  it("reads a production being created as setting up, with no menu and no Add production", () => {
+    const html = card(
+      entry([WREN], {
+        mainHasCode: true,
+        productionAddable: true,
+        missing: [{ tier: "production" }],
+        pending: [
+          { ...VERA_COMING, projectId: "prod-new", kind: "production", name: "production" },
+        ],
+      }),
+    );
+    const production = step(html, "production");
+    expect(production).toContain(">Setting up production…<");
+    expect(production).toContain('data-zerops-status-tone="busy"');
+    expect(production).not.toContain("data-test-stop-menu");
+    expect(html).not.toContain('data-test-verb="add-production"');
+  });
+
   it("counts a Mate being created in its header", () => {
     const header = between(card(entry([WREN], { pending: [VERA_COMING] })), "<header", "</header>");
     expect(header).toContain("2 Mates");

@@ -404,7 +404,9 @@ export interface ProductionCell {
 /**
  * Production's step. Its line is `groupFlow`'s; the detail names the
  * release that would go. That production is the person's to add, not the
- * Mate's, is the add verb's to say (its tooltip), not the cell's.
+ * Mate's, is the add verb's to say (its tooltip), not the cell's. While
+ * something is under way on it — its creation, a deploy, a release — that is
+ * line 1, and what it runs is the detail: a narrow row reads line 1 only.
  */
 export function productionCell(flow: GroupFlow): ProductionCell {
   const { production } = flow;
@@ -412,8 +414,14 @@ export function productionCell(flow: GroupFlow): ProductionCell {
     case "absent":
       return { empty: true, line: production.line, detail: undefined, tone: "off" };
     case "creating":
-    case "deploying":
       return { empty: false, line: production.line, detail: undefined, tone: "busy" };
+    case "deploying":
+      return {
+        empty: false,
+        line: production.line,
+        detail: production.stop.version?.label,
+        tone: "busy",
+      };
     case "ready-to-release":
       // How much it carries is `main`'s line 2 (`1 change not live`), beside it.
       return {
@@ -425,8 +433,8 @@ export function productionCell(flow: GroupFlow): ProductionCell {
     case "releasing":
       return {
         empty: false,
-        line: production.line,
-        detail: releaseInFlightReason(production.tag),
+        line: releaseInFlightReason(production.tag),
+        detail: production.line,
         tone: "busy",
       };
     case "deploy-failed":

@@ -50,18 +50,22 @@ import {
   changeState,
   pullRequestBlocked,
   pullRequestsFolded,
+  PRODUCTION_SETTING_UP,
   releaseContentsSentence,
   releaseContentsSummary,
+  releaseInFlightReason,
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
   selectMateEnvironments,
   sidebarChangeLabel,
+  STAGE_SETTING_UP,
   stopAttention,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupEnvironmentTier,
   type GroupFlow,
   type GroupFlowComing,
+  type GroupFlowProduction,
   type GroupNextStep,
   type GroupRowTone,
   type ReleaseContentsSummary,
@@ -69,6 +73,7 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type ZeropsGroup,
+  type ZeropsGroupPendingMember,
   type ZeropsPlacedBirth,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
@@ -138,6 +143,18 @@ type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undef
 /** An {@link Entry} resolved to its `groupFlow` tier — `undefined` for neither. */
 type StopEntry<T> = Entry<T> & { readonly tier: GroupEnvironmentTier | undefined };
 
+/**
+ * One of a project's stops as the menu draws it: a listed one, or one being
+ * created — its birth, until the listing holds its project.
+ */
+type StopRow<T> =
+  | ({ readonly kind: "listed" } & StopEntry<T>)
+  | {
+      readonly kind: "creating";
+      readonly member: ZeropsGroupPendingMember;
+      readonly tier: GroupEnvironmentTier;
+    };
+
 /** Production first, then a stage, then anything the tag scheme has no tier for. */
 function stopTierRank(tier: GroupEnvironmentTier | undefined): number {
   return tier === "production" ? 0 : tier === "stage" ? 1 : 2;
@@ -147,7 +164,7 @@ function stopTierRank(tier: GroupEnvironmentTier | undefined): number {
  * One project's flow as `groupFlowInputOf` reads it — the projects page's
  * own input — from what the menu holds. Only whether a release is offered
  * reaches this menu, not the gate's reason; `groupFlow` decides on the
- * former alone.
+ * former alone. The release on its way does, so production says it.
  */
 function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
   return {
@@ -158,6 +175,7 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
     release: {
       gate: flow.releaseOffered ? { allowed: true } : { allowed: false, reason: "" },
       suggestion: flow.releaseTag ?? "",
+      inFlight: flow.releaseInFlight,
       contents: flow.releaseContents ?? [],
     },
   };
@@ -237,6 +255,8 @@ export interface SidebarProjectFlow {
   readonly onRelease: () => void;
   /** The version *Release* would tag, named in its confirm. */
   readonly releaseTag?: string | undefined;
+  /** The release tag on its way to production (`releaseInFlight`), which its line says. */
+  readonly releaseInFlight?: string | undefined;
 }
 
 export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
@@ -480,13 +500,21 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // line that runs past its final node into the gap below reads as a list
     // that got cut off rather than as work arriving somewhere.
     const otherPulls = flow === undefined ? [] : grouped.others;
-    const endsOnMates = others.length === 0 && otherPulls.length === 0;
     // Production first, then a stage as its side branch, never before it
     // (the owner, 2026-09-23) — the order the code travels, not the order the
-    // tags happen to list.
-    const stopEntries: ReadonlyArray<StopEntry<T>> = others
-      .map((entry) => ({ ...entry, tier: environmentTierForRole(entry.role) }))
-      .sort((a, b) => stopTierRank(a.tier) - stopTierRank(b.tier));
+    // tags happen to list. A stop being created follows the listed ones of
+    // its tier.
+    const stopRows: ReadonlyArray<StopRow<T>> = [
+      ...others.map((entry): StopRow<T> => ({
+        kind: "listed",
+        ...entry,
+        tier: environmentTierForRole(entry.role),
+      })),
+      ...(group?.pending ?? []).flatMap((member): ReadonlyArray<StopRow<T>> =>
+        member.kind === "mate" ? [] : [{ kind: "creating", member, tier: member.kind }],
+      ),
+    ].sort((a, b) => stopTierRank(a.tier) - stopTierRank(b.tier));
+    const endsOnMates = stopRows.length === 0 && otherPulls.length === 0;
     return (
       <>
         {renderHeader(projectFlow?.nextStep)}
@@ -550,13 +578,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 onMerge={flow.onMerge}
                 onOpenChange={flow.onOpenChange}
                 pull={pull}
-                railCap={others.length === 0 && index === otherPulls.length - 1 ? "end" : undefined}
+                railCap={
+                  stopRows.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
+                }
                 underMate={false}
               />
             ))}
           </ul>
         )}
-        {stopEntries.length > 0 ? (
+        {stopRows.length > 0 ? (
           <EnvironmentRows
             collapsed={collapsedStops.has(id)}
             deployments={deployments}
@@ -566,7 +596,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             onToggle={() => {
               toggleStops(id);
             }}
-            stops={stopEntries}
+            production={projectFlow?.production}
+            stops={stopRows}
           />
         ) : null}
       </>
@@ -1619,12 +1650,18 @@ function EnvironmentRows<T extends RosterCandidate>({
   flow,
   groupName,
   deployments,
+  production,
   onOpenProject,
   collapsed,
   onToggle,
 }: {
   /** Production first, then a stage — the order `groupFlow` draws (`section`). */
-  readonly stops: ReadonlyArray<StopEntry<T>>;
+  readonly stops: ReadonlyArray<StopRow<T>>;
+  /**
+   * `groupFlow`'s production, where the flow was read: what is under way on
+   * it — a release, a deploy — is its line's first words, as on the page.
+   */
+  readonly production: GroupFlowProduction | undefined;
   readonly flow: SidebarProjectFlow | undefined;
   /** The heading above, so a row never repeats the word already on it. */
   readonly groupName: string | undefined;
@@ -1650,15 +1687,39 @@ function EnvironmentRows<T extends RosterCandidate>({
       row: flow?.environments.get(projectId),
       nowMs,
     });
-  const folded = stops.map(({ item, tier }) => {
-    const stop = viewOf(item.project.id);
+  // What is under way on the production — a release on its way, a deploy
+  // running — said in words ahead of what it runs, and worn by its badge.
+  const productionInFlight =
+    production?.kind === "releasing"
+      ? releaseInFlightReason(production.tag)
+      : production?.kind === "deploying"
+        ? production.line
+        : undefined;
+  const badgeOf = (projectId: string, tier: GroupEnvironmentTier | undefined) => {
+    const stop = viewOf(projectId);
+    return tier === "production" && productionInFlight !== undefined
+      ? { tone: "pending" as const, word: productionInFlight }
+      : { tone: stop.tone, word: stop.word };
+  };
+  const folded = stops.map((row) => {
+    if (row.kind === "creating") {
+      return {
+        key: row.member.projectId,
+        name: row.member.name,
+        tone: "pending" as const,
+        word: creatingStopLine(row.tier),
+        attention: undefined,
+      };
+    }
+    const { item, tier } = row;
+    const badge = badgeOf(item.project.id, tier);
     return {
       key: item.project.id,
       name: environmentNameUnderGroup(groupName, item.project.name),
-      tone: stop.tone,
-      word: stop.word,
+      tone: badge.tone,
+      word: badge.word,
       attention: stopAttention({
-        failed: stop.tone === "bad",
+        failed: badge.tone === "bad",
         production: tier === "production",
         waiting: behind.total,
       }),
@@ -1717,10 +1778,21 @@ function EnvironmentRows<T extends RosterCandidate>({
       </li>
       {collapsed
         ? null
-        : stops.map(({ item, role, tier }, index) => {
+        : stops.map((row, index) => {
+            const last = index === stops.length - 1;
+            if (row.kind === "creating") {
+              return (
+                <CreatingStopRow
+                  key={row.member.projectId}
+                  member={row.member}
+                  railCap={last ? "end" : undefined}
+                  tier={row.tier}
+                />
+              );
+            }
+            const { item, role, tier } = row;
             const name = environmentNameUnderGroup(groupName, item.project.name);
             const declared = flow?.environments.get(item.project.id);
-            const last = index === stops.length - 1;
             const openStop =
               declared === undefined || flow?.onOpenStop === undefined
                 ? undefined
@@ -1740,8 +1812,10 @@ function EnvironmentRows<T extends RosterCandidate>({
             }
             const tag = environmentRoleTag(role);
             const stop = viewOf(item.project.id);
-            const production = tier === "production";
-            const release = flow !== undefined && flow.releaseOffered && production;
+            const badge = badgeOf(item.project.id, tier);
+            const isProduction = tier === "production";
+            const inFlight = isProduction ? productionInFlight : undefined;
+            const release = flow !== undefined && flow.releaseOffered && isProduction;
             const routes = item.routes ?? [];
             const version = stop.version;
             return (
@@ -1757,7 +1831,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                 {/* Production is the last full stop on the spine unless a muted
                 stage follows it, so its badge ends the line only then. */}
                 <RailCell cap={last ? "end" : undefined}>
-                  <StopBadge tone={stop.tone} word={stop.word} />
+                  <StopBadge tone={badge.tone} word={badge.word} />
                 </RailCell>
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
                   <span className="flex min-w-0 items-center gap-2">
@@ -1801,7 +1875,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                         onOpenProject={onOpenProject}
                         routes={routes}
                         stop={stop}
-                        waiting={production ? waitingInMenu : undefined}
+                        waiting={isProduction ? waitingInMenu : undefined}
                       />
                     </span>
                   </span>
@@ -1813,6 +1887,14 @@ function EnvironmentRows<T extends RosterCandidate>({
                     signed in and the version names a commit, it is the way to
                     what is actually in there; otherwise it stays plain text
                     rather than becoming a link that goes nowhere. */}
+                    {inFlight === undefined ? null : (
+                      <span
+                        className="shrink-0 text-sidebar-foreground"
+                        data-zerops-surface="sidebar-environment-in-flight"
+                      >
+                        {inFlight}
+                      </span>
+                    )}
                     {openStop === undefined || version?.label === undefined ? (
                       <span
                         className={cn(
@@ -1861,6 +1943,62 @@ function EnvironmentRows<T extends RosterCandidate>({
             );
           })}
     </ul>
+  );
+}
+
+/** What a stop being created says while it is: the page's own words. */
+function creatingStopLine(tier: GroupEnvironmentTier): string {
+  return tier === "production" ? PRODUCTION_SETTING_UP : STAGE_SETTING_UP;
+}
+
+/**
+ * A stop being created, until the listing holds its project: a production is
+ * its row's shape — the badge on its way up, its name, "Setting up
+ * production…" — with no menu and no verb, there being nothing of it to reach
+ * yet; a stage is the muted line a stage always is, `↳ Setting up a stage…`.
+ */
+function CreatingStopRow({
+  member,
+  tier,
+  railCap,
+}: {
+  readonly member: ZeropsGroupPendingMember;
+  readonly tier: GroupEnvironmentTier;
+  readonly railCap?: RailCap;
+}) {
+  const line = creatingStopLine(tier);
+  if (tier === "stage") {
+    return (
+      <li
+        aria-busy="true"
+        className="flex h-7 min-w-0 items-center gap-2.5 px-2.5 text-[11px] text-sidebar-muted-foreground"
+        data-zerops-project={member.projectId}
+        data-zerops-surface="sidebar-environment-creating"
+      >
+        <RailCell cap={railCap} />
+        <span className="min-w-0 flex-1 truncate">{`↳ ${line}`}</span>
+      </li>
+    );
+  }
+  return (
+    <li
+      aria-busy="true"
+      className="flex min-w-0 items-center gap-2.5 rounded-md px-2.5"
+      data-zerops-project={member.projectId}
+      data-zerops-surface="sidebar-environment-creating"
+    >
+      <RailCell cap={railCap}>
+        <StopBadge tone="pending" word={line} />
+      </RailCell>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
+        <span className="min-w-0 truncate text-sm leading-5 font-medium text-sidebar-foreground">
+          {member.name}
+        </span>
+        <span className="min-w-0 truncate text-[11px] leading-4 text-sidebar-muted-foreground">
+          {line}
+        </span>
+      </span>
+    </li>
   );
 }
 

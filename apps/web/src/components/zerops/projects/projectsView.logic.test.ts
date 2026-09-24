@@ -516,36 +516,58 @@ describe("production's cell", () => {
     });
   });
 
-  it("says the release on its way, and offers none beside it", () => {
-    const flow = flowOf({
-      stops: [PRODUCTION],
-      release: {
-        gate: { allowed: false, reason: "Releasing v0.1.0…" },
-        suggestion: "v0.1.1",
-        waiting: 1,
-        inFlight: "v0.1.0",
-      },
-    });
-    expect(productionCell(flow)).toEqual({
-      empty: false,
-      line: "Checking what runs here…",
-      detail: "Releasing v0.1.0…",
-      tone: "busy",
-    });
-  });
-
-  it("reads a production being created as busy setting up", () => {
-    const flow = flowOf({
-      pending: [
-        { projectId: "p-new", kind: "production", name: "prod", step: "tags", overdue: false },
-      ],
-    });
-    expect(productionCell(flow)).toEqual({
-      empty: false,
-      line: "Setting up production…",
-      detail: undefined,
-      tone: "busy",
-    });
+  const RUNNING = {
+    name: "v0.1.0",
+    commit: "055a7e8",
+    sha: undefined,
+    taggedBy: undefined,
+    label: "v0.1.0",
+  };
+  // In flight, the word is line 1: a narrow row reads line 1 only, and what
+  // is happening is the one thing it must not lose.
+  it.each([
+    {
+      name: "a release on its way, what runs now beside it, and none offered",
+      flow: flowOf({
+        stops: [PRODUCTION],
+        release: {
+          gate: { allowed: false, reason: "Releasing v0.1.0…" },
+          suggestion: "v0.1.1",
+          waiting: 1,
+          inFlight: "v0.1.0",
+        },
+      }),
+      want: { line: "Releasing v0.1.0…", detail: "Checking what runs here…" },
+    },
+    {
+      name: "a production being created, setting up",
+      flow: flowOf({
+        pending: [
+          { projectId: "p-new", kind: "production", name: "prod", step: "tags", overdue: false },
+        ],
+      }),
+      want: { line: "Setting up production…", detail: undefined },
+    },
+    {
+      name: "a deploy running, the version it deploys beside it",
+      flow: flowOf({
+        stops: [
+          {
+            ...PRODUCTION,
+            deployment: {
+              state: "known",
+              value: { kind: "deploying", version: RUNNING, previous: null },
+              asOf: { ordinal: 1, atMs: 0 },
+              coverage: "complete",
+              freshness: { kind: "live" },
+            },
+          },
+        ],
+      }),
+      want: { line: "Deploying…", detail: "v0.1.0" },
+    },
+  ])("reads $name as busy", ({ flow, want }) => {
+    expect(productionCell(flow)).toEqual({ empty: false, tone: "busy", ...want });
   });
 });
 

@@ -42,6 +42,7 @@ import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
+import sidebarSource from "../Sidebar.tsx?raw";
 import gitBlockSource from "./ZeropsGitBlock.tsx?raw";
 import mergeDialogSource from "./ZeropsMergeDialog.tsx?raw";
 import deployRunSource from "./ZeropsDeployRun.tsx?raw";
@@ -852,6 +853,13 @@ describe("a creation under way on the projects page", () => {
     );
     expect(projectsPageSource).toContain("pending: group.pending,");
     expect(sidebarTreeSource).toContain("pending: group?.pending ?? [],");
+    expect(sidebarSource).toContain(
+      "placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id)",
+    );
+  });
+
+  it("tells the left menu the release on its way, as the page reads it", () => {
+    expect(sidebarSource).toContain("releaseInFlight: flow.release.inFlight,");
   });
 });
 

@@ -11,6 +11,7 @@ import {
   item,
   MERGING,
   mount,
+  PROD,
   PRODUCTION_STOP,
   pull,
   RELEASING,
@@ -472,6 +473,99 @@ describe("a creation under way on the Overview", () => {
       coming.findAll((node) => node.children.includes("Coming up. A few minutes.")),
     ).not.toHaveLength(0);
     expect(coming.findAllByType("button")).toHaveLength(0);
+  });
+});
+
+describe("production and stages in flight on the Overview", () => {
+  const production = (html: string) =>
+    section(html, 'data-zerops-group="aaa"').slice(
+      section(html, 'data-zerops-group="aaa"').indexOf('data-zerops-step="production"'),
+    );
+  /** Line 1 of a cell: its status dot, never the line a narrow row hides. */
+  const lineOne = (cell: string) =>
+    cell.slice(cell.indexOf('data-zerops-primitive="status-dot"'), cell.indexOf("</span></span>"));
+  const creating = {
+    ...VERA_COMING,
+    projectId: "fixture-prod-new",
+    kind: "production" as const,
+    name: "production",
+  };
+
+  it("reads a production being created as setting up, busy, with no second Add production", () => {
+    const adding = entry([WREN], {
+      mainHasCode: true,
+      productionAddable: true,
+      missing: [{ tier: "production" }],
+      pending: [creating],
+    });
+    const html = render({ groups: [adding] });
+    const cell = production(html);
+    expect(cell).toContain('data-zerops-status-tone="busy"');
+    expect(cell).toContain("animate-status-pulse");
+    expect(lineOne(cell)).toContain("Setting up production…");
+    expect(html).not.toContain('data-test-verb="add-production"');
+  });
+
+  it("reads a deploy running on production as busy, never green, the word on line 1", () => {
+    const deploying = entry([WREN, PROD], {
+      stops: [
+        {
+          ...PRODUCTION_STOP,
+          deployment: {
+            state: "known",
+            value: {
+              kind: "deploying",
+              version: {
+                name: "v0.2.0",
+                commit: "055a7e8",
+                sha: undefined,
+                taggedBy: undefined,
+                label: "v0.2.0",
+              },
+              previous: null,
+            },
+            asOf: { ordinal: 1, atMs: 0 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          },
+        },
+      ],
+    });
+    const cell = production(render({ groups: [deploying] }));
+    expect(cell).toContain('data-zerops-status-tone="busy"');
+    expect(cell).not.toContain('data-zerops-status-tone="ok"');
+    expect(lineOne(cell)).toContain("Deploying…");
+    expect(cell).toContain(">v0.2.0<");
+  });
+
+  it("keeps a release on its way on line 1, where a narrow row still reads it", () => {
+    const releasing = entry([WREN, PROD], {
+      stops: [PRODUCTION_STOP],
+      release: {
+        gate: { allowed: false, reason: "Releasing v0.1.0…" },
+        suggestion: "v0.1.1",
+        waiting: 1,
+        inFlight: "v0.1.0",
+      },
+    });
+    const cell = production(render({ groups: [releasing] }));
+    expect(lineOne(cell)).toContain("Releasing v0.1.0…");
+    expect(cell).toMatch(/hidden @2xl\/flow:block">Checking what runs here…</u);
+  });
+
+  it("draws a stage being created under main as setting up, busy", () => {
+    const html = render({
+      groups: [
+        entry([WREN], {
+          pending: [{ ...creating, projectId: "fixture-stage-new", kind: "stage", name: "stage" }],
+        }),
+      ],
+    });
+    const row = section(html, 'data-zerops-group="aaa"');
+    const stage = row.slice(row.indexOf('data-zerops-surface="flow-stage"'));
+    expect(stage).toContain("↳");
+    expect(stage).toContain('data-zerops-status-tone="busy"');
+    expect(stage).toContain(">Setting up a stage…<");
   });
 });
 

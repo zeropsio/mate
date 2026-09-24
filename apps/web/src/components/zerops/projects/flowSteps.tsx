@@ -14,8 +14,10 @@ import type {
   GroupFlow,
   GroupFlowComing,
   GroupFlowMate,
+  GroupFlowPending,
   GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
+import { STAGE_SETTING_UP } from "@t3tools/client-runtime/zerops";
 import { Children, Fragment, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -284,30 +286,46 @@ export function ComingMateCard({
  * places it under `main`, so a lone stage needs no name; where there are two,
  * each says its own. It says what the stage runs and nothing else — where it
  * lives is its menu's. The state word stays whole; the version gives way. A
- * row draws the first and counts the rest; a box draws each, with its menu.
+ * stage being created is `↳ ● Setting up a stage…`, after the listed ones,
+ * with no menu: there is nothing of it to reach yet. A row draws the first and
+ * counts the rest; a box draws each, with its menu.
  */
 export function StageLines({
   stages,
+  creating = [],
   density,
   menuFor,
 }: {
   readonly stages: ReadonlyArray<GroupFlowStop>;
+  /** The stages being created (`GroupFlow.creatingStages`). */
+  readonly creating?: ReadonlyArray<GroupFlowPending>;
   readonly density: Density;
   readonly menuFor?: ((projectId: string) => ReactNode) | undefined;
 }) {
-  const shown = density === "line" ? stages.slice(0, 1) : stages;
-  const more = stages.length - shown.length;
-  return shown.map((stop) => {
-    const line = stopLine(stop);
-    const menu = menuFor?.(stop.projectId);
+  const lines = [
+    ...stages.map((stop) => ({ projectId: stop.projectId, name: stop.name, stop })),
+    ...creating.map((creation) => ({
+      projectId: creation.projectId,
+      name: creation.name,
+      stop: undefined,
+    })),
+  ];
+  const shown = density === "line" ? lines.slice(0, 1) : lines;
+  const more = lines.length - shown.length;
+  return shown.map(({ projectId, name, stop }) => {
+    const line =
+      stop === undefined
+        ? { word: STAGE_SETTING_UP, version: undefined, tone: "busy" as const }
+        : stopLine(stop);
+    const menu = stop === undefined ? undefined : menuFor?.(projectId);
     return (
       <span
         className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
         data-zerops-surface="flow-stage"
-        key={stop.projectId}
+        key={projectId}
       >
         <span aria-hidden="true">↳</span>
-        {stages.length > 1 ? <span className="min-w-0 truncate">{stop.name} ·</span> : null}
+        {lines.length > 1 ? <span className="min-w-0 truncate">{name} ·</span> : null}
         <StatusDot className="shrink-0" label={line.word} sentence tone={line.tone} />
         {line.version === undefined ? null : (
           <span className="min-w-0 truncate tabular-nums">{line.version}</span>
@@ -332,7 +350,8 @@ export function MainStep<T>({
   readonly menuFor?: ((projectId: string) => ReactNode) | undefined;
 }) {
   const cell = mainCell(entry.flow, entry.lastMerged);
-  const { stages } = entry.flow;
+  const { stages, creatingStages } = entry.flow;
+  const staged = stages.length + creatingStages.length > 0;
   const notLive = entry.flow.main.notLive > 0;
   const lineOne =
     cell.title !== undefined ? (
@@ -354,9 +373,9 @@ export function MainStep<T>({
   // under a hairline instead, and a row with work not live leaves its stage to
   // the opened row.
   const stageLine =
-    density === "line" && !notLive && stages.length > 0 ? (
+    density === "line" && !notLive && staged ? (
       <span className="hidden min-w-0 @2xl/flow:flex">
-        <StageLines density="line" stages={stages} />
+        <StageLines creating={creatingStages} density="line" stages={stages} />
       </span>
     ) : null;
   const lineTwo =
@@ -373,9 +392,14 @@ export function MainStep<T>({
         <>
           {lineOne}
           {lineTwo}
-          {density === "box" && stages.length > 0 ? (
+          {density === "box" && staged ? (
             <span className="mt-1 flex flex-col gap-1 border-t border-border/50 pt-1.5">
-              <StageLines density="box" menuFor={menuFor} stages={stages} />
+              <StageLines
+                creating={creatingStages}
+                density="box"
+                menuFor={menuFor}
+                stages={stages}
+              />
             </span>
           ) : null}
         </>

@@ -1811,6 +1811,8 @@ export default function Sidebar() {
         releasing: zeropsProjectFlow.pending.has(flowVerbKey({ kind: "release", groupId })),
         // The version the verb would cut, so its confirm can name it.
         releaseTag: flow.release.suggestion,
+        // The release on its way, which production's line says.
+        releaseInFlight: flow.release.inFlight,
         onMerge: (pull) => {
           void zeropsProjectFlow.mergePullRequest(flow.slug, pull);
         },

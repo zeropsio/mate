@@ -107,6 +107,36 @@ describe("a stage line", () => {
     expect(box).toContain('data-test-menu="fixture-stage"');
     expect(box).toContain('data-test-menu="second"');
   });
+
+  it("draws a stage being created after the listed ones, named beside them, with no menu", () => {
+    const creating = [
+      {
+        projectId: "stage-new",
+        kind: "stage" as const,
+        name: "stage-us",
+        step: "tags" as const,
+        overdue: false,
+      },
+    ];
+    const box = renderToStaticMarkup(
+      <StageLines
+        creating={creating}
+        density="box"
+        menuFor={(id) => <i data-test-menu={id} />}
+        stages={[stop({ name: "stage-eu" })]}
+      />,
+    );
+    expect(box.match(/data-zerops-surface="flow-stage"/gu)).toHaveLength(2);
+    expect(box.indexOf(">stage-eu ·<")).toBeLessThan(box.indexOf(">stage-us ·<"));
+    expect(box).toContain(">Setting up a stage…<");
+    expect(box).not.toContain('data-test-menu="stage-new"');
+    const line = renderToStaticMarkup(
+      <StageLines creating={creating} density="line" stages={[]} />,
+    );
+    expect(line).toContain(">Setting up a stage…<");
+    expect(line).toContain('data-zerops-status-tone="busy"');
+    expect(line).not.toContain("stage-us ·");
+  });
 });
 
 describe("the verb slot", () => {
