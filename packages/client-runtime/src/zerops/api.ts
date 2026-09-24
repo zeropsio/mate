@@ -34,7 +34,7 @@ import type {
   ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
-import { withBrokerProjectGrant } from "./groupEnvironments.ts";
+import { brokerReachesEveryProject, withBrokerProjectGrant } from "./groupEnvironments.ts";
 import {
   withZeropsBotTag,
   withZeropsGroupTags,
@@ -1333,7 +1333,8 @@ export class ZeropsApiClient {
         }
         case "mint-broker-token":
         case "regenerate-broker-token": {
-          const target = requireToolProject(project);
+          // No token before the project it serves exists.
+          requireToolProject(project);
           const current = tokens.find((token) => token.name === GITEA_BROKER_TOKEN_NAME);
           brokerToken =
             action === "regenerate-broker-token" && current !== undefined
@@ -1347,12 +1348,12 @@ export class ZeropsApiClient {
                     {
                       clientId: input.clientId,
                       name: GITEA_BROKER_TOKEN_NAME,
-                      // The broker reads the whole org and writes only where it
-                      // is granted; stage and production grants are added to
-                      // this same token as those projects are created, so no new
-                      // secret ever travels to it.
-                      roleCode: "READ_ONLY",
-                      projects: [{ projectId: target.id, roleCode: "BASIC_USER" }],
+                      // Org `BASIC_USER` reaches every project of the org,
+                      // this one included, so no project needs a grant of its
+                      // own: a per-project grant is an edit of this token, and
+                      // only its creator or an org OWNER may make one.
+                      roleCode: "BASIC_USER",
+                      projects: [],
                     },
                     signal,
                     beforeWrite,
@@ -1361,15 +1362,16 @@ export class ZeropsApiClient {
           break;
         }
         case "grant-broker-token": {
-          // A regenerate replaces a value and nothing else, so a token that
-          // outlived an earlier Gitea reaches every group environment and not
-          // this project. Without this the broker reads the project on its org
+          // A regenerate replaces a value and nothing else. A broker token at
+          // org `BASIC_USER` already reaches this project; an older one at org
+          // `READ_ONLY` reaches every group environment and not this project,
+          // and without this grant the broker reads the project on its org
           // role and every write into it is refused: no runner is imported and
           // a job queues for ever (measured 2026-09-20).
           const target = requireToolProject(project);
           const broker = tokens.find((token) => token.name === GITEA_BROKER_TOKEN_NAME);
-          // Nothing to re-grant: the mint above carried the grant in its body.
-          if (broker === undefined) break;
+          // Nothing to re-grant: the mint above made a fresh org `BASIC_USER` token.
+          if (broker === undefined || brokerReachesEveryProject(broker)) break;
           const write = withBrokerProjectGrant(broker.projects, target.id);
           if (!write.ok) throw new ZeropsApiError(write.reason, "uncertain");
           // The same array back means the broker already reaches the project.
@@ -2106,8 +2108,8 @@ export class ZeropsApiClient {
       /**
        * The token's own org role, round-tripped. `PUT` replaces the record, so
        * omitting it would lower the token — which matters for exactly one token
-       * on the account: the broker's is org `READ_ONLY` and would stop being
-       * able to read the org at all (`docs/vocabulary.md`).
+       * on the account: an older broker token is org `READ_ONLY` and would
+       * stop being able to read the org at all (`docs/vocabulary.md`).
        */
       readonly roleCode?: string | undefined;
     },

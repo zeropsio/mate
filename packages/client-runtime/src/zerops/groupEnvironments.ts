@@ -418,11 +418,35 @@ export function withBrokerProjectGrant(
 /** What the account's token list says about one token: enough to plan a grant. */
 export interface BrokerTokenLike {
   readonly name: string;
+  /** The token's org role. */
+  readonly roleCode?: string | undefined;
   readonly projects?: ReadonlyArray<ZeropsProjectGrant> | undefined;
+}
+
+const ORG_ROLES_REACHING_EVERY_PROJECT: ReadonlySet<string> = new Set([
+  "BASIC_USER",
+  "ADMIN",
+  "OWNER",
+]);
+
+/**
+ * Whether the broker's org role already reaches every project of the org, so
+ * no project needs a grant of its own. A Gitea setup mints it at org
+ * `BASIC_USER`; only an older broker token, org `READ_ONLY`, still needs a
+ * per-project `BASIC_USER` grant on each project it writes to.
+ */
+export function brokerReachesEveryProject(token: {
+  readonly roleCode?: string | undefined;
+}): boolean {
+  return token.roleCode !== undefined && ORG_ROLES_REACHING_EVERY_PROJECT.has(token.roleCode);
 }
 
 /**
  * What to do so the broker reaches one project at `BASIC_USER`.
+ *
+ * A broker token at org `BASIC_USER` (what a Gitea setup mints) reaches every
+ * project already, so it is `held` and nothing is written. Only an older
+ * broker token at org `READ_ONLY` still needs a per-project grant.
  *
  * `no-broker` is not a refusal: an account older than its Gitea has no broker
  * yet, and whether that stops the caller is the caller's call — a stage cannot
@@ -450,6 +474,7 @@ export function planBrokerProjectGrant<Token extends BrokerTokenLike>(
   if (broker === undefined) return { kind: "no-broker", reason: NO_BROKER_REASON };
   const write = withBrokerProjectGrant(broker.projects, projectId);
   if (!write.ok) return { kind: "refused", reason: write.reason };
+  if (brokerReachesEveryProject(broker)) return { kind: "held", broker };
   // An identical list is the same array back (`withBrokerProjectGrant`).
   if (write.grants === broker.projects) return { kind: "held", broker };
   return { kind: "write", broker, projects: write.grants };

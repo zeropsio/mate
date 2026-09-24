@@ -1477,6 +1477,37 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(stub.requests.filter((request) => request.method !== "GET")).toHaveLength(1);
   });
 
+  it("Gitea setup mints the broker token with org BASIC_USER", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/integration-token/list")) return jsonResponse(200, { list: [] });
+      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
+        return jsonResponse(200, { list: [], totalCount: 0 });
+      }
+      if (request.url.endsWith("/client/org-1/integration-token")) {
+        return jsonResponse(200, { id: "tok-b", token: "fresh" });
+      }
+      return jsonResponse(200, {
+        id: "project-1",
+        name: "tool",
+        status: "ACTIVE",
+        publicZone: "project-1.prg1-zerops.zone",
+      });
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.createToolProject(TOOL_INPUT);
+
+    const mint = stub.requests.find(
+      (request) => request.method === "POST" && request.url.endsWith("/integration-token"),
+    );
+    expect(JSON.parse(mint?.body ?? "{}")).toMatchObject({
+      name: "mate-broker",
+      roleCode: "BASIC_USER",
+      projects: [],
+    });
+  });
+
   it("resumes a Gitea setup instead of building a second one", async () => {
     const project = {
       id: "project-1",
@@ -1517,6 +1548,39 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(writes[1]?.body).toContain('"projectId":"project-1","roleCode":"BASIC_USER"');
     expect(writes[1]?.body).toContain('"roleCode":"READ_ONLY"');
     expect(writes[2]?.body).toContain("fresh");
+  });
+
+  it("grant-broker-token writes nothing when the org role covers the project", async () => {
+    const project = {
+      id: "project-1",
+      name: "Gitea",
+      status: "ACTIVE",
+      publicZone: "project-1.prg1-zerops.zone",
+      tagList: ["mate:tool:gitea"],
+    };
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/integration-token/list")) {
+        return jsonResponse(200, {
+          list: [{ id: "tok-b", name: "mate-broker", roleCode: "BASIC_USER", projects: [] }],
+        });
+      }
+      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
+        return jsonResponse(200, { list: [project], totalCount: 1 });
+      }
+      if (request.url.includes("/service-stack?")) return jsonResponse(200, { items: [] });
+      if (request.url.includes("/regenerate")) return jsonResponse(200, { token: "fresh" });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.createToolProject(TOOL_INPUT);
+
+    const writes = stub.requests.filter((request) => request.method !== "GET");
+    expect(writes.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual([
+      "PUT /api/rest/public/client/org-1/integration-token/tok-b/regenerate",
+      "POST /api/rest/public/project/project-1/service-stack/import",
+    ]);
   });
 
   it("does nothing at all for an account whose Gitea is already up", async () => {

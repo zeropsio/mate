@@ -2,10 +2,11 @@
  * Giving the broker's Zerops token one more project, and registering a Mate.
  *
  * The broker's own Zerops token (`docs/vocabulary.md`, "the broker's token"):
- * org `READ_ONLY`, `BASIC_USER` on the Gitea project, and `BASIC_USER` on
- * every stage, production and Mate as the app makes them. It reads and decides
- * with it; since D27 a job deploys, on the environment's own deploy token
- * (`deployToken.ts`).
+ * org `BASIC_USER`, which reaches every project of the org, so a new stage,
+ * production or Mate needs no write here. Only an older broker token, org
+ * `READ_ONLY`, still gets `BASIC_USER` on each such project as the app makes
+ * it. It reads and decides with it; since D27 a job deploys, on the
+ * environment's own deploy token (`deployToken.ts`).
  * A Mate needs it because the broker's rights loop, not the app, delivers a
  * Mate's Gitea access — it finds the Mate's `zcp` service with that token and
  * writes the three variables on it (D20, `broker-api.md`, "A Mate's Gitea
@@ -61,7 +62,11 @@ export type BrokerGrantClient = Pick<
   "listIntegrationTokens" | "setIntegrationTokenProjects"
 >;
 
-/** `BASIC_USER` on one project, added to what the broker already holds. */
+/**
+ * The broker reaching one project: nothing to write for an org `BASIC_USER`
+ * token; `BASIC_USER` on the project, added to what an older org `READ_ONLY`
+ * token already holds.
+ */
 export async function grantBrokerProject(input: {
   readonly client: BrokerGrantClient;
   readonly clientId: string;

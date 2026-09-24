@@ -341,6 +341,25 @@ describe("planBrokerProjectGrant", () => {
     expect(planBrokerProjectGrant(tokens, projectId)).toEqual(expected);
   });
 
+  it("a broker token with org BASIC_USER needs no project grant", () => {
+    const broker = { id: "t-2", name: BROKER_TOKEN_NAME, roleCode: "BASIC_USER", projects: [] };
+    expect(planBrokerProjectGrant([...OTHERS, broker], "p-mate")).toEqual({
+      kind: "held",
+      broker,
+    });
+  });
+
+  it("an older READ_ONLY broker token still gets the project grant", () => {
+    expect(planBrokerProjectGrant([...OTHERS, BROKER], "p-mate")).toEqual({
+      kind: "write",
+      broker: BROKER,
+      projects: [
+        { projectId: "p-gitea", roleCode: "BASIC_USER" },
+        { projectId: "p-mate", roleCode: "BASIC_USER" },
+      ],
+    });
+  });
+
   // The other tokens on the account are never in the plan: the write replaces
   // one token's grant list, and it must be the broker's.
   it("hands back the broker's own token, so the write goes to it and nothing else", () => {

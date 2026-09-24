@@ -50,6 +50,22 @@ describe("grantBrokerProject", () => {
     );
   });
 
+  it("a broker token with org BASIC_USER needs no project grant", async () => {
+    const api = apiFake({
+      listIntegrationTokens: vi
+        .fn()
+        .mockResolvedValue([{ ...BROKER, roleCode: "BASIC_USER", projects: [] }]),
+    });
+    const outcome = await grantBrokerProject({
+      client: api as never,
+      clientId: "org-1",
+      projectId: "p-mate",
+    });
+
+    expect(outcome).toEqual({ kind: "granted" });
+    expect(api.setIntegrationTokenProjects).not.toHaveBeenCalled();
+  });
+
   it("writes nothing when the broker already reaches the project", async () => {
     const api = apiFake({
       listIntegrationTokens: vi

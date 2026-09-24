@@ -370,18 +370,19 @@ export function partitionZeropsToolProjects(projects: ReadonlyArray<ZeropsProjec
 export type ZeropsGiteaSetupAction =
   /** `POST /client/{id}/project` with the tool tag. */
   | "create-project"
-  /** `POST /client/{id}/integration-token` — org `READ_ONLY`, `BASIC_USER` here. */
+  /** `POST /client/{id}/integration-token` — org `BASIC_USER`, no project grants. */
   | "mint-broker-token"
   /** The token exists but nobody holds its value, because the import never ran. */
   | "regenerate-broker-token"
   /**
    * `PUT /client/{id}/integration-token/{tokenId}` — the tool project, at
-   * `BASIC_USER`, added to the grants a regenerate left untouched.
+   * `BASIC_USER`, added to the grants a regenerate left untouched; nothing when
+   * the token's org role (`BASIC_USER` or higher) already reaches it.
    *
-   * A regenerate replaces a token's value and nothing else, so a token that
-   * outlived the Gitea it was minted for reaches every group environment and
-   * not the new tool project: the broker then reads the project (org
-   * `READ_ONLY`) and every write into it is refused, which is a runner that is
+   * A regenerate replaces a token's value and nothing else, so an older org
+   * `READ_ONLY` token that outlived the Gitea it was minted for reaches every
+   * group environment and not the new tool project: the broker then reads the
+   * project and every write into it is refused, which is a runner that is
    * never imported and a job queued for ever.
    */
   | "grant-broker-token"
@@ -418,7 +419,7 @@ export function planGiteaProjectSetup(
   if (input.tokenNames.includes(GITEA_BROKER_TOKEN_NAME)) {
     actions.push("regenerate-broker-token", "grant-broker-token");
   } else {
-    // A mint carries the grant in its own body.
+    // A fresh mint is org `BASIC_USER`, which reaches this project already.
     actions.push("mint-broker-token");
   }
   actions.push("import-services");
