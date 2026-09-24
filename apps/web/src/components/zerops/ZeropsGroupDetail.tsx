@@ -1234,7 +1234,11 @@ export function ZeropsChangeDetailPage({
   const slug = flow?.slug;
   const merge = useCallback(() => {
     if (flowValue === null || slug === undefined || pull === undefined) return;
-    void flowValue.mergePullRequest(slug, { repository: pull.repository, number: pull.number });
+    void flowValue.mergePullRequest(slug, {
+      repository: pull.repository,
+      number: pull.number,
+      headSha: pull.headSha,
+    });
   }, [flowValue, pull, slug]);
 
   if (flow === undefined || pull === undefined) {

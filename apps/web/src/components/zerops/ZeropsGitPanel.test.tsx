@@ -16,6 +16,7 @@ const BLOCK: GitBlock = {
   checkRows: [],
   changed: [],
   pullRequestNumber: 12,
+  pullRequestHead: "c0ffee",
   pullRequestUrl: "https://gitea.example/acme/api/pulls/12",
   destination: "stage picks it up on merge",
   action: undefined,

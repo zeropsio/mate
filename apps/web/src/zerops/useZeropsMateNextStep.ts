@@ -169,10 +169,7 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
 
   const merge = useCallback(() => {
     if (flow === null || flow === undefined || slug === undefined || step.kind !== "merge") return;
-    void flow.mergePullRequest(slug, {
-      repository: step.pull.repository,
-      number: step.pull.number,
-    });
+    void flow.mergePullRequest(slug, step.pull);
   }, [flow, slug, step]);
 
   const release = useCallback(() => {

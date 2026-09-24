@@ -43,6 +43,8 @@ export type FlowCommand =
       readonly slug: string;
       readonly repository: string;
       readonly number: number;
+      /** The head the person was shown; a pull request that moved since is not merged. */
+      readonly head: string;
       /** The stage services the repository's `main` deploys to (`GroupFlow.feeds`). */
       readonly feeds: ReadonlyArray<ServiceRef>;
     }
@@ -167,10 +169,11 @@ export function mergeCommand(
   origin: string,
   repository: string,
   number: number,
+  head: string,
 ): FlowCommand | null {
   const feeds = flow.feeds(repository);
   if (feeds.state !== "known") return null;
-  return { kind: "merge", origin, slug: flow.slug, repository, number, feeds: feeds.value };
+  return { kind: "merge", origin, slug: flow.slug, repository, number, head, feeds: feeds.value };
 }
 
 /** Tagging what the release offer showed; `null` while the offer is not known. */
@@ -194,6 +197,7 @@ export type FlowRequest =
       readonly slug: string;
       readonly repository: string;
       readonly number: number;
+      readonly head: string;
     }
   | Omit<Extract<FlowCommand, { readonly kind: "open" }>, "origin">
   | { readonly kind: "release"; readonly groupId: string }
@@ -214,7 +218,7 @@ export function flowCommandFor(
       const flow = groups.find(({ slug }) => slug === request.slug);
       return flow === undefined
         ? null
-        : mergeCommand(flow, origin, request.repository, request.number);
+        : mergeCommand(flow, origin, request.repository, request.number, request.head);
     }
     case "open":
       return { ...request, origin };
@@ -361,7 +365,12 @@ export function makeFlowCommands(ports: FlowCommandPorts): FlowCommands {
     switch (command.kind) {
       case "merge":
         try {
-          await client.mergePullRequest(command.slug, command.repository, command.number);
+          await client.mergePullRequest(
+            command.slug,
+            command.repository,
+            command.number,
+            command.head,
+          );
           return { phase: "accepted" };
         } catch (cause) {
           return writeSettled(

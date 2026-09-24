@@ -90,6 +90,7 @@ const MERGE: FlowCommand = {
   slug: "harbor",
   repository: "appdev",
   number: 4,
+  head: HEAD,
   feeds: [APPSTAGE],
 };
 
@@ -332,7 +333,7 @@ describe("a group flow's commands", () => {
 
   it("a merge names the stages its repository feeds, and is not built until they are known", () => {
     const unread = { state: "unread", waitingFor: null } as const;
-    expect(mergeCommand(flow(unread), GITEA, "appdev", 4)).toEqual(MERGE);
+    expect(mergeCommand(flow(unread), GITEA, "appdev", 4, HEAD)).toEqual(MERGE);
     // A merge settled with no stage named would leave the stage it deploys to unread again.
     const reading = { state: "reading", sinceMs: 1, attempt: 1 } as const;
     expect(
@@ -341,6 +342,7 @@ describe("a group flow's commands", () => {
         GITEA,
         "appdev",
         4,
+        HEAD,
       ),
     ).toBeNull();
   });
@@ -370,7 +372,7 @@ describe("a group flow's commands", () => {
 
     expect(
       flowCommandFor(
-        { kind: "merge", slug: "harbor", repository: "appdev", number: 4 },
+        { kind: "merge", slug: "harbor", repository: "appdev", number: 4, head: HEAD },
         flows,
         GITEA,
       ),
@@ -378,7 +380,7 @@ describe("a group flow's commands", () => {
     // A group whose flow is not read names no stage its merge feeds: there is none to build.
     expect(
       flowCommandFor(
-        { kind: "merge", slug: "cove", repository: "appdev", number: 4 },
+        { kind: "merge", slug: "cove", repository: "appdev", number: 4, head: HEAD },
         flows,
         GITEA,
       ),

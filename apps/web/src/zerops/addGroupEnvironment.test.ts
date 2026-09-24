@@ -174,11 +174,13 @@ describe("addGroupEnvironment", () => {
 
   it("merges it at once when Gitea says this person may", async () => {
     const gitea = giteaFake({
-      getBranch: vi.fn().mockResolvedValue({ name: "main", user_can_merge: true }),
+      getBranch: vi
+        .fn()
+        .mockResolvedValue({ name: "main", user_can_merge: true, commit: { id: "c0ffee" } }),
     });
     const outcome = await addGroupEnvironment(base(apiFake(), gitea));
 
-    expect(gitea.mergePullRequest).toHaveBeenCalledWith("acme", "group", 12);
+    expect(gitea.mergePullRequest).toHaveBeenCalledWith("acme", "group", 12, "c0ffee");
     expect(outcome.pullRequest).toEqual({ number: 12, merged: true });
   });
 
@@ -361,7 +363,9 @@ describe("an attempt an earlier one left half done", () => {
   it("reuses the branch it left and opens the request from it", async () => {
     const gitea = giteaFake({
       getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
-        name === "main" ? { name: "main", user_can_merge: true } : { name },
+        name === "main"
+          ? { name: "main", user_can_merge: true }
+          : { name, commit: { id: "c0ffee" } },
       ),
       listPullRequests: vi.fn().mockResolvedValue([]),
     });
@@ -375,7 +379,9 @@ describe("an attempt an earlier one left half done", () => {
   it("reuses the request it left rather than opening a second", async () => {
     const gitea = giteaFake({
       getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
-        name === "main" ? { name: "main", user_can_merge: true } : { name },
+        name === "main"
+          ? { name: "main", user_can_merge: true }
+          : { name, commit: { id: "c0ffee" } },
       ),
       listPullRequests: vi
         .fn()
@@ -386,7 +392,7 @@ describe("an attempt an earlier one left half done", () => {
     const outcome = await addGroupEnvironment(base(apiFake(), gitea));
     expect(outcome.failed).toBeUndefined();
     expect(gitea.createPullRequest).not.toHaveBeenCalled();
-    expect(gitea.mergePullRequest).toHaveBeenCalledWith("acme", "group", 7);
+    expect(gitea.mergePullRequest).toHaveBeenCalledWith("acme", "group", 7, "c0ffee");
     expect(outcome.pullRequest).toEqual({ number: 7, merged: true });
   });
 });

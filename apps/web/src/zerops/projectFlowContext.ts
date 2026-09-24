@@ -99,10 +99,13 @@ export interface ZeropsProjectFlowValue {
    * verb's refusal said, until the next verb.
    */
   readonly trouble: string | null;
-  /** Merges it in Gitea as the person; Gitea's own permissions are the gate. */
+  /**
+   * Merges it in Gitea as the person, only at the head the person was shown; Gitea's own
+   * permissions are the gate.
+   */
   readonly mergePullRequest: (
     slug: string,
-    pull: Pick<FlowPullRequest, "repository" | "number">,
+    pull: Pick<FlowPullRequest, "repository" | "number" | "headSha">,
   ) => Promise<void>;
   /** Opens one in Gitea as the person, from a branch onto the repository's default. */
   readonly createPullRequest: (

@@ -29,6 +29,7 @@ import {
   releaseTagName,
   rollbackTo,
   summarizeEnvironmentServices,
+  GiteaApiError,
   GROUP_REPOSITORY,
   type FlowPullRequest,
   type FlowVerb,
@@ -90,6 +91,16 @@ const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
 const EMPTY_SLUGS: ReadonlyMap<string, string> = new Map();
 /** What a verb says when it is pressed while the flows stand and no Gitea token is held. */
 const SIGNING_IN_AGAIN = "Signing in to Gitea again. Try it again in a moment.";
+/** A merge Gitea refused because the pull request's head moved since the person was shown it. */
+export const MERGE_HEAD_MOVED = "This pull request changed since you opened it — review it again.";
+
+function headMoved(cause: unknown): boolean {
+  return (
+    cause instanceof GiteaApiError &&
+    cause.status === 409 &&
+    cause.detail?.toLowerCase().includes("head out of date") === true
+  );
+}
 
 /** What the platform pushed as a service's active deploy: when it was activated, and its name. */
 function activeDeployOf(service: ZeropsService | undefined): string | undefined {
@@ -535,18 +546,28 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   }, [giteaOrigin]);
 
   const mergePullRequest = useCallback(
-    async (slug: string, pull: Pick<FlowPullRequest, "repository" | "number">) => {
+    async (slug: string, pull: Pick<FlowPullRequest, "repository" | "number" | "headSha">) => {
       const client = actingClient();
       if (client === null) return;
+      // Only the head the person was shown is merged; with none read there is nothing to hold.
+      const head = pull.headSha;
+      if (head === undefined) {
+        setTrouble(MERGE_HEAD_MOVED);
+        return;
+      }
       await run(
         { kind: "merge", slug, repository: pull.repository, number: pull.number },
         groupOfSlug.get(slug),
         async () => {
           try {
-            await client.mergePullRequest(slug, pull.repository, pull.number);
+            await client.mergePullRequest(slug, pull.repository, pull.number, head);
             setTrouble(null);
           } catch (cause) {
-            setTrouble(`Gitea would not merge it: ${zeropsErrorMessage(cause)}`);
+            setTrouble(
+              headMoved(cause)
+                ? MERGE_HEAD_MOVED
+                : `Gitea would not merge it: ${zeropsErrorMessage(cause)}`,
+            );
           }
         },
       );

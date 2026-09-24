@@ -88,6 +88,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
       await flow.mergePullRequest(owner, {
         repository: block.repository,
         number: block.pullRequestNumber,
+        headSha: block.pullRequestHead,
       });
     },
     [flow, owner],

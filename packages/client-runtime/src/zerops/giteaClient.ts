@@ -413,12 +413,11 @@ export interface GiteaClient {
       readonly body?: string | undefined;
     },
   ): Promise<GiteaPullRequest>;
-  mergePullRequest(
-    owner: string,
-    repo: string,
-    index: number,
-    input?: { readonly style?: "merge" | "rebase" | "squash"; readonly title?: string } | undefined,
-  ): Promise<void>;
+  /**
+   * Squash-merges the pull request only while its head is still `head` — the commit the person
+   * was shown; a head that moved since is refused with `409 head out of date`.
+   */
+  mergePullRequest(owner: string, repo: string, index: number, head: string): Promise<void>;
 
   /** What has been said on a change, oldest first — Gitea's own order. */
   listIssueComments(
@@ -747,7 +746,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         "open the pull request",
       ),
 
-    mergePullRequest: (owner, repo, index, input) =>
+    mergePullRequest: (owner, repo, index, head) =>
       nothing(
         {
           method: "POST",
@@ -757,8 +756,8 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
             // what the person asked for, its commits are the agent's working
             // steps, and `main` reads as the list of tasks delivered rather
             // than as the inside of each one (the owner, 2026-09-18).
-            Do: input?.style ?? "squash",
-            ...(input?.title === undefined ? {} : { MergeTitleField: input.title }),
+            Do: "squash",
+            head_commit_id: head,
           },
         },
         "merge the pull request",

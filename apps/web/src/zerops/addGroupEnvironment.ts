@@ -219,7 +219,10 @@ export async function addGroupEnvironment(input: {
       }));
     let merged = false;
     if (plan.merge) {
-      await gitea.mergePullRequest(slug, GROUP_REPOSITORY, pull.number);
+      // The branch this wrote, at the commit it holds now: nobody else writes to it.
+      const head = (await gitea.getBranch(slug, GROUP_REPOSITORY, write.branch))?.commit?.id;
+      if (head === undefined) throw new Error("Gitea did not say which commit the change holds.");
+      await gitea.mergePullRequest(slug, GROUP_REPOSITORY, pull.number, head);
       merged = true;
     }
     done.push("environments-document");

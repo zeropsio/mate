@@ -251,10 +251,10 @@ describe("GiteaClient request shapes", () => {
     });
   });
 
-  it("squashes by default, so `main` is one commit per task", async () => {
+  it("merge sends the shown head and squash, so `main` is one commit per task", async () => {
     const { client, calls } = fake([{ body: {} }]);
-    await client.mergePullRequest("acme", "appdev", 3);
-    expect(calls[0]?.body).toEqual({ Do: "squash" });
+    await client.mergePullRequest("acme", "appdev", 3, "c0ffee");
+    expect(calls[0]?.body).toEqual({ Do: "squash", head_commit_id: "c0ffee" });
   });
 
   it("opens a pull request and merges one by its number", async () => {
@@ -267,14 +267,14 @@ describe("GiteaClient request shapes", () => {
       base: "main",
       title: "Add the stage environment",
     });
-    await client.mergePullRequest("acme", "group", pull.number);
+    await client.mergePullRequest("acme", "group", pull.number, "c0ffee");
     expect(calls[0]?.body).toEqual({
       head: "mate-app/env-stage",
       base: "main",
       title: "Add the stage environment",
     });
     expect(calls[1]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/pulls/12/merge`);
-    expect(calls[1]?.body).toEqual({ Do: "squash" });
+    expect(calls[1]?.body).toEqual({ Do: "squash", head_commit_id: "c0ffee" });
   });
 
   it("reads when an annotated tag was made from its tagger", async () => {
@@ -407,7 +407,7 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
 
   it("a write has no deadline: a merge Gitea is slow to answer may still land", async () => {
     vi.useFakeTimers();
-    const merge = silent().mergePullRequest("acme", "app", 4, { style: "squash" });
+    const merge = silent().mergePullRequest("acme", "app", 4, "c0ffee");
     let settled = false;
     void merge.then(
       () => {

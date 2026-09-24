@@ -170,6 +170,8 @@ export interface GitBlock {
   /** What is changed on disk and not committed — the container's own fact. */
   readonly changed: ReadonlyArray<GitChangedFile>;
   readonly pullRequestNumber: number | undefined;
+  /** The pull request's head as read — the only commit *Merge* lands. */
+  readonly pullRequestHead: string | undefined;
   readonly pullRequestUrl: string | undefined;
   /** The branch a pull request from `branch` targets — the repository's default, `main` until Gitea says. */
   readonly baseBranch: string;
@@ -698,6 +700,7 @@ export function gitBlock(input: {
     checkRows: gitChecks(forge.checks),
     changed: checkout.changed,
     pullRequestNumber: forge.pullRequest?.pull.number,
+    pullRequestHead: forge.pullRequest?.pull.head?.sha,
     pullRequestUrl: forge.pullRequest?.pull.html_url,
     baseBranch,
     destination: picksUp,

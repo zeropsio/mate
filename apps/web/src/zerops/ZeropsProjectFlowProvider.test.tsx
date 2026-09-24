@@ -1,4 +1,4 @@
-import { flowVerbKey, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import { flowVerbKey, GiteaApiError, type ZeropsProject } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
-import { ZeropsProjectFlowProvider } from "./ZeropsProjectFlowProvider";
+import { MERGE_HEAD_MOVED, ZeropsProjectFlowProvider } from "./ZeropsProjectFlowProvider";
 
 const GITEA = "https://gitea.example.test";
 
@@ -646,6 +646,71 @@ describe("ZeropsProjectFlowProvider", () => {
       await act(async () => {
         root.unmount();
       });
+    });
+  });
+
+  describe("merge", () => {
+    async function mountMerging(merge: (head: string) => Promise<void>) {
+      gitea.readable = true;
+      verbs.client = {
+        mergePullRequest: (_owner: string, _repo: string, _number: number, head: string) =>
+          merge(head),
+      };
+      installTestDom();
+      const { createRoot } = await import("react-dom/client");
+      const seen: Array<ZeropsProjectFlowValue> = [];
+      function Probe() {
+        seen.push(useZeropsProjectFlow());
+        return null;
+      }
+      const root = createRoot(document.createElement("div") as unknown as Element);
+      await act(async () => {
+        root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+      });
+      await act(async () => {
+        await seen
+          .at(-1)
+          ?.mergePullRequest("harbor", { repository: "app", number: 7, headSha: "c0ffee" });
+      });
+      await act(async () => {
+        root.unmount();
+      });
+      return seen.at(-1);
+    }
+
+    it("merge sends the shown head", async () => {
+      const heads: Array<string> = [];
+      await mountMerging(async (head) => {
+        heads.push(head);
+      });
+      expect(heads).toEqual(["c0ffee"]);
+    });
+
+    it.each([
+      {
+        name: "a head-out-of-date 409 reads as changed since opened",
+        refusal: new GiteaApiError(
+          "Gitea refused to merge the pull request.",
+          409,
+          "head out of date",
+        ),
+        trouble: MERGE_HEAD_MOVED,
+      },
+      {
+        name: "any other 409 stays a refusal to retry",
+        refusal: new GiteaApiError(
+          "Gitea refused to merge the pull request. merge push out of date",
+          409,
+          "merge push out of date",
+        ),
+        trouble:
+          "Gitea would not merge it: Gitea refused to merge the pull request. merge push out of date",
+      },
+    ])("$name", async ({ refusal, trouble }) => {
+      const value = await mountMerging(async () => {
+        throw refusal;
+      });
+      expect(value?.trouble).toBe(trouble);
     });
   });
 });
