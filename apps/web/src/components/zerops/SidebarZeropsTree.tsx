@@ -847,7 +847,7 @@ function MateRow<T extends RosterCandidate>({
       <RailCell cap={railCap}>
         {/* The Mate is the node the rest of its project hangs from, so it
             wears the card's face rather than a row's, and the person it
-            belongs to rides on its corner (Aleš, 2026-09-24). The column
+            belongs to rides on its corner (a teammate, 2026-09-24). The column
             stays 20px: the spine keeps its x, and the face overhangs it. */}
         <span className="relative flex">
           <MateFace
