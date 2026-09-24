@@ -1229,6 +1229,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           organizationId: activeOrganization.id,
           registration: null,
           container: true,
+          // Already listed: the listing places it.
+          placement: null,
         });
         if (!isCurrent()) return;
         await runZeropsCommand(
@@ -2042,6 +2044,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 }
               : null,
           container: withAgent,
+          placement: { groupId, groupName: group.name, kind: tier ?? "mate", displayName: name },
         });
       };
 
@@ -2365,6 +2368,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       organizationId: claimIn,
       registration: null,
       container: true,
+      // A claimed project is already listed, in no group of this account's.
+      placement: null,
     });
   }, [clearLastRegistration, inventory.projects, lastRegistration, navigate]);
 

@@ -118,6 +118,7 @@ const mate = {
     displayName: "Todo - Vera",
   },
   container: true,
+  placement: null,
 };
 
 function openTab() {

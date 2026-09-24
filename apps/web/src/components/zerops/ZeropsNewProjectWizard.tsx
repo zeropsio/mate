@@ -406,6 +406,12 @@ function ZeropsNewProjectContent() {
             displayName: environmentName,
           },
           container: true,
+          placement: {
+            groupId,
+            groupName: name.trim(),
+            kind: "mate",
+            displayName: environmentName,
+          },
         });
       },
       // The projects page shows the birth and opens the Mate once it answers.

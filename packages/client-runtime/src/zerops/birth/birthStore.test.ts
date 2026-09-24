@@ -34,6 +34,7 @@ const mate: BeginBirth = {
     displayName: "Todo - Vera",
   },
   container: true,
+  placement: { groupId: "group-1", groupName: "Todo", kind: "mate", displayName: "Todo - Vera" },
 };
 
 describe("the birth store", () => {
@@ -52,6 +53,7 @@ describe("the birth store", () => {
       container: true,
       serviceId: null,
       origin: null,
+      placement: mate.placement,
     });
     // A reload reads the same record back.
     expect(makeBirthStore({ storage, now: () => 0 }).birth("project-1")).toEqual(
@@ -101,11 +103,20 @@ describe("the birth store's records", () => {
       }),
     );
     const store = makeBirthStore({ storage, now: () => STARTED_AT });
-    expect(store.ledger()).toEqual({ births: [record] });
+    // It named no placement either: placed nowhere.
+    expect(store.ledger()).toEqual({ births: [{ ...record, placement: null }] });
     store.update("project-1", { step: "health" });
     expect(JSON.parse(storage.values.get(BIRTHS_KEY) ?? "null")).toEqual({
-      births: [{ ...record, step: "health" }],
+      births: [{ ...record, step: "health", placement: null }],
     });
+  });
+
+  it("a birth begun again keeps the place it already had", () => {
+    const store = makeBirthStore({ storage: memoryStorage(), now: () => STARTED_AT });
+    store.begin(mate);
+    // Set up Mate on a Mate whose container never came: harden again, its group kept.
+    store.begin({ ...mate, registration: null, placement: null });
+    expect(store.birth("project-1")).toMatchObject({ step: "harden", placement: mate.placement });
   });
 
   it("forgets a birth whose project was removed, and only that one", () => {

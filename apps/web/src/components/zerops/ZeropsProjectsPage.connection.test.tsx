@@ -129,6 +129,7 @@ function readyBirth(): void {
     container: true,
     serviceId: SERVICE,
     origin: ORIGIN,
+    placement: null,
   };
   const wait: ProvisioningState = {
     phase: "ready",

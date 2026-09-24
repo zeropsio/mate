@@ -38,6 +38,20 @@ export interface BirthRegistration {
   readonly displayName: string;
 }
 
+/**
+ * Where the environment being born stands in the account's projects, as the creation that started
+ * it knew it — drawn in its group before the organization's listing holds the project. Kept apart
+ * from {@link BirthRegistration}, which is null whenever the person may not write the registry.
+ */
+export interface BirthPlacement {
+  readonly groupId: string;
+  /** The group's name as the creation knew it; names a group the listing does not hold yet. */
+  readonly groupName: string;
+  readonly kind: RoleProjectKind;
+  /** What the person called the environment. */
+  readonly displayName: string;
+}
+
 export interface BirthRecord {
   readonly projectId: string;
   /** The organization the project was created in — never the one a tab has open now. */
@@ -57,6 +71,8 @@ export interface BirthRecord {
   /** The Mate's service and origin, once hardening found them; `health` resumes on them. */
   readonly serviceId: string | null;
   readonly origin: string | null;
+  /** Its group, where the creation knew one; null for a project already listed or claimed. */
+  readonly placement: BirthPlacement | null;
 }
 
 export interface BirthLedger {
@@ -69,6 +85,7 @@ export interface BeginBirth {
   readonly organizationId: string;
   readonly registration: BirthRegistration | null;
   readonly container: boolean;
+  readonly placement: BirthPlacement | null;
 }
 
 export type BirthPatch = Partial<
@@ -122,9 +139,27 @@ function parseRegistration(value: unknown): BirthRegistration | null | undefined
   return { giteaProjectId, giteaOrigin, groupId, kind: kind as RoleProjectKind, displayName };
 }
 
+function parsePlacement(value: unknown): BirthPlacement | null | undefined {
+  // A record stored before births were placed names none: it is placed nowhere.
+  if (value === null || value === undefined) return null;
+  if (!isObject(value)) return undefined;
+  const { groupId, groupName, kind, displayName } = value;
+  if (
+    !nonEmpty(groupId) ||
+    typeof groupName !== "string" ||
+    typeof kind !== "string" ||
+    !KINDS.has(kind) ||
+    typeof displayName !== "string"
+  ) {
+    return undefined;
+  }
+  return { groupId, groupName, kind: kind as RoleProjectKind, displayName };
+}
+
 function parseRecord(value: unknown): BirthRecord | undefined {
   if (!isObject(value)) return undefined;
   const registration = parseRegistration(value.registration);
+  const placement = parsePlacement(value.placement);
   const { projectId, organizationId, startedAt, step, overdue, container } = value;
   const { serviceId, origin } = value;
   if (
@@ -137,7 +172,8 @@ function parseRecord(value: unknown): BirthRecord | undefined {
     registration === undefined ||
     typeof container !== "boolean" ||
     !nullableString(serviceId) ||
-    !nullableString(origin)
+    !nullableString(origin) ||
+    placement === undefined
   ) {
     return undefined;
   }
@@ -151,6 +187,7 @@ function parseRecord(value: unknown): BirthRecord | undefined {
     container,
     serviceId,
     origin,
+    placement,
   };
 }
 
@@ -250,6 +287,7 @@ export function makeBirthStore(ports: {
       const step = firstStep(input);
       if (step === null) return;
       mutate((current) => {
+        const older = current.births.find((birth) => birth.projectId === input.projectId);
         const record: BirthRecord = {
           projectId: input.projectId,
           organizationId: input.organizationId,
@@ -260,6 +298,7 @@ export function makeBirthStore(ports: {
           container: input.container,
           serviceId: null,
           origin: null,
+          placement: input.placement ?? older?.placement ?? null,
         };
         return { ...current, births: [...without(current, input.projectId), record] };
       });

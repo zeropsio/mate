@@ -102,6 +102,7 @@ const mate: BeginBirth = {
     displayName: "Todo - Vera",
   },
   container: true,
+  placement: null,
 };
 
 const DONE: BirthStepOutcome = { kind: "done" };
