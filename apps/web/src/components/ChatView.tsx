@@ -5230,6 +5230,10 @@ export default function ChatView(props: ChatViewProps) {
     [feedbackSubmissions, routeThreadKey],
   );
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
+    // Someone else's conversation is read, not run: every other banner offers
+    // a step on this Mate (add production, release, stop, compact, restore),
+    // so only the viewer's own connection is said.
+    if (zeropsReadOnly !== null) return systemComposerBannerItems;
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
     const urgentSystemItems = [
@@ -5330,6 +5334,7 @@ export default function ChatView(props: ChatViewProps) {
     systemComposerBannerItems,
     usageLimitsBanner,
     wokeThreadBannerItem,
+    zeropsReadOnly,
   ]);
   useEffect(() => {
     setPendingServerThreadEnvMode(null);
