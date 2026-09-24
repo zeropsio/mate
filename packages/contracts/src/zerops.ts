@@ -582,8 +582,9 @@ export type ZeropsMateUpdateAction = typeof ZeropsMateUpdateAction.Type;
 
 export const ZeropsMateUpdateResult = Schema.Struct({
   action: ZeropsMateUpdateAction,
-  from: Schema.String,
-  to: Schema.String,
+  // Absent on a refusal that read no versions; its `error` says why.
+  from: Schema.optional(Schema.String),
+  to: Schema.optional(Schema.String),
   restarted: Schema.Boolean,
   error: Schema.optional(Schema.String),
   serverVersion: Schema.String,

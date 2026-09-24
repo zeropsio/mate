@@ -135,6 +135,24 @@ describe("ZeropsCli.mateUpdate", () => {
     }),
   );
 
+  it.effect(
+    "returns zcp's refusal, which names no versions, as the answer carrying its error",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* run(
+          stub(
+            `process.stdout.write('{"action":"none","restarted":false,"error":"ZCP_MATE_ENABLED is off"}'); process.exit(1)`,
+          ),
+          (cli) => cli.mateUpdate(),
+        );
+        expect(result).toEqual({
+          action: "none",
+          restarted: false,
+          error: "ZCP_MATE_ENABLED is off",
+        });
+      }),
+  );
+
   it.effect("reports a missing binary as not-found, distinct from a failure", () =>
     Effect.gen(function* () {
       const error = yield* run(missingBinary(), (cli) => Effect.flip(cli.mateUpdate()));

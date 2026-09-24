@@ -46,18 +46,23 @@ export const parseMateStatusOutput = (text: string): MateStatusResult | undefine
 export const MateUpdateAction = Schema.Literals(["none", "installed", "updated"]);
 export type MateUpdateAction = typeof MateUpdateAction.Type;
 
+/**
+ * zcp omits an empty `from`/`to` (`omitempty`): a refusal before anything
+ * was read — outside a container, the gate off — names no versions, only
+ * its `error`, and still decodes so that error reaches the caller.
+ */
 export interface MateUpdateResult {
   readonly action: MateUpdateAction;
-  readonly from: string;
-  readonly to: string;
+  readonly from?: string | undefined;
+  readonly to?: string | undefined;
   readonly restarted: boolean;
   readonly error?: string | undefined;
 }
 
 const RawMateUpdateResult = Schema.Struct({
   action: MateUpdateAction,
-  from: Schema.String,
-  to: Schema.String,
+  from: Schema.optional(Schema.String),
+  to: Schema.optional(Schema.String),
   restarted: Schema.Boolean,
   error: Schema.optional(Schema.String),
 });
