@@ -51,6 +51,7 @@ import {
   resolveComposerInteractionMode,
   resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
+  resolveZeropsConversationReadOnly,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
   resolveDraftPromotionNavigationTarget,
@@ -2081,5 +2082,27 @@ describe("shouldRefocusComposerOnWindowFocus", () => {
   it("leaves focus inside a dialog or popup alone", () => {
     expect(shouldRefocusComposerOnWindowFocus(element("BUTTON", { within: "dialog" }))).toBe(false);
     expect(shouldRefocusComposerOnWindowFocus(element("BUTTON", { within: "-popup" }))).toBe(false);
+  });
+});
+
+describe("resolveZeropsConversationReadOnly", () => {
+  const personal = { flagToken: false };
+  const token = { flagToken: true };
+  const readOnly = {
+    notice: "Signed in by another project member — only they can run this agent.",
+    waitingLabel: "WAITING FOR THE AGENT'S OWNER",
+  };
+
+  it.each([
+    ["someone else's personal login", personal, "someone-else", readOnly],
+    ["the viewer's own login", personal, "mine", null],
+    ["an unrecorded login", personal, "unrecorded", null],
+    ["a login whose record failed", personal, "record-failed", null],
+    ["no credential", personal, "none", null],
+    ["a project token whose signer is someone else", token, "someone-else", null],
+    ["a project token", token, "mine", null],
+    ["no Zerops agent at all", undefined, "someone-else", null],
+  ] as const)("%s", (_label, agent, ownership, expected) => {
+    expect(resolveZeropsConversationReadOnly({ agent, ownership })).toEqual(expected);
   });
 });

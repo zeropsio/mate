@@ -1,5 +1,5 @@
 import { type ApprovalRequestId } from "@t3tools/contracts";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type PendingUserInput } from "../../session-logic";
 import {
   derivePendingUserInputProgress,
@@ -47,11 +47,15 @@ export function pendingUserInputKeyAction(
   return { type: "select", index: digit - 1 };
 }
 
-interface PendingUserInputPanelProps {
+interface PendingUserInputPanelBaseProps {
   pendingUserInputs: PendingUserInput[];
   respondingRequestIds: ApprovalRequestId[];
   answers: Record<string, PendingUserInputDraftAnswer>;
   questionIndex: number;
+}
+
+/** What answering the card does. A read-only card has none of it. */
+interface PendingUserInputAnswerHandlers {
   onToggleOption: (questionId: string, optionValue: string) => void;
   onAdvance: () => void;
   onDismiss: (requestId: ApprovalRequestId) => void;
@@ -65,8 +69,11 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
   onToggleOption,
   onAdvance,
   onDismiss,
-}: PendingUserInputPanelProps) {
-  if (pendingUserInputs.length === 0) return null;
+}: PendingUserInputPanelBaseProps & PendingUserInputAnswerHandlers) {
+  const answer = useMemo(
+    () => ({ onToggleOption, onAdvance, onDismiss }),
+    [onAdvance, onDismiss, onToggleOption],
+  );
   const activePrompt = pendingUserInputs[0];
   if (!activePrompt) return null;
 
@@ -77,34 +84,65 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
       isResponding={respondingRequestIds.includes(activePrompt.requestId)}
       answers={answers}
       questionIndex={questionIndex}
-      onToggleOption={onToggleOption}
-      onAdvance={onAdvance}
-      onDismiss={onDismiss}
+      waitingLabel="WAITING FOR YOU"
+      answer={answer}
     />
   );
 });
+
+/**
+ * The same card for a viewer who may not answer it — a question on someone
+ * else's agent (D6). It shows the question and its options and says whom it
+ * waits on; nothing on it is a control but the disclosure toggle, and no key
+ * answers it.
+ */
+export const ComposerPendingUserInputReadOnlyPanel = memo(
+  function ComposerPendingUserInputReadOnlyPanel({
+    pendingUserInputs,
+    waitingLabel,
+  }: {
+    pendingUserInputs: PendingUserInput[];
+    waitingLabel: string;
+  }) {
+    const activePrompt = pendingUserInputs[0];
+    if (!activePrompt) return null;
+
+    // A reader drafts no answers, so the card shows the first question as asked.
+    return (
+      <ComposerPendingUserInputCard
+        key={activePrompt.requestId}
+        prompt={activePrompt}
+        isResponding={false}
+        answers={NO_DRAFT_ANSWERS}
+        questionIndex={0}
+        waitingLabel={waitingLabel}
+        answer={null}
+      />
+    );
+  },
+);
+
+const NO_DRAFT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 
 const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard({
   prompt,
   isResponding,
   answers,
   questionIndex,
-  onToggleOption,
-  onAdvance,
-  onDismiss,
+  waitingLabel,
+  answer,
 }: {
   prompt: PendingUserInput;
   isResponding: boolean;
   answers: Record<string, PendingUserInputDraftAnswer>;
   questionIndex: number;
-  onToggleOption: (questionId: string, optionValue: string) => void;
-  onAdvance: () => void;
-  onDismiss: (requestId: ApprovalRequestId) => void;
+  waitingLabel: string;
+  answer: PendingUserInputAnswerHandlers | null;
 }) {
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
   const autoAdvanceTimerRef = useRef<number | null>(null);
-  const onAdvanceRef = useRef(onAdvance);
+  const onAdvanceRef = useRef(answer?.onAdvance);
   const [optimisticSingleSelect, setOptimisticSingleSelect] = useState<{
     questionId: string;
     optionValue: string;
@@ -125,8 +163,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   useEffect(() => {
-    onAdvanceRef.current = onAdvance;
-  }, [onAdvance]);
+    onAdvanceRef.current = answer?.onAdvance;
+  }, [answer]);
 
   useEffect(() => {
     if (!activeQuestion || activeQuestion.multiSelect || !optimisticSingleSelect) {
@@ -166,29 +204,31 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
 
   const handleOptionSelection = useCallback(
     (questionId: string, optionValue: string) => {
+      if (answer === null) return;
       if (activeQuestion?.multiSelect) {
-        onToggleOption(questionId, optionValue);
+        answer.onToggleOption(questionId, optionValue);
         return;
       }
       setOptimisticSingleSelect({ questionId, optionValue });
-      onToggleOption(questionId, optionValue);
+      answer.onToggleOption(questionId, optionValue);
       if (autoAdvanceTimerRef.current !== null) {
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
       autoAdvanceTimerRef.current = window.setTimeout(() => {
         autoAdvanceTimerRef.current = null;
-        onAdvanceRef.current();
+        onAdvanceRef.current?.();
       }, 200);
     },
-    [activeQuestion, onToggleOption],
+    [activeQuestion, answer],
   );
 
   // Keyboard shortcut: number keys 1-9 select corresponding options when focus is
   // outside editable fields. Multi-select prompts toggle options in place; single-
   // select prompts keep the existing auto-advance behavior. Collapsed prompts opt
-  // out, since the numbers they refer to are not on screen.
+  // out, since the numbers they refer to are not on screen; a read-only card
+  // claims no key at all.
   useEffect(() => {
-    if (!activeQuestion || isResponding || isCollapsed) return;
+    if (answer === null || !activeQuestion || isResponding || isCollapsed) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
@@ -218,7 +258,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [activeQuestion, handleOptionSelection, highlightedIndex, isCollapsed, isResponding]);
+  }, [answer, activeQuestion, handleOptionSelection, highlightedIndex, isCollapsed, isResponding]);
 
   if (!activeQuestion) {
     return null;
@@ -250,7 +290,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         >
           <StatusDot
             data-pending-user-input-waiting
-            label="WAITING FOR YOU"
+            label={waitingLabel}
             pulse={false}
             tone="attention"
           />
@@ -289,7 +329,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             )}
           />
         </CollapsibleTrigger>
-        {prompt.dismissible ? (
+        {answer !== null && prompt.dismissible ? (
           // Dismiss closes an async question without sending a reply.
           <Button
             type="button"
@@ -299,7 +339,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             title="Dismiss question without answering"
             disabled={isResponding}
             data-pending-user-input-dismiss
-            onClick={() => onDismiss(prompt.requestId)}
+            onClick={() => answer.onDismiss(prompt.requestId)}
           >
             <XIcon aria-hidden="true" />
           </Button>
@@ -323,8 +363,22 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               const isSelected =
                 isOptimisticallySelected ||
                 (!customAnswerActive && progress.selectedOptionValues.includes(optionValue));
-              const shortcutKey = index < 9 ? index + 1 : null;
               const isHighlighted = index === highlightedIndex;
+              if (answer === null) {
+                return (
+                  <div
+                    key={`${activeQuestion.id}:${optionValue}`}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left",
+                      isSelected ? "bg-muted/55 text-foreground" : "text-foreground/85",
+                    )}
+                  >
+                    <PendingUserInputOptionLabel option={option} />
+                    {isSelected ? <CheckIcon className="size-3.5 shrink-0 text-primary" /> : null}
+                  </div>
+                );
+              }
+              const shortcutKey = index < 9 ? index + 1 : null;
               const className = cn(
                 "group flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-primary/25",
                 isSelected
@@ -336,12 +390,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               );
               const content = (
                 <>
-                  <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                    <span className="text-sm font-medium">{option.label}</span>
-                    {option.description && option.description !== option.label ? (
-                      <span className="text-secondary-label text-[11px]">{option.description}</span>
-                    ) : null}
-                  </div>
+                  <PendingUserInputOptionLabel option={option} />
                   {isSelected ? (
                     <CheckIcon className="size-3.5 shrink-0 text-primary" />
                   ) : shortcutKey !== null ? (
@@ -371,31 +420,48 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               );
             })}
           </div>
-          {/*
+          {answer === null ? null : (
+            /*
             Free text already worked — typing in the composer answers the
             question and overrides any selected option — but nothing on screen
             said so, so it was reachable only by knowing. This is that
             affordance, and it doubles as the read-back of what was typed.
-          */}
-          <div
-            className={cn(
-              "mt-1 flex items-center gap-2 rounded-md px-2.5 py-2 text-left",
-              customAnswerActive ? "bg-muted/55 text-foreground" : "text-secondary-label",
-            )}
-            data-pending-user-input-other={customAnswerActive ? "answered" : "empty"}
-          >
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="font-medium text-sm">Other</span>
-              <span className="text-[11px]">
-                {customAnswerActive
-                  ? progress.customAnswer
-                  : "Type your own answer in the composer below."}
-              </span>
+          */
+            <div
+              className={cn(
+                "mt-1 flex items-center gap-2 rounded-md px-2.5 py-2 text-left",
+                customAnswerActive ? "bg-muted/55 text-foreground" : "text-secondary-label",
+              )}
+              data-pending-user-input-other={customAnswerActive ? "answered" : "empty"}
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="font-medium text-sm">Other</span>
+                <span className="text-[11px]">
+                  {customAnswerActive
+                    ? progress.customAnswer
+                    : "Type your own answer in the composer below."}
+                </span>
+              </div>
+              {customAnswerActive ? <CheckIcon className="size-3.5 shrink-0 text-primary" /> : null}
             </div>
-            {customAnswerActive ? <CheckIcon className="size-3.5 shrink-0 text-primary" /> : null}
-          </div>
+          )}
         </div>
       </CollapsiblePanel>
     </Collapsible>
   );
 });
+
+function PendingUserInputOptionLabel({
+  option,
+}: {
+  option: PendingUserInput["questions"][number]["options"][number];
+}) {
+  return (
+    <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+      <span className="text-sm font-medium">{option.label}</span>
+      {option.description && option.description !== option.label ? (
+        <span className="text-secondary-label text-[11px]">{option.description}</span>
+      ) : null}
+    </div>
+  );
+}

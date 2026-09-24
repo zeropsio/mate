@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   ComposerPendingUserInputPanel,
+  ComposerPendingUserInputReadOnlyPanel,
   pendingUserInputKeyAction,
 } from "./ComposerPendingUserInputPanel";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
@@ -65,6 +66,24 @@ describe("ComposerPendingUserInputPanel", () => {
     expect(questionMarkup).toContain(">Question<");
     expect(approvalMarkup).toContain('data-pending-request-kind="command-approval"');
     expect(approvalMarkup).toContain(">Command approval<");
+  });
+
+  it("says whom an approval waits on when that is not the viewer", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerPendingApprovalPanel
+        approval={{
+          requestId: ApprovalRequestId.make("approval-1"),
+          requestKind: "command",
+          createdAt: "2026-09-01T00:00:00.000Z",
+          detail: "vp test run question.test.tsx",
+        }}
+        pendingCount={1}
+        waitingLabel="WAITING FOR THE OWNER"
+      />,
+    );
+
+    expect(markup).toContain("WAITING FOR THE OWNER");
+    expect(markup).not.toContain("WAITING FOR YOU");
   });
 
   it("renders the header as a disclosure control for the question body", () => {
@@ -214,6 +233,39 @@ describe("ComposerPendingUserInputPanel — answering affordances", () => {
     expect(pendingUserInputKeyAction("ArrowDown", 2, -1)).toEqual({ type: "move", index: 0 });
     expect(pendingUserInputKeyAction("ArrowUp", 2, 0)).toEqual({ type: "move", index: 1 });
     expect(pendingUserInputKeyAction("Enter", 2, 1)).toEqual({ type: "select", index: 1 });
+  });
+});
+
+/**
+ * A question on someone else's agent (D6): the viewer reads it and cannot
+ * answer it — no option is a control, and nothing offers a typed answer.
+ */
+describe("ComposerPendingUserInputReadOnlyPanel", () => {
+  const html = renderToStaticMarkup(
+    <ComposerPendingUserInputReadOnlyPanel
+      pendingUserInputs={[prompt]}
+      waitingLabel="WAITING FOR THE OWNER"
+    />,
+  );
+
+  it("says whom it waits on instead of the viewer", () => {
+    expect(html).toContain("WAITING FOR THE OWNER");
+    expect(html).not.toContain("WAITING FOR YOU");
+  });
+
+  it("still shows the question and every option", () => {
+    expect(html).toContain("Which approach should the migration take?");
+    expect(html).toContain("Incremental");
+    expect(html).toContain("Big bang");
+  });
+
+  it("offers no control but the disclosure toggle", () => {
+    const buttons = html.match(/<button\b[^>]*>/g) ?? [];
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toContain("data-pending-user-input-toggle");
+    expect(html).not.toContain("<kbd");
+    expect(html).not.toContain("data-pending-user-input-dismiss");
+    expect(html).not.toContain("data-pending-user-input-other");
   });
 });
 

@@ -6,12 +6,15 @@ import { cn } from "~/lib/utils";
 interface ComposerPendingApprovalPanelProps {
   approval: PendingApproval;
   pendingCount: number;
+  /** Whom the approval waits on; the viewer unless it is someone else's agent. */
+  waitingLabel?: string;
   className?: string;
 }
 
 export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprovalPanel({
   approval,
   pendingCount,
+  waitingLabel = "WAITING FOR YOU",
   className,
 }: ComposerPendingApprovalPanelProps) {
   // An app-access request is a sentence for a person; commands and paths
@@ -49,7 +52,7 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
       role="group"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <StatusDot label="WAITING FOR YOU" pulse={false} tone="attention" />
+        <StatusDot label={waitingLabel} pulse={false} tone="attention" />
         <span
           className="text-xs font-medium text-foreground/85"
           data-pending-request-kind={requestKind}

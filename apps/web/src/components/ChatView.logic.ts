@@ -9,6 +9,10 @@ import {
 } from "@t3tools/client-runtime/zerops/agentAvailability";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
+  agentOwnershipComposerNotice,
+  type ZeropsAgentOwnership,
+} from "@t3tools/client-runtime/zerops/agentOwnership";
+import {
   agentIdForProviderInstance,
   ANTIGRAVITY_DEFAULT_MODEL,
   type EnvironmentId,
@@ -493,6 +497,34 @@ export function resolveZeropsOwnedAgentSendBlockReason(input: {
     return undefined;
   }
   return resolveZeropsAgentPickerPanelView({ agentId, availability }).statusLine;
+}
+
+/** What a conversation on someone else's agent shows instead of a composer. */
+export interface ZeropsConversationReadOnly {
+  /** The ownership line the footer carries — the same words the banner used. */
+  readonly notice: string;
+  /** Who a pending question or approval waits on — never "you". */
+  readonly waitingLabel: string;
+}
+
+/**
+ * Whether this conversation is one the viewer only reads (D6): its agent is
+ * a personal login recorded as another project member's. Then nothing that
+ * would act on the agent renders — no composer, no answers to its questions,
+ * no approvals — and the timeline stays browsable. A token-authorized agent
+ * belongs to the project, so it never makes a conversation read-only;
+ * `unrecorded` and `record-failed` keep the composer with their banner,
+ * because the viewer's own sign-in is the way out of both.
+ */
+export function resolveZeropsConversationReadOnly(input: {
+  readonly agent: { readonly flagToken: boolean } | undefined;
+  readonly ownership: ZeropsAgentOwnership;
+}): ZeropsConversationReadOnly | null {
+  if (input.agent === undefined || input.agent.flagToken) return null;
+  if (input.ownership !== "someone-else") return null;
+  const notice = agentOwnershipComposerNotice(input.ownership);
+  if (notice === undefined) return null;
+  return { notice, waitingLabel: "WAITING FOR THE AGENT'S OWNER" };
 }
 
 /** Keep restored drafts and every plan control on the selected instance's supported mode. */
