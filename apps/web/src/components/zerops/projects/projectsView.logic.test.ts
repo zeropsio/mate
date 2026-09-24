@@ -81,6 +81,7 @@ function flowOf(over: Partial<GroupFlowInput> = {}): GroupFlow {
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: false,
+    pending: [],
     ...over,
   });
 }
@@ -515,6 +516,20 @@ describe("production's cell", () => {
       empty: false,
       line: "Checking what runs here…",
       detail: "Releasing v0.1.0…",
+      tone: "busy",
+    });
+  });
+
+  it("reads a production being created as busy setting up", () => {
+    const flow = flowOf({
+      pending: [
+        { projectId: "p-new", kind: "production", name: "prod", step: "tags", overdue: false },
+      ],
+    });
+    expect(productionCell(flow)).toEqual({
+      empty: false,
+      line: "Setting up production…",
+      detail: undefined,
       tone: "busy",
     });
   });

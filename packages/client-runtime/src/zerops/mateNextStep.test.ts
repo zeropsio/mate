@@ -45,6 +45,7 @@ function flow(over: Partial<GroupFlowInput>) {
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: true,
+    pending: [],
     ...over,
   });
 }

@@ -117,6 +117,7 @@ export function entry(
       mainHasCode: undefined,
       mainHead: undefined,
       productionAddable: false,
+      pending: [],
       ...over,
     }),
     read,

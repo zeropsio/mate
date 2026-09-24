@@ -179,6 +179,7 @@ export function nextStepCell(flow: GroupFlow): FlowCell | undefined {
       const target = nextStep.target;
       const onProduction =
         flow.production.kind !== "absent" &&
+        flow.production.kind !== "creating" &&
         target?.kind === "stop" &&
         target.projectId === flow.production.stop.projectId;
       return onProduction ? "production" : "main";
@@ -393,6 +394,9 @@ export function productionCell(flow: GroupFlow): ProductionCell {
   switch (production.kind) {
     case "absent":
       return { empty: true, line: production.line, detail: undefined, tone: "off" };
+    case "creating":
+    case "deploying":
+      return { empty: false, line: production.line, detail: undefined, tone: "busy" };
     case "ready-to-release":
       // How much it carries is `main`'s line 2 (`1 change not live`), beside it.
       return {
@@ -601,5 +605,6 @@ export function groupFlowInputOf(input: {
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: input.productionAddable,
+    pending: [],
   };
 }

@@ -5,6 +5,7 @@ import {
   groupFlow,
   pairPreviewRoute,
   type GroupFlowInput,
+  type GroupFlowPending,
   type GroupFlowStopInput,
 } from "./groupFlow.ts";
 import { deployedVersion, environmentRow } from "./groupRows.ts";
@@ -88,6 +89,19 @@ function group(over: Partial<GroupFlowInput>): GroupFlowInput {
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: true,
+    pending: [],
+    ...over,
+  };
+}
+
+/** A creation under way in the group, as its birth knows it. */
+function creating(over: Partial<GroupFlowPending> = {}): GroupFlowPending {
+  return {
+    projectId: "p-new",
+    kind: "mate",
+    name: "Todo - Vera",
+    step: "tags",
+    overdue: false,
     ...over,
   };
 }
@@ -477,6 +491,20 @@ describe("groupFlow", () => {
       expected: { kind: "checking", line: "Checking what runs here…", stop: { state: "checking" } },
     },
     {
+      case: "deploying: a deploy is running, whatever it ran before",
+      production: productionOf({
+        row: declared({
+          projectId: "p-prod",
+          name: "production",
+          tier: "production",
+          appVersionName: released,
+          status: "pending",
+        }),
+        deployment: runs(MAIN_SHA),
+      }),
+      expected: { kind: "deploying", line: "Deploying…", stop: { state: "deploying" } },
+    },
+    {
       case: "the row's name stands for a deploy while the platform's answer is on its way",
       production: productionOf({ deployment: undefined }),
       expected: { kind: "live", line: "055a7e8", stop: { state: "deployed" } },
@@ -572,6 +600,97 @@ describe("groupFlow", () => {
     const flow = groupFlow(input);
     expect(flow.production).toEqual({ kind: "absent", line: "Not set up", addable });
     expect(flow.nextStep.kind).toBe(addable ? "add-production" : "none");
+  });
+});
+
+describe("groupFlow — creations under way", () => {
+  const LANDED = {
+    ...SM_FIXTURE,
+    mates: [
+      { projectId: "p-wren", name: "Wren", preview: undefined, waiting: false, talked: true },
+    ],
+    pullRequests: [],
+  };
+
+  it("draws a Mate being created after the listed ones, as coming and never asked anything", () => {
+    const flow = groupFlow({
+      ...SM_BIRTH_1,
+      pending: [creating({ step: "harden", overdue: true })],
+    });
+    expect(flow.mates).toEqual([
+      { projectId: "p-uma", name: "Uma", preview: undefined, waiting: false, talked: false },
+      {
+        projectId: "p-new",
+        name: "Todo - Vera",
+        preview: undefined,
+        waiting: false,
+        talked: false,
+        coming: { step: "harden", overdue: true },
+      },
+    ]);
+    // The first task is still the listed Mate's: one being created cannot take one yet.
+    expect(flow.nextStep.target).toEqual({ kind: "mate", projectId: "p-uma" });
+  });
+
+  it("draws a listed Mate once, whatever creation still names it", () => {
+    const flow = groupFlow({ ...SM_BIRTH_1, pending: [creating({ projectId: "p-uma" })] });
+    expect(flow.mates.map((mate) => mate.projectId)).toEqual(["p-uma"]);
+  });
+
+  it.each([
+    {
+      case: "production being created is setting up, and Add production is not offered again",
+      input: { ...LANDED, pending: [creating({ kind: "production", name: "Todo - production" })] },
+      production: {
+        kind: "creating",
+        line: "Setting up production…",
+        creation: creating({ kind: "production", name: "Todo - production" }),
+      },
+      next: "none",
+    },
+    {
+      case: "a production the listing holds is read from its stop, not its creation",
+      input: {
+        ...FSADFDASFSA,
+        pending: [creating({ projectId: "p-prod", kind: "production" })],
+      },
+      production: { kind: "ready-to-release" },
+      next: "release",
+    },
+    {
+      case: "a stage or a Mate being created leaves Add production offered",
+      input: { ...LANDED, pending: [creating(), creating({ projectId: "p-st", kind: "stage" })] },
+      production: { kind: "absent", addable: true },
+      next: "add-production",
+    },
+  ])("$case", ({ input, production, next }) => {
+    const flow = groupFlow(input);
+    expect(flow.production).toMatchObject(production);
+    expect(flow.nextStep.kind).toBe(next);
+  });
+
+  it("offers no release to a production still being created", () => {
+    const flow = groupFlow({
+      ...LANDED,
+      merged: [pull({ merged: true })],
+      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+      pending: [creating({ kind: "production" })],
+    });
+    expect(flow.production.kind).toBe("creating");
+    expect(flow.nextStep.kind).toBe("none");
+  });
+
+  it("carries a stage being created beside the listed stages, until the listing holds it", () => {
+    const stage = creating({ projectId: "p-new-stage", kind: "stage", name: "Todo - stage" });
+    const flow = groupFlow({ ...SM_FIXTURE, pending: [stage, creating()] });
+    expect(flow.creatingStages).toEqual([stage]);
+    expect(flow.stages.map((entry) => entry.projectId)).toEqual(["p-stage"]);
+
+    const listed = groupFlow({
+      ...SM_FIXTURE,
+      pending: [creating({ projectId: "p-stage", kind: "stage" })],
+    });
+    expect(listed.creatingStages).toEqual([]);
   });
 });
 

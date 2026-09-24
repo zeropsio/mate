@@ -257,7 +257,11 @@ export function ProjectCard<T>({
             <ProductionStep
               density="box"
               entry={entry}
-              menu={production.kind === "absent" ? null : stopMenu(production.stop.projectId)}
+              menu={
+                production.kind === "absent" || production.kind === "creating"
+                  ? null
+                  : stopMenu(production.stop.projectId)
+              }
               releaseVerb={releaseVerbFor(entry, props.renderReleaseVerb)}
               verb={verbFor(entry, "production", props.renderNextStep)}
             />

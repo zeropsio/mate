@@ -859,6 +859,7 @@ describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
         mainHasCode: undefined,
         mainHead: undefined,
         productionAddable: false,
+        pending: [],
       }),
       mateProjectId: "p1",
       mateName: "Iris",
