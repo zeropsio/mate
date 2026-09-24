@@ -1,10 +1,10 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import type { ChangeLandedEvent, FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { describe, expect, it } from "vite-plus/test";
 
-import { changeLandedEventsFor } from "./useZeropsChangeLandedEvents";
+import { changeLandedEventsFor, conversationLandings } from "./useZeropsChangeLandedEvents";
 
 const environmentId = EnvironmentId.make("environment-1");
 
@@ -65,5 +65,67 @@ describe("changeLandedEventsFor", () => {
     },
   ])("a listing that is $name places no landing until it names the Mate", ({ listing }) => {
     expect(changeLandedEventsFor(listing, environmentId, flows)).toEqual([]);
+  });
+});
+
+const giteaOrigin = "https://git.shop.example";
+
+const landing = (repository: string, number: number, landedAt: string): ChangeLandedEvent => ({
+  key: `change-landed:${repository}#${String(number)}`,
+  repository,
+  number,
+  title: `Change ${String(number)}`,
+  line: `${repository} #${String(number)}`,
+  landedAt,
+});
+
+const said = (text: string, createdAt = "2026-09-20T09:00:00Z") => ({ text, createdAt });
+
+describe("conversationLandings", () => {
+  const titandev7 = landing("titandev", 7, "2026-09-20T10:00:00Z");
+
+  it.each<{
+    readonly name: string;
+    readonly messages: ReadonlyArray<{ readonly text: string; readonly createdAt: string }>;
+    readonly untold?: true;
+    readonly placed: ReadonlyArray<ChangeLandedEvent>;
+  }>([
+    {
+      name: "a change this conversation linked",
+      messages: [said(`Opened ${giteaOrigin}/shop/titandev/pulls/7 for review.`)],
+      placed: [titandev7],
+    },
+    {
+      name: "a change linked in markdown",
+      messages: [said(`See [the change](${giteaOrigin}/shop/titandev/pulls/7).`)],
+      placed: [titandev7],
+    },
+    {
+      name: "a change another conversation linked",
+      messages: [said(`Opened ${giteaOrigin}/shop/titandev/pulls/8.`)],
+      placed: [],
+    },
+    {
+      name: "a change on another forge",
+      messages: [said("Opened https://github.com/shop/titandev/pulls/7.")],
+      placed: [],
+    },
+    {
+      name: "a change on a forge the app was not told of",
+      messages: [said(`Opened ${giteaOrigin}/shop/titandev/pulls/7.`)],
+      untold: true,
+      placed: [],
+    },
+    {
+      name: "a change that landed before the first loaded message",
+      messages: [
+        said(`${giteaOrigin}/shop/titandev/pulls/7 already landed.`, "2026-09-20T11:00:00Z"),
+      ],
+      placed: [],
+    },
+    { name: "an empty conversation", messages: [], placed: [] },
+  ])("places $name accordingly", ({ messages, untold, placed }) => {
+    const origin = untold ? undefined : giteaOrigin;
+    expect(conversationLandings([titandev7], messages, origin)).toEqual(placed);
   });
 });

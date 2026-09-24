@@ -179,7 +179,10 @@ import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
 import { useNowMs } from "../zerops/useNowMs";
-import { useZeropsChangeLandedEvents } from "../zerops/useZeropsChangeLandedEvents";
+import {
+  useZeropsChangeLandedEvents,
+  useZeropsConversationLandings,
+} from "../zerops/useZeropsChangeLandedEvents";
 import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
@@ -2893,6 +2896,11 @@ export default function ChatView(props: ChatViewProps) {
     () => agentTurnNotes(changeLandedEvents, agentLastSpokeAt),
     [agentLastSpokeAt, changeLandedEvents],
   );
+  // The Mate hears of every landing; this conversation shows the ones it named.
+  const conversationLandedEvents = useZeropsConversationLandings(
+    changeLandedEvents,
+    timelineMessages,
+  );
   const timelineProjectionRef = useRef<{
     threadKey: string | null;
     projection: TimelineEntriesProjection;
@@ -2906,7 +2914,7 @@ export default function ChatView(props: ChatViewProps) {
       previous?.threadKey === activeThreadKey ? previous.projection : null,
       turnPlans,
       zeropsThreadModel.entries,
-      changeLandedEvents,
+      conversationLandedEvents,
     );
     timelineProjectionRef.current = { threadKey: activeThreadKey, projection };
     return projection.entries;
@@ -2918,7 +2926,7 @@ export default function ChatView(props: ChatViewProps) {
     turnPlans,
     workLogEntries,
     zeropsThreadModel.entries,
-    changeLandedEvents,
+    conversationLandedEvents,
   ]);
   // While the thread detail reloads, repaint this thread's own last timeline
   // instead of an empty pane.
