@@ -26,6 +26,7 @@ import {
   birthStepFailure,
   bornOnAccept,
   importedContainer,
+  placedBirthsIn,
   webBirthPorts,
   type BirthInputs,
 } from "./zeropsBirths";
@@ -243,6 +244,58 @@ describe("a creation's birth", () => {
         ? ({ ok: true, projectId: "project-1", serviceName: "zcp", awaitingAgent: true } as const)
         : ({ ok: false, projectId: "project-1", failedStep, error: "No." } as const);
     expect(importedContainer(steps, outcome)).toBe(want);
+  });
+});
+
+describe("placedBirthsIn", () => {
+  const birth = (over: Partial<BirthRecord>): BirthRecord => ({
+    projectId: "project-1",
+    organizationId: "org-1",
+    startedAt: 5,
+    step: "tags",
+    overdue: false,
+    registration: null,
+    container: true,
+    serviceId: null,
+    origin: null,
+    placement: { groupId: "g-1", groupName: "Todo", kind: "mate", displayName: "Vera" },
+    ...over,
+  });
+  it.each([
+    {
+      name: "a placed birth of the organization in view is its group's pending member",
+      births: [birth({ step: "harden", overdue: true })],
+      organizationId: "org-1",
+      want: [
+        {
+          projectId: "project-1",
+          startedAt: 5,
+          placement: { groupId: "g-1", groupName: "Todo", kind: "mate", displayName: "Vera" },
+          step: "harden",
+          overdue: true,
+        },
+      ],
+    },
+    {
+      name: "a birth another organization began is not drawn here",
+      births: [birth({ organizationId: "org-2" })],
+      organizationId: "org-1",
+      want: [],
+    },
+    {
+      name: "a birth the listing already places (Set up Mate, a claim) places nothing",
+      births: [birth({ placement: null })],
+      organizationId: "org-1",
+      want: [],
+    },
+    {
+      name: "no organization in view draws none",
+      births: [birth({})],
+      organizationId: undefined,
+      want: [],
+    },
+  ])("$name", ({ births, organizationId, want }) => {
+    expect(placedBirthsIn(births, organizationId)).toEqual(want);
   });
 });
 

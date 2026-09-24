@@ -211,6 +211,7 @@ import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
+import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
 import {
   canCreateProjectsInOrganization,
   flowVerbKey,
@@ -1748,6 +1749,13 @@ export default function Sidebar() {
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
   const zeropsCandidates = zeropsHeld.rows;
+  // The creations under way in the organization in view, drawn in their
+  // groups before the listing holds them — the projects page's own placing.
+  const { births: zeropsBirths } = useZeropsBirths();
+  const zeropsPlacedBirths = useMemo(
+    () => placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id),
+    [zeropsBirths, zeropsSession.activeOrganization?.id],
+  );
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners({
     candidates: zeropsCandidates,
@@ -3945,6 +3953,7 @@ export default function Sidebar() {
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree
               activeProjectId={activeZeropsProjectId}
+              births={zeropsPlacedBirths}
               candidates={zeropsCandidates}
               health={zeropsHealth}
               mayCreate={zeropsMayCreate}

@@ -130,6 +130,7 @@ export function zeropsMateGroupFlow(input: {
       productionAddable:
         group !== undefined &&
         productionAddable({ group: group.group, mayCreate: input.mayCreate, addsOffered: true }),
+      pending: group?.group.pending ?? [],
     }),
   );
 }

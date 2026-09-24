@@ -845,6 +845,16 @@ describe("a project's next step on the projects page", () => {
   });
 });
 
+describe("a creation under way on the projects page", () => {
+  it("is drawn in its group from the one placing the left menu reads, and feeds the flow", () => {
+    expect(projectsPageSource).toContain(
+      "births: placedBirthsIn(births.births, activeOrganization?.id),",
+    );
+    expect(projectsPageSource).toContain("pending: group.pending,");
+    expect(sidebarTreeSource).toContain("pending: group?.pending ?? [],");
+  });
+});
+
 describe("opening a Mate from the projects page", () => {
   it.each([
     { name: "a connected Mate opens", busy: false, action: "open", opens: true },

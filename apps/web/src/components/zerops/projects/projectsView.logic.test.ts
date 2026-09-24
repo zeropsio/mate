@@ -640,6 +640,7 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       flow: undefined,
       deployments: new Map(),
       productionAddable: false,
+      pending: [],
     });
     expect(input.mates.map((entry) => entry.talked)).toEqual([false]);
   });
@@ -686,6 +687,7 @@ describe("groupFlowInputOf", () => {
       flow: undefined,
       deployments: new Map(),
       productionAddable: false,
+      pending: [],
     });
     expect(input.mates).toEqual([
       {
@@ -751,6 +753,7 @@ describe("groupFlowInputOf", () => {
       },
       deployments: new Map(),
       productionAddable: true,
+      pending: [],
     });
     expect(input.stops[0]?.row).toBe(row);
     expect(input.stops[0]?.name).toBe("stage");
@@ -761,5 +764,27 @@ describe("groupFlowInputOf", () => {
     ]);
     expect(input.release).toEqual({ gate: { allowed: true }, suggestion: "v0.1.1", waiting: 2 });
     expect(input.productionAddable).toBe(true);
+  });
+
+  it("hands the group's creations under way to the flow as they are", () => {
+    const pending = [
+      {
+        projectId: "p-new",
+        kind: "mate" as const,
+        name: "Vera",
+        startedAt: 5,
+        step: "harden" as const,
+        overdue: false,
+      },
+    ];
+    const input = groupFlowInputOf({
+      groupId: "g",
+      members,
+      flow: undefined,
+      deployments: new Map(),
+      productionAddable: false,
+      pending,
+    });
+    expect(input.pending).toEqual(pending);
   });
 });

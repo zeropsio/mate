@@ -1188,6 +1188,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
           mayCreate,
           addsOffered: groupAddsOffered(group.environments, health),
         }),
+        pending: group.group.pending,
       }),
     ).nextStep;
     expect(page.kind).toBe(expected);

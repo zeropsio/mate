@@ -16,6 +16,7 @@ import {
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type ZeropsApiClient,
+  type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import {
   BIRTHS_KEY,
@@ -505,6 +506,24 @@ export interface BirthsSnapshot {
   readonly waits: ReadonlyMap<string, ProvisioningState>;
   /** The newest group write a birth went on without, in words. */
   readonly outstanding: string | null;
+}
+
+/**
+ * The creations under way in the organization in view that know their group, as the group tree
+ * places them (`deriveZeropsGroups`' `births`) — the projects page and the left menu read this one
+ * mapping, so the two draw the same pending members. A birth begun on a project already listed
+ * (Set up Mate, a claim) places nothing: the listing places it.
+ */
+export function placedBirthsIn(
+  births: ReadonlyArray<BirthRecord>,
+  organizationId: string | undefined,
+): ReadonlyArray<ZeropsPlacedBirth> {
+  return births.flatMap(
+    ({ projectId, organizationId: bornIn, startedAt, placement, step, overdue }) =>
+      placement === null || organizationId === undefined || bornIn !== organizationId
+        ? []
+        : [{ projectId, startedAt, placement, step, overdue }],
+  );
 }
 
 /** The account's births and this tab's waits on them. */

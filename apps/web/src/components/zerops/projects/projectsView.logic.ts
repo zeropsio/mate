@@ -34,6 +34,7 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type ZeropsGroup,
+  type ZeropsGroupPendingMember,
   type ZeropsPublicRoute,
   type ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
@@ -541,9 +542,9 @@ const STOP_TIER: Partial<Record<ZeropsEnvironmentRole, GroupEnvironmentTier>> = 
 };
 
 /**
- * `groupFlow`'s input, from what the page holds: the group tree's members,
- * the account-wide project flow (`undefined` while unread) and the platform's
- * pushed deployments.
+ * `groupFlow`'s input, from what the page holds: the group tree's members and
+ * its creations under way, the account-wide project flow (`undefined` while
+ * unread) and the platform's pushed deployments.
  *
  * What `main` holds is not read here (`mainHasCode`, `mainHead` stay
  * `undefined`): the default-branch read runs only for a group with a
@@ -556,6 +557,8 @@ export function groupFlowInputOf(input: {
   /** `undefined` where the platform's pushed answer is not held at all: every stop unread. */
   readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
   readonly productionAddable: boolean;
+  /** The group's creations under way (the group tree's `pending`). */
+  readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
 }): GroupFlowInput {
   const { flow } = input;
   return {
@@ -605,6 +608,6 @@ export function groupFlowInputOf(input: {
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: input.productionAddable,
-    pending: [],
+    pending: input.pending,
   };
 }

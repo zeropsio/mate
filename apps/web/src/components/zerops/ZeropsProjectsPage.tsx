@@ -67,6 +67,7 @@ import {
   bornOnAccept,
   forgetBirth,
   importedContainer,
+  placedBirthsIn,
   retryBirth,
   useZeropsBirths,
   type BirthsSnapshot,
@@ -1061,9 +1062,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     };
   }, [creationRunning]);
   const [projectOrder] = useProjectOrderPreference();
+  // A creation the platform accepted is drawn in its group before the
+  // listing holds its project — the same placing the left menu reads.
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     order: projectOrder,
+    births: placedBirthsIn(births.births, activeOrganization?.id),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
@@ -2920,6 +2924,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               mayCreate,
               addsOffered: addsOfferedFor(group),
             }),
+            pending: group.pending,
           }),
         ),
         read: reads !== undefined,

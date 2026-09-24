@@ -68,6 +68,7 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type ZeropsGroup,
+  type ZeropsPlacedBirth,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
@@ -161,6 +162,7 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
 }
 
 const NO_HEALTH: ReadonlyMap<string, ZeropsContainerHealth> = new Map();
+const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
 
 /**
  * One project's flow, as the menu needs it: the open pull requests, each
@@ -295,6 +297,12 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly onNoticeAct?: ((affordance: KnownAffordance) => void) | undefined;
   /** Opens the group's own page, in place of the thread. */
   readonly onOpenGroup?: ((groupId: string) => void) | undefined;
+  /**
+   * The creations under way in the organization in view (`placedBirthsIn`),
+   * drawn in their groups before the listing holds them — the projects page
+   * reads the same ones.
+   */
+  readonly births?: ReadonlyArray<ZeropsPlacedBirth> | undefined;
 }
 
 export function SidebarZeropsTree<T extends RosterCandidate>({
@@ -313,6 +321,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   notice = null,
   onNoticeAct,
   className,
+  births = NO_BIRTHS,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
@@ -376,6 +385,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const view = buildZeropsGroupTree(everyEnvironment, {
     rank: rankZeropsCandidateForListing,
     order: projectOrder,
+    births,
   });
   const tints = assignCandidateMateTints(candidates);
 
@@ -446,6 +456,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   mayCreate,
                   addsOffered: groupAddsOffered(entries, health),
                 }),
+              pending: group?.pending ?? [],
             }),
           );
     // Code only — a recipe change is the group's document, left to the
