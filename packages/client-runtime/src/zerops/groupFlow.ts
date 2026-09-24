@@ -298,6 +298,15 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
   };
   if (deployment?.state === "known") {
     if (deployment.value.kind === "none") return { ...base, state: "empty", version: undefined };
+    // A build runs now: what it builds is the stop's answer, whatever the row read before it.
+    if (deployment.value.kind === "deploying") {
+      const { version } = deployment.value;
+      return {
+        ...base,
+        state: "deploying",
+        version: version.label === undefined ? undefined : version,
+      };
+    }
     return { ...base, state: runningState(row), version: named ?? deployment.value.version };
   }
   if (named !== undefined) return { ...base, state: runningState(row), version: named };

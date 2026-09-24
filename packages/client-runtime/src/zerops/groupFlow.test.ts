@@ -505,6 +505,24 @@ describe("groupFlow", () => {
       expected: { kind: "deploying", line: "Deploying…", stop: { state: "deploying" } },
     },
     {
+      case: "deploying: the platform's build runs on it, whatever the row read before",
+      production: productionOf({
+        row: declared({
+          projectId: "p-prod",
+          name: "production",
+          tier: "production",
+          appVersionName: released,
+          status: "success",
+        }),
+        deployment: known({
+          kind: "deploying",
+          version: deployedVersion(MAIN_SHA),
+          previous: { kind: "running", activatedAt: null, version: deployedVersion(released) },
+        }),
+      }),
+      expected: { kind: "deploying", line: "Deploying…", stop: { state: "deploying" } },
+    },
+    {
       case: "the row's name stands for a deploy while the platform's answer is on its way",
       production: productionOf({ deployment: undefined }),
       expected: { kind: "live", line: "055a7e8", stop: { state: "deployed" } },
