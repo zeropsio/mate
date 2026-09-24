@@ -18,7 +18,7 @@
  */
 import type { GiteaActionJob } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { giteaClientFor, useGiteaReadable } from "./accountGiteaSessions";
 
@@ -37,20 +37,34 @@ export type ZeropsDeployRunState =
     }
   | { readonly kind: "failed"; readonly reason: string };
 
-/** An answer and the read it answers; `key` is `null` for a request with nothing to read. */
+/**
+ * An answer, the read it answers and the generation of that read; `key` is `null` for a request
+ * with nothing to read.
+ */
 interface HeldDeployRun {
   readonly key: string | null;
+  readonly generation: number;
   readonly state: ZeropsDeployRunState;
 }
 
 /** The held answer, kept when it already answers `key`, otherwise `waiting`. */
-function holdFor(key: string, waiting: ZeropsDeployRunState) {
+function holdFor(key: string, generation: number, waiting: ZeropsDeployRunState) {
   return (held: HeldDeployRun): HeldDeployRun =>
     held.key === key &&
     (held.state.kind === "read" || held.state.kind === "none" || held.state.kind === "failed")
       ? held
-      : { key, state: waiting };
+      : { key, generation, state: waiting };
 }
+
+/**
+ * Where the last rerun pressed stands: its POST out, or landed and waiting for the read of the
+ * generation it asked for, or refused.
+ */
+type RerunWait =
+  | { readonly kind: "idle" }
+  | { readonly kind: "posting" }
+  | { readonly kind: "reading"; readonly generation: number }
+  | { readonly kind: "failed"; readonly reason: string };
 
 export interface ZeropsDeployRunRequest {
   readonly giteaOrigin: string | undefined;
@@ -64,9 +78,13 @@ export interface ZeropsDeployRun {
   readonly state: ZeropsDeployRunState;
   /** Reads one job's log, or its reason for refusing. */
   readonly readLog: (jobId: number) => Promise<string>;
-  /** Runs a job of the run read here again; the caller re-reads. */
+  /** Runs a job of the run read here again, then reads the run again; a refusal is `rerunFailure`. */
   readonly rerun: (jobId: number) => Promise<void>;
   readonly refresh: () => void;
+  /** From the rerun's press until the read after it answers; a later refresh supersedes it. */
+  readonly rerunning: boolean;
+  /** Why Gitea refused the last rerun pressed, until another is pressed. */
+  readonly rerunFailure: string | null;
 }
 
 export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): ZeropsDeployRun {
@@ -75,8 +93,20 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
   const repo = request?.repo;
   const sha = request?.sha;
   const readable = useGiteaReadable(giteaOrigin);
-  const [held, setHeld] = useState<HeldDeployRun>({ key: null, state: { kind: "reading" } });
+  const [held, setHeld] = useState<HeldDeployRun>({
+    key: null,
+    generation: 0,
+    state: { kind: "reading" },
+  });
   const [generation, setGeneration] = useState(0);
+  /** The generation last asked for, so a rerun knows which read answers it. */
+  const asked = useRef(0);
+  const readAgain = useCallback(() => {
+    asked.current += 1;
+    setGeneration(asked.current);
+    return asked.current;
+  }, []);
+  const [rerunWait, setRerunWait] = useState<RerunWait>({ kind: "idle" });
 
   useEffect(() => {
     if (
@@ -85,7 +115,7 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
       repo === undefined ||
       sha === undefined
     ) {
-      setHeld({ key: null, state: { kind: "no-gitea" } });
+      setHeld({ key: null, generation, state: { kind: "no-gitea" } });
       return;
     }
     const key = JSON.stringify([giteaOrigin, owner, repo, sha, generation]);
@@ -96,23 +126,24 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
         })
       : null;
     if (client === null) {
-      setHeld(holdFor(key, { kind: "no-gitea" }));
+      setHeld(holdFor(key, generation, { kind: "no-gitea" }));
       return;
     }
     let live = true;
-    setHeld(holdFor(key, { kind: "reading" }));
+    setHeld(holdFor(key, generation, { kind: "reading" }));
     void client
       .listActionRuns(owner, repo, { limit: DEPLOY_RUN_SEARCH })
       .then(async (runs) => {
         const run = runs.find((entry) => entry.head_sha === sha);
         if (run === undefined) {
-          if (live) setHeld({ key, state: { kind: "none" } });
+          if (live) setHeld({ key, generation, state: { kind: "none" } });
           return;
         }
         const jobs = await client.listActionJobs(owner, repo, run.id);
         if (live) {
           setHeld({
             key,
+            generation,
             state: { kind: "read", runId: run.id, runNumber: run.run_number, jobs },
           });
         }
@@ -121,8 +152,8 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
         if (!live) return;
         setHeld(
           unauthorized
-            ? holdFor(key, { kind: "no-gitea" })
-            : { key, state: { kind: "failed", reason: zeropsErrorMessage(error) } },
+            ? holdFor(key, generation, { kind: "no-gitea" })
+            : { key, generation, state: { kind: "failed", reason: zeropsErrorMessage(error) } },
         );
       });
     return () => {
@@ -151,15 +182,33 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
       if (runId === undefined) return;
       const client = giteaClientFor(giteaOrigin);
       if (client === null) return;
-      await client.rerunActionJob(owner, repo, runId, jobId);
-      setGeneration((value) => value + 1);
+      setRerunWait({ kind: "posting" });
+      try {
+        await client.rerunActionJob(owner, repo, runId, jobId);
+      } catch (error) {
+        setRerunWait({ kind: "failed", reason: zeropsErrorMessage(error) });
+        return;
+      }
+      setRerunWait({ kind: "reading", generation: readAgain() });
     },
-    [giteaOrigin, owner, repo, runId],
+    [giteaOrigin, owner, readAgain, repo, runId],
   );
 
   const refresh = useCallback(() => {
-    setGeneration((value) => value + 1);
-  }, []);
+    readAgain();
+  }, [readAgain]);
 
-  return { state: held.state, readLog, rerun, refresh };
+  const rerunning =
+    rerunWait.kind === "posting" ||
+    (rerunWait.kind === "reading" &&
+      rerunWait.generation === generation &&
+      (held.generation !== generation || held.state.kind === "reading"));
+  return {
+    state: held.state,
+    readLog,
+    rerun,
+    refresh,
+    rerunning,
+    rerunFailure: rerunWait.kind === "failed" ? rerunWait.reason : null,
+  };
 }

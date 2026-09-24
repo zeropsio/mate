@@ -1,13 +1,26 @@
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { useZeropsDeployRun, type ZeropsDeployRunState } from "./useZeropsDeployRun";
+import {
+  useZeropsDeployRun,
+  type ZeropsDeployRun,
+  type ZeropsDeployRunState,
+} from "./useZeropsDeployRun";
 
 /**
  * Whether this tab can read Gitea now, and whether its reads meet a 401 that no token recovered —
  * the reacquire failed, or outlasted the request's wait.
  */
 const gitea = vi.hoisted(() => ({ readable: false, unauthorizedOnRead: false }));
+
+/**
+ * What a rerun meets: the run listing answers once `runs` settles, and the rerun POST answers
+ * `rerun`.
+ */
+const actions = vi.hoisted(() => ({
+  runs: Promise.resolve(),
+  rerun: (): Promise<void> => Promise.resolve(),
+}));
 
 vi.mock("./accountGiteaSessions", () => ({
   useGiteaReadable: () => gitea.readable,
@@ -21,8 +34,10 @@ vi.mock("./accountGiteaSessions", () => ({
     };
     return gitea.readable
       ? {
-          listActionRuns: () => read([{ id: 4, run_number: 12, head_sha: "abc123" }]),
+          listActionRuns: () =>
+            actions.runs.then(() => read([{ id: 4, run_number: 12, head_sha: "abc123" }])),
           listActionJobs: () => read([]),
+          rerunActionJob: () => actions.rerun(),
         }
       : null;
   },
@@ -96,6 +111,8 @@ describe("useZeropsDeployRun", () => {
   afterEach(() => {
     gitea.readable = false;
     gitea.unauthorizedOnRead = false;
+    actions.runs = Promise.resolve();
+    actions.rerun = () => Promise.resolve();
     vi.unstubAllGlobals();
   });
 
@@ -217,6 +234,102 @@ describe("useZeropsDeployRun", () => {
 
     await act(async () => {
       root.unmount();
+    });
+  });
+
+  describe("rerun", () => {
+    const REQUEST = {
+      giteaOrigin: "https://gitea.example.test",
+      owner: "harbor",
+      repo: "app",
+      sha: "abc123",
+    };
+
+    /** A pane that has read the build, and a rerun of its job 1 pressed. */
+    async function pressRerun() {
+      gitea.readable = true;
+      installTestDom();
+      const { createRoot } = await import("react-dom/client");
+      const seen: Array<ZeropsDeployRun> = [];
+      function Probe() {
+        seen.push(useZeropsDeployRun(REQUEST));
+        return null;
+      }
+      const root = createRoot(document.createElement("div") as unknown as Element);
+      await act(async () => {
+        root.render(createElement(Probe));
+      });
+      expect(seen.at(-1)?.state.kind).toBe("read");
+      expect(seen.at(-1)?.rerunning).toBe(false);
+      let pressed: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pressed = seen.at(-1)!.rerun(1);
+      });
+      return { seen, root, pressed };
+    }
+
+    it("is rerunning from the press until the new run's read answers", async () => {
+      let posted = () => {};
+      actions.rerun = () =>
+        new Promise<void>((resolve) => {
+          posted = resolve;
+        });
+      const { seen, root, pressed } = await pressRerun();
+      expect(seen.at(-1)?.rerunning).toBe(true);
+      let listed = () => {};
+      actions.runs = new Promise<void>((resolve) => {
+        listed = resolve;
+      });
+      await act(async () => {
+        posted();
+        await pressed;
+      });
+      // The POST landed; the run it started is not read yet.
+      expect(seen.at(-1)?.rerunning).toBe(true);
+      await act(async () => {
+        listed();
+      });
+      expect(seen.at(-1)?.state.kind).toBe("read");
+      expect(seen.at(-1)?.rerunning).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    it("a rerun Gitea refused stops rerunning, says why, and the next press clears it", async () => {
+      actions.rerun = () => Promise.reject(new Error("Gitea refused to run the job again."));
+      const { seen, root, pressed } = await pressRerun();
+      await act(async () => {
+        await pressed;
+      });
+      expect(seen.at(-1)?.rerunning).toBe(false);
+      expect(seen.at(-1)?.rerunFailure).toBe("Gitea refused to run the job again.");
+      expect(seen.at(-1)?.state.kind).toBe("read");
+      actions.rerun = () => new Promise<void>(() => {});
+      await act(async () => {
+        void seen.at(-1)!.rerun(1);
+      });
+      expect(seen.at(-1)?.rerunning).toBe(true);
+      expect(seen.at(-1)?.rerunFailure).toBeNull();
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    it("a refresh after the rerun's read answered does not claim a rerun again", async () => {
+      const { seen, root, pressed } = await pressRerun();
+      await act(async () => {
+        await pressed;
+      });
+      expect(seen.at(-1)?.rerunning).toBe(false);
+      actions.runs = new Promise<void>(() => {});
+      await act(async () => {
+        seen.at(-1)!.refresh();
+      });
+      expect(seen.at(-1)?.rerunning).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
     });
   });
 });

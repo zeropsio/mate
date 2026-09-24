@@ -37,7 +37,9 @@ export function ZeropsDeployRunView({ run }: { readonly run: ZeropsDeployRun }) 
   if (state.kind === "no-gitea") {
     return <Note>Sign in to Gitea to read the build behind this deploy.</Note>;
   }
-  if (state.kind === "reading") return <Note>Reading the build&hellip;</Note>;
+  if (state.kind === "reading") {
+    return <Note>{run.rerunning ? "Redeploying…" : "Reading the build…"}</Note>;
+  }
   if (state.kind === "failed") return <Note>{state.reason}</Note>;
   if (state.kind === "none") {
     return <Note>No build was found for this commit in the recent runs.</Note>;
@@ -46,18 +48,20 @@ export function ZeropsDeployRunView({ run }: { readonly run: ZeropsDeployRun }) 
     return <Note>The build ran with no jobs Gitea will report.</Note>;
   }
   return (
-    <ul className="flex flex-col" data-zerops-surface="zerops-deploy-run">
-      {state.jobs.map((job) => (
-        <JobRow job={job} key={job.id} run={run} />
-      ))}
-    </ul>
+    <>
+      <ul className="flex flex-col" data-zerops-surface="zerops-deploy-run">
+        {state.jobs.map((job) => (
+          <JobRow job={job} key={job.id} run={run} />
+        ))}
+      </ul>
+      {run.rerunFailure === null ? null : <Note>{run.rerunFailure}</Note>}
+    </>
   );
 }
 
 function JobRow({ job, run }: { readonly job: GiteaActionJob; readonly run: ZeropsDeployRun }) {
   const [log, setLog] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
-  const [rerunning, setRerunning] = useState(false);
   const { tone, word } = jobTone(job);
   const failed = job.conclusion === "failure";
 
@@ -113,17 +117,14 @@ function JobRow({ job, run }: { readonly job: GiteaActionJob; readonly run: Zero
         />
         {!failed ? null : (
           <Button
-            disabled={rerunning}
+            disabled={run.rerunning}
             onClick={() => {
-              setRerunning(true);
-              void run.rerun(job.id).finally(() => {
-                setRerunning(false);
-              });
+              void run.rerun(job.id);
             }}
             size="sm"
             variant="ghost"
           >
-            {rerunning ? "Starting…" : "Run again"}
+            {run.rerunning ? "Redeploying…" : "Run again"}
           </Button>
         )}
       </div>

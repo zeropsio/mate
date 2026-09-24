@@ -216,7 +216,14 @@ const READ_DETAIL = async (sha: string) => ({
 });
 
 function run(state: ZeropsDeployRun["state"]): ZeropsDeployRun {
-  return { state, readLog: async () => "", rerun: async () => {}, refresh: () => {} };
+  return {
+    state,
+    readLog: async () => "",
+    rerun: async () => {},
+    refresh: () => {},
+    rerunning: false,
+    rerunFailure: null,
+  };
 }
 
 const BUILT: ZeropsDeployRun = run({
