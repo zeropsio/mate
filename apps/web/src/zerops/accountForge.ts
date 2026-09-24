@@ -155,9 +155,9 @@ export interface UseGroupFlowSource extends GroupFlowSource {
   readonly priority?: ForgePriority;
 }
 
-/** A counter the bound stores move, once per task however often they publish. */
-function useFlowVersion(flow: AccountFlow | null): number {
-  const subscribe = useCallback(
+/** Subscribes to the bound stores, moving their counter once per task however often they publish. */
+function useFlowSubscription(flow: AccountFlow | null): (listener: () => void) => () => void {
+  return useCallback(
     (listener: () => void) => {
       if (flow === null) return () => undefined;
       const batched = batchedPerTask(() => {
@@ -178,11 +178,51 @@ function useFlowVersion(flow: AccountFlow | null): number {
     },
     [flow],
   );
-  const snapshot = useCallback(() => (flow === null ? 0 : (versions.get(flow) ?? 0)), [flow]);
+}
+
+/** The bound stores' counter, as `useFlowSubscription` moves it. */
+function flowVersionOf(flow: AccountFlow | null): number {
+  return flow === null ? 0 : (versions.get(flow) ?? 0);
+}
+
+/** A counter the bound stores move, once per task however often they publish. */
+function useFlowVersion(flow: AccountFlow | null): number {
+  const subscribe = useFlowSubscription(flow);
+  const snapshot = useCallback(() => flowVersionOf(flow), [flow]);
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 const versions = new WeakMap<AccountFlow, number>();
+
+/**
+ * What the stops run as of the stores' counter: one immutable map per counter value, so the
+ * answer moves exactly when the store does, whatever array the stops arrive in.
+ */
+function stopDeploymentsSnapshot(
+  flow: AccountFlow | null,
+  stopKeys: string,
+): () => ReadonlyMap<string, Shown<Deployment>> {
+  const projects = JSON.parse(stopKeys) as ReadonlyArray<ProjectRef>;
+  let read: {
+    readonly version: number;
+    readonly stops: ReadonlyMap<string, Shown<Deployment>>;
+  } | null = null;
+  return () => {
+    const version = flowVersionOf(flow);
+    if (read === null || read.version !== version) {
+      read = {
+        version,
+        stops: new Map(
+          projects.map((project) => [
+            project.projectId,
+            flow === null ? UNBOUND : stopDeploymentOf(flow.deployments.stop(project)),
+          ]),
+        ),
+      };
+    }
+    return read.stops;
+  };
+}
 
 /** Nothing is read before the epoch's first grant built the stores. */
 const UNBOUND: Shown<never> = { state: "unread", waitingFor: "access-grant" };
@@ -250,7 +290,13 @@ export function useStopDeployments(
   projects: ReadonlyArray<ProjectRef>,
 ): ReadonlyMap<string, Shown<Deployment>> {
   const flow = useAccountFlow();
-  const version = useFlowVersion(flow);
+  const stopKeys = JSON.stringify(projects);
+
+  // The store's answers as of its counter: read through the store, never memoised on the stops.
+  // Subscribed before the stops are demanded, so what a demand publishes at once is heard.
+  const subscribe = useFlowSubscription(flow);
+  const snapshot = useMemo(() => stopDeploymentsSnapshot(flow, stopKeys), [flow, stopKeys]);
+  const stops = useSyncExternalStore(subscribe, snapshot, snapshot);
 
   // Each stop's release, by project key, while the surface draws it from this flow.
   const demanded = useRef(new Map<string, () => void>());
@@ -263,7 +309,6 @@ export function useStopDeployments(
     };
   }, [flow]);
 
-  const stopKeys = JSON.stringify(projects);
   useEffect(() => {
     if (flow === null) return;
     const drawn = new Map<string, ProjectRef>(
@@ -283,20 +328,7 @@ export function useStopDeployments(
     }
   }, [flow, stopKeys]);
 
-  // The store's answers as of `version`.
-  const read = useMemo(
-    () => ({
-      version,
-      stops: new Map(
-        projects.map((project) => [
-          project.projectId,
-          flow === null ? UNBOUND : stopDeploymentOf(flow.deployments.stop(project)),
-        ]),
-      ),
-    }),
-    [flow, projects, version],
-  );
-  return read.stops;
+  return stops;
 }
 
 /**

@@ -284,6 +284,41 @@ describe("the account's project flow in the web", () => {
     expect(rig.stopDemands).toEqual([]);
   });
 
+  it("the stop rows answer one snapshot per store version, and a new one once the store moves", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStopDeployments } = await import("./accountForge");
+    const rig = stage();
+    const unbind = bindAccountFlow(rig.stage);
+    const answers: Array<ReadonlyMap<string, Shown<Deployment>>> = [];
+
+    function Rows({ stops }: { readonly stops: ReadonlyArray<ProjectRef> }) {
+      answers.push(useStopDeployments(stops));
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      root.render(<Rows stops={[PROJECT]} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      const before = answers.at(-1);
+      const rendered = answers.length;
+      // The same stops in a new array, with the store unmoved, are the same snapshot.
+      root.render(<Rows stops={[PROJECT]} />);
+      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
+      expect(answers.at(-1)).toBe(before);
+
+      // The store moving re-renders the rows with what it answers now, the stops unchanged.
+      rig.holdStop("p-stage", known([]));
+      await vi.waitFor(() => expect(answers.at(-1)).not.toBe(before));
+      expect(answers.at(-1)?.get("p-stage")?.state).not.toBe("unread");
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+  });
+
   it("a stop joining or leaving the rows keeps every other stop's demand", async () => {
     const document = installTestDom();
     const { createRoot } = await import("react-dom/client");
