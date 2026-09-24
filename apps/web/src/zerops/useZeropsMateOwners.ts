@@ -17,7 +17,11 @@
 
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { mateMemberName, resolveMateOwner } from "@t3tools/client-runtime/zerops/mateAccess";
+import {
+  MATE_SIGNER_TAG_PREFIX,
+  mateMemberName,
+  resolveMateOwner,
+} from "@t3tools/client-runtime/zerops/mateAccess";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
@@ -81,7 +85,8 @@ export function useZeropsOrganizationMembers(input: {
 
 /**
  * Each Mate's owner, for the account's active organization. Nothing is read
- * until at least one project names an `OWNER` of its own.
+ * until at least one project names a person — an `OWNER` of its own, or the
+ * signer of its agent (`resolveMateOwner`).
  */
 export function useZeropsMateOwners(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
@@ -92,8 +97,10 @@ export function useZeropsMateOwners(input: {
     clientId: activeOrganization?.id,
     enabled:
       input.enabled &&
-      input.candidates.some((candidate) =>
-        candidate.project.userRoles?.some((entry) => entry.roleCode === "OWNER"),
+      input.candidates.some(
+        (candidate) =>
+          candidate.project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true ||
+          candidate.project.tagList?.some((tag) => tag.startsWith(MATE_SIGNER_TAG_PREFIX)) === true,
       ),
   });
   return useCallback(

@@ -38,6 +38,8 @@ export type { RoleMateVisibility };
 export interface MateAccessProject {
   readonly id: string;
   readonly clientId?: string | undefined;
+  /** Read for D6's signer tag, the one place a Mate names its person. */
+  readonly tagList?: ReadonlyArray<string> | undefined;
   readonly userRoles?:
     | ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>
     | undefined;
@@ -230,6 +232,8 @@ export interface MateOwnerCandidate {
   readonly id: string;
   readonly user?:
     | {
+        /** The user id — what a `mate:signer` tag names. */
+        readonly id?: string | undefined;
         readonly fullName?: string | undefined;
         readonly firstName?: string | undefined;
         readonly lastName?: string | undefined;
@@ -259,25 +263,40 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
 }
 
 /**
- * Who owns this Mate, from its `userRoles` and the org's member list.
+ * Who owns this Mate: the member its project raised to `OWNER`, else the
+ * person who signed its agent in.
  *
- * The owner is whoever the project itself raised to `OWNER` — the person who
- * created it (a creator becomes their project's `OWNER`, measured
- * 2026-09-15). An org owner holds that role everywhere without an entry, which
- * is why it is the project's own list that is read and not the org's: the
- * answer wanted here is "whose Mate", not "who could get in".
+ * The `OWNER` entry is there only where somebody put it — a creator below
+ * `ADMIN` (verified.md, 2026-09-15) or an _Assign_ hand-over — and so wins. An
+ * org owner or admin who creates a Mate gets no entry at all: the project's
+ * roles are then only the broker's and the container's token users (measured
+ * 2026-09-24), and the one record naming a person is D6's signer tag, written
+ * as that person. With two agents signed in, the first tag names the owner.
  *
- * `undefined` when the project names no owner of its own, or when the member
- * list does not have them. A row then says the same thing without a name, and
- * a face goes without the owner's beside it.
+ * `undefined` when neither names anybody the member list has. A row then says
+ * the same thing without a name, and a face goes without the owner's beside it.
  */
 export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
   readonly project: MateAccessProject;
   readonly members: ReadonlyArray<M>;
 }): M | undefined {
   const ownerEntry = input.project.userRoles?.find((entry) => entry.roleCode === "OWNER");
-  if (ownerEntry === undefined) return undefined;
-  return input.members.find((entry) => entry.id === ownerEntry.clientUserId);
+  if (ownerEntry !== undefined) {
+    return input.members.find((entry) => entry.id === ownerEntry.clientUserId);
+  }
+  const signer = mateSignerUserId(input.project.tagList);
+  if (signer === undefined) return undefined;
+  return input.members.find((entry) => entry.user?.id === signer);
+}
+
+/** The user id the first `mate:signer:{agent}:{userId}` tag names. */
+function mateSignerUserId(tagList: ReadonlyArray<string> | undefined): string | undefined {
+  for (const tag of tagList ?? []) {
+    if (!tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:`)) continue;
+    const userId = tag.split(":")[3];
+    if (userId !== undefined && userId.length > 0) return userId;
+  }
+  return undefined;
 }
 
 /** The owner's name, for "Jan's Mate — only Jan opens it" (D5). */

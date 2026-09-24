@@ -162,12 +162,61 @@ describe("resolveMateOwner", () => {
     ).toBe(jan);
   });
 
+  // What an org owner's Mate looks like on the wire (measured 2026-09-24):
+  // the only per-project roles are the broker's and the container's token
+  // users, and the person is named only by the agent they signed in.
+  const eva = { id: "cu-eva", user: { id: "u-eva", fullName: "Eva Dvořák" } };
+  const services = [
+    { clientUserId: "cu-broker", roleCode: "BASIC_USER" },
+    { clientUserId: "cu-zcp", roleCode: "BASIC_USER" },
+  ];
+  const signedIn = (...tags: ReadonlyArray<string>) => ({ ...owned(services), tagList: tags });
+
+  it("is whoever signed the agent in, when the project raised nobody to OWNER", () => {
+    expect(
+      resolveMateOwner({
+        project: signedIn("mate", "mate:bot:Kai", "mate:signer:claude-code:u-eva"),
+        members: [jan, eva],
+      }),
+    ).toBe(eva);
+  });
+
+  it("is the first agent's signer when two agents were signed in", () => {
+    expect(
+      resolveMateOwner({
+        project: signedIn("mate:signer:codex:u-eva", "mate:signer:claude-code:u-jan"),
+        members: [{ ...jan, user: { ...jan.user, id: "u-jan" } }, eva],
+      }),
+    ).toBe(eva);
+  });
+
+  it("lets a hand-over's OWNER outrank the signer", () => {
+    expect(
+      resolveMateOwner({
+        project: {
+          ...owned([{ clientUserId: "cu-jan", roleCode: "OWNER" }]),
+          tagList: ["mate:signer:claude-code:u-eva"],
+        },
+        members: [jan, eva],
+      }),
+    ).toBe(jan);
+  });
+
+  it("is nobody when the signer is not in the member list", () => {
+    expect(
+      resolveMateOwner({
+        project: signedIn("mate:signer:claude-code:u-gone"),
+        members: [jan, eva],
+      }),
+    ).toBeUndefined();
+  });
+
   for (const [name, userRoles] of [
     ["the project names no OWNER", [{ clientUserId: "cu-jan", roleCode: "ADMIN" }]],
     ["the member list does not have them", [{ clientUserId: "cu-gone", roleCode: "OWNER" }]],
     ["the project names nobody at all", []],
   ] as const) {
-    it(`is nobody when ${name}`, () => {
+    it(`is nobody when ${name} and no agent was signed in`, () => {
       expect(resolveMateOwner({ project: owned(userRoles), members: [jan] })).toBeUndefined();
     });
   }
