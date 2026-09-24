@@ -12,6 +12,7 @@ import {
   RELEASING,
   STAGE,
   STAGE_STOP,
+  VERA_COMING,
   WREN,
   type Item,
 } from "./flowTestFixtures";
@@ -208,5 +209,26 @@ describe("the Projects card", () => {
     expect(open).toContain('data-zerops-group="aaa"');
     expect(open).toContain("scroll-mt-4");
     expect(open).not.toContain("border-border/60");
+  });
+
+  it("draws a Mate being created under the listed ones: asleep, named, how far it has got, still", () => {
+    const mates = step(card(entry([WREN], { pending: [VERA_COMING] })), "mates");
+    expect(mates).toContain('data-test-mate="wren-dev"');
+    const coming = mates.slice(
+      mates.lastIndexOf("<div", mates.indexOf('data-zerops-mate-card="still"')),
+    );
+    expect(mates.indexOf('data-test-mate="wren-dev"')).toBeLessThan(
+      mates.indexOf('data-zerops-mate-card="still"'),
+    );
+    expect(coming).toContain('aria-busy="true"');
+    expect(coming).toContain(">Vera<");
+    expect(coming).toContain(">Coming up. A few minutes.<");
+    expect(coming).not.toContain("<button");
+    expect(mates).not.toContain("No Mate yet");
+  });
+
+  it("counts a Mate being created in its header", () => {
+    const header = between(card(entry([WREN], { pending: [VERA_COMING] })), "<header", "</header>");
+    expect(header).toContain("2 Mates");
   });
 });

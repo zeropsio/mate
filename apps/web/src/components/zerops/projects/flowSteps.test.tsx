@@ -155,14 +155,58 @@ describe("a Mate chip", () => {
 });
 
 describe("a group's Mates", () => {
-  it("pair each environment with its flow's Mate, in the tree's order", () => {
-    const both = entry([WREN, UMA]);
-    expect(
-      matesOf(both).map(({ item, mate }) => [item.project.id, mate.projectId, mate.name]),
-    ).toEqual([
-      ["wren-dev", "wren-dev", "Wren"],
-      ["uma-dev", "uma-dev", "Uma"],
-    ]);
+  const VERA = {
+    projectId: "vera-dev",
+    kind: "mate" as const,
+    name: "Vera",
+    startedAt: 5,
+    step: "harden" as const,
+    overdue: false,
+  };
+  const pairs = (value: ReturnType<typeof entry>) =>
+    matesOf(value).map((entry) =>
+      entry.kind === "listed"
+        ? [entry.item.project.id, entry.mate.projectId, entry.mate.name, undefined]
+        : [undefined, entry.mate.projectId, entry.mate.name, entry.coming.step],
+    );
+  it.each([
+    {
+      name: "pair each environment with its flow's Mate, in the flow's order",
+      value: entry([WREN, UMA]),
+      want: [
+        ["wren-dev", "wren-dev", "Wren", undefined],
+        ["uma-dev", "uma-dev", "Uma", undefined],
+      ],
+    },
+    {
+      name: "pair by project, never by place",
+      value: {
+        ...entry([WREN, UMA]),
+        mates: new Map([
+          [UMA.project.id, UMA],
+          [WREN.project.id, WREN],
+        ]),
+      },
+      want: [
+        ["wren-dev", "wren-dev", "Wren", undefined],
+        ["uma-dev", "uma-dev", "Uma", undefined],
+      ],
+    },
+    {
+      name: "carry a Mate being created, with no environment, after the listed ones",
+      value: entry([WREN], { pending: [VERA] }),
+      want: [
+        ["wren-dev", "wren-dev", "Wren", undefined],
+        [undefined, "vera-dev", "Vera", "harden"],
+      ],
+    },
+    {
+      name: "draw a creation the listing holds once, as the listed Mate",
+      value: entry([WREN], { pending: [{ ...VERA, projectId: "wren-dev" }] }),
+      want: [["wren-dev", "wren-dev", "Wren", undefined]],
+    },
+  ])("$name", ({ value, want }) => {
+    expect(pairs(value)).toEqual(want);
   });
 });
 

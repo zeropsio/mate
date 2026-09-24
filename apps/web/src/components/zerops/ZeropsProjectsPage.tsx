@@ -162,7 +162,7 @@ import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganization
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { readZeropsResourceOnce } from "~/zerops/useZeropsDeployedVersion";
-import { deployRowTone, releaseRowTone } from "./ZeropsProjectRow.logic";
+import { deployRowTone, releaseRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import {
@@ -1435,7 +1435,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     if (wait.overdue) {
       return (
         <>
-          {quiet("Taking longer than usual.")}
+          {quiet(TAKING_LONGER_LINE)}
           {keepWaiting}
         </>
       );
@@ -2852,7 +2852,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         );
       }
       case "mate": {
-        const mate = entry.mates.find((item) => item.project.id === target.projectId);
+        const mate = entry.mates.get(target.projectId);
         if (mate === undefined) return null;
         return verb(() => {
           runRowAction(mate, "open");
@@ -2936,7 +2936,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           reads === undefined &&
           projectFlow.signInTrouble === null &&
           (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
-        mates: environments.filter(({ item }) => hasMate(item)).map(({ item }) => item),
+        mates: new Map(
+          environments
+            .filter(({ item }) => hasMate(item))
+            .map(({ item }) => [item.project.id, item] as const),
+        ),
         stops: new Map(
           environments
             .filter(({ role }) => isStop(role))

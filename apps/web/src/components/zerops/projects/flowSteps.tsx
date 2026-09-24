@@ -12,16 +12,19 @@
 import type {
   FlowPullRequest,
   GroupFlow,
+  GroupFlowComing,
   GroupFlowMate,
   GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
-import { ExternalLinkIcon } from "lucide-react";
 import { Children, Fragment, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Skeleton } from "../../ui/skeleton";
-import { StatusDot } from "../primitives";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
+import { MateFace, StatusDot } from "../primitives";
+import { ZeropsMateCard } from "../ZeropsMateCard";
 import {
+  comingMateLine,
   mainCell,
   nextStepCell,
   productionCell,
@@ -179,37 +182,25 @@ function Cell({
   );
 }
 
-export function PreviewLink({ url }: { readonly url: string }) {
-  return (
-    <a
-      className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline"
-      data-zerops-surface="mate-preview"
-      href={url}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <ExternalLinkIcon aria-hidden="true" className="size-3" />
-      Preview
-    </a>
-  );
-}
-
 const MATE_CHIP_CLASS =
   "-mx-1 inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1 text-sm font-medium text-foreground";
 
 /**
  * A Mate by name, with its face: the way into its conversation wherever a row
  * names it. A Mate that cannot open yet — coming up, busy — is the same face
- * and name with nothing to press.
+ * and name with nothing to press; one still being created carries how far it
+ * has got (`comingMateLine`) in its hover, a row having no room to say it.
  */
 export function MateChip({
   face,
   name,
   onOpen,
+  coming,
 }: {
   readonly face: ReactNode;
   readonly name: string;
   readonly onOpen: (() => void) | undefined;
+  readonly coming?: string | undefined;
 }) {
   const body = (
     <>
@@ -217,6 +208,20 @@ export function MateChip({
       <span className="min-w-0 truncate">{name}</span>
     </>
   );
+  if (coming !== undefined)
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span aria-busy="true" className={MATE_CHIP_CLASS} data-zerops-surface="mate-coming" />
+          }
+        >
+          {body}
+          <span className="sr-only">{coming}</span>
+        </TooltipTrigger>
+        <TooltipPopup>{coming}</TooltipPopup>
+      </Tooltip>
+    );
   if (onOpen === undefined) return <span className={MATE_CHIP_CLASS}>{body}</span>;
   return (
     <button
@@ -231,6 +236,46 @@ export function MateChip({
     >
       {body}
     </button>
+  );
+}
+
+/**
+ * A Mate being created has no colour of its own yet — the tints are dealt to
+ * the listed Mates — and its face is asleep, as every Mate's is while it comes
+ * up: the face is where that is read.
+ */
+export function ComingMateFace({ size }: { readonly size: "sm" | "md" }) {
+  return <MateFace size={size} state="sleep" tint="slate" />;
+}
+
+/**
+ * A Mate being created, as a card or as a Projects row: the card a Mate on its
+ * way up is, with its name and how far its birth has got — nothing to open,
+ * nothing in its menu, until the listing holds it and its own card stands in
+ * its place.
+ */
+export function ComingMateCard({
+  name,
+  coming,
+  layout,
+}: {
+  readonly name: string;
+  readonly coming: GroupFlowComing;
+  readonly layout: "card" | "row";
+}) {
+  return (
+    <ZeropsMateCard
+      busy
+      face="sleep"
+      layout={layout}
+      line={
+        <span className="min-w-0 truncate" data-zerops-surface="mate-coming">
+          {comingMateLine(coming)}
+        </span>
+      }
+      name={name}
+      tint="slate"
+    />
   );
 }
 
@@ -461,15 +506,23 @@ export function PullRequestsStep<T>({
 }
 
 /**
- * A group's Mates: each environment with its flow's Mate. Both lists are the
- * group tree's Mates in its order (`groupFlowInputOf`), so they pair by place.
+ * One of a group's Mates as a surface draws it: a listed one with its
+ * environment, or one being created — no environment yet, only how far its
+ * birth has got.
  */
-export function matesOf<T>(
-  entry: ProjectsFlowGroup<T>,
-): ReadonlyArray<{ readonly item: T; readonly mate: GroupFlowMate }> {
-  return entry.mates.flatMap((item, index) => {
-    const mate = entry.flow.mates[index];
-    return mate === undefined ? [] : [{ item, mate }];
+export type FlowMateEntry<T> =
+  | { readonly kind: "listed"; readonly item: T; readonly mate: GroupFlowMate }
+  | { readonly kind: "coming"; readonly mate: GroupFlowMate; readonly coming: GroupFlowComing };
+
+/**
+ * A group's Mates in the flow's order — the listed ones, then the ones being
+ * created — each listed one paired with its environment by project.
+ */
+export function matesOf<T>(entry: ProjectsFlowGroup<T>): ReadonlyArray<FlowMateEntry<T>> {
+  return entry.flow.mates.flatMap((mate): ReadonlyArray<FlowMateEntry<T>> => {
+    const item = entry.mates.get(mate.projectId);
+    if (item !== undefined) return [{ kind: "listed", item, mate }];
+    return mate.coming === undefined ? [] : [{ kind: "coming", mate, coming: mate.coming }];
   });
 }
 

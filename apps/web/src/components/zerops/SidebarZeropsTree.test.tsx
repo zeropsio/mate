@@ -5,6 +5,7 @@ import {
   type FlowPullRequest,
   type GroupNextStepKind,
   type MissingEnvironmentRow,
+  type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
@@ -501,6 +502,67 @@ const productionRow: EnvironmentRow = {
   source: "release",
   tone: "neutral",
 };
+
+describe("a creation under way in the menu", () => {
+  const birth = (
+    over: Partial<ZeropsPlacedBirth["placement"]> & { readonly projectId?: string } = {},
+  ): ZeropsPlacedBirth => {
+    const { projectId = "vera-dev", ...placement } = over;
+    return {
+      projectId,
+      startedAt: Date.parse("2026-09-24T12:00:00.000Z"),
+      placement: {
+        groupId: "aaa",
+        groupName: "Beviro CRM",
+        kind: "mate",
+        displayName: "Vera",
+        ...placement,
+      },
+      step: "harden",
+      overdue: false,
+    };
+  };
+  const comingRows = (html: string) =>
+    html.match(/data-zerops-surface="sidebar-mate-coming"/gu) ?? [];
+
+  it("draws a Mate being created after the listed ones: asleep, named, how far it has got, still", () => {
+    const html = render([CRM_DEV], { births: [birth()] });
+    expect(comingRows(html)).toHaveLength(1);
+    const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');
+    expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(at);
+    const row = html.slice(html.lastIndexOf("<div", at));
+    expect(row).toContain('aria-busy="true"');
+    expect(row).toContain('data-mate-face-state="sleep"');
+    expect(row).toContain(">Vera<");
+    expect(row).toContain(">Coming up. A few minutes.<");
+    expect(row.slice(0, row.indexOf("</div>"))).not.toContain("<button");
+  });
+
+  it("stands the listed Mate in its place once the listing holds it, never both", () => {
+    const html = render([CRM_DEV], { births: [birth({ projectId: "crm-dev" })] });
+    expect(comingRows(html)).toHaveLength(0);
+    expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
+  });
+
+  it("lists a brand-new project from its birth alone, first", () => {
+    const html = render([CRM_DEV], {
+      births: [birth({ groupId: "new", groupName: "Todo" })],
+    });
+    expect(html).toContain('data-zerops-group="new"');
+    expect(html.indexOf('data-zerops-group="new"')).toBeLessThan(
+      html.indexOf('data-zerops-group="aaa"'),
+    );
+    expect(html).toContain(">Todo<");
+    expect(comingRows(html)).toHaveLength(1);
+  });
+
+  it("draws a first project being created in an account with no Mate listed yet", () => {
+    const html = render([], { births: [birth({ groupId: "new", groupName: "Todo" })] });
+    expect(html).toContain('data-zerops-group="new"');
+    expect(comingRows(html)).toHaveLength(1);
+    expect(html).not.toContain("No environment has Mate yet");
+  });
+});
 
 describe("the project's flow under it", () => {
   const flow = (overrides: Partial<SidebarProjectFlow> = {}): SidebarProjectFlow => ({

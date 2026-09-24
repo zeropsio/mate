@@ -19,8 +19,11 @@ import { Button } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { FlatCard, MicroLabel, StatusDot } from "../primitives";
 import { ENVIRONMENT_ROW_GRID_CLASS } from "../ZeropsEnvironmentRow";
+import { PreviewLink } from "../ZeropsMateCard";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import {
+  ComingMateCard,
+  ComingMateFace,
   drawn,
   EmptyStep,
   GroupName,
@@ -30,7 +33,6 @@ import {
   mergesHere,
   OVERVIEW_GRID_CLASS,
   PendingStep,
-  PreviewLink,
   ProductionStep,
   PullRequestsStep,
   QUIET_BUTTON_CLASS,
@@ -39,6 +41,7 @@ import {
   verbFor,
 } from "./flowSteps";
 import {
+  comingMateLine,
   containersSummary,
   groupMetaLine,
   nextStepTone,
@@ -231,14 +234,24 @@ function MatesCell<T>({
           <EmptyStep>No Mate yet</EmptyStep>
         ) : (
           <span className="flex min-w-0 items-center gap-2">
-            {named.map(({ item, mate }) => (
-              <MateChip
-                face={props.renderMateFace(item, "sm")}
-                key={props.getKey(item)}
-                name={mate.name}
-                onOpen={props.openMate(item)}
-              />
-            ))}
+            {named.map((chip) =>
+              chip.kind === "coming" ? (
+                <MateChip
+                  coming={comingMateLine(chip.coming)}
+                  face={<ComingMateFace size="sm" />}
+                  key={`coming:${chip.mate.projectId}`}
+                  name={chip.mate.name}
+                  onOpen={undefined}
+                />
+              ) : (
+                <MateChip
+                  face={props.renderMateFace(chip.item, "sm")}
+                  key={props.getKey(chip.item)}
+                  name={chip.mate.name}
+                  onOpen={props.openMate(chip.item)}
+                />
+              ),
+            )}
             {mates.length > named.length ? (
               <span className="shrink-0 text-xs text-muted-foreground">
                 +{mates.length - named.length}
@@ -281,6 +294,7 @@ function OverviewRow<T>({
     ) : null;
   };
   const preview = flow.mates.find((mate) => mate.preview !== undefined)?.preview;
+  const mates = matesOf(entry);
   const groupRows = props.renderGroupRows(group);
   return (
     <li
@@ -356,13 +370,22 @@ function OverviewRow<T>({
           className="flex flex-col gap-3 px-3 pb-3 @2xl/flow:ps-[calc(1.75rem+1rem+0.75rem)]"
           data-zerops-surface="group-detail"
         >
-          {entry.mates.length > 0 ? (
+          {mates.length > 0 ? (
             <div className="grid gap-2 @2xl/flow:grid-cols-2" data-zerops-surface="mate-cards">
-              {entry.mates.map((item) => (
-                <Fragment key={props.getKey(item)}>
-                  {props.renderMate(item, { layout: "card", preview: undefined })}
-                </Fragment>
-              ))}
+              {mates.map((mate) =>
+                mate.kind === "coming" ? (
+                  <ComingMateCard
+                    coming={mate.coming}
+                    key={`coming:${mate.mate.projectId}`}
+                    layout="card"
+                    name={mate.mate.name}
+                  />
+                ) : (
+                  <Fragment key={props.getKey(mate.item)}>
+                    {props.renderMate(mate.item, { layout: "card", preview: undefined })}
+                  </Fragment>
+                ),
+              )}
             </div>
           ) : null}
           {preview === undefined ? null : (
@@ -443,7 +466,7 @@ function MateTile<T>({
   const first =
     mates.find(({ mate }) => target?.kind === "mate" && mate.projectId === target.projectId) ??
     mates[0];
-  const onOpen = first === undefined ? undefined : props.openMate(first.item);
+  const onOpen = first?.kind === "listed" ? props.openMate(first.item) : undefined;
   const name = <GroupName className="block text-sm" entry={entry} />;
   return (
     <li className="min-w-0" data-zerops-group={entry.group.groupId}>
@@ -455,7 +478,13 @@ function MateTile<T>({
         id={`project-${entry.group.groupId}`}
       >
         {first === undefined ? null : (
-          <span className="flex shrink-0">{props.renderMateFace(first.item, "md")}</span>
+          <span className="flex shrink-0">
+            {first.kind === "listed" ? (
+              props.renderMateFace(first.item, "md")
+            ) : (
+              <ComingMateFace size="md" />
+            )}
+          </span>
         )}
         <span className="flex min-w-0 flex-1 flex-col">
           {onOpen === undefined || first === undefined ? (

@@ -61,6 +61,7 @@ import {
   type FlowPullRequest,
   type GroupEnvironmentTier,
   type GroupFlow,
+  type GroupFlowComing,
   type GroupNextStep,
   type GroupRowTone,
   type ReleaseContentsSummary,
@@ -110,6 +111,7 @@ import {
 } from "./ZeropsGroupTree.logic";
 import { COUNT_TONE_CLASS, ZeropsMateVerb } from "./ZeropsMateCard";
 import {
+  comingMateLine,
   groupFlowInputOf,
   groupMemberFactsOf,
   nextStepAwaitsSomebody,
@@ -338,9 +340,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // for the same project.
   const deployments = useZeropsProjectFlowOptional()?.deployments;
 
+  // A Mate being created is one to draw, whatever the listing holds yet.
+  const nothing = births.some((birth) => birth.placement.kind === "mate") ? undefined : emptyReason;
+
   // Nothing to draw, and the listing may not say "none" yet: its notice, at
   // the menu's own left edge, never an empty state it has not earned.
-  if (emptyReason !== undefined && !complete) {
+  if (nothing !== undefined && !complete) {
     if (notice === null) return null;
     return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
   }
@@ -349,14 +354,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // "+ New project" is the one affordance, and the projects screen already
   // makes the invitation. A second "New project" here would be the same verb
   // three times on one screen.
-  if (emptyReason === "no-projects") {
+  if (nothing === "no-projects") {
     return null;
   }
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
   // edge, where every other row starts, and the way to the projects screen —
   // once the list is complete, above.
-  if (emptyReason !== undefined) {
+  if (nothing !== undefined) {
     return (
       <div
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
@@ -425,7 +430,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     group: ZeropsGroup | undefined,
   ) => {
     const mateEntries = entries.filter(({ item }) => hasMate(item));
-    if (mateEntries.length === 0) return null;
+    // Its Mates being created, after the listed ones: the listing holds none of them yet.
+    const coming = group?.pending.filter((member) => member.kind === "mate") ?? [];
+    const mateCount = mateEntries.length + coming.length;
+    if (mateCount === 0) return null;
     const others = entries.filter(({ item }) => !hasMate(item));
     // The one derivation the projects page draws from too (`groupFlow.ts`),
     // fed through the page's own input (`groupFlowInputOf`) and gate
@@ -486,7 +494,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           const pulls = grouped.byMate.get(item.project.id) ?? [];
           const listKey = `${id}:${item.project.id}`;
           const first = index === 0;
-          const last = endsOnMates && index === mateEntries.length - 1;
+          const last = endsOnMates && index === mateCount - 1;
           const ownRow = pulls.length === 0 || flow === undefined;
           return (
             <div className="flex flex-col" key={item.key}>
@@ -514,6 +522,17 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 />
               )}
             </div>
+          );
+        })}
+        {coming.map((member, index) => {
+          const at = mateEntries.length + index;
+          return (
+            <ComingMateRow
+              coming={member}
+              key={`coming:${member.projectId}`}
+              name={member.name}
+              railCap={railCapFor({ first: at === 0, last: endsOnMates && at === mateCount - 1 })}
+            />
           );
         })}
         {grouped.others.length === 0 || flow === undefined ? null : (
@@ -554,8 +573,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     );
   };
 
-  const groups = view.groups.filter(({ environments }) =>
-    environments.some(({ item }) => hasMate(item)),
+  const groups = view.groups.filter(
+    ({ group, environments }) =>
+      environments.some(({ item }) => hasMate(item)) ||
+      group.pending.some((member) => member.kind === "mate"),
   );
   const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
   const ungroupedMates = ungrouped.some(({ item }) => hasMate(item));
@@ -929,6 +950,42 @@ function MateRow<T extends RosterCandidate>({
         )}
       </span>
     </button>
+  );
+}
+
+/**
+ * A Mate being created, in the menu's own Mate row: its face asleep, as every
+ * Mate's is while it comes up, in no colour of its own yet; its name; and how
+ * far its birth has got in the words its card uses. Nothing to open until the
+ * listing holds it and its own row stands in its place.
+ */
+function ComingMateRow({
+  name,
+  coming,
+  railCap,
+}: {
+  readonly name: string;
+  readonly coming: GroupFlowComing;
+  readonly railCap?: RailCap;
+}) {
+  return (
+    <div
+      aria-busy="true"
+      className="flex w-full min-w-0 items-center gap-3.5 rounded-md px-2.5 text-sidebar-foreground select-none"
+      data-zerops-surface="sidebar-mate-coming"
+    >
+      <RailCell cap={railCap}>
+        <span className="relative flex">
+          <MateFace size="md" state="sleep" tint="slate" />
+        </span>
+      </RailCell>
+      <span className="flex min-w-0 flex-1 flex-col py-2">
+        <span className="min-w-0 truncate text-sm leading-5 font-medium">{name}</span>
+        <span className="truncate text-xs leading-4 text-sidebar-muted-foreground">
+          {comingMateLine(coming)}
+        </span>
+      </span>
+    </div>
   );
 }
 

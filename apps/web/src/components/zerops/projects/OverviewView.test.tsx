@@ -3,6 +3,7 @@ import { act } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  born,
   brokenProduction,
   entry,
   FLOW_PROPS,
@@ -18,6 +19,7 @@ import {
   STAGE,
   STAGE_STOP,
   UMA,
+  VERA_COMING,
   WREN,
   type Item,
 } from "./flowTestFixtures";
@@ -385,6 +387,91 @@ describe("the Overview", () => {
     );
     expect(row).not.toContain("data-zerops-step-pending");
     expect(row).toContain("Nothing merged");
+  });
+});
+
+describe("a creation under way on the Overview", () => {
+  it("draws a Mate being created in its group before the listing holds it: asleep, named, still", () => {
+    const group = entry([WREN], { pullRequests: [pull()], pending: [VERA_COMING] });
+    const row = section(
+      render({ groups: [group], openMate: () => () => {} }),
+      'data-zerops-group="aaa"',
+    );
+    const mates = row.slice(
+      row.indexOf('data-zerops-step="mates"'),
+      row.indexOf('data-zerops-step="pull-requests"'),
+    );
+    const at = mates.indexOf('data-zerops-surface="mate-coming"');
+    const coming = mates.slice(mates.lastIndexOf("<span", at));
+    expect(coming).toContain('aria-busy="true"');
+    expect(coming).toContain('data-mate-face-state="sleep"');
+    expect(coming).toContain(">Vera<");
+    expect(coming).toContain('<span class="sr-only">Coming up. A few minutes.</span>');
+    // The listed Mate opens; the one being created has nothing to press.
+    expect(mates.match(/<button/gu)).toHaveLength(1);
+    expect(mates).toContain('aria-label="Open Wren"');
+    expect(row).toContain(">2 Mates · 1 open pull request<");
+  });
+
+  it("stands the listed Mate in its place once the listing holds it, never both", () => {
+    const listed = entry([WREN], {
+      pullRequests: [pull()],
+      pending: [{ ...VERA_COMING, projectId: "wren-dev", name: "Wren" }],
+    });
+    const row = section(render({ groups: [listed] }), 'data-zerops-group="aaa"');
+    expect(row).not.toContain('data-zerops-surface="mate-coming"');
+    expect(row.match(/data-test-face="wren-dev"/gu)).toHaveLength(1);
+    expect(row).toContain(">1 Mate · 1 open pull request<");
+  });
+
+  it("leads with a brand-new project's group, drawn from its birth alone", () => {
+    const html = render({ groups: born([WREN]) });
+    const rows = html.slice(html.indexOf('data-zerops-surface="flow-rows"'));
+    expect(rows.indexOf('data-zerops-group="ccc"')).toBeGreaterThan(-1);
+    expect(rows.indexOf('data-zerops-group="ccc"')).toBeLessThan(
+      rows.indexOf('data-zerops-group="aaa"'),
+    );
+    const todo = section(rows, 'data-zerops-group="ccc"');
+    expect(todo).toContain(">Todo<");
+    expect(todo).toContain('data-zerops-surface="mate-coming"');
+    expect(todo).toContain(">1 Mate<");
+  });
+
+  it("names a Mate being created on its group's tile, which still opens the listed one", () => {
+    const open = vi.fn();
+    const fresh = entry([UMA], { pending: [VERA_COMING] });
+    const tree = mount(
+      <ZeropsProjectsFlow<Item>
+        {...FLOW_PROPS}
+        groups={[fresh]}
+        openMate={(value) => (value.project.id === "uma-dev" ? open : undefined)}
+      />,
+    );
+    const tile = tree.root.findByProps({ "data-zerops-surface": "only-a-mate" });
+    expect(
+      tile.findAll((node) => node.children.join("") === "Uma, Vera · no task yet"),
+    ).not.toHaveLength(0);
+    expect(tile.findAllByProps({ "data-test-face": "uma-dev" })).toHaveLength(1);
+    act(() => tile.findByType("button").props.onClick());
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a row to its coming Mate's card, which says how far it has got and opens nothing", () => {
+    // Two listed Mates are the row's names, so the one being created is its count.
+    const KAI = item("kai-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:sm-fixture"]);
+    const group = entry([WREN, KAI], { pullRequests: [pull()], pending: [VERA_COMING] });
+    const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={[group]} />);
+    act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
+    const cards = tree.root.findByProps({ "data-zerops-surface": "mate-cards" });
+    expect(cards.findAllByProps({ "data-test-mate": "wren-dev" })).toHaveLength(1);
+    expect(cards.findAllByProps({ "data-test-mate": "kai-dev" })).toHaveLength(1);
+    const coming = cards.findByProps({ "data-zerops-mate-card": "still" });
+    expect(coming.props["aria-busy"]).toBe(true);
+    expect(coming.findAll((node) => node.children.includes("Vera"))).not.toHaveLength(0);
+    expect(
+      coming.findAll((node) => node.children.includes("Coming up. A few minutes.")),
+    ).not.toHaveLength(0);
+    expect(coming.findAllByType("button")).toHaveLength(0);
   });
 });
 

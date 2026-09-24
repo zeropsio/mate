@@ -19,11 +19,27 @@
  * Structural: every word on the line and every verb is the caller's (R5).
  */
 import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
+import { ExternalLinkIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
-import { PreviewLink } from "./projects/flowSteps";
+
+/** Where a Mate's change runs before its pull request: its pair's stage, opened in a tab. */
+export function PreviewLink({ url }: { readonly url: string }) {
+  return (
+    <a
+      className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline"
+      data-zerops-surface="mate-preview"
+      href={url}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <ExternalLinkIcon aria-hidden="true" className="size-3" />
+      Preview
+    </a>
+  );
+}
 
 /** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". Blue acts. */
 /** A verb that is about something with a state wears that state. */

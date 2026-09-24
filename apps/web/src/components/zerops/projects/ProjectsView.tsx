@@ -7,6 +7,7 @@ import { cn } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { FlatCard, MicroLabel, StatusDot } from "../primitives";
 import {
+  ComingMateCard,
   drawn,
   EmptyStep,
   GroupName,
@@ -149,6 +150,7 @@ export function ProjectCard<T>({
     return item === undefined ? null : props.renderStopMenu(item);
   };
   const { production } = flow;
+  const mates = matesOf(entry);
   const groupRows = props.renderGroupRows(group);
   const offered = props.addsOffered?.(group) ?? true;
   const { onCreateEnvironment } = props;
@@ -193,12 +195,21 @@ export function ProjectCard<T>({
           placement="@5xl/flow:col-start-1"
         >
           <OwnCell name="mates" verb={verbFor(entry, "mates", props.renderNextStep)}>
-            {matesOf(entry).map(({ item, mate }) => (
-              <Fragment key={props.getKey(item)}>
-                {props.renderMate(item, { layout: "row", preview: mate.preview })}
-              </Fragment>
-            ))}
-            {entry.mates.length === 0 ? <EmptyStep>No Mate yet</EmptyStep> : null}
+            {mates.map((mate) =>
+              mate.kind === "coming" ? (
+                <ComingMateCard
+                  coming={mate.coming}
+                  key={`coming:${mate.mate.projectId}`}
+                  layout="row"
+                  name={mate.mate.name}
+                />
+              ) : (
+                <Fragment key={props.getKey(mate.item)}>
+                  {props.renderMate(mate.item, { layout: "row", preview: mate.mate.preview })}
+                </Fragment>
+              ),
+            )}
+            {mates.length === 0 ? <EmptyStep>No Mate yet</EmptyStep> : null}
           </OwnCell>
         </Step>
         <Arrow placement="@5xl/flow:col-start-2" />

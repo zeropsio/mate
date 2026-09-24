@@ -162,6 +162,8 @@ const RUNNING_PROCESS_DETAIL: Readonly<
  */
 export const COMING_UP_LINE = "Coming up. A few minutes.";
 export const ALMOST_THERE_LINE = "Almost there.";
+/** A birth's step outlasted its cap: words, never a stop (B-2). */
+export const TAKING_LONGER_LINE = "Taking longer than usual.";
 
 /** Service statuses the inventory files under provisioning that restart a container it has. */
 const RESTARTING_SERVICE_STATUSES: ReadonlySet<string> = new Set(["RESTARTING", "UPGRADING"]);

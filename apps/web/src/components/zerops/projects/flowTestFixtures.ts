@@ -92,7 +92,52 @@ export function entry(
   over: Partial<GroupFlowInput> = {},
   read = true,
 ): ProjectsFlowGroup<Item> {
-  const group = groupOf(members);
+  return entryOf(groupOf(members), members, over, read);
+}
+
+/** A Mate being created, as the group tree carries it and the flow reads it. */
+export const VERA_COMING = {
+  projectId: "vera-dev",
+  kind: "mate" as const,
+  name: "Vera",
+  startedAt: 5,
+  step: "harden" as const,
+  overdue: false,
+};
+
+/**
+ * A group the listing holds nothing of yet — its only member is being created —
+ * placed by the group tree from its birth, beside `members` of other groups.
+ */
+export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsFlowGroup<Item>> {
+  const tree = buildZeropsGroupTree(members, {
+    order: "newest",
+    births: [
+      {
+        projectId: VERA_COMING.projectId,
+        startedAt: Date.parse("2026-09-24T12:00:00.000Z"),
+        placement: { groupId: "ccc", groupName: "Todo", kind: "mate", displayName: "Vera" },
+        step: VERA_COMING.step,
+        overdue: false,
+      },
+    ],
+  });
+  return tree.groups.map(({ group, environments }) =>
+    entryOf(
+      group,
+      environments.map(({ item: member }) => member),
+      { pending: group.pending },
+      group.groupId !== "ccc",
+    ),
+  );
+}
+
+function entryOf(
+  group: ZeropsGroup,
+  members: ReadonlyArray<Item>,
+  over: Partial<GroupFlowInput>,
+  read: boolean,
+): ProjectsFlowGroup<Item> {
   const mates = members.filter((member) => member.mate === true);
   return {
     group,
@@ -124,7 +169,7 @@ export function entry(
     talkSettled: true,
     placed: undefined,
     awaiting: !read,
-    mates,
+    mates: new Map(mates.map((mate) => [mate.project.id, mate])),
     stops: new Map(
       members
         .filter((member) => member === STAGE || member === PROD)

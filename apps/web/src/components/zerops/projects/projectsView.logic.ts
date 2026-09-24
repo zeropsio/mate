@@ -24,6 +24,7 @@ import {
   type FlowPullRequest,
   type GroupEnvironmentTier,
   type GroupFlow,
+  type GroupFlowComing,
   type GroupFlowInput,
   type GroupFlowStop,
   type GroupFlowStopState,
@@ -49,7 +50,12 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { creatableRoles } from "../ZeropsGroupTree.logic";
-import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
+import {
+  ALMOST_THERE_LINE,
+  COMING_UP_LINE,
+  TAKING_LONGER_LINE,
+  type ZeropsRowAction,
+} from "../ZeropsProjectRow.logic";
 
 /** What a tool is called where there is no project to name yet — the add verb. */
 export const TOOL_LABEL: Record<ZeropsToolKind, string> = { gitea: "Gitea" };
@@ -323,6 +329,16 @@ export function mainCell(flow: GroupFlow, lastMerged: FlowPullRequest | undefine
         ? "Nothing merged"
         : "Nothing waiting to release";
   return { empty, head: main.head, title, state };
+}
+
+/**
+ * A Mate being created, in the words its card says while it comes up — the
+ * container takes minutes, Mate answering takes seconds, and a step past its
+ * cap says so rather than stopping.
+ */
+export function comingMateLine(coming: GroupFlowComing): string {
+  if (coming.overdue) return TAKING_LONGER_LINE;
+  return coming.step === "health" ? ALMOST_THERE_LINE : COMING_UP_LINE;
 }
 
 /** What a group is, in one muted line under its name. */

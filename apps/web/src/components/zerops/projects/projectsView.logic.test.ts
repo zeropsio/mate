@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
 import {
+  comingMateLine,
   containersSummary,
   groupFlowInputOf,
   groupMemberFactsOf,
@@ -423,6 +424,19 @@ describe("main's cell", () => {
       expect(mainCell(flow, merged)).toEqual(expected);
     });
   }
+});
+
+describe("a Mate being created", () => {
+  it.each([
+    { step: "tags", overdue: false, line: "Coming up. A few minutes." },
+    { step: "registry", overdue: false, line: "Coming up. A few minutes." },
+    { step: "harden", overdue: false, line: "Coming up. A few minutes." },
+    { step: "health", overdue: false, line: "Almost there." },
+    { step: "harden", overdue: true, line: "Taking longer than usual." },
+    { step: "health", overdue: true, line: "Taking longer than usual." },
+  ] as const)("on $step, overdue $overdue, reads $line", ({ step, overdue, line }) => {
+    expect(comingMateLine({ step, overdue })).toBe(line);
+  });
 });
 
 describe("groupMetaLine", () => {
