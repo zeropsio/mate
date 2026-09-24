@@ -1,12 +1,15 @@
-import { DEFAULT_SERVER_SETTINGS, EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
+import { DEFAULT_SERVER_SETTINGS, EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const ENVIRONMENT = EnvironmentId.make("environment-1");
 
 const state = vi.hoisted(() => ({
   servers: new Map<string, { readonly environment: { readonly zerops?: unknown } }>(),
   navigate: vi.fn(async (_to: { readonly to: string }) => {}),
+  latestUserMessageAt: "2026-09-01T10:00:00.000Z" as string | null,
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
@@ -14,7 +17,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useRouter: () => ({ state: { matches: [] }, navigate: state.navigate }),
 }));
 
-// The environment already holds one conversation; nobody has archived it.
+// The environment already holds one conversation; nobody has archived it. Whether anybody has
+// spoken into it is the row's.
 vi.mock("../state/entities", () => ({
   readEnvironmentAllowsWorktrees: () => false,
   readThreadShell: () => null,
@@ -24,7 +28,7 @@ vi.mock("../state/entities", () => ({
       environmentId: "environment-1",
       archivedAt: null,
       pinned: false,
-      latestUserMessageAt: "2026-09-01T10:00:00.000Z",
+      latestUserMessageAt: state.latestUserMessageAt,
       updatedAt: "2026-09-01T10:00:00.000Z",
       createdAt: "2026-09-01T09:00:00.000Z",
     },
@@ -51,6 +55,9 @@ vi.mock("../zerops/useZeropsMates", () => ({
 
 vi.mock("./useSettings", () => ({ useClientSettings: () => ({}) }));
 
+import { useComposerDraftStore } from "../composerDraftStore";
+import { bindAccountEnvironments } from "../zerops/accountEnvironments";
+import { closeAccountLifetime, openAccountLifetime } from "../zerops/accountLifetime";
 import { useNewThreadHandler } from "./useHandleNewThread";
 
 type NewThreadHandler = ReturnType<typeof useNewThreadHandler>;
@@ -70,6 +77,7 @@ describe("New thread before the candidate list is read", () => {
   beforeEach(() => {
     state.servers.clear();
     state.navigate.mockClear();
+    state.latestUserMessageAt = "2026-09-01T10:00:00.000Z";
   });
 
   it.each<{
@@ -94,5 +102,36 @@ describe("New thread before the candidate list is read", () => {
 
     expect(state.navigate).toHaveBeenCalledTimes(1);
     expect(state.navigate.mock.calls[0]![0].to).toBe(to);
+  });
+
+  afterEach(() => {
+    closeAccountLifetime();
+  });
+
+  it("opens a Mate's conversation nobody has spoken into on an empty composer", async () => {
+    // Connected through the Zerops door a moment ago: the account holds its registration record.
+    openAccountLifetime("user-1");
+    bindAccountEnvironments({
+      records: () => [
+        {
+          targetKey: "project-1:zcp",
+          environmentId: ENVIRONMENT,
+          origin: "https://zcp-1-8080.prg1.zerops.app",
+          projectRef: { projectId: "project-1", orgId: "org-1" },
+          name: "Todo - Vera",
+        },
+      ],
+      subscribe: () => () => undefined,
+    } as unknown as AccountEnvironments);
+    state.servers.set(ENVIRONMENT, { environment: { zerops: { projectId: "project-1" } } });
+    state.latestUserMessageAt = null;
+
+    await captureHandler()({ environmentId: ENVIRONMENT, projectId: ProjectId.make("project") });
+
+    expect(state.navigate.mock.calls[0]![0].to).toBe("/$environmentId/$threadId");
+    const draft = useComposerDraftStore
+      .getState()
+      .getComposerDraft(scopeThreadRef(ENVIRONMENT, ThreadId.make("thread-existing")));
+    expect(draft?.prompt ?? "").toBe("");
   });
 });

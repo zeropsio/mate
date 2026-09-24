@@ -124,7 +124,6 @@ const RoutedSurface = Schema.Struct({
   kind: Schema.optional(Schema.Literal("routed")),
   entryPoints: Schema.NonEmptyArray(EntryPoint),
   connectionModes: ConnectionModes,
-  connectionModeNote: Schema.optional(Schema.NonEmptyString),
   contracts: Schema.NonEmptyArray(ContractId),
   reverseStates: Schema.NonEmptyArray(ReverseState),
 }).check(
@@ -207,14 +206,13 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-gitea",
   "zerops-new-project",
   "zerops-settings",
-  "zerops-first-prompt",
   "manual-link",
 ] as const;
 
 const VALID_SURFACE_FIXTURE = {
   id: "fixture-surface",
   title: "Fixture surface",
-  components: ["packages/client-runtime/src/zerops/firstPrompt.ts"],
+  components: ["packages/client-runtime/src/zerops/birth/birthStore.ts"],
   entryPoints: [{ kind: "inline", value: "fixture" }],
   clients: {
     web: "yes",
@@ -229,7 +227,7 @@ const VALID_SURFACE_FIXTURE = {
     { action: "Close", reverse: "Open" },
   ],
   docs: { none: "The fixture has no user documentation." },
-  tests: ["packages/client-runtime/src/zerops/firstPrompt.test.ts"],
+  tests: ["packages/client-runtime/src/zerops/birth/birthStore.test.ts"],
   captures: [],
 } as const;
 
@@ -237,7 +235,7 @@ const VALID_COMPONENT_SET_FIXTURE = {
   id: "fixture-components",
   kind: "component-set",
   title: "Fixture components",
-  components: ["packages/client-runtime/src/zerops/firstPrompt.ts"],
+  components: ["packages/client-runtime/src/zerops/birth/birthStore.ts"],
   clients: {
     web: "yes",
     desktop: "yes",
@@ -245,7 +243,7 @@ const VALID_COMPONENT_SET_FIXTURE = {
   },
   providers: "n/a",
   docs: { none: "The fixture has no user documentation." },
-  tests: ["packages/client-runtime/src/zerops/firstPrompt.test.ts"],
+  tests: ["packages/client-runtime/src/zerops/birth/birthStore.test.ts"],
   captures: [],
 } as const;
 
@@ -287,14 +285,6 @@ describe("surface manifest schema", () => {
 
     assert.deepStrictEqual(ids, [...EXPECTED_SURFACE_IDS]);
     assert.strictEqual(new Set(ids).size, ids.length, "surface ids must be unique");
-    assert.deepStrictEqual(
-      manifest.surfaces
-        .filter(
-          (surface) => "connectionModeNote" in surface && surface.connectionModeNote !== undefined,
-        )
-        .map(({ id }) => id),
-      ["zerops-first-prompt"],
-    );
   });
 
   it("rejects a row missing reverseStates", () => {

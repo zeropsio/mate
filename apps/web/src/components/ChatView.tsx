@@ -304,8 +304,6 @@ import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { agentAuthAction, zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
-import { creationJobSendable } from "@t3tools/client-runtime/zerops";
-import { useZeropsCreationJob } from "~/zerops/useZeropsCreationJob";
 import {
   resolveAgentAuthorizer,
   useLocalAgentSigners,
@@ -6738,31 +6736,6 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
   };
-
-  // An environment that was just created has a job waiting, and a coding agent
-  // to sign in before anything can run it. This says the job the moment there
-  // is (`useZeropsCreationJob`).
-  useZeropsCreationJob({
-    environmentId: activeThreadEnvironmentId,
-    target: activeThreadRef,
-    agentSignInRequired: zeropsChrome.agentSignInRequired,
-    ready: activeThread !== null && !isWorking && !activeEnvironmentUnavailable,
-    send: () => {
-      // Both gates the send itself applies: a thread with no provider refuses
-      // the message, and `onSend` sends what `promptRef` holds — which the
-      // store write that just put the job there does not reach until the next
-      // render. Reporting either as sent would spend the handoff on nothing.
-      if (
-        !creationJobSendable({
-          providerAvailable: composerRef.current?.getSendContext()?.providerAvailable === true,
-          composerText: promptRef.current,
-        })
-      )
-        return false;
-      void onSend();
-      return true;
-    },
-  });
 
   const onRespondToApproval = useCallback(
     async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {

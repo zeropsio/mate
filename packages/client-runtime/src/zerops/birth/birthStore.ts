@@ -1,7 +1,7 @@
 /**
  * The birth store (DESIGN §4.5, §2.C C9): one persisted record per Mate this account is bringing
  * up, from the moment the platform accepted its creation until the connect that names its
- * environment, and the opening job each creation left for that environment.
+ * environment.
  *
  * - A birth starts at **create-accepted** and owes, in order, `tags` (its registry entry on the
  *   account's Gitea project), `registry` (the rest of its group registration: the broker's grant,
@@ -10,17 +10,14 @@
  *   (`birthWorker.ts`) drives them; this store only keeps where each one got to.
  * - Records are personal context under one account key (§1.1): never authority for existence or
  *   access, revalidated against the platform's facts by the worker. They carry no expiry: a birth
- *   ends when its connect promotes it, or when it is forgotten (its project failed or was removed).
- * - The opening job (`creationHandoff.ts`) moves from the birth to the environment the connect
- *   named, and stays there until the chat says it.
+ *   ends when it is forgotten: its connect named the environment, or its project failed or was
+ *   removed.
  *
  * Every write reads the stored value first, so another tab's write is never overwritten by a stale
  * copy; a storage event from another tab is a `reload`. Storage that refuses reads or writes
  * leaves the ledger in this tab's memory.
  */
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
-
-import { parseCreationHandoff, type ZeropsCreationHandoff } from "../creationHandoff.ts";
 
 export const BIRTHS_KEY = "zerops-mate.births.v1";
 
@@ -60,14 +57,10 @@ export interface BirthRecord {
   /** The Mate's service and origin, once hardening found them; `health` resumes on them. */
   readonly serviceId: string | null;
   readonly origin: string | null;
-  /** The environment's opening job; the connect moves it onto the environment. */
-  readonly handoff: ZeropsCreationHandoff | null;
 }
 
 export interface BirthLedger {
   readonly births: ReadonlyArray<BirthRecord>;
-  /** Opening jobs by the environment their birth connected to. */
-  readonly jobs: Readonly<Record<string, ZeropsCreationHandoff>>;
 }
 
 /** What a creation knows at create-accepted. */
@@ -76,38 +69,33 @@ export interface BeginBirth {
   readonly organizationId: string;
   readonly registration: BirthRegistration | null;
   readonly container: boolean;
-  readonly handoff: ZeropsCreationHandoff | null;
 }
 
 export type BirthPatch = Partial<
   Pick<BirthRecord, "step" | "overdue" | "container" | "serviceId" | "origin">
 >;
 
-/** One account's storage, synchronous: the opening job is read inside a route effect. */
+/** One account's storage, synchronous. */
 export interface BirthsStorage {
   readonly getItem: (key: string) => string | null;
   readonly setItem: (key: string, value: string) => void;
 }
 
 export interface BirthStore {
-  /** The stored births and jobs; the same object until they change. */
+  /** The stored births; the same object until they change. */
   readonly ledger: () => BirthLedger;
   readonly birth: (projectId: string) => BirthRecord | undefined;
   /** The platform accepted a creation: its birth starts, in place of an older one of the project. */
   readonly begin: (input: BeginBirth) => void;
   readonly update: (projectId: string, patch: BirthPatch) => void;
-  /** The connect named the environment: the birth is over, and its job waits there. */
-  readonly promote: (projectId: string, environmentId: string) => void;
-  /** The project failed or was removed: nothing is born of it. */
+  /** The birth is over: the connect named its environment, or its project failed or was removed. */
   readonly forget: (projectId: string) => void;
-  readonly job: (environmentId: string) => ZeropsCreationHandoff | undefined;
-  readonly forgetJob: (environmentId: string) => void;
   /** Another tab wrote the records. */
   readonly reload: () => void;
   readonly subscribe: (listener: () => void) => () => void;
 }
 
-const EMPTY: BirthLedger = { births: [], jobs: {} };
+const EMPTY: BirthLedger = { births: [] };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -137,7 +125,6 @@ function parseRegistration(value: unknown): BirthRegistration | null | undefined
 function parseRecord(value: unknown): BirthRecord | undefined {
   if (!isObject(value)) return undefined;
   const registration = parseRegistration(value.registration);
-  const handoff = value.handoff === null ? null : parseCreationHandoff(value.handoff);
   const { projectId, organizationId, startedAt, step, overdue, container } = value;
   const { serviceId, origin } = value;
   if (
@@ -150,8 +137,7 @@ function parseRecord(value: unknown): BirthRecord | undefined {
     registration === undefined ||
     typeof container !== "boolean" ||
     !nullableString(serviceId) ||
-    !nullableString(origin) ||
-    handoff === undefined
+    !nullableString(origin)
   ) {
     return undefined;
   }
@@ -165,7 +151,6 @@ function parseRecord(value: unknown): BirthRecord | undefined {
     container,
     serviceId,
     origin,
-    handoff,
   };
 }
 
@@ -182,14 +167,7 @@ export function parseBirths(raw: string | null): BirthLedger {
   const births = Array.isArray(parsed.births)
     ? parsed.births.flatMap((value) => parseRecord(value) ?? [])
     : [];
-  const jobs: Record<string, ZeropsCreationHandoff> = {};
-  if (isObject(parsed.jobs)) {
-    for (const [environmentId, value] of Object.entries(parsed.jobs)) {
-      const handoff = parseCreationHandoff(value);
-      if (handoff !== undefined) jobs[environmentId] = handoff;
-    }
-  }
-  return { births, jobs };
+  return { births };
 }
 
 /**
@@ -272,7 +250,6 @@ export function makeBirthStore(ports: {
       const step = firstStep(input);
       if (step === null) return;
       mutate((current) => {
-        const older = current.births.find((birth) => birth.projectId === input.projectId);
         const record: BirthRecord = {
           projectId: input.projectId,
           organizationId: input.organizationId,
@@ -283,7 +260,6 @@ export function makeBirthStore(ports: {
           container: input.container,
           serviceId: null,
           origin: null,
-          handoff: input.handoff ?? older?.handoff ?? null,
         };
         return { ...current, births: [...without(current, input.projectId), record] };
       });
@@ -296,28 +272,8 @@ export function makeBirthStore(ports: {
         ),
       }));
     },
-    promote: (projectId, environmentId) => {
-      mutate((current) => {
-        const birth = current.births.find((entry) => entry.projectId === projectId);
-        if (birth === undefined) return current;
-        return {
-          births: without(current, projectId),
-          jobs:
-            birth.handoff === null
-              ? current.jobs
-              : { ...current.jobs, [environmentId]: birth.handoff },
-        };
-      });
-    },
     forget: (projectId) => {
       mutate((current) => ({ ...current, births: without(current, projectId) }));
-    },
-    job: (environmentId) => ledger.jobs[environmentId],
-    forgetJob: (environmentId) => {
-      mutate((current) => {
-        const { [environmentId]: _spent, ...jobs } = current.jobs;
-        return { ...current, jobs };
-      });
     },
     reload,
     subscribe: (listener) => {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { selectAutoConnectTargets, type AutoConnectCandidate } from "../autoConnect.ts";
-import type { ZeropsCreationHandoff } from "../creationHandoff.ts";
 import {
   BIRTHS_KEY,
   makeBirthStore,
@@ -24,13 +23,6 @@ function memoryStorage(): BirthsStorage & { readonly values: Map<string, string>
   };
 }
 
-const handoff: ZeropsCreationHandoff = {
-  environmentName: "Todo - Vera",
-  groupName: "Todo",
-  role: "dev",
-  source: { kind: "none" },
-};
-
 const mate: BeginBirth = {
   projectId: "project-1",
   organizationId: "org-1",
@@ -42,11 +34,10 @@ const mate: BeginBirth = {
     displayName: "Todo - Vera",
   },
   container: true,
-  handoff,
 };
 
 describe("the birth store", () => {
-  it("keeps a birth from create-accepted until its connect, then the job under its environment", () => {
+  it("keeps a birth from create-accepted until its connect", () => {
     const storage = memoryStorage();
     const store = makeBirthStore({ storage, now: () => STARTED_AT });
 
@@ -61,19 +52,15 @@ describe("the birth store", () => {
       container: true,
       serviceId: null,
       origin: null,
-      handoff,
     });
     // A reload reads the same record back.
     expect(makeBirthStore({ storage, now: () => 0 }).birth("project-1")).toEqual(
       store.birth("project-1"),
     );
 
-    store.promote("project-1", "environment-1");
+    store.forget("project-1");
     expect(store.birth("project-1")).toBeUndefined();
-    expect(store.job("environment-1")).toEqual(handoff);
-    store.forgetJob("environment-1");
-    expect(store.job("environment-1")).toBeUndefined();
-    expect(JSON.parse(storage.values.get(BIRTHS_KEY) ?? "null")).toEqual({ births: [], jobs: {} });
+    expect(JSON.parse(storage.values.get(BIRTHS_KEY) ?? "null")).toEqual({ births: [] });
   });
 });
 
@@ -83,9 +70,42 @@ describe("the birth store's records", () => {
     const store = makeBirthStore({ storage, now: () => STARTED_AT });
     store.begin(mate);
     const before = storage.values.get(BIRTHS_KEY);
-    store.promote("project-9", "environment-9");
+    store.forget("project-9");
     expect(storage.values.get(BIRTHS_KEY)).toBe(before);
-    expect(store.job("environment-9")).toBeUndefined();
+  });
+
+  it("reads an older build's births and drops the opening jobs it kept for the composer", () => {
+    const storage = memoryStorage();
+    const record = {
+      projectId: "project-1",
+      organizationId: "org-1",
+      startedAt: STARTED_AT,
+      step: "harden",
+      overdue: false,
+      registration: null,
+      container: true,
+      serviceId: null,
+      origin: null,
+    };
+    const opening = {
+      environmentName: "Todo - Vera",
+      groupName: "Todo",
+      role: "dev",
+      source: { kind: "none" },
+    };
+    storage.setItem(
+      BIRTHS_KEY,
+      JSON.stringify({
+        births: [{ ...record, handoff: opening }],
+        jobs: { "environment-1": opening },
+      }),
+    );
+    const store = makeBirthStore({ storage, now: () => STARTED_AT });
+    expect(store.ledger()).toEqual({ births: [record] });
+    store.update("project-1", { step: "health" });
+    expect(JSON.parse(storage.values.get(BIRTHS_KEY) ?? "null")).toEqual({
+      births: [{ ...record, step: "health" }],
+    });
   });
 
   it("forgets a birth whose project was removed, and only that one", () => {
@@ -94,15 +114,6 @@ describe("the birth store's records", () => {
     store.begin({ ...mate, projectId: "project-2" });
     store.forget("project-1");
     expect(store.ledger().births.map((birth) => birth.projectId)).toEqual(["project-2"]);
-  });
-
-  it("a birth begun again keeps the job it already had", () => {
-    const store = makeBirthStore({ storage: memoryStorage(), now: () => STARTED_AT });
-    store.begin(mate);
-    store.update("project-1", { step: "harden" });
-    // Set up Mate on a Mate whose container never came: harden again, the job kept.
-    store.begin({ ...mate, registration: null, handoff: null });
-    expect(store.birth("project-1")).toMatchObject({ step: "harden", handoff });
   });
 
   it("follows another tab's writes on reload, and ignores what it cannot read", () => {
@@ -122,7 +133,7 @@ describe("the birth store's records", () => {
     expect(heard).toBe(1);
 
     for (const raw of [null, "", "[]", "{oops", '{"births":[{"projectId":"p"}],"jobs":{"e":1}}']) {
-      expect(parseBirths(raw)).toEqual({ births: [], jobs: {} });
+      expect(parseBirths(raw)).toEqual({ births: [] });
     }
   });
 });
@@ -141,8 +152,8 @@ describe("a storage that refuses", () => {
     store.begin(mate);
     store.update("project-1", { step: "harden" });
     expect(store.birth("project-1")?.step).toBe("harden");
-    store.promote("project-1", "environment-1");
-    expect(store.job("environment-1")).toEqual(handoff);
+    store.forget("project-1");
+    expect(store.birth("project-1")).toBeUndefined();
   });
 });
 

@@ -394,9 +394,7 @@ function ZeropsNewProjectContent() {
       botName,
       onCreated: (projectId, giteaProjectId) => {
         // The birth owes the Mate's registry entry and the broker's grant,
-        // then its harden and its health. What this project is goes with it:
-        // the Mate opens on its own onboarding line — nothing typed here is
-        // sent for the person.
+        // then its harden and its health.
         beginBirth({
           projectId,
           organizationId,
@@ -408,12 +406,6 @@ function ZeropsNewProjectContent() {
             displayName: environmentName,
           },
           container: true,
-          handoff: {
-            environmentName,
-            groupName: name.trim(),
-            role: "dev",
-            source: { kind: "none" },
-          },
         });
       },
       // The projects page shows the birth and opens the Mate once it answers.

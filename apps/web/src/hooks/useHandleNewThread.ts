@@ -38,7 +38,6 @@ import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefaults";
 import { primaryServerSettingsAtom } from "../state/server";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
-import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { zeropsMateAt } from "../zerops/mateIdentities";
 import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
@@ -129,8 +128,7 @@ export function useNewThreadHandler() {
       const currentRouteTarget = getCurrentRouteTarget();
       // One environment is one conversation where a Mate lives: a request for
       // a new thread in a Mate's project opens the conversation the Mate
-      // already has — typed content following when the caller carries it, zcp's
-      // introduction composed into it when nobody has spoken there yet — and
+      // already has — typed content following when the caller carries it — and
       // creates nothing, because a second thread would be a second Mate.
       // Where that is not known yet — a Zerops environment the candidate list
       // has not reached, or one whose server has not said where it runs — a
@@ -156,8 +154,6 @@ export function useNewThreadHandler() {
             !composerDraftHasUserContent(getComposerDraft(ref))
           ) {
             moveComposerPromptAndImages(currentRouteTarget.draftId, ref);
-          } else if (mateConversation.latestUserMessageAt === null) {
-            composeZeropsFirstPrompt({ environmentId: projectRef.environmentId, target: ref });
           }
           await router.navigate({
             to: "/$environmentId/$threadId",

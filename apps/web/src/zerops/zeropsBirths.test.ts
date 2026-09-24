@@ -60,7 +60,6 @@ const birth: BirthRecord = {
   container: true,
   serviceId: null,
   origin: null,
-  handoff: null,
 };
 
 /**

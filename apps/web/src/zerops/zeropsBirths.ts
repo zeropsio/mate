@@ -3,8 +3,7 @@
  * whose inputs the host binds once the account runtime's post-grant stage stands, beside the
  * container store it reads through. A creation begins a birth here the moment the platform
  * accepts it, and the worker brings the Mate up whatever page the person is on and whichever
- * organization their tab has open; the connect promotes the birth, and the chat reads the
- * opening job it left.
+ * organization their tab has open; the connect promotes the birth.
  *
  * Every port acts on the birth's own record — its organization, its Gitea project, its container
  * — never on what a tab has open now. An interim host: the design has the account runtime's
@@ -17,7 +16,6 @@ import {
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type ZeropsApiClient,
-  type ZeropsCreationHandoff,
 } from "@t3tools/client-runtime/zerops";
 import {
   BIRTHS_KEY,
@@ -468,9 +466,9 @@ export function birthWithoutContainer(projectId: string): void {
   host().store.update(projectId, { container: false });
 }
 
-/** The connect named the environment: the birth is over, and its opening job waits there. */
-export function promoteBirth(projectId: string, environmentId: string): void {
-  host().store.promote(projectId, environmentId);
+/** The connect named the environment: the birth is over. */
+export function promoteBirth(projectId: string): void {
+  host().store.forget(projectId);
 }
 
 /** The project failed or was removed: nothing is born of it. */
@@ -488,14 +486,6 @@ export const birthsForEnvironments: AccountEnvironmentPorts["births"] = {
   subscribe: (listener) => host().store.subscribe(listener),
   promote: promoteBirth,
 };
-
-export function creationJobFor(environmentId: string): ZeropsCreationHandoff | undefined {
-  return host().store.job(environmentId);
-}
-
-export function forgetCreationJob(environmentId: string): void {
-  host().store.forgetJob(environmentId);
-}
 
 /** "Keep waiting" / "Try again" on a birth this tab drives. */
 export function retryBirth(projectId: string): void {

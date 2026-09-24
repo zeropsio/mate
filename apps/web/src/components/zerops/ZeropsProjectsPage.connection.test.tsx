@@ -129,7 +129,6 @@ function readyBirth(): void {
     container: true,
     serviceId: SERVICE,
     origin: ORIGIN,
-    handoff: null,
   };
   const wait: ProvisioningState = {
     phase: "ready",

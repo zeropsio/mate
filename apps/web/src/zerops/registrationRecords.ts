@@ -6,14 +6,10 @@ import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account
 import type { RegistrationRecord } from "@t3tools/client-runtime/zerops/environments";
 import { useMemo } from "react";
 
-import { currentAccountEnvironments, useAccountEnvironmentsSnapshot } from "./accountEnvironments";
+import { useAccountEnvironmentsSnapshot } from "./accountEnvironments";
 
 const NO_RECORDS: ReadonlyArray<RegistrationRecord> = [];
 const recordsOf = (environments: AccountEnvironments) => environments.records();
-
-export function readRegistrationRecords(): ReadonlyArray<RegistrationRecord> {
-  return currentAccountEnvironments()?.records() ?? NO_RECORDS;
-}
 
 /** The records, re-read when they change. */
 export function useRegistrationRecords(): ReadonlyArray<RegistrationRecord> {

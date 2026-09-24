@@ -222,7 +222,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   const descriptors: Array<Pending<string, DescriptorFacts>> = [];
   const probes: Array<Pending<string, ProbeReading>> = [];
   const removed: Array<EnvironmentId> = [];
-  const promoted: Array<readonly [string, EnvironmentId]> = [];
+  const promoted: Array<string> = [];
   const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
   /** What the stage listens to now, by port. */
   const listening = { records: 0, catalog: 0, births: 0 };
@@ -271,7 +271,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         listening.births += 1;
         return () => void (listening.births -= 1);
       },
-      promote: (projectId, environmentId) => void promoted.push([projectId, environmentId]),
+      promote: (projectId) => void promoted.push(projectId),
     },
   };
   return {
@@ -1124,7 +1124,7 @@ describe("the post-grant stage's Mate environments", () => {
       name: "the registry takes it: its target is remembered and its birth ends",
       installed: true,
       records: [REMEMBERED_A],
-      promoted: [[A_MATE.projectId, ENV_A]],
+      promoted: [A_MATE.projectId],
     },
     {
       name: "the registry refuses it: nothing is written",

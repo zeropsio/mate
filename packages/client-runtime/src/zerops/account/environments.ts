@@ -144,7 +144,7 @@ export interface AccountEnvironmentPorts {
     readonly unhardened: () => ReadonlySet<string>;
     readonly subscribe: (listener: () => void) => () => void;
     /** The connect named the environment: the birth is over. */
-    readonly promote: (projectId: string, environmentId: EnvironmentId) => void;
+    readonly promote: (projectId: string) => void;
   };
 }
 
@@ -380,8 +380,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           organizationId === null ? null : { projectId: targetProject(key), orgId: organizationId },
         name: project?.name ?? null,
       });
-      // The birth is over: its opening job waits on the environment the exchange named.
-      if (project !== undefined) ports.births.promote(project.id, environmentId);
+      // The birth is over: the exchange named its environment.
+      if (project !== undefined) ports.births.promote(project.id);
       return outcome;
     } finally {
       if (at !== null) {

@@ -1229,7 +1229,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           organizationId: activeOrganization.id,
           registration: null,
           container: true,
-          handoff: null,
         });
         if (!isCurrent()) return;
         await runZeropsCommand(
@@ -2011,11 +2010,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       // The project is a birth from the moment the platform accepts it
       // (`zeropsBirths.ts`, DESIGN §4.5), which the account's worker finishes
       // whatever this page does next — a reload or a closed tab during the
-      // steps below included. It carries what this environment is for, said
-      // once where the Mate that has to do it will read it
-      // (`creationHandoff.ts`) — a Mate whose creation failed a step later
-      // still opens on its own job (Fen, 2026-09-17) — and the group writes
-      // this person makes:
+      // steps below included. It carries the group writes this person makes:
       //
       // - A Mate an owner or an admin makes is registered as soon as its
       //   project exists, the way *New project* registers the first — a
@@ -2047,18 +2042,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 }
               : null,
           container: withAgent,
-          handoff: {
-            environmentName: name,
-            groupName: group.name,
-            role,
-            source:
-              choice.recipe.kind === "tier"
-                ? // Imported `startWithoutCode`: the services that build from a
-                  // repository exist and run nothing until their first deploy. A
-                  // managed service needs none, so it is not named.
-                  { kind: "tier", services: Object.keys(choice.recipe.sources) }
-                : { kind: "none" },
-          },
         });
       };
 
@@ -2382,7 +2365,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       organizationId: claimIn,
       registration: null,
       container: true,
-      handoff: null,
     });
   }, [clearLastRegistration, inventory.projects, lastRegistration, navigate]);
 

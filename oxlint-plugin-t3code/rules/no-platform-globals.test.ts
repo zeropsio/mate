@@ -6,7 +6,7 @@ const guardedFile = createOxlintRuleHarness("t3code/no-platform-globals", {
   filename: "packages/client-runtime/src/zerops/probe.ts",
 });
 const webFile = createOxlintRuleHarness("t3code/no-platform-globals", {
-  filename: "apps/web/src/zerops/firstPromptStorage.ts",
+  filename: "apps/web/src/zerops/collapsedStops.ts",
 });
 const guardedTestFile = createOxlintRuleHarness("t3code/no-platform-globals", {
   filename: "packages/client-runtime/src/zerops/probe.test.ts",

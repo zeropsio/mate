@@ -1058,47 +1058,6 @@
       "captures": []
     },
     {
-      "id": "zerops-first-prompt",
-      "title": "Zerops first prompt",
-      "components": [
-        "packages/client-runtime/src/zerops/firstPrompt.ts",
-        "apps/web/src/zerops/composeFirstPrompt.ts",
-        "apps/web/src/zerops/firstPromptStorage.ts"
-      ],
-      "entryPoints": [
-        {
-          "kind": "inline",
-          "value": "First thread created after connecting an environment"
-        }
-      ],
-      "clients": {
-        "web": "yes",
-        "desktop": "yes",
-        "mobile": {
-          "status": "n/a",
-          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
-        }
-      },
-      "providers": "n/a",
-      "connectionModes": ["zerops-door"],
-      "connectionModeNote": "The Zerops door composes the opening prompt only on explicit onboarding. Account restoration never sends a prompt.",
-      "contracts": [
-        "local-storage:zerops-mate.first-prompt.v1",
-        "local-storage:zerops-mate.registration-records.v1"
-      ],
-      "reverseStates": [
-        {
-          "action": "Compose opening prompt",
-          "reverse": "none: The prompt is inserted into an editable draft that the user may change or clear before sending."
-        }
-      ],
-      "docs": {
-        "none": "No docs/user page documents the Zerops first prompt yet."
-      },
-      "tests": ["packages/client-runtime/src/zerops/firstPrompt.test.ts"],
-      "captures": []
-    },
-    {
       "id": "manual-link",
       "title": "Retained inactive native connection source",
       "components": [

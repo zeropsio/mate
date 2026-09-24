@@ -102,7 +102,6 @@ const mate: BeginBirth = {
     displayName: "Todo - Vera",
   },
   container: true,
-  handoff: null,
 };
 
 const DONE: BirthStepOutcome = { kind: "done" };
@@ -264,7 +263,7 @@ describe("the birth worker", () => {
     await clock.advance(10_000);
     expect(b.calls).toEqual([]);
 
-    a.store.promote("project-1", "environment-1");
+    a.store.forget("project-1");
     b.store.reload();
     await clock.advance(2_000);
     expect(b.calls).toEqual([]);

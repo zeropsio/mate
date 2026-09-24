@@ -111,13 +111,6 @@ export {
 } from "./recipeTier.ts";
 export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
 export {
-  creationHandoffPrompt,
-  creationJobSendable,
-  creationJobToStart,
-  type ZeropsCreationHandoff,
-  type ZeropsCreationSource,
-} from "./creationHandoff.ts";
-export {
   isGenericPlatformError,
   projectCreationOutcome,
   type ZeropsProjectCreation,

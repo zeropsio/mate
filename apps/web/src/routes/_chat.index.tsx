@@ -24,7 +24,6 @@ import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { countDoorEnvironments, resolveDoor } from "./-door";
-import { composeZeropsFirstPrompt } from "~/zerops/composeFirstPrompt";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
@@ -65,8 +64,6 @@ type IndexLanding =
   | {
       readonly kind: "thread";
       readonly ref: ScopedThreadRef;
-      /** Nobody has spoken into it yet: zcp's introduction gets composed into it. */
-      readonly unspoken: boolean;
     }
   | {
       readonly kind: "draft";
@@ -114,11 +111,7 @@ function IndexDraftLanding() {
       );
       return primary === undefined
         ? { kind: "draft", project }
-        : {
-            kind: "thread",
-            ref: scopeThreadRef(project.environmentId, primary.id),
-            unspoken: primary.latestUserMessageAt === null,
-          };
+        : { kind: "thread", ref: scopeThreadRef(project.environmentId, primary.id) };
     };
 
     if (targetEnvironmentId !== null) {
@@ -128,11 +121,7 @@ function IndexDraftLanding() {
       );
       const { primary } = resolvePrimaryConversation(environmentThreads);
       if (primary !== undefined) {
-        return {
-          kind: "thread",
-          ref: scopeThreadRef(targetEnvironmentId, primary.id),
-          unspoken: primary.latestUserMessageAt === null,
-        };
+        return { kind: "thread", ref: scopeThreadRef(targetEnvironmentId, primary.id) };
       }
       return landingIn(
         sortScopedProjectsForSidebar(
@@ -185,14 +174,6 @@ function IndexDraftLanding() {
     startedForKeyRef.current = key;
 
     if (landing.kind === "thread") {
-      // A conversation nobody has spoken into opens with zcp's own
-      // introduction already written, once — as a fresh draft would.
-      if (landing.unspoken) {
-        composeZeropsFirstPrompt({
-          environmentId: landing.ref.environmentId,
-          target: landing.ref,
-        });
-      }
       void navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(landing.ref),
@@ -201,21 +182,12 @@ function IndexDraftLanding() {
       return;
     }
     const { project } = landing;
-    void handleNewThread(scopeProjectRef(project.environmentId, project.id), { replace: true })
-      .then((started) => {
-        // A project reached through the Zerops door opens with zcp's own
-        // introduction already written, once.
-        if (started) {
-          composeZeropsFirstPrompt({
-            environmentId: project.environmentId,
-            target: started.draftId,
-          });
-        }
-      })
-      .catch(() => {
-        startedForKeyRef.current = null;
-        setStartState((state) => ({ ...state, failed: true }));
-      });
+    void handleNewThread(scopeProjectRef(project.environmentId, project.id), {
+      replace: true,
+    }).catch(() => {
+      startedForKeyRef.current = null;
+      setStartState((state) => ({ ...state, failed: true }));
+    });
   }, [handleNewThread, landing, navigate, startState.retryRequest]);
 
   if (landing === null) {

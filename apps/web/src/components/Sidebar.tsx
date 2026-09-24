@@ -200,7 +200,6 @@ import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./u
 import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
-import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { useAskMate } from "../zerops/useAskMate";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
@@ -3993,20 +3992,12 @@ export default function Sidebar() {
                   });
                   return;
                 }
-                // No conversation yet: start one in the environment's project,
-                // with zcp's own introduction composed the way the landing does.
+                // No conversation yet: start one in the environment's project.
                 const project = projects.find((entry) => entry.environmentId === environmentId);
                 if (project !== undefined) {
-                  void handleNewThreadRef
-                    .current(scopeProjectRef(project.environmentId, project.id))
-                    .then((started) => {
-                      if (started) {
-                        composeZeropsFirstPrompt({
-                          environmentId: String(environmentId),
-                          target: started.draftId,
-                        });
-                      }
-                    });
+                  void handleNewThreadRef.current(
+                    scopeProjectRef(project.environmentId, project.id),
+                  );
                   return;
                 }
                 void router.navigate({ to: "/" });
