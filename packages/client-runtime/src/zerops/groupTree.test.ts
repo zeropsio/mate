@@ -138,4 +138,31 @@ describe("buildZeropsGroupTree", () => {
     expect(view.groups.map((entry) => entry.group.groupId)).toEqual(["bbb", "aaa"]);
     expect(view.ungrouped.map((item) => item.project.name)).toEqual(["undated"]);
   });
+
+  it("draws a group only a creation under way holds, and is not empty for it", () => {
+    const view = buildZeropsGroupTree([LOOSE], {
+      order: "newest",
+      births: [
+        {
+          projectId: "p-new",
+          startedAt: 1,
+          step: "tags",
+          overdue: false,
+          placement: {
+            groupId: "new",
+            groupName: "Todo",
+            kind: "mate",
+            displayName: "Todo - Vera",
+          },
+        },
+      ],
+    });
+    expect(view.empty).toBe(false);
+    expect(view.groups).toMatchObject([
+      {
+        group: { groupId: "new", name: "Todo", pending: [{ projectId: "p-new" }] },
+        environments: [],
+      },
+    ]);
+  });
 });

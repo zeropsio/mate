@@ -94,8 +94,10 @@ export {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsGroupEnvironment,
+  type ZeropsGroupPendingMember,
   type ZeropsGroupTags,
   type ZeropsGroupTree,
+  type ZeropsPlacedBirth,
   type ZeropsProjectOrder,
 } from "./groups.ts";
 export {

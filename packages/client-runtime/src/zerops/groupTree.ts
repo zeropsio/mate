@@ -36,6 +36,7 @@ export interface ZeropsGroupTreeEnvironment<T> {
 }
 
 export interface ZeropsGroupTreeGroup<T> {
+  /** Its members still being created are `group.pending`: the client holds no carrier for them. */
   readonly group: ZeropsGroup;
   readonly environments: ReadonlyArray<ZeropsGroupTreeEnvironment<T>>;
 }

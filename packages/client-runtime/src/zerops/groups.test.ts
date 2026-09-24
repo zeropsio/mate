@@ -14,6 +14,7 @@ import {
   ZEROPS_GROUP_ID_LENGTH,
   ZEROPS_GROUP_LABEL_MAX_LENGTH,
   type ZeropsEnvironmentRole,
+  type ZeropsPlacedBirth,
 } from "./groups.ts";
 
 function project(
@@ -522,6 +523,141 @@ describe("deriveZeropsGroups — newest first", () => {
     const backward = deriveZeropsGroups(projects.toReversed(), { order: "newest" });
 
     expect(JSON.stringify(forward)).toBe(JSON.stringify(backward));
+  });
+});
+
+/** A creation under way in group `groupId`, begun at `startedAt` wall ms. */
+function birth(
+  projectId: string,
+  groupId: string,
+  startedAt: number,
+  over: Partial<ZeropsPlacedBirth["placement"]> = {},
+): ZeropsPlacedBirth {
+  return {
+    projectId,
+    startedAt,
+    step: "tags",
+    overdue: false,
+    placement: {
+      groupId,
+      groupName: "Todo",
+      kind: "mate",
+      displayName: `Todo - ${projectId}`,
+      ...over,
+    },
+  };
+}
+
+describe("deriveZeropsGroups — creations under way", () => {
+  it.each([
+    {
+      case: "a birth the listing does not hold yet is a pending member of its group",
+      projects: [project("crm-dev", ["mate:g:aaa"], "crm-dev")],
+      births: [birth("p-new", "aaa", 1)],
+      pending: { aaa: ["p-new"] },
+      environments: { aaa: ["crm-dev"] },
+    },
+    {
+      case: "a birth whose project the listing holds in a group is that listed member, once",
+      projects: [project("crm-dev", ["mate:g:aaa"], "crm-dev")],
+      births: [birth("crm-dev", "aaa", 1)],
+      pending: { aaa: [] },
+      environments: { aaa: ["crm-dev"] },
+    },
+    {
+      case: "a birth listed before its group tag is written stays pending, not ungrouped",
+      projects: [project("p-new", [], "p-new")],
+      births: [birth("p-new", "aaa", 1)],
+      pending: { aaa: ["p-new"] },
+      environments: { aaa: [] },
+    },
+    {
+      case: "a birth in a group nothing lists yet creates the group",
+      projects: [],
+      births: [birth("p-b", "new", 2), birth("p-a", "new", 1)],
+      pending: { new: ["p-a", "p-b"] },
+      environments: { new: [] },
+    },
+  ])("$case", ({ projects, births, pending, environments }) => {
+    const result = deriveZeropsGroups(projects, { order: "name", births });
+    expect(
+      Object.fromEntries(
+        result.groups.map((group) => [
+          group.groupId,
+          group.pending.map((entry) => entry.projectId),
+        ]),
+      ),
+    ).toEqual(pending);
+    expect(
+      Object.fromEntries(
+        result.groups.map((group) => [
+          group.groupId,
+          group.environments.map((entry) => entry.project.id),
+        ]),
+      ),
+    ).toEqual(environments);
+    expect(result.ungrouped).toEqual([]);
+  });
+
+  it("carries what the creation knew of the pending member", () => {
+    const [group] = deriveZeropsGroups([], {
+      order: "name",
+      births: [{ ...birth("p-new", "aaa", 7, { kind: "production" }), overdue: true }],
+    }).groups;
+    expect(group?.pending).toEqual([
+      {
+        projectId: "p-new",
+        kind: "production",
+        name: "Todo - p-new",
+        startedAt: 7,
+        step: "tags",
+        overdue: true,
+      },
+    ]);
+  });
+
+  it.each([
+    { case: "the store's name first", names: { aaa: "Stored" }, tags: [], expected: "Stored" },
+    { case: "then the members' label", names: {}, tags: ["mate:name:Label"], expected: "Label" },
+    { case: "then the name its creation gave it", names: {}, tags: [], expected: "Todo" },
+  ])("names a group being created from $case", ({ names, tags, expected }) => {
+    const [group] = deriveZeropsGroups([project("crm-dev", ["mate:g:aaa", ...tags], "crm-dev")], {
+      order: "name",
+      names,
+      births: [birth("p-new", "aaa", 1)],
+    }).groups;
+    expect(group?.name).toBe(expected);
+  });
+
+  it("says a group named by its creation was named that way", () => {
+    const [group] = deriveZeropsGroups([], {
+      order: "name",
+      births: [birth("p", "aaa", 1)],
+    }).groups;
+    expect(group).toMatchObject({ name: "Todo", nameSource: "birth" });
+  });
+
+  it("orders a group only its creations date by when they started, newest first", () => {
+    const result = deriveZeropsGroups(
+      [
+        project("crm-dev", ["mate:g:aaa"], "crm-dev", "2024-01-01T00:00:00Z"),
+        project("shop-dev", ["mate:g:bbb"], "shop-dev", "2024-03-01T00:00:00Z"),
+        // Listed with no created time yet: its group is dated by the birth beside it.
+        project("new-dev", ["mate:g:new"], "new-dev"),
+      ],
+      {
+        order: "newest",
+        births: [
+          // Started after every listed group: on top at once.
+          birth("p-new", "new", Date.parse("2024-06-01T00:00:00Z")),
+          // Started between the two: between them.
+          birth("p-mid", "mid", Date.parse("2024-02-01T00:00:00Z")),
+          // A created member dates its group, whatever a later birth in it.
+          birth("p-late", "aaa", Date.parse("2024-09-01T00:00:00Z")),
+        ],
+      },
+    );
+    expect(result.groups.map((group) => group.groupId)).toEqual(["new", "bbb", "mid", "aaa"]);
   });
 });
 

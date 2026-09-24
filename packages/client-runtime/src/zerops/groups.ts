@@ -44,7 +44,10 @@
  * @module groups
  */
 
+import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+
 import type { ZeropsProject } from "./api.ts";
+import type { BirthPlacement, BirthStep } from "./birth/birthStore.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 import type { RandomBytes } from "./newProject.ts";
 
@@ -292,11 +295,36 @@ export interface ZeropsGroupEnvironment {
 
 /**
  * Where a group's displayed name came from — the store, the label tags its
- * members carry, or nothing at all. The UI wants this: a group named `"id"` is
- * one the user should be invited to name, and a group named `"tag"` is one
- * whose store record has not caught up.
+ * members carry, the creation under way in it, or nothing at all. The UI wants
+ * this: a group named `"id"` is one the user should be invited to name, and a
+ * group named `"tag"` or `"birth"` is one whose store record has not caught up.
  */
-export type ZeropsGroupNameSource = "store" | "tag" | "id";
+export type ZeropsGroupNameSource = "store" | "tag" | "birth" | "id";
+
+/**
+ * A creation the platform accepted and the organization's listing may not hold
+ * yet, placed in its group (the birth store's record, `birth/birthStore.ts`).
+ */
+export interface ZeropsPlacedBirth {
+  readonly projectId: string;
+  /** When the platform accepted the creation, wall ms. */
+  readonly startedAt: number;
+  readonly placement: BirthPlacement;
+  readonly step: BirthStep;
+  readonly overdue: boolean;
+}
+
+/** A member of a group still being created: drawn until the listing holds its project. */
+export interface ZeropsGroupPendingMember {
+  readonly projectId: string;
+  readonly kind: RoleProjectKind;
+  /** What the person called the environment. */
+  readonly name: string;
+  /** When the platform accepted the creation, wall ms. */
+  readonly startedAt: number;
+  readonly step: BirthStep;
+  readonly overdue: boolean;
+}
 
 export interface ZeropsGroup {
   readonly groupId: string;
@@ -304,6 +332,12 @@ export interface ZeropsGroup {
   readonly name: string;
   readonly nameSource: ZeropsGroupNameSource;
   readonly environments: ReadonlyArray<ZeropsGroupEnvironment>;
+  /**
+   * Members still being created, oldest first: a creation the platform accepted
+   * whose project no group of the listing holds yet. Once one does, the listed
+   * member stands in its place — the same project, never both.
+   */
+  readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
   /**
    * The group's production environment — present only when exactly one member
    * claims the role. Two claimants is a conflict the user has to resolve, and
@@ -332,6 +366,8 @@ export interface DeriveZeropsGroupsOptions {
   /** Group id → display name, as read from the recipe store. */
   readonly names?: Readonly<Record<string, string>>;
   readonly order: ZeropsProjectOrder;
+  /** The account's creations under way that know their group. */
+  readonly births?: ReadonlyArray<ZeropsPlacedBirth>;
 }
 
 function roleRank(role: ZeropsEnvironmentRole | undefined): number {
@@ -353,17 +389,27 @@ function byCreatedNewestFirst(left: string | undefined, right: string | undefine
 }
 
 /**
- * A group's birth moment: the earliest `created` among its members, ignoring
- * ones that carry none. `undefined` when none of them do.
+ * A group's birth moment, wall ms: the earliest `created` among its members,
+ * ignoring ones that carry none; where none does, the earliest start of a
+ * creation under way in it — so a group just created leads at once rather
+ * than sorting last until the listing dates it. `undefined` when neither says.
  */
-function earliestCreated(environments: ReadonlyArray<ZeropsGroupEnvironment>): string | undefined {
+function groupBornAt(group: ZeropsGroup): number | undefined {
   let earliest: string | undefined;
-  for (const { project } of environments) {
+  for (const { project } of group.environments) {
     const { created } = project;
     if (created === undefined) continue;
     if (earliest === undefined || created < earliest) earliest = created;
   }
-  return earliest;
+  const createdAt = earliest === undefined ? Number.NaN : Date.parse(earliest);
+  return Number.isNaN(createdAt) ? group.pending[0]?.startedAt : createdAt;
+}
+
+/** Descending, missing always last — {@link byCreatedNewestFirst} over wall ms. */
+function byBornNewestFirst(left: number | undefined, right: number | undefined): number {
+  if (left === undefined) return right === undefined ? 0 : 1;
+  if (right === undefined) return -1;
+  return right - left;
 }
 
 /**
@@ -401,11 +447,14 @@ export function deriveZeropsGroups(
   const members = new Map<string, Array<ZeropsGroupEnvironment>>();
   const labels = new Map<string, Array<string>>();
   const ungrouped: Array<ZeropsProject> = [];
+  const births = options.births ?? [];
+  const born = new Set(births.map((birth) => birth.projectId));
 
   for (const project of projects) {
     const { groupId, role, label } = readZeropsGroupTags(project.tagList);
     if (groupId === undefined) {
-      ungrouped.push(project);
+      // Listed before its group tag is written: its birth still places it.
+      if (!born.has(project.id)) ungrouped.push(project);
       continue;
     }
     const bucket = members.get(groupId);
@@ -418,6 +467,19 @@ export function deriveZeropsGroups(
     }
   }
 
+  // A creation stays pending until a group of the listing holds its project;
+  // its group exists from the moment it started, members listed or not.
+  const listed = new Set([...members.values()].flat().map(({ project }) => project.id));
+  const pending = new Map<string, Array<ZeropsPlacedBirth>>();
+  for (const birth of births) {
+    if (listed.has(birth.projectId)) continue;
+    const { groupId } = birth.placement;
+    const bucket = pending.get(groupId);
+    if (bucket) bucket.push(birth);
+    else pending.set(groupId, [birth]);
+    if (!members.has(groupId)) members.set(groupId, []);
+  }
+
   const groups = [...members.entries()].map(([groupId, environments]) => {
     const sorted = [...environments].sort(
       (left, right) =>
@@ -426,33 +488,43 @@ export function deriveZeropsGroups(
         byName(left.project.id, right.project.id),
     );
     const production = sorted.filter((environment) => environment.role === "prod");
+    const coming = [...(pending.get(groupId) ?? [])].sort(
+      (left, right) => left.startedAt - right.startedAt || byName(left.projectId, right.projectId),
+    );
     const stored = options.names?.[groupId];
     const mirrored = consensusLabel(labels.get(groupId) ?? []);
+    const created = coming.find((birth) => birth.placement.groupName.trim() !== "")?.placement
+      .groupName;
     const [name, nameSource]: [string, ZeropsGroupNameSource] =
       stored !== undefined
         ? [stored, "store"]
         : mirrored !== undefined
           ? [mirrored, "tag"]
-          : [groupId, "id"];
+          : created !== undefined
+            ? [created, "birth"]
+            : [groupId, "id"];
     return {
       groupId,
       name,
       nameSource,
       environments: sorted,
+      pending: coming.map((birth): ZeropsGroupPendingMember => ({
+        projectId: birth.projectId,
+        kind: birth.placement.kind,
+        name: birth.placement.displayName,
+        startedAt: birth.startedAt,
+        step: birth.step,
+        overdue: birth.overdue,
+      })),
       production: production.length === 1 ? production[0] : undefined,
     } satisfies ZeropsGroup;
   });
 
   if (options.order === "newest") {
-    const earliestByGroupId = new Map(
-      groups.map((group) => [group.groupId, earliestCreated(group.environments)]),
-    );
+    const bornByGroupId = new Map(groups.map((group) => [group.groupId, groupBornAt(group)]));
     groups.sort(
       (left, right) =>
-        byCreatedNewestFirst(
-          earliestByGroupId.get(left.groupId),
-          earliestByGroupId.get(right.groupId),
-        ) ||
+        byBornNewestFirst(bornByGroupId.get(left.groupId), bornByGroupId.get(right.groupId)) ||
         byName(left.name, right.name) ||
         byName(left.groupId, right.groupId),
     );
