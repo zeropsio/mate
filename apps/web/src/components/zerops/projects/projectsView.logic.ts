@@ -95,11 +95,23 @@ export function stripColumns(count: number): 1 | 2 | 3 {
   return Math.min(3, Math.max(1, Math.ceil(count / rows))) as 1 | 2 | 3;
 }
 
-/** A group the page lays out, with whether its project flow has been read at all. */
+/** Where a group is drawn: a row (a card in Projects), or an "Only a Mate so far" tile. */
+export type GroupPlacement = "row" | "tile";
+
+/**
+ * A group the page lays out, with what is settled about it. A group moves
+ * between the rows and the tiles only on settled facts — never because a read
+ * is still out or a Mate is reconnecting — so the list never reshuffles on its
+ * own (design-system, 2026-09-10).
+ */
 export interface FoldedGroupInput {
   readonly flow: GroupFlow;
   /** Its Gitea side answered. Unread is not empty: a group is folded only on an answer. */
   readonly read: boolean;
+  /** Every Mate's talk is known (`GroupMemberFacts.mate.talked`), so a first task is one. */
+  readonly talkSettled: boolean;
+  /** Where it was last drawn in this account's lifetime; `undefined` if never. */
+  readonly placed: GroupPlacement | undefined;
 }
 
 export interface FoldedGroups<E> {
@@ -111,27 +123,33 @@ export interface FoldedGroups<E> {
   readonly nextSteps: ReadonlyArray<E>;
 }
 
+/** Every Mate among a group's members is known to have been spoken to or not. */
+export function talkSettled(members: ReadonlyArray<GroupMemberFacts>): boolean {
+  return members.every((member) => member.mate === undefined || member.mate.talked !== undefined);
+}
+
 /**
  * A group with a Mate and nothing else — no pull request, nothing merged, no
  * stage, no production, nobody has spoken to its Mate — has one thing to say
  * ("give it a first task"), so it is a tile rather than a row of four empty
- * steps.
+ * steps. Decided only on settled facts; until then it stays where it was last
+ * drawn, and a group never drawn is a row.
  */
-function onlyAMate(entry: FoldedGroupInput): boolean {
+export function groupPlacement(entry: FoldedGroupInput): GroupPlacement {
+  if (!entry.read || !entry.talkSettled) return entry.placed ?? "row";
   const { flow } = entry;
-  return (
-    entry.read &&
+  const onlyAMate =
     flow.nextStep.kind === "first-task" &&
     flow.stages.length === 0 &&
     flow.production.kind === "absent" &&
-    flow.recipeChanges.length === 0
-  );
+    flow.recipeChanges.length === 0;
+  return onlyAMate ? "tile" : "row";
 }
 
 export function foldGroups<E extends FoldedGroupInput>(entries: ReadonlyArray<E>): FoldedGroups<E> {
   return {
-    active: entries.filter((entry) => !onlyAMate(entry)),
-    early: entries.filter(onlyAMate),
+    active: entries.filter((entry) => groupPlacement(entry) === "row"),
+    early: entries.filter((entry) => groupPlacement(entry) === "tile"),
     nextSteps: entries.filter((entry) => nextStepAwaitsSomebody(entry.flow.nextStep.kind)),
   };
 }
@@ -412,8 +430,12 @@ export interface GroupMemberFacts {
         readonly name: string;
         /** Its face reads `needs`. */
         readonly waiting: boolean;
-        /** Somebody has spoken into its conversation. */
-        readonly talked: boolean;
+        /**
+         * Somebody has spoken into its conversation — `undefined` while that
+         * is not known: its container is not connected, or its conversations
+         * have not arrived yet.
+         */
+        readonly talked: boolean | undefined;
       }
     | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
@@ -432,7 +454,9 @@ export type GroupMemberCandidate = ZeropsCandidate & {
  * environments — the projects page and the left menu hand it the same
  * candidates, so they cannot disagree about who is in a group or what a
  * Mate is doing. `activityOf` is the agent's activity (`agentActivity.ts`),
- * read only while its container is connected.
+ * read only while its container is connected; `conversationsRead` is whether
+ * its container's conversations have arrived, so that no activity is known to
+ * mean nobody has spoken to it.
  */
 export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   environments: ReadonlyArray<{
@@ -440,6 +464,7 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
     readonly role: ZeropsEnvironmentRole | undefined;
   }>,
   activityOf: (item: T) => ZeropsAgentActivity | undefined,
+  conversationsRead: (item: T) => boolean,
 ): ReadonlyArray<GroupMemberFacts> {
   return environments.map(({ item, role }) => {
     const tags = readZeropsGroupTags(item.project.tagList);
@@ -453,7 +478,13 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
         ? {
             name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
             waiting: mateFaceFor(connected, activity) === "needs",
-            talked: connected && activity?.subject !== undefined,
+            talked: !connected
+              ? undefined
+              : activity !== undefined
+                ? activity.subject !== undefined
+                : conversationsRead(item)
+                  ? false
+                  : undefined,
           }
         : undefined,
       routes: item.routes ?? [],
@@ -534,7 +565,9 @@ export function groupFlowInputOf(input: {
               name: member.mate.name,
               preview: pairPreviewRoute(member.routes, member.hostnames)?.url,
               waiting: member.mate.waiting,
-              talked: member.mate.talked,
+              // Unknown is not spoken to as far as the flow can say; where a
+              // group is drawn waits for it (`groupPlacement`).
+              talked: member.mate.talked ?? false,
             },
           ],
     ),

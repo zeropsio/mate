@@ -32,7 +32,8 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { MateFace, Pill } from "../primitives";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { NextStepsStrip, OnlyAMate, OtherContainers, Overview, QuietEnd } from "./OverviewView";
-import { foldGroups, foldUngrouped } from "./projectsView.logic";
+import { useRememberGroupPlacements } from "./groupPlacementMemory";
+import { foldGroups, foldUngrouped, type GroupPlacement } from "./projectsView.logic";
 import { ProjectCard } from "./ProjectsView";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -41,6 +42,10 @@ export interface ProjectsFlowGroup<T> {
   readonly flow: GroupFlow;
   /** Its project flow was read. Unread is not empty. */
   readonly read: boolean;
+  /** Every Mate's talk is known (`talkSettled`). */
+  readonly talkSettled: boolean;
+  /** Where it was last drawn (`groupPlacementMemory.ts`); `undefined` if never. */
+  readonly placed: GroupPlacement | undefined;
   /**
    * Unread, and its read is out: the steps it would fill hold a skeleton
    * rather than an empty word. False for a group nobody will read (no Gitea
@@ -173,6 +178,7 @@ function FirstRun({
 export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
   const { view, groups, ungrouped, creating = false, onCreateProject, focusGroup } = props;
   const folded = foldGroups(groups);
+  useRememberGroupPlacements(groups);
   const loose = foldUngrouped(ungrouped);
   // A tool is not a project, so an account holding nothing but Gitea has
   // still not started.

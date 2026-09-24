@@ -1176,7 +1176,11 @@ describe("the sidebar and the projects page read one group the same way", () => 
     const page = groupFlow(
       groupFlowInputOf({
         groupId: group.group.groupId,
-        members: groupMemberFactsOf(group.environments, () => undefined),
+        members: groupMemberFactsOf(
+          group.environments,
+          () => undefined,
+          () => false,
+        ),
         flow: groupReads,
         deployments: new Map(),
         productionAddable: productionAddable({

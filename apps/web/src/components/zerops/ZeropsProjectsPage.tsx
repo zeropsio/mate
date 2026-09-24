@@ -7,6 +7,7 @@ import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZerop
  * pick). Creating a project happens at that route, not here.
  */
 
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
@@ -25,6 +26,7 @@ import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { environmentsWithSnapshotAtom } from "~/state/shell";
 import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import {
   applyProjectCreationVerdict,
@@ -179,9 +181,11 @@ import {
   lastMergedCode,
   parseProjectsSearch,
   productionAddable,
+  talkSettled,
   TOOL_LABEL,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
+import { lastGroupPlacement } from "./projects/groupPlacementMemory";
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
@@ -1063,6 +1067,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
+  const withConversations = useAtomValue(environmentsWithSnapshotAtom);
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
   const viewer =
@@ -2889,8 +2894,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
-      const members = groupMemberFactsOf(environments, (item) =>
-        item.environmentId === undefined ? undefined : activity.get(item.environmentId),
+      const members = groupMemberFactsOf(
+        environments,
+        (item) => (item.environmentId === undefined ? undefined : activity.get(item.environmentId)),
+        (item) => item.environmentId !== undefined && withConversations.has(item.environmentId),
       );
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
@@ -2911,6 +2918,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           }),
         ),
         read: reads !== undefined,
+        talkSettled: talkSettled(members),
+        placed: lastGroupPlacement(group.groupId),
         // Out and expected back: a Gitea session is held or coming, and the
         // group has an org to read (or the registry has not answered yet).
         awaiting:

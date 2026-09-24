@@ -429,7 +429,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         : groupFlow(
             groupFlowInputOf({
               groupId: id,
-              members: groupMemberFactsOf(entries, (item) => getActivity?.(item)),
+              // The menu never folds a group, so whether a Mate's
+              // conversations arrived is not asked: unknown reads as not
+              // spoken to, as it always did here.
+              members: groupMemberFactsOf(
+                entries,
+                (item) => getActivity?.(item),
+                () => false,
+              ),
               flow: groupFlowReadsOf(flow),
               deployments,
               productionAddable:

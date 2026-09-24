@@ -120,6 +120,8 @@ export function entry(
       ...over,
     }),
     read,
+    talkSettled: true,
+    placed: undefined,
     awaiting: !read,
     mates,
     stops: new Map(

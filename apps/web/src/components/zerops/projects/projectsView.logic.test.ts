@@ -7,11 +7,16 @@ import {
   type GroupFlowInput,
   type GroupNextStepKind,
 } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
+
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
 import {
   containersSummary,
   groupFlowInputOf,
+  groupMemberFactsOf,
   groupMetaLine,
   lastMergedCode,
   mainCell,
@@ -19,12 +24,15 @@ import {
   pullRequestsLine,
   stopLine,
   foldGroups,
+  groupPlacement,
   foldUngrouped,
   nextStepAwaitsSomebody,
   nextStepCell,
   nextStepTone,
   parseProjectsSearch,
   stripColumns,
+  talkSettled,
+  type FoldedGroupInput,
 } from "./projectsView.logic";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
@@ -127,39 +135,74 @@ describe("parseProjectsSearch", () => {
 
 describe("foldGroups", () => {
   const STAGE = { ...PRODUCTION, projectId: "p-stage", name: "stage", tier: "stage" as const };
-  const cases: ReadonlyArray<
-    [string, { readonly flow: GroupFlow; readonly read: boolean }, "active" | "early", boolean]
-  > = [
+  const settled = { read: true, talkSettled: true, placed: undefined };
+  const cases: ReadonlyArray<[string, FoldedGroupInput, "active" | "early", boolean]> = [
     [
       "a group with only a Mate nobody has spoken to folds into a tile",
-      { flow: FLOWS.firstTask, read: true },
+      { flow: FLOWS.firstTask, ...settled },
       "early",
       false,
     ],
     [
-      "a group whose flow is not read yet stays a row: unread is not empty",
-      { flow: FLOWS.firstTask, read: false },
+      "a settled group folds by its facts, not by where it was",
+      { flow: FLOWS.firstTask, ...settled, placed: "row" },
+      "early",
+      false,
+    ],
+    [
+      "a settled group whose Mate was spoken to leaves the tiles",
+      { flow: FLOWS.none, ...settled, placed: "tile" },
+      "active",
+      false,
+    ],
+    [
+      "a group never placed stays a row while its flow is not read: unread is not empty",
+      { flow: FLOWS.firstTask, ...settled, read: false },
+      "active",
+      false,
+    ],
+    [
+      "a group never placed stays a row while a Mate's talk is unknown",
+      { flow: FLOWS.firstTask, ...settled, talkSettled: false },
+      "active",
+      false,
+    ],
+    [
+      "an unread flow keeps a tile a tile",
+      { flow: FLOWS.firstTask, ...settled, read: false, placed: "tile" },
+      "early",
+      false,
+    ],
+    [
+      "an unknown talk keeps a tile a tile",
+      { flow: FLOWS.firstTask, ...settled, talkSettled: false, placed: "tile" },
+      "early",
+      false,
+    ],
+    [
+      "an unknown talk keeps a row a row",
+      { flow: FLOWS.firstTask, ...settled, talkSettled: false, placed: "row" },
       "active",
       false,
     ],
     [
       "a group with a stage is more than a Mate",
-      { flow: flowOf({ mates: [{ ...MATE, talked: false }], stops: [STAGE] }), read: true },
+      { flow: flowOf({ mates: [{ ...MATE, talked: false }], stops: [STAGE] }), ...settled },
       "active",
       false,
     ],
     [
       "a group whose Mate was spoken to has work on it",
-      { flow: FLOWS.none, read: true },
+      { flow: FLOWS.none, ...settled },
       "active",
       false,
     ],
-    ["a merge waits in the strip", { flow: FLOWS.merge, read: true }, "active", true],
-    ["a release waits in the strip", { flow: FLOWS.release, read: true }, "active", true],
-    ["a Mate waiting waits in the strip", { flow: FLOWS.answer, read: true }, "active", true],
+    ["a merge waits in the strip", { flow: FLOWS.merge, ...settled }, "active", true],
+    ["a release waits in the strip", { flow: FLOWS.release, ...settled }, "active", true],
+    ["a Mate waiting waits in the strip", { flow: FLOWS.answer, ...settled }, "active", true],
     [
       "adding production waits in the strip",
-      { flow: FLOWS.addProduction, read: true },
+      { flow: FLOWS.addProduction, ...settled },
       "active",
       true,
     ],
@@ -170,6 +213,7 @@ describe("foldGroups", () => {
       expect(folded.active.includes(entry)).toBe(place === "active");
       expect(folded.early.includes(entry)).toBe(place === "early");
       expect(folded.nextSteps.includes(entry)).toBe(waits);
+      expect(groupPlacement(entry)).toBe(place === "early" ? "tile" : "row");
     });
   }
 });
@@ -473,6 +517,116 @@ describe("production's cell", () => {
       detail: "Releasing v0.1.0…",
       tone: "busy",
     });
+  });
+});
+
+describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
+  const mate = (group: ZeropsCandidate["group"]): ZeropsCandidate =>
+    ({
+      key: "p-wren:zcp",
+      project: { id: "p-wren", name: "p-wren", status: "ACTIVE", tagList: ["mate", "mate:g:g"] },
+      group,
+      environmentId: "env-wren" as EnvironmentId,
+      service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+    }) as ZeropsCandidate;
+  const activity = (subject: string | undefined): ZeropsAgentActivity => ({
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject,
+    at: "2026-09-24T10:00:00.000Z",
+    snippet: undefined,
+  });
+  const cases: ReadonlyArray<
+    [
+      string,
+      ZeropsCandidate["group"],
+      ZeropsAgentActivity | undefined,
+      boolean,
+      boolean | undefined,
+    ]
+  > = [
+    ["a Mate not connected is unknown", "ready", undefined, false, undefined],
+    [
+      "a Mate not connected is unknown, even with a cached read",
+      "ready",
+      activity("Fix it"),
+      true,
+      undefined,
+    ],
+    ["a connected Mate with a subject was spoken to", "connected", activity("Fix it"), true, true],
+    [
+      "a connected Mate whose conversation has no subject was not",
+      "connected",
+      activity(undefined),
+      true,
+      false,
+    ],
+    [
+      "a connected Mate with no conversation, its conversations read, was not",
+      "connected",
+      undefined,
+      true,
+      false,
+    ],
+    [
+      "a connected Mate whose conversations have not arrived is unknown",
+      "connected",
+      undefined,
+      false,
+      undefined,
+    ],
+  ];
+  for (const [name, group, found, conversationsRead, talked] of cases) {
+    it(name, () => {
+      const [facts] = groupMemberFactsOf(
+        [{ item: mate(group), role: "dev" }],
+        () => found,
+        () => conversationsRead,
+      );
+      expect(facts?.mate?.talked).toBe(talked);
+    });
+  }
+
+  it.each([
+    { talks: [], settled: true },
+    { talks: [true, false], settled: true },
+    { talks: [true, undefined], settled: false },
+  ])("a group whose Mates' talks are $talks is settled: $settled", ({ talks, settled }) => {
+    const members = talks.map((talked, index) => ({
+      projectId: `p-${index}`,
+      role: "dev" as const,
+      name: `m-${index}`,
+      mate: { name: `M${index}`, waiting: false, talked },
+      routes: [],
+      hostnames: [],
+    }));
+    const bare = {
+      projectId: "p-bare",
+      role: "stage" as const,
+      name: "stage",
+      mate: undefined,
+      routes: [],
+      hostnames: [],
+    };
+    expect(talkSettled([...members, bare])).toBe(settled);
+  });
+
+  it("feeds an unknown talk to the flow as not spoken to", () => {
+    const members = groupMemberFactsOf(
+      [{ item: mate("ready"), role: "dev" }],
+      () => undefined,
+      () => false,
+    );
+    const input = groupFlowInputOf({
+      groupId: "g",
+      members,
+      flow: undefined,
+      deployments: new Map(),
+      productionAddable: false,
+    });
+    expect(input.mates.map((entry) => entry.talked)).toEqual([false]);
   });
 });
 
