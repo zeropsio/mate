@@ -71,6 +71,17 @@ describe("ZeropsReadOnlyConversationFooter", () => {
     expect(html).toContain(readOnly.notice);
   });
 
+  // A banner attached above hides the shell's own glass and outline and hands
+  // them to the composer's main surface; the footer body is that surface, or
+  // the banner hangs open over nothing.
+  it("paints its body as the composer's main surface, so an attached banner closes on it", () => {
+    const html = render({});
+
+    expect(html).toMatch(
+      /<div[^>]*data-chat-composer-main-surface="true"[^>]*>[\s\S]*Sign in with your own account/,
+    );
+  });
+
   it("shows a pending approval and whom it waits on, without its decisions", () => {
     const html = render({ pendingApprovals: [approval] });
 

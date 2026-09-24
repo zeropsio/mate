@@ -8,8 +8,8 @@
  * to do is the D6 way out — sign the agent in with one's own account.
  *
  * It wears the composer's own parts: the pending request sits in the
- * composer's top drawer, and the footer body is the composer's glass host that
- * `ChatView` wraps it in.
+ * composer's top drawer, and the footer body is the composer's main surface
+ * inside the glass host that `ChatView` wraps it in.
  */
 
 import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentOwnership";
@@ -61,7 +61,12 @@ export function ZeropsReadOnlyConversationFooter({
           />
         </div>
       ) : null}
-      <div className="relative z-10 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[22px] px-4 py-3">
+      {/* The composer's main surface: with a banner or drawer attached above,
+          the shell hands its glass and outline to this element. */}
+      <div
+        data-chat-composer-main-surface="true"
+        className="relative z-10 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[22px] px-4 py-3"
+      >
         <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
         <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
         <Button size="xs" onClick={onSignIn}>
