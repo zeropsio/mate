@@ -616,21 +616,24 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   );
 
   /**
-   * A tag on the group repo's `main` as the flow read it — never a head read at the press, which
-   * may hold what the person was not shown — as the person; Gitea's tag protection is the real
-   * gate. Whether the tag was made.
+   * A tag on a commit of the group repo's `main`, as the person; Gitea's tag protection is the
+   * real gate. Whether the tag was made.
    */
   const tagAs = useCallback(
-    async (flow: ZeropsProjectFlow, tag: string, message: string): Promise<boolean> => {
+    async (
+      slug: string,
+      target: string | undefined,
+      tag: string,
+      message: string,
+    ): Promise<boolean> => {
       const client = actingClient();
       if (client === null) return false;
-      const target = flow.release.target;
       if (target === undefined) {
         setTrouble("The group repository has no main to tag.");
         return false;
       }
       try {
-        await client.createTag(flow.slug, GROUP_REPOSITORY, { tag, target, message });
+        await client.createTag(slug, GROUP_REPOSITORY, { tag, target, message });
         setTrouble(null);
         return true;
       } catch (cause) {
@@ -655,8 +658,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (entries.length === 0) return;
       const verb: FlowVerb = { kind: "release", groupId };
       await run(verb, groupId, async () => {
+        // The `main` head the offer was computed from — never a head read at the press, which may
+        // hold what the person was not shown.
         const made = await tagAs(
-          flow,
+          flow.slug,
+          flow.release.target,
           releaseTagName(flow.release.suggestion.replace(/^v/u, "")),
           releaseMessage(entries),
         );
@@ -688,7 +694,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           setTrouble(`${earlier} does not list commits this build can read.`);
           return;
         }
-        if (await tagAs(flow, plan.tag, plan.message)) markTagged(verb, groupId);
+        const { slug } = flow;
+        const head = await client.getBranch(slug, GROUP_REPOSITORY, "main").catch(() => undefined);
+        if (await tagAs(slug, head?.commit?.id, plan.tag, plan.message)) {
+          markTagged(verb, groupId);
+        }
       });
     },
     [actingClient, flows, markTagged, run, tagAs],

@@ -699,6 +699,25 @@ describe("ZeropsProjectFlowProvider", () => {
         root.unmount();
       });
     });
+
+    it("Roll back tags main as read at the press while what production runs is not read yet", async () => {
+      const { seen, tags, render, root } = await mountReleasable();
+      const client = verbs.client as Record<string, unknown>;
+      verbs.client = {
+        ...client,
+        listTags: async () => [{ name: "v1.0.0", message: `app ${MERGED}` }],
+      };
+      verbs.deploys = null;
+      await render();
+      await act(async () => {
+        await seen.at(-1)!.rollBack("g1", "v1.0.0");
+      });
+      expect(tags.map(({ target }) => target)).toEqual([MOVED]);
+      expect(seen.at(-1)?.trouble).toBeNull();
+      await act(async () => {
+        root.unmount();
+      });
+    });
   });
 
   describe("merge", () => {
