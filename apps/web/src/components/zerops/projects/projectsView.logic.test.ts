@@ -23,7 +23,6 @@ import {
   nextStepAwaitsSomebody,
   nextStepCell,
   nextStepTone,
-  orderByNextStep,
   parseProjectsSearch,
   stripColumns,
 } from "./projectsView.logic";
@@ -124,29 +123,6 @@ describe("parseProjectsSearch", () => {
       expect(parseProjectsSearch(raw)).toEqual(expected);
     });
   }
-});
-
-describe("orderByNextStep", () => {
-  it("puts the steps first, worst first, and keeps the tree's order among equals", () => {
-    const entries = [
-      { id: "none", flow: FLOWS.none },
-      { id: "release", flow: FLOWS.release },
-      { id: "first-task", flow: FLOWS.firstTask },
-      { id: "merge-a", flow: FLOWS.merge },
-      { id: "answer", flow: FLOWS.answer },
-      { id: "merge-b", flow: FLOWS.merge },
-      { id: "add-production", flow: FLOWS.addProduction },
-    ];
-    expect(orderByNextStep(entries).map((entry) => entry.id)).toEqual([
-      "answer",
-      "merge-a",
-      "merge-b",
-      "release",
-      "add-production",
-      "first-task",
-      "none",
-    ]);
-  });
 });
 
 describe("foldGroups", () => {

@@ -151,9 +151,11 @@ export function useLocalStorage<T, E>(
   const setValue = useCallback(
     (value: T | ((val: T) => T)) => {
       try {
-        const currentValue = getLocalStorageItem(key, schema) ?? initialValue;
+        // Only an updater reads what is stored: a plain value replaces it, even
+        // one that no longer decodes.
         let valueToStore: T;
         if (typeof value === "function") {
+          const currentValue = getLocalStorageItem(key, schema) ?? initialValue;
           try {
             valueToStore = (value as (val: T) => T)(currentValue);
           } catch (cause) {

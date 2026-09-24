@@ -25,11 +25,7 @@ import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  projectTreeOrder,
-  useProjectsPageOrder,
-  type ProjectsPageOrder,
-} from "~/zerops/projectOrderPreference";
+import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import {
   applyProjectCreationVerdict,
   normalizeOrigin,
@@ -132,6 +128,7 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsGroupTags,
+  type ZeropsProjectOrder,
   type ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
@@ -180,7 +177,6 @@ import {
   groupFlowInputOf,
   groupMemberFactsOf,
   lastMergedCode,
-  orderByNextStep,
   parseProjectsSearch,
   productionAddable,
   TOOL_LABEL,
@@ -512,10 +508,9 @@ function SignedOutNotice({ message }: { readonly message: string }) {
  */
 
 const PROJECT_ORDER_OPTIONS: ReadonlyArray<{
-  readonly value: ProjectsPageOrder;
+  readonly value: ZeropsProjectOrder;
   readonly label: string;
 }> = [
-  { value: "next-step", label: "Next step first" },
   { value: "newest", label: "Newest first" },
   { value: "name", label: "Name" },
 ];
@@ -527,7 +522,7 @@ const PROJECT_ORDER_OPTIONS: ReadonlyArray<{
  * around together the moment it changes.
  */
 function ZeropsProjectOrderControl() {
-  const [order, setOrder] = useProjectsPageOrder();
+  const [order, setOrder] = useProjectOrderPreference();
   return (
     <Select
       onValueChange={(value) => {
@@ -1061,10 +1056,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       clearInterval(timer);
     };
   }, [creationRunning]);
-  const [pageOrder] = useProjectsPageOrder();
+  const [projectOrder] = useProjectOrderPreference();
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
-    order: projectTreeOrder(pageOrder),
+    order: projectOrder,
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
@@ -2941,7 +2936,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       };
     },
   );
-  const orderedGroups = pageOrder === "next-step" ? orderByNextStep(flowGroups) : flowGroups;
   const ungroupedRows = groupTree.ungrouped.map((candidate) => ({
     item: candidate,
     action: deriveZeropsRowAction(rowInput(candidate)).kind,
@@ -3001,7 +2995,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         creating={creationRunning}
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
-        groups={orderedGroups}
+        groups={flowGroups}
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={

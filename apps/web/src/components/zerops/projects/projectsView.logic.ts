@@ -1,7 +1,8 @@
 /**
- * The projects page's decisions over `groupFlow` — which view, which groups
- * lead, which fold away, which cell a verb belongs in — the words and the
- * order, not the pixels.
+ * The projects page's decisions over `groupFlow` — which view, which steps
+ * the strip lifts, which groups fold away, which cell a verb belongs in — the
+ * words and the placement, not the pixels. The groups' order is the tree's
+ * (`projectOrderPreference.ts`); nothing here reorders them.
  *
  * Every group is drawn in the one order its code travels: Mates (with their
  * preview) → pull requests → `main` → production, a group stage as an
@@ -67,35 +68,6 @@ export function parseProjectsSearch(raw: Record<string, unknown>): ProjectsSearc
     ...(raw.view === "projects" ? { view: "projects" as const } : {}),
     ...(group === undefined ? {} : { group }),
   };
-}
-
-/** Worst first, the order `groupFlow` weighs them in; a group with nothing to do last. */
-const NEXT_STEP_RANK: Record<GroupNextStepKind, number> = {
-  "answer-mate": 0,
-  "fix-deploy": 1,
-  merge: 2,
-  unblock: 3,
-  release: 4,
-  "add-production": 5,
-  "first-task": 6,
-  none: 7,
-};
-
-/**
- * *Next step first*: the groups that wait on somebody lead, worst first; among
- * equals the tree's own order (newest first) stands.
- */
-export function orderByNextStep<E extends { readonly flow: GroupFlow }>(
-  entries: ReadonlyArray<E>,
-): ReadonlyArray<E> {
-  return entries
-    .map((entry, index) => ({ entry, index }))
-    .sort(
-      (left, right) =>
-        NEXT_STEP_RANK[left.entry.flow.nextStep.kind] -
-          NEXT_STEP_RANK[right.entry.flow.nextStep.kind] || left.index - right.index,
-    )
-    .map(({ entry }) => entry);
 }
 
 /** The steps somebody has something to do for: the strip gathers them, the left menu dots them. */
