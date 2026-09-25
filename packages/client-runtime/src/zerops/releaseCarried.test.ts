@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { GiteaCommit } from "./giteaClient.ts";
-import type { ReleaseEntry } from "./release.ts";
+import type { ReleaseEntry, ReleaseVerdict } from "./release.ts";
 import {
   releaseCarried,
   releaseCarriedToggleLabel,
@@ -41,7 +41,7 @@ const COMMITS = new Map([
 
 const carried = (
   release: ReadonlyArray<ReleaseEntry>,
-  older: ReadonlyArray<ReleaseEntry> | undefined,
+  older: ReadonlyArray<ReadonlyArray<ReleaseEntry>>,
   repositoryOf: ReadonlyMap<string, string>,
   commits: ReadonlyMap<string, ReadonlyArray<GiteaCommit>> = COMMITS,
 ) =>
@@ -56,7 +56,7 @@ describe("what a release carried", () => {
     [
       "a single repository's services at one sha are one change, named by the first",
       entries(["app", sha("e")], ["worker", sha("e")]),
-      entries(["app", sha("c")], ["worker", sha("c")]),
+      [entries(["app", sha("c")], ["worker", sha("c")])],
       SINGLE_REPO,
       COMMITS,
       [{ service: "app", repository: "group", commits: ["e", "d"] }],
@@ -64,7 +64,7 @@ describe("what a release carried", () => {
     [
       "a split group where one service moved is that service's change alone",
       entries(["api", sha("f")], ["web", sha("9")]),
-      entries(["api", sha("d")], ["web", sha("9")]),
+      [entries(["api", sha("d")], ["web", sha("9")])],
       SPLIT,
       COMMITS,
       [{ service: "api", repository: "api", commits: ["f", "e"] }],
@@ -72,7 +72,7 @@ describe("what a release carried", () => {
     [
       "a split group where both moved is two changes, in entry order",
       entries(["api", sha("f")], ["web", sha("9")]),
-      entries(["api", sha("e")], ["web", sha("7")]),
+      [entries(["api", sha("e")], ["web", sha("7")])],
       SPLIT,
       COMMITS,
       [
@@ -83,7 +83,7 @@ describe("what a release carried", () => {
     [
       "a service at the same sha as before carried nothing",
       entries(["api", sha("e")]),
-      entries(["api", sha("e")]),
+      [entries(["api", sha("e")])],
       SPLIT,
       COMMITS,
       [],
@@ -91,7 +91,7 @@ describe("what a release carried", () => {
     [
       "a head outside what was read says nothing rather than guess",
       entries(["api", sha("0")]),
-      entries(["api", sha("e")]),
+      [entries(["api", sha("e")])],
       SPLIT,
       COMMITS,
       [],
@@ -99,7 +99,7 @@ describe("what a release carried", () => {
     [
       "an older sha outside what was read carries everything to the end of the read",
       entries(["api", sha("c")]),
-      entries(["api", sha("0")]),
+      [entries(["api", sha("0")])],
       SPLIT,
       COMMITS,
       [{ service: "api", repository: "api", commits: ["c", "b", "a"] }],
@@ -107,7 +107,7 @@ describe("what a release carried", () => {
     [
       "the oldest release carries everything up to its sha",
       entries(["api", sha("b")]),
-      undefined,
+      [],
       SPLIT,
       COMMITS,
       [{ service: "api", repository: "api", commits: ["b", "a"] }],
@@ -115,7 +115,7 @@ describe("what a release carried", () => {
     [
       "a roll back to an older sha carried nothing new",
       entries(["api", sha("c")]),
-      entries(["api", sha("e")]),
+      [entries(["api", sha("e")])],
       SPLIT,
       COMMITS,
       [],
@@ -123,7 +123,7 @@ describe("what a release carried", () => {
     [
       "an uppercase sha in the branch still matches",
       entries(["api", sha("e")]),
-      entries(["api", sha("c")]),
+      [entries(["api", sha("c")])],
       SPLIT,
       new Map([["api", BRANCH.map((commit) => ({ ...commit, sha: commit.sha.toUpperCase() }))]]),
       [{ service: "api", repository: "api", commits: ["E", "D"] }],
@@ -131,7 +131,7 @@ describe("what a release carried", () => {
     [
       "a service with no repository, or a repository not read, is left out",
       entries(["api", sha("e")], ["cache", sha("1")], ["web", sha("9")]),
-      entries(["api", sha("c")], ["web", sha("7")]),
+      [entries(["api", sha("c")], ["web", sha("7")])],
       SPLIT,
       new Map([["api", BRANCH]]),
       [{ service: "api", repository: "api", commits: ["e", "d"] }],
@@ -150,12 +150,45 @@ describe("what every release carried", () => {
   ] as const)("pairs %s", (_case, tag, expected) => {
     const releases = ["f", "e", "d", "c", "b", "a"].map((char, index) => ({
       tag: `v1.${String(5 - index)}.0`,
+      verdict: "approved" as const,
       entries: entries(["api", sha(char)]),
     }));
     const byTag = releasesCarried({ releases, repositoryOf: SPLIT, commits: COMMITS });
     expect(byTag.size).toBe(releases.length);
     expect(
       byTag.get(tag)?.flatMap((change) => change.commits.map((commit) => commit.sha[0])),
+    ).toEqual(expected);
+  });
+
+  const listed = (tag: string, verdict: ReleaseVerdict, ...pairs: Array<[string, string]>) => ({
+    tag,
+    verdict,
+    entries: entries(...pairs),
+  });
+
+  it.each([
+    [
+      "a release whose tag could not be read is passed over",
+      [
+        listed("v5", "approved", ["api", sha("f")]),
+        listed("v4", "approved"),
+        listed("v3", "approved", ["api", sha("c")]),
+      ],
+      ["f", "e", "d"],
+    ],
+    [
+      "a refused release, which never deployed",
+      [
+        listed("v5", "approved", ["api", sha("f")]),
+        listed("v4", "refused", ["api", sha("e")]),
+        listed("v3", "approved", ["api", sha("c")]),
+      ],
+      ["f", "e", "d"],
+    ],
+  ] as const)("measures the newest past %s", (_case, releases, expected) => {
+    const byTag = releasesCarried({ releases, repositoryOf: SPLIT, commits: COMMITS });
+    expect(
+      byTag.get("v5")?.flatMap((change) => change.commits.map((commit) => commit.sha[0])),
     ).toEqual(expected);
   });
 });

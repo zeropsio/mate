@@ -35,6 +35,18 @@ function indexOnBranch(branch: ReadonlyArray<GiteaCommit>, sha: string): number 
   return branch.findIndex((commit) => commit.sha.toLowerCase() === wanted);
 }
 
+/** The commit of the first entry `matches` finds, in the nearest older release that has one. */
+function olderCommit(
+  older: ReadonlyArray<ReadonlyArray<ReleaseEntry>>,
+  matches: (entry: ReleaseEntry) => boolean,
+): string | undefined {
+  for (const entries of older) {
+    const found = entries.find(matches);
+    if (found !== undefined) return found.commit;
+  }
+  return undefined;
+}
+
 /**
  * The repositories one release moved, in entry order, each once.
  *
@@ -44,8 +56,8 @@ function indexOnBranch(branch: ReadonlyArray<GiteaCommit>, sha: string): number 
  */
 export function releaseCarried(input: {
   readonly entries: ReadonlyArray<ReleaseEntry>;
-  /** The entries of the next-older release; `undefined` for the oldest. */
-  readonly older: ReadonlyArray<ReleaseEntry> | undefined;
+  /** The entries of every older release, nearest first; `[]` for the oldest. */
+  readonly older: ReadonlyArray<ReadonlyArray<ReleaseEntry>>;
   /** `hostname → repository`. */
   readonly repositoryOf: ReadonlyMap<string, string>;
   /** `repository → its default branch's commits, newest first` — only the repositories read. */
@@ -55,7 +67,7 @@ export function releaseCarried(input: {
   for (const entry of input.entries) {
     const repository = input.repositoryOf.get(entry.service);
     if (repository === undefined) continue;
-    const olderSha = input.older?.find((older) => older.service === entry.service)?.commit;
+    const olderSha = olderCommit(input.older, (older) => older.service === entry.service);
     if (olderSha !== undefined && olderSha.toLowerCase() === entry.commit.toLowerCase()) continue;
     if (changes.some((change) => change.repository === repository)) continue;
     const branch = input.commits.get(repository);
@@ -75,13 +87,15 @@ export function releaseCarried(input: {
 
 /**
  * `tag → what it carried`, for every release in a list read newest first —
- * each against the one after it, so the whole list must be passed even where
- * only its head is shown: the last row drawn is measured against the first
- * one not drawn.
+ * each service against the nearest older release that lists it, so the whole
+ * list must be passed even where only its head is shown: the last row drawn
+ * is measured against the releases not drawn. A refused release never
+ * deployed, so it is no release's baseline; one whose tag could not be read
+ * lists nothing, so it is passed over.
  */
 export function releasesCarried(input: {
   /** Newest first, the whole list. */
-  readonly releases: ReadonlyArray<Pick<FlowRelease, "tag" | "entries">>;
+  readonly releases: ReadonlyArray<Pick<FlowRelease, "tag" | "entries" | "verdict">>;
   readonly repositoryOf: ReadonlyMap<string, string>;
   readonly commits: ReadonlyMap<string, ReadonlyArray<GiteaCommit>>;
 }): ReadonlyMap<string, ReadonlyArray<ReleaseServiceChange>> {
@@ -90,7 +104,9 @@ export function releasesCarried(input: {
       release.tag,
       releaseCarried({
         entries: release.entries,
-        older: input.releases[index + 1]?.entries,
+        older: input.releases
+          .slice(index + 1)
+          .flatMap((older) => (older.verdict === "refused" ? [] : [older.entries])),
         repositoryOf: input.repositoryOf,
         commits: input.commits,
       }),
