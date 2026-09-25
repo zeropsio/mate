@@ -196,9 +196,14 @@ import {
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
-import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
+import {
+  SidebarContent,
+  SidebarGroup,
+  SidebarInput,
+  SidebarMenuButton,
+  useSidebar,
+} from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
 import { useAskMate } from "../zerops/useAskMate";
@@ -3806,10 +3811,9 @@ export default function Sidebar() {
               <div className="flex items-center gap-1">
                 <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
                   <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
-                  <Input
+                  <SidebarInput
                     ref={threadSearchInputRef}
                     nativeInput
-                    unstyled
                     type="search"
                     value={threadSearchQuery}
                     onChange={(event) => {
@@ -3832,7 +3836,7 @@ export default function Sidebar() {
                         ? `sidebar-thread-search-result-${activeSearchResultIndex}`
                         : undefined
                     }
-                    className="min-w-0 flex-1 [&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground"
+                    className="min-w-0 flex-1"
                   />
                   {isSearchingThreads ? (
                     <Button
