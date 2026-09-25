@@ -3096,6 +3096,30 @@
     "expires": "never"
   },
   {
+    "path": "apps/web/src/components/usage/usageProviders.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#8b8b8b\"",
+    "owner": "karel",
+    "reason": "vendor provider series colour (Cursor)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/usage/usageProviders.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#5b9bbd\"",
+    "owner": "karel",
+    "reason": "vendor provider series colour (OpenCode)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/usage/usageProviders.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#8c7bd1\"",
+    "owner": "karel",
+    "reason": "vendor provider series colour (Antigravity)",
+    "expires": "never"
+  },
+  {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": ".theme-inspector-spotlight-dimmer{fill:rgb(2 3 8 / 54%)}",
