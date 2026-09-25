@@ -17,11 +17,16 @@
  */
 
 import type { ZeropsRegistry } from "@t3tools/client-runtime/zerops";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY: ZeropsRegistry = { groups: [], leaving: [], other: [] };
+
+/** How long a re-read for an owner waits after the last one. */
+export const REGISTRY_OWNER_REREAD_MS = 30_000;
+/** How many re-reads an owner the registry does not name is given before it stands unknown. */
+export const REGISTRY_OWNER_REREADS = 3;
 
 export interface ZeropsRegistryState {
   readonly registry: ZeropsRegistry;
@@ -29,6 +34,12 @@ export interface ZeropsRegistryState {
   readonly loading: boolean;
   /** Re-reads it — after a write, so the tree is not left one version behind. */
   readonly refresh: () => void;
+  /**
+   * A link names this Gitea org and the registry does not: it was made since the last read, or
+   * that read failed. Re-reads the registry — shared by every link that asks, at most once per
+   * {@link REGISTRY_OWNER_REREAD_MS}, and {@link REGISTRY_OWNER_REREADS} times per owner.
+   */
+  readonly askForOwner: (owner: string) => void;
 }
 
 export function useZeropsRegistry(input: {
@@ -68,11 +79,47 @@ export function useZeropsRegistry(input: {
     setGeneration((current) => current + 1);
   }, []);
 
-  if (key === "") return { registry: EMPTY, loading: false, refresh };
-  if (answer?.key === key) return { registry: answer.registry, loading: false, refresh };
+  /** Each owner asked for, with the re-reads already made for it. */
+  const [owners, setOwners] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const lastRereadAt = useRef<number | null>(null);
+  const askForOwner = useCallback((owner: string) => {
+    setOwners((current) => (current.has(owner) ? current : new Map(current).set(owner, 0)));
+  }, []);
+
+  const loading = key !== "" && answer?.key !== key;
   const registry =
-    answer !== null && answer.giteaProjectId === giteaProjectId ? answer.registry : EMPTY;
-  return { registry, loading: true, refresh };
+    key === ""
+      ? EMPTY
+      : answer !== null && answer.giteaProjectId === giteaProjectId
+        ? answer.registry
+        : EMPTY;
+
+  useEffect(() => {
+    if (key === "" || loading) return;
+    const due = [...owners].filter(
+      ([owner, rereads]) =>
+        rereads < REGISTRY_OWNER_REREADS && !registry.groups.some((group) => group.slug === owner),
+    );
+    if (due.length === 0) return;
+    const waitMs =
+      lastRereadAt.current === null
+        ? 0
+        : Math.max(0, lastRereadAt.current + REGISTRY_OWNER_REREAD_MS - Date.now());
+    const timer = setTimeout(() => {
+      lastRereadAt.current = Date.now();
+      setOwners((current) => {
+        const next = new Map(current);
+        for (const [owner, rereads] of due) next.set(owner, rereads + 1);
+        return next;
+      });
+      refresh();
+    }, waitMs);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [key, loading, owners, refresh, registry]);
+
+  return { registry, loading, refresh, askForOwner };
 }
 
 /** The Gitea org a group is registered under, or `undefined` while it is not. */
