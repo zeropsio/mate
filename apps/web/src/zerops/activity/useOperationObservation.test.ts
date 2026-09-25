@@ -272,3 +272,28 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(result.history).toEqual(history);
   });
 });
+
+describe("deriveOperationObservation — the build log a card keeps showing", () => {
+  const query = { buildServiceStackId: "svc-build", appVersionId: "av-1" };
+  const history: Observation = {
+    steps: [{ id: "DEPLOY", label: "Deploy", state: "running", stateLabel: "Running" }],
+    chips: [],
+    readAtMs: NOW,
+    buildLog: query,
+  };
+
+  it.each([
+    { name: "running, the feed gone off", running: true, attributable: false },
+    { name: "settled, nothing read since", running: false, attributable: true },
+  ])("$name: the remembered build's log", ({ running, attributable }) => {
+    const result = deriveOperationObservation(
+      baseInput({ target: target({ running }), attributable, previousHistory: history }),
+      NOW + 1_000,
+    );
+    expect(result.buildLogQuery).toEqual(query);
+  });
+
+  it("none before any build was seen", () => {
+    expect(deriveOperationObservation(baseInput(), NOW).buildLogQuery).toBeUndefined();
+  });
+});

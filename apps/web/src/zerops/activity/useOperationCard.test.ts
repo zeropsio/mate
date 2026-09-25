@@ -40,12 +40,16 @@ vi.mock("../useNowMs.ts", () => ({
   useSecondsNowMs: () => Date.parse("2026-09-01T00:00:42.000Z"),
 }));
 
-vi.mock("./useOperationObservation.ts", () => ({
-  useOperationObservation: () => ({
+const observationSpy = vi.hoisted(() =>
+  vi.fn<() => unknown>(() => ({
     state: { kind: "off", reason: "not-found" },
     history: undefined,
     buildLog: { status: "idle", lines: [] },
-  }),
+  })),
+);
+
+vi.mock("./useOperationObservation.ts", () => ({
+  useOperationObservation: observationSpy,
 }));
 
 import {
@@ -378,7 +382,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     expect(region?.provenance).toBe("last read 12 s ago");
   });
 
-  it("settled operation with history: the history's steps stay, no provenance line, no log", () => {
+  it("settled operation with history: the history's steps, provenance line and log stay, frozen", () => {
     const state: ObservationState = { kind: "off", reason: "ceiling" };
     const history = observation({
       steps: [step({ state: "done", stateLabel: "Done", durationMs: 52_000 })],
@@ -397,9 +401,9 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
         },
       ],
       chips: [],
-      provenance: "",
+      provenance: "as last read from Zerops",
+      buildLogQuery: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
     });
-    expect(region?.buildLogQuery).toBeUndefined();
   });
 
   it("settled operation, no history at all: undefined", () => {
@@ -640,6 +644,36 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
     );
     expect(region.live).toBeUndefined();
     expect(region.liveFrame).toBeUndefined();
+  });
+});
+
+describe("useOperationCard — a build log opened while live stays open at settle (hook)", () => {
+  const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
+  const history = observation({
+    steps: [step()],
+    buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+  });
+  const observed = (status: string) => ({
+    state: { kind: "off", reason: "stale-timeout" },
+    history,
+    buildLog: { status, lines: [] },
+  });
+
+  beforeEach(() => {
+    hooks.reset();
+  });
+
+  it("stays open once the deploy settles and the log is no longer live", () => {
+    observationSpy.mockReturnValueOnce(observed("live"));
+    hooks.beginRender();
+    const running = useOperationCard(operation({ phase: "running" }), ENVIRONMENT_ID);
+    observationSpy.mockReturnValueOnce(observed("ended"));
+    hooks.beginRender();
+    const settled = useOperationCard(operation({ phase: "done" }), ENVIRONMENT_ID);
+
+    const openOf = (region: typeof running) =>
+      (region.observed?.log as { props: { open: boolean } } | undefined)?.props.open;
+    expect([openOf(running), openOf(settled)]).toEqual([true, true]);
   });
 });
 

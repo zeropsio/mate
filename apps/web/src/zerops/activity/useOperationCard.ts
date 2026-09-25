@@ -149,12 +149,16 @@ export interface ObservedStepsRegion {
   readonly buildLogQuery?: BuildLogQuery;
 }
 
+/** A settled card's provenance: what it last read, no longer counting seconds. */
+const SETTLED_PROVENANCE = "as last read from Zerops";
+
 /**
  * Pure: `(operation kind, phase, current state, remembered history, now) → region`.
  * A settled operation (`phase !== "running"`) always prefers its history —
  * the observed steps it last saw while running, frozen under the result's
- * verdict — over whatever the current `state` happens to compute, per the
- * concept's "the result is the verdict" rule (§3). While running, `state`
+ * verdict with its provenance line and build log kept in place — over
+ * whatever the current `state` happens to compute, per the concept's "the
+ * result is the verdict" rule (§3). While running, `state`
  * drives the region once a read has produced steps or secondary processes;
  * until then — and whenever the feed goes quiet or off — the history holds
  * what was already shown (steps, secondary processes, build log), so nothing
@@ -169,16 +173,17 @@ export function deriveObservedStepsRegion(
   history: Observation | undefined,
   nowMs: number,
 ): ObservedStepsRegion | undefined {
-  const regionOf = (observation: Observation, provenance: string) => ({
+  const regionOf = (observation: Observation, provenance: string): ObservedStepsRegion => ({
     steps: (kind === "deploy" ? pipelineStepSlots(observation.steps) : observation.steps).map(
       toCardStep,
     ),
     chips: observation.chips.map(observedProcessStep),
     provenance,
+    ...(observation.buildLog === undefined ? {} : { buildLogQuery: observation.buildLog }),
   });
 
   if (phase !== "running") {
-    return history === undefined ? undefined : regionOf(history, "");
+    return history === undefined ? undefined : regionOf(history, SETTLED_PROVENANCE);
   }
 
   const current =
@@ -193,10 +198,7 @@ export function deriveObservedStepsRegion(
 
   const provenanceLabel =
     current === undefined || state.kind === "stale" ? "last read" : "live from Zerops ·";
-  return {
-    ...regionOf(source, `${provenanceLabel} ${secondsAgo(source.readAtMs, nowMs)} s ago`),
-    ...(source.buildLog === undefined ? {} : { buildLogQuery: source.buildLog }),
-  };
+  return regionOf(source, `${provenanceLabel} ${secondsAgo(source.readAtMs, nowMs)} s ago`);
 }
 
 /** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
@@ -276,6 +278,13 @@ export function useOperationCard(
   const { state, history, buildLog } = useOperationObservation(target, environmentId);
   const topology = useZeropsTopology(environmentId);
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  // A log that opened itself while live stays open once it ends: closing it
+  // at settle would shrink the card under the reader.
+  const [wasLive, setWasLive] = useState(false);
+  const logEverLive = wasLive || buildLog.status === "live";
+  if (logEverLive && !wasLive) {
+    setWasLive(true);
+  }
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
   const devServerUrl = devServerUrlFor(operation, topology);
@@ -302,7 +311,7 @@ export function useOperationCard(
     };
   }
 
-  const open = manualOpen ?? buildLog.status === "live";
+  const open = manualOpen ?? logEverLive;
   const log: ReactElement = createElement(ZeropsBuildLog, {
     lines: buildLog.lines,
     onToggle: () => setManualOpen(!open),
