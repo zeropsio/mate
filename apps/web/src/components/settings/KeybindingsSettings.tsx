@@ -77,9 +77,9 @@ import { useAtomCommand } from "../../state/use-atom-command";
 function KeybindingPill({ value }: { value: string }) {
   const parts = value.split("+");
   return (
-    <KbdGroup className="bg-transparent p-0 shadow-none">
+    <KbdGroup>
       {parts.map((part) => (
-        <Kbd key={part} className="min-w-6 justify-center px-1.5">
+        <Kbd key={part}>
           {part === "mod"
             ? navigator.platform.toLowerCase().includes("mac")
               ? "⌘"
