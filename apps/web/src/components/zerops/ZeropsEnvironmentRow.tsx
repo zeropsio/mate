@@ -92,6 +92,12 @@ export interface ZeropsEnvironmentRowProps {
   readonly link?: ZeropsStopLink | undefined;
   readonly busy?: boolean;
   readonly className?: string;
+  /** Drawn before the name, in its cell — a release's chevron, or the space one takes. */
+  readonly leading?: ReactNode;
+  /** A second, muted line under the summary, which then reads in the foreground. */
+  readonly summaryDetail?: ReactNode;
+  /** What the row opens onto, under all three places. */
+  readonly expansion?: ReactNode;
 }
 
 /**
@@ -113,6 +119,9 @@ export function ZeropsEnvironmentRow({
   link,
   busy = false,
   className,
+  leading,
+  summaryDetail,
+  expansion,
 }: ZeropsEnvironmentRowProps) {
   const nameClass = "min-w-0 truncate text-sm text-foreground";
   return (
@@ -122,6 +131,7 @@ export function ZeropsEnvironmentRow({
       data-zerops-environment-row="true"
     >
       <span className="flex min-w-0 items-center gap-2.5">
+        {leading}
         {link === undefined ? (
           <span className={nameClass} data-zerops-surface="environment-name">
             {name}
@@ -138,12 +148,22 @@ export function ZeropsEnvironmentRow({
         )}
         {tag === null ? null : <ZeropsRoleTag label={tag} />}
       </span>
-      <span
-        className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1"
-        data-zerops-surface="environment-summary"
-      >
-        {summary}
-      </span>
+      {summaryDetail === undefined ? (
+        <span
+          className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1"
+          data-zerops-surface="environment-summary"
+        >
+          {summary}
+        </span>
+      ) : (
+        <span
+          className="col-span-2 flex min-w-0 flex-col text-xs sm:col-span-1"
+          data-zerops-surface="environment-summary"
+        >
+          <span className="truncate text-foreground">{summary}</span>
+          <span className="truncate text-muted-foreground">{summaryDetail}</span>
+        </span>
+      )}
       <span className="col-start-2 row-start-1 flex shrink-0 items-center justify-end gap-3 sm:col-start-3">
         {/* The status word's hand is the row's, not each caller's: a
             `sentence` StatusDot has no size of its own and would inherit the
@@ -160,6 +180,9 @@ export function ZeropsEnvironmentRow({
         )}
         {action}
       </span>
+      {expansion === undefined ? null : (
+        <div className="col-span-full min-w-0 pb-2">{expansion}</div>
+      )}
     </li>
   );
 }

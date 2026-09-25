@@ -1,8 +1,9 @@
 import { act, createElement } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   useZeropsChangeCommits,
+  useZeropsRepositoriesCommits,
   useZeropsRepositoryCommits,
   type ZeropsCommitsState,
 } from "./useZeropsRepositoryCommits";
@@ -11,7 +12,15 @@ import {
  * Whether this tab can read Gitea now, and whether its reads meet a 401 that no token recovered —
  * the reacquire failed, or outlasted the request's wait.
  */
-const gitea = vi.hoisted(() => ({ readable: false, unauthorizedOnRead: false }));
+const gitea = vi.hoisted(() => ({
+  readable: false,
+  unauthorizedOnRead: false,
+  /** Repositories whose commits the forge will not read. */
+  failing: new Set<string>(),
+  /** The repositories each `listCommits` asked for, and how often tags were read. */
+  commitReads: [] as Array<string>,
+  tagReads: 0,
+}));
 
 vi.mock("./accountGiteaSessions", () => ({
   useGiteaReadable: () => gitea.readable,
@@ -25,8 +34,16 @@ vi.mock("./accountGiteaSessions", () => ({
     };
     return gitea.readable
       ? {
-          listCommits: () => read([{ sha: "abc123", subject: "Stage follows main" }]),
-          listTags: () => read([]),
+          listCommits: (_owner: string, repo: string) => {
+            gitea.commitReads.push(repo);
+            return gitea.failing.has(repo)
+              ? Promise.reject(new Error(`Gitea would not read ${repo}.`))
+              : read([{ sha: "abc123", subject: "Stage follows main" }]);
+          },
+          listTags: () => {
+            gitea.tagReads += 1;
+            return read([]);
+          },
           compareCommits: () => read([{ sha: "def456", subject: "Add the stage" }]),
         }
       : null;
@@ -334,5 +351,121 @@ describe("useZeropsChangeCommits", () => {
     await act(async () => {
       root.unmount();
     });
+  });
+});
+
+describe("useZeropsRepositoriesCommits", () => {
+  beforeEach(() => {
+    gitea.commitReads.length = 0;
+    gitea.tagReads = 0;
+  });
+
+  afterEach(() => {
+    gitea.readable = false;
+    gitea.unauthorizedOnRead = false;
+    gitea.failing.clear();
+    gitea.commitReads.length = 0;
+    gitea.tagReads = 0;
+    vi.unstubAllGlobals();
+  });
+
+  const kinds = (states: ReadonlyMap<string, ZeropsCommitsState> | undefined) =>
+    Object.fromEntries(
+      [...(states ?? new Map<string, ZeropsCommitsState>())].map(([repo, state]) => [
+        repo,
+        state.kind,
+      ]),
+    );
+
+  async function mount(request: Parameters<typeof useZeropsRepositoriesCommits>[0]) {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ReadonlyMap<string, ZeropsCommitsState>> = [];
+    function Probe(props: {
+      readonly request: Parameters<typeof useZeropsRepositoriesCommits>[0];
+    }) {
+      seen.push(useZeropsRepositoriesCommits(props.request));
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    const render = async (next = request) => {
+      await act(async () => {
+        root.render(createElement(Probe, { request: next }));
+      });
+    };
+    await render();
+    return {
+      seen,
+      render,
+      unmount: async () => {
+        await act(async () => {
+          root.unmount();
+        });
+      },
+    };
+  }
+
+  const REQUEST = {
+    giteaOrigin: "https://gitea.example.test",
+    owner: "harbor",
+    repositories: ["web", "api", "web"],
+  };
+
+  it("reads each repository once the token is there, and never the tags", async () => {
+    const probe = await mount(REQUEST);
+    expect(kinds(probe.seen.at(-1))).toEqual({ api: "no-gitea", web: "no-gitea" });
+
+    gitea.readable = true;
+    await probe.render({ ...REQUEST, repositories: [...REQUEST.repositories] });
+    expect(kinds(probe.seen.at(-1))).toEqual({ api: "read", web: "read" });
+    expect([...gitea.commitReads].sort()).toEqual(["api", "web"]);
+    expect(gitea.tagReads).toBe(0);
+
+    // A new array naming the same repositories is not a new request.
+    await probe.render({ ...REQUEST, repositories: ["api", "web"] });
+    expect(gitea.commitReads).toHaveLength(2);
+    expect(probe.seen.at(-1)).toBe(probe.seen.at(-2));
+    await probe.unmount();
+  });
+
+  it("leaves one repository read when another fails", async () => {
+    gitea.readable = true;
+    gitea.failing.add("api");
+    const probe = await mount(REQUEST);
+    const states = probe.seen.at(-1);
+    expect(kinds(states)).toEqual({ api: "failed", web: "read" });
+    const failed = states?.get("api");
+    expect(failed?.kind === "failed" ? failed.reason : undefined).toContain("api");
+    await probe.unmount();
+  });
+
+  it("keeps what it read across the token's loss and a re-read's 401 (§4.6)", async () => {
+    gitea.readable = true;
+    const probe = await mount(REQUEST);
+    const readAt = probe.seen.length - 1;
+
+    gitea.readable = false;
+    await probe.render();
+    gitea.readable = true;
+    gitea.unauthorizedOnRead = true;
+    await probe.render();
+
+    for (const states of probe.seen.slice(readAt)) {
+      expect(kinds(states)).toEqual({ api: "read", web: "read" });
+    }
+    await probe.unmount();
+  });
+
+  it.each([
+    ["no request", null],
+    ["no origin", { ...REQUEST, giteaOrigin: undefined }],
+    ["no owner", { ...REQUEST, owner: undefined }],
+    ["no repositories", { ...REQUEST, repositories: [] }],
+  ] as const)("answers %s with nothing", async (_case, request) => {
+    gitea.readable = true;
+    const probe = await mount(request);
+    expect(probe.seen.at(-1)?.size).toBe(0);
+    expect(gitea.commitReads).toHaveLength(0);
+    await probe.unmount();
   });
 });

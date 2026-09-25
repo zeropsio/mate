@@ -18,7 +18,12 @@
  * Structural only: the folding is `groupHistory`'s (R5), the reading is the
  * caller's.
  */
-import { groupHistory, historyLine, type HistoryEntry } from "@t3tools/client-runtime/zerops";
+import {
+  groupHistory,
+  historyLine,
+  historyNote,
+  type HistoryEntry,
+} from "@t3tools/client-runtime/zerops";
 import { RUNNING_HERE } from "@t3tools/client-runtime/zerops/flow";
 import { ChevronRightIcon } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -70,13 +75,13 @@ export function ZeropsHistoryView({
   // move on as the minute turns, not only when something else re-renders them.
   const now = useNowMs();
   if (commits.kind === "no-gitea") {
-    return <HistoryNote>Sign in to Gitea to read this repository&rsquo;s history.</HistoryNote>;
+    return <HistoryNote>{historyNote("no-gitea")}</HistoryNote>;
   }
   if (commits.kind === "failed") {
     return <HistoryNote>{commits.reason}</HistoryNote>;
   }
   if (commits.kind === "reading") {
-    return <HistoryNote>Reading the history&hellip;</HistoryNote>;
+    return <HistoryNote>{historyNote("reading")}</HistoryNote>;
   }
   const entries = groupHistory({
     commits: commits.commits,
@@ -84,7 +89,7 @@ export function ZeropsHistoryView({
     tags: commits.releases,
   });
   if (entries.length === 0) {
-    return <HistoryNote>Nothing has landed on this repository yet.</HistoryNote>;
+    return <HistoryNote>{historyNote("empty")}</HistoryNote>;
   }
   return (
     <ul className="flex flex-col" data-zerops-surface="zerops-history">

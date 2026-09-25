@@ -12,6 +12,10 @@
  * recovered — it says so, and reads once one is back. A
  * history already answered keeps its answer while the token is gone and while
  * it is read again (DESIGN §4.6: a 401 never blanks what was read).
+ *
+ * A stop's releases read several repositories at once — one per code service —
+ * and each answers on its own: one repository the forge will not read leaves
+ * the others read.
  */
 import {
   GROUP_REPOSITORY,
@@ -43,12 +47,15 @@ interface HeldCommits {
   readonly state: ZeropsCommitsState;
 }
 
+/** An answer — a read or its failure — that a re-read or a lost token must not blank (§4.6). */
+function isAnswer(state: ZeropsCommitsState | undefined): state is ZeropsCommitsState {
+  return state !== undefined && (state.kind === "read" || state.kind === "failed");
+}
+
 /** The held answer, kept when it already answers `key`, otherwise `waiting`. */
 function holdFor(key: string, waiting: ZeropsCommitsState) {
   return (held: HeldCommits): HeldCommits =>
-    held.key === key && (held.state.kind === "read" || held.state.kind === "failed")
-      ? held
-      : { key, state: waiting };
+    held.key === key && isAnswer(held.state) ? held : { key, state: waiting };
 }
 
 export interface ZeropsCommitsRequest {
@@ -190,4 +197,127 @@ export function useZeropsChangeCommits(
   }, [giteaOrigin, owner, readable, repo, base, head]);
 
   return held.state;
+}
+
+/** Every repository's answer, and the origin and owner they answer for. */
+interface HeldRepositories {
+  readonly key: string | null;
+  readonly states: ReadonlyMap<string, ZeropsCommitsState>;
+}
+
+const NOTHING_HELD: HeldRepositories = { key: null, states: new Map() };
+
+/** Whether two answers say the same thing, state for state. */
+function sameStates(
+  left: ReadonlyMap<string, ZeropsCommitsState>,
+  right: ReadonlyMap<string, ZeropsCommitsState>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const [repository, state] of right) {
+    if (left.get(repository) !== state) return false;
+  }
+  return true;
+}
+
+/** What `held` answered for `repository`, where it answers `key` and is an answer. */
+function heldAnswer(
+  held: HeldRepositories,
+  key: string,
+  repository: string,
+): ZeropsCommitsState | undefined {
+  const was = held.key === key ? held.states.get(repository) : undefined;
+  return isAnswer(was) ? was : undefined;
+}
+
+/**
+ * Each repository's held answer kept where it already answers `key`, the rest
+ * `waiting` — and the held value itself when that changes nothing, so the map a
+ * caller sees keeps its identity.
+ */
+function holdEachFor(
+  key: string,
+  repositories: ReadonlyArray<string>,
+  waiting: ZeropsCommitsState,
+) {
+  return (held: HeldRepositories): HeldRepositories => {
+    const states = new Map(
+      repositories.map(
+        (repository) => [repository, heldAnswer(held, key, repository) ?? waiting] as const,
+      ),
+    );
+    return held.key === key && sameStates(held.states, states) ? held : { key, states };
+  };
+}
+
+/**
+ * The default branch's recent commits of several repositories, each read once
+ * while something is looking at them — a stop's code services, whose releases
+ * say what they carried. Release names are not read: a release row already is
+ * one.
+ */
+export function useZeropsRepositoriesCommits(
+  request: {
+    readonly giteaOrigin: string | undefined;
+    readonly owner: string | undefined;
+    readonly repositories: ReadonlyArray<string>;
+  } | null,
+): ReadonlyMap<string, ZeropsCommitsState> {
+  const giteaOrigin = request?.giteaOrigin;
+  const owner = request?.owner;
+  // Sorted and distinct, as a string: a new array naming the same repositories
+  // is the same request, and never a second read.
+  const repositoriesKey = JSON.stringify([...new Set(request?.repositories ?? [])].sort());
+  const readable = useGiteaReadable(giteaOrigin);
+  const [held, setHeld] = useState<HeldRepositories>(NOTHING_HELD);
+
+  useEffect(() => {
+    const repositories = JSON.parse(repositoriesKey) as ReadonlyArray<string>;
+    if (giteaOrigin === undefined || owner === undefined || repositories.length === 0) {
+      setHeld((current) => (current.states.size === 0 ? current : NOTHING_HELD));
+      return;
+    }
+    const key = JSON.stringify([giteaOrigin, owner]);
+    let unauthorized = false;
+    const client = readable
+      ? giteaClientFor(giteaOrigin, () => {
+          unauthorized = true;
+        })
+      : null;
+    if (client === null) {
+      setHeld(holdEachFor(key, repositories, { kind: "no-gitea" }));
+      return;
+    }
+    let live = true;
+    setHeld(holdEachFor(key, repositories, { kind: "reading" }));
+    void Promise.allSettled(
+      repositories.map((repository) =>
+        client.listCommits(owner, repository, { limit: HISTORY_COMMITS }),
+      ),
+    ).then((results) => {
+      if (!live) return;
+      setHeld((current) => ({
+        key,
+        states: new Map(
+          repositories.map((repository, index): [string, ZeropsCommitsState] => {
+            const result = results[index];
+            // A 401 that no token recovered keeps what was read before it.
+            if (unauthorized || result === undefined) {
+              return [repository, heldAnswer(current, key, repository) ?? { kind: "no-gitea" }];
+            }
+            return [
+              repository,
+              result.status === "fulfilled"
+                ? { kind: "read", commits: result.value, releases: new Map() }
+                : { kind: "failed", reason: zeropsErrorMessage(result.reason) },
+            ];
+          }),
+        ),
+      }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [giteaOrigin, owner, readable, repositoriesKey]);
+
+  return held.states;
 }
