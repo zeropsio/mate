@@ -811,6 +811,24 @@ function deriveTurnFold(span: TurnSpan, unsettledTurnId: TurnId | null): TurnFol
   return hidesFoldableWork ? { hiddenEntries } : null;
 }
 
+/**
+ * When a turn's entry ended: a message at its last update, a work row at its
+ * latest activity and an operation once it settled — each is anchored at its
+ * start, so its start is not its end.
+ */
+function timelineEntryEnd(entry: TimelineEntry): string {
+  switch (entry.kind) {
+    case "message":
+      return entry.message.updatedAt;
+    case "work":
+      return entry.entry.updatedAt ?? entry.createdAt;
+    case "operation":
+      return entry.operation.settledAt ?? entry.createdAt;
+    default:
+      return entry.createdAt;
+  }
+}
+
 /** "Worked for 8.0s" and the moment the turn ended, from the turn's own timings. */
 function describeSettledTurn(
   span: TurnSpan,
@@ -821,15 +839,8 @@ function describeSettledTurn(
   const lastEntry = entries.at(-1);
   const isLatestTurn = span.turnId !== null && latestTurn?.turnId === span.turnId;
   // A turn cut short by a steer leaves trailing work entries behind its
-  // terminal message — take whichever ended last. A work row is anchored
-  // at its start, so its end is its latest update.
-  const lastEntryEnd = lastEntry
-    ? lastEntry.kind === "message"
-      ? lastEntry.message.updatedAt
-      : lastEntry.kind === "work"
-        ? (lastEntry.entry.updatedAt ?? lastEntry.createdAt)
-        : lastEntry.createdAt
-    : null;
+  // terminal message — take whichever ended last.
+  const lastEntryEnd = lastEntry ? timelineEntryEnd(lastEntry) : null;
   const entriesEnd = maxIsoTimestamp(span.terminalEntry?.message.updatedAt ?? null, lastEntryEnd);
   // The opening message is the turn's start: the first entry appears only
   // once the provider starts producing output, and a turn cut short by a
@@ -927,7 +938,7 @@ function turnWindow(input: {
   // the turn is the latest than once the next one starts.
   const lastEntry = span.entries.at(-1);
   const ends = [
-    lastEntry?.kind === "message" ? lastEntry.message.updatedAt : lastEntry?.createdAt,
+    lastEntry === undefined ? undefined : timelineEntryEnd(lastEntry),
     input.checkpointCompletedAtByTurnId.get(span.turnId),
   ].flatMap((end) => (end ? [Date.parse(end)] : []));
   return { startMs, endMs: Math.max(startMs, ...ends.filter(Number.isFinite)) };

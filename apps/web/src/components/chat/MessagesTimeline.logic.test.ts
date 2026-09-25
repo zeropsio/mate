@@ -3761,6 +3761,23 @@ describe("turn header", () => {
     },
   );
 
+  it("keeps a landing during the turn's last tool call in its tally once the turn stops", () => {
+    const conversation: Conversation = {
+      messages: [userMessage("u1", 0), assistantMessage("a1", 2)],
+      work: [{ ...toolWork("w1", 3), updatedAt: at(20) }],
+      latestTurn: { turnId: T1, state: "interrupted", startedAt: at(1), completedAt: at(21) },
+      runningTurnId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      landed: [landedChange(1, 10)],
+    };
+    const header = deriveRows(conversation).find((row) => row.kind === "turn-header");
+
+    expect(header?.kind === "turn-header" && header.tally.map((item) => item.key)).toContain(
+      "landed:change-landed:appdev#1",
+    );
+  });
+
   it("keeps a settled tool run whole around a change that landed inside it", () => {
     const conversation = {
       ...settled,
