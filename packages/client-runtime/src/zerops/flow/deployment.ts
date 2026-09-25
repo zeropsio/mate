@@ -554,6 +554,8 @@ export interface StopView {
   readonly line: string;
   /** What runs there, when anything is known to; the menu spells it out. */
   readonly version: DeployedVersion | undefined;
+  /** When what runs there started running, where the platform says it runs and says when. */
+  readonly activatedAt: string | null;
   /** How long the line waits before it shows: a quick answer never flickers a placeholder. */
   readonly afterMs: number;
 }
@@ -570,8 +572,11 @@ const sameVersion = (left: DeployedVersion, right: DeployedVersion): boolean =>
  * where it read the deploy the platform names under a name of its own — the release every service
  * of the stop runs (`nameStopByRelease`), where the platform names one service's.
  */
-function runningView(runs: DeployedVersion | undefined, row: EnvironmentRow | undefined): StopView {
-  const named = runs?.label === undefined ? undefined : runs;
+function runningView(
+  runs: Extract<Deployment, { readonly kind: "running" }> | undefined,
+  row: EnvironmentRow | undefined,
+): StopView {
+  const named = runs?.version.label === undefined ? undefined : runs.version;
   const read = row?.version.label === undefined ? undefined : row;
   const same = read !== undefined && named !== undefined && sameVersion(named, read.version);
   const version = same && read.version.name !== undefined ? read.version : (named ?? read?.version);
@@ -581,6 +586,7 @@ function runningView(runs: DeployedVersion | undefined, row: EnvironmentRow | un
     word: deployWord(tone) ?? RUNNING_WORD,
     line: version?.label ?? RUNNING_WORD,
     version,
+    activatedAt: runs?.activatedAt ?? null,
     afterMs: 0,
   };
 }
@@ -599,7 +605,7 @@ export function stopView(input: {
 }): StopView {
   const { deployment, row } = input;
   if (deployment.state === "known" && deployment.value.kind === "running")
-    return runningView(deployment.value.version, row);
+    return runningView(deployment.value, row);
   // A build runs now: what it builds is the stop's answer, whatever the row read before it.
   if (deployment.state === "known" && deployment.value.kind === "deploying") {
     const { version } = deployment.value;
@@ -609,6 +615,7 @@ export function stopView(input: {
       word,
       line: version.label ?? word,
       version: version.label === undefined ? undefined : version,
+      activatedAt: null,
       afterMs: 0,
     };
   }
@@ -622,6 +629,7 @@ export function stopView(input: {
       word: presentation.negative,
       line: presentation.negative,
       version: undefined,
+      activatedAt: null,
       afterMs: 0,
     };
   if (row !== undefined && row.version.label !== undefined) return runningView(undefined, row);
@@ -631,6 +639,7 @@ export function stopView(input: {
     word: text,
     line: text,
     version: undefined,
+    activatedAt: null,
     afterMs: presentation.message?.afterMs ?? 0,
   };
 }

@@ -45,6 +45,7 @@ const view = (overrides: Partial<StopView>): StopView => ({
   word: "Deployed",
   line: "v0.1.13",
   version: V13,
+  activatedAt: null,
   afterMs: 0,
   ...overrides,
 });

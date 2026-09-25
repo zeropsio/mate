@@ -330,7 +330,7 @@ function service(
 }
 
 /** A fact the platform stated just now. */
-function known(value: Deployment): Shown<Deployment> {
+function known<T>(value: T): Shown<T> {
   return {
     state: "known",
     value,
@@ -340,7 +340,7 @@ function known(value: Deployment): Shown<Deployment> {
   };
 }
 
-const NOTHING_RUNS = known({ kind: "none" });
+const NOTHING_RUNS: Deployment = { kind: "none" };
 
 /**
  * Beviro's production as it was read on 2026-09-25: medusa has run one commit since v0.1.9, and
@@ -428,11 +428,11 @@ const BEVIRO_BEHIND: ReleaseOffer = {
 const BEVIRO_RELEASING: ReleaseOffer = { ...BEVIRO_BEHIND, releasing: true };
 
 /** Beviro's production as the platform lists it: every service running what its deploy named. */
-const BEVIRO_RUNNING = known({
+const BEVIRO_RUNNING: Deployment = {
   kind: "running",
   activatedAt: new Date(NOW - 7_200_000).toISOString(),
   version: deployedVersion(`${sha(NEXTSTORE[0])} v0.1.13 ales`),
-});
+};
 
 /** The nextstore commit v0.1.14 listed, whose production deploy failed. */
 const NEXTSTORE_FAILED = "9c41d2e0";
@@ -496,11 +496,11 @@ const beviroReads = (state: ZeropsCommitsState): ReadonlyMap<string, ZeropsCommi
   ]);
 
 /** A stage the platform lists, each service running what its deploy named. */
-const STAGE_RUNNING = known({
+const STAGE_RUNNING: Deployment = {
   kind: "running",
   activatedAt: new Date(NOW - 7_200_000).toISOString(),
   version: deployedVersion(sha("b21d904c")),
-});
+};
 
 interface StopFixture {
   readonly tier: EnvironmentRow["tier"];
@@ -512,7 +512,7 @@ interface StopFixture {
    * `useStopServices` lists them: each running what its own deploy named, unless `platform` says
    * otherwise for it.
    */
-  readonly deployment?: Shown<Deployment>;
+  readonly deployment?: Deployment;
   /** A service's own deployment where it differs from what its deploy named. */
   readonly platform?: Readonly<Record<string, Deployment>>;
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
@@ -551,17 +551,16 @@ function runningCommits(
  */
 function platformListing(fixture: StopFixture): Shown<ReadonlyArray<StopService>> {
   const { deployment } = fixture;
-  if (deployment === undefined || deployment.state !== "known") return UNREAD_LISTING;
-  const activatedAt = deployment.value.kind === "running" ? deployment.value.activatedAt : null;
-  return {
-    ...deployment,
-    value: fixture.services.map((entry) => ({
+  if (deployment === undefined) return UNREAD_LISTING;
+  const activatedAt = deployment.kind === "running" ? deployment.activatedAt : null;
+  return known(
+    fixture.services.map((entry) => ({
       service: platformService(`svc-${entry.hostname}`),
       hostname: entry.hostname,
       deployment: known(
         fixture.platform?.[entry.hostname] ??
-          (deployment.value.kind === "none"
-            ? deployment.value
+          (deployment.kind === "none"
+            ? deployment
             : {
                 kind: "running",
                 activatedAt,
@@ -569,7 +568,7 @@ function platformListing(fixture: StopFixture): Shown<ReadonlyArray<StopService>
               }),
       ),
     })),
-  };
+  );
 }
 
 const UNREAD_LISTING: Shown<ReadonlyArray<StopService>> = { state: "unread", waitingFor: null };
@@ -623,7 +622,10 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     }),
   );
   const view = stopView({
-    deployment: fixture.deployment ?? { state: "unread", waitingFor: null },
+    deployment:
+      fixture.deployment === undefined
+        ? { state: "unread", waitingFor: null }
+        : known(fixture.deployment),
     row: stop,
     nowMs: NOW,
   });
@@ -695,12 +697,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         waiting: waiting.length,
         release,
         releasedAge: fixture.releasedAge,
-        since:
-          fixture.deployment?.state === "known" &&
-          fixture.deployment.value.kind === "running" &&
-          fixture.deployment.value.activatedAt !== null
-            ? "2h ago"
-            : undefined,
+        since: view.activatedAt === null ? undefined : "2h ago",
         atMainHead:
           !production &&
           commits.kind === "read" &&
@@ -865,11 +862,11 @@ function Harness() {
               service("stage", "api", "b21d904c", undefined, "pending"),
               service("stage", "app", "5c3ea18b", undefined),
             ],
-            deployment: known({
+            deployment: {
               kind: "deploying",
               version: deployedVersion(sha("b21d904c")),
               previous: null,
-            }),
+            },
             platform: {
               api: {
                 kind: "deploying",

@@ -999,10 +999,6 @@ export function ZeropsStopDetailPage({
 
   const deployment = flowValue.deployments.get(projectId) ?? UNREAD_DEPLOYMENT;
   const view = stopView({ deployment, row: stop, nowMs });
-  const activatedAt =
-    deployment.state === "known" && deployment.value.kind === "running"
-      ? deployment.value.activatedAt
-      : null;
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
   const job = failedJob(failedRun.state);
@@ -1015,7 +1011,7 @@ export function ZeropsStopDetailPage({
     waiting: releaseContentsSummary(flow.release.contents, 20).total,
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
-    since: activatedAt === null ? undefined : formatRelativeTimeLabel(activatedAt),
+    since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
     atMainHead:
       stage &&
       commits.kind === "read" &&

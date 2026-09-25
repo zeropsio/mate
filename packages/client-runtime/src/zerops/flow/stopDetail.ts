@@ -337,11 +337,7 @@ export function serviceRows(input: {
       services: [state],
       environment: input.environment,
     });
-    const { tone, word } = stopView({ deployment, row, nowMs: input.nowMs });
-    const activatedAt =
-      deployment.state === "known" && deployment.value.kind === "running"
-        ? deployment.value.activatedAt
-        : null;
+    const { tone, word, activatedAt } = stopView({ deployment, row, nowMs: input.nowMs });
     return {
       hostname,
       repository: state.repository,

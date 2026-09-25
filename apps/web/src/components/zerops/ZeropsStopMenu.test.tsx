@@ -31,6 +31,7 @@ const STOP: StopView = {
     taggedBy: "ada",
     label: "v1.4.0",
   },
+  activatedAt: null,
   afterMs: 0,
 };
 

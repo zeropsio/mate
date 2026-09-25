@@ -168,6 +168,33 @@ describe("stopView", () => {
     expect(view.afterMs).toBe(0);
   });
 
+  it.each([
+    { name: "a running deploy", shown: known(RUNNING), expected: "2026-09-20T10:00:00Z" },
+    {
+      name: "a running deploy the platform gave no time",
+      shown: known({ ...RUNNING, activatedAt: null }),
+      expected: null,
+    },
+    {
+      name: "a build that runs now",
+      shown: known({ kind: "deploying", version: RUNNING.version, previous: RUNNING }),
+      expected: null,
+    },
+    { name: "nothing deployed", shown: known({ kind: "none" }), expected: null },
+    {
+      name: "a deployment still being read",
+      shown: { state: "unread", waitingFor: null } as Shown<Deployment>,
+      expected: null,
+    },
+  ])("answers since when $name has run", ({ shown, expected }) => {
+    for (const entry of ROWS) {
+      expect(
+        stopView({ deployment: shown, row: entry.row, nowMs: NOW }).activatedAt,
+        entry.name,
+      ).toBe(expected);
+    }
+  });
+
   it("names what runs by the platform's answer, coloured by the deploy half's row of it", () => {
     const read = ROWS[2]!.row;
     const view = stopView({ deployment: known(RUNNING), row: read, nowMs: NOW });
