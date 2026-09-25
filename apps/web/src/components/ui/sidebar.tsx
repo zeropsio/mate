@@ -773,6 +773,7 @@ export {
   SidebarFooter,
   SidebarGroup,
   SidebarHeader,
+  SidebarInput,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
