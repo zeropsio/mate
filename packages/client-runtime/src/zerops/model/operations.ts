@@ -162,11 +162,15 @@ function browserTarget(input: Record<string, unknown>): string | undefined {
  * - `undefined` while the target is unknown (arguments not streamed in yet):
  *   an empty input never becomes an identity.
  */
+function hasAttemptIdentity(kind: Exclude<ZeropsOperationKind, "bootstrap">): boolean {
+  return kind !== "error" && !READ_KINDS.has(kind);
+}
+
 function attemptIdentityFor(
   kind: Exclude<ZeropsOperationKind, "bootstrap">,
   input: Record<string, unknown>,
 ): string | undefined {
-  if (kind === "error" || READ_KINDS.has(kind)) {
+  if (!hasAttemptIdentity(kind)) {
     return undefined;
   }
   const target = kind === "browser" ? browserTarget(input) : inputHostname(input);
@@ -415,10 +419,20 @@ export interface ZeropsOperationsReduction {
   readonly genericCalls: ReadonlyArray<ZeropsCall>;
 }
 
+export interface ZeropsReductionOptions {
+  /**
+   * `false` while the client holds only a window of the thread (older turns
+   * not loaded, or not known yet): an ordinal counted over a window would
+   * change once earlier turns load, so no card is numbered until then.
+   */
+  readonly historyComplete?: boolean;
+}
+
 /** `reduceZeropsOperations` in anchor order — one object per thing done to the project. */
 export function reduceZeropsOperations(
   calls: ReadonlyArray<ZeropsCall>,
   context: OperationBuildContext,
+  { historyComplete = true }: ZeropsReductionOptions = {},
 ): ZeropsOperationsReduction {
   const ordered = [...calls].sort((a, b) => compareAnchors(anchorOf(a), anchorOf(b)));
 
@@ -435,16 +449,18 @@ export function reduceZeropsOperations(
   // anchored before it, whatever their outcome — done, failed, interrupted,
   // declined, stopped or still running. Counted in anchor order, so a later
   // call never changes an earlier one's number, and the count is a pure
-  // function of the persisted calls: identical after a reload. (Should an
-  // earlier-anchored call's arguments ever stream in after a later same-target
-  // call's, the later one moves up by one — anchor order is what a reload can
-  // reproduce, arrival order of arguments is not.) A call with no
-  // identity (target unknown yet, or a kind with no single target) has no
-  // number. Every call is a card of its own: a retry never merges into an
-  // earlier card, which would remove a row mid-turn and rewrite what an
-  // older card already showed.
+  // function of the persisted calls: identical after a reload. A number is
+  // only shown once it can no longer change: a call with no identity (target
+  // unknown yet, or a kind with no single target) has none, nor does a call
+  // anchored after a still-running call of the same kind whose target has not
+  // streamed in (that one may turn out to be an earlier attempt at the same
+  // target), nor any call while the thread's older turns are not loaded
+  // (`historyComplete`). Every call is a card of its own: a retry never
+  // merges into an earlier card, which would remove a row mid-turn and
+  // rewrite what an older card already showed.
   const attemptsSoFar = new Map<string, number>();
   const attemptByCallId = new Map<string, number>();
+  const kindsAwaitingTarget = new Set<ZeropsOperationKind>();
 
   for (const call of ordered) {
     if (call.agentInternal) {
@@ -484,8 +500,12 @@ export function reduceZeropsOperations(
     const identity = attemptIdentityFor(kind, call.input);
     if (identity !== undefined) {
       const attempt = (attemptsSoFar.get(identity) ?? 0) + 1;
-      attemptByCallId.set(call.id, attempt);
       attemptsSoFar.set(identity, attempt);
+      if (historyComplete && !kindsAwaitingTarget.has(kind)) {
+        attemptByCallId.set(call.id, attempt);
+      }
+    } else if (call.status === "inProgress" && hasAttemptIdentity(kind)) {
+      kindsAwaitingTarget.add(kind);
     }
     standaloneCalls.push({ kind, call });
   }

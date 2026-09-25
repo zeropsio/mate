@@ -61,10 +61,14 @@ function activityFor(entry: EntrySpec): OrchestrationThreadActivity {
   } as unknown as OrchestrationThreadActivity;
 }
 
-function reduceFrom(entries: ReadonlyArray<EntrySpec>, runningTurnId: string | null = "t1") {
+function reduceFrom(
+  entries: ReadonlyArray<EntrySpec>,
+  runningTurnId: string | null = "t1",
+  historyComplete = true,
+) {
   const activities = entries.map(activityFor);
   const calls = collectZeropsCalls(activities, runningTurnId);
-  return reduceZeropsOperations(calls, CONTEXT);
+  return reduceZeropsOperations(calls, CONTEXT, { historyComplete });
 }
 
 function planResult(overrides: Record<string, unknown>): string {
@@ -872,6 +876,8 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
     readonly name: string;
     readonly entries: ReadonlyArray<EntrySpec>;
     readonly runningTurnId?: string | null;
+    /** `false` while older turns of the thread are not loaded. */
+    readonly historyComplete?: boolean;
     /** Operation key → its attempt ordinal (`undefined` = no number). */
     readonly expected: Readonly<Record<string, number | undefined>>;
   }
@@ -898,6 +904,34 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
         { ...deploy("x-done", 2, "completed"), toolCallId: "x" },
       ],
       expected: { "op:p": 1, "op:x": 2 },
+    },
+    {
+      name: "a call behind a same-kind call whose target has not streamed in has no number yet",
+      entries: [
+        { ...deploy("a-start", 0, "inProgress", {}), toolCallId: "a" },
+        deploy("b", 1, "inProgress"),
+      ],
+      expected: { "op:a": undefined, "op:b": undefined },
+    },
+    {
+      name: "once the earlier target streams in, both are numbered by anchor",
+      entries: [
+        { ...deploy("a-start", 0, "inProgress", {}), toolCallId: "a" },
+        deploy("b", 1, "inProgress"),
+        { ...deploy("a-args", 2, "inProgress"), toolCallId: "a" },
+      ],
+      expected: { "op:a": 1, "op:b": 2 },
+    },
+    {
+      name: "an earlier call that settled without naming a target holds nothing back",
+      entries: [deploy("a", 0, "failed", {}), deploy("b", 1, "completed")],
+      expected: { "op:a": undefined, "op:b": 1 },
+    },
+    {
+      name: "no card is numbered while older turns of the thread are not loaded",
+      entries: [deploy("a", 0, "completed"), deploy("b", 1, "completed")],
+      historyComplete: false,
+      expected: { "op:a": undefined, "op:b": undefined },
     },
     {
       name: "a first call is attempt 1",
@@ -1074,8 +1108,12 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
     expect(reloaded).toStrictEqual(live);
   });
 
-  it.each(cases)("$name", ({ entries, runningTurnId, expected }) => {
-    const { operations } = reduceFrom(entries, runningTurnId === undefined ? "t1" : runningTurnId);
+  it.each(cases)("$name", ({ entries, runningTurnId, historyComplete, expected }) => {
+    const { operations } = reduceFrom(
+      entries,
+      runningTurnId === undefined ? "t1" : runningTurnId,
+      historyComplete,
+    );
     const actual = Object.fromEntries(operations.map((o) => [o.key, o.attempts]));
     expect(actual).toStrictEqual(expected);
     for (const operation of operations) {

@@ -29,6 +29,21 @@ describe("deriveZeropsThreadModel", () => {
     }
   });
 
+  it.each([
+    { name: "the whole thread loaded: numbered", historyComplete: true, numbered: true },
+    { name: "older turns not loaded: withheld", historyComplete: false, numbered: false },
+  ])("attempt numbers — $name", ({ historyComplete, numbered }) => {
+    const model = deriveZeropsThreadModel({
+      activities: weatherdashFirstDeploy.activities,
+      nowMs: NOW_MS,
+      historyComplete,
+    });
+    const attempts = model.entries.flatMap((e) =>
+      e.kind === "operation" && e.operation.attempts !== undefined ? [e.operation.attempts] : [],
+    );
+    expect(attempts.length > 0).toBe(numbered);
+  });
+
   it("entries are sorted by anchor order, matching the calls' own anchor order for per-call operations", () => {
     const model = deriveZeropsThreadModel({
       activities: weatherdashFirstDeploy.activities,

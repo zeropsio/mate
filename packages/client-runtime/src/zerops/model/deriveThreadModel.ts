@@ -32,6 +32,8 @@ export interface ZeropsThreadModelInput {
   readonly runningTurnId?: string | null | undefined;
   /** The caller's clock — a triggered build turns uncertain past its cap against it. */
   readonly nowMs: number;
+  /** `ZeropsReductionOptions.historyComplete`: `false` while the thread's older turns are not loaded, or not known to be. */
+  readonly historyComplete?: boolean;
 }
 
 export interface ZeropsThreadModel {
@@ -52,10 +54,11 @@ export function deriveZeropsThreadModel(input: ZeropsThreadModelInput): ZeropsTh
   const zeropsActivityIds = new Set<string>(calls.flatMap((call) => [...call.rowIds]));
   const lifecycle = input.lifecycle;
   const envelope = lifecycle?.state === "known" ? lifecycle.value.envelope : undefined;
-  const { operations, genericCalls } = reduceZeropsOperations(calls, {
-    nowMs: input.nowMs,
-    projectId: envelope?.project.id,
-  });
+  const { operations, genericCalls } = reduceZeropsOperations(
+    calls,
+    { nowMs: input.nowMs, projectId: envelope?.project.id },
+    input.historyComplete === undefined ? {} : { historyComplete: input.historyComplete },
+  );
 
   const entries: ZeropsTimelineEntry[] = [
     ...operations.map((operation): ZeropsTimelineEntry => ({
