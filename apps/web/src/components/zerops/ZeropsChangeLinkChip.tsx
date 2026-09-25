@@ -14,10 +14,15 @@
  * It renders its children unchanged for every address it cannot claim: another
  * forge, a change this account cannot read, a session with no flow. A chip is
  * only ever an improvement on a link it is certain about.
+ *
+ * A change on this Gitea is drawn from its address at once, even on an org the
+ * registry does not name yet — a project made since the page loaded, or a
+ * registry read that failed. The chip asks for the org, and takes its word and
+ * its in-app open once the registry names it.
  */
 import { changeState, parseGiteaChangeUrl } from "@t3tools/client-runtime/zerops";
 import { GitPullRequestArrow } from "lucide-react";
-import { useContext, type ReactNode } from "react";
+import { useContext, useEffect, type ReactNode } from "react";
 
 import { AppLinkContext } from "../ServiceBrowserLink";
 import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
@@ -43,6 +48,12 @@ export function ZeropsChangeLinkChip({
       }
     }
   }
+  const unknownOwner =
+    link !== null && flowValue !== null && groupId === undefined ? link.owner : undefined;
+  const askForOwner = flowValue?.askForOwner;
+  useEffect(() => {
+    if (unknownOwner !== undefined) askForOwner?.(unknownOwner);
+  }, [askForOwner, unknownOwner]);
   const open =
     groupId === undefined
       ? undefined
@@ -65,16 +76,16 @@ export function ZeropsChangeLinkChip({
   );
   const pull = open ?? (landed.kind === "read" ? landed.pull : undefined);
   const follow = href === undefined ? null : (openInApp?.(href) ?? null);
-  // Drawn from the url while the forge is still answering: the repository and
-  // the number are in the address, so the chip does not have to arrive as a
-  // full-width url that turns into a chip a moment later. Only the word waits.
-  // `gone` and `failed` are answers, not waits: a change this account cannot
-  // read stays the link it was.
+  // Drawn from the url while the registry or the forge is still answering: the
+  // repository and the number are in the address, so the chip does not have to
+  // arrive as a full-width url that turns into a chip a moment later. Only the
+  // word waits. `gone` and `failed` are answers, not waits: a change this
+  // account cannot read stays the link it was.
   const reading =
     pull === undefined &&
     link !== null &&
-    groupId !== undefined &&
-    (landed.kind === "idle" || landed.kind === "reading");
+    flowValue !== null &&
+    (groupId === undefined || landed.kind === "idle" || landed.kind === "reading");
   if (pull === undefined && !reading) return children;
 
   const line = pull?.line ?? `${link?.repository ?? ""} #${String(link?.number ?? 0)}`;
