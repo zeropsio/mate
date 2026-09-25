@@ -768,7 +768,7 @@ function Harness() {
 
       <State
         label="A production nothing was deployed to"
-        note="The platform lists every service with no active deploy, and no release was cut."
+        note="No release was cut and no tier builds a service here yet: Services says None yet."
       >
         <StopState
           fixture={{
@@ -781,12 +781,16 @@ function Harness() {
 
       <State
         label="A stage nothing was deployed to"
-        note="The dead end the menu draws as a grey dot; the verdict says what fills it."
+        note="The dead end the menu draws as a grey dot; the verdict says what fills it, and each code service says it once, in its commit's place."
       >
         <StopState
           fixture={{
             tier: "stage",
-            services: [],
+            services: [
+              service("stage", "api", undefined, undefined),
+              service("stage", "app", undefined, undefined),
+            ],
+            offers: [{ service: "api", serviceId: "svc-api", port: 8080 }],
             deployment: NOTHING_RUNS,
             commits: { kind: "read", commits: [], releases: new Map() },
           }}

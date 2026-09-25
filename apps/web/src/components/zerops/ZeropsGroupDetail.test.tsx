@@ -525,6 +525,13 @@ describe("ZeropsStopPane", () => {
     expect(card).not.toContain("b200000");
   });
 
+  it("says None yet under Services where the stop has no code service", () => {
+    const markup = renderStop({ tier: "production", services: [], deployment: NONE });
+    const services = markup.indexOf("Services · 0");
+    expect(services).toBeGreaterThan(-1);
+    expect(markup.slice(services)).toContain("None yet");
+  });
+
   it("draws the verdict's verb as an outline button, not a filled one", () => {
     const markup = renderStop({
       tier: "production",

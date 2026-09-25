@@ -1269,18 +1269,22 @@ export function ZeropsStopPane({
         )}
 
         <CardGroup title={stopCardTitle("services", services.length)}>
-          <ul className="flex flex-col">
-            {services.map((row) => (
-              <StopServiceLine
-                buildOf={buildOf}
-                enablingServiceId={enablingServiceId ?? null}
-                forge={forge}
-                key={row.hostname}
-                onEnableRoute={onEnableRoute}
-                row={row}
-              />
-            ))}
-          </ul>
+          {services.length === 0 ? (
+            <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
+          ) : (
+            <ul className="flex flex-col">
+              {services.map((row) => (
+                <StopServiceLine
+                  buildOf={buildOf}
+                  enablingServiceId={enablingServiceId ?? null}
+                  forge={forge}
+                  key={row.hostname}
+                  onEnableRoute={onEnableRoute}
+                  row={row}
+                />
+              ))}
+            </ul>
+          )}
           {routeTrouble === null || routeTrouble === undefined ? null : (
             <p className="py-2 text-sm text-[var(--zerops-status-failed-text)]">{routeTrouble}</p>
           )}
