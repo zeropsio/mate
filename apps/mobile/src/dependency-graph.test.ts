@@ -266,8 +266,9 @@ describe("mobile dependency graph", () => {
       // legitimately wires cloud/observability features; the appearance
       // helpers and terminal preferences still need untangling.
       ["lib", "features", 7, "lib must not add imports from features"],
-      // components -> features: the appearance preferences provider.
-      ["components", "features", 5, "components must not add imports from features"],
+      // components -> features: the appearance preferences provider (read by
+      // the Android control sizing hook among others).
+      ["components", "features", 6, "components must not add imports from features"],
       // native -> features: native glue reading appearance/keyboard/review features.
       ["native", "features", 8, "native must not add imports from features"],
       // lib -> state: attachment/session plumbing that predates the cycle
