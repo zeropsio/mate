@@ -2,6 +2,12 @@ import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
+import {
+  CircleAlertIcon,
+  CircleCheckIcon,
+  MessageCircleQuestionIcon,
+  ShieldQuestionIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
@@ -16,6 +22,8 @@ import {
 } from "../threadNotifications";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import { toastManager } from "./ui/toast";
+import { threadStatusToneTextClass } from "./Sidebar.logic";
+import { cn } from "~/lib/utils";
 
 export function ThreadNotificationCoordinator() {
   const { environments } = useEnvironments();
@@ -108,7 +116,7 @@ function EnvironmentNotifications({
     }
     const next = new Map<ThreadId, { attention: string | null; completion: number | null }>();
     for (const thread of shell.snapshot.value.threads) {
-      const status = resolveThreadStatus(thread).kind;
+      const { kind: status, toneId } = resolveThreadStatus(thread);
       const settled =
         status !== "working" &&
         status !== "connecting" &&
@@ -133,6 +141,15 @@ function EnvironmentNotifications({
             ? "completion"
             : null;
       if (!kind) continue;
+      // The glyph and its colour are the sidebar row's for the same status.
+      const NotificationIcon =
+        kind === "completion"
+          ? CircleCheckIcon
+          : status === "approval"
+            ? ShieldQuestionIcon
+            : status === "failed"
+              ? CircleAlertIcon
+              : MessageCircleQuestionIcon;
       const title =
         kind === "completion"
           ? "Thread completed"
@@ -156,7 +173,18 @@ function EnvironmentNotifications({
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
           title,
           description: thread.title,
-          data: { hideCopyButton: true },
+          data: {
+            hideCopyButton: true,
+            leadingIcon: (
+              <NotificationIcon
+                aria-hidden
+                className={cn(
+                  "size-4",
+                  threadStatusToneTextClass(kind === "completion" ? "success" : toneId),
+                )}
+              />
+            ),
+          },
           actionProps: {
             children: "Open thread",
             onClick: () => {

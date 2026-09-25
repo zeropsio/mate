@@ -226,6 +226,11 @@ const THREAD_STATUS_TONE_CLASSES: Record<ThreadStatusToneId, ThreadStatusToneCla
   },
 };
 
+/** The text colour a status wears on its sidebar row, for glyphs that stand for it elsewhere. */
+export function threadStatusToneTextClass(toneId: ThreadStatusToneId): string {
+  return THREAD_STATUS_TONE_CLASSES[toneId].rowClass;
+}
+
 export interface ThreadStatusPill extends ThreadStatus {
   readonly label: string;
   readonly colorClass: string;
