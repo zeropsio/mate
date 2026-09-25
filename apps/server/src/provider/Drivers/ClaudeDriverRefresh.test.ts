@@ -19,6 +19,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeProviderInstanceRegistry } from "../Layers/ProviderInstanceRegistryLive.ts";
 import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import * as ModelManifest from "../ModelManifest.ts";
+import * as ResetCreditCoordinator from "../Layers/resetCreditCoordinator.ts";
 import { ClaudeDriver } from "./ClaudeDriver.ts";
 
 const testLayer = ServerConfig.layerTest(process.cwd(), {
@@ -42,6 +43,7 @@ const testLayer = ServerConfig.layerTest(process.cwd(), {
   ),
   Layer.provideMerge(Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers)),
   Layer.provideMerge(ModelManifest.layerTest),
+  Layer.provideMerge(ResetCreditCoordinator.layerTest),
 );
 
 const claudeConfig = (binaryPath: string, homePath: string): ClaudeSettings => ({
