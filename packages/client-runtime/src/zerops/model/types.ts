@@ -126,8 +126,14 @@ export interface ZeropsOperationLink {
  * (`phrases.ts`'s `browserCondensedLine`) — the card renders it verbatim,
  * the same way it already renders `closing`.
  */
+/** A browser viewport in CSS pixels; both sides are positive. */
+export interface ZeropsBrowserViewport {
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface ZeropsOperationBrowserSummary {
-  readonly viewport?: { readonly width: number; readonly height: number };
+  readonly viewport?: ZeropsBrowserViewport;
   readonly media?: "dark" | "light";
   readonly stepCount: number;
   readonly failedStep?: ZeropsOperationStep;
@@ -268,6 +274,12 @@ export interface ZeropsOperation {
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
+  /**
+   * `browser` only: the viewport the agent set — read from the call's own
+   * commands once its arguments arrive, else from the result's steps — so the
+   * frame takes its final shape before any pixel does.
+   */
+  readonly viewport?: ZeropsBrowserViewport;
   /** `logs` · `events` · `process` · `discover` only. */
   readonly readResult?: ZeropsReadResult;
   /** bootstrap only. */

@@ -777,6 +777,60 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
     ]);
   });
 
+  it.each([
+    {
+      name: "read from the call's own commands while it runs",
+      input: { url: "https://a.example.com", commands: [["set", "viewport", "390", "844"]] },
+      resultText: undefined,
+      expected: { width: 390, height: 844 },
+    },
+    {
+      name: "the last resize wins",
+      input: {
+        url: "https://a.example.com",
+        commands: [
+          ["set", "viewport", "390", "844"],
+          ["set", "viewport", "1280", "720"],
+        ],
+      },
+      resultText: undefined,
+      expected: { width: 1280, height: 720 },
+    },
+    {
+      name: "a zero dimension is no viewport",
+      input: { url: "https://a.example.com", commands: [["set", "viewport", "1280", "0"]] },
+      resultText: undefined,
+      expected: undefined,
+    },
+    {
+      name: "no resize: none",
+      input: { url: "https://a.example.com", commands: [["click", "@e1"]] },
+      resultText: undefined,
+      expected: undefined,
+    },
+    {
+      name: "the result's own steps when the input carried none",
+      input: { url: "https://a.example.com" },
+      resultText: JSON.stringify({
+        url: "https://a.example.com",
+        steps: [{ command: ["set", "viewport", "800", "600"], success: true }],
+      }),
+      expected: { width: 800, height: 600 },
+    },
+  ])("the browser viewport is $name", ({ input, resultText, expected }) => {
+    const { operations } = reduceFrom([
+      {
+        id: "brw-viewport",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_browser",
+        input,
+        status: resultText === undefined ? "inProgress" : "completed",
+        ...(resultText === undefined ? {} : { resultText }),
+      },
+    ]);
+    expect(operations[0]!.viewport).toEqual(expected);
+  });
+
   it("browserSummary is absent when the result did not decode into a browser card", () => {
     const { operations } = reduceFrom([
       {

@@ -244,6 +244,7 @@ function buildStandaloneOperation(
     ...(fields.explanation !== undefined ? { explanation: fields.explanation } : {}),
     ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),
     ...(fields.browserSummary !== undefined ? { browserSummary: fields.browserSummary } : {}),
+    ...(fields.viewport !== undefined ? { viewport: fields.viewport } : {}),
     ...(fields.readResult !== undefined ? { readResult: fields.readResult } : {}),
   };
 }

@@ -506,6 +506,25 @@ describe("ZeropsOperationCard — browser", () => {
         image: true,
       },
       { name: "a known viewport", operation: mobile, props: {}, ratio: "390 / 844", image: false },
+      {
+        name: "a running check that set its viewport",
+        operation: operationFor(
+          zeropsCall({
+            id: "brw-resize",
+            startedAt: "2026-09-01T00:00:00.000Z",
+            turnId: "t1",
+            toolName: "zerops_browser",
+            input: {
+              url: "https://kanbandev-26a7.prg1.zerops.app",
+              commands: [["set", "viewport", "390", "844"]],
+            },
+            status: "inProgress",
+          }),
+        ),
+        props: {},
+        ratio: "390 / 844",
+        image: false,
+      },
     ])("$name: the frame keeps aspect-ratio $ratio", ({ operation, props, ratio, image }) => {
       const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} {...props} />);
       const viewport = frame(html);

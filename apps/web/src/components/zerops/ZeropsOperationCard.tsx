@@ -171,12 +171,12 @@ function visibleBrowserSteps(operation: ZeropsOperation): ReadonlyArray<ZeropsOp
 
 /**
  * The frame's shape, fixed before any pixel arrives: the viewport the agent
- * set when the result names one, else agent-browser's default 16:9. Never the
- * image's own size — a frame or a full-page screenshot fits inside it
+ * set in the call's own commands, else agent-browser's default 16:9. Never
+ * the image's own size — a frame or a full-page screenshot fits inside it
  * instead of reshaping the card.
  */
 function browserFrameAspectRatio(operation: ZeropsOperation): string {
-  const viewport = operation.browserSummary?.viewport;
+  const viewport = operation.viewport;
   return viewport === undefined ? "16 / 9" : `${viewport.width} / ${viewport.height}`;
 }
 

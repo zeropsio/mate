@@ -19,6 +19,7 @@ import {
   type OperationStatusWordContext,
 } from "../../operations/phrases.ts";
 import type {
+  ZeropsBrowserViewport,
   ZeropsCall,
   ZeropsOperationBrowserSummary,
   ZeropsOperationExplanation,
@@ -73,6 +74,8 @@ export interface BuiltCardFields {
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
+  /** `browser` only. */
+  readonly viewport?: ZeropsBrowserViewport;
   /** `logs` · `events` · `process` · `discover` only. */
   readonly readResult?: ZeropsReadResult;
   /**
