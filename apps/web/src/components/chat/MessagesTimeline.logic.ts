@@ -247,9 +247,17 @@ export interface TurnTallyFact {
   readonly tone: ServiceStatusToneId | null;
 }
 
+/**
+ * What a tally item is about: a service with a deploy outcome (`deploy`), a
+ * service only verified (`verify`), an import, the browser checks, a landing
+ * or the asks.
+ */
+export type TurnTallyItemKind = "deploy" | "verify" | "import" | "browser" | "landed" | "asks";
+
 /** A service, an import, the browser checks, a landing or the asks — with its facts. */
 export interface TurnTallyItem {
   readonly key: string;
+  readonly kind: TurnTallyItemKind;
   readonly subject: string | null;
   readonly facts: ReadonlyArray<TurnTallyFact>;
 }
@@ -272,7 +280,6 @@ export type MessagesTimelineRow =
       createdAt: string;
       groupedEntries: WorkLogEntry[];
       isExpandedToolGroupEntry: boolean;
-      isLastExpandedToolGroupEntry: boolean;
     }
   | {
       kind: "work-live";
@@ -311,10 +318,12 @@ export type MessagesTimelineRow =
       liveSince: string | null;
       /** Live: what is happening now. */
       activity: TurnHeaderActivity | null;
-      /** Settled: "Worked for 8.0s" / "You stopped after 3.0s". */
-      label: string | null;
       /** Settled: when the turn ended. */
       endedAt: string | null;
+      /** Settled: how long the turn worked ("1h 51m 27s"), when known. */
+      duration: string | null;
+      /** Settled: the person stopped the turn. */
+      interrupted: boolean;
       /** Settled turns that fold work away; the same entries fold as always. */
       fold: { readonly expanded: boolean } | null;
       /** What the turn did, both live and settled; grows only as facts settle. */
@@ -830,11 +839,11 @@ function timelineEntryEnd(entry: TimelineEntry): string {
   }
 }
 
-/** "Worked for 8.0s" and the moment the turn ended, from the turn's own timings. */
+/** How long the turn worked and the moment it ended, from the turn's own timings. */
 function describeSettledTurn(
   span: TurnSpan,
   latestTurn: TimelineLatestTurn | null,
-): { label: string; endedAt: string | null } {
+): { endedAt: string | null; duration: string | null; interrupted: boolean } {
   const entries = span.entries.filter(entryCanFold);
   const firstEntry = entries[0];
   const lastEntry = entries.at(-1);
@@ -855,15 +864,8 @@ function describeSettledTurn(
         : null;
   const elapsedMs = timed ? computeElapsedMs(timed.start, timed.end) : null;
   const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
-  const label =
-    isLatestTurn && latestTurn.state === "interrupted"
-      ? duration
-        ? `You stopped after ${duration}`
-        : "You stopped this response"
-      : duration
-        ? `Worked for ${duration}`
-        : "Worked";
-  return { label, endedAt: timed?.end ?? entriesEnd };
+  const interrupted = isLatestTurn && latestTurn.state === "interrupted";
+  return { endedAt: timed?.end ?? entriesEnd, duration, interrupted };
 }
 
 /**
@@ -995,6 +997,7 @@ function deriveTurnTally(input: {
       if (!itemBuilders.has(key)) {
         itemBuilders.set(key, () => ({
           key,
+          kind: service.deploy ? "deploy" : "verify",
           subject: host,
           facts: [service.deploy, service.verify].flatMap((outcome) =>
             outcome ? [operationFact(outcome)] : [],
@@ -1005,6 +1008,7 @@ function deriveTurnTally(input: {
       const key = `import:${operation.key}`;
       itemBuilders.set(key, () => ({
         key,
+        kind: "import",
         subject: operation.subject,
         facts: [operationFact(operation)],
       }));
@@ -1016,6 +1020,7 @@ function deriveTurnTally(input: {
       if (!itemBuilders.has("browser")) {
         itemBuilders.set("browser", () => ({
           key: "browser",
+          kind: "browser",
           subject: null,
           facts: [
             {
@@ -1034,6 +1039,7 @@ function deriveTurnTally(input: {
     ...[...itemBuilders.values()].map((build) => build()),
     ...input.landed.map((entry) => ({
       key: `landed:${entry.event.key}`,
+      kind: "landed" as const,
       subject: null,
       facts: [
         {
@@ -1043,7 +1049,14 @@ function deriveTurnTally(input: {
       ],
     })),
     ...(input.asks > 0
-      ? [{ key: "asks", subject: null, facts: [{ word: plural(input.asks, "ask"), tone: null }] }]
+      ? [
+          {
+            key: "asks",
+            kind: "asks" as const,
+            subject: null,
+            facts: [{ word: plural(input.asks, "ask"), tone: null }],
+          },
+        ]
       : []),
   ];
 }
@@ -1421,8 +1434,9 @@ export function deriveMessagesTimelineRows(input: {
         state: live ? "live" : "settled",
         liveSince: live ? input.activeTurnStartedAt : null,
         activity: live ? liveActivity : null,
-        label: settled?.label ?? null,
         endedAt: settled?.endedAt ?? null,
+        duration: settled?.duration ?? null,
+        interrupted: settled?.interrupted ?? false,
         fold:
           fold && span.turnId !== null
             ? { expanded: input.expandedTurnIds?.has(span.turnId) ?? false }
@@ -1450,7 +1464,6 @@ export function deriveMessagesTimelineRows(input: {
         createdAt: workEntry.createdAt,
         groupedEntries: [workEntry],
         isExpandedToolGroupEntry: true,
-        isLastExpandedToolGroupEntry: entryIndex === activeWorkRow.groupedEntries.length - 1,
       });
     }
   };
@@ -1518,7 +1531,6 @@ export function deriveMessagesTimelineRows(input: {
         createdAt: timelineEntry.createdAt,
         groupedEntries: [timelineEntry.entry],
         isExpandedToolGroupEntry: false,
-        isLastExpandedToolGroupEntry: false,
       });
       continue;
     }
@@ -1592,7 +1604,6 @@ export function deriveMessagesTimelineRows(input: {
                 createdAt: workEntry.createdAt,
                 groupedEntries: [workEntry],
                 isExpandedToolGroupEntry: true,
-                isLastExpandedToolGroupEntry: entryIndex === visibleGroupedEntries.length - 1,
               });
             }
           }
@@ -1620,7 +1631,6 @@ export function deriveMessagesTimelineRows(input: {
                 createdAt: workEntry.createdAt,
                 groupedEntries: [workEntry],
                 isExpandedToolGroupEntry: true,
-                isLastExpandedToolGroupEntry: entryIndex === visibleGroupedEntries.length - 1,
               });
             }
           }
@@ -1631,7 +1641,6 @@ export function deriveMessagesTimelineRows(input: {
             createdAt: timelineEntry.createdAt,
             groupedEntries: visibleGroupedEntries,
             isExpandedToolGroupEntry: false,
-            isLastExpandedToolGroupEntry: false,
           });
         } else {
           const groupId = workGroupId(timelineEntry.id, timelineEntry.entry);
@@ -1661,7 +1670,6 @@ export function deriveMessagesTimelineRows(input: {
               createdAt: workEntry.createdAt,
               groupedEntries: [workEntry],
               isExpandedToolGroupEntry: false,
-              isLastExpandedToolGroupEntry: false,
             });
           }
 
@@ -1912,8 +1920,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.turnId === bh.turnId &&
         a.state === bh.state &&
         a.liveSince === bh.liveSince &&
-        a.label === bh.label &&
         a.endedAt === bh.endedAt &&
+        a.duration === bh.duration &&
+        a.interrupted === bh.interrupted &&
         a.fold?.expanded === bh.fold?.expanded &&
         Equal.equals(a.activity, bh.activity) &&
         Equal.equals(a.tally, bh.tally)
@@ -1968,7 +1977,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       const bw = b as typeof a;
       return (
         a.isExpandedToolGroupEntry === bw.isExpandedToolGroupEntry &&
-        a.isLastExpandedToolGroupEntry === bw.isLastExpandedToolGroupEntry &&
         Equal.equals(a.groupedEntries, bw.groupedEntries)
       );
     }

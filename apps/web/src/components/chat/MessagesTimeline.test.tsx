@@ -255,6 +255,8 @@ function buildAssistantTimelineEntry(text: string) {
   };
 }
 
+const TRACE_RAIL = "border-s-2 border-border ps-3";
+
 describe("MessagesTimeline", () => {
   it("renders previous and next controls with the minimap", () => {
     const first = buildUserTimelineEntry("First turn");
@@ -275,7 +277,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-label="Next turn"');
   });
 
-  it("renders the worked-for row at assistant response text size", () => {
+  it("renders a settled turn's header as its verdict and duration", () => {
     const turnId = TurnId.make("turn-with-fold");
     const assistantEntry = buildAssistantTimelineEntry("Done.");
     const markup = renderToStaticMarkup(
@@ -309,8 +311,8 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Worked for 8.0s");
-    expect(markup).toContain("px-1 text-sm leading-relaxed text-muted-foreground");
+    expect(markup).toContain("Done");
+    expect(markup).toContain("8.0s");
   });
 
   it("uses the larger leading inset only when the top fade is enabled", () => {
@@ -731,6 +733,14 @@ describe("MessagesTimeline", () => {
     ).not.toContain('data-maintain-scroll-at-end="enabled"');
   });
 
+  it("sets a user message's time and actions beside its bubble, not under it", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} timelineEntries={[buildUserTimelineEntry("Ship it.")]} />,
+    );
+
+    expect(markup).toContain('class="group flex flex-row-reverse items-end gap-2"');
+  });
+
   it("renders collapse controls for long user messages", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -1063,7 +1073,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("Ran 2 commands");
-    expect(markup).toContain("lucide-terminal");
+    expect(markup).toContain(">\u203a</span>");
     expect(markup).not.toContain("lucide-x");
     expect(markup).not.toContain("text-destructive");
     // The failure stays discoverable for screen readers.
@@ -1120,6 +1130,82 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain('aria-label="Hidden work includes a failure"');
   });
 
+  it("draws the agent's work on one quiet rail, apart from the conversation", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          buildUserTimelineEntry("Ship it."),
+          {
+            id: "entry-work-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Run tests",
+              tone: "tool",
+              itemType: "command_execution",
+              toolLifecycleStatus: "completed",
+            },
+          },
+          {
+            id: "entry-work-2",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:29.000Z",
+            entry: {
+              id: "work-2",
+              createdAt: "2026-03-17T19:12:29.000Z",
+              label: "Run lint",
+              tone: "tool",
+              itemType: "command_execution",
+              toolLifecycleStatus: "completed",
+            },
+          },
+        ]}
+      />,
+    );
+    const rowClasses = [
+      ...markup.matchAll(
+        /<div class="([^"]*)" data-timeline-row-id="[^"]*" data-timeline-row-kind="([^"]*)"/g,
+      ),
+    ].map((match) => ({ kind: match[2], className: match[1] ?? "" }));
+    const trace = rowClasses.filter((row) => row.kind !== "message" && row.kind !== "turn-header");
+    expect(trace.length).toBeGreaterThan(0);
+    for (const row of trace) expect(row.className).toContain(TRACE_RAIL);
+    const user = rowClasses.find((row) => row.kind === "message");
+    expect(user?.className).not.toContain(TRACE_RAIL);
+    expect(markup).toContain(">›</span>");
+  });
+
+  it("draws a landed change on the rail as a platform line with a teal glyph", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "zerops:landed-1",
+            kind: "change-landed",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            event: {
+              key: "landed-1",
+              repository: "appdev",
+              number: 1,
+              title: "Add the showcase",
+              line: "appdev #1",
+              landedAt: "2026-03-17T19:12:28.000Z",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("appdev #1 landed");
+    expect(markup).toContain("text-[var(--zerops-update-role,var(--foreground))]");
+    expect(markup).toContain(">\u25c6</span>");
+    expect(markup).not.toContain("lucide-git-pull-request-arrow");
+  });
+
   it.each([
     { state: "running", narration: true },
     { state: "completed", narration: false },
@@ -1144,7 +1230,8 @@ describe("MessagesTimeline", () => {
         />,
       );
 
-      expect(markup.includes("border-s-2 border-border/60")).toBe(narration);
+      expect(markup.includes(TRACE_RAIL)).toBe(narration);
+      expect(markup.includes(">\u00b6</span>")).toBe(narration);
       expect(markup.includes('<h3 class="sr-only select-none">Assistant</h3>')).toBe(!narration);
       expect(markup).toContain("Checking the build.");
     },
@@ -1185,7 +1272,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Working · ");
+    expect(markup).toContain("Working");
     expect(markup).toContain("Running pnpm");
   });
 
@@ -1294,8 +1381,8 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain('data-timeline-row-id="turn-header:message-1"');
-    expect(markup).toContain("Working · ");
-    expect(markup).toContain("· Thinking");
+    expect(markup).toContain("Working");
+    expect(markup).toContain(">Thinking</span>");
   });
 
   it("renders review comment contexts as structured cards instead of raw tags", () => {

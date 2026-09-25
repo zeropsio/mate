@@ -1805,7 +1805,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(headerRow?.turnId).toBe("turn-1");
     expect(headerRow?.fold).toEqual({ expanded: false });
     // User message boundary (00:00:00) → terminal message updatedAt (00:00:22).
-    expect(headerRow?.label).toBe("Worked for 22s");
+    expect(headerRow?.duration).toBe("22s");
     expect(collapsedRows.map((row) => row.id)).toEqual([
       "user-entry",
       "turn-header:user-1",
@@ -2261,12 +2261,12 @@ describe("deriveMessagesTimelineRows", () => {
   });
 
   it.each([
-    { name: "never updated", updatedAt: undefined, label: "Worked for 12s" },
+    { name: "never updated", updatedAt: undefined, duration: "12s" },
     // A merged tool row stays anchored at its start; it ended at its update.
-    { name: "completed later", updatedAt: "2026-01-01T00:00:13Z", label: "Worked for 13s" },
+    { name: "completed later", updatedAt: "2026-01-01T00:00:13Z", duration: "13s" },
   ])(
     "derives a sane duration for a steer-superseded turn with one instant commentary message ($name)",
-    ({ updatedAt, label }) => {
+    ({ updatedAt, duration }) => {
       // A steer ends the previous turn early: its only message completes the
       // instant it is created, and trailing work entries land after it. The
       // fold duration must span from the user message that started the turn to
@@ -2361,7 +2361,7 @@ describe("deriveMessagesTimelineRows", () => {
       );
       // User message (00:00:00) → trailing work entry's end.
       expect(headerRow).toMatchObject({ id: "turn-header:user-1", fold: { expanded: false } });
-      expect(headerRow?.label).toBe(label);
+      expect(headerRow?.duration).toBe(duration);
     },
   );
 
@@ -2398,7 +2398,8 @@ describe("deriveMessagesTimelineRows", () => {
         kind: "turn-header",
         turnId: "turn-1",
         state: "settled",
-        label: "You stopped after 47s",
+        duration: "47s",
+        interrupted: true,
         endedAt: "2026-01-01T00:00:47Z",
         fold: { expanded: false },
       }),
@@ -4165,13 +4166,12 @@ describe("turn header", () => {
       state: "live",
       liveSince: at(0),
       activity: { kind: "tool", entry: { id: "w1" } },
-      label: null,
       fold: null,
     });
     expect(done).toMatchObject({
       state: "settled",
       activity: null,
-      label: "Worked for 5.0s",
+      duration: "5.0s",
       endedAt: at(6),
       fold: { expanded: false },
     });
