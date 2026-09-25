@@ -5,7 +5,7 @@ import { zeropsStripState } from "./strip.ts";
 
 const session = (overrides: Partial<ZeropsSessionView>): ZeropsSessionView => ({ ...overrides });
 
-const attempt = (success: boolean) => ({ success });
+const attempt = (success: boolean) => ({ success, iteration: 1 });
 
 const runningOperation = (kicker: string): ZeropsOperation =>
   ({

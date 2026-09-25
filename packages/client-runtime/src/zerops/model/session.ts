@@ -17,9 +17,29 @@ function toWorkAttempts(
   }
   const out: Record<string, ReadonlyArray<ZeropsWorkAttempt>> = {};
   for (const [hostname, list] of Object.entries(attempts)) {
-    out[hostname] = list.map((attempt) => ({ success: attempt.success }));
+    out[hostname] = list.map((attempt) => ({
+      success: attempt.success,
+      iteration: attempt.iteration,
+      ...(attempt.reason !== undefined ? { reason: attempt.reason } : {}),
+      ...(attempt.failureClass !== undefined ? { failureClass: attempt.failureClass } : {}),
+      ...(attempt.summary !== undefined ? { summary: attempt.summary } : {}),
+    }));
   }
   return out;
+}
+
+/**
+ * The host's latest deploy or verify attempt when zcp recorded it as failed —
+ * what a failed card for that host may cite. `undefined` once a later attempt
+ * succeeded, so a card never cites a failure the envelope has moved past.
+ */
+export function failedWorkAttempt(
+  session: ZeropsSessionView,
+  attempts: "deploys" | "verifies",
+  hostname: string,
+): ZeropsWorkAttempt | undefined {
+  const latest = session.work?.[attempts]?.[hostname]?.at(-1);
+  return latest?.success === false ? latest : undefined;
 }
 
 /** The running step's label, for the strip's "setting up infrastructure · <step>". */
