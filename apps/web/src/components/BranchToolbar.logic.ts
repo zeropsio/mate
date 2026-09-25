@@ -79,8 +79,14 @@ export function resolveCurrentWorkspaceLabel(activeWorktreePath: string | null):
   return activeWorktreePath ? "Current worktree" : resolveEnvModeLabel("local");
 }
 
-export function resolveLockedWorkspaceLabel(activeWorktreePath: string | null): string {
-  return activeWorktreePath ? "Worktree" : "Local checkout";
+// A locked thread in worktree mode with no path is still creating its
+// worktree, so it reads as a new worktree rather than the project checkout.
+export function resolveLockedWorkspaceLabel(
+  activeWorktreePath: string | null,
+  effectiveEnvMode: EnvMode,
+): string {
+  if (activeWorktreePath) return "Worktree";
+  return effectiveEnvMode === "worktree" ? resolveEnvModeLabel("worktree") : "Local checkout";
 }
 
 export interface PreviousWorktreeSeed {
@@ -136,8 +142,13 @@ export function resolveEffectiveEnvMode(input: {
   draftThreadEnvMode: EnvMode | undefined;
   effectiveEnvModeOverride?: EnvMode;
   worktreesAllowed?: boolean;
+  /**
+   * The server is still creating this thread's worktree. The thread exists
+   * from the start of that setup but gets its worktree path only at the end.
+   */
+  preparingWorktree?: boolean;
 }): EnvMode {
-  const { activeWorktreePath, hasServerThread, draftThreadEnvMode } = input;
+  const { activeWorktreePath, hasServerThread, draftThreadEnvMode, preparingWorktree } = input;
   const resolvedMode =
     input.effectiveEnvModeOverride ??
     (!hasServerThread
@@ -146,7 +157,7 @@ export function resolveEffectiveEnvMode(input: {
         : draftThreadEnvMode === "worktree"
           ? "worktree"
           : "local"
-      : activeWorktreePath
+      : activeWorktreePath || preparingWorktree
         ? "worktree"
         : "local");
   return resolveThreadEnvModeForCapability(resolvedMode, input.worktreesAllowed);

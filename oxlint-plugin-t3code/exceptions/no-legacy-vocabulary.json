@@ -241,6 +241,14 @@
   },
   {
     "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "web-intake",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
     "kind": "TemplateElement",
     "fingerprint": "`Previous worktree (${",
     "owner": "karel",
