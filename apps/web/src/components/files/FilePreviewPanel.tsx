@@ -833,9 +833,7 @@ export default function FilePreviewPanel({
                     >
                       {crumb.label}
                     </TooltipTrigger>
-                    <TooltipPopup side="top" className="max-w-80">
-                      {crumb.path || projectName}
-                    </TooltipPopup>
+                    <TooltipPopup side="top">{crumb.path || projectName}</TooltipPopup>
                   </Tooltip>
                 </div>
               ))}

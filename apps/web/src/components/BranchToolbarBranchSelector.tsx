@@ -892,7 +892,7 @@ export function BranchToolbarBranchSelector({
                   </label>
                 }
               />
-              <TooltipPopup side="top" className="max-w-72 whitespace-normal leading-tight">
+              <TooltipPopup side="top">
                 Creates the worktree from the latest matching branch on origin instead of your local
                 branch.
               </TooltipPopup>

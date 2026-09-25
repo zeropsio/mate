@@ -129,11 +129,7 @@ export function DraftHeroHeadline({
         >
           {selectorLabel ?? "Choose a project"}
         </TooltipTrigger>
-        {selectorLabel ? (
-          <TooltipPopup side="top" className="max-w-80">
-            {selectorLabel}
-          </TooltipPopup>
-        ) : null}
+        {selectorLabel ? <TooltipPopup side="top">{selectorLabel}</TooltipPopup> : null}
       </Tooltip>
       <MenuPopup align="center" className="max-h-80 min-w-40! w-max max-w-64 overflow-y-auto">
         <MenuRadioGroup
@@ -164,9 +160,7 @@ export function DraftHeroHeadline({
                   <TooltipTrigger render={<span className="block min-w-0 truncate" />}>
                     {label}
                   </TooltipTrigger>
-                  <TooltipPopup side="top" className="max-w-80">
-                    {label}
-                  </TooltipPopup>
+                  <TooltipPopup side="top">{label}</TooltipPopup>
                 </Tooltip>
               </MenuRadioItem>
             );
