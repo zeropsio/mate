@@ -140,6 +140,22 @@ export function historyAge(at: string | undefined, now: number): string | undefi
 }
 
 /**
+ * What a history says in place of its rows: no Gitea token to read with, the
+ * read under way, or a branch with nothing on it. A failed read says its own
+ * reason instead.
+ */
+export function historyNote(kind: "no-gitea" | "reading" | "empty"): string {
+  switch (kind) {
+    case "no-gitea":
+      return "Sign in to Gitea to read this repository’s history.";
+    case "reading":
+      return "Reading the history…";
+    case "empty":
+      return "Nothing has landed on this repository yet.";
+  }
+}
+
+/**
  * `sha → the release that first put it in front of people`, for any repository.
  *
  * A release tag lives on the group repository and lists every service's commit

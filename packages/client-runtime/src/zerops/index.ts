@@ -352,9 +352,18 @@ export {
   groupHistory,
   historyAge,
   historyLine,
+  historyNote,
   releaseTagsByCommit,
   type HistoryEntry,
 } from "./groupHistory.ts";
+export {
+  releaseCarried,
+  releaseCarriedToggleLabel,
+  releaseDescription,
+  releasesCarried,
+  type ReleaseDescription,
+  type ReleaseServiceChange,
+} from "./releaseCarried.ts";
 export {
   ADD_PRODUCTION_LABEL,
   groupFlow,

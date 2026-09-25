@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { groupHistory, historyAge, historyLine, releaseTagsByCommit } from "./groupHistory.ts";
+import {
+  groupHistory,
+  historyAge,
+  historyLine,
+  historyNote,
+  releaseTagsByCommit,
+} from "./groupHistory.ts";
 
 const SHA_A = "3f9c1b2a4d5e6f70819293a4b5c6d7e8f9012345";
 const SHA_B = "aa11bb22cc33dd44ee55ff6677889900aabbccdd";
@@ -231,5 +237,15 @@ describe("historyLine naming", () => {
 
   it("stops a project repeating itself on every stop it names", () => {
     expect(historyLine(entry, now, names)).not.toContain("Links - production");
+  });
+});
+
+describe("historyNote", () => {
+  it.each([
+    ["no-gitea", "Sign in to Gitea to read this repository’s history."],
+    ["reading", "Reading the history…"],
+    ["empty", "Nothing has landed on this repository yet."],
+  ] as const)("says %s as %s", (kind, expected) => {
+    expect(historyNote(kind)).toBe(expected);
   });
 });
