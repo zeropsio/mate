@@ -53,6 +53,11 @@ export interface ZeropsProjectFlow {
   /** Stages first, then the production — the order code travels. */
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
+  /**
+   * `main`'s head per production service, as the deploy half read it — what
+   * every stop measures its distance against (`stopDistance.ts`).
+   */
+  readonly mainHeads: ReadonlyMap<string, string>;
   /** The tiers the recipe offers and the project lacks — the rows that ask. */
   readonly missing: ReadonlyArray<MissingEnvironmentRow>;
   /** Every open pull request on the project's repositories, code and recipe. */

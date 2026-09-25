@@ -1,8 +1,7 @@
 /**
  * The left menu's projects, each drawn in the one order `groupFlow` draws
- * every surface in: the Mates, what each has waiting to land, `main`, then
- * production, a group stage a muted side branch of it (the owner,
- * 2026-09-23).
+ * every surface in: the Mates, what each has waiting to land, then every stop
+ * the code reaches — each stage, then production (the owner, 2026-09-25).
  *
  * A project reads top to bottom the way its code moves. First its Mates —
  * the menu's own kind of row, lit on hover and when it is the one open, and
@@ -13,12 +12,19 @@
  * its open pull requests: one row each, the number and the title, the checks
  * as a dot, and *Merge* where Gitea allows it — folded behind a count once
  * there are more than a handful (`pullRequestsFolded`). Then the pull
- * requests that are nobody's Mate's, a person's own branch. Then production —
- * the name, its tag as a pill, the last deploy as a dot, *Release* when there
- * is something to release, and the one glyph that opens the public route (or
- * offers them) — and, only where the group has one, a group stage after it as
- * one muted line, `↳ stage · follows main`: an optional side branch of
- * `main`, never a gate before production and never an empty "add" row.
+ * requests that are nobody's Mate's, a person's own branch. Then the stops,
+ * one row each and every one the same row: the last deploy as a badge, the
+ * name, the one glyph that opens the public route (or offers them) and a
+ * menu; under it what the stop runs and how far it is behind `main`.
+ *
+ * `main` is not a row. It is what every stop measures itself against, so
+ * "N behind" means the same on a stage and on production, and a stage 0
+ * behind above a production 3 behind says all three have run on the stage.
+ * The row stays quiet unless something differs, and the distance opens to the
+ * changes it counts — the one place a project lists them.
+ *
+ * A project collapses to its heading, the usual sidebar gesture, and the
+ * menu remembers it; opening one of its Mates' conversations opens it again.
  *
  * Membership is `hasMate` — the project declares a Mate or a container backs
  * one, and never stage or production — not the live connection, so a
@@ -39,6 +45,7 @@ import {
   checkDotTone,
   assignCandidateMateTints,
   botDisplayName,
+  changeTitles,
   flowVerbLabel,
   buildZeropsGroupTree,
   environmentNameUnderGroup,
@@ -53,23 +60,25 @@ import {
   PRODUCTION_SETTING_UP,
   releaseContentsSentence,
   releaseContentsSummary,
-  releaseInFlightReason,
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
   selectMateEnvironments,
   sidebarChangeLabel,
   STAGE_SETTING_UP,
-  stopAttention,
+  stopRowLine,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupEnvironmentTier,
   type GroupFlow,
   type GroupFlowComing,
-  type GroupFlowProduction,
+  type GroupFlowStop,
   type GroupNextStep,
   type GroupRowTone,
-  type ReleaseContentsSummary,
   type MissingEnvironmentRow,
+  type StageMark,
+  type StopDistance,
+  type StopRowLine,
+  type StopWordKind,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type ZeropsGroup,
@@ -87,6 +96,8 @@ import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   MinusIcon,
@@ -94,7 +105,7 @@ import {
   PlusIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -102,7 +113,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
-import { readCollapsedStops, writeCollapsedStops } from "~/zerops/collapsedStops";
+import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
@@ -114,7 +125,7 @@ import {
   environmentRoleTagIsRedundant,
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
-import { COUNT_TONE_CLASS, ZeropsMateVerb } from "./ZeropsMateCard";
+import { ZeropsMateVerb } from "./ZeropsMateCard";
 import {
   comingMateLine,
   groupFlowInputOf,
@@ -155,9 +166,36 @@ type StopRow<T> =
       readonly tier: GroupEnvironmentTier;
     };
 
-/** Production first, then a stage, then anything the tag scheme has no tier for. */
+/**
+ * A stage first, then production, then anything the tag scheme has no tier
+ * for: the order the code travels (the owner, 2026-09-25), not the order the
+ * tags happen to list.
+ */
 function stopTierRank(tier: GroupEnvironmentTier | undefined): number {
-  return tier === "production" ? 0 : tier === "stage" ? 1 : 2;
+  return tier === "stage" ? 0 : tier === "production" ? 1 : 2;
+}
+
+/** The set with the group collapsed or not; the same set where nothing changed. */
+function withCollapsed(
+  current: ReadonlySet<string>,
+  groupId: string,
+  collapse: boolean,
+): ReadonlySet<string> {
+  if (current.has(groupId) === collapse) return current;
+  const next = new Set(current);
+  if (collapse) next.add(groupId);
+  else next.delete(groupId);
+  return next;
+}
+
+/** The group of the project whose conversation is open, when it has one. */
+function groupIdOf(
+  candidates: ReadonlyArray<RosterCandidate>,
+  projectId: string | null | undefined,
+): string | undefined {
+  if (projectId === undefined || projectId === null) return undefined;
+  const open = candidates.find((candidate) => candidate.project.id === projectId);
+  return open === undefined ? undefined : readZeropsGroupTags(open.project.tagList).groupId;
 }
 
 /**
@@ -203,13 +241,22 @@ export interface SidebarProjectFlow {
    */
   readonly merged?: ReadonlyArray<FlowPullRequest> | undefined;
   /**
-   * What a release would carry, per production service. Rendered as the
-   * verb's hover: "Release" names the mechanism, and the tasks name the
-   * thing — the one reading a person needs who has never merged a branch.
+   * What a release would carry, per production service: the count *Release*
+   * wears, its confirm's list, and the subjects that name each change where
+   * no merged pull request names it better.
    */
   readonly releaseContents?:
     | ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>
     | undefined;
+  /**
+   * How far each stop is behind `main`, by Zerops project id
+   * (`sidebarStopReads`). A stop missing here says no distance: nothing
+   * placed it, and the row never guesses. Absent where the caller has not
+   * wired it.
+   */
+  readonly distances?: ReadonlyMap<string, StopDistance> | undefined;
+  /** Where each change production does not run stands on the stage, by lower-case sha. */
+  readonly stageMarks?: ReadonlyMap<string, StageMark> | undefined;
   /**
    * Hands a blocked change to the Mate that wrote it, as a sentence in that
    * Mate's composer.
@@ -347,10 +394,24 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
-  // Folded stops survive a reload: a person who folded a project away had a
-  // reason, and a menu that unfolds everything on every boot makes them do it
-  // again (the owner, 2026-09-19). Per-browser, so it never leaves the device.
-  const [collapsedStops, setCollapsedStops] = useState<ReadonlySet<string>>(readCollapsedStops);
+  // Collapsed projects survive a reload: a person who collapsed one had a
+  // reason, and a menu that expands everything on every boot makes them do it
+  // again (the owner, 2026-09-19). Per account, so it never leaves the device.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(readCollapsedProjects);
+  useEffect(() => {
+    writeCollapsedProjects(collapsed);
+  }, [collapsed]);
+  // Opening a Mate's conversation opens its project: the row lit as the one
+  // open may not be hidden under a heading. Only when the open conversation
+  // changes — a person may collapse the project again afterwards, and a menu
+  // that forced it open on every render would not let them. Nothing seen yet
+  // at mount: a reload on a Mate's conversation opens its project too.
+  const activeGroupId = groupIdOf(candidates, activeProjectId);
+  const [seenGroupId, setSeenGroupId] = useState<string | undefined>(undefined);
+  if (seenGroupId !== activeGroupId) {
+    setSeenGroupId(activeGroupId);
+    if (activeGroupId !== undefined) setCollapsed(withCollapsed(collapsed, activeGroupId, false));
+  }
   // Same preference the projects screen's sort control writes
   // (`projectOrderPreference.ts`) — read here too so the two surfaces stay in
   // step without either one owning the other.
@@ -400,7 +461,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   }
 
   // One carrier per project — a project's Mate candidate wins over a bare one
-  // — so the rows and the fold agree on which container is the environment's.
+  // — so every row agrees on which container is the environment's.
   const mates = selectMateEnvironments(candidates);
   const mateByProject = new Map(mates.map((mate) => [mate.project.id, mate]));
   const everyEnvironment = [
@@ -419,18 +480,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
-      return next;
-    });
-  };
-
-  // Folded is the exception, not the default: a project that hides where its
-  // code is by default hides the reason the menu exists.
-  const toggleStops = (key: string) => {
-    setCollapsedStops((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      writeCollapsedStops(next);
       return next;
     });
   };
@@ -458,39 +507,45 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // The one derivation the projects page draws from too (`groupFlow.ts`),
     // fed through the page's own input (`groupFlowInputOf`) and gate
     // (`productionAddable`): read once here, so the pull requests this tree
-    // hangs under a Mate, the recipe changes it leaves out, and the heading's
-    // own next-step dot can never disagree with what the page says about the
-    // same project.
-    const projectFlow: GroupFlow | undefined =
-      flow === undefined
-        ? undefined
-        : groupFlow(
-            groupFlowInputOf({
-              groupId: id,
-              // The menu never folds a group, so whether a Mate's
-              // conversations arrived is not asked: unknown reads as not
-              // spoken to, as it always did here.
-              members: groupMemberFactsOf(
-                entries,
-                (item) => getActivity?.(item),
-                () => false,
-              ),
-              flow: groupFlowReadsOf(flow),
-              deployments,
-              productionAddable:
-                group !== undefined &&
-                productionAddable({
-                  group,
-                  mayCreate,
-                  addsOffered: groupAddsOffered(entries, health),
-                }),
-              pending: group?.pending ?? [],
-            }),
-          );
+    // hangs under a Mate, the recipe changes it leaves out, each stop's line
+    // and the heading's own next-step dot can never disagree with what the
+    // page says about the same project.
+    //
+    // Read whether or not Gitea is: what a stop runs is the platform's
+    // answer, and its row says it either way. Only the heading's dot waits
+    // for the flow — a next step read from nothing would be a guess.
+    const projectFlow: GroupFlow = groupFlow(
+      groupFlowInputOf({
+        groupId: id,
+        // Whether a Mate's conversations arrived is not asked here: unknown
+        // reads as not spoken to, as it always did in this menu.
+        members: groupMemberFactsOf(
+          entries,
+          (item) => getActivity?.(item),
+          () => false,
+        ),
+        flow: flow === undefined ? undefined : groupFlowReadsOf(flow),
+        deployments,
+        productionAddable:
+          group !== undefined &&
+          productionAddable({
+            group,
+            mayCreate,
+            addsOffered: groupAddsOffered(entries, health),
+          }),
+        pending: group?.pending ?? [],
+      }),
+    );
+    const header = renderHeader(flow === undefined ? undefined : projectFlow.nextStep);
+    // Collapsed, a project is its heading and nothing else — no summary and
+    // no small badges: a second, smaller design of the same rows is what the
+    // owner turned down (2026-09-25). The dot on the heading still says
+    // whether it waits on somebody.
+    if (group !== undefined && collapsed.has(id)) return header;
     // Code only — a recipe change is the group's document, left to the
     // projects page, and is never one more thing a Mate's row here answers
     // for.
-    const flowPulls = projectFlow?.pullRequests.map((entry) => entry.pull) ?? [];
+    const flowPulls = projectFlow.pullRequests.map((entry) => entry.pull);
     const grouped = pullRequestsByMate(
       flowPulls,
       mateEntries.map(({ item }) => item.project.id),
@@ -500,10 +555,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // line that runs past its final node into the gap below reads as a list
     // that got cut off rather than as work arriving somewhere.
     const otherPulls = flow === undefined ? [] : grouped.others;
-    // Production first, then a stage as its side branch, never before it
-    // (the owner, 2026-09-23) — the order the code travels, not the order the
-    // tags happen to list. A stop being created follows the listed ones of
-    // its tier.
+    // Every stage, then production — the order the code travels (the owner,
+    // 2026-09-25), not the order the tags happen to list. A stop being
+    // created follows the listed ones of its tier.
     const stopRows: ReadonlyArray<StopRow<T>> = [
       ...others.map((entry): StopRow<T> => ({
         kind: "listed",
@@ -514,14 +568,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         member.kind === "mate" ? [] : [{ kind: "creating", member, tier: member.kind }],
       ),
     ].sort((a, b) => stopTierRank(a.tier) - stopTierRank(b.tier));
-    // A stage branches off `main` rather than standing on the line, so only
-    // the other stops can be where the line ends.
-    const lineStops = stopRows.filter((row) => row.tier !== "stage");
-    const stageLines = stopRows.filter((row) => row.tier === "stage");
-    const endsOnMates = lineStops.length === 0 && otherPulls.length === 0;
+    const endsOnMates = stopRows.length === 0 && otherPulls.length === 0;
     return (
       <>
-        {renderHeader(projectFlow?.nextStep)}
+        {header}
         {mateEntries.map(({ item }, index) => {
           const pulls = grouped.byMate.get(item.project.id) ?? [];
           const listKey = `${id}:${item.project.id}`;
@@ -583,7 +633,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 onOpenChange={flow.onOpenChange}
                 pull={pull}
                 railCap={
-                  lineStops.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
+                  stopRows.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
                 }
                 underMate={false}
               />
@@ -592,17 +642,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         )}
         {stopRows.length > 0 ? (
           <EnvironmentRows
-            collapsed={collapsedStops.has(id)}
             deployments={deployments}
             flow={flow}
             groupName={groupName}
             onOpenProject={onBrowseProjects}
-            onToggle={() => {
-              toggleStops(id);
-            }}
-            production={projectFlow?.production}
-            stages={stageLines}
-            stops={lineStops}
+            projectFlow={projectFlow}
+            stops={stopRows}
           />
         ) : null}
       </>
@@ -630,6 +675,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             environments,
             (nextStep) => (
               <ProjectHeader
+                collapsed={collapsed.has(group.groupId)}
                 group={group}
                 missing={getFlow?.(group.groupId)?.missing ?? []}
                 nextStep={nextStep}
@@ -642,6 +688,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                         onOpenGroup(group.groupId);
                       }
                 }
+                onToggle={() => {
+                  const { groupId } = group;
+                  setCollapsed((current) => withCollapsed(current, groupId, !current.has(groupId)));
+                }}
               />
             ),
             getFlow?.(group.groupId),
@@ -728,6 +778,12 @@ function ListingNotice({
  * section heading that looks like a row is a row. The verbs appear on hover
  * and focus in a slot that is always there, so nothing moves when they do.
  *
+ * Its name collapses the project to this one line and opens it again, the
+ * gesture every sidebar's section heading makes (the owner, 2026-09-25); the
+ * project's own page is *Open project* in its menu. The chevron before the
+ * name says which way it will go — on hover, and always while collapsed, when
+ * nothing else says there is more under it.
+ *
  * Setting a stage or a production up lives in the menu rather than as a row of
  * its own: not every project wants one, and a permanent row asking for
  * something optional reads as a fault (the owner, 2026-09-19).
@@ -741,6 +797,8 @@ export function ProjectHeader({
   onAddMate,
   onBrowseProjects,
   onOpen,
+  collapsed = false,
+  onToggle,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
@@ -758,6 +816,10 @@ export function ProjectHeader({
   readonly onBrowseProjects: () => void;
   /** Absent for the ungrouped heading, which is not a group and has no page. */
   readonly onOpen?: (() => void) | undefined;
+  /** Whether only this heading is drawn of the project. */
+  readonly collapsed?: boolean;
+  /** Collapses or expands the project. Absent for the ungrouped heading, which is not a project. */
+  readonly onToggle?: (() => void) | undefined;
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
@@ -772,22 +834,25 @@ export function ProjectHeader({
           (the owner, 2026-09-19: "shouldn't be uppercased, yet it should have
           bigger visual impact"). 15px, and the only thing in the column set
           that large. */}
-      {onOpen === undefined ? (
+      {onToggle === undefined ? (
         <span className={cn(HEADING_CLASS, muted && HEADING_MUTED, placeholder && HEADING_UNNAMED)}>
           {title}
         </span>
       ) : (
         <button
-          className={cn(
-            HEADING_CLASS,
-            "cursor-pointer rounded-sm text-left underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
-            muted && HEADING_MUTED,
-            placeholder && HEADING_UNNAMED,
-          )}
-          onClick={onOpen}
+          aria-expanded={!collapsed}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          data-zerops-surface="sidebar-project-toggle"
+          onClick={onToggle}
           type="button"
         >
-          {title}
+          {/* The slot is always there, so nothing moves when it shows. */}
+          <DisclosureGlyph collapsed={collapsed} />
+          <span
+            className={cn(HEADING_CLASS, muted && HEADING_MUTED, placeholder && HEADING_UNNAMED)}
+          >
+            {title}
+          </span>
         </button>
       )}
       {/* Hidden until hover keeps a list of five projects calm, but a finger
@@ -825,10 +890,10 @@ export function ProjectHeader({
               <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
             </MenuTrigger>
             <MenuPopup align="start" className="w-56" side="right">
-              {/* The project's own page, which is what the heading opens —
-                  this went to the projects screen instead, so the one item
-                  named after the project was the one that did not open it
-                  (the owner, 2026-09-19). */}
+              {/* The project's own page. It went to the projects screen once,
+                  so the one item named after the project was the one that did
+                  not open it (the owner, 2026-09-19); now that the heading's
+                  name collapses the project, this is the way in. */}
               <MenuItem onClick={onOpen ?? onBrowseProjects}>Open project</MenuItem>
               {missing.map((row) => (
                 <MenuItem key={row.tier} onClick={onBrowseProjects}>
@@ -1343,15 +1408,6 @@ function AskVerb({
 }
 
 /**
- * *Release*, and — where the flow read them — the tasks it would put in front
- * of people, as a hover.
- *
- * The verb keeps its name: renaming it would cost the people who know exactly
- * what it means and buy the others only a different word to learn. The hover
- * is what a person reads instead, and it is written in their own words,
- * because a squash merge carries the task's message.
- */
-/**
  * *Merge*, which asks first.
  *
  * The row this sits on shows as much of the change's title as a 260px column
@@ -1393,6 +1449,15 @@ function MergeVerb({
   );
 }
 
+/**
+ * *Release*, wearing how many changes it would put in front of people.
+ *
+ * The verb keeps its name: renaming it would cost the people who know exactly
+ * what it means and buy the others only a different word to learn. The
+ * changes themselves are production's distance, opened on its own line — the
+ * one place the menu lists them (the owner, 2026-09-25); a hover listing them
+ * too was a second copy nobody on a touch screen could reach.
+ */
 function ReleaseVerb({
   contents,
   releasing,
@@ -1438,34 +1503,11 @@ function ReleaseVerb({
       tag={releaseTag}
     />
   );
-  if (summary.total === 0)
-    return (
-      <>
-        {verb}
-        {confirm}
-      </>
-    );
   return (
-    <Tooltip>
-      <TooltipTrigger render={verb} />
-      <TooltipPopup side="right">
-        {/* A commit subject is a whole sentence — unbounded, the hover grew to
-            the width of the longest one and floated across the screen. */}
-        <span
-          className="flex max-w-72 flex-col gap-0.5 wrap-anywhere"
-          data-zerops-surface="sidebar-release-contents"
-        >
-          <span className="font-medium">
-            {summary.total === 1 ? "Going live:" : `Going live — ${summary.total} changes:`}
-          </span>
-          {summary.subjects.map((subject) => (
-            <span key={subject}>{subject}</span>
-          ))}
-          {summary.more === 0 ? null : <span className="opacity-70">+{summary.more} more</span>}
-        </span>
-      </TooltipPopup>
+    <>
+      {verb}
       {confirm}
-    </Tooltip>
+    </>
   );
 }
 
@@ -1483,16 +1525,7 @@ function ReleaseVerb({
  * shape. Tinted rather than filled ("depth by tint"), and never without its
  * word, which the tooltip and the accessible name both carry.
  */
-function StopBadge({
-  tone,
-  word,
-  size = "sm",
-}: {
-  readonly tone: GroupRowTone;
-  readonly word: string;
-  /** `xs` for the folded line, where two badges share the width of one row. */
-  readonly size?: "sm" | "xs";
-}) {
+function StopBadge({ tone, word }: { readonly tone: GroupRowTone; readonly word: string }) {
   const Icon = STOP_ICON[tone];
   return (
     <Tooltip>
@@ -1501,8 +1534,7 @@ function StopBadge({
           <span
             aria-label={word}
             className={cn(
-              "inline-flex shrink-0 items-center justify-center rounded-md",
-              size === "xs" ? "size-3.5" : "size-5",
+              "inline-flex size-5 shrink-0 items-center justify-center rounded-md",
               STOP_BADGE_CLASS[tone],
             )}
             data-zerops-surface="sidebar-stop-badge"
@@ -1511,11 +1543,7 @@ function StopBadge({
           />
         }
       >
-        <Icon
-          aria-hidden="true"
-          className={size === "xs" ? "size-2.5" : "size-3"}
-          strokeWidth={2.5}
-        />
+        <Icon aria-hidden="true" className="size-3" strokeWidth={2.5} />
       </TooltipTrigger>
       <TooltipPopup side="right">{word}</TooltipPopup>
     </Tooltip>
@@ -1541,24 +1569,19 @@ const STOP_BADGE_CLASS: Record<GroupRowTone, string> = {
 /** A stop whose project the flow has no listing for: not read, never "nothing". */
 const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null };
 
-/** How many waiting changes a stop's menu lists before it counts the rest. */
-const MENU_CHANGES_SHOWN = 8;
-
 /**
  * The stop's own menu — the thing the rows did not have.
  *
  * "Still there is no more menu on prod / stage that would allow me to do
  * stuff" (the owner, 2026-09-19). It holds what a row has no width for: what
- * is actually running, spelled out; every public URL, which is also the
- * keyboard's way to them; and, on a production, the changes that are merged
- * and not live — the list a person opens *Release* to find out about, here
- * before they press it.
+ * is actually running, spelled out, and every public URL, which is also the
+ * keyboard's way to them. The changes a stop does not run yet are its
+ * distance's to list, opened on the row itself.
  */
 function StopMenu({
   name,
   stop,
   routes,
-  waiting,
   onOpenProject,
   onOpenStop,
 }: {
@@ -1566,7 +1589,6 @@ function StopMenu({
   /** What the stop runs, or the line that stands in for it while that is not known. */
   readonly stop: StopView;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly waiting: ReleaseContentsSummary | undefined;
   readonly onOpenProject: () => void;
   readonly onOpenStop: (() => void) | undefined;
 }) {
@@ -1612,353 +1634,403 @@ function StopMenu({
             <ZeropsRouteMenuItems routes={routes} />
           </>
         )}
-        {waiting === undefined || waiting.total === 0 ? null : (
-          <>
-            <MenuSeparator />
-            <MenuGroup data-zerops-surface="sidebar-stop-waiting">
-              <MenuGroupLabel>
-                {waiting.total === 1 ? "1 change waiting" : `${waiting.total} changes waiting`}
-              </MenuGroupLabel>
-              {waiting.subjects.map((subject) => (
-                <MenuItem disabled key={subject}>
-                  {subject}
-                </MenuItem>
-              ))}
-              {waiting.more === 0 ? null : <MenuItem disabled>+{waiting.more} more</MenuItem>}
-            </MenuGroup>
-          </>
-        )}
       </MenuPopup>
     </Menu>
   );
 }
 
 /**
- * The project's other stops, drawn as the peers of the Mates above them:
- * production first, then any group stage as its muted side branch —
- * `groupFlow`'s own order (the owner, 2026-09-23), never the tags'. Only the
- * stops that stand on the line fold, and only they end it; the stages hang
- * after them, off the line and out of the fold.
+ * The project's stops, drawn as the peers of the Mates above them: every
+ * stage, then production — the order the code travels (the owner,
+ * 2026-09-25). One stop, one row, and every stop the same row: a stage used
+ * to be one muted line after production, `↳ stage · follows main`, which said
+ * where it was and never what it ran or whether it had the newest change.
  *
- * Production is two lines, like a Mate: the badge and the name, then what it
- * is actually running. What it runs is the version's **name** where Zerops
- * has one — `v1.4.0`, the word everybody uses for that deploy — and the
- * commit only where nobody named it (the owner, 2026-09-19: "the commit hash
- * should only be a fallback to version name from Zerops"). It also says how
- * far behind it is, short enough that the row does not wrap at 256px, and the
- * menu spells the rest out.
+ * Two lines, like a Mate. The first is the badge, the name and the stop's
+ * controls. The second answers where the newest change is: what the stop
+ * runs — the version's **name** where Zerops has one, else the change's own
+ * title, the commit only where nothing names it ("the commit hash should only
+ * be a fallback", the owner, 2026-09-19) — then how far it is behind `main`,
+ * then at most one verb. Quiet unless something differs: a stop in sync and
+ * healthy says only what it runs; otherwise one word leads (`stopRowLine`).
+ * What runs gives way first at 256px; the word, the distance and the verb
+ * never shrink.
  *
- * A group stage never competes with that for weight: it is an optional side
- * branch of `main` (D16/D28/MB-23), so it is one muted line — `↳ stage ·
- * follows main` — carrying no badge, no menu and no verb of its own.
+ * The distance is the detail, opened: "3 behind" lists the three changes
+ * under the stop, and under production each says whether the stage has run
+ * it yet. Nothing about a stop is folded away any more — the project itself
+ * collapses instead.
  */
 function EnvironmentRows<T extends RosterCandidate>({
   stops,
-  stages,
   flow,
+  projectFlow,
   groupName,
   deployments,
-  production,
   onOpenProject,
-  collapsed,
-  onToggle,
 }: {
-  /** The stops on the line — production first (`section`); none is a stage. */
+  /** Every stage, then production (`section`), listed or being set up. */
   readonly stops: ReadonlyArray<StopRow<T>>;
-  /** The group's stages, listed or being set up, drawn after `stops`. */
-  readonly stages: ReadonlyArray<StopRow<T>>;
-  /**
-   * `groupFlow`'s production, where the flow was read: what is under way on
-   * it — a release, a deploy — is its line's first words, as on the page.
-   */
-  readonly production: GroupFlowProduction | undefined;
+  /** `groupFlow`'s own reading of each stop, so a row never says what the page would not. */
+  readonly projectFlow: GroupFlow;
   readonly flow: SidebarProjectFlow | undefined;
   /** The heading above, so a row never repeats the word already on it. */
   readonly groupName: string | undefined;
   /** What each stop runs, read once by the tree and shared with `groupFlow`. */
   readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
   readonly onOpenProject: () => void;
-  readonly collapsed: boolean;
-  readonly onToggle: () => void;
 }) {
-  const behind = releaseContentsSummary(flow?.releaseContents ?? []);
-  // The hover shows four because it floats over the menu; the stop's own menu
-  // is a list and can hold the ones a person is actually looking for.
-  const waitingInMenu = releaseContentsSummary(flow?.releaseContents ?? [], MENU_CHANGES_SHOWN);
   // Only a countdown reads the clock, and a stop's line carries none; the
   // time the rows were first drawn is enough.
   const [nowMs] = useState(Date.now);
-  // What each stop runs is the platform's answer, joined with the row the
-  // deploy half read (`stopView`): a stop not yet read holds its line and
-  // never reads as one with nothing deployed.
-  const viewOf = (projectId: string) =>
-    stopView({
-      deployment: deployments?.get(projectId) ?? UNREAD_DEPLOYMENT,
-      row: flow?.environments.get(projectId),
-      nowMs,
-    });
-  // What is under way on the production — a release on its way, a deploy
-  // running — said in words ahead of what it runs, and worn by its badge.
-  const productionInFlight =
-    production?.kind === "releasing"
-      ? releaseInFlightReason(production.tag)
-      : production?.kind === "deploying"
-        ? production.line
-        : undefined;
-  const badgeOf = (projectId: string, tier: GroupEnvironmentTier | undefined) => {
-    const stop = viewOf(projectId);
-    return tier === "production" && productionInFlight !== undefined
-      ? { tone: "pending" as const, word: productionInFlight }
-      : { tone: stop.tone, word: stop.word };
-  };
-  const openStopOf = (projectId: string) => {
-    const declared = flow?.environments.get(projectId);
-    return declared === undefined || flow?.onOpenStop === undefined
-      ? undefined
-      : () => {
-          flow.onOpenStop?.(declared);
-        };
-  };
-  const folded = stops.map((row) => {
-    if (row.kind === "creating") {
-      return {
-        key: row.member.projectId,
-        name: row.member.name,
-        tone: "pending" as const,
-        word: creatingStopLine(row.tier),
-        attention: undefined,
-      };
-    }
-    const { item, tier } = row;
-    const badge = badgeOf(item.project.id, tier);
-    return {
-      key: item.project.id,
-      name: environmentNameUnderGroup(groupName, item.project.name),
-      tone: badge.tone,
-      word: badge.word,
-      attention: stopAttention({
-        failed: badge.tone === "bad",
-        production: tier === "production",
-        waiting: behind.total,
-      }),
-    };
+  // Each change named for a person: a merged pull request's title, else the
+  // subject it was committed under.
+  const titles = changeTitles({
+    contents: flow?.releaseContents ?? [],
+    merged: flow?.merged ?? [],
   });
   return (
-    // The stops belong to the project, not to the Mate they happen to follow:
-    // a rule and the project's own left edge say so.
+    // The stops belong to the project, not to the Mate they happen to follow.
     <ul className="flex flex-col" data-zerops-surface="sidebar-environment-rows">
-      {/* The stops are the part of a project that stays put while the Mates
-          change, so they are the part worth folding away. Folded, the group
-          still says it has a production and whether it needs somebody — a
-          full row becomes one line (the owner, 2026-09-19). A stage is
-          already one muted line: folding it saved nothing and dressed it in
-          the badge it never wears, and a fold over it alone stood on the line
-          as a node with nothing after it (the owner, 2026-09-24). */}
-      {stops.length === 0 ? null : (
-        <li>
-          <button
-            aria-expanded={!collapsed}
-            // The same height either way. Folded it drew the compacted stops and
-            // stood 28px tall; unfolded it drew a glyph and stood 16, so every
-            // press shoved everything under it by 12px.
-            className="flex h-7 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-sidebar-row-hover"
-            data-zerops-surface="sidebar-stops-fold"
-            onClick={onToggle}
-            type="button"
-          >
-            <RailCell cap={collapsed ? "end" : undefined}>
-              <FoldGlyph open={!collapsed} />
-            </RailCell>
-            {collapsed ? (
-              <span className="flex min-w-0 flex-1 items-center gap-2.5">
-                {folded.map((stop) => (
-                  <span className="flex min-w-0 items-center gap-1" key={stop.key}>
-                    <StopBadge size="xs" tone={stop.tone} word={stop.word} />
-                    <span className="truncate text-[11px] leading-4 text-sidebar-muted-foreground">
-                      {stop.name}
-                    </span>
-                    {stop.attention === undefined ? null : (
-                      <span
-                        className={cn(BUBBLE_CLASS, COUNT_TONE_CLASS[stop.attention.tone])}
-                        data-zerops-surface="sidebar-stop-attention"
-                      >
-                        {stop.attention.count}
-                      </span>
-                    )}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              <span aria-hidden="true" className="flex flex-1 py-2" />
-            )}
-            <span className="sr-only">
-              {collapsed ? "Show the production" : "Hide the production"}
-            </span>
-          </button>
-        </li>
-      )}
-      {collapsed
-        ? null
-        : stops.map((row, index) => {
-            const railCap = index === stops.length - 1 ? "end" : undefined;
-            if (row.kind === "creating") {
-              return (
-                <CreatingStopRow
-                  key={row.member.projectId}
-                  member={row.member}
-                  railCap={railCap}
-                  tier={row.tier}
-                />
-              );
+      {stops.map((row, index) => {
+        const railCap = index === stops.length - 1 ? "end" : undefined;
+        if (row.kind === "creating") {
+          return (
+            <CreatingStopRow
+              key={row.member.projectId}
+              member={row.member}
+              railCap={railCap}
+              tier={row.tier}
+            />
+          );
+        }
+        const { item, role, tier } = row;
+        const projectId = item.project.id;
+        const declared = flow?.environments.get(projectId);
+        // What each stop runs is the platform's answer, joined with the row
+        // the deploy half read (`stopView`): a stop not yet read holds its
+        // line and never reads as one with nothing deployed.
+        const view = stopView({
+          deployment: deployments?.get(projectId) ?? UNREAD_DEPLOYMENT,
+          row: declared,
+          nowMs,
+        });
+        const flowStop = flowStopOf(projectFlow, projectId);
+        const line: StopRowLine =
+          tier === undefined || flowStop === undefined
+            ? { word: undefined, runs: view.line, distance: undefined }
+            : stopRowLine({
+                tier,
+                stop: flowStop,
+                releasing: tier === "production" ? flow?.releaseInFlight : undefined,
+                distance: flow?.distances?.get(projectId),
+                titles,
+              });
+        return (
+          <StopRowItem
+            badge={
+              // A release on its way is the badge's news too, before the
+              // platform has seen a deploy start.
+              line.word?.kind === "releasing"
+                ? { tone: "pending", word: line.word.text }
+                : { tone: view.tone, word: view.word }
             }
-            const { item, role, tier } = row;
-            const name = environmentNameUnderGroup(groupName, item.project.name);
-            const openStop = openStopOf(item.project.id);
-            const tag = environmentRoleTag(role);
-            const stop = viewOf(item.project.id);
-            const badge = badgeOf(item.project.id, tier);
-            const isProduction = tier === "production";
-            const inFlight = isProduction ? productionInFlight : undefined;
-            const release = flow !== undefined && flow.releaseOffered && isProduction;
-            const routes = item.routes ?? [];
-            const version = stop.version;
-            return (
-              <li
-                className="group/stop flex min-w-0 items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
-                data-zerops-project={item.project.id}
-                data-zerops-surface="sidebar-environment"
-                key={item.project.id}
-              >
-                {/* Centred on the row, because the Mate face directly above it is:
-                two neighbouring rows may not have two rules for their first
-                column. It was pinned to the first line, 11px high of centre. */}
-                <RailCell cap={railCap}>
-                  <StopBadge tone={badge.tone} word={badge.word} />
-                </RailCell>
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
-                  <span className="flex min-w-0 items-center gap-2">
-                    {/* A stop is named in the same hand as a Mate: it is a place
-                    the work reaches, not a footnote under the ones who did it. */}
-                    {openStop === undefined ? (
-                      <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium text-sidebar-foreground">
-                        {name}
-                      </span>
-                    ) : (
-                      <button
-                        className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sm leading-5 font-medium text-sidebar-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-                        onClick={openStop}
-                        type="button"
-                      >
-                        {name}
-                      </button>
-                    )}
-                    {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
-                      <ZeropsRoleTag label={tag} />
-                    )}
-                    {/* The two controls ride the name's line; the verb does not.
-                    It was up here too, on the reading that this line "is
-                    short" — true of `stage`, false of `production`, whose name
-                    had 43px for the 68px it needs once a release is waiting and
-                    rendered as `prod…` at the default 238px (measured
-                    2026-09-20). The row carrying the most consequential state
-                    was the one that could not say its own name. The verb moved
-                    to the line below, beside the version it changes; what the
-                    old arrangement avoided — a fact up here and its cure down
-                    there — cannot recur, because the fact is worn by the verb
-                    itself. */}
-                    <span className="flex shrink-0 items-center gap-1">
-                      <ZeropsRoutesMenu
-                        label={`Public access of ${item.project.name}`}
-                        routes={routes}
-                      />
-                      <StopMenu
-                        name={name}
-                        onOpenStop={openStop}
-                        onOpenProject={onOpenProject}
-                        routes={routes}
-                        stop={stop}
-                        waiting={isProduction ? waitingInMenu : undefined}
-                      />
-                    </span>
-                  </span>
-                  <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-sidebar-muted-foreground">
-                    {/* What is actually running here — the question the row never
-                    answered (the owner, 2026-09-19: "nothing shows what version
-                    they run"). */}
-                    {/* The name is a fact until it can be opened. Where Gitea is
-                    signed in and the version names a commit, it is the way to
-                    what is actually in there; otherwise it stays plain text
-                    rather than becoming a link that goes nowhere. */}
-                    {inFlight === undefined ? null : (
-                      <span
-                        className="shrink-0 text-sidebar-foreground"
-                        data-zerops-surface="sidebar-environment-in-flight"
-                      >
-                        {inFlight}
-                      </span>
-                    )}
-                    {openStop === undefined || version?.label === undefined ? (
-                      <span
-                        className={cn(
-                          "min-w-0 truncate",
-                          version !== undefined && version.name === undefined && "tabular-nums",
-                          // A placeholder waits a beat before it says anything,
-                          // so a quick answer never flickers "Checking…".
-                          stop.afterMs > 0 && "animate-zerops-appear",
-                        )}
-                        data-zerops-surface="sidebar-environment-version"
-                        style={
-                          stop.afterMs > 0 ? { animationDelay: `${stop.afterMs}ms` } : undefined
-                        }
-                      >
-                        {stop.line}
-                      </span>
-                    ) : (
-                      <button
-                        className={cn(
-                          "min-w-0 cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
-                          version.name === undefined && "tabular-nums",
-                        )}
-                        data-zerops-surface="sidebar-environment-version"
-                        onClick={openStop}
-                        type="button"
-                      >
-                        {version.label}
-                      </button>
-                    )}
-                    {/* What is merged and not live is worn by *Release*, which
-                    is the thing that deals with it — it used to be a chip on
-                    this line while the verb sat on the one above, a fact and
-                    its cure separated by a globe and a menu. The verb carries
-                    both now, on the line with the room for it. */}
-                    {release ? (
-                      <ReleaseVerb
-                        contents={flow.releaseContents}
-                        onRelease={flow.onRelease}
-                        releaseTag={flow.releaseTag}
-                        releasing={flow.releasing}
-                      />
-                    ) : null}
-                  </span>
-                </span>
-              </li>
-            );
-          })}
-      {stages.map((row) =>
-        row.kind === "creating" ? (
-          <CreatingStopRow key={row.member.projectId} member={row.member} tier={row.tier} />
-        ) : (
-          <GroupStageRow
-            key={row.item.project.id}
-            name={environmentNameUnderGroup(groupName, row.item.project.name)}
-            onOpenStop={openStopOf(row.item.project.id)}
-            projectId={row.item.project.id}
+            key={projectId}
+            line={line}
+            marks={tier === "production" ? flow?.stageMarks : undefined}
+            name={environmentNameUnderGroup(groupName, item.project.name)}
+            projectName={item.project.name}
+            onOpenProject={onOpenProject}
+            onOpenStop={
+              declared === undefined || flow?.onOpenStop === undefined
+                ? undefined
+                : () => {
+                    flow.onOpenStop?.(declared);
+                  }
+            }
+            projectId={projectId}
+            railCap={railCap}
+            release={
+              flow !== undefined && flow.releaseOffered && tier === "production" ? flow : undefined
+            }
+            routes={item.routes ?? []}
+            tag={environmentRoleTag(role)}
+            view={view}
           />
-        ),
-      )}
+        );
+      })}
     </ul>
   );
 }
+
+/** `groupFlow`'s own stop for a project: one of its stages, or its production. */
+function flowStopOf(flow: GroupFlow, projectId: string): GroupFlowStop | undefined {
+  const stage = flow.stages.find((entry) => entry.projectId === projectId);
+  if (stage !== undefined) return stage;
+  const { production } = flow;
+  return "stop" in production && production.stop.projectId === projectId
+    ? production.stop
+    : undefined;
+}
+
+/** How the state word reads: a failure in the failure's own ink, the rest in the row's. */
+const WORD_CLASS: Record<StopWordKind, string> = {
+  failed: "text-[var(--zerops-status-failed-text)]",
+  deploying: "text-sidebar-foreground",
+  releasing: "text-sidebar-foreground",
+  empty: "text-sidebar-muted-foreground",
+  checking: "text-sidebar-muted-foreground",
+};
+
+/**
+ * One listed stop: its row, and — opened from its distance — the changes it
+ * does not run yet, one row each under it.
+ *
+ * Closed until somebody opens it, and not remembered: it answers a question
+ * asked now. It closes itself once there is nothing behind, or nothing says
+ * how far, since a list of zero changes is a control with nothing in it.
+ */
+function StopRowItem({
+  projectId,
+  projectName,
+  name,
+  tag,
+  badge,
+  line,
+  view,
+  marks,
+  routes,
+  release,
+  railCap,
+  onOpenStop,
+  onOpenProject,
+}: {
+  readonly projectId: string;
+  /** The Zerops project's own name, which the public routes are named after. */
+  readonly projectName: string;
+  readonly name: string;
+  readonly tag: ReturnType<typeof environmentRoleTag>;
+  readonly badge: { readonly tone: GroupRowTone; readonly word: string };
+  readonly line: StopRowLine;
+  /** What the stop runs as `stopView` read it, for the menu's detail and a placeholder's delay. */
+  readonly view: StopView;
+  /** Where each change stands on the stage; production's list only. */
+  readonly marks: ReadonlyMap<string, StageMark> | undefined;
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  /** The project's flow where *Release* is offered on this stop. */
+  readonly release: SidebarProjectFlow | undefined;
+  readonly railCap: RailCap;
+  readonly onOpenStop: (() => void) | undefined;
+  readonly onOpenProject: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { distance, word, runs } = line;
+  if (open && distance === undefined) setOpen(false);
+  const listed = open && distance !== undefined;
+  const checking = word?.kind === "checking";
+  return (
+    <>
+      <li
+        className="group/stop flex min-w-0 items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
+        data-zerops-project={projectId}
+        data-zerops-surface="sidebar-environment"
+      >
+        {/* Centred on the row, because the Mate face directly above it is:
+            two neighbouring rows may not have two rules for their first
+            column. It was pinned to the first line, 11px high of centre. */}
+        <RailCell cap={listed ? undefined : railCap}>
+          <StopBadge tone={badge.tone} word={badge.word} />
+        </RailCell>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
+          <span className="flex min-w-0 items-center gap-2">
+            {/* A stop is named in the same hand as a Mate: it is a place the
+                work reaches, not a footnote under the ones who did it. */}
+            {onOpenStop === undefined ? (
+              <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium text-sidebar-foreground">
+                {name}
+              </span>
+            ) : (
+              <button
+                className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sm leading-5 font-medium text-sidebar-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+                onClick={onOpenStop}
+                type="button"
+              >
+                {name}
+              </button>
+            )}
+            {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
+              <ZeropsRoleTag label={tag} />
+            )}
+            {/* The two controls ride the name's line; the verb does not. It
+                was up here too, on the reading that this line "is short" —
+                true of `stage`, false of `production`, whose name had 43px
+                for the 68px it needs once a release is waiting and rendered
+                as `prod…` at the default 238px (measured 2026-09-20). */}
+            <span className="flex shrink-0 items-center gap-1">
+              <ZeropsRoutesMenu label={`Public access of ${projectName}`} routes={routes} />
+              <StopMenu
+                name={name}
+                onOpenProject={onOpenProject}
+                onOpenStop={onOpenStop}
+                routes={routes}
+                stop={view}
+              />
+            </span>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-sidebar-muted-foreground">
+            {word === undefined ? null : (
+              <span
+                className={cn(
+                  "shrink-0",
+                  WORD_CLASS[word.kind],
+                  // A placeholder waits a beat before it says anything, so a
+                  // quick answer never flickers "Checking…".
+                  checking && view.afterMs > 0 && "animate-zerops-appear",
+                )}
+                data-zerops-surface="sidebar-stop-word"
+                data-zerops-word-kind={word.kind}
+                style={
+                  checking && view.afterMs > 0 ? { animationDelay: `${view.afterMs}ms` } : undefined
+                }
+              >
+                {/* Checking says the platform's own words, which name a read
+                    that failed where there was one. */}
+                {checking ? view.line : word.text}
+              </span>
+            )}
+            {/* What is actually running here — the question the row never
+                answered (the owner, 2026-09-19: "nothing shows what version
+                they run"). It gives way first: the rest of the line is what
+                a person acts on. */}
+            {runs === undefined ? null : onOpenStop === undefined ? (
+              <span className="min-w-0 truncate" data-zerops-surface="sidebar-environment-version">
+                {runs}
+              </span>
+            ) : (
+              <button
+                className="min-w-0 cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+                data-zerops-surface="sidebar-environment-version"
+                onClick={onOpenStop}
+                type="button"
+              >
+                {runs}
+              </button>
+            )}
+            {distance === undefined ? null : (
+              <button
+                aria-expanded={listed}
+                className="shrink-0 cursor-pointer rounded-sm tabular-nums underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+                data-zerops-surface="sidebar-stop-distance"
+                onClick={() => {
+                  setOpen(!listed);
+                }}
+                type="button"
+              >
+                {`${String(distance.count)} behind`}
+              </button>
+            )}
+            {/* What is merged and not live is worn by *Release*, which is the
+                thing that deals with it, on the line with the room for it. */}
+            {release === undefined ? null : (
+              <ReleaseVerb
+                contents={release.releaseContents}
+                onRelease={release.onRelease}
+                releaseTag={release.releaseTag}
+                releasing={release.releasing}
+              />
+            )}
+          </span>
+        </span>
+      </li>
+      {listed ? (
+        <li data-zerops-surface="sidebar-stop-changes">
+          <ul className="flex flex-col">
+            {distance.changes.map((change, index) => (
+              <StopChangeRow
+                key={change.sha}
+                mark={marks?.get(change.sha.toLowerCase())}
+                railCap={
+                  railCap === "end" && index === distance.changes.length - 1 ? "end" : undefined
+                }
+                title={change.title}
+              />
+            ))}
+          </ul>
+        </li>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * One change a stop does not run yet, by its title. Under production it says
+ * where the change stands on the stage — run there, on its way there, or
+ * failed there — so a person reads whether it has been seen running anywhere
+ * before it goes live. Nothing is said where nothing is known.
+ */
+function StopChangeRow({
+  title,
+  mark,
+  railCap,
+}: {
+  readonly title: string;
+  readonly mark: StageMark | undefined;
+  readonly railCap: RailCap;
+}) {
+  const shown = mark === undefined || mark === "none" ? undefined : STAGE_MARK[mark];
+  return (
+    <li
+      className="flex h-6 min-w-0 items-center gap-2.5 px-2.5 text-[11px] leading-4"
+      data-zerops-stage-mark={mark ?? "none"}
+      data-zerops-surface="sidebar-stop-change"
+    >
+      {/* The line runs on past a list under a stop that is not the last. */}
+      <RailCell cap={railCap} />
+      <span className="flex w-3.5 shrink-0 items-center justify-center">
+        {shown === undefined ? null : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  aria-label={shown.word}
+                  className={cn("inline-flex", shown.className)}
+                  data-zerops-surface="sidebar-stop-change-mark"
+                  role="img"
+                />
+              }
+            >
+              <shown.Icon aria-hidden="true" className="size-3" strokeWidth={2.5} />
+            </TooltipTrigger>
+            <TooltipPopup side="right">{shown.word}</TooltipPopup>
+          </Tooltip>
+        )}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{title}</span>
+    </li>
+  );
+}
+
+/** A change's mark under production, in the badge's own glyphs and tones. */
+const STAGE_MARK: Record<
+  Exclude<StageMark, "none">,
+  { readonly word: string; readonly Icon: typeof CheckIcon; readonly className: string }
+> = {
+  "on-stage": {
+    word: "On stage",
+    Icon: STOP_ICON.good,
+    className: "text-[var(--zerops-status-ok)]",
+  },
+  "deploying-on-stage": {
+    word: "Deploying on stage",
+    Icon: STOP_ICON.pending,
+    className: "text-[var(--zerops-status-busy)]",
+  },
+  "failed-on-stage": {
+    word: "Failed on stage",
+    Icon: STOP_ICON.bad,
+    className: "text-[var(--zerops-status-failed)]",
+  },
+};
 
 /** What a stop being created says while it is: the page's own words. */
 function creatingStopLine(tier: GroupEnvironmentTier): string {
@@ -1966,10 +2038,10 @@ function creatingStopLine(tier: GroupEnvironmentTier): string {
 }
 
 /**
- * A stop being created, until the listing holds its project: a production is
- * its row's shape — the badge on its way up, its name, "Setting up
- * production…" — with no menu and no verb, there being nothing of it to reach
- * yet; a stage is the muted line a stage always is, `↳ Setting up a stage…`.
+ * A stop being created, until the listing holds its project: its row's shape
+ * — the badge on its way up, its name, "Setting up production…" or "Setting
+ * up a stage…" — with no menu and no verb, there being nothing of it to reach
+ * yet.
  */
 function CreatingStopRow({
   member,
@@ -1981,19 +2053,6 @@ function CreatingStopRow({
   readonly railCap?: RailCap;
 }) {
   const line = creatingStopLine(tier);
-  if (tier === "stage") {
-    return (
-      <li
-        aria-busy="true"
-        className="flex h-7 min-w-0 items-center gap-2.5 px-2.5 text-[11px] text-sidebar-muted-foreground"
-        data-zerops-project={member.projectId}
-        data-zerops-surface="sidebar-environment-creating"
-      >
-        <RailCell cap="only" />
-        <span className="min-w-0 flex-1 truncate">{`↳ ${line}`}</span>
-      </li>
-    );
-  }
   return (
     <li
       aria-busy="true"
@@ -2017,44 +2076,23 @@ function CreatingStopRow({
 }
 
 /**
- * A group stage: an optional side branch of `main`, never a gate before
- * production (D16/D28/MB-23; the owner, 2026-09-23). It does not compete with
- * production for weight — a single muted line after production rather than
- * before it, off the line rather than on it and outside the fold, and never
- * drawn where the group has none: an empty "add" row is the thing this
- * replaces.
+ * A project heading's disclosure chevron: right while collapsed, down while
+ * open — a tree's own gesture, since a project heading does have a level
+ * below it. Shown on hover and focus, and always while collapsed, when it is
+ * the only thing saying there is more.
  */
-function GroupStageRow({
-  name,
-  onOpenStop,
-  projectId,
-}: {
-  readonly name: string;
-  readonly onOpenStop?: (() => void) | undefined;
-  readonly projectId: string;
-}) {
-  const label = `↳ ${name} · follows main`;
+function DisclosureGlyph({ collapsed }: { readonly collapsed: boolean }) {
+  const Glyph = collapsed ? ChevronRightIcon : ChevronDownIcon;
   return (
-    <li
-      className="flex h-7 min-w-0 items-center gap-2.5 px-2.5 text-[11px] text-sidebar-muted-foreground"
-      data-zerops-project={projectId}
-      data-zerops-surface="sidebar-group-stage"
-    >
-      {/* The column keeps the line's width, so the text lines up with the
-          rows on it; the line itself stops before this row. */}
-      <RailCell cap="only" />
-      {onOpenStop === undefined ? (
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-      ) : (
-        <button
-          className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-          onClick={onOpenStop}
-          type="button"
-        >
-          {label}
-        </button>
+    <Glyph
+      aria-hidden="true"
+      className={cn(
+        "size-3.5 shrink-0 text-sidebar-muted-foreground transition-opacity",
+        !collapsed &&
+          "opacity-0 group-focus-within/project:opacity-100 group-hover/project:opacity-100 pointer-coarse:opacity-100",
       )}
-    </li>
+      data-zerops-surface="sidebar-project-chevron"
+    />
   );
 }
 
@@ -2072,11 +2110,3 @@ function FoldGlyph({ open }: { readonly open: boolean }) {
   const Glyph = open ? ChevronsDownUpIcon : ChevronsUpDownIcon;
   return <Glyph aria-hidden="true" className="size-3 shrink-0 text-sidebar-muted-foreground" />;
 }
-
-/**
- * A folded stop's count of what needs somebody — the shape only; the colour is
- * `COUNT_TONE_CLASS`, the same table the verb's own count reads, so unfolding
- * a project never changes what its changes are said to be.
- */
-const BUBBLE_CLASS =
-  "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums";

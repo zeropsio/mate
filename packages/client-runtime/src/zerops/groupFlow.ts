@@ -367,18 +367,23 @@ function releaseOffered(input: GroupFlowInput): boolean {
 function nextStepOf(
   input: GroupFlowInput,
   pullRequests: ReadonlyArray<GroupFlowPullRequest>,
+  stages: ReadonlyArray<GroupFlowStop>,
   production: GroupFlowProduction,
 ): GroupNextStep {
-  // A stage is never what anything downstream waits behind (D28): only the
-  // production's own failure — already tracked on `production` — ranks
-  // above a merge or a release. A stage's own failure stays on its own row.
+  // A failed stage is a failed stop too (owner, 2026-09-25): somebody has to
+  // look at its build, so it is the deploy to fix — after production's own
+  // failure, which reaches people. The release still does not wait on it
+  // (D28): `production` keeps its candidate whatever a stage does.
   const failedProduction =
     production.kind === "deploy-failed"
       ? [{ projectId: production.stop.projectId, name: production.stop.name }]
       : [];
+  const failedStages = stages
+    .filter((stage) => stage.state === "failed")
+    .map((stage) => ({ projectId: stage.projectId, name: stage.name }));
   const attention = projectAttention({
     waitingMates: input.mates.filter((mate) => mate.waiting),
-    failedStops: failedProduction,
+    failedStops: [...failedProduction, ...failedStages],
     pullRequests: input.pullRequests,
     notLive: input.release.waiting,
     canRelease:
@@ -478,7 +483,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     stages,
     creatingStages: pending.filter((entry) => entry.kind === "stage"),
     production,
-    nextStep: nextStepOf(input, pullRequests, production),
+    nextStep: nextStepOf(input, pullRequests, stages, production),
   };
 }
 

@@ -705,6 +705,7 @@
       "components": [
         "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
         "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+        "apps/web/src/components/zerops/SidebarZeropsTree.logic.ts",
         "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx",
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
@@ -857,6 +858,7 @@
         "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.test.tsx",
         "apps/web/src/components/zerops/ZeropsGroupTree.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarZeropsTree.logic.test.ts",
         "apps/web/src/components/zerops/projects/ZeropsProjectsFlow.test.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.test.ts",
         "apps/web/src/components/zerops/ZeropsOrganizationScope.test.tsx",

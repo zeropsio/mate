@@ -23,7 +23,6 @@ import {
   pullRequestsFolded,
   sidebarChangeLabel,
   changeSubtitle,
-  stopAttention,
   type FlowPullRequest,
   changeLandedEvents,
   agentTurnNotes,
@@ -160,6 +159,35 @@ describe("one pull request in the flow", () => {
         ).toBe(mergeability);
       }
     }
+  });
+
+  const MERGE_SHA = "9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e";
+  it.each([
+    {
+      case: "a landed one carries the commit it landed as, whole",
+      over: { merged: true, merge_commit_sha: MERGE_SHA },
+      expected: MERGE_SHA,
+    },
+    {
+      case: "a landed one Gitea names no commit for carries none",
+      over: { merged: true, merge_commit_sha: null },
+      expected: undefined,
+    },
+    {
+      // Gitea fills the field on an open one too (its trial merge); that
+      // commit never reaches main, so no stop can be running it.
+      case: "an open one carries none, whatever Gitea sends",
+      over: { merged: false, merge_commit_sha: MERGE_SHA },
+      expected: undefined,
+    },
+  ])("names its merge commit: $case", ({ over, expected }) => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull(over),
+      checks: [],
+    });
+    expect(row.mergeCommit).toBe(expected);
   });
 
   it("does not count the broker's own deploy statuses as checks", () => {
@@ -487,37 +515,6 @@ describe("releaseWaitingLabel", () => {
         ]),
       ),
     ).toBe("2 waiting");
-  });
-});
-
-describe("what a folded stop still has to say", () => {
-  it("counts a production's waiting changes", () => {
-    expect(stopAttention({ failed: false, production: true, waiting: 3 })).toEqual({
-      count: 3,
-      // Waiting, not broken — the same blue *Release* wears, so folding a
-      // project away does not change what its changes are said to be.
-      tone: "busy",
-    });
-  });
-
-  it("counts a failed deploy as the one thing to deal with, and says it is broken", () => {
-    expect(stopAttention({ failed: true, production: false, waiting: 0 })).toEqual({
-      count: 1,
-      tone: "failed",
-    });
-    // Both at once: the failure outranks the waiting, and neither is dropped.
-    expect(stopAttention({ failed: true, production: true, waiting: 2 })).toEqual({
-      count: 3,
-      tone: "failed",
-    });
-  });
-
-  it("gives a stage no bubble for a production's waiting work", () => {
-    expect(stopAttention({ failed: false, production: false, waiting: 4 })).toBeUndefined();
-  });
-
-  it("wears nothing rather than a zero, which would stop being read", () => {
-    expect(stopAttention({ failed: false, production: true, waiting: 0 })).toBeUndefined();
   });
 });
 

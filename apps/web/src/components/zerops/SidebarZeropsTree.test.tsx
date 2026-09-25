@@ -12,20 +12,30 @@ import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 
-// The groups whose stops a person folded away, as storage would hand them back.
-const stored = vi.hoisted(() => ({ folded: new Set<string>() }));
-vi.mock("~/zerops/collapsedStops", () => ({
-  readCollapsedStops: () => stored.folded,
-  writeCollapsedStops: () => undefined,
+// The projects a person collapsed, as storage would hand them back, and what
+// the tree last asked it to remember.
+const stored = vi.hoisted(() => ({
+  collapsed: new Set<string>(),
+  written: undefined as ReadonlySet<string> | undefined,
+}));
+vi.mock("~/zerops/collapsedProjects", () => ({
+  readCollapsedProjects: () => stored.collapsed,
+  writeCollapsedProjects: (collapsed: ReadonlySet<string>) => {
+    stored.written = collapsed;
+  },
 }));
 afterEach(() => {
-  stored.folded = new Set();
+  stored.collapsed = new Set();
+  stored.written = undefined;
+  vi.unstubAllGlobals();
 });
 import {
   groupFlowInputOf,
@@ -113,6 +123,47 @@ function render(candidates: ReadonlyArray<ZeropsCandidate>, props: Record<string
       {...props}
     />,
   );
+}
+
+/** One stop's row, from its project id to the end of its own line item. */
+const stop = (html: string, id: string) =>
+  html.slice(html.indexOf(`data-zerops-project="${id}"`)).split("</li>")[0]!;
+
+/**
+ * A tree mounted for pressing, rather than drawn once as a string. Its menus
+ * and stored preferences listen on `window` once mounted and ask whether a
+ * node is a DOM element; there is no DOM here, so an event target stands in
+ * for the window and nothing is an element.
+ */
+function mount(element: ReactElement): ReactTestRenderer {
+  const noDom = Object.fromEntries(
+    ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
+  );
+  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
+  for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
+  let tree: ReactTestRenderer | undefined;
+  act(() => {
+    tree = create(element);
+  });
+  return tree!;
+}
+
+/** The one host element wearing this surface. */
+function surface(tree: ReactTestRenderer, name: string): ReactTestInstance {
+  return tree.root.find(
+    (node) => typeof node.type === "string" && node.props["data-zerops-surface"] === name,
+  );
+}
+
+function press(tree: ReactTestRenderer, name: string): void {
+  act(() => {
+    surface(tree, name).props.onClick();
+  });
+}
+
+/** Everything a node says, as text. */
+function text(node: ReactTestInstance): string {
+  return node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
 }
 
 describe("SidebarZeropsTree", () => {
@@ -294,38 +345,34 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain("bg-sidebar-row-active");
   });
 
-  it("lists production then its stage after the Mates, the Mate's own left out", () => {
+  it("lists the stage then production after the Mates, one row each, the Mate's own left out", () => {
     const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).toContain('data-zerops-surface="sidebar-environment-rows"');
-    // Production keeps the full stop treatment; the stage is a muted line of
-    // its own, a different surface entirely (`groupFlow`'s own order, the
-    // owner, 2026-09-23).
-    expect(html.match(/data-zerops-surface="sidebar-environment"/gu)).toHaveLength(1);
-    expect(html.match(/data-zerops-surface="sidebar-group-stage"/gu)).toHaveLength(1);
-    // Production first — the order the code travels — after the Mate, and the
-    // stage after production, never before it.
+    // One stop, one row: the stage is the same row production is (the owner,
+    // 2026-09-25), not a muted line of its own.
+    expect(html.match(/data-zerops-surface="sidebar-environment"/gu)).toHaveLength(2);
+    expect(html).not.toContain("sidebar-group-stage");
+    // The order the code travels: the Mate, the stage, then production.
     expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(
-      html.indexOf('data-zerops-project="crm-prod"'),
-    );
-    expect(html.indexOf('data-zerops-project="crm-prod"')).toBeLessThan(
       html.indexOf('data-zerops-project="crm-stage"'),
     );
-    // The stops are open, and they are not a count to click open: the fold is
-    // an exception a person asks for, never the state they are handed.
-    expect(html).not.toContain("2 environments");
-    expect(html).toContain('data-zerops-surface="sidebar-stops-fold"');
-    expect(html).toContain('aria-expanded="true"');
+    expect(html.indexOf('data-zerops-project="crm-stage"')).toBeLessThan(
+      html.indexOf('data-zerops-project="crm-prod"'),
+    );
+    // Nothing folds the stops away: a project collapses as a whole instead.
+    expect(html).not.toContain("sidebar-stops-fold");
+    expect(html).not.toContain("Hide the production");
     // A project whose only environment is its Mate's has no stops to list.
     expect(render([CRM_DEV])).not.toContain("sidebar-environment-rows");
   });
 
   it("never draws a stage row where the group has none — no empty or add slot", () => {
     const html = render([CRM_DEV, CRM_PROD]);
-    expect(html).not.toContain("follows main");
-    expect(html).not.toContain('data-zerops-surface="sidebar-group-stage"');
+    expect(html).not.toContain('data-zerops-project="crm-stage"');
+    expect(html.match(/data-zerops-surface="sidebar-environment"/gu)).toHaveLength(1);
   });
 
-  it("draws every group stage after production, each a muted line by its own name", () => {
+  it("draws every group stage before production, each by its own name", () => {
     const secondStage = named(
       "links-stage-2",
       "Links - stage 2",
@@ -336,16 +383,16 @@ describe("SidebarZeropsTree", () => {
     const prodAt = html.indexOf('data-zerops-project="links-prod"');
     const stage1At = html.indexOf('data-zerops-project="links-stage"');
     const stage2At = html.indexOf('data-zerops-project="links-stage-2"');
-    expect(prodAt).toBeLessThan(stage1At);
     expect(stage1At).toBeLessThan(stage2At);
-    expect(html).toContain("↳ stage · follows main");
-    expect(html).toContain("↳ stage 2 · follows main");
+    expect(stage2At).toBeLessThan(prodAt);
+    expect(html).toContain(">stage<");
+    expect(html).toContain(">stage 2<");
   });
 
   it("says a stop's own name, not the project's name a third time", () => {
     const html = render([LINKS_MATE, LINKS_STAGE, LINKS_PROD]);
     // The heading already says Links; the rows say what tells them apart.
-    expect(html).toContain("↳ stage · follows main");
+    expect(html).toContain(">stage<");
     expect(html).toContain(">production<");
     expect(html).not.toContain("Links - stage");
     expect(html).not.toContain(">Links - production<");
@@ -566,13 +613,12 @@ describe("a creation under way in the menu", () => {
     expect(comingRows(html)).toHaveLength(1);
   });
 
-  it("draws a production being created as setting up, busy, before the stage, with nothing to press", () => {
+  it("draws a production being created as setting up, busy, after the stage, with nothing to press", () => {
     const html = render([CRM_DEV, CRM_STAGE], {
       births: [birth({ projectId: "crm-prod-new", kind: "production", displayName: "production" })],
     });
     const at = html.indexOf('data-zerops-project="crm-prod-new"');
-    expect(at).toBeGreaterThan(-1);
-    expect(at).toBeLessThan(html.indexOf('data-zerops-project="crm-stage"'));
+    expect(at).toBeGreaterThan(html.indexOf('data-zerops-project="crm-stage"'));
     const row = html.slice(html.lastIndexOf("<li", at)).split("</li>")[0]!;
     expect(row).toContain('aria-busy="true"');
     expect(row).toContain('data-zerops-status-tone="pending"');
@@ -582,15 +628,20 @@ describe("a creation under way in the menu", () => {
     expect(comingRows(html)).toHaveLength(0);
   });
 
-  it("draws a stage being created as the muted line under the stops", () => {
+  it("draws a stage being created in the row production's creation wears, before production", () => {
     const html = render([CRM_DEV, CRM_PROD], {
       births: [birth({ projectId: "crm-stage-new", kind: "stage", displayName: "stage" })],
     });
     const at = html.indexOf('data-zerops-project="crm-stage-new"');
-    expect(at).toBeGreaterThan(html.indexOf('data-zerops-project="crm-prod"'));
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(html.indexOf('data-zerops-project="crm-prod"'));
     const row = html.slice(html.lastIndexOf("<li", at)).split("</li>")[0]!;
     expect(row).toContain('aria-busy="true"');
-    expect(row).toContain(">↳ Setting up a stage…<");
+    expect(row).toContain('data-zerops-status-tone="pending"');
+    expect(row).toContain(">stage<");
+    expect(row).toContain(">Setting up a stage…<");
+    expect(row).not.toContain("↳");
+    expect(row).not.toContain("<button");
   });
 
   it("draws a first project being created in an account with no Mate listed yet", () => {
@@ -766,8 +817,8 @@ describe("the project's flow under it", () => {
         ],
       }),
     );
-    // Not hover-only: the button's own name carries it, so a keyboard and a
-    // screen reader reach the same answer a pointer does.
+    // The button's own name carries it, so a keyboard and a screen reader
+    // reach the answer without opening anything.
     expect(html).toContain("Release: puts 2 changes live");
     expect(html).toContain("Add a search box above the list");
     expect(html).toContain("Rename the app in the page title");
@@ -877,22 +928,18 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain('data-zerops-surface="sidebar-pull-requests"');
   });
 
-  it("gives production its last deploy as a dot and Release when offered; the stage stays a muted line", () => {
+  it("gives every stop its last deploy as a badge and a menu; only production offers Release", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-    // Production first, the stage after it.
-    expect(html.indexOf('data-zerops-project="crm-prod"')).toBeLessThan(
-      html.indexOf('data-zerops-project="crm-stage"'),
-    );
-    const production = html.slice(
-      html.indexOf('data-zerops-project="crm-prod"'),
-      html.indexOf('data-zerops-project="crm-stage"'),
-    );
+    const stage = stop(html, "crm-stage");
+    const production = stop(html, "crm-prod");
+    for (const row of [stage, production]) {
+      expect(row).toContain('data-zerops-surface="sidebar-stop-badge"');
+      expect(row).toContain('data-zerops-surface="sidebar-stop-more"');
+    }
     expect(production).toContain('aria-label="Running"');
     expect(production).toContain('data-zerops-primary-action="Release"');
-    const stage = html.slice(html.indexOf('data-zerops-project="crm-stage"'));
-    expect(stage).toContain("↳ crm-stage · follows main");
+    // A stage gets no verb in this slice: it deploys `main` on its own.
     expect(stage).not.toContain("Release");
-    expect(stage).not.toContain('data-zerops-surface="sidebar-stop-badge"');
     expect(withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], flow({ releaseOffered: false }))).not.toContain(
       "Release",
     );
@@ -903,13 +950,154 @@ describe("the project's flow under it", () => {
       [CRM_DEV, CRM_STAGE, CRM_PROD],
       flow({ releaseOffered: false, releaseInFlight: "v0.2.0" }),
     );
-    const production = html.slice(
-      html.indexOf('data-zerops-project="crm-prod"'),
-      html.indexOf('data-zerops-project="crm-stage"'),
-    );
+    const production = stop(html, "crm-prod");
     expect(production).toContain(">Releasing v0.2.0…<");
     expect(production).toContain('data-zerops-status-tone="pending"');
     expect(production).not.toContain('data-zerops-primary-action="Release"');
+  });
+
+  describe("a stop's second line", () => {
+    /** Two changes on `main` production does not run, newest first. */
+    const WAITING = [
+      { sha: "c".repeat(40), subject: "Cart badge" },
+      { sha: "b".repeat(40), subject: "Search box" },
+    ];
+    const measured = (overrides: Partial<SidebarProjectFlow> = {}) =>
+      flow({
+        releaseContents: [{ commits: WAITING }],
+        distances: new Map([
+          ["crm-stage", { count: 0, changes: [] }],
+          ["crm-prod", { count: 2, changes: WAITING }],
+        ]),
+        ...overrides,
+      });
+
+    it("says only what an in-sync, healthy stop runs", () => {
+      const stage = stop(withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], measured()), "crm-stage");
+      expect(stage).toContain('data-zerops-surface="sidebar-environment-version"');
+      expect(stage).toContain(">3f9c1b2<");
+      expect(stage).not.toContain('data-zerops-surface="sidebar-stop-word"');
+      expect(stage).not.toContain('data-zerops-surface="sidebar-stop-distance"');
+    });
+
+    it("says how far production is behind main, closed until somebody opens it", () => {
+      const production = stop(withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], measured()), "crm-prod");
+      const distance =
+        /<button[^>]*data-zerops-surface="sidebar-stop-distance"[^>]*>([^<]*)</u.exec(production);
+      expect(distance?.[1]).toBe("2 behind");
+      expect(distance?.[0]).toContain('aria-expanded="false"');
+      expect(withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], measured())).not.toContain(
+        "sidebar-stop-changes",
+      );
+    });
+
+    it("opens the distance to the changes it counts, newest first, marked where the stage stands", () => {
+      const tree = mount(
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, CRM_STAGE, CRM_PROD]}
+          complete
+          getFlow={() =>
+            measured({
+              stageMarks: new Map([
+                ["c".repeat(40), "deploying-on-stage"],
+                ["b".repeat(40), "on-stage"],
+              ]),
+            })
+          }
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />,
+      );
+      press(tree, "sidebar-stop-distance");
+      const changes = tree.root.findAll(
+        (node) => node.props["data-zerops-surface"] === "sidebar-stop-change",
+      );
+      expect(changes.map((node) => node.props["data-zerops-stage-mark"])).toEqual([
+        "deploying-on-stage",
+        "on-stage",
+      ]);
+      expect(text(changes[0]!)).toContain("Cart badge");
+      expect(text(changes[1]!)).toContain("Search box");
+      expect(surface(tree, "sidebar-stop-distance").props["aria-expanded"]).toBe(true);
+      press(tree, "sidebar-stop-distance");
+      expect(
+        tree.root.findAll((node) => node.props["data-zerops-surface"] === "sidebar-stop-change"),
+      ).toHaveLength(0);
+    });
+
+    it("closes the list itself once nothing is behind, and stays closed when more arrives", () => {
+      const drawn = (state: SidebarProjectFlow) => (
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, CRM_STAGE, CRM_PROD]}
+          complete
+          getFlow={() => state}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      );
+      const changes = (tree: ReactTestRenderer) =>
+        tree.root.findAll((node) => node.props["data-zerops-surface"] === "sidebar-stop-change");
+      const tree = mount(drawn(measured()));
+      press(tree, "sidebar-stop-distance");
+      expect(changes(tree)).toHaveLength(2);
+      act(() => {
+        tree.update(drawn(measured({ distances: new Map() })));
+      });
+      expect(changes(tree)).toHaveLength(0);
+      act(() => {
+        tree.update(drawn(measured()));
+      });
+      expect(changes(tree)).toHaveLength(0);
+      expect(surface(tree, "sidebar-stop-distance").props["aria-expanded"]).toBe(false);
+    });
+
+    it("leads with a word where something differs, and hides the distance behind it", () => {
+      const failedStage = measured({
+        environments: new Map([
+          ["crm-stage", { ...stageRow, tone: "bad" }],
+          ["crm-prod", productionRow],
+        ]),
+        distances: new Map([
+          ["crm-stage", { count: 1, changes: WAITING.slice(0, 1) }],
+          ["crm-prod", { count: 2, changes: WAITING }],
+        ]),
+      });
+      const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], failedStage);
+      const stage = stop(html, "crm-stage");
+      expect(stage).toContain('data-zerops-word-kind="failed"');
+      expect(stage).toContain(">Failed on<");
+      expect(stage).toContain(">3f9c1b2<");
+      expect(stage).not.toContain("sidebar-stop-distance");
+      // Production is healthy, so it stays quiet but for how far it is.
+      const production = stop(html, "crm-prod");
+      expect(production).not.toContain("sidebar-stop-word");
+      expect(production).toContain(">2 behind<");
+
+      const releasing = stop(
+        withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], measured({ releaseInFlight: "v0.2.0" })),
+        "crm-prod",
+      );
+      expect(releasing).toContain('data-zerops-word-kind="releasing"');
+      expect(releasing).not.toContain("sidebar-stop-distance");
+    });
+
+    it("names what runs by the change's title, and puts a branch-fed stage's source in front", () => {
+      const running = "3f9c1b2000000000000000000000000000000000";
+      const html = withFlow(
+        [CRM_DEV, CRM_STAGE, CRM_PROD],
+        measured({
+          environments: new Map([
+            ["crm-stage", { ...stageRow, source: "feat/cart" }],
+            ["crm-prod", productionRow],
+          ]),
+          merged: [pull(9, { merged: true, title: "Cart badge", mergeCommit: running })],
+          distances: new Map([["crm-prod", { count: 2, changes: WAITING }]]),
+        }),
+      );
+      expect(stop(html, "crm-stage")).toContain(">feat/cart · Cart badge<");
+      expect(stop(html, "crm-stage")).not.toContain("sidebar-stop-distance");
+      expect(stop(html, "crm-prod")).toContain(">Cart badge<");
+    });
   });
 
   it("keeps the timeline's shape with nothing read: no row, no dot, no verb", () => {
@@ -920,24 +1108,13 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("Release");
   });
 
-  it("keeps a stop's own page reachable and its state visible while folded", () => {
-    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-    // Open by default, and the fold is a verb of its own rather than a state
-    // a project is handed.
-    expect(html).toContain('data-zerops-surface="sidebar-stops-fold"');
-    expect(html).toContain("Hide the production");
-  });
-
   it("draws one spine, and branches a change off it instead of onto it", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     const count = (needle: string) => html.split(needle).length - 1;
-    // The fold above the stops stands on the line too.
     const rows =
       count('data-zerops-surface="sidebar-mate"') +
       count('data-zerops-surface="sidebar-environment"') +
-      count('data-zerops-surface="sidebar-group-stage"') +
-      count('data-zerops-surface="sidebar-pull-request"') +
-      count('data-zerops-surface="sidebar-stops-fold"');
+      count('data-zerops-surface="sidebar-pull-request"');
     const changes = count('data-zerops-surface="sidebar-pull-request"');
     const painted = count('class="w-px flex-1 bg-[var(--zerops-rail)]"');
     const blank = count('class="w-px flex-1"');
@@ -949,42 +1126,24 @@ describe("the project's flow under it", () => {
     // first face of every group 24px above its row and every last badge 17px
     // below it.
     expect(painted + blank).toBe(rows * 2);
-    // Unpainted only at the two ends — the first node of the group and the
-    // last, production — and across the stage's muted line after it, which
-    // branches off `main` rather than standing on the line.
-    expect(blank).toBe(4);
-    const stage = html.slice(html.indexOf('data-zerops-project="crm-stage"'));
-    expect(stage).not.toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
+    // Unpainted only at the two ends: the first node of the group, and the
+    // last stop, production. The stage stands on the line like any stop.
+    expect(blank).toBe(2);
+    const production = html.slice(html.indexOf('data-zerops-project="crm-prod"'));
+    expect(production).toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
+    expect(production).toContain('class="w-px flex-1"');
     // A change is not a node on the line — it branches off one. Drawn as a
     // node it read as one more Mate however small its dot.
     expect(count('data-zerops-rail="fork"')).toBe(changes);
   });
 
-  it("draws no fold and no line to a stage that is the group's only stop", () => {
-    // A Mate and a stage, no production yet. The fold stood on the line as a
-    // node of its own over one muted line it could not shorten, and the line
-    // ran on to it: a flow that read as stuck half-way (the owner, 2026-09-24).
+  it("runs the line to a stage that is the group's only stop, and ends it there", () => {
     const html = render([CRM_DEV, CRM_STAGE]);
-    expect(html).not.toContain('data-zerops-surface="sidebar-stops-fold"');
-    // One node, so no line at all — as for a Mate with nothing after it.
-    expect(html).not.toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
-    expect(html).toContain("↳ crm-stage · follows main");
-  });
-
-  it("folds production alone; the stage stays its muted line and never wears a badge", () => {
-    stored.folded = new Set(["aaa"]);
-    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-    expect(html).toContain('aria-expanded="false"');
-    const fold = html.slice(
-      html.indexOf('data-zerops-surface="sidebar-stops-fold"'),
-      html.indexOf('data-zerops-project="crm-stage"'),
-    );
-    expect(fold).toContain(">crm-prod<");
-    expect(fold).not.toContain("crm-stage");
-    const stage = html.slice(html.indexOf('data-zerops-project="crm-stage"'));
-    expect(stage).toContain("↳ crm-stage · follows main");
-    expect(stage).not.toContain('data-zerops-surface="sidebar-stop-badge"');
-    expect(stage).not.toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
+    const stage = stop(html, "crm-stage");
+    expect(stage).toContain('data-zerops-surface="sidebar-stop-badge"');
+    // Its top half meets the Mate above; nothing runs on below it.
+    expect(stage).toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
+    expect(stage).toContain('class="w-px flex-1"');
   });
 
   it("keeps a recipe change out of the Mate's own pull-request list — only code moves through the shared flow", () => {
@@ -1068,6 +1227,129 @@ describe("the project's flow under it", () => {
   });
 });
 
+describe("a project collapsed to its heading", () => {
+  const tree = (props: Record<string, unknown> = {}) => (
+    <SidebarZeropsTree
+      candidates={[CRM_DEV, CRM_STAGE, CRM_PROD]}
+      complete
+      onBrowseProjects={() => {}}
+      onSelect={() => {}}
+      {...props}
+    />
+  );
+  const mates = (mounted: ReactTestRenderer) =>
+    mounted.root.findAll(
+      (node) =>
+        typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate",
+    );
+
+  it("collapses from the heading's name and remembers it; the name opens it again", () => {
+    const mounted = mount(tree());
+    expect(surface(mounted, "sidebar-project-toggle").props["aria-expanded"]).toBe(true);
+    press(mounted, "sidebar-project-toggle");
+    expect(mates(mounted)).toHaveLength(0);
+    expect(surface(mounted, "sidebar-project-toggle").props["aria-expanded"]).toBe(false);
+    expect(stored.written).toEqual(new Set(["aaa"]));
+    press(mounted, "sidebar-project-toggle");
+    expect(mates(mounted)).toHaveLength(1);
+    expect(stored.written).toEqual(new Set());
+  });
+
+  it("draws only the heading of a project collapsed last time, its next-step dot included", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const html = renderToStaticMarkup(
+      tree({
+        getFlow: (): SidebarProjectFlow => ({
+          pullRequests: [pull(4)],
+          environments: new Map([["crm-prod", productionRow]]),
+          releaseOffered: true,
+          merging: () => false,
+          releasing: false,
+          onMerge: () => {},
+          onRelease: () => {},
+        }),
+      }),
+    );
+    expect(html).toContain('data-zerops-surface="sidebar-project"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('data-zerops-surface="sidebar-project-next-step"');
+    // No summary and no small badges: a second design of the rows is what the
+    // owner turned down.
+    for (const gone of [
+      "sidebar-mate",
+      "sidebar-pull-request",
+      "sidebar-environment-rows",
+      "sidebar-stop-badge",
+    ])
+      expect(html).not.toContain(`data-zerops-surface="${gone}"`);
+  });
+
+  it("points its chevron right while collapsed and always shows it; down, on hover, while open", () => {
+    const chevron = (collapsed: boolean) =>
+      /<svg[^>]*data-zerops-surface="sidebar-project-chevron"[^>]*>/u.exec(
+        renderToStaticMarkup(
+          <ProjectHeader
+            collapsed={collapsed}
+            name="Links"
+            onBrowseProjects={() => {}}
+            onToggle={() => {}}
+          />,
+        ),
+      )?.[0] ?? "";
+    expect(chevron(true)).toContain("lucide-chevron-right");
+    expect(chevron(true)).not.toContain("opacity-0");
+    expect(chevron(false)).toContain("lucide-chevron-down");
+    expect(chevron(false)).toContain("opacity-0");
+    expect(chevron(false)).toContain("group-hover/project:opacity-100");
+  });
+
+  it("collapses rather than opens the project from its name; the page is the menu's to open", () => {
+    let opened = 0;
+    let toggled = 0;
+    const mounted = mount(
+      <ProjectHeader
+        name="Links"
+        onBrowseProjects={() => {}}
+        onOpen={() => {
+          opened += 1;
+        }}
+        onToggle={() => {
+          toggled += 1;
+        }}
+      />,
+    );
+    press(mounted, "sidebar-project-toggle");
+    expect({ opened, toggled }).toEqual({ opened: 0, toggled: 1 });
+    // The ungrouped heading is not a project: nothing to collapse.
+    expect(
+      renderToStaticMarkup(<ProjectHeader muted name="Ungrouped" onBrowseProjects={() => {}} />),
+    ).not.toContain("sidebar-project-toggle");
+  });
+
+  it("opens a collapsed project when one of its Mates' conversations opens, and lets it collapse again", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const mounted = mount(tree({ activeProjectId: null }));
+    expect(mates(mounted)).toHaveLength(0);
+    act(() => {
+      mounted.update(tree({ activeProjectId: "crm-dev" }));
+    });
+    expect(mates(mounted)).toHaveLength(1);
+    expect(stored.written).toEqual(new Set());
+    press(mounted, "sidebar-project-toggle");
+    act(() => {
+      mounted.update(tree({ activeProjectId: "crm-dev" }));
+    });
+    expect(mates(mounted)).toHaveLength(0);
+  });
+
+  it("opens a collapsed project whose Mate's conversation is already open when the menu mounts", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const mounted = mount(tree({ activeProjectId: "crm-dev" }));
+    expect(mates(mounted)).toHaveLength(1);
+    expect(stored.written).toEqual(new Set());
+  });
+});
+
 describe("a stop's deployment", () => {
   const known = (value: Deployment): Shown<Deployment> => ({
     state: "known",
@@ -1091,10 +1373,8 @@ describe("a stop's deployment", () => {
       </ZeropsProjectFlowContext.Provider>,
     );
   };
-  const stop = (html: string, id: string) =>
-    html.slice(html.indexOf(`data-zerops-project="${id}"`)).split("</li>")[0]!;
 
-  it("says a deploy running on production in words on its line, beside what it deploys", () => {
+  it("says a deploy running on production in words on its line, naming what it deploys", () => {
     const html = renderToStaticMarkup(
       <ZeropsProjectFlowContext.Provider
         value={deploymentsOnly(
@@ -1134,8 +1414,7 @@ describe("a stop's deployment", () => {
       </ZeropsProjectFlowContext.Provider>,
     );
     const production = stop(html, "crm-prod");
-    expect(production).toContain(">Deploying…<");
-    expect(production).toContain(">v0.2.0<");
+    expect(production).toContain(">Deploying v0.2.0…<");
     expect(production).toContain('data-zerops-status-tone="pending"');
   });
 
@@ -1154,7 +1433,7 @@ describe("a stop's deployment", () => {
         ]),
       ),
     );
-    expect(stop(html, "crm-prod")).toContain("Nothing deployed yet");
+    expect(stop(html, "crm-prod")).toContain(">Nothing live yet<");
   });
 
   it("names what the platform says a stop runs before Gitea has answered", () => {
@@ -1182,7 +1461,7 @@ describe("a stop's deployment", () => {
     expect(stop(html, "crm-prod")).toContain('aria-label="Running"');
   });
 
-  it("never shows deployment detail on a group stage — it stays the muted line that follows main", () => {
+  it("names what a stage runs as it names production's", () => {
     const html = withDeployments(
       deploymentsOnly(
         new Map([
@@ -1203,9 +1482,8 @@ describe("a stop's deployment", () => {
         ]),
       ),
     );
-    expect(stop(html, "crm-stage")).toContain("↳ crm-stage · follows main");
-    expect(stop(html, "crm-stage")).not.toContain("v1.4.0");
-    expect(stop(html, "crm-stage")).not.toContain("Checking what runs here");
+    expect(stop(html, "crm-stage")).toContain(">v1.4.0<");
+    expect(stop(html, "crm-stage")).toContain('aria-label="Running"');
   });
 });
 

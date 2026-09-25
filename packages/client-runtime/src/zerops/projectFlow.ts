@@ -76,6 +76,12 @@ export interface FlowPullRequest {
   readonly merged: boolean;
   /** When it landed — the moment a timeline places it. Absent unless `merged`. */
   readonly mergedAt: string | undefined;
+  /**
+   * The commit it landed on main as (Gitea's `merge_commit_sha`), whole: a
+   * stop running that commit is running this change, so the menu names the
+   * change by its title rather than by a hash. Absent unless `merged`.
+   */
+  readonly mergeCommit?: string;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
   /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
@@ -119,6 +125,9 @@ export function flowPullRequest(input: {
     mergeability: input.mergeability,
     merged: pull.merged === true,
     mergedAt: pull.merged_at,
+    ...(pull.merged === true && typeof pull.merge_commit_sha === "string"
+      ? { mergeCommit: pull.merge_commit_sha }
+      : {}),
     headSha: pull.head?.sha,
     baseBranch: pull.base?.ref ?? FALLBACK_BASE,
     line,
@@ -207,38 +216,6 @@ export function agentTurnNotes(
     const what = `${event.repository} #${String(event.number)} landed`;
     return title.length === 0 ? `${what}.` : `${what}: ${title}`;
   });
-}
-
-/** What a stop needs somebody for, as one number. */
-export interface StopAttention {
-  readonly count: number;
-  /**
-   * What that number is about: a deploy that failed is broken, work merely
-   * waiting to go live is moving. It is a tone rather than an `urgent` flag so
-   * the bubble a folded stop wears and the count on *Release* are decided
-   * once — folded and unfolded said different things about the same changes.
-   */
-  readonly tone: ServiceStatusToneId;
-}
-
-/**
- * The bubble a stop wears when its rows are folded away.
- *
- * Folded, a project says only that it has a stage and a production — so the
- * one thing that has to survive the fold is whether either of them needs
- * somebody. A deploy that failed is one thing to deal with; a production's
- * waiting changes are one each. Nothing to do is no bubble rather than a
- * zero: a badge that is always there stops being read.
- */
-export function stopAttention(input: {
-  readonly failed: boolean;
-  readonly production: boolean;
-  readonly waiting: number;
-}): StopAttention | undefined {
-  const failed = input.failed ? 1 : 0;
-  const waiting = input.production ? Math.max(0, Math.trunc(input.waiting)) : 0;
-  const count = failed + waiting;
-  return count === 0 ? undefined : { count, tone: failed > 0 ? "failed" : "busy" };
 }
 
 /**

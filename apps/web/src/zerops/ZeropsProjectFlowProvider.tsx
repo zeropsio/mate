@@ -277,6 +277,7 @@ function projectFlow(
     declarations: deployed?.declarations ?? [],
     environments: environmentInputs.map((entry) => environmentRow(entry)),
     environmentInputs,
+    mainHeads: deployed?.mainHeads ?? EMPTY_HEADS,
     missing: deployed?.missing ?? [],
     pullRequests: forge?.pullRequests ?? [],
     merged: forge?.merged ?? [],
