@@ -4,10 +4,16 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ZeropsGroupPane } from "./ZeropsGroupDetail";
 
-vi.mock("@tanstack/react-router", async (actual) => ({
-  ...(await actual<typeof import("@tanstack/react-router")>()),
-  useNavigate: () => () => undefined,
-}));
+vi.mock("@tanstack/react-router", async (actual) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await actual<typeof import("@tanstack/react-router")>()),
+    // Standing alone, the frame's bar carries the lockup as a link home.
+    Link: ({ to, ...props }: React.ComponentProps<"a"> & { to: string }) =>
+      createElement("a", { href: to, ...props }),
+    useNavigate: () => () => undefined,
+  };
+});
 
 const CHECKING = "Checking your access to this project…";
 
@@ -60,7 +66,7 @@ function render(
     <ZeropsGroupPane
       attention={[]}
       commits={{ kind: "no-gitea" }}
-      crumbs={[]}
+      crumbs={[{ label: "Projects", onClick: () => {} }]}
       groupId="shop"
       {...who}
       {...stops}
@@ -110,6 +116,15 @@ describe("ZeropsGroupPane", () => {
     expect(markup).not.toContain("Harbor live");
     expect(markup.match(/3f9c1b2/g)).toHaveLength(1);
     expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
+  });
+
+  // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.
+  it("stands in the hosted frame with its trail in the bar", () => {
+    const markup = render();
+    const bar = markup.slice(markup.indexOf("data-zerops-frame="), markup.indexOf("<h1"));
+
+    expect(markup).toContain("data-zerops-frame=");
+    expect(bar).toMatch(/<nav aria-label="[^"]*breadcrumb"[\s\S]*Projects[\s\S]*<\/nav>/);
   });
 
   const NO_MATE = "No Mate is working on this project yet.";

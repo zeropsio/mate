@@ -27,6 +27,7 @@ import {
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 
+import { SidebarProvider } from "~/components/ui/sidebar";
 import "../index.css";
 
 /** Where these panes sit, as the harness pretends: the chat, then the project. */
@@ -489,7 +490,12 @@ const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      <Harness />
+      {/* The panes stand in the hosted frame, which outside the app shell
+          draws its lockup as a router link; inside a sidebar it draws none,
+          so the harness needs no router. */}
+      <SidebarProvider className="block">
+        <Harness />
+      </SidebarProvider>
     </StrictMode>,
   );
 }
