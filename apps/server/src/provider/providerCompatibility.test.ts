@@ -66,6 +66,27 @@ describe("provider compatibility", () => {
     }
   });
 
+  // The zcp image ships Codex 0.155.1; the 0.156 protocol decodes it (measured), so it stays
+  // supported here where upstream requires 0.156.
+  it("supports the image's Codex 0.155.1 and marks Codex without Thread.projectId broken", () => {
+    const bundled = ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility;
+    for (const [t3CodeVersion, codexVersion, expected] of [
+      ["0.11.43", "0.148.0", "broken"],
+      ["0.11.43", "0.149.0", "unsupported"],
+      ["0.11.43", "0.155.0", "unsupported"],
+      ["0.11.43", "0.155.1", "supported"],
+      ["0.11.43", "0.156.0", "supported"],
+      ["0.12.0-nightly.20260924.2200", "0.153.3", "unsupported"],
+      ["0.12.0-nightly.20260924.2200", "0.156.1", "supported"],
+    ] as const) {
+      assert.strictEqual(
+        resolveProviderCompatibility(bundled, driver, codexVersion, t3CodeVersion)?.status,
+        expected,
+        `Mate ${t3CodeVersion} with Codex ${codexVersion}`,
+      );
+    }
+  });
+
   it("compares Cursor build dates without treating semver prereleases as stable", () => {
     const cursor = ProviderDriverKind.make("cursor");
     const cursorPolicy: ProviderCompatibilityPolicy = {
