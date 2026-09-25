@@ -386,18 +386,6 @@ function byTierThenName(
 }
 
 /**
- * What a stop follows, as a sentence rather than a keyword.
- *
- * `Follows: release` told somebody who already knew nothing, and the word is
- * the whole explanation of why a production does not move when a change lands.
- */
-export function stopSourceLine(source: string): string {
-  if (source === "release") return "A release — it moves only when somebody tags one";
-  if (source === "\u2014" || source.length === 0) return "Nothing yet";
-  return `Every merge to ${source}`;
-}
-
-/**
  * How long a build step took — `4s`, `1m 32s`, `1h 04m`.
  *
  * A run with no duration on it is the one thing every other forge shows and

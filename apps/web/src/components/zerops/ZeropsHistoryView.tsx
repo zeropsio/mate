@@ -19,6 +19,7 @@
  * caller's.
  */
 import { groupHistory, historyLine, type HistoryEntry } from "@t3tools/client-runtime/zerops";
+import { RUNNING_HERE } from "@t3tools/client-runtime/zerops/flow";
 import { ChevronRightIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 
@@ -29,7 +30,9 @@ import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { useNowMs } from "~/zerops/useNowMs";
 
+import { StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
+import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 
 /** What the dialog is looking at, and what the reads answered. */
 /** What to call the things a history row names. */
@@ -50,10 +53,16 @@ export function ZeropsHistoryView({
   commits,
   names = {},
   readDetail,
+  here,
 }: {
   readonly request: ZeropsHistoryRequest;
   readonly commits: ZeropsCommitsState;
   readonly names?: HistoryNames;
+  /**
+   * The stop this history is drawn on, by its environment name: the commit it runs reads
+   * *Running here* rather than its own name. Absent where the history is no one stop's.
+   */
+  readonly here?: string | undefined;
   /** Opens what a commit changed. Absent, a row is a line and nothing more. */
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
 }) {
@@ -83,6 +92,7 @@ export function ZeropsHistoryView({
         <HistoryRow
           entry={entry}
           first={index === 0}
+          here={here}
           key={entry.sha}
           last={index === entries.length - 1}
           names={names}
@@ -97,6 +107,7 @@ export function ZeropsHistoryView({
 function HistoryRow({
   entry,
   first,
+  here,
   last,
   names,
   now,
@@ -104,6 +115,7 @@ function HistoryRow({
 }: {
   readonly entry: HistoryEntry;
   readonly first: boolean;
+  readonly here: string | undefined;
   readonly last: boolean;
   /** The clock, read once by the list so every row ages against the same one. */
   readonly now: number;
@@ -111,7 +123,13 @@ function HistoryRow({
   readonly names: HistoryNames;
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
 }) {
-  const line = historyLine(entry, now, names);
+  const runsHere = here !== undefined && entry.deployedTo.includes(here);
+  // The stop it runs on is the page itself: its name gives way to the mark, the rest stays said.
+  const line = historyLine(
+    runsHere ? { ...entry, deployedTo: entry.deployedTo.filter((stop) => stop !== here) } : entry,
+    now,
+    names,
+  );
   const live = entry.deployedTo.length > 0;
   const [detail, setDetail] = useState<ZeropsCommitDetailResult | "reading" | null>(null);
   const toggle = useCallback(() => {
@@ -173,18 +191,23 @@ function HistoryRow({
           {/* The name it went live under, where a release carried it. */}
           {entry.tags.map((tag) => (
             <span
-              className="shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]"
+              className="flex shrink-0 self-center"
               data-zerops-surface="zerops-history-release"
               key={tag}
             >
-              {tag}
+              <ZeropsRoleTag label={tag} />
             </span>
           ))}
           <span className="shrink-0 font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
             {entry.shortSha}
           </span>
         </span>
-        {line === undefined ? null : (
+        {runsHere ? (
+          <span className="flex min-w-0 items-center gap-2 text-xs leading-4 text-muted-foreground">
+            <StatusDot className="shrink-0" label={RUNNING_HERE} sentence tone="ok" />
+            {line === undefined ? null : <span className="truncate">{line}</span>}
+          </span>
+        ) : line === undefined ? null : (
           <span className="truncate text-xs leading-4 text-muted-foreground">{line}</span>
         )}
         {detail === null ? null : (

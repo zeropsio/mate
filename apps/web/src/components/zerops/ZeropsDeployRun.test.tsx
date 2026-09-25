@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 
-import { ZeropsDeployRunView } from "./ZeropsDeployRun";
+import { failedJob, ZeropsDeployRunView } from "./ZeropsDeployRun";
 
 const FAILED_BUILD: ZeropsDeployRun["state"] = {
   kind: "read",
@@ -61,5 +61,25 @@ describe("ZeropsDeployRunView", () => {
     );
     expect(html).toContain("Gitea refused to run the job again.");
     expect(html).toContain("Run again");
+  });
+});
+
+describe("failedJob", () => {
+  it.each<{ name: string; state: ZeropsDeployRun["state"]; expected: number | undefined }>([
+    { name: "the job that failed, where the build read has one", state: FAILED_BUILD, expected: 3 },
+    {
+      name: "none where every job passed",
+      state: {
+        kind: "read",
+        runId: 41,
+        runNumber: 12,
+        jobs: [{ id: 1, name: "build", status: "completed", conclusion: "success", run_id: 41 }],
+      },
+      expected: undefined,
+    },
+    { name: "none while the build is being read", state: { kind: "reading" }, expected: undefined },
+    { name: "none where no build was found", state: { kind: "none" }, expected: undefined },
+  ])("$name", ({ state, expected }) => {
+    expect(failedJob(state)?.id).toBe(expected);
   });
 });

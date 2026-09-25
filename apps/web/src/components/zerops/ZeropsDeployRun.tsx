@@ -11,7 +11,7 @@
 import { jobDuration, type GiteaActionJob } from "@t3tools/client-runtime/zerops";
 import { useCallback, useState } from "react";
 
-import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
+import type { ZeropsDeployRun, ZeropsDeployRunState } from "~/zerops/useZeropsDeployRun";
 import { ChevronRightIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
@@ -30,6 +30,19 @@ function jobTone(job: {
   if (conclusion === "skipped") return { tone: "off", word: "Skipped" };
   if (job.status === "waiting" || job.status === "queued") return { tone: "busy", word: "Queued" };
   return { tone: "busy", word: "Running" };
+}
+
+/**
+ * The job of a build that failed, where the build has been read and one did: the one *Run again*
+ * runs — on its row here, and on the verdict of the stop whose deploy it failed.
+ */
+export function failedJob(state: ZeropsDeployRunState): GiteaActionJob | undefined {
+  return state.kind === "read" ? state.jobs.find((job) => job.conclusion === "failure") : undefined;
+}
+
+/** *Run again*, in the words of whichever button offers it: the job's row, or the stop's verdict. */
+export function runAgainLabel(rerunning: boolean): string {
+  return rerunning ? "Redeploying…" : "Run again";
 }
 
 export function ZeropsDeployRunView({ run }: { readonly run: ZeropsDeployRun }) {
@@ -124,7 +137,7 @@ function JobRow({ job, run }: { readonly job: GiteaActionJob; readonly run: Zero
             size="sm"
             variant="ghost"
           >
-            {run.rerunning ? "Redeploying…" : "Run again"}
+            {runAgainLabel(run.rerunning)}
           </Button>
         )}
       </div>

@@ -384,7 +384,6 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
-  environmentAttention,
   PROJECT_ALL_CLEAR,
   projectAttention,
   type ProjectAttentionItem,
@@ -510,7 +509,6 @@ export {
 } from "./groupEnvironments.ts";
 export {
   jobDuration,
-  stopSourceLine,
   buildGroupRows,
   deployedCommit,
   deployedVersion,

@@ -9,7 +9,6 @@ import {
   deployTone,
   environmentRow,
   jobDuration,
-  stopSourceLine,
   GROUP_BEING_SET_UP_LINE,
   mateRow,
   pullRequestRow,
@@ -431,18 +430,6 @@ describe("environmentNameUnderGroup", () => {
       expect(environmentNameUnderGroup(group, environment)).toBe(expected);
     });
   }
-});
-
-describe("stopSourceLine", () => {
-  it.each([
-    ["release", "A release — it moves only when somebody tags one"],
-    ["main", "Every merge to main"],
-    ["main + develop", "Every merge to main + develop"],
-    ["—", "Nothing yet"],
-    ["", "Nothing yet"],
-  ])("reads %s as a sentence, not a keyword", (source, expected) => {
-    expect(stopSourceLine(source)).toBe(expected);
-  });
 });
 
 describe("jobDuration", () => {

@@ -49,6 +49,7 @@ import mergeDialogSource from "./ZeropsMergeDialog.tsx?raw";
 import deployRunSource from "./ZeropsDeployRun.tsx?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
+import historyViewSource from "./ZeropsHistoryView.tsx?raw";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 /** A throwaway the door tests hand over in place of a person's own token. */
@@ -767,6 +768,7 @@ describe("a status word's hand", () => {
     ["a deploy's run", deployRunSource],
     ["the verdict panel", verdictPanelSource],
     ["a project's releases", releaseRowsSource],
+    ["a history", historyViewSource],
   ])("writes a state the way client-runtime wrote it, on %s", (_surface, source) => {
     // `deployWord` answers "Deployed" and `changeState` capitalises its first
     // letter on purpose. Drawn through the `MicroLabel` that is a StatusDot's

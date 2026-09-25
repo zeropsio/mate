@@ -14,18 +14,31 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
+  environmentRow,
   releaseContentsSummary,
+  releaseRow,
   type EnvironmentRow,
+  type EnvironmentServiceState,
   type FlowPullRequest,
+  type ZeropsPublicRoute,
+  type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
+import {
+  serviceRows,
+  stopVerdict,
+  stopView,
+  type Deployment,
+  type StopFailure,
+} from "@t3tools/client-runtime/zerops/flow";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import {
   ZeropsGroupPane,
   ZeropsStopPane,
   type ReleaseOffer,
+  type StopRunAgain,
 } from "~/components/zerops/ZeropsGroupDetail";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
-import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
 import "../index.css";
@@ -216,68 +229,147 @@ const READ_DETAIL = async (sha: string) => ({
   },
 });
 
-function run(state: ZeropsDeployRun["state"]): ZeropsDeployRun {
+const NOW = Date.now();
+
+/** One service of a stop, as the group's Gitea read it: what it runs and how its deploy went. */
+function service(
+  environment: string,
+  hostname: string,
+  seed: string,
+  name: string | undefined,
+  state: "success" | "failure" = "success",
+): EnvironmentServiceState {
   return {
-    state,
-    readLog: async () => "",
-    rerun: async () => {},
-    refresh: () => {},
-    rerunning: false,
-    rerunFailure: null,
+    hostname,
+    repository: "appdev",
+    appVersionName: name === undefined ? sha(seed) : `${sha(seed)} ${name} ales`,
+    statuses: [{ context: `mate/deploy/${environment}/${hostname}`, state }],
   };
 }
 
-const BUILT: ZeropsDeployRun = run({
-  kind: "read",
-  runId: 41,
-  runNumber: 12,
-  jobs: [
-    {
-      id: 1,
-      name: "build",
-      status: "completed",
-      conclusion: "success",
-      run_id: 41,
-      started_at: "2026-09-19T11:00:00Z",
-      completed_at: "2026-09-19T11:01:32Z",
-    },
-    {
-      id: 2,
-      name: "deploy",
-      status: "completed",
-      conclusion: "success",
-      run_id: 41,
-      started_at: "2026-09-19T11:01:32Z",
-      completed_at: "2026-09-19T11:01:50Z",
-    },
-  ],
-});
+const NOTHING_RUNS: Shown<Deployment> = {
+  state: "known",
+  value: { kind: "none" },
+  asOf: { ordinal: 1, atMs: NOW },
+  coverage: "complete",
+  freshness: { kind: "live" },
+};
 
-const BROKEN: ZeropsDeployRun = run({
-  kind: "read",
-  runId: 42,
-  runNumber: 13,
-  jobs: [
+/** What production's releases read, newest first, the newest running there. */
+const RELEASES = ["v1.4.0", "v1.3.2", "v1.3.1"].map((tag, index) =>
+  releaseRow(
     {
-      id: 3,
-      name: "build",
-      status: "completed",
-      conclusion: "success",
-      run_id: 42,
-      started_at: "2026-09-19T11:00:00Z",
-      completed_at: "2026-09-19T11:02:11Z",
+      tag,
+      verdict: "approved",
+      detail: undefined,
+      line: index === 0 ? "app 3f9c1b2 · api 3f9c1b2" : `app ${tag}`,
+      entries:
+        index === 0
+          ? [
+              { service: "api", commit: sha("3f9c1b2e") },
+              { service: "app", commit: sha("3f9c1b2e") },
+            ]
+          : [{ service: "app", commit: sha(`9a${String(index)}`) }],
+      taggedAt: index === 0 ? new Date(NOW - 20 * 3_600_000).toISOString() : undefined,
     },
+    index,
     {
-      id: 4,
-      name: "deploy",
-      status: "completed",
-      conclusion: "failure",
-      run_id: 42,
-      started_at: "2026-09-19T11:02:11Z",
-      completed_at: "2026-09-19T11:02:15Z",
+      production: new Map([
+        ["api", sha("3f9c1b2e")],
+        ["app", sha("3f9c1b2e")],
+      ]),
+      failed: new Map(),
+      live: index === 0,
     },
-  ],
-});
+  ),
+);
+
+interface StopFixture {
+  readonly tier: EnvironmentRow["tier"];
+  readonly services: ReadonlyArray<EnvironmentServiceState>;
+  readonly deployment?: Shown<Deployment>;
+  readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
+  readonly offers?: ReadonlyArray<ZeropsRouteOffer>;
+  readonly release?: ReleaseOffer;
+  readonly failed?: StopFailure;
+  readonly runAgain?: StopRunAgain;
+  readonly commits?: ZeropsCommitsState;
+}
+
+/** A stop's page as its page would hand it over: every line the producers', none the harness's. */
+function StopState({ fixture }: { readonly fixture: StopFixture }) {
+  const name = fixture.tier === "production" ? "production" : "stage";
+  const stop = environmentRow({
+    projectId: `shop-${name}`,
+    name,
+    tier: fixture.tier,
+    sources: fixture.tier === "production" ? "release" : ["main"],
+    services: fixture.services,
+    environment: name,
+  });
+  const view = stopView({
+    deployment: fixture.deployment ?? { state: "unread", waitingFor: null },
+    row: stop,
+    nowMs: NOW,
+  });
+  const routes = fixture.routes ?? [];
+  const release = fixture.release ?? RELEASE_NONE;
+  const waiting =
+    fixture.tier === "production" ? release.contents.flatMap((entry) => entry.commits) : [];
+  const commits = fixture.commits ?? COMMITS;
+  return (
+    <ZeropsStopPane
+      commits={commits}
+      crumbs={CRUMBS}
+      deployed={new Map(view.version?.sha === undefined ? [] : [[name, view.version.sha]])}
+      enablingServiceId={null}
+      forge={{ giteaOrigin: undefined, owner: "shop" }}
+      groupId="shop"
+      groupName="Shop"
+      menuWaiting={
+        fixture.tier === "production" ? releaseContentsSummary(release.contents, 8) : undefined
+      }
+      names={NAMES}
+      onEnableRoute={() => {}}
+      onOpenProject={() => {}}
+      onRollBack={() => {}}
+      pending={new Set()}
+      readDetail={READ_DETAIL}
+      release={release}
+      releases={fixture.tier === "production" ? RELEASES : []}
+      repo="appdev"
+      routeTrouble={null}
+      routes={routes}
+      runAgain={fixture.runAgain}
+      services={serviceRows({
+        environment: name,
+        services: fixture.services,
+        platform: { state: "unread", waitingFor: null },
+        routes,
+        offers: fixture.offers ?? [],
+        nowMs: NOW,
+        age: () => "2h ago",
+      })}
+      stop={stop}
+      trouble={null}
+      verdict={stopVerdict({
+        tier: fixture.tier,
+        view,
+        releasing: undefined,
+        failed: fixture.failed,
+        waiting: waiting.length,
+        release,
+        releasedAge: fixture.tier === "production" ? "20h ago" : undefined,
+        atMainHead:
+          commits.kind === "read" &&
+          view.version?.sha !== undefined &&
+          commits.commits[0]?.sha === view.version.sha,
+      })}
+      view={view}
+      waiting={waiting}
+    />
+  );
+}
 
 function State({
   label,
@@ -372,78 +464,51 @@ function Harness() {
       </State>
 
       <State label="A production, behind" note="Three changes merged that it is not running yet.">
-        <ZeropsStopPane
-          commits={COMMITS}
-          deployed={new Map([["production", sha("3f9c1b2e")]])}
-          crumbs={CRUMBS}
-          names={NAMES}
-          groupName="Shop"
-          production
-          readDetail={READ_DETAIL}
-          release={RELEASE_WAITING}
-          repo="appdev"
-          routes={ROUTES}
-          run={BUILT}
-          stop={environment({
-            projectId: "shop-prod",
-            name: "production",
+        <StopState
+          fixture={{
             tier: "production",
-            source: "release",
-            version: {
-              name: "v1.4.0",
-              label: "v1.4.0",
-              commit: "3f9c1b2e",
-              sha: sha("3f9c1b2e"),
-              taggedBy: "ales",
-            },
-          })}
-          waiting={WAITING}
+            services: [
+              service("production", "api", "3f9c1b2e", "v1.4.0"),
+              service("production", "app", "3f9c1b2e", "v1.4.0"),
+            ],
+            routes: ROUTES,
+            release: RELEASE_WAITING,
+          }}
         />
       </State>
 
       <State
         label="A stage with a service nobody can reach"
-        note="It serves HTTP and answers to nobody. The section that lists the addresses is the section you add one from."
+        note="It serves HTTP and answers to nobody. The row that would list its address is the row you add one from."
       >
-        <ZeropsStopPane
-          commits={COMMITS}
-          deployed={new Map([["stage", sha("b21d904c")]])}
-          crumbs={CRUMBS}
-          names={NAMES}
-          groupName="Shop"
-          production={false}
-          readDetail={READ_DETAIL}
-          release={RELEASE_NONE}
-          repo="appdev"
-          routes={[]}
-          offers={[{ service: "api", serviceId: "svc-api", port: 3000 }]}
-          onEnableRoute={() => {}}
-          enablingServiceId={null}
-          routeTrouble={null}
-          run={BUILT}
-          stop={environment({ projectId: "shop-stage", name: "stage", tier: "stage" })}
-          waiting={WAITING}
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [
+              service("stage", "api", "b21d904c", undefined),
+              service("stage", "app", "b21d904c", undefined),
+            ],
+            routes: ROUTES.filter((route) => route.service === "app"),
+            offers: [{ service: "api", serviceId: "svc-api", port: 3000 }],
+          }}
         />
       </State>
 
       <State
         label="A stage whose deploy failed"
-        note="The build is the whole story here, and it is the section nobody had wired."
+        note="The verdict names the service and runs its failed job again."
       >
-        <ZeropsStopPane
-          commits={COMMITS}
-          deployed={new Map([["stage", sha("b21d904c")]])}
-          crumbs={CRUMBS}
-          names={NAMES}
-          groupName="Shop"
-          production={false}
-          readDetail={undefined}
-          release={RELEASE_NONE}
-          repo="appdev"
-          routes={ROUTES}
-          run={BROKEN}
-          stop={environment({ tone: "bad" })}
-          waiting={NOTHING_WAITING}
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [
+              service("stage", "api", "b21d904c", undefined, "failure"),
+              service("stage", "app", "5c3ea18b", undefined),
+            ],
+            routes: ROUTES,
+            failed: { label: "b21d904", service: "api", running: undefined, jobKnown: true },
+            runAgain: { rerunning: false, failure: null, onRunAgain: () => {} },
+          }}
         />
       </State>
 
@@ -451,30 +516,13 @@ function Harness() {
         label="A stop nobody has deployed to"
         note="Nothing ran, nothing to show: the dead end the menu draws as a grey dot."
       >
-        <ZeropsStopPane
-          commits={{ kind: "reading" }}
-          deployed={new Map()}
-          crumbs={CRUMBS}
-          names={NAMES}
-          groupName="Shop"
-          production={false}
-          readDetail={undefined}
-          release={RELEASE_NONE}
-          repo={undefined}
-          routes={[]}
-          run={run({ kind: "none" })}
-          stop={environment({
-            tone: "neutral",
-            version: {
-              name: undefined,
-              label: undefined,
-              commit: undefined,
-              sha: undefined,
-              taggedBy: undefined,
-            },
-            versionRepository: undefined,
-          })}
-          waiting={NOTHING_WAITING}
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [],
+            deployment: NOTHING_RUNS,
+            commits: { kind: "read", commits: [], releases: new Map() },
+          }}
         />
       </State>
     </div>

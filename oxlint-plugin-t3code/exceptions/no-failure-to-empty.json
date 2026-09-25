@@ -34,23 +34,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "LogicalExpression",
-    "fingerprint": "flow?.environments ?? []",
-    "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
     "fingerprint": "flow?.pullRequests ?? EMPTY_PULLS",
-    "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "flow?.release.contents ?? []",
     "owner": "state-model 4.5",
     "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
     "expires": "never"
