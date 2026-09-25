@@ -133,13 +133,7 @@ export function useUsage(
   );
   const overall = useMemo(() => mergeUsage(answered, USAGE_CONTRACT_VERSION), [answered]);
   const merged = useMemo(
-    () =>
-      include === undefined
-        ? overall
-        : mergeUsage(
-            answered.filter((environment) => include(environment.environmentId)),
-            USAGE_CONTRACT_VERSION,
-          ),
+    () => (include === undefined ? overall : mergeUsage(answered, USAGE_CONTRACT_VERSION, include)),
     [answered, include, overall],
   );
 

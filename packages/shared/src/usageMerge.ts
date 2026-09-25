@@ -249,10 +249,15 @@ const EMPTY_MERGED: MergedUsage = {
  * id is reported so the UI can say coverage is partial. Versions in
  * [{@link USAGE_MERGE_COMPATIBLE_SINCE}, expected] still merge, so an additive
  * provider expansion does not drop Claude/Codex totals from older servers.
+ *
+ * `include` narrows the result to a scope. Sources are claimed across every
+ * environment first, so a scoped environment never re-claims a directory it
+ * lost to one outside the scope, and every duplicate is still reported.
  */
 export function mergeUsage(
   environments: readonly EnvironmentUsage[],
   expectedContractVersion: number,
+  include: (environmentId: EnvironmentId) => boolean = () => true,
 ): MergedUsage {
   if (environments.length === 0) return EMPTY_MERGED;
 
@@ -261,7 +266,7 @@ export function mergeUsage(
   for (const environment of environments) {
     if (isCompatibleContractVersion(environment.summary.contractVersion, expectedContractVersion)) {
       current.push(environment);
-    } else {
+    } else if (include(environment.environmentId)) {
       staleEnvironments.push(environment.environmentId);
     }
   }
@@ -324,6 +329,7 @@ export function mergeUsage(
   }[] = [];
 
   for (const environment of current) {
+    if (!include(environment.environmentId)) continue;
     const { buckets, sessionsByProvider } = ownedContribution(environment, ownerByFingerprint);
     const own = {
       environmentId: environment.environmentId,

@@ -619,3 +619,52 @@ describe("mergeUsage byEnvironment", () => {
     ).toEqual(expected);
   });
 });
+
+describe("mergeUsage scope", () => {
+  const shared = { provider: "claude" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+  // env-a read last, so it claims the shared directory in the unscoped merge.
+  const environments = [
+    environment("env-a", {
+      ...summary([bucket()], [shared]),
+      readAt: "2026-08-07T01:00:00.000Z",
+    }),
+    environment("env-b", summary([bucket({ costUsd: 50 })], [shared])),
+    environment("env-c", summary([bucket({ costUsd: 3 })], [{ ...shared, hostId: "linux" }])),
+  ];
+  const unscoped = mergeUsage(environments, USAGE_CONTRACT_VERSION);
+
+  it.each([
+    {
+      name: "a scoped environment that lost a shared directory does not re-claim it",
+      scope: ["env-b"],
+      costUsd: 0,
+      contributing: [],
+    },
+    {
+      name: "the owner keeps its claim under a scope",
+      scope: ["env-a"],
+      costUsd: 10,
+      contributing: ["env-a"],
+    },
+    {
+      name: "several scoped environments sum their unscoped rows",
+      scope: ["env-b", "env-c"],
+      costUsd: 3,
+      contributing: ["env-c"],
+    },
+  ])("$name", ({ scope, costUsd, contributing }) => {
+    const scoped = mergeUsage(environments, USAGE_CONTRACT_VERSION, (environmentId) =>
+      scope.includes(environmentId),
+    );
+    const unscopedRows = unscoped.byEnvironment.filter((row) => scope.includes(row.environmentId));
+
+    expect(scoped.costUsd).toBe(costUsd);
+    expect(scoped.costUsd).toBe(unscopedRows.reduce((sum, row) => sum + row.costUsd, 0));
+    expect(scoped.byEnvironment.map((row) => row.environmentId)).toEqual(
+      unscopedRows.map((row) => row.environmentId),
+    );
+    expect(scoped.contributingEnvironments).toEqual(contributing);
+    expect(scoped.duplicateSources).toEqual(unscoped.duplicateSources);
+    expect(scoped.duplicateSources).toHaveLength(1);
+  });
+});
