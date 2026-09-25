@@ -17,7 +17,6 @@ import {
 } from "@t3tools/shared/model";
 import { memo, useCallback, useState } from "react";
 import { ZapIcon } from "lucide-react";
-import type { ButtonVariant } from "../ui/button";
 import {
   Menu,
   MenuGroup,
@@ -268,7 +267,6 @@ export interface TraitsMenuContentProps {
   modelOptions?: ProviderOptions | null | undefined;
   allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
-  triggerVariant?: ButtonVariant;
   triggerClassName?: string;
 }
 
@@ -534,7 +532,6 @@ export const TraitsPicker = memo(function TraitsPicker({
   modelOptions,
   allowPromptInjectedEffort = true,
   planModeEnabled,
-  triggerVariant,
   triggerClassName,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
@@ -595,7 +592,6 @@ export const TraitsPicker = memo(function TraitsPicker({
         render={
           <ComposerControl
             data-composer-shortcut="composer.effort"
-            variant={triggerVariant ?? "ghost"}
             className={cn(
               isCodexStyle
                 ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"

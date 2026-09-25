@@ -856,7 +856,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     lockedProvider={null}
                     instanceEntries={instanceEntries}
                     modelOptionsByInstance={modelOptionsByInstance}
-                    triggerVariant="outline"
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     onOpenProviderSetup={(instanceId) => {
                       void navigate({
@@ -877,7 +876,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     modelOptions={resolvedSelection.options ?? []}
                     allowPromptInjectedEffort={false}
                     planModeEnabled={settings.planModeEnabled}
-                    triggerVariant="outline"
                     triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
                     onModelOptionsChange={(nextOptions) => {
                       setDefaultModel(
