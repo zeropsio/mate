@@ -6,9 +6,14 @@ import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { CodexSettings } from "@t3tools/contracts";
+import { CodexSettings, ProviderInstanceId } from "@t3tools/contracts";
 
-import { claudeEnvironment, claudeHomePath, codexHomeLayout } from "./driverHomes.ts";
+import {
+  antigravityProfileDirectory,
+  claudeEnvironment,
+  claudeHomePath,
+  codexHomeLayout,
+} from "./driverHomes.ts";
 
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
@@ -45,6 +50,19 @@ it.layer(NodeServices.layer)("driverHomes", (it) => {
         expect(yield* claudeEnvironment({ homePath: "" }, baseEnv)).toBe(baseEnv);
       }),
     );
+  });
+
+  describe("antigravityProfileDirectory", () => {
+    it("is a stable per-instance directory under the server's state directory", () => {
+      const first = antigravityProfileDirectory("/state", ProviderInstanceId.make("antigravity"));
+      expect(first.startsWith("/state/providers/antigravity/")).toBe(true);
+      expect(antigravityProfileDirectory("/state", ProviderInstanceId.make("antigravity"))).toBe(
+        first,
+      );
+      expect(
+        antigravityProfileDirectory("/state", ProviderInstanceId.make("antigravity_work")),
+      ).not.toBe(first);
+    });
   });
 
   describe("codexHomeLayout", () => {
