@@ -218,38 +218,6 @@ export function agentTurnNotes(
   });
 }
 
-/** What a stop needs somebody for, as one number. */
-export interface StopAttention {
-  readonly count: number;
-  /**
-   * What that number is about: a deploy that failed is broken, work merely
-   * waiting to go live is moving. It is a tone rather than an `urgent` flag so
-   * the bubble a folded stop wears and the count on *Release* are decided
-   * once — folded and unfolded said different things about the same changes.
-   */
-  readonly tone: ServiceStatusToneId;
-}
-
-/**
- * The bubble a stop wears when its rows are folded away.
- *
- * Folded, a project says only that it has a stage and a production — so the
- * one thing that has to survive the fold is whether either of them needs
- * somebody. A deploy that failed is one thing to deal with; a production's
- * waiting changes are one each. Nothing to do is no bubble rather than a
- * zero: a badge that is always there stops being read.
- */
-export function stopAttention(input: {
-  readonly failed: boolean;
-  readonly production: boolean;
-  readonly waiting: number;
-}): StopAttention | undefined {
-  const failed = input.failed ? 1 : 0;
-  const waiting = input.production ? Math.max(0, Math.trunc(input.waiting)) : 0;
-  const count = failed + waiting;
-  return count === 0 ? undefined : { count, tone: failed > 0 ? "failed" : "busy" };
-}
-
 /**
  * What a change is called on the menu: `#4 Add a due date to each todo`, and
  * `· ada` after it where no Mate's row stands above to say whose it is.

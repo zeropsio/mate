@@ -457,8 +457,6 @@ export {
   type ReleaseContentsSummary,
   releaseContentsSummary,
   sidebarChangeLabel,
-  stopAttention,
-  type StopAttention,
   type FlowPullRequest,
   type FlowPullRequestKind,
   type FlowVerb,

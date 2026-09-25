@@ -209,6 +209,7 @@ import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
+import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
@@ -1784,6 +1785,9 @@ export default function Sidebar() {
     (groupId: string): SidebarProjectFlow | undefined => {
       const flow = zeropsProjectFlow?.flows.get(groupId);
       if (zeropsProjectFlow === null || flow === undefined) return undefined;
+      // How far each stop is from `main`, measured from what the flow already
+      // read: the rows say it, and production's opens to the changes.
+      const stopReads = sidebarStopReads({ flow, deployments: zeropsProjectFlow.deployments });
       return {
         pullRequests: flow.pullRequests,
         // The pull requests that have landed on `main`: without it `groupFlow`
@@ -1794,8 +1798,10 @@ export default function Sidebar() {
         merged: flow.merged,
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
-        // What the verb's hover says it would put in front of people.
+        // What a release would put in front of people: production's distance.
         releaseContents: flow.release.contents,
+        distances: stopReads.distances,
+        stageMarks: stopReads.stageMarks,
         // The stops the recipe offers and nobody has added: a next step the
         // timeline used not to mention at all.
         missing: flow.missing,
