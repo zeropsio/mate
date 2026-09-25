@@ -227,7 +227,7 @@ import {
   transferBudgetViolations,
 } from "../integration/TransferBudgetReport.integration.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
-import { otlpSerializationLayer } from "@t3tools/shared/observability";
+import { DEFAULT_SIGNAL_EXPORT, otlpSerializationLayer } from "@t3tools/shared/observability";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
@@ -632,10 +632,10 @@ const buildAppUnderTest = (options?: {
       otlpTracesUrl: undefined,
       otlpMetricsUrl: undefined,
       otlpLogsUrl: undefined,
-      otlpExportIntervalMs: 10_000,
+      otlpTracesExport: DEFAULT_SIGNAL_EXPORT,
+      otlpMetricsExport: DEFAULT_SIGNAL_EXPORT,
+      otlpLogsExport: DEFAULT_SIGNAL_EXPORT,
       otlpServiceName: "t3-server",
-      otlpHeaders: undefined,
-      otlpProtocol: "http/json",
       mode: "desktop",
       port: 0,
       host: "127.0.0.1",
@@ -1076,7 +1076,7 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(
         Layer.mergeAll(
-          otlpSerializationLayer(config.otlpProtocol),
+          otlpSerializationLayer(config.otlpTracesExport.protocol),
           // The door (`zerops/http.ts`) requires these two directly, outside
           // the fixture/feeds bundle the next `Layer.provide` supplies: a
           // test machine has no live env store either, so the reader
@@ -4975,7 +4975,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         config: {
           otlpTracesUrl: collector.url,
-          otlpProtocol: "http/protobuf",
+          otlpTracesExport: { ...DEFAULT_SIGNAL_EXPORT, protocol: "http/protobuf" },
         },
         layers: {
           browserTraceCollector: {
