@@ -121,8 +121,16 @@ describe("ZeropsOperationCard — fixture operations", () => {
     expect(html).toContain(`data-zerops-card-kind="${operation.kind}"`);
     expect(html).toContain(`data-zerops-operation-key="${operation.key}"`);
     expect(html).toContain(operation.kicker);
-    expect(html).toContain(operation.voice);
-    expect(html).toContain(`data-zerops-voice-source="${operation.voiceSource}"`);
+    if (operation.kind === "deploy") {
+      // A card that names one service reads verb + hostname chip, not the voice sentence.
+      expect(html).toMatch(
+        new RegExp(`data-zerops-identity-chip[^>]*>${operation.target!.hostname}<`),
+      );
+      expect(html).not.toContain("data-zerops-voice-source");
+    } else {
+      expect(html).toContain(operation.voice);
+      expect(html).toContain(`data-zerops-voice-source="${operation.voiceSource}"`);
+    }
     if (operation.closing !== undefined) {
       expect(html).toContain(operation.closing);
     }
@@ -186,6 +194,38 @@ describe("ZeropsOperationCard — running, with an observed region", () => {
     expect(html).toContain("live from Zerops · 2 s ago");
     expect(html).toContain("build-log-tail");
     expect(html).toContain('data-zerops-card-tone="busy"');
+  });
+
+  it("renders the observation's secondary processes as compact rows under the steps", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        now={Date.parse("2026-09-01T00:00:42.000Z")}
+        observed={{
+          ...observed,
+          chips: [
+            {
+              id: "p-subdomain",
+              label: "Enable subdomain access",
+              state: "running",
+              stateLabel: "Running",
+            },
+          ],
+        }}
+        operation={running}
+      />,
+    );
+    const chips = html.match(/<ol[^>]*aria-label="Other activity"[\s\S]*?<\/ol>/)?.[0];
+
+    expect(chips).toContain("Enable subdomain access");
+    expect(chips).toContain('data-zerops-process-density="compact"');
+    expect(html.indexOf("Enable subdomain access")).toBeGreaterThan(html.indexOf("38 s"));
+  });
+
+  it("writes no provenance line while the provenance is empty", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard observed={{ ...observed, provenance: "" }} operation={running} />,
+    );
+    expect(html).not.toContain("data-zerops-operation-provenance");
   });
 
   it("shows a settled m/s-style duration once the operation is done and settledAt is known", () => {
@@ -407,6 +447,81 @@ describe("ZeropsOperationCard — browser", () => {
     expect(html).not.toContain("data:image/jpeg;base64,BBBB");
   });
 
+  describe("the frame is reserved from birth, so the image fills it in place", () => {
+    const born = operationFor(
+      zeropsCall({
+        id: "brw-born",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_browser",
+        input: { url: "https://kanbandev-26a7.prg1.zerops.app/cz/products/vltava" },
+        status: "inProgress",
+      }),
+    );
+    const mobile = operationFor(
+      zeropsCall({
+        id: "brw-mobile",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_browser",
+        input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+        status: "completed",
+        resultText: JSON.stringify({
+          url: "https://kanbandev-26a7.prg1.zerops.app",
+          steps: [{ command: ["set", "viewport", "390", "844"], success: true }],
+          errorsOutput: [],
+          consoleOutput: [],
+          networkOutput: [],
+        }),
+      }),
+    );
+    const frame = (html: string) =>
+      html.match(/<button[^>]*data-zerops-browser-viewport[^>]*>[\s\S]*?<\/button>/)?.[0];
+
+    it.each([
+      {
+        name: "born, nothing to show yet",
+        operation: born,
+        props: {},
+        ratio: "16 / 9",
+        image: false,
+      },
+      {
+        name: "the first live frame",
+        operation: born,
+        props: {
+          live: true,
+          liveFrame: { src: "data:image/jpeg;base64,LIVE", width: 640, height: 400 },
+        },
+        ratio: "16 / 9",
+        image: true,
+      },
+      {
+        name: "the screenshot",
+        operation: born,
+        props: {
+          browserScreenshot: { src: "data:image/png;base64,DONE", width: 1280, height: 2400 },
+        },
+        ratio: "16 / 9",
+        image: true,
+      },
+      { name: "a known viewport", operation: mobile, props: {}, ratio: "390 / 844", image: false },
+    ])("$name: the frame keeps aspect-ratio $ratio", ({ operation, props, ratio, image }) => {
+      const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} {...props} />);
+      const viewport = frame(html);
+
+      expect(viewport).toBeDefined();
+      expect(viewport).toContain(`aspect-ratio:${ratio}`);
+      expect(viewport?.includes("data-zerops-browser-image")).toBe(image);
+      expect(viewport).not.toMatch(/animate-/);
+    });
+
+    it("the live caption follows the call's own phase, so a reload of a running call reads the same", () => {
+      const html = renderToStaticMarkup(<ZeropsOperationCard operation={born} />);
+      expect(html).toContain("data-zerops-browser-live-caption");
+    });
+  });
+
   it("clicking the viewport opens the Browser panel", () => {
     panelTestState.onOpen = null;
     panelTestState.open.mockClear();
@@ -421,6 +536,142 @@ describe("ZeropsOperationCard — browser", () => {
     expect(onOpen).not.toBeNull();
     (onOpen as () => void)();
     expect(panelTestState.open).toHaveBeenCalledWith(THREAD_REF, "browser");
+  });
+});
+
+describe("ZeropsOperationCard — a verb and a subject, never a sentence with the URL", () => {
+  const PAGE = "https://kanbandev-26a7.prg1.zerops.app/cz/products/vltava?lang=cs";
+  const browser = (status: ZeropsCall["status"], input: Record<string, unknown>) =>
+    operationFor(
+      zeropsCall({
+        id: `brw-${status}`,
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_browser",
+        input,
+        status,
+        ...(status === "inProgress"
+          ? {}
+          : {
+              resultText: JSON.stringify({
+                url: PAGE,
+                steps: [],
+                errorsOutput: [],
+                consoleOutput: [],
+                networkOutput: [],
+              }),
+            }),
+      }),
+    );
+  const deploy = (input: Record<string, unknown>) =>
+    operationFor(
+      zeropsCall({
+        id: "dep-subject",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input,
+        status: "inProgress",
+      }),
+    );
+  const header = (html: string) => html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+  const verbOf = (html: string) =>
+    header(html).match(/data-zerops-primitive="micro-label"[^>]*>([^<]*)</)?.[1];
+  const chipOf = (html: string) =>
+    header(html).match(/data-zerops-identity-chip[^>]*>([^<]*)</)?.[1];
+  const pathOf = (html: string) =>
+    header(html).match(/data-zerops-subject-path[^>]*>([^<]*)</)?.[1];
+
+  it.each([
+    {
+      name: "a running browser check on a service's subdomain",
+      operation: browser("inProgress", { url: PAGE }),
+      subjectHost: "kanbandev",
+      verb: "Checking",
+      chip: "kanbandev",
+      path: "/cz/products/vltava?lang=cs",
+    },
+    {
+      name: "a settled browser check on a host no service answers",
+      operation: browser("completed", { url: PAGE }),
+      subjectHost: undefined,
+      verb: "Checked",
+      chip: "kanbandev-26a7.prg1.zerops.app",
+      path: "/cz/products/vltava?lang=cs",
+    },
+    {
+      name: "a deploy",
+      operation: deploy({ targetService: "weatherdash" }),
+      subjectHost: undefined,
+      verb: "Deploying",
+      chip: "weatherdash",
+      path: undefined,
+    },
+  ])("$name: $verb · $chip", ({ operation, subjectHost, verb, chip, path }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        operation={operation}
+        {...(subjectHost === undefined ? {} : { subjectHost })}
+      />,
+    );
+
+    expect(verbOf(html)).toBe(verb);
+    expect(chipOf(html)).toBe(chip);
+    expect(pathOf(html)).toBe(path);
+    expect(header(html)).not.toContain(operation.voice);
+    expect(header(html)).not.toContain("https://");
+  });
+
+  it.each([
+    { name: "a browser check before its URL", operation: browser("inProgress", {}) },
+    { name: "a deploy before its target", operation: deploy({}) },
+  ])(
+    "$name: the subject line is held by a static placeholder, never a fallback phrase",
+    ({ operation }) => {
+      const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+      const subject = header(html).match(/data-zerops-operation-subject[\s\S]*?<\/p>/)?.[0];
+
+      expect(subject).toContain("data-zerops-subject-placeholder");
+      expect(subject).not.toMatch(/animate-/);
+      expect(chipOf(html)).toBeUndefined();
+      expect(header(html)).not.toContain(operation.subject);
+    },
+  );
+});
+
+describe("ZeropsOperationCard — a running card's header always says what it is doing", () => {
+  it.each([
+    { toolName: "zerops_browser", input: { url: "https://app.example.com/" }, word: "Checking" },
+    { toolName: "zerops_deploy", input: { targetService: "appdev" }, word: "Deploying" },
+    {
+      toolName: "zerops_subdomain",
+      input: { serviceHostname: "appdev", action: "enable" },
+      word: "Enabling",
+    },
+    { toolName: "zerops_delete", input: { serviceHostname: "appdev" }, word: "Deleting" },
+    { toolName: "zerops_scale", input: { serviceHostname: "appdev" }, word: "Scaling" },
+    { toolName: "zerops_manage", input: { serviceHostname: "appdev" }, word: "Managing" },
+    { toolName: "zerops_env", input: { serviceHostname: "appdev" }, word: "Updating environment" },
+    {
+      toolName: "zerops_dev_server",
+      input: { hostname: "appdev", action: "start" },
+      word: "dev server",
+    },
+  ])("$toolName: $word", ({ toolName, input, word }) => {
+    const operation = operationFor(
+      zeropsCall({
+        id: `word-${toolName}`,
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName,
+        input,
+        status: "inProgress",
+      }),
+    );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+
+    expect(header).toContain(word);
   });
 });
 
@@ -675,17 +926,22 @@ describe("ZeropsOperationCard — one quiet surface", () => {
   it.each(cases)("$name: no tinted band, no kicker label, no inner rules", ({ operation }) => {
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+    const microLabels = [
+      ...header.matchAll(/data-zerops-primitive="micro-label"[^>]*>([^<]*)</g),
+    ].map((match) => match[1]);
 
     expect(header).not.toBe("");
     expect(header).not.toMatch(/zerops-status-[a-z]+-surface/);
-    // The voice line already names the operation; the kicker stays only as
-    // the steps' accessible name.
-    expect(header).not.toContain('data-zerops-primitive="micro-label"');
-    expect(header).not.toContain("uppercase");
+    // The kicker stays only as the steps' accessible name; the one label a
+    // header may set is the status word, as the verb of a card that names
+    // one service.
+    expect(header).not.toContain(operation.kicker);
+    expect(microLabels).toEqual(operation.kind === "deploy" ? [operation.statusWord] : []);
     expect(html).not.toContain("border-t");
   });
 
-  it.each(cases)("$name: the status reads as a word beside the voice line", ({ operation }) => {
+  it("verify, done: the status reads as a word beside the voice line", () => {
+    const operation = cases[1]!.operation;
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const status = html.match(/<span aria-label="Result status"[\s\S]*?<\/span><\/span>/)?.[0];
 

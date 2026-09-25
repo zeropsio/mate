@@ -6,6 +6,12 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
  * · error). Presentational, props only (R2) — the reducer
  * already produced every people-facing word this renders.
  *
+ * A card is born with its kind's final structure and only fills in: a card
+ * that names one service or page (`operationSubject`) heads with the status
+ * word as its verb and the subject line under it, held by a placeholder
+ * until the input names the target; a browser check reserves its frame; a
+ * deploy's five pipeline slots arrive with the observed region.
+ *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
 import type { JSX, ReactNode } from "react";
@@ -22,6 +28,8 @@ import {
 import { useRightPanelStore } from "../../rightPanelStore";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
+import { OperationSubjectLine } from "./operation/OperationSubjectLine";
+import { operationSubject } from "./operation/subject";
 import {
   FlatCard,
   formatStepDuration,
@@ -36,7 +44,9 @@ import { ZeropsReadResultBody } from "./ZeropsToolResultCards";
 export interface ObservedRegion {
   /** Replaces `operation.steps` for the body while an observation is attached. */
   readonly steps: ReadonlyArray<ZeropsOperationStep & { readonly durationMs?: number }>;
-  /** e.g. "live from Zerops · 2 s ago". */
+  /** The observation's secondary processes (e.g. a subdomain toggle beside a deploy), one compact row each. */
+  readonly chips?: ReadonlyArray<ZeropsOperationStep>;
+  /** e.g. "live from Zerops · 2 s ago"; empty before the first read and on a settled card. */
   readonly provenance: string;
   /** The build log region, when the caller has one. */
   readonly log?: ReactNode;
@@ -82,6 +92,35 @@ function headerDurationText(operation: ZeropsOperation, now: number): string | u
     : undefined;
 }
 
+/** The attempt count and the clock after the status word — each led by a middle dot unless it opens the cluster. */
+function HeaderMeta({
+  attemptWord,
+  durationText,
+  led,
+}: {
+  readonly attemptWord: string | undefined;
+  readonly durationText: string | undefined;
+  readonly led: boolean;
+}) {
+  const durationLed = led || attemptWord !== undefined;
+  return (
+    <>
+      {attemptWord !== undefined ? (
+        <span data-zerops-operation-attempt>
+          {led ? "· " : ""}
+          {attemptWord}
+        </span>
+      ) : null}
+      {durationText !== undefined ? (
+        <span className="tabular-nums" data-zerops-operation-duration>
+          {durationLed ? "· " : ""}
+          {durationText}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
   return (
     <ServiceBrowserLink
@@ -125,41 +164,52 @@ function visibleBrowserSteps(operation: ZeropsOperation): ReadonlyArray<ZeropsOp
   return operation.steps.filter((step) => step.kind !== "tail");
 }
 
+/**
+ * The frame's shape, fixed before any pixel arrives: the viewport the agent
+ * set when the result names one, else agent-browser's default 16:9. Never the
+ * image's own size — a frame or a full-page screenshot fits inside it
+ * instead of reshaping the card.
+ */
+function browserFrameAspectRatio(operation: ZeropsOperation): string {
+  const viewport = operation.browserSummary?.viewport;
+  return viewport === undefined ? "16 / 9" : `${viewport.width} / ${viewport.height}`;
+}
+
 function BrowserViewport({
+  aspectRatio,
   image,
   live,
   onOpen,
   subject,
 }: {
-  readonly image: BrowserScreenshot | LiveBrowserFrame;
+  readonly aspectRatio: string;
+  readonly image: BrowserScreenshot | LiveBrowserFrame | undefined;
   readonly live: boolean;
   readonly onOpen: () => void;
   readonly subject: string;
 }) {
-  const aspectRatio =
-    image.width !== undefined && image.height !== undefined
-      ? `${image.width} / ${image.height}`
-      : undefined;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
             aria-label="Open the Browser panel"
-            className="block w-full cursor-pointer overflow-hidden rounded-md border border-[var(--zerops-flat-card-border)] bg-background/40 p-0"
+            className="block w-full cursor-pointer overflow-hidden rounded-md border border-[var(--zerops-flat-card-border)] bg-muted p-0"
             data-zerops-browser-viewport
             onClick={onOpen}
-            style={{ maxHeight: 360, ...(aspectRatio !== undefined ? { aspectRatio } : {}) }}
+            style={{ maxHeight: 360, aspectRatio }}
             type="button"
           />
         }
       >
-        <img
-          alt={live ? `Live view of ${subject}` : "Screenshot"}
-          className="block h-full max-h-[360px] w-full object-contain"
-          data-zerops-browser-image
-          src={image.src}
-        />
+        {image !== undefined ? (
+          <img
+            alt={live ? `Live view of ${subject}` : "Screenshot"}
+            className="block h-full max-h-[360px] w-full bg-background/40 object-contain"
+            data-zerops-browser-image
+            src={image.src}
+          />
+        ) : null}
       </TooltipTrigger>
       <TooltipPopup side="bottom">Open the Browser panel</TooltipPopup>
     </Tooltip>
@@ -185,15 +235,14 @@ function BrowserBody({
 
   return (
     <div className="space-y-2 px-3 pt-1 pb-2.5 text-xs leading-relaxed" data-zerops-browser-body>
-      {image !== undefined ? (
-        <BrowserViewport
-          image={image}
-          live={live}
-          onOpen={onOpenPanel}
-          subject={operation.subject}
-        />
-      ) : null}
-      {live ? (
+      <BrowserViewport
+        aspectRatio={browserFrameAspectRatio(operation)}
+        image={image}
+        live={live}
+        onOpen={onOpenPanel}
+        subject={operation.subject}
+      />
+      {operation.phase === "running" ? (
         <p className="text-muted-foreground text-xs" data-zerops-browser-live-caption>
           {browserLiveCaption(operation.subject)}
         </p>
@@ -246,6 +295,12 @@ export function ZeropsOperationCard(props: {
   readonly liveFrame?: LiveBrowserFrame;
   /** `browser` only: the call is in progress right now — gates whether the viewport shows `liveFrame` or the screenshot. */
   readonly live?: boolean;
+  /**
+   * `browser` only: the service hostname whose route answers the page's host,
+   * resolved by the adapter from the topology view (`browserSubjectHostFor`) —
+   * absent, the chip names the URL's own host.
+   */
+  readonly subjectHost?: string;
   /** Opens the right-panel Browser surface — absent thread, absent click target. */
   readonly threadRef?: ScopedThreadRef | null;
   /** For tests; defaults to a clock that moves once a second while running — a text update, never an animation (R6). */
@@ -258,6 +313,7 @@ export function ZeropsOperationCard(props: {
     liveFrame,
     observed,
     operation,
+    subjectHost,
     threadRef,
   } = props;
   const tone = operationTone(operation);
@@ -266,14 +322,14 @@ export function ZeropsOperationCard(props: {
   const now = props.now ?? tickNow;
   const durationText = headerDurationText(operation, now);
   const isBrowser = operation.kind === "browser";
+  const subject = operationSubject(operation, subjectHost);
 
   const stepsForBody: ReadonlyArray<ProcessStep> = observed?.steps ?? operation.steps;
-  const browserImage = isBrowser
-    ? browserViewportImage(live, browserScreenshot, liveFrame)
-    : undefined;
-  const hasBody = isBrowser
-    ? browserImage !== undefined || operation.browserSummary !== undefined || live
-    : operation.readResult !== undefined || stepsForBody.length > 0 || observed !== undefined;
+  const hasBody =
+    isBrowser ||
+    operation.readResult !== undefined ||
+    stepsForBody.length > 0 ||
+    observed !== undefined;
 
   const openBrowserPanel = () => {
     if (threadRef !== undefined && threadRef !== null) {
@@ -300,27 +356,43 @@ export function ZeropsOperationCard(props: {
       data-zerops-card-tone={tone}
       data-zerops-operation-key={operation.key}
     >
-      <header className="flex items-center justify-between gap-3 px-3 pt-2.5 pb-1.5">
-        <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground text-sm">
-          <ZeropsMark className="size-3.5 shrink-0" />
-          <span data-zerops-voice-source={operation.voiceSource}>{operation.voice}</span>
-        </div>
-        <span
-          aria-label="Result status"
-          className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs"
-          role="status"
-        >
-          <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
-          {operation.attemptWord !== undefined ? (
-            <span data-zerops-operation-attempt>· {operation.attemptWord}</span>
-          ) : null}
-          {durationText !== undefined ? (
-            <span className="tabular-nums" data-zerops-operation-duration>
-              · {durationText}
+      {subject !== undefined ? (
+        <header className="px-3 pt-2.5 pb-1.5">
+          <div
+            aria-label="Result status"
+            className="flex items-center justify-between gap-3"
+            role="status"
+          >
+            <div className="flex min-w-0 items-center gap-1.5 text-foreground">
+              <ZeropsMark className="size-3.5 shrink-0" />
+              <StatusDot label={operation.statusWord} pulse={tone === "busy"} tone={tone} />
+            </div>
+            <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs">
+              <HeaderMeta
+                attemptWord={operation.attemptWord}
+                durationText={durationText}
+                led={false}
+              />
             </span>
-          ) : null}
-        </span>
-      </header>
+          </div>
+          <OperationSubjectLine running={isRunning} subject={subject} />
+        </header>
+      ) : (
+        <header className="flex items-center justify-between gap-3 px-3 pt-2.5 pb-1.5">
+          <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground text-sm">
+            <ZeropsMark className="size-3.5 shrink-0" />
+            <span data-zerops-voice-source={operation.voiceSource}>{operation.voice}</span>
+          </div>
+          <span
+            aria-label="Result status"
+            className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs"
+            role="status"
+          >
+            <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
+            <HeaderMeta attemptWord={operation.attemptWord} durationText={durationText} led />
+          </span>
+        </header>
+      )}
 
       {hasBody ? (
         isBrowser ? (
@@ -342,8 +414,11 @@ export function ZeropsOperationCard(props: {
                 steps={stepsForBody}
               />
             ) : null}
+            {observed?.chips !== undefined && observed.chips.length > 0 ? (
+              <ProcessSteps aria-label="Other activity" density="compact" steps={observed.chips} />
+            ) : null}
             {observed?.log ?? null}
-            {observed !== undefined ? (
+            {observed !== undefined && observed.provenance.length > 0 ? (
               <p className="text-muted-foreground text-xs" data-zerops-operation-provenance>
                 {observed.provenance}
               </p>

@@ -265,7 +265,7 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
   it("carries an explicit previousHistory forward with no observation at all yet", () => {
     const history: Observation = {
       steps: [{ id: "DEPLOY", label: "Deploy", state: "running", stateLabel: "Running" }],
-      processes: [],
+      chips: [],
       readAtMs: NOW,
     };
     const result = deriveOperationObservation(baseInput({ previousHistory: history }), NOW);

@@ -6,6 +6,7 @@ import type {
   Observation,
   ObservationState,
 } from "@t3tools/client-runtime/zerops/activity/observe";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ObservedStep } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
@@ -13,6 +14,7 @@ import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 
 const browserStreamSpy = vi.hoisted(() => vi.fn<() => unknown>(() => undefined));
+const topologySpy = vi.hoisted(() => vi.fn<() => unknown>(() => undefined));
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -30,7 +32,7 @@ vi.mock("react/compiler-runtime", async () => {
 });
 
 vi.mock("../useZeropsFeeds.ts", () => ({
-  useZeropsTopology: () => undefined,
+  useZeropsTopology: topologySpy,
   useZeropsBrowserStream: browserStreamSpy,
 }));
 
@@ -48,6 +50,7 @@ vi.mock("./useOperationObservation.ts", () => ({
 
 import {
   browserScreenshotFor,
+  browserSubjectHostFor,
   deriveObservedStepsRegion,
   devServerUrlFor,
   isBrowserOperationLive,
@@ -94,7 +97,7 @@ function step(overrides: Partial<ObservedStep> = {}): ObservedStep {
 function observation(overrides: Partial<Observation> = {}): Observation {
   return {
     steps: [],
-    processes: [],
+    chips: [],
     readAtMs: NOW,
     ...overrides,
   };
@@ -160,6 +163,70 @@ describe("browserScreenshotFor — the thumbnail from a browser operation's own 
   it("is undefined for a non-browser operation even if it somehow carried a screenshot field", () => {
     const screenshot = { src: "data:image/jpeg;base64,AAAA" };
     expect(browserScreenshotFor(operation({ kind: "deploy", screenshot }))).toBeUndefined();
+  });
+});
+
+describe("browserSubjectHostFor — the service a checked page belongs to", () => {
+  const kanbandev = {
+    hostname: "kanbandev",
+    serviceId: "svc-1",
+    type: "nodejs@22",
+    status: "ACTIVE",
+    group: "runtimes",
+    transient: false,
+    subdomainUrl: "https://kanbandev-26a7-3000.prg1.zerops.app",
+    ports: [],
+    routes: [
+      {
+        port: 3000,
+        url: "https://kanbandev-26a7-3000.prg1.zerops.app",
+        host: "kanbandev-26a7-3000.prg1.zerops.app",
+      },
+      {
+        port: 8080,
+        url: "https://kanbandev-26a7-8080.prg1.zerops.app",
+        host: "kanbandev-26a7-8080.prg1.zerops.app",
+      },
+    ],
+  } as const satisfies ZeropsTopologyView["services"][number];
+  const browser = (subject: string) => operation({ kind: "browser", subject });
+
+  it.each([
+    {
+      name: "a route's host names its service",
+      operation: browser("https://kanbandev-26a7-8080.prg1.zerops.app/cz/products?x=1"),
+      view: topology({ services: [kanbandev] }),
+      host: "kanbandev",
+    },
+    {
+      name: "a host no service answers stays unresolved",
+      operation: browser("https://example.com/cz"),
+      view: topology({ services: [kanbandev] }),
+      host: undefined,
+    },
+    {
+      name: "before the topology view loads",
+      operation: browser("https://kanbandev-26a7-3000.prg1.zerops.app/"),
+      view: undefined,
+      host: undefined,
+    },
+    {
+      name: "before the URL arrives",
+      operation: browser("the page"),
+      view: topology({ services: [kanbandev] }),
+      host: undefined,
+    },
+    {
+      name: "a kind that is not a browser check",
+      operation: operation({
+        kind: "deploy",
+        subject: "https://kanbandev-26a7-3000.prg1.zerops.app",
+      }),
+      view: topology({ services: [kanbandev] }),
+      host: undefined,
+    },
+  ])("$name", ({ operation: op, view, host }) => {
+    expect(browserSubjectHostFor(op, view)).toBe(host);
   });
 });
 
@@ -255,7 +322,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
       observation: observation({ steps: [step()], readAtMs: NOW - 2_000 }),
       elapsedMs: 42_000,
     };
-    const region = deriveObservedStepsRegion("running", state, undefined, NOW);
+    const region = deriveObservedStepsRegion("import", "running", state, undefined, NOW);
 
     expect(region).toEqual({
       steps: [
@@ -267,6 +334,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
           durationMs: 38_000,
         },
       ],
+      chips: [],
       provenance: "live from Zerops · 2 s ago",
     });
   });
@@ -281,7 +349,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
       }),
       elapsedMs: 42_000,
     };
-    const region = deriveObservedStepsRegion("running", state, undefined, NOW);
+    const region = deriveObservedStepsRegion("import", "running", state, undefined, NOW);
 
     expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
   });
@@ -292,12 +360,12 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
       observation: observation({ steps: [] }),
       elapsedMs: 2_000,
     };
-    expect(deriveObservedStepsRegion("running", state, undefined, NOW)).toBeUndefined();
+    expect(deriveObservedStepsRegion("import", "running", state, undefined, NOW)).toBeUndefined();
   });
 
   it("off: undefined, regardless of reason", () => {
     const state: ObservationState = { kind: "off", reason: "not-found" };
-    expect(deriveObservedStepsRegion("running", state, undefined, NOW)).toBeUndefined();
+    expect(deriveObservedStepsRegion("import", "running", state, undefined, NOW)).toBeUndefined();
   });
 
   it("stale: 'last read N s ago' instead of the live wording", () => {
@@ -306,7 +374,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
       observation: observation({ steps: [step()], readAtMs: NOW - 12_000 }),
       ageMs: 12_000,
     };
-    const region = deriveObservedStepsRegion("running", state, undefined, NOW);
+    const region = deriveObservedStepsRegion("import", "running", state, undefined, NOW);
     expect(region?.provenance).toBe("last read 12 s ago");
   });
 
@@ -316,7 +384,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
       steps: [step({ state: "done", stateLabel: "Done", durationMs: 52_000 })],
       buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
     });
-    const region = deriveObservedStepsRegion("done", state, history, NOW);
+    const region = deriveObservedStepsRegion("import", "done", state, history, NOW);
 
     expect(region).toEqual({
       steps: [
@@ -328,6 +396,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
           durationMs: 52_000,
         },
       ],
+      chips: [],
       provenance: "",
     });
     expect(region?.buildLogQuery).toBeUndefined();
@@ -335,7 +404,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
 
   it("settled operation, no history at all: undefined", () => {
     const state: ObservationState = { kind: "off", reason: "ceiling" };
-    expect(deriveObservedStepsRegion("failed", state, undefined, NOW)).toBeUndefined();
+    expect(deriveObservedStepsRegion("import", "failed", state, undefined, NOW)).toBeUndefined();
   });
 
   it("a settled operation prefers its history over a live state that might still be computing", () => {
@@ -345,10 +414,136 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
       elapsedMs: 0,
     };
     const history = observation({ steps: [step({ id: "RUN_BUILD_COMMANDS", label: "Build" })] });
-    const region = deriveObservedStepsRegion("done", state, history, NOW);
+    const region = deriveObservedStepsRegion("import", "done", state, history, NOW);
     expect(region?.steps).toEqual([
       expect.objectContaining({ id: "RUN_BUILD_COMMANDS", label: "Build" }),
     ]);
+  });
+});
+
+describe("deriveObservedStepsRegion — secondary processes ride as compact rows", () => {
+  const subdomainChip: ActivityProcess = {
+    id: "p-subdomain",
+    projectId: "proj-1",
+    serviceStackIds: ["svc-1"],
+    status: "RUNNING",
+    actionName: "stack.enableSubdomainAccess",
+    created: "2026-09-01T00:00:01.000Z",
+  };
+  const chipRow = {
+    id: "p-subdomain",
+    label: "Enable subdomain access",
+    state: "running",
+    stateLabel: "Running",
+  };
+
+  it.each([
+    {
+      name: "running, beside observed steps",
+      kind: "deploy" as const,
+      phase: "running" as const,
+      state: {
+        kind: "observing",
+        observation: observation({ steps: [step()], chips: [subdomainChip] }),
+        elapsedMs: 2_000,
+      } as const,
+      history: undefined,
+    },
+    {
+      name: "running, a kind with no pipeline steps at all",
+      kind: "scale" as const,
+      phase: "running" as const,
+      state: {
+        kind: "observing",
+        observation: observation({ chips: [subdomainChip] }),
+        elapsedMs: 2_000,
+      } as const,
+      history: undefined,
+    },
+    {
+      name: "settled, frozen with the history",
+      kind: "deploy" as const,
+      phase: "done" as const,
+      state: { kind: "off", reason: "ceiling" } as const,
+      history: observation({ steps: [step()], chips: [subdomainChip] }),
+    },
+  ])("$name", ({ kind, phase, state, history }) => {
+    const region = deriveObservedStepsRegion(kind, phase, state, history, NOW);
+    expect(region?.chips).toEqual([chipRow]);
+  });
+});
+
+describe("deriveObservedStepsRegion — steps once seen never leave a running card", () => {
+  it.each([
+    { name: "the feed goes off", state: { kind: "off", reason: "stale-timeout" } as const },
+    {
+      name: "a read attributes nothing yet",
+      state: {
+        kind: "observing",
+        observation: observation({ steps: [] }),
+        elapsedMs: 2_000,
+      } as const,
+    },
+  ])("$name: the last observed steps stay, read as the last read", ({ state }) => {
+    const history = observation({ steps: [step()], readAtMs: NOW - 70_000 });
+    const region = deriveObservedStepsRegion("import", "running", state, history, NOW);
+
+    expect(region).toEqual({
+      steps: [expect.objectContaining({ id: "RUN_BUILD_COMMANDS", state: "running" })],
+      chips: [],
+      provenance: "last read 70 s ago",
+    });
+  });
+});
+
+describe("deriveObservedStepsRegion — the build log once shown stays while the deploy runs", () => {
+  it("the feed goes off: the history's build log query rides on", () => {
+    const history = observation({
+      steps: [step()],
+      buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+    });
+    const region = deriveObservedStepsRegion(
+      "deploy",
+      "running",
+      { kind: "off", reason: "stale-timeout" },
+      history,
+      NOW,
+    );
+    expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
+  });
+});
+
+describe("deriveObservedStepsRegion — a deploy holds its five pipeline slots from birth", () => {
+  const SLOT_IDS = [
+    "INIT_BUILD_CONTAINER",
+    "RUN_BUILD_COMMANDS",
+    "INIT_PREPARE_CONTAINER",
+    "RUN_PREPARE_COMMANDS",
+    "DEPLOY",
+  ];
+  const before: ObservationState = {
+    kind: "observing",
+    observation: observation({ steps: [] }),
+    elapsedMs: 2_000,
+  };
+  const off: ObservationState = { kind: "off", reason: "no-target" };
+  const building: ObservationState = {
+    kind: "observing",
+    observation: observation({ steps: [step()], readAtMs: NOW - 2_000 }),
+    elapsedMs: 42_000,
+  };
+
+  it.each([
+    { name: "before the first read", state: before, running: undefined },
+    { name: "with the feed off", state: off, running: undefined },
+    { name: "once the build runs", state: building, running: "RUN_BUILD_COMMANDS" },
+  ])("$name: five slots, the observed one filled in place", ({ state, running }) => {
+    const region = deriveObservedStepsRegion("deploy", "running", state, undefined, NOW);
+
+    expect(region?.steps.map((slot) => slot.id)).toEqual(SLOT_IDS);
+    expect(region?.steps.filter((slot) => slot.state === "running").map((slot) => slot.id)).toEqual(
+      running === undefined ? [] : [running],
+    );
   });
 });
 
@@ -442,5 +637,51 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
     );
     expect(region.live).toBeUndefined();
     expect(region.liveFrame).toBeUndefined();
+  });
+});
+
+describe("useOperationCard — the browser check's subject host (hook)", () => {
+  const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
+
+  beforeEach(() => {
+    hooks.reset();
+    topologySpy.mockReset();
+  });
+
+  it.each([
+    {
+      name: "a page on a service's route carries that service's hostname",
+      view: topology({
+        services: [
+          {
+            hostname: "kanbandev",
+            serviceId: "svc-1",
+            type: "nodejs@22",
+            status: "ACTIVE",
+            group: "runtimes",
+            transient: false,
+            ports: [],
+            routes: [
+              {
+                port: 3000,
+                url: "https://kanbandev-26a7-3000.prg1.zerops.app",
+                host: "kanbandev-26a7-3000.prg1.zerops.app",
+              },
+            ],
+          },
+        ],
+      }),
+      subjectHost: "kanbandev",
+    },
+    { name: "no topology yet: no subjectHost at all", view: undefined, subjectHost: undefined },
+  ])("$name", ({ view, subjectHost }) => {
+    topologySpy.mockReturnValue(view);
+    hooks.beginRender();
+    const region = useOperationCard(
+      operation({ kind: "browser", subject: "https://kanbandev-26a7-3000.prg1.zerops.app/cz" }),
+      ENVIRONMENT_ID,
+    );
+    expect(region.subjectHost).toBe(subjectHost);
+    expect("subjectHost" in region).toBe(subjectHost !== undefined);
   });
 });

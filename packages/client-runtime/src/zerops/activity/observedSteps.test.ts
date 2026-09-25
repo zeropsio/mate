@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { observedSteps } from "./observedSteps.ts";
+import type { ActivityProcess } from "./dto.ts";
+import { observedProcessStep, observedSteps, pipelineStepSlots } from "./observedSteps.ts";
 
 const NOW = Date.parse("2026-09-02T10:10:00.000Z");
 
@@ -175,5 +176,89 @@ describe("observedSteps — pipeline steps with per-step durations", () => {
     const initStep = steps.find((step) => step.id === "INIT_BUILD_CONTAINER");
     expect(initStep?.durationMs).toBeUndefined();
     expect(initStep?.startedAt).toBeUndefined();
+  });
+});
+
+describe("observedProcessStep — a secondary process as one compact row", () => {
+  const process = (status: string): ActivityProcess => ({
+    id: "p-subdomain",
+    projectId: "proj-1",
+    serviceStackIds: ["svc-1"],
+    status,
+    actionName: "stack.enableSubdomainAccess",
+    created: "2026-09-02T10:09:30.000Z",
+  });
+
+  it.each([
+    { status: "PENDING", state: "queued", stateLabel: "Queued" },
+    { status: "RUNNING", state: "running", stateLabel: "Running" },
+    { status: "ROLLBACKING", state: "running", stateLabel: "Rolling back" },
+    { status: "CANCELING", state: "running", stateLabel: "Cancelling" },
+    { status: "FINISHED", state: "done", stateLabel: "Done" },
+    { status: "FAILED", state: "failed", stateLabel: "Failed" },
+    { status: "CANCELED", state: "failed", stateLabel: "Cancelled" },
+    { status: "SOME_FUTURE_STATUS", state: "queued", stateLabel: "Some future status" },
+  ])("$status → $state, $stateLabel", ({ status, state, stateLabel }) => {
+    expect(observedProcessStep(process(status))).toEqual({
+      id: "p-subdomain",
+      label: "Enable subdomain access",
+      state,
+      stateLabel,
+    });
+  });
+});
+
+describe("pipelineStepSlots — the five slots a deploy card reserves from birth", () => {
+  const SLOT_IDS = [
+    "INIT_BUILD_CONTAINER",
+    "RUN_BUILD_COMMANDS",
+    "INIT_PREPARE_CONTAINER",
+    "RUN_PREPARE_COMMANDS",
+    "DEPLOY",
+  ];
+  const noPrepareDeploy = observedSteps(
+    {
+      status: "ACTIVE",
+      build: {
+        pipelineStart: "2026-09-02T10:09:00.000Z",
+        startDate: "2026-09-02T10:09:10.000Z",
+        endDate: "2026-09-02T10:09:40.000Z",
+      },
+      activationDate: "2026-09-02T10:09:50.000Z",
+    },
+    NOW,
+  );
+
+  it.each([
+    {
+      name: "nothing observed yet: every slot queued, under the overlay's own labels",
+      steps: [],
+      expected: observedSteps({ status: "WAITING_TO_BUILD" }, NOW),
+    },
+    {
+      name: "a settled deploy with no prepare step: the omitted slots read skipped, never vanish",
+      steps: noPrepareDeploy,
+      expected: [
+        noPrepareDeploy[0],
+        noPrepareDeploy[1],
+        {
+          id: "INIT_PREPARE_CONTAINER",
+          label: "Prepare container",
+          state: "done",
+          stateLabel: "Skipped",
+        },
+        {
+          id: "RUN_PREPARE_COMMANDS",
+          label: "Prepare runtime",
+          state: "done",
+          stateLabel: "Skipped",
+        },
+        noPrepareDeploy[2],
+      ],
+    },
+  ])("$name", ({ steps, expected }) => {
+    const slots = pipelineStepSlots(steps);
+    expect(slots.map((slot) => slot.id)).toEqual(SLOT_IDS);
+    expect(slots).toEqual(expected);
   });
 });
