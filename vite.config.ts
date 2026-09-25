@@ -159,6 +159,7 @@ export default defineConfig({
       "t3code/no-manual-effect-runtime-in-tests": "error",
       "t3code/no-native-title-tooltip": "error",
       "t3code/no-platform-globals": "error",
+      "t3code/no-arbitrary-values": "error",
       "t3code/no-restyle": "error",
       "t3code/no-unknown-classes": "error",
       "t3code/require-static-classes": "error",

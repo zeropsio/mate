@@ -572,7 +572,7 @@ export function ProviderInstanceCard({
       showBadge={Boolean(accentColor)}
       className="size-5"
       iconClassName="size-4 text-foreground/80"
-      badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-[7px]"
+      badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-3xs"
     />
   ) : FallbackIconComponent ? (
     <span className="inline-flex size-5 shrink-0 items-center justify-center">
@@ -580,7 +580,7 @@ export function ProviderInstanceCard({
     </span>
   ) : (
     <span
-      className="inline-flex size-5 shrink-0 items-center justify-center text-[10px] font-semibold leading-none text-foreground/80"
+      className="inline-flex size-5 shrink-0 items-center justify-center text-3xs font-semibold leading-none text-foreground/80"
       aria-hidden
     >
       {providerInstanceInitials(displayName)}
@@ -724,7 +724,7 @@ export function ProviderInstanceCard({
                 <PopoverPopup side="bottom" align="start" width="md">
                   <div className="grid min-w-0 gap-3">
                     <div className="grid gap-0.5">
-                      <p className="text-[13px] font-semibold leading-tight text-foreground">
+                      <p className="text-sm font-semibold leading-tight text-foreground">
                         {versionAdvisory.title}
                       </p>
                       <p
@@ -752,7 +752,7 @@ export function ProviderInstanceCard({
                       </Button>
                     ) : null}
                     {onRunVersionAction && updateCommand ? (
-                      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      <div className="flex items-center gap-2 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
                         <span aria-hidden className="h-px flex-1 bg-border" />
                         or, update manually using
                         <span aria-hidden className="h-px flex-1 bg-border" />

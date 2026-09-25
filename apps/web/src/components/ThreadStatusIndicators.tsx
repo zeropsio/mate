@@ -438,7 +438,7 @@ function ThreadStatusLabel({
         render={
           <span
             aria-label={status.label}
-            className={`inline-flex items-center gap-1 text-[10px] ${status.colorClass}`}
+            className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
           />
         }
       >

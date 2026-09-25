@@ -240,7 +240,7 @@ function AboutVersionTitle() {
   return (
     <span className="inline-flex items-baseline gap-2">
       <span>Version</span>
-      <code className="text-[11px] font-medium text-muted-foreground">{APP_VERSION}</code>
+      <code className="text-2xs font-medium text-muted-foreground">{APP_VERSION}</code>
     </span>
   );
 }
@@ -1145,8 +1145,8 @@ export function AppearanceSettingsPanel() {
                         : "flex shrink-0 gap-1"
                     }
                   >
-                    <span className="size-2 rounded-full bg-[var(--diff-deletion)]" />
-                    <span className="size-2 rounded-full bg-[var(--diff-addition)]" />
+                    <span className="size-2 rounded-full bg-diff-deletion" />
+                    <span className="size-2 rounded-full bg-diff-addition" />
                   </span>
                   <SelectValue>
                     {settings.diffColorScheme === "blue-orange" ? "Blue & orange" : "Red & green"}

@@ -83,6 +83,9 @@ jobs:
       - name: Reconcile require-static-classes exceptions
         run: node scripts/check-guard-exceptions.ts --rule require-static-classes
 
+      - name: Reconcile no-arbitrary-values exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-arbitrary-values
+
       - name: Check CSS theme tokens
         run: node scripts/check-css-tokens.ts
 

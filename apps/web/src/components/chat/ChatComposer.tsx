@@ -3703,14 +3703,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                   alt={image.name}
                                   className="h-full w-full object-cover"
                                   fallback={
-                                    <span className="flex h-full items-center justify-center px-1 text-[10px] text-secondary-label">
+                                    <span className="flex h-full items-center justify-center px-1 text-3xs text-secondary-label">
                                       {image.name}
                                     </span>
                                   }
                                 />
                               </button>
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-secondary-label">
+                              <div className="flex h-full w-full items-center justify-center px-1 text-center text-3xs text-secondary-label">
                                 {image.name}
                               </div>
                             )}
@@ -3734,7 +3734,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               </Tooltip>
                             )}
                             {upload?.status === "uploading" && (
-                              <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-background/85 px-1 text-center text-[10px] text-foreground">
+                              <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-background/85 px-1 text-center text-3xs text-foreground">
                                 {formatAttachmentUploadProgress(upload.progress)}
                               </span>
                             )}

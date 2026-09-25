@@ -601,7 +601,7 @@ export const ChatHeader = memo(function ChatHeader({
           "flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3",
           // Reserve two panel toggles plus their 4px gaps and 1px edge inset.
           // The page header adds 8px more right padding at sm.
-          rightPanelOpen ? "pr-0" : "pr-[calc(--spacing(18)+1px)] sm:pr-[calc(--spacing(14)+1px)]",
+          rightPanelOpen ? "pr-0" : "pr-18.25 sm:pr-14.25",
         )}
       >
         {mate === undefined ? null : (

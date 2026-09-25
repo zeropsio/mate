@@ -396,7 +396,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   ) : shortcutKey !== null ? (
                     <kbd
                       className={cn(
-                        "flex size-5 shrink-0 items-center justify-center text-[10px] font-medium text-muted-foreground tabular-nums",
+                        "flex size-5 shrink-0 items-center justify-center text-3xs font-medium text-muted-foreground tabular-nums",
                       )}
                     >
                       {shortcutKey}

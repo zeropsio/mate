@@ -323,7 +323,7 @@ function SidebarUpdateControl() {
                       !isInteractionDisabled && "hover:bg-update/12",
                     )
                   : cn(
-                      "text-[var(--sidebar-icon-color)]",
+                      "text-(--sidebar-icon-color)",
                       !isInteractionDisabled &&
                         "hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
                     ),

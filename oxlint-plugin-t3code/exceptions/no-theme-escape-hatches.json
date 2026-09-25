@@ -562,7 +562,7 @@
   {
     "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
     "kind": "Literal",
-    "fingerprint": "\"flex cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-[0_1px_--theme(--color-white/16%)] transition-all duration-150 hover:bg-destructive hover:scale-105 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none\"",
+    "fingerprint": "\"flex cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-2xs inset-shadow-white/16 transition-all duration-150 hover:bg-destructive hover:scale-105 active:inset-shadow-black/8 active:shadow-none\"",
     "owner": "karel",
     "reason": "T3 chrome styling in ComposerPrimaryActions awaiting semantic roles",
     "expires": "F4"
@@ -602,7 +602,7 @@
   {
     "path": "apps/web/src/components/chat/PanelLayoutControls.tsx",
     "kind": "Literal",
-    "fingerprint": "\"absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-[9px] font-semibold tabular-nums text-white\"",
+    "fingerprint": "\"absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-3xs font-semibold tabular-nums text-white\"",
     "owner": "karel",
     "reason": "T3 chrome styling in PanelLayoutControls awaiting semantic roles",
     "expires": "F4"
@@ -610,7 +610,7 @@
   {
     "path": "apps/web/src/components/chat/ProviderInstanceIcon.tsx",
     "kind": "Literal",
-    "fingerprint": "\"bg-[var(--provider-accent)] text-white\"",
+    "fingerprint": "\"bg-(--provider-accent) text-white\"",
     "owner": "karel",
     "reason": "T3 chrome styling in ProviderInstanceIcon awaiting semantic roles",
     "expires": "F4"
@@ -634,7 +634,7 @@
   {
     "path": "apps/web/src/components/ChatMarkdown.tsx",
     "kind": "Literal",
-    "fingerprint": "\"chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-[var(--radius)] border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32\"",
+    "fingerprint": "\"chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-lg border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32\"",
     "owner": "karel",
     "reason": "T3 chrome styling in ChatMarkdown awaiting semantic roles",
     "expires": "F4"
@@ -2002,7 +2002,7 @@
   {
     "path": "apps/web/src/components/RightPanelTabs.tsx",
     "kind": "Literal",
-    "fingerprint": "\"absolute -top-1.5 -right-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-[9px] font-semibold tabular-nums text-white\"",
+    "fingerprint": "\"absolute -top-1.5 -right-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-3xs font-semibold tabular-nums text-white\"",
     "owner": "karel",
     "reason": "T3 chrome styling in RightPanelTabs awaiting semantic roles",
     "expires": "F4"
@@ -2102,46 +2102,6 @@
     "owner": "karel",
     "reason": "picker chrome / derived foreground",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"grid overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_1px_1px_rgb(0_0_0/0.03)] md:grid-cols-2 md:divide-x md:divide-border/60\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ResourceTelemetryDiagnostics awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_1px_1px_rgb(0_0_0/0.03),0_8px_30px_rgb(0_0_0/0.035)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ResourceTelemetryDiagnostics awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_1px_1px_rgb(0_0_0/0.03)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ResourceTelemetryDiagnostics awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_1px_1px_rgb(0_0_0/0.03)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ResourceTelemetryDiagnostics awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_1px_1px_rgb(0_0_0/0.03)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ResourceTelemetryDiagnostics awaiting semantic roles",
-    "expires": "F4"
   },
   {
     "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
@@ -2341,14 +2301,6 @@
     "fingerprint": "\"text-violet-600 dark:text-violet-300/90\"",
     "owner": "karel",
     "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx",
-    "kind": "TemplateElement",
-    "fingerprint": "`pointer-events-none absolute inset-y-0 left-0 w-full origin-left animate-[provider-update-pill-countdown_var(--provider-update-pill-dismiss-ms)_linear_forwards] border-r border-current/15 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.08)] ${ PROVIDER_UPDATE_PILL_PROGRESS_STYLES[displayedView.tone] }`",
-    "owner": "karel",
-    "reason": "T3 chrome styling in SidebarProviderUpdatePill awaiting semantic roles",
     "expires": "F4"
   },
   {

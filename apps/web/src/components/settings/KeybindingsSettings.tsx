@@ -644,7 +644,7 @@ function WhenExpressionBuilder({
           ) : null}
         </InputGroup>
         {parseError ? (
-          <div className="flex items-center gap-1.5 text-[11px] text-destructive">
+          <div className="flex items-center gap-1.5 text-2xs text-destructive">
             <CircleXIcon className="size-3.5" />
             {parseError}
           </div>
@@ -674,7 +674,7 @@ function WhenExpressionBuilder({
           </div>
         )}
         {parseError ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border border-destructive/30 bg-background/75 p-4 text-center text-xs text-destructive backdrop-blur-[1px]">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border border-destructive/30 bg-background/75 p-4 text-center text-xs text-destructive backdrop-blur-xs">
             Fix the expression above to continue editing visually.
           </div>
         ) : null}
@@ -1168,7 +1168,7 @@ export function KeybindingsSettingsPanel() {
   );
 
   const bindingsCount = (
-    <span className="text-[11px] text-muted-foreground">
+    <span className="text-2xs text-muted-foreground">
       {rows.length + (isAddingBinding ? 1 : 0)}{" "}
       {rows.length + (isAddingBinding ? 1 : 0) === 1 ? "binding" : "bindings"}
     </span>

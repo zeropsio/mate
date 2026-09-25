@@ -1140,7 +1140,7 @@ function TimelineMinimap({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "pointer-events-none absolute left-0 h-0.5 -translate-y-1/2 rounded-full bg-muted-foreground/35 transition-[background-color,width] duration-150 data-[in-view=true]:bg-foreground/90",
+                    "pointer-events-none absolute left-0 h-0.5 -translate-y-1/2 rounded-full bg-muted-foreground/35 transition-[width,background-color] duration-150 data-[in-view=true]:bg-foreground/90",
                     activeDistance === 0
                       ? "w-6 bg-muted-foreground/75"
                       : activeDistance === 1
@@ -1542,7 +1542,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     />
                   </button>
                 ) : (
-                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-[11px]">
+                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
                     {image.name}
                   </div>
                 )}
@@ -2837,7 +2837,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
         <div className="text-message-foreground text-xs font-medium">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
         </div>
-        <div className="text-secondary-label text-[11px]">
+        <div className="text-secondary-label text-2xs">
           {comment.sectionTitle} · {comment.rangeLabel}
         </div>
       </div>
@@ -3250,7 +3250,7 @@ function buildToolCallExpandedBody(
 }
 
 const toolCallExpandedBodyClassName =
-  "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-[length:var(--font-size-code,0.6875rem)] leading-relaxed select-text";
+  "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
 
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (
@@ -3459,12 +3459,12 @@ function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
             {agent.title}
           </span>
           {role ? (
-            <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-[.65rem] text-muted-foreground">
+            <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-3xs text-muted-foreground">
               {role}
             </span>
           ) : null}
         </p>
-        <span className="shrink-0 font-mono text-[.7rem] tabular-nums text-muted-foreground">
+        <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
           {statusLabel}
         </span>
       </div>
