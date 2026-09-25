@@ -514,14 +514,16 @@ export function releaseNamingStop(
  * The stop's row named by `tag` ({@link releaseNamingStop}): its version's name and label, and the
  * line that spells them.
  *
- * The version keeps the first labelled service's commit (`sha`, `commit`, `taggedBy`) — the rule
- * the row was built by. That commit is what `sameVersion` compares against the platform's answer,
- * so the release name rides on the row only while the platform names the same deploy.
+ * The version keeps the first labelled service's commit (`sha`, `commit`) — the rule the row was
+ * built by, and a commit the release lists too. That commit is what `sameVersion` compares against
+ * the platform's answer, so the release name rides on the row only while the platform names the
+ * same deploy. Its tagger is dropped: it tagged the release that service was last deployed by,
+ * which may be an older one than the tag the stop is now named by.
  */
 export function nameStopByRelease(row: EnvironmentRow, tag: string): EnvironmentRow {
   return {
     ...row,
-    version: { ...row.version, name: tag, label: tag },
+    version: { ...row.version, name: tag, label: tag, taggedBy: undefined },
     line: `${row.source} · ${tag}`,
   };
 }

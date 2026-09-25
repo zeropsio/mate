@@ -663,7 +663,7 @@ describe("the release a stop is named by", () => {
     expect(releaseNamingStop(releases, running)).toBe(expected);
   });
 
-  it("names the stop by the tag and keeps the first labelled service's commit, which compares", () => {
+  it("names the stop by the tag, keeps the first labelled service's commit, drops its tagger", () => {
     const row: EnvironmentRow = environmentRow({
       projectId: "p-prod",
       name: "production",
@@ -671,7 +671,7 @@ describe("the release a stop is named by", () => {
       sources: "release",
       environment: "production",
       services: [
-        { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 broker` },
+        { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 ada` },
         { hostname: "nextstore", appVersionName: `${NEXT(5)} v0.1.13 broker` },
       ],
     });
@@ -681,7 +681,7 @@ describe("the release a stop is named by", () => {
       label: "v0.1.13",
       commit: shortCommit(MEDUSA),
       sha: MEDUSA,
-      taggedBy: "broker",
+      taggedBy: undefined,
     });
     expect(named.commit).toBe(shortCommit(MEDUSA));
     expect(named.line).toBe("release · v0.1.13");
