@@ -656,19 +656,19 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/CommandPaletteResults.tsx",
+    "path": "apps/web/src/components/ThreadSearchMatch.tsx",
     "kind": "Literal",
     "fingerprint": "\"text-blue-400\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in CommandPaletteResults awaiting semantic roles",
+    "reason": "T3 chrome styling in ThreadSearchMatch awaiting semantic roles",
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/CommandPaletteResults.tsx",
+    "path": "apps/web/src/components/ThreadSearchMatch.tsx",
     "kind": "Literal",
     "fingerprint": "\"text-emerald-400\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in CommandPaletteResults awaiting semantic roles",
+    "reason": "T3 chrome styling in ThreadSearchMatch awaiting semantic roles",
     "expires": "F4"
   },
   {

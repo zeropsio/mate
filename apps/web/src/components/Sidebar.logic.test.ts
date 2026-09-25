@@ -22,7 +22,7 @@ import {
   resolveThreadProviderIconClassName,
   resolveWorkspaceNewThreadAction,
   resolveWorkingStartedAt,
-  searchSidebarThreadsByTitle,
+  searchSidebarThreads,
   formatWorkingDurationLabel,
   shouldClearThreadSelectionOnMouseDown,
   sortLogicalProjectsForSidebar,
@@ -39,6 +39,7 @@ import {
   threadStatusRowPresentation,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
 } from "./Sidebar.logic";
+import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import {
   EnvironmentId,
   OrchestrationLatestTurn,
@@ -699,23 +700,57 @@ describe("shared thread status vectors", () => {
   });
 });
 
-describe("searchSidebarThreadsByTitle", () => {
+describe("searchSidebarThreads", () => {
+  const searchThread = (id: string, title: string, project: string) => ({
+    environmentId: localEnvironmentId,
+    id: ThreadId.make(id),
+    title,
+    project,
+  });
   const threads = [
-    { id: "thread-1", title: "Fix workspace search", project: "Alpha" },
-    { id: "thread-2", title: "Review providers", project: "Workspace" },
-    { id: "thread-3", title: "WORKTREE cleanup", project: "Beta" },
+    searchThread("thread-1", "Fix workspace search", "Alpha"),
+    searchThread("thread-2", "Review providers", "Workspace"),
+    searchThread("thread-3", "WORKTREE cleanup", "Beta"),
   ];
+  const contentKeys = (...ids: ReadonlyArray<string>) =>
+    new Set(
+      ids.map((id) =>
+        threadSearchMatchKey({ environmentId: localEnvironmentId, threadId: ThreadId.make(id) }),
+      ),
+    );
 
   it("matches thread titles case-insensitively and preserves their order", () => {
-    expect(searchSidebarThreadsByTitle(threads, "work")).toEqual([threads[0], threads[2]]);
+    expect(searchSidebarThreads(threads, "work")).toEqual([threads[0], threads[2]]);
   });
 
   it("does not match project metadata", () => {
-    expect(searchSidebarThreadsByTitle(threads, "workspace")).toEqual([threads[0]]);
+    expect(searchSidebarThreads(threads, "workspace")).toEqual([threads[0]]);
   });
 
   it("returns no results for an empty query", () => {
-    expect(searchSidebarThreadsByTitle(threads, "   ")).toEqual([]);
+    expect(searchSidebarThreads(threads, "   ")).toEqual([]);
+  });
+
+  it("appends content-only matches after every title match", () => {
+    expect(searchSidebarThreads(threads, "work", contentKeys("thread-2"))).toEqual([
+      threads[0],
+      threads[2],
+      threads[1],
+    ]);
+  });
+
+  it("lists a thread matching both title and content once", () => {
+    expect(searchSidebarThreads(threads, "work", contentKeys("thread-1"))).toEqual([
+      threads[0],
+      threads[2],
+    ]);
+  });
+
+  it("ignores content matches for threads outside the sidebar collection", () => {
+    expect(searchSidebarThreads(threads, "work", contentKeys("thread-missing"))).toEqual([
+      threads[0],
+      threads[2],
+    ]);
   });
 });
 
