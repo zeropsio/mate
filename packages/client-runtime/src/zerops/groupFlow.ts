@@ -50,7 +50,12 @@
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { BirthStep } from "./birth/birthStore.ts";
-import { CHECKING_WHAT_RUNS, type Deployment, NOTHING_DEPLOYED } from "./flow/deployment.ts";
+import {
+  CHECKING_WHAT_RUNS,
+  type Deployment,
+  NOTHING_DEPLOYED,
+  runningVersion,
+} from "./flow/deployment.ts";
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import type { DeployedVersion, EnvironmentRow } from "./groupRows.ts";
@@ -284,7 +289,7 @@ function flowPullRequestOf(pull: FlowPullRequest): GroupFlowPullRequest {
   return { pull, blocked: pullRequestBlocked(pull), state: changeState(pull) };
 }
 
-/** What a stop runs, by the precedence `stopView` draws the menu with. */
+/** What a stop runs, by the precedence `stopView` draws the menu with (`runningVersion`). */
 function stopOf(input: GroupFlowStopInput): GroupFlowStop {
   const { deployment, row } = input;
   const named = row !== undefined && row.version.label !== undefined ? row.version : undefined;
@@ -305,7 +310,11 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
         version: version.label === undefined ? undefined : version,
       };
     }
-    return { ...base, state: runningState(row), version: named ?? deployment.value.version };
+    return {
+      ...base,
+      state: runningState(row),
+      version: runningVersion(deployment.value.version, row),
+    };
   }
   if (named !== undefined) return { ...base, state: runningState(row), version: named };
   return { ...base, state: "checking", version: undefined };

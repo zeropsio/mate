@@ -567,10 +567,24 @@ const sameVersion = (left: DeployedVersion, right: DeployedVersion): boolean =>
     : left.label === right.label;
 
 /**
- * A stop that runs something: the platform's answer names it, and the deploy half's row colours
- * it only when the row read that same version. The row names it where nothing else does, and
- * where it read the deploy the platform names under a name of its own — the release every service
- * of the stop runs (`nameStopByRelease`), where the platform names one service's.
+ * What a running stop runs, the one precedence every surface names it by: the platform's answer,
+ * and the deploy half's row where nothing else names it, or where it read the deploy the platform
+ * names under a name of its own — the release every service of the stop runs
+ * (`nameStopByRelease`), where the platform names one service's.
+ */
+export function runningVersion(
+  runs: DeployedVersion | undefined,
+  row: EnvironmentRow | undefined,
+): DeployedVersion | undefined {
+  const named = runs?.label === undefined ? undefined : runs;
+  const read = row?.version.label === undefined ? undefined : row.version;
+  const same = read !== undefined && named !== undefined && sameVersion(named, read);
+  return same && read.name !== undefined ? read : (named ?? read);
+}
+
+/**
+ * A stop that runs something, named by `runningVersion`; the deploy half's row colours it only
+ * when the row read that same version.
  */
 function runningView(
   runs: Extract<Deployment, { readonly kind: "running" }> | undefined,
@@ -579,7 +593,7 @@ function runningView(
   const named = runs?.version.label === undefined ? undefined : runs.version;
   const read = row?.version.label === undefined ? undefined : row;
   const same = read !== undefined && named !== undefined && sameVersion(named, read.version);
-  const version = same && read.version.name !== undefined ? read.version : (named ?? read?.version);
+  const version = runningVersion(runs?.version, row);
   const tone = read !== undefined && (named === undefined || same) ? read.tone : "neutral";
   return {
     tone,

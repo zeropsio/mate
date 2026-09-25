@@ -475,6 +475,28 @@ describe("groupFlow", () => {
       },
     },
     {
+      case: "live under what the platform runs, over a row read at an older release",
+      production: productionOf({
+        row: declared({
+          projectId: "p-prod",
+          name: "production",
+          tier: "production",
+          appVersionName: released,
+          status: "success",
+        }),
+        deployment: known({
+          kind: "running",
+          activatedAt: null,
+          version: deployedVersion(`${STAGE_SHA} v0.1.1 ada`),
+        }),
+      }),
+      expected: {
+        kind: "live",
+        line: "v0.1.1",
+        stop: { state: "deployed", version: { label: "v0.1.1", commit: STAGE_SHA.slice(0, 7) } },
+      },
+    },
+    {
       case: "deploy-failed: the broker's status on the release failed, whatever is waiting",
       production: productionOf(
         {
