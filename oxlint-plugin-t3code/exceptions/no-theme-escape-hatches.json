@@ -288,14 +288,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/settings/appearance/components/AppearancePreviews.tsx",
-    "kind": "ImportSpecifier",
-    "fingerprint": "useUniwindTheme",
-    "owner": "karel",
-    "reason": "native/third-party interop boundary \u2014 reviewed",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/settings/appearance/components/FontSizeSliderRow.tsx",
     "kind": "Literal",
     "fingerprint": "\"#000000\"",

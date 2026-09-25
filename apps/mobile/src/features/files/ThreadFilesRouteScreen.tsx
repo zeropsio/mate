@@ -486,9 +486,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
   );
 
   return materialYouStyleLayoutActive ? (
-    <View className="flex-1" style={{ backgroundColor: screenColor }}>
-      {content}
-    </View>
+    <View className="flex-1 bg-screen">{content}</View>
   ) : (
     content
   );
