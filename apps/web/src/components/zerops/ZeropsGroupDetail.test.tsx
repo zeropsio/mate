@@ -288,6 +288,7 @@ function renderStop(input: StopCase): string {
     waiting: waiting.length,
     release: { offered: input.offered !== undefined, tag: input.offered },
     releasedAge: undefined,
+    since: undefined,
     atMainHead: input.atMainHead ?? false,
   });
   return renderToStaticMarkup(

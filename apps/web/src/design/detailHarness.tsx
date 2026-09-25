@@ -463,6 +463,12 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         waiting: waiting.length,
         release,
         releasedAge: fixture.releasedAge,
+        since:
+          fixture.deployment?.state === "known" &&
+          fixture.deployment.value.kind === "running" &&
+          fixture.deployment.value.activatedAt !== null
+            ? "2h ago"
+            : undefined,
         atMainHead:
           !production &&
           commits.kind === "read" &&

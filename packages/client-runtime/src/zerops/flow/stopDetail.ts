@@ -79,6 +79,8 @@ export function stopVerdict(input: {
   readonly release: { readonly offered: boolean; readonly tag: string | undefined };
   /** How long ago production's release went out, already said (e.g. `2h ago`). */
   readonly releasedAge: string | undefined;
+  /** How long the stop's version has run, already said; a stage's detail. */
+  readonly since: string | undefined;
   /** Whether a stage runs main's head commit; stage only. */
   readonly atMainHead: boolean;
 }): StopVerdict {
@@ -115,12 +117,16 @@ export function stopVerdict(input: {
     };
   }
   const label = view.version.label ?? view.line;
-  if (tier === "stage")
+  if (tier === "stage") {
+    // The commit under a stage named by something else; a name that is the commit says it once.
+    const commit = view.version.commit === label ? undefined : view.version.commit;
     return {
       tone: "ok",
       text: input.atMainHead ? "Stage runs the head of main." : `Stage runs ${label}.`,
-      ...quiet,
+      detail: commit === undefined ? input.since : withSince(commit, input.since),
+      verb: null,
     };
+  }
   if (input.waiting > 0)
     return {
       tone: "busy",

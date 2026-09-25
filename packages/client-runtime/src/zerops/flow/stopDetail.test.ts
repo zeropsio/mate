@@ -71,6 +71,7 @@ const BASE: VerdictInput = {
   waiting: 0,
   release: { offered: false, tag: undefined },
   releasedAge: undefined,
+  since: undefined,
   atMainHead: false,
 };
 
@@ -210,14 +211,38 @@ describe("stopVerdict", () => {
       },
     },
     {
-      name: "a stage at main's head",
-      input: { tier: "stage", atMainHead: true, waiting: 2 },
-      expected: { tone: "ok", text: "Stage runs the head of main.", detail: undefined, verb: null },
+      name: "a stage at main's head, with its commit and how long it has run",
+      input: { tier: "stage", atMainHead: true, waiting: 2, since: "16h ago" },
+      expected: {
+        tone: "ok",
+        text: "Stage runs the head of main.",
+        detail: "3f9c1b2 · 16h ago",
+        verb: null,
+      },
+    },
+    {
+      name: "a stage at main's head, how long not known",
+      input: { tier: "stage", atMainHead: true },
+      expected: { tone: "ok", text: "Stage runs the head of main.", detail: "3f9c1b2", verb: null },
     },
     {
       name: "a stage behind main's head",
-      input: { tier: "stage" },
-      expected: { tone: "ok", text: "Stage runs v0.1.13.", detail: undefined, verb: null },
+      input: { tier: "stage", since: "2h ago" },
+      expected: {
+        tone: "ok",
+        text: "Stage runs v0.1.13.",
+        detail: "3f9c1b2 · 2h ago",
+        verb: null,
+      },
+    },
+    {
+      name: "a stage named by its commit does not say the commit twice",
+      input: {
+        tier: "stage",
+        view: view({ version: { ...V13, name: undefined, label: "3f9c1b2" } }),
+        since: "2h ago",
+      },
+      expected: { tone: "ok", text: "Stage runs 3f9c1b2.", detail: "2h ago", verb: null },
     },
   ])("$name", ({ input, expected }) => {
     expect(stopVerdict({ ...BASE, ...input })).toEqual(expected);
