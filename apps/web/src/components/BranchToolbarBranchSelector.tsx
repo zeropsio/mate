@@ -52,7 +52,7 @@ import {
   prStatusIndicator,
   resolveThreadPr,
 } from "./ThreadStatusIndicators";
-import { Button } from "./ui/button";
+import { ComposerControl } from "./chat/ComposerControl";
 import { Switch } from "./ui/switch";
 import { getVirtualizedScrollFadeClassName } from "./ui/scroll-area";
 import {
@@ -674,7 +674,6 @@ export function BranchToolbarBranchSelector({
           key={itemValue}
           index={index}
           value={itemValue}
-          className="pe-2"
           onClick={() => selectPickerItem(itemValue)}
         >
           <div className="flex min-w-0 items-center gap-2 py-1">
@@ -696,7 +695,6 @@ export function BranchToolbarBranchSelector({
           key={itemValue}
           index={index}
           value={itemValue}
-          className="pe-1.5"
           onClick={() => selectPickerItem(itemValue)}
         >
           <span className="truncate">Create new ref &quot;{newRefName}&quot;</span>
@@ -724,7 +722,6 @@ export function BranchToolbarBranchSelector({
         key={itemValue}
         index={index}
         value={itemValue}
-        className="pe-1.5"
         onClick={() => selectPickerItem(itemValue)}
         onContextMenu={(event) => handleBranchContextMenu(event, itemValue)}
       >
@@ -789,8 +786,8 @@ export function BranchToolbarBranchSelector({
           onContextMenu={(event) => handleBranchContextMenu(event, resolvedActiveBranch)}
         >
           <ComboboxTrigger
-            render={<Button variant="ghost" size="xs" />}
-            className="min-w-0 max-w-full text-muted-foreground/70 hover:text-foreground/80"
+            render={<ComposerControl size="xs" />}
+            className="min-w-0 max-w-full"
             disabled={isInitialBranchesLoadPending || isBranchActionPending}
           >
             <GitBranchIcon className="size-3 shrink-0 opacity-70" />
