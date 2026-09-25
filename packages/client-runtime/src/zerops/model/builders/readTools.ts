@@ -10,8 +10,9 @@ import { zeropsStatusWord, zeropsTypeLabel } from "../../serviceMap.ts";
 import {
   operationClosing,
   type OperationStatusWordContext,
-  sentenceCase,
-  statusWord,
+  platformStatus,
+  plural,
+  processActionWord,
 } from "../../operations/phrases.ts";
 import type {
   ZeropsCall,
@@ -108,35 +109,6 @@ function buildReadFields<K extends ReadKind>(
   };
 }
 
-const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
-
-/** `stack.enableSubdomainAccess` → `Enable subdomain access`, `env-update` → `Env update`. */
-function humanizeAction(raw: string): string {
-  return sentenceCase(raw.replace(/^stack\./u, "").replace(/([a-z])([A-Z])/gu, "$1 $2"));
-}
-
-/** Platform process / app-version states still in flight whose word is not already "Running". */
-const IN_FLIGHT_STATUSES: ReadonlySet<string> = new Set([
-  "PENDING",
-  "ROLLBACKING",
-  "CANCELING",
-  "UPLOADING",
-  "PREPARING_RUNTIME",
-]);
-
-/** A process or app-version status: `statusWord`'s word, and the tone that goes with it. */
-function platformStatus(raw: string): ZeropsReadStatus {
-  const word = statusWord(raw);
-  if (word === "Failed" || /FAIL/u.test(raw)) {
-    return { word, tone: "failed" };
-  }
-  if (word === "Done") {
-    return { word, tone: "ok" };
-  }
-  const inFlight = word === "Running" || word === "Waiting" || IN_FLIGHT_STATUSES.has(raw);
-  return { word, tone: inFlight ? "busy" : "off" };
-}
-
 // --- logs ---------------------------------------------------------------------
 
 /** The most lines a logs card draws; the counts still cover every line. */
@@ -231,6 +203,12 @@ export function buildLogsFields(call: ZeropsCall): BuiltCardFields {
 /** The most events an events card draws; the rest are counted. */
 export const EVENT_ROW_CAP = 8;
 
+/** An event row's status: the one platform reading's word and tone. */
+function eventStatus(raw: string): ZeropsReadStatus {
+  const { word, tone } = platformStatus(raw);
+  return { word, tone };
+}
+
 export function buildEventsFields(call: ZeropsCall): BuiltCardFields {
   const hostname = readInputString(call.input, "serviceHostname");
   return buildReadFields(call, {
@@ -248,8 +226,8 @@ export function buildEventsFields(call: ZeropsCall): BuiltCardFields {
             id: `${index}`,
             ...(event.timestamp === undefined ? {} : { at: event.timestamp }),
             ...(event.service === undefined ? {} : { service: event.service }),
-            action: humanizeAction(event.action),
-            status: platformStatus(event.status),
+            action: processActionWord(event.action),
+            status: eventStatus(event.status),
           })),
           ...(rest > 0 ? { more: `${rest} more` } : {}),
         },
@@ -294,14 +272,18 @@ export function buildProcessFields(call: ZeropsCall): BuiltCardFields {
     pending: { kind: "process", pending: true },
     statusContext: { action: readInputString(call.input, "action") ?? "status" },
     settled: (card) => {
-      const steps = card.processes.map((process, index) =>
-        buildStep(
-          process.processId ?? `${index}`,
-          process.action === undefined ? "Process" : humanizeAction(process.action),
-          process.status,
-          process.failReason,
-        ),
-      );
+      const steps = card.processes.map((process, index): ZeropsOperationStep => {
+        const { state, word } = platformStatus(process.status);
+        return {
+          id: process.processId ?? `${index}`,
+          label: process.action === undefined ? "Process" : processActionWord(process.action),
+          state,
+          stateLabel: word,
+          ...(process.failReason === undefined || process.failReason.length === 0
+            ? {}
+            : { note: process.failReason }),
+        };
+      });
       return {
         readResult: { kind: "process", pending: false },
         steps,

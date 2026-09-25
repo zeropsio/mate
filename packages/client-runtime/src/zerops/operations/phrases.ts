@@ -9,7 +9,13 @@
  * Never render a raw enum in a label: every raw status a card shows goes
  * through `statusWord` first.
  */
-import type { ZeropsOperationKind, ZeropsOperationPhase } from "../model/types.ts";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+
+import type {
+  ZeropsOperationKind,
+  ZeropsOperationPhase,
+  ZeropsOperationStepState,
+} from "../model/types.ts";
 
 export function sentenceCase(raw: string): string {
   const words = raw.trim().toLowerCase().replace(/[_-]+/g, " ").split(/\s+/).filter(Boolean);
@@ -77,10 +83,68 @@ export function humanizeToolName(toolName: string): string {
   return sentenceCase(toolName.replace(/^zerops_/, ""));
 }
 
+/** "1 error", "3 warnings" — a count with its noun. */
+export function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 /** `stack.enableSubdomainAccess` → `"Enable subdomain access"` — a platform process's action, never its raw name. */
 export function processActionWord(actionName: string): string {
   const action = actionName.slice(actionName.lastIndexOf(".") + 1);
   return sentenceCase(action.replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+}
+
+/**
+ * A platform process (`ProcessStatusEnum`) or app-version status as every
+ * card shows it — a deploy's secondary row, a process card's step, an events
+ * row: the row's state, its dot's tone (the state's own, as `ProcessSteps`
+ * draws it) and its word.
+ */
+export interface PlatformStatus {
+  readonly state: ZeropsOperationStepState;
+  readonly tone: ServiceStatusToneId;
+  readonly word: string;
+}
+
+const STATE_TONE: Readonly<Record<ZeropsOperationStepState, ServiceStatusToneId>> = {
+  queued: "off",
+  running: "busy",
+  done: "ok",
+  failed: "failed",
+};
+
+/** `ProcessStatusEnum` in words; a cancelled process was stopped, not failed. */
+const PROCESS_STATUS: Readonly<
+  Record<string, { readonly state: ZeropsOperationStepState; readonly word: string }>
+> = {
+  PENDING: { state: "queued", word: "Queued" },
+  RUNNING: { state: "running", word: "Running" },
+  ROLLBACKING: { state: "running", word: "Rolling back" },
+  CANCELING: { state: "running", word: "Cancelling" },
+  FINISHED: { state: "done", word: "Done" },
+  FAILED: { state: "failed", word: "Failed" },
+  CANCELED: { state: "queued", word: "Cancelled" },
+};
+
+/** App-version states still in flight whose `statusWord` is not already "Running". */
+const IN_FLIGHT_APP_VERSION_STATUSES: ReadonlySet<string> = new Set([
+  "UPLOADING",
+  "PREPARING_RUNTIME",
+]);
+
+export function platformStatus(raw: string): PlatformStatus {
+  const known = PROCESS_STATUS[raw];
+  const word = known?.word ?? statusWord(raw);
+  const state: ZeropsOperationStepState =
+    known?.state ??
+    (word === "Failed" || /FAIL/u.test(raw)
+      ? "failed"
+      : word === "Done"
+        ? "done"
+        : word === "Running" || IN_FLIGHT_APP_VERSION_STATUSES.has(raw)
+          ? "running"
+          : "queued");
+  return { state, tone: STATE_TONE[state], word };
 }
 
 export interface OperationStatusWordContext {
@@ -95,7 +159,7 @@ export interface OperationStatusWordContext {
 const PROCESS_OUTCOME_WORD: Readonly<Record<"failed" | "timedOut" | "canceled", string>> = {
   failed: "Process failed",
   timedOut: "Still running",
-  canceled: "Canceled",
+  canceled: "Cancelled",
 };
 
 const PAST_PARTICIPLE: Readonly<Record<string, string>> = {
@@ -178,7 +242,7 @@ export function operationStatusWord(
         return context.action === "wait"
           ? "Waiting"
           : context.action === "cancel"
-            ? "Canceling"
+            ? "Cancelling"
             : "Checking";
       case "bootstrap":
         return "In progress";
@@ -330,11 +394,6 @@ export interface OperationClosingContext {
   readonly consoleErrorCount?: number | undefined;
   readonly pageErrorCount?: number | undefined;
   readonly failedRequestCount?: number | undefined;
-}
-
-/** "1 thing" vs "2 things" — the small plural forms these closings need. */
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 function devServerClosing(context: OperationClosingContext): string {

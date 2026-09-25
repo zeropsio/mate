@@ -196,7 +196,7 @@ describe("observedProcessStep — a secondary process as one compact row", () =>
     { status: "CANCELING", state: "running", stateLabel: "Cancelling" },
     { status: "FINISHED", state: "done", stateLabel: "Done" },
     { status: "FAILED", state: "failed", stateLabel: "Failed" },
-    { status: "CANCELED", state: "failed", stateLabel: "Cancelled" },
+    { status: "CANCELED", state: "queued", stateLabel: "Cancelled" },
     { status: "SOME_FUTURE_STATUS", state: "queued", stateLabel: "Some future status" },
   ])("$status → $state, $stateLabel", ({ status, state, stateLabel }) => {
     expect(observedProcessStep(process(status))).toEqual({

@@ -13,7 +13,7 @@ import {
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { plural, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
@@ -944,10 +944,6 @@ function settledOperationTone(operation: ZeropsOperation): ServiceStatusToneId {
 
 function operationFact(operation: ZeropsOperation): TurnTallyFact {
   return { word: operation.statusWord, tone: settledOperationTone(operation) };
-}
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 /**

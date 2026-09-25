@@ -5,7 +5,7 @@
  * it, e.g. a start-without-code deploy with no build) is omitted rather than
  * rendered as an empty row.
  */
-import { processActionWord, statusWord } from "../operations/phrases.ts";
+import { platformStatus, processActionWord, statusWord } from "../operations/phrases.ts";
 import { type PipelineState, type PipelineStepStatus, getPipelineState } from "./pipelineState.ts";
 import type { ActivityAppVersion, ActivityProcess } from "./dto.ts";
 
@@ -180,25 +180,13 @@ export interface ObservedProcessStep {
   readonly stateLabel: string;
 }
 
-/** `ProcessStatusEnum` → row state + word; a status the platform adds later reads queued, in its own words. */
-const PROCESS_STATE: Readonly<
-  Record<string, { readonly state: ObservedStep["state"]; readonly stateLabel: string }>
-> = {
-  PENDING: { state: "queued", stateLabel: "Queued" },
-  RUNNING: { state: "running", stateLabel: "Running" },
-  ROLLBACKING: { state: "running", stateLabel: "Rolling back" },
-  CANCELING: { state: "running", stateLabel: "Cancelling" },
-  FINISHED: { state: "done", stateLabel: "Done" },
-  FAILED: { state: "failed", stateLabel: "Failed" },
-  CANCELED: { state: "failed", stateLabel: "Cancelled" },
-};
-
+/** The row reads the process's status the way every card does (`platformStatus`). */
 export function observedProcessStep(process: ActivityProcess): ObservedProcessStep {
-  const known = PROCESS_STATE[process.status];
+  const { state, word } = platformStatus(process.status);
   return {
     id: process.id,
     label: processActionWord(process.actionName),
-    state: known?.state ?? "queued",
-    stateLabel: known?.stateLabel ?? statusWord(process.status),
+    state,
+    stateLabel: word,
   };
 }

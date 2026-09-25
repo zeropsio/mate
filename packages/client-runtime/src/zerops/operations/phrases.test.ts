@@ -7,6 +7,7 @@ import {
   humanizeCheckName,
   humanizeToolName,
   operationStatusWord,
+  platformStatus,
   processActionWord,
   sentenceCase,
   statusWord,
@@ -284,5 +285,32 @@ describe("browserLiveCaption", () => {
     expect(browserLiveCaption("https://kanbandev-26a7.prg1.zerops.app")).toBe(
       "Agent is verifying https://kanbandev-26a7.prg1.zerops.app.",
     );
+  });
+});
+
+describe("platformStatus — one reading of a platform process or app-version status", () => {
+  it.each([
+    { raw: "PENDING", expected: { state: "queued", tone: "off", word: "Queued" } },
+    { raw: "RUNNING", expected: { state: "running", tone: "busy", word: "Running" } },
+    { raw: "ROLLBACKING", expected: { state: "running", tone: "busy", word: "Rolling back" } },
+    { raw: "CANCELING", expected: { state: "running", tone: "busy", word: "Cancelling" } },
+    { raw: "FINISHED", expected: { state: "done", tone: "ok", word: "Done" } },
+    { raw: "FAILED", expected: { state: "failed", tone: "failed", word: "Failed" } },
+    { raw: "CANCELED", expected: { state: "queued", tone: "off", word: "Cancelled" } },
+    { raw: "ACTIVE", expected: { state: "done", tone: "ok", word: "Done" } },
+    { raw: "BUILD_FAILED", expected: { state: "failed", tone: "failed", word: "Failed" } },
+    { raw: "DEPLOY_FAILED", expected: { state: "failed", tone: "failed", word: "Deploy failed" } },
+    { raw: "UPLOADING", expected: { state: "running", tone: "busy", word: "Uploading" } },
+    { raw: "WAITING_TO_BUILD", expected: { state: "queued", tone: "off", word: "Waiting" } },
+    { raw: "SOMETHING_NEW", expected: { state: "queued", tone: "off", word: "Something new" } },
+  ])("$raw", ({ raw, expected }) => {
+    expect(platformStatus(raw)).toEqual(expected);
+  });
+
+  it("a process card's cancel words use the same spelling", () => {
+    expect([
+      operationStatusWord("process", "running", { action: "cancel" }),
+      operationStatusWord("process", "done", { processOutcome: "canceled" }),
+    ]).toEqual(["Cancelling", "Cancelled"]);
   });
 });

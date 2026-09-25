@@ -267,11 +267,11 @@ describe("buildEventsFields", () => {
             }),
             expect.objectContaining({
               action: "Subdomain enable",
-              status: { word: "Pending", tone: "busy" },
+              status: { word: "Queued", tone: "off" },
             }),
             expect.objectContaining({
               action: "Env update",
-              status: { word: "Canceled", tone: "off" },
+              status: { word: "Cancelled", tone: "off" },
             }),
           ],
         },
@@ -310,7 +310,7 @@ describe("buildProcessFields", () => {
     {
       name: "cancels a process",
       call: call("zerops_process", "inProgress", { processId: "p-1", action: "cancel" }),
-      expected: { statusWord: "Canceling" },
+      expected: { statusWord: "Cancelling" },
     },
     {
       name: "waits on several processes",
@@ -383,7 +383,7 @@ describe("buildProcessFields", () => {
           message: "Process a canceled",
         },
       ),
-      expected: { statusWord: "Canceled", closing: "Process a canceled" },
+      expected: { statusWord: "Cancelled", closing: "Process a canceled" },
     },
     {
       name: "reads a finished status check as done, with no closing line",
