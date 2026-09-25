@@ -328,7 +328,7 @@ export function ProjectScriptEditorDialog({
               {validationError && <p className="text-sm text-destructive">{validationError}</p>}
             </form>
           </DialogPanel>
-          <DialogFooter className="dark:border-transparent dark:bg-transparent">
+          <DialogFooter variant="bare">
             {isEditing && (
               <Button
                 type="button"

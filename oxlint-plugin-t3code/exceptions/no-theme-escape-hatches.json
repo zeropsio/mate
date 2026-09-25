@@ -738,14 +738,6 @@
   {
     "path": "apps/web/src/components/GitActionsControl.tsx",
     "kind": "Literal",
-    "fingerprint": "\"dark:border-transparent dark:bg-transparent sm:flex-wrap sm:items-center\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
     "fingerprint": "\"dark:border-transparent dark:bg-transparent\"",
     "owner": "karel",
     "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
@@ -2019,14 +2011,6 @@
     "path": "apps/web/src/components/projectScriptEditor.tsx",
     "kind": "Literal",
     "fingerprint": "\"border-primary/70 bg-primary/10 dark:ring-1 dark:ring-primary/30\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in projectScriptEditor awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/projectScriptEditor.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dark:border-transparent dark:bg-transparent\"",
     "owner": "karel",
     "reason": "T3 chrome styling in projectScriptEditor awaiting semantic roles",
     "expires": "F4"
