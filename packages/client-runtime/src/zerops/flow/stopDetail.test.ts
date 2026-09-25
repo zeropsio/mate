@@ -399,8 +399,24 @@ const rowsOf = (platform: Shown<ReadonlyArray<StopService>>) =>
   });
 
 describe("serviceRows", () => {
-  it("joins both sides by hostname, sorted", () => {
-    expect(rowsOf(PLATFORM).map((row) => row.hostname)).toEqual(["api", "docs", "web", "worker"]);
+  it("lists the code services — those a tier builds from a repository — sorted", () => {
+    expect(rowsOf(PLATFORM).map((row) => row.hostname)).toEqual(["api", "docs", "web"]);
+  });
+
+  it.each([
+    { name: "a service the platform lists and no tier builds", hostname: "worker" },
+    { name: "a service no tier builds, though its version is read", hostname: "db" },
+  ])("leaves out $name", ({ hostname }) => {
+    const rows = serviceRows({
+      environment: "production",
+      services: [...GITEA, { hostname: "db", appVersionName: "v1" }],
+      platform: PLATFORM,
+      routes: ROUTES,
+      offers: OFFERS,
+      nowMs: 100_000,
+      age: (iso) => iso,
+    });
+    expect(rows.map((row) => row.hostname)).not.toContain(hostname);
   });
 
   it.each<StopServiceRow>([
@@ -441,19 +457,6 @@ describe("serviceRows", () => {
       status: "Deploying…",
       runs: undefined,
       routes: [],
-      offers: [],
-    },
-    {
-      hostname: "worker",
-      repository: undefined,
-      sha: undefined,
-      commit: undefined,
-      line: undefined,
-      tone: "neutral",
-      word: "Deployed",
-      status: "Deployed",
-      runs: { label: "v0.2.0", since: undefined },
-      routes: [route("worker")],
       offers: [],
     },
   ])("$hostname", (expected) => {

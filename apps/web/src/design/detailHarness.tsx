@@ -373,10 +373,22 @@ const BEVIRO_RELEASES: ReadonlyArray<FlowRelease> = NEXTSTORE.map((nextstore, in
   };
 });
 
-/** What Beviro's production runs: medusa from v0.1.9, nextstore from v0.1.13. */
+/**
+ * A service no tier builds from a repository — a database, a cache, a bucket — as the platform
+ * lists it beside the code services. The page gives it no row and does not count it.
+ */
+const managed = (hostname: string): EnvironmentServiceState => ({ hostname });
+
+/**
+ * What Beviro's production runs: medusa from v0.1.9, nextstore from v0.1.13 — and db, redis and
+ * storage, which the platform lists and nothing deploys.
+ */
 const BEVIRO_LIVE = [
+  managed("db"),
   service("production", "medusa", MEDUSA, "v0.1.9", "success", "medusadev"),
   service("production", "nextstore", NEXTSTORE[0], "v0.1.13", "success", "nextstoredev"),
+  managed("redis"),
+  managed("storage"),
 ];
 
 const BEVIRO_ROUTES = [

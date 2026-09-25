@@ -197,11 +197,11 @@ export function earlierReleasesLabel(count: number): string {
   return `Show ${plural(count, "earlier release", "earlier releases")}`;
 }
 
-/** One service of a stop, as its page draws it. */
+/** One code service of a stop, as its page draws it. */
 export interface StopServiceRow {
   readonly hostname: string;
-  /** Its repository in the group's org, from the Gitea side. */
-  readonly repository: string | undefined;
+  /** The repository its tier builds it from, in the group's org. */
+  readonly repository: string;
   readonly sha: string | undefined;
   readonly commit: string | undefined;
   /** `deployed with <name>` when the app version names one. */
@@ -246,23 +246,22 @@ function runsOf(
 }
 
 /**
- * The services the platform lists, and each one's deployment. A listing not read yet, failing or
+ * Each service's deployment, as the platform lists it. A listing not read yet, failing or
  * withheld is each service's answer too: it says why the service's state is unknown, where an
  * empty listing would read as nothing running.
  */
-function platformDeployments(platform: Shown<ReadonlyArray<StopService>>): {
-  readonly hostnames: ReadonlyArray<string>;
-  readonly of: (hostname: string) => Shown<Deployment>;
-} {
-  if (platform.state !== "known") return { hostnames: [], of: () => platform };
+function platformDeployments(
+  platform: Shown<ReadonlyArray<StopService>>,
+): (hostname: string) => Shown<Deployment> {
+  if (platform.state !== "known") return () => platform;
   const listed = new Map(platform.value.map((entry) => [entry.hostname, entry.deployment]));
-  return { hostnames: [...listed.keys()], of: (hostname) => listed.get(hostname) ?? UNREAD };
+  return (hostname) => listed.get(hostname) ?? UNREAD;
 }
 
 /**
- * A stop's services, one row each: the union of what the group's Gitea and the platform know,
- * joined by hostname. The state is the menu's (`stopView` over that one service), so a service
- * reads the same word on the page as in the menu.
+ * A stop's code services, one row each: those its tiers build from a repository. A database, a
+ * cache or a bucket is never deployed from one, so it has no row. The state is the menu's
+ * (`stopView` over that one service), so a service reads the same word on the page as in the menu.
  */
 export function serviceRows(input: {
   /** The environment's name in `environments.yaml`, which the statuses name. */
@@ -274,28 +273,26 @@ export function serviceRows(input: {
   readonly nowMs: number;
   readonly age: (iso: string) => string;
 }): ReadonlyArray<StopServiceRow> {
-  const gitea = new Map(input.services.map((entry) => [entry.hostname, entry]));
-  const platform = platformDeployments(input.platform);
-  const hostnames = [...new Set([...gitea.keys(), ...platform.hostnames])].sort((left, right) =>
-    left.localeCompare(right, "en"),
-  );
-  return hostnames.map((hostname) => {
-    const state = gitea.get(hostname);
-    const deployment = platform.of(hostname);
-    const version = deployedVersion(state?.appVersionName);
+  const deploymentOf = platformDeployments(input.platform);
+  const code = input.services
+    .flatMap(({ repository, ...state }) =>
+      repository === undefined ? [] : [{ ...state, repository }],
+    )
+    .sort((left, right) => left.hostname.localeCompare(right.hostname, "en"));
+  return code.map((state) => {
+    const { hostname } = state;
+    const deployment = deploymentOf(hostname);
+    const version = deployedVersion(state.appVersionName);
     // The service's own row: `stopView` reads only its version and tone, which the one service
     // and the environment's statuses decide; the row's name, tier and source go unread.
-    const row =
-      state === undefined
-        ? undefined
-        : environmentRow({
-            projectId: "",
-            name: input.environment,
-            tier: "stage",
-            sources: [],
-            services: [state],
-            environment: input.environment,
-          });
+    const row = environmentRow({
+      projectId: "",
+      name: input.environment,
+      tier: "stage",
+      sources: [],
+      services: [state],
+      environment: input.environment,
+    });
     const { tone, word } = stopView({ deployment, row, nowMs: input.nowMs });
     const activatedAt =
       deployment.state === "known" && deployment.value.kind === "running"
@@ -303,7 +300,7 @@ export function serviceRows(input: {
         : null;
     return {
       hostname,
-      repository: state?.repository,
+      repository: state.repository,
       sha: version.sha,
       commit: version.commit,
       line: version.name === undefined ? undefined : `deployed with ${version.name}`,

@@ -1076,7 +1076,7 @@ interface StopBuildForge {
  * never the stop's first service's. `null` where it names neither: nothing to read.
  */
 export function serviceBuildRequest(
-  row: Pick<StopServiceRow, "repository" | "sha">,
+  row: { readonly repository: string | undefined; readonly sha: string | undefined },
   forge: StopBuildForge,
 ): ZeropsDeployRunRequest | null {
   if (row.repository === undefined || row.sha === undefined) return null;
@@ -1435,11 +1435,7 @@ function StopServiceLine({
           <span className="truncate text-sm leading-5 font-medium text-foreground">
             {row.hostname}
           </span>
-          {row.repository === undefined ? null : (
-            <span className="truncate text-xs leading-4 text-muted-foreground">
-              {row.repository}
-            </span>
-          )}
+          <span className="truncate text-xs leading-4 text-muted-foreground">{row.repository}</span>
         </span>
         <span className="col-span-2 col-start-2 flex min-w-0 flex-col sm:col-span-1 sm:col-start-3 sm:row-start-1">
           {row.commit === undefined ? (
