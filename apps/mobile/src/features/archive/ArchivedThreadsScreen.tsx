@@ -110,6 +110,7 @@ function ArchivedThreadsHeader(props: {
           },
         ],
       },
+      { id: "refresh", title: "Refresh archived threads" },
     ],
     [props.environments, props.selectedEnvironmentId, props.sortOrder],
   );
@@ -124,9 +125,11 @@ function ArchivedThreadsHeader(props: {
         props.onSortOrderChange("newest");
       } else if (action === "sort:oldest") {
         props.onSortOrderChange("oldest");
+      } else if (action === "refresh") {
+        props.onRefresh();
       }
     },
-    [props.onEnvironmentChange, props.onSortOrderChange],
+    [props.onEnvironmentChange, props.onRefresh, props.onSortOrderChange],
   );
 
   if (Platform.OS === "android") {
@@ -254,14 +257,11 @@ function ArchivedThreadsHeader(props: {
           unstable_headerToolbarItems: usesCompactMailToolbar
             ? () => [
                 createNativeMailSearchToolbarItem({
-                  composeButtonId: "archived-refresh",
-                  composeSystemImageName: "arrow.clockwise",
                   filterMenu: archiveFilterMenu,
                   filterButtonId: "archived-filter",
                   filterSystemImageName: hasCustomFilter
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease",
-                  onComposePress: props.onRefresh,
                   onSearchTextChange: props.onSearchQueryChange,
                   placeholder: "Search",
                   searchTextChangeId: "archived-search-text",
@@ -299,14 +299,6 @@ function ArchivedThreadsHeader(props: {
 
       {usesCompactMailToolbar ? null : (
         <NativeHeaderToolbar placement="right">
-          {usesNativeChrome ? (
-            <NativeHeaderToolbar.Button
-              accessibilityLabel="Refresh archived threads"
-              icon="arrow.clockwise"
-              onPress={props.onRefresh}
-              separateBackground
-            />
-          ) : null}
           <NativeHeaderToolbar.Menu
             accessibilityLabel="Filter and sort archived threads"
             icon={
