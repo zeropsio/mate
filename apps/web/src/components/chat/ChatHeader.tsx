@@ -11,17 +11,19 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
-import { ChevronDownIcon, SquarePenIcon } from "lucide-react";
+import { ChevronDownIcon, EllipsisIcon, SquarePenIcon } from "lucide-react";
 import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
@@ -56,6 +58,8 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
+import { useIsMobile } from "~/hooks/useMediaQuery";
+import { Menu, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -212,6 +216,42 @@ export const ChatHeader = memo(function ChatHeader({
   onUpdateProjectScript,
   onDeleteProjectScript,
 }: ChatHeaderProps) {
+  const headerActionsRef = useRef<HTMLDivElement | null>(null);
+  const isMobile = useIsMobile();
+  // Side panels can leave a desktop header narrower than a phone. Measured
+  // before paint, so a narrow header never draws its inline actions first.
+  const [isNarrowHeader, setIsNarrowHeader] = useState(false);
+  useLayoutEffect(() => {
+    const container = headerActionsRef.current?.parentElement;
+    if (!container) return;
+    const update = () => setIsNarrowHeader(container.clientWidth < 512);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+  const actionsCollapsed = isMobile || isNarrowHeader;
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionsContainer] = useState(() => {
+    const container = document.createElement("div");
+    container.className = "contents";
+    return container;
+  });
+  // Reparent the DOM host, not the React controls: rotating a phone or resizing
+  // a window must not discard an unsaved script or Git dialog.
+  const mountInlineActions = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node && !actionsCollapsed) node.appendChild(actionsContainer);
+    },
+    [actionsContainer, actionsCollapsed],
+  );
+  const mountMenuActions = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node && actionsCollapsed) node.appendChild(actionsContainer);
+    },
+    [actionsContainer, actionsCollapsed],
+  );
+  if (!actionsCollapsed && actionsOpen) setActionsOpen(false);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const fileScripts = useT3ProjectFileScripts(
     activeThreadEnvironmentId,
@@ -395,6 +435,53 @@ export const ChatHeader = memo(function ChatHeader({
     },
     [commitRename],
   );
+  // A Mate's conversation offers no project actions: the Mate runs what the
+  // project needs.
+  const showProjectScripts = whoLivesHere.kind === "nobody" && activeProjectScripts !== undefined;
+  const showGitActions = Boolean(activeProjectName) && stackedActionsSupported;
+  // Upstream's project actions fold into one menu on a narrow header; the
+  // Mate's own controls stay where they are.
+  const headerActions = (
+    <>
+      {showProjectScripts && activeProjectScripts && (
+        <ProjectScriptsControl
+          onRequestMenuClose={() => setActionsOpen(false)}
+          presentation={actionsCollapsed ? "menu" : "toolbar"}
+          scripts={activeProjectScripts}
+          fileScripts={fileScripts}
+          keybindings={keybindings}
+          preferredScriptId={preferredScriptId}
+          onRunScript={onRunProjectScript}
+          onAddScript={onAddProjectScript}
+          onUpdateScript={onUpdateProjectScript}
+          onDeleteScript={onDeleteProjectScript}
+        />
+      )}
+      {showOpenInPicker && (
+        <>
+          {actionsCollapsed && showProjectScripts && <MenuSeparator />}
+          <OpenInPicker
+            presentation={actionsCollapsed ? "menu" : "toolbar"}
+            environmentId={activeThreadEnvironmentId}
+            keybindings={keybindings}
+            availableEditors={availableEditors}
+            openInCwd={openInCwd}
+          />
+        </>
+      )}
+      {showGitActions && (
+        <>
+          {actionsCollapsed && (showProjectScripts || showOpenInPicker) && <MenuSeparator />}
+          <GitActionsControl
+            presentation={actionsCollapsed ? "menu" : "toolbar"}
+            gitCwd={gitCwd}
+            activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
+            {...(draftId ? { draftId } : {})}
+          />
+        </>
+      )}
+    </>
+  );
   return (
     <div
       className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
@@ -508,34 +595,15 @@ export const ChatHeader = memo(function ChatHeader({
         ref={registerThreadSyncSlot}
       />
       <div
+        ref={headerActionsRef}
         data-chat-header-actions
         className={cn(
           "flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3",
-          rightPanelOpen ? "pr-0" : "pr-16",
+          // Reserve two panel toggles plus their 4px gaps and 1px edge inset.
+          // The page header adds 8px more right padding at sm.
+          rightPanelOpen ? "pr-0" : "pr-[calc(--spacing(18)+1px)] sm:pr-[calc(--spacing(14)+1px)]",
         )}
       >
-        {/* A Mate's conversation offers no project actions: the Mate runs
-            what the project needs. */}
-        {whoLivesHere.kind === "nobody" && activeProjectScripts && (
-          <ProjectScriptsControl
-            scripts={activeProjectScripts}
-            fileScripts={fileScripts}
-            keybindings={keybindings}
-            preferredScriptId={preferredScriptId}
-            onRunScript={onRunProjectScript}
-            onAddScript={onAddProjectScript}
-            onUpdateScript={onUpdateProjectScript}
-            onDeleteScript={onDeleteProjectScript}
-          />
-        )}
-        {showOpenInPicker && (
-          <OpenInPicker
-            environmentId={activeThreadEnvironmentId}
-            keybindings={keybindings}
-            availableEditors={availableEditors}
-            openInCwd={openInCwd}
-          />
-        )}
         {mate === undefined ? null : (
           <>
             <StartFreshButton onStartFresh={onStartFresh} />
@@ -547,13 +615,30 @@ export const ChatHeader = memo(function ChatHeader({
             <ZeropsProjectLink projectUrl={mate.projectUrl} />
           </>
         )}
-        {activeProjectName && stackedActionsSupported && (
-          <GitActionsControl
-            gitCwd={gitCwd}
-            activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
-            {...(draftId ? { draftId } : {})}
-          />
-        )}
+        <Menu open={actionsCollapsed && actionsOpen} onOpenChange={setActionsOpen}>
+          <MenuTrigger
+            className={
+              actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions)
+                ? undefined
+                : "hidden"
+            }
+            render={<Button size="icon-sm" variant="ghost" aria-label="More header actions" />}
+          >
+            <EllipsisIcon className="size-4" />
+          </MenuTrigger>
+          <div ref={mountInlineActions} className="contents" />
+          <MenuPopup
+            data-chat-header-actions
+            keepMounted
+            aria-label="Header actions"
+            align="end"
+            className="min-w-56 max-w-[calc(100vw-2rem)]"
+            finalFocus={actionsCollapsed ? undefined : false}
+          >
+            <div ref={mountMenuActions} className="contents" />
+            {createPortal(headerActions, actionsContainer)}
+          </MenuPopup>
+        </Menu>
       </div>
     </div>
   );
