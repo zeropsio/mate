@@ -39,7 +39,12 @@ const row = (
   });
 
 const LIVE = row(release("v1.2.0"), 0, { live: true });
-const EARLIER = row(release("v1.1.0"), 1);
+// An earlier release listing a commit production has moved on from: one listing what runs would
+// be a roll back that changes nothing.
+const EARLIER = row(
+  release("v1.1.0", { entries: [{ service: "app", commit: "c".repeat(40) }] }),
+  1,
+);
 const DEPLOY_FAILED = row(release("v1.3.0", { entries: [{ service: "app", commit: BROKE }] }), 0, {
   failed: new Map([[`app@${BROKE}`, undefined]]),
 });
@@ -79,7 +84,7 @@ describe("ZeropsReleaseRows", () => {
 
   it("holds the way back while it runs, on that release only", () => {
     const html = rows(
-      [EARLIER, row(release("v1.0.0"), 2)],
+      [EARLIER, row(release("v1.0.0", { entries: EARLIER.entries }), 2)],
       new Set([flowVerbKey({ kind: "roll-back", groupId: GROUP, tag: EARLIER.tag })]),
     );
     expect(html).toContain("Rolling back…");
