@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangleIcon,
   ArrowUpCircleIcon,
   CopyIcon,
   DownloadIcon,
@@ -446,8 +447,28 @@ export function ProviderInstanceCard({
   const authEmail = liveProvider?.auth.email;
   const showEditorStatus = enabled && (statusKey === "warning" || statusKey === "error");
   const versionLabel = getProviderVersionLabel(liveProvider?.version);
-  const versionAdvisory = getProviderVersionAdvisoryPresentation(liveProvider?.versionAdvisory);
+  const compatibility = enabled ? liveProvider?.compatibilityAdvisory : undefined;
+  const versionAdvisory = getProviderVersionAdvisoryPresentation(
+    liveProvider?.versionAdvisory,
+    liveProvider?.compatibilityAdvisory,
+    enabled,
+  );
   const updateCommand = versionAdvisory?.updateCommand ?? null;
+  const hasCompatibilityWarning =
+    compatibility !== undefined &&
+    compatibility.status !== "supported" &&
+    compatibility.status !== "unknown";
+  const compatibilityLabel = hasCompatibilityWarning
+    ? compatibility?.status === "broken"
+      ? "Incompatible"
+      : compatibility?.status === "unsupported"
+        ? "Unsupported"
+        : "Limited support"
+    : null;
+  const VersionAdvisoryIcon = hasCompatibilityWarning ? AlertTriangleIcon : ArrowUpCircleIcon;
+  // A recommended pin is not installed from here: the image owns the CLI and a
+  // container restart would put its own version back.
+  const onRunVersionAction = versionAdvisory?.targetVersion ? undefined : onRunUpdate;
   const FallbackIconComponent = driverOption?.icon;
   const displayName =
     instance.displayName?.trim() || driverOption?.label || String(instance.driver);
@@ -645,7 +666,10 @@ export function ProviderInstanceCard({
             </span>
             <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className={cn("size-1.5 shrink-0 rounded-full", statusStyle.dot)} />
-              <span className="truncate">{summary.headline}</span>
+              <span className="truncate">
+                {summary.headline}
+                {compatibilityLabel ? ` · ${compatibilityLabel}` : null}
+              </span>
             </span>
             {String(instanceId) !== String(instance.driver) ? (
               <code className="mt-0.5 block truncate text-[10px] text-muted-foreground/70">
@@ -692,9 +716,9 @@ export function ProviderInstanceCard({
                           ? "text-warning hover:text-warning"
                           : "text-update-foreground hover:text-update-foreground",
                       )}
-                      aria-label="Update available — view details"
+                      aria-label={`${versionAdvisory.title} — view details`}
                     >
-                      <ArrowUpCircleIcon className="size-3.5" />
+                      <VersionAdvisoryIcon className="size-3.5" />
                     </Button>
                   }
                 />
@@ -706,7 +730,7 @@ export function ProviderInstanceCard({
                   <div className="grid min-w-0 gap-3">
                     <div className="grid gap-0.5">
                       <p className="text-[13px] font-semibold leading-tight text-foreground">
-                        Update available
+                        {versionAdvisory.title}
                       </p>
                       <p
                         className={cn(
@@ -719,20 +743,20 @@ export function ProviderInstanceCard({
                         {versionAdvisory.detail}
                       </p>
                     </div>
-                    {onRunUpdate ? (
+                    {onRunVersionAction ? (
                       <Button
                         type="button"
                         size="xs"
                         variant="default"
                         className="w-full"
                         disabled={isUpdating}
-                        onClick={onRunUpdate}
+                        onClick={onRunVersionAction}
                       >
                         {isUpdating ? <LoaderIcon className="animate-spin" /> : <DownloadIcon />}
                         {isUpdating ? "Updating" : "Update now"}
                       </Button>
                     ) : null}
-                    {onRunUpdate && updateCommand ? (
+                    {onRunVersionAction && updateCommand ? (
                       <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                         <span aria-hidden className="h-px flex-1 bg-border" />
                         or, update manually using

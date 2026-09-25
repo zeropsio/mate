@@ -6,8 +6,22 @@ import { Button } from "../ui/button";
 import { formatProviderDriverKindLabel } from "../../providerModels";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
+/** Unsupported and broken versions fail mid-turn, so they warn even when ready. */
+function getIncompatibleVersion(status: ServerProvider) {
+  const compatibility = status.compatibilityAdvisory;
+  return compatibility?.status === "unsupported" || compatibility?.status === "broken"
+    ? compatibility
+    : null;
+}
+
 export function getProviderStatusBannerKey(status: ServerProvider | null): string | null {
-  if (!status || status.status === "ready" || status.status === "disabled") return null;
+  if (!status || status.status === "disabled") return null;
+  if (status.status === "ready") {
+    const incompatible = getIncompatibleVersion(status);
+    return incompatible
+      ? [status.instanceId, incompatible.status, status.version ?? ""].join("\u0000")
+      : null;
+  }
   // Antigravity checks saved credentials when a session starts. Its local
   // health check leaves auth unknown after a restart, which is not a failure.
   if (
@@ -76,22 +90,26 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
 
   const providerName = status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
   const isUnauthenticated = status.status === "error" && status.auth.status === "unauthenticated";
+  const incompatible = status.status === "ready" ? getIncompatibleVersion(status) : null;
   const title = isUnauthenticated
     ? `${providerName} is unauthenticated`
-    : `${providerName} provider status`;
-  const message = getProviderStatusMessage(status);
+    : incompatible
+      ? `${providerName} ${status.version ?? ""} is ${incompatible.status === "broken" ? "known to be broken" : "unsupported"}`
+      : `${providerName} provider status`;
+  const message = incompatible?.message ?? getProviderStatusMessage(status);
+  const isWarning = status.status === "warning" || incompatible !== null;
 
   return (
     <div className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-2rem)] pt-3">
       <div
         className={cn(
           "alert-glass relative inline-flex items-center gap-3 rounded-xl border py-3 ps-3.5 pe-10 text-card-foreground text-sm",
-          status.status === "warning"
+          isWarning
             ? "border-warning/32 [&_svg]:text-warning"
             : "border-destructive/32 text-destructive-foreground [&_svg]:text-destructive",
         )}
-        data-variant={status.status === "warning" ? "warning" : "error"}
-        role="alert"
+        data-variant={isWarning ? "warning" : "error"}
+        role={incompatible && incompatible.status !== "broken" ? "status" : "alert"}
       >
         <InfoIcon className="size-4 shrink-0" aria-hidden />
         <div className="flex min-w-0 flex-col gap-1">

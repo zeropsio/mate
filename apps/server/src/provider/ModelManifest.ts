@@ -34,6 +34,7 @@ import { ServerConfig } from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { hasValidClaudeManifestAdapters } from "./ClaudeModelManifest.ts";
 import bundledManifestJson from "./model-manifest.json" with { type: "json" };
+import { ProviderCompatibilityPolicy } from "./providerCompatibility.ts";
 import type { ServerProviderDraft } from "./providerSnapshot.ts";
 
 // Fork-controlled: the fork serves its own copy instead of trusting upstream's
@@ -91,6 +92,7 @@ const ModelManifestEnvelopeSchema = Schema.Struct({
    * files still decode; they count as older than any dated bundle.
    */
   updatedAt: Schema.optional(Schema.String),
+  compatibility: Schema.optional(Schema.Array(ProviderCompatibilityPolicy)),
   currentModels: Schema.Record(Schema.String, Schema.Array(Schema.String)),
   providers: Schema.optional(Schema.Record(Schema.String, ManifestProviderCatalog)),
 });
