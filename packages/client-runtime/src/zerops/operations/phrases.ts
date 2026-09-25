@@ -82,7 +82,15 @@ export interface OperationStatusWordContext {
   readonly action?: string | undefined;
   /** `devServer` only: the decoded card's own `running` field. */
   readonly running?: boolean | undefined;
+  /** `process` only: what the processes it read came to, when not simply done. */
+  readonly processOutcome?: "failed" | "timedOut" | "canceled" | undefined;
 }
+
+const PROCESS_OUTCOME_WORD: Readonly<Record<"failed" | "timedOut" | "canceled", string>> = {
+  failed: "Process failed",
+  timedOut: "Still running",
+  canceled: "Canceled",
+};
 
 const PAST_PARTICIPLE: Readonly<Record<string, string>> = {
   delete: "Deleted",
@@ -156,6 +164,16 @@ export function operationStatusWord(
         return "Working";
       case "browser":
         return "Checking";
+      case "logs":
+      case "events":
+      case "discover":
+        return "Reading";
+      case "process":
+        return context.action === "wait"
+          ? "Waiting"
+          : context.action === "cancel"
+            ? "Canceling"
+            : "Checking";
       case "bootstrap":
         return "In progress";
       case "error":
@@ -195,6 +213,15 @@ export function operationStatusWord(
       return context.running === false ? "Not running" : "Running";
     case "browser":
       return "Checked";
+    case "logs":
+    case "events":
+      return "Read";
+    case "discover":
+      return "Listed";
+    case "process":
+      return context.processOutcome === undefined
+        ? "Done"
+        : PROCESS_OUTCOME_WORD[context.processOutcome];
     case "bootstrap":
       return "Complete";
     case "error":
@@ -259,6 +286,14 @@ export function operationVoice(kind: ZeropsOperationKind, subject: string): stri
       return `Managing the dev server on ${subject}.`;
     case "browser":
       return `Checking ${subject}.`;
+    case "logs":
+      return `Reading the ${subject} log.`;
+    case "events":
+      return `Reading recent events of ${subject}.`;
+    case "process":
+      return `Following ${subject}.`;
+    case "discover":
+      return `Looking at ${subject}.`;
     case "bootstrap":
       return `Setting up ${subject}.`;
     case "error":
@@ -413,6 +448,10 @@ export function operationClosing(
     case "scale":
     case "manage":
     case "env":
+    case "logs":
+    case "events":
+    case "process":
+    case "discover":
       return context.message ?? context.summary ?? "Finished.";
     case "devServer":
       return devServerClosing(context);

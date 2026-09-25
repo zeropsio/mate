@@ -18,6 +18,7 @@ import {
   readString,
   readStringArray,
 } from "./decode.ts";
+import { READ_DECODERS, type ZeropsReadCardPayload } from "./readResults.ts";
 
 export interface ZeropsCheckLine {
   readonly name: string;
@@ -55,6 +56,7 @@ export interface ZeropsDeployCard {
 }
 
 export type ZeropsCardPayload =
+  | ZeropsReadCardPayload
   | {
       readonly kind: "error";
       /** `platform.ErrorWire.code`, e.g. `GIT_TOKEN_INVALID`. */
@@ -540,6 +542,7 @@ const DECODERS: Record<
   zerops_workflow: decodePlan,
   zerops_dev_server: decodeDevServer,
   zerops_browser: decodeBrowser,
+  ...READ_DECODERS,
 };
 
 /**

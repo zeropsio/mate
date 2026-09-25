@@ -28,6 +28,7 @@ import type {
   ZeropsOperationStep,
   ZeropsOperationStepState,
   ZeropsOperationVersion,
+  ZeropsReadResult,
 } from "../types.ts";
 
 /**
@@ -71,6 +72,8 @@ export interface BuiltCardFields {
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
+  /** `logs` · `events` · `process` · `discover` only. */
+  readonly readResult?: ZeropsReadResult;
   /**
    * Overrides `phaseFor(call.status)`, where the call's own status is not what
    * happened: `deploy`'s BUILD_TRIGGERED is still running (uncertain past its
@@ -207,6 +210,10 @@ export const KIND_LABEL: Readonly<
   env: "Env",
   devServer: "Dev server",
   browser: "Browser",
+  logs: "Logs",
+  events: "Events",
+  process: "Process",
+  discover: "Discover",
 };
 
 /** The ONE call-status → operation-phase mapping (§2.3, declined/stopped are not "done"). */

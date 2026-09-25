@@ -38,6 +38,12 @@ import { buildErrorFields } from "./builders/errorKind.ts";
 import { buildImportFields, readImport } from "./builders/importCard.ts";
 import { buildMountFields } from "./builders/mount.ts";
 import {
+  buildDiscoverFields,
+  buildEventsFields,
+  buildLogsFields,
+  buildProcessFields,
+} from "./builders/readTools.ts";
+import {
   type BuiltCardFields,
   decodeCall,
   type OperationBuildContext,
@@ -60,7 +66,19 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_env: "env",
   zerops_dev_server: "devServer",
   zerops_browser: "browser",
+  zerops_logs: "logs",
+  zerops_events: "events",
+  zerops_process: "process",
+  zerops_discover: "discover",
 };
+
+/** Reading the same thing twice is not a retry: these kinds never count an "attempt N". */
+const READ_KINDS: ReadonlySet<ZeropsOperationKind> = new Set([
+  "logs",
+  "events",
+  "process",
+  "discover",
+]);
 
 /**
  * The operation kind a "card"-classified call becomes — independent of
@@ -144,6 +162,7 @@ function foldTargetKeyFor(call: ZeropsCall): string {
  * - `browser`: the normalized page URL (`browserTarget`).
  * - `error` (a failed call of a tool with no card of its own) has no single
  *   meaningful target — no identity, like bootstrap and generic rows.
+ * - A read kind (`READ_KINDS`) is never another go at anything — no identity.
  * - `undefined` while the target is unknown (arguments not streamed in yet):
  *   an empty input never becomes an identity.
  */
@@ -151,7 +170,7 @@ function attemptIdentityFor(
   kind: Exclude<ZeropsOperationKind, "bootstrap">,
   input: Record<string, unknown>,
 ): string | undefined {
-  if (kind === "error") {
+  if (kind === "error" || READ_KINDS.has(kind)) {
     return undefined;
   }
   const target = kind === "browser" ? browserTarget(input) : inputHostname(input);
@@ -205,6 +224,10 @@ const BUILDER_BY_KIND: Readonly<
   subdomain: buildSubdomainFields,
   devServer: buildDevServerFields,
   browser: buildBrowserFields,
+  logs: buildLogsFields,
+  events: buildEventsFields,
+  process: buildProcessFields,
+  discover: buildDiscoverFields,
   error: buildErrorFields,
 };
 
@@ -256,6 +279,7 @@ function buildStandaloneOperation(
     ...(fields.explanation !== undefined ? { explanation: fields.explanation } : {}),
     ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),
     ...(fields.browserSummary !== undefined ? { browserSummary: fields.browserSummary } : {}),
+    ...(fields.readResult !== undefined ? { readResult: fields.readResult } : {}),
   };
 }
 

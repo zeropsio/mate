@@ -2,7 +2,8 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
 /**
  * The Operations-layer card: one shell for every `ZeropsOperation` kind
  * (bootstrap · deploy · import · mount · verify · subdomain · delete · scale
- * · manage · env · error). Presentational, props only (R2) — the reducer
+ * · manage · env · devServer · browser · logs · events · process · discover
+ * · error). Presentational, props only (R2) — the reducer
  * already produced every people-facing word this renders.
  *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
@@ -30,6 +31,7 @@ import {
 } from "./primitives";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
+import { ZeropsReadResultBody } from "./ZeropsToolResultCards";
 
 export interface ObservedRegion {
   /** Replaces `operation.steps` for the body while an observation is attached. */
@@ -271,7 +273,7 @@ export function ZeropsOperationCard(props: {
     : undefined;
   const hasBody = isBrowser
     ? browserImage !== undefined || operation.browserSummary !== undefined || live
-    : stepsForBody.length > 0 || observed !== undefined;
+    : operation.readResult !== undefined || stepsForBody.length > 0 || observed !== undefined;
 
   const openBrowserPanel = () => {
     if (threadRef !== undefined && threadRef !== null) {
@@ -329,6 +331,8 @@ export function ZeropsOperationCard(props: {
             onOpenPanel={openBrowserPanel}
             operation={operation}
           />
+        ) : operation.readResult !== undefined ? (
+          <ZeropsReadResultBody readResult={operation.readResult} steps={operation.steps} />
         ) : (
           <div className="space-y-2 px-3 pt-1 pb-2.5 text-xs leading-relaxed">
             {stepsForBody.length > 0 ? (

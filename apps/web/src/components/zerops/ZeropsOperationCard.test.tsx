@@ -709,3 +709,51 @@ describe("ZeropsOperationCard — one quiet surface", () => {
     expect(html).toContain('data-zerops-process-density="compact"');
   });
 });
+
+describe("ZeropsOperationCard — read cards", () => {
+  const logs = (status: ZeropsCall["status"], resultText?: string) =>
+    operationFor(
+      zeropsCall({
+        id: "logs-1",
+        toolName: "zerops_logs",
+        status,
+        startedAt: "2026-09-01T00:00:00.000Z",
+        input: { serviceHostname: "app", severity: "ERROR" },
+        ...(resultText === undefined ? {} : { resultText, settledAt: "2026-09-01T00:00:02.000Z" }),
+      }),
+    );
+
+  it("draws the read body from the call's start, and again once the result lands", () => {
+    const running = renderToStaticMarkup(
+      <ZeropsOperationCard now={0} operation={logs("inProgress")} />,
+    );
+    const done = renderToStaticMarkup(
+      <ZeropsOperationCard
+        operation={logs(
+          "completed",
+          JSON.stringify({
+            entries: [{ timestamp: "2026-09-01T00:00:01Z", severity: "Error", message: "boom" }],
+            hasMore: false,
+          }),
+        )}
+      />,
+    );
+    expect(running).toContain('data-zerops-read-body="logs"');
+    expect(running).toContain("data-zerops-read-placeholder");
+    expect(done).toContain('data-zerops-read-body="logs"');
+    expect(done).toContain("boom");
+  });
+
+  it("reads like the error card once the call failed", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        operation={logs(
+          "failed",
+          JSON.stringify({ code: "SERVICE_NOT_FOUND", error: "Service 'app' not found" }),
+        )}
+      />,
+    );
+    expect(html).not.toContain("data-zerops-read-body");
+    expect(html).toContain("Service &#x27;app&#x27; not found");
+  });
+});

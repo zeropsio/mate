@@ -28,6 +28,7 @@ export type {
   ZeropsOperationPhase,
   ZeropsOperationStep,
   ZeropsOperationStepState,
+  ZeropsReadResult,
   ZeropsSessionView,
   ZeropsTimelineEntry,
   ZeropsWorkAttempt,
