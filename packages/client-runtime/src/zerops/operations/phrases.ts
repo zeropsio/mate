@@ -57,9 +57,9 @@ export function statusWord(raw: string): string {
   return sentenceCase(raw);
 }
 
-/** "attempt 3" for a folded retry chain (R8) — `undefined` at a single attempt, never rendered. */
-export function attemptWord(attempts: number): string | undefined {
-  return attempts > 1 ? `attempt ${attempts}` : undefined;
+/** "attempt 3" for an attempt ordinal (R9) — `undefined` for the first or an unnumbered one, never rendered. */
+export function attemptWord(attempt: number | undefined): string | undefined {
+  return attempt !== undefined && attempt > 1 ? `attempt ${attempt}` : undefined;
 }
 
 const UPPERCASE_TOKENS: ReadonlySet<string> = new Set(["http", "https", "url", "ssh", "db"]);

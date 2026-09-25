@@ -95,13 +95,67 @@ interface StandaloneGroup {
   readonly calls: ZeropsCall[];
 }
 
-function targetKeyFor(call: ZeropsCall): string {
-  return (
-    readInputString(call.input, "targetService") ??
-    readInputString(call.input, "serviceHostname") ??
-    readInputString(call.input, "hostname") ??
-    JSON.stringify(call.input)
+/** The service a call names in its arguments, trimmed and lowercased; `undefined` until named. */
+function inputHostname(input: Record<string, unknown>): string | undefined {
+  const raw =
+    readInputString(input, "targetService") ??
+    readInputString(input, "serviceHostname") ??
+    readInputString(input, "hostname");
+  const normalized = raw?.trim().toLowerCase();
+  return normalized === undefined || normalized.length === 0 ? undefined : normalized;
+}
+
+const compareStrings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * The page a browser check opens: origin (lowercase host) + pathname without
+ * a trailing slash + the query sorted by name then value; the fragment is
+ * dropped. `undefined` until a parseable URL has streamed in.
+ */
+function browserTarget(input: Record<string, unknown>): string | undefined {
+  const raw = readInputString(input, "url")?.trim();
+  if (raw === undefined) {
+    return undefined;
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  const params = [...url.searchParams].sort(
+    ([nameA, valueA], [nameB, valueB]) =>
+      compareStrings(nameA, nameB) || compareStrings(valueA, valueB),
   );
+  const query = new URLSearchParams(params).toString();
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}${query.length > 0 ? `?${query}` : ""}`;
+}
+
+/** What the R8 retry fold compares — the named service, else the whole arguments. */
+function foldTargetKeyFor(call: ZeropsCall): string {
+  return inputHostname(call.input) ?? JSON.stringify(call.input);
+}
+
+/**
+ * The attempt identity (R9): card kind + normalized target. Two calls share
+ * one exactly when the second is another go at the first.
+ *
+ * - Service-targeted kinds: the named hostname, trimmed and lowercased.
+ * - `browser`: the normalized page URL (`browserTarget`).
+ * - `error` (a failed call of a tool with no card of its own) has no single
+ *   meaningful target — no identity, like bootstrap and generic rows.
+ * - `undefined` while the target is unknown (arguments not streamed in yet):
+ *   an empty input never becomes an identity.
+ */
+function attemptIdentityFor(
+  kind: Exclude<ZeropsOperationKind, "bootstrap">,
+  input: Record<string, unknown>,
+): string | undefined {
+  if (kind === "error") {
+    return undefined;
+  }
+  const target = kind === "browser" ? browserTarget(input) : inputHostname(input);
+  return target === undefined ? undefined : `${kind} ${target}`;
 }
 
 /**
@@ -167,7 +221,7 @@ function buildFieldsFor(
 
 function buildStandaloneOperation(
   group: StandaloneGroup,
-  attempts: number,
+  attempts: number | undefined,
   context: OperationBuildContext,
 ): ZeropsOperation {
   const founder = group.calls[0]!;
@@ -192,7 +246,7 @@ function buildStandaloneOperation(
     links: fields.links,
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
     callIds: group.calls.map((c) => c.id),
-    attempts,
+    ...(attempts !== undefined ? { attempts } : {}),
     ...(attemptWordText !== undefined ? { attemptWord: attemptWordText } : {}),
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
@@ -355,7 +409,6 @@ function buildBootstrapOperation(group: BootstrapGroup): ZeropsOperation {
     links: fields.links,
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
     callIds: [...group.members.map((m) => m.call.id), ...group.joinedImports.map((m) => m.call.id)],
-    attempts: group.members.length,
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     hasResult: fields.hasResult,
     session: {
@@ -389,10 +442,19 @@ export function reduceZeropsOperations(
   const standaloneGroups: StandaloneGroup[] = [];
   const genericCalls: ZeropsCall[] = [];
 
-  // R9: `attempts` = 1 + earlier SETTLED calls of the same (toolName, target)
-  // across the whole thread — independent of the R8 join above, which only
-  // decides whether same-turn failures visually merge into one card.
-  const settledAttemptsSoFar = new Map<string, number>();
+  // R9, the attempt ordinal: a call's number is 1 + the calls anywhere in the
+  // thread (any turn) with the same attempt identity (`attemptIdentityFor`)
+  // anchored before it, whatever their outcome — done, failed, interrupted,
+  // declined, stopped or still running. Counted in anchor order, so a later
+  // call never changes an earlier one's number, and the count is a pure
+  // function of the persisted calls: identical after a reload. (Should an
+  // earlier-anchored call's arguments ever stream in after a later same-target
+  // call's, the later one moves up by one — anchor order is what a reload can
+  // reproduce, arrival order of arguments is not.) A call with no
+  // identity (target unknown yet, or a kind with no single target) has no
+  // number. Independent of the R8 join, which only decides whether same-turn
+  // failures visually merge; a folded card shows its latest member's number.
+  const attemptsSoFar = new Map<string, number>();
   const attemptByCallId = new Map<string, number>();
   let lastCard: LastCardTouch | undefined;
 
@@ -433,13 +495,14 @@ export function reduceZeropsOperations(
       continue;
     }
 
-    const targetKey = targetKeyFor(call);
-    const attemptKey = `${call.toolName} ${targetKey}`;
-    const priorSettled = settledAttemptsSoFar.get(attemptKey) ?? 0;
-    attemptByCallId.set(call.id, priorSettled + 1);
-    if (call.status !== "inProgress") {
-      settledAttemptsSoFar.set(attemptKey, priorSettled + 1);
+    const identity = attemptIdentityFor(kind, call.input);
+    if (identity !== undefined) {
+      const attempt = (attemptsSoFar.get(identity) ?? 0) + 1;
+      attemptByCallId.set(call.id, attempt);
+      attemptsSoFar.set(identity, attempt);
     }
+
+    const targetKey = foldTargetKeyFor(call);
 
     foldStandalone(call, kind, targetKey, standaloneGroups, lastCard);
     lastCard = { kind, targetKey, call };
@@ -449,11 +512,7 @@ export function reduceZeropsOperations(
     ...bootstrapState.groups.map(buildBootstrapOperation),
     ...standaloneGroups.map((group) => {
       const latest = group.calls[group.calls.length - 1]!;
-      return buildStandaloneOperation(
-        group,
-        attemptByCallId.get(latest.id) ?? group.calls.length,
-        context,
-      );
+      return buildStandaloneOperation(group, attemptByCallId.get(latest.id), context);
     }),
   ].sort((a, b) => compareAnchors(a, b));
 

@@ -151,9 +151,14 @@ export interface ZeropsOperation {
   readonly detail?: string;
   /** Every call folded into this operation, anchor first. */
   readonly callIds: ReadonlyArray<string>;
-  /** >= 1; > 1 when failed retries folded in (§2.3 R8/R9). */
-  readonly attempts: number;
-  /** "attempt 3" — `phrases.ts`' `attemptWord(attempts)`, standalone kinds only; absent at 1. */
+  /**
+   * The attempt ordinal of the latest call folded in (§2.3 R9, defined at
+   * `reduceZeropsOperations`): >= 1, fixed once its target is known. Absent
+   * while the target is unknown, and for kinds with no single target
+   * (bootstrap, error).
+   */
+  readonly attempts?: number;
+  /** "attempt 3" — `phrases.ts`' `attemptWord(attempts)`; absent at 1 or with no number. */
   readonly attemptWord?: string;
   readonly target?: { readonly hostname: string };
   readonly resultStatus?: string;
