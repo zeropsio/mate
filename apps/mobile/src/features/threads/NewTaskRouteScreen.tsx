@@ -226,6 +226,8 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
             options={{
               title: screenTitle,
               unstable_headerSubtitle: incomingShareSubtitle ?? undefined,
+              // The workspace opens the flow as a page; its own back button leads.
+              headerBackVisible: !layout.usesSplitView,
               headerSearchBarOptions: {
                 autoCapitalize: "none",
                 hideNavigationBar: false,
@@ -240,15 +242,16 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               },
             }}
           />
-          <NativeHeaderToolbar placement="right">
-            {layout.usesSplitView ? (
+          {layout.usesSplitView ? (
+            <NativeHeaderToolbar placement="left">
               <NativeHeaderToolbar.Button
-                accessibilityLabel="Close new task"
-                icon="xmark"
+                accessibilityLabel="Go back"
+                icon="chevron.left"
                 onPress={() => navigation.goBack()}
-                separateBackground
               />
-            ) : null}
+            </NativeHeaderToolbar>
+          ) : null}
+          <NativeHeaderToolbar placement="right">
             {catalogState.hasReadyEnvironment ? (
               <NativeHeaderToolbar.Button
                 icon="plus"
