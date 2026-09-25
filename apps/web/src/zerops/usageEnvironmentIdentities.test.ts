@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   usageEnvironmentIdentities,
+  usageOwnersStatus,
   type UsageEnvironmentIdentity,
 } from "./usageEnvironmentIdentities";
 
@@ -279,4 +280,72 @@ describe("usageEnvironmentIdentities", () => {
       expect([...identities]).toEqual(entry.expected);
     });
   }
+});
+
+describe("usageOwnersStatus", () => {
+  const signedIn = {
+    session: "signed-in",
+    organization: "selected",
+    members: "ready",
+    listing: "known",
+  } as const;
+  it.each([
+    {
+      name: "resolved once members and the listing are known",
+      input: signedIn,
+      expected: "resolved",
+    },
+    {
+      name: "resolving while the session restores",
+      input: { ...signedIn, session: "loading", members: "idle", listing: "unread" },
+      expected: "resolving",
+    },
+    {
+      name: "unavailable when signed out",
+      input: { ...signedIn, session: "signed-out", members: "idle", listing: "unread" },
+      expected: "unavailable",
+    },
+    {
+      name: "resolving while the organization is being chosen",
+      input: { ...signedIn, organization: "loading", members: "idle", listing: "unread" },
+      expected: "resolving",
+    },
+    {
+      name: "unavailable when no organization is selected",
+      input: { ...signedIn, organization: "needs-selection", members: "idle", listing: "unread" },
+      expected: "unavailable",
+    },
+    {
+      name: "resolving while members are read",
+      input: { ...signedIn, members: "loading" },
+      expected: "resolving",
+    },
+    {
+      name: "unavailable when the member read failed",
+      input: { ...signedIn, members: "failed" },
+      expected: "unavailable",
+    },
+    {
+      name: "resolving while the listing is read",
+      input: { ...signedIn, listing: "reading" },
+      expected: "resolving",
+    },
+    {
+      name: "resolving while the listing is unread",
+      input: { ...signedIn, listing: "unread" },
+      expected: "resolving",
+    },
+    {
+      name: "unavailable when the listing failed",
+      input: { ...signedIn, listing: "failed" },
+      expected: "unavailable",
+    },
+    {
+      name: "unavailable when the listing is withheld",
+      input: { ...signedIn, listing: "withheld" },
+      expected: "unavailable",
+    },
+  ] as const)("$name", ({ input, expected }) => {
+    expect(usageOwnersStatus(input)).toBe(expected);
+  });
 });

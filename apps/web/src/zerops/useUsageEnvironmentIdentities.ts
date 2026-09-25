@@ -1,11 +1,8 @@
 /**
  * Who each usage environment belongs to (`usageEnvironmentIdentities.ts`),
  * off the same candidate listing, registered environments and org members the
- * left menu reads. Empty while nobody is signed in to Zerops.
- *
- * `owners` says whether an owner missing from the identities means "nobody"
- * yet: `resolving` while the member list is still being read, `unavailable`
- * when it will not be (signed out, or the read failed).
+ * left menu reads. Empty while nobody is signed in to Zerops; `owners` says
+ * whether that emptiness is final yet (`usageOwnersStatus`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -15,15 +12,15 @@ import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
   usageEnvironmentIdentities,
+  usageOwnersStatus,
   type UsageEnvironmentIdentities,
+  type UsageOwnersStatus,
 } from "./usageEnvironmentIdentities";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const NONE: UsageEnvironmentIdentities = new Map();
-
-export type UsageOwnersStatus = "resolving" | "resolved" | "unavailable";
 
 export function useUsageEnvironmentIdentities(): {
   readonly identities: UsageEnvironmentIdentities;
@@ -50,14 +47,11 @@ export function useUsageEnvironmentIdentities(): {
         : NONE,
     [signedIn, listing, environments, members, viewerUserId],
   );
-  // Signed in with the organization still being chosen: the read has not started yet.
-  const organizationPending =
-    session.organizationStatus === "idle" || session.organizationStatus === "loading";
-  const owners: UsageOwnersStatus =
-    status === "ready"
-      ? "resolved"
-      : status === "loading" || (signedIn && status === "idle" && organizationPending)
-        ? "resolving"
-        : "unavailable";
+  const owners = usageOwnersStatus({
+    session: session.status,
+    organization: session.organizationStatus,
+    members: status,
+    listing: listing.state,
+  });
   return { identities, owners };
 }

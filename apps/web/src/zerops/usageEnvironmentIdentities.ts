@@ -17,13 +17,15 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { resolveMateOwner } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { groupNameIsPlaceholder } from "~/components/zerops/ZeropsGroupTree.logic";
 
 import { rowEnvironment } from "./environmentOrigins";
-import { zeropsMateOwner } from "./useZeropsMateOwners";
+import { zeropsMateOwner, type ZeropsOrganizationMembersStatus } from "./useZeropsMateOwners";
+import type { ZeropsOrganizationStatus, ZeropsSessionStatus } from "./ZeropsSessionProvider";
 
 export interface UsageEnvironmentOwner {
   /** Stable person key: the Zerops user id (member.user?.id), else the member id. */
@@ -97,4 +99,35 @@ export function usageEnvironmentIdentities(input: {
     });
   }
   return identities;
+}
+
+/**
+ * Whether an owner missing from the identities means "nobody" yet: `resolving`
+ * while the session, the organization, the member list or the candidate
+ * listing is still arriving; `unavailable` when one of them will not (signed
+ * out, no organization chosen, a failed or withheld read).
+ */
+export type UsageOwnersStatus = "resolving" | "resolved" | "unavailable";
+
+export function usageOwnersStatus(input: {
+  readonly session: ZeropsSessionStatus;
+  readonly organization: ZeropsOrganizationStatus;
+  readonly members: ZeropsOrganizationMembersStatus;
+  readonly listing: Shown<unknown>["state"];
+}): UsageOwnersStatus {
+  if (input.session === "loading") return "resolving";
+  if (input.session !== "signed-in") return "unavailable";
+  if (input.members === "failed") return "unavailable";
+  if (
+    input.members === "idle" &&
+    input.organization !== "idle" &&
+    input.organization !== "loading"
+  ) {
+    return "unavailable";
+  }
+  if (input.listing === "failed" || input.listing === "gone" || input.listing === "withheld") {
+    return "unavailable";
+  }
+  if (input.members !== "ready" || input.listing !== "known") return "resolving";
+  return "resolved";
 }
