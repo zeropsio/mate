@@ -122,9 +122,11 @@ export interface ZeropsOperationLink {
  * off a `set viewport <w> <h>` / `set media dark|light` step when the agent
  * issued one, `stepCount` the number of non-tail steps, `failedStep` the
  * first non-tail step that failed (always shown even with the step list
- * collapsed). `line` is the ready-made condensed text
- * (`phrases.ts`'s `browserCondensedLine`) — the card renders it verbatim,
- * the same way it already renders `closing`.
+ * collapsed), `errorCount` the console and page errors together and
+ * `failedRequestCount` the failed network requests — what the card tones its
+ * figures by. `line` is the ready-made figures text (`phrases.ts`'s
+ * `browserFiguresLine`) — the card renders it verbatim, the same way it
+ * already renders `closing`.
  */
 /** A browser viewport in CSS pixels; both sides are positive. */
 export interface ZeropsBrowserViewport {
@@ -137,6 +139,8 @@ export interface ZeropsOperationBrowserSummary {
   readonly media?: "dark" | "light";
   readonly stepCount: number;
   readonly failedStep?: ZeropsOperationStep;
+  readonly errorCount: number;
+  readonly failedRequestCount: number;
   readonly line: string;
 }
 

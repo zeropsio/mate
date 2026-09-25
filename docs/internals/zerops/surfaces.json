@@ -548,6 +548,7 @@
         "apps/web/src/components/zerops/ZeropsToolResultCards.tsx",
         "apps/web/src/components/zerops/operation/OperationSubjectLine.tsx",
         "apps/web/src/components/zerops/operation/ExplanationBlock.tsx",
+        "apps/web/src/components/zerops/operation/OperationStepRow.tsx",
         "packages/client-runtime/src/zerops/activityResult.ts",
         "packages/client-runtime/src/zerops/cards/payloads.ts",
         "packages/client-runtime/src/zerops/cards/readResults.ts",

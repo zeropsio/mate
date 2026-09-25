@@ -13,18 +13,23 @@ export type OperationSubject =
   | { readonly kind: "nameless"; readonly text: string };
 
 /**
- * The kinds whose card names one service (or one page) AND whose status word
- * names the operation in every phase ("Checking", "Deploying", "Enabling"),
- * so the word can stand as the verb. Delete, scale, manage, env and the dev
- * server run as "Working" in the phrase producer — without their voice line
- * nothing would say what the card does — so they keep it, as does every
- * kind that names several services or none (a batch deploy among them).
+ * The kinds whose card names one service (or one page): their status word
+ * names the operation in every phase ("Checking", "Deploying", "Starting",
+ * "Scaling"), so the word stands as the verb beside the service. Every kind
+ * that names several services or none keeps its voice line (a batch deploy
+ * among them).
  */
 const SUBJECT_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
   "browser",
+  "delete",
   "deploy",
+  "devServer",
+  "env",
   "logs",
+  "manage",
+  "scale",
   "subdomain",
+  "verify",
 ]);
 
 /** A browser operation's page, once its subject is a URL rather than the reducer's "the page". */
@@ -57,7 +62,9 @@ export function operationSubject(
     const path = `${url.pathname}${url.search}`;
     return { kind: "named", host: subjectHost ?? url.host, ...(path === "/" ? {} : { path }) };
   }
-  const hostname = operation.target?.hostname;
+  // Only a deploy (and a log read) carries `target`; every other kind's
+  // subject is its hostname once the input names one.
+  const hostname = operation.target?.hostname ?? operation.subject;
   return hostname === undefined || /\s/.test(hostname)
     ? nameless
     : { kind: "named", host: hostname };

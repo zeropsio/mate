@@ -756,9 +756,9 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
     expect(op.browserSummary?.stepCount).toBe(4);
     expect(op.browserSummary?.failedStep?.label).toBe("click @e1");
     expect(op.browserSummary?.failedStep?.state).toBe("failed");
-    expect(op.browserSummary?.line).toBe(
-      "opened https://kanbandev-26a7.prg1.zerops.app · 1920×1080, dark · 4 steps · 2 errors, 1 failed request",
-    );
+    expect(op.browserSummary?.line).toBe("1920×1080, dark · 4 steps · 2 errors · 1 failed request");
+    expect(op.browserSummary?.errorCount).toBe(2);
+    expect(op.browserSummary?.failedRequestCount).toBe(1);
 
     const tailLabels = op.steps.filter((step) => step.kind === "tail").map((step) => step.label);
     expect(tailLabels).toEqual([
@@ -858,7 +858,9 @@ describe("a verify whose checks failed", () => {
   // verify that ran to completion over a service that is down came back
   // `completed`, and the card said HEALTHY above three red steps (measured on
   // the test account, 2026-09-20).
-  const verifyWith = (checks: ReadonlyArray<{ name: string; status: string }>) =>
+  const verifyWith = (
+    checks: ReadonlyArray<{ name: string; status: string; httpStatus?: number }>,
+  ) =>
     reduceFrom([
       {
         id: "v1",
@@ -886,6 +888,21 @@ describe("a verify whose checks failed", () => {
     expect(verify.phase).toBe("failed");
     expect(verify.statusWord).not.toBe("Healthy");
     expect(verify.closing).toBe("2 of 3 checks failed.");
+  });
+
+  it.each([
+    { name: "http_internal", httpStatus: 200, chip: { label: "HTTP internal", note: "200" } },
+    { name: "http_public", httpStatus: 502, chip: { label: "HTTP public", note: "502" } },
+    { name: "service_running", httpStatus: undefined, chip: { label: "Service running" } },
+  ])("$name reads as its name and its result, HTTP said once", ({ name, httpStatus, chip }) => {
+    const verify = verifyWith([
+      { name, status: "pass", ...(httpStatus === undefined ? {} : { httpStatus }) },
+    ]);
+    const [step] = verify.steps;
+    expect({
+      label: step?.label,
+      ...(step?.note === undefined ? {} : { note: step.note }),
+    }).toEqual(chip);
   });
 
   it("stays healthy when nothing failed, so a skipped check is not a failure", () => {

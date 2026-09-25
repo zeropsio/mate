@@ -3835,7 +3835,15 @@ describe("turn header", () => {
         ...(kind === "import" ? {} : { target: { hostname: subject } }),
         hasResult: settled !== undefined,
         ...(kind === "browser" && settled?.failedStep
-          ? { browserSummary: { stepCount: 1, failedStep, line: "opened /" } }
+          ? {
+              browserSummary: {
+                stepCount: 1,
+                failedStep,
+                errorCount: 0,
+                failedRequestCount: 0,
+                line: "1 step · 0 errors",
+              },
+            }
           : {}),
       },
     };

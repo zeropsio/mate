@@ -1,4 +1,4 @@
-import { browserCondensedLine, operationClosing, sentenceCase } from "../../operations/phrases.ts";
+import { browserFiguresLine, operationClosing, sentenceCase } from "../../operations/phrases.ts";
 import type {
   ZeropsBrowserViewport,
   ZeropsCall,
@@ -81,7 +81,6 @@ function browserMediaFromLabel(label: string): "dark" | "light" | undefined {
  * the agent did".
  */
 function browserSummaryFor(
-  subject: string,
   steps: ReadonlyArray<ZeropsOperationStep>,
   counts: { consoleErrorCount: number; pageErrorCount: number; failedRequestCount: number },
 ): ZeropsOperationBrowserSummary {
@@ -101,8 +100,9 @@ function browserSummaryFor(
     ...(media !== undefined ? { media } : {}),
     stepCount: visibleSteps.length,
     ...(failedStep !== undefined ? { failedStep } : {}),
-    line: browserCondensedLine({
-      url: subject,
+    errorCount: counts.consoleErrorCount + counts.pageErrorCount,
+    failedRequestCount: counts.failedRequestCount,
+    line: browserFiguresLine({
       stepCount: visibleSteps.length,
       ...counts,
       ...(viewport !== undefined ? { viewport } : {}),
@@ -130,7 +130,7 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
   });
   const browserSummary =
     card !== undefined
-      ? browserSummaryFor(subject, steps, {
+      ? browserSummaryFor(steps, {
           consoleErrorCount: card.consoleErrorCount,
           pageErrorCount: card.pageErrorCount,
           failedRequestCount: card.failedRequestCount,

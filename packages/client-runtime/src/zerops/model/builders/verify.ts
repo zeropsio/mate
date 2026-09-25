@@ -35,7 +35,8 @@ export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
       check.name,
       isAllServices ? check.name : humanizeCheckName(check.name),
       check.status,
-      check.httpStatus !== undefined ? `HTTP ${check.httpStatus}` : undefined,
+      // The name already says HTTP ("HTTP internal"); the result is the code alone.
+      check.httpStatus !== undefined ? String(check.httpStatus) : undefined,
     ),
   );
   const passed = steps.filter((s) => s.state === "done").length;

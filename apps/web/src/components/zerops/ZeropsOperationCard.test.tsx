@@ -121,17 +121,23 @@ describe("ZeropsOperationCard — fixture operations", () => {
     expect(html).toContain(`data-zerops-card-kind="${operation.kind}"`);
     expect(html).toContain(`data-zerops-operation-key="${operation.key}"`);
     expect(html).toContain(operation.kicker);
-    if (operation.kind === "deploy") {
+    if (operation.kind === "deploy" || operation.kind === "verify") {
       // A card that names one service reads verb + hostname chip, not the voice sentence.
       expect(html).toMatch(
-        new RegExp(`data-zerops-subject-chip[^>]*>${operation.target!.hostname}<`),
+        new RegExp(
+          `data-zerops-subject-chip[^>]*>${operation.target?.hostname ?? operation.subject}<`,
+        ),
       );
       expect(html).not.toContain("data-zerops-voice-source");
     } else {
       expect(html).toContain(operation.voice);
       expect(html).toContain(`data-zerops-voice-source="${operation.voiceSource}"`);
     }
-    if (operation.closing !== undefined) {
+    // A passed verify's chips already say every check passed.
+    if (
+      operation.closing !== undefined &&
+      !(operation.kind === "verify" && operation.phase === "done")
+    ) {
       expect(html).toContain(operation.closing);
     }
     for (const link of operation.links) {
@@ -247,6 +253,82 @@ describe("ZeropsOperationCard — running, with an observed region", () => {
   });
 });
 
+describe("ZeropsOperationCard — the pipeline row", () => {
+  const running = operationFor(
+    zeropsCall({
+      id: "seg",
+      startedAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "inProgress",
+    }),
+  );
+  const segmentsOf = (steps: ObservedRegion["steps"]) => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard now={0} observed={{ steps, provenance: "" }} operation={running} />,
+    );
+    return [
+      ...html.matchAll(/<li[^>]*data-zerops-process-state="([a-z]+)"[^>]*>([\s\S]*?)<\/li>/g),
+    ].map(([, state, inner]) => ({ state, inner: inner! }));
+  };
+
+  it.each([
+    {
+      name: "a done step: its glyph and its duration, never the word Done",
+      step: {
+        id: "b",
+        label: "Build",
+        state: "done",
+        stateLabel: "Done",
+        durationMs: 171_000,
+      } as const,
+      shows: ["Build", "2m 51s", 'data-zerops-segment-glyph="done"'],
+      hides: ['tabular-nums">Done<'],
+    },
+    {
+      name: "a done step with no known duration: the label alone",
+      step: { id: "b", label: "Build", state: "done", stateLabel: "Done" } as const,
+      shows: ["Build"],
+      hides: ['tabular-nums">Done<'],
+    },
+    {
+      name: "a running step: its live duration",
+      step: {
+        id: "d",
+        label: "Deploy",
+        state: "running",
+        stateLabel: "Running",
+        durationMs: 7_000,
+      } as const,
+      shows: ["Deploy", "7 s"],
+      hides: ['tabular-nums">Running<'],
+    },
+    {
+      name: "a failed step says Failed",
+      step: {
+        id: "d",
+        label: "Deploy",
+        state: "failed",
+        stateLabel: "Failed",
+        durationMs: 7_000,
+      } as const,
+      shows: ["Deploy", ">Failed<"],
+      hides: [],
+    },
+    {
+      name: "a long label wraps instead of being cut",
+      step: { id: "c", label: "Prepare container", state: "queued", stateLabel: "Queued" } as const,
+      shows: ["Prepare container", "break-words"],
+      hides: ["truncate"],
+    },
+  ])("$name", ({ step, shows, hides }) => {
+    const [segment] = segmentsOf([step]);
+    for (const text of shows) expect(segment?.inner).toContain(text);
+    for (const text of hides) expect(segment?.inner).not.toContain(text);
+  });
+});
+
 describe("ZeropsOperationCard — a triggered build past its cap", () => {
   it("reads attention, not busy, and links the project in Zerops", () => {
     const [uncertain] = reduceZeropsOperations(
@@ -308,6 +390,19 @@ describe("ZeropsOperationCard — dev server", () => {
     expect(withUrl).toContain("https://apidev-26a7-3000.prg1.zerops.app");
   });
 
+  it("draws its result and its Open link in one row, and no step line when nothing failed", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        devServerUrl="https://apidev-26a7-3000.prg1.zerops.app"
+        operation={operation}
+      />,
+    );
+    const row = html.match(/<div[^>]*data-zerops-result-row[\s\S]*$/)?.[0] ?? "";
+    expect(row).toContain("dev server running on apidev:3000.");
+    expect(row).toContain("https://apidev-26a7-3000.prg1.zerops.app");
+    expect(html).not.toContain('data-zerops-primitive="process-steps"');
+  });
+
   it("ignores a devServerUrl prop for a non-devServer operation", () => {
     const deployOperation = operationFor(
       zeropsCall({
@@ -367,15 +462,66 @@ describe("ZeropsOperationCard — browser", () => {
     }),
   );
 
-  it("renders the condensed line and the full step list only inside the Show steps expander; the plumbing tail never appears", () => {
+  it("renders the figures in one line and the full step list only inside the Show steps expander; the plumbing tail never appears", () => {
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
-    expect(html).toContain(operation.browserSummary!.line);
+    const metrics = html.match(/<p[^>]*data-zerops-browser-metrics[\s\S]*?<\/p>/)?.[0];
+    expect(metrics).toContain(">2 steps · 2 errors<");
+    // The page is the card's subject; the figures never repeat it.
+    expect(html).not.toContain("opened https://");
     expect(html).toContain("open https://kanbandev-26a7.prg1.zerops.app");
     expect(html).toContain("click @e1");
     expect(html).toContain("Show steps");
     expect(html).not.toContain("screenshot /tmp/shot.png");
     expect(html).not.toMatch(/>\s*errors\s*</);
     expect(html).not.toContain("network requests --status 400-599");
+  });
+
+  it.each([
+    { name: "errors on the page", errors: true },
+    { name: "a clean page", errors: false },
+  ])("$name: the figures take the error tone only when there are errors", ({ errors }) => {
+    const checked = errors
+      ? operation
+      : operationFor(
+          zeropsCall({
+            id: "brw-clean",
+            startedAt: "2026-09-01T00:00:00.000Z",
+            turnId: "t1",
+            toolName: "zerops_browser",
+            input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+            status: "completed",
+            resultText: JSON.stringify({
+              url: "https://kanbandev-26a7.prg1.zerops.app",
+              steps: [{ command: ["set", "viewport", "1440", "900"], success: true }],
+              errorsOutput: [],
+              consoleOutput: [],
+              networkOutput: [],
+            }),
+          }),
+        );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={checked} />);
+    const metrics = html.match(/<p[^>]*data-zerops-browser-metrics[^>]*>/)?.[0];
+    expect(metrics?.includes("text-destructive-foreground")).toBe(errors);
+    if (!errors) {
+      expect(html).toContain(">1440×900 · 1 step · 0 errors<");
+    }
+  });
+
+  it("says what it checked once: no closing sentence repeats the page and its counts", () => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    expect(operation.closing).toBeDefined();
+    expect(html).not.toContain(operation.closing!);
+    expect(html).not.toContain("data-zerops-card-outcome");
+  });
+
+  it("sets the thumbnail beside the header, stacking above it only in a narrow card (under 22rem)", () => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const card = html.match(/<div[^>]*data-zerops-card-kind[^>]*>/)?.[0];
+    const layout = html.match(/<div[^>]*data-zerops-browser-layout[^>]*>/)?.[0];
+    expect(card).toContain("@container");
+    expect(layout).toContain("flex-col");
+    expect(layout).toContain("@[22rem]:flex-row");
+    expect(html.indexOf("data-zerops-browser-viewport")).toBeLessThan(html.indexOf("<header"));
   });
 
   it("a failed step is always visible with the steps collapsed", () => {
@@ -541,16 +687,10 @@ describe("ZeropsOperationCard — browser", () => {
     });
   });
 
-  it("clicking the viewport opens the Browser panel", () => {
+  it("clicking an empty frame opens the Browser panel", () => {
     panelTestState.onOpen = null;
     panelTestState.open.mockClear();
-    renderToStaticMarkup(
-      <ZeropsOperationCard
-        browserScreenshot={{ src: "data:image/png;base64,AAAA", width: 1280, height: 720 }}
-        operation={operation}
-        threadRef={THREAD_REF}
-      />,
-    );
+    renderToStaticMarkup(<ZeropsOperationCard operation={operation} threadRef={THREAD_REF} />);
     const onOpen = panelTestState.onOpen as (() => void) | null;
     expect(onOpen).not.toBeNull();
     (onOpen as () => void)();
@@ -596,7 +736,7 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
   const header = (html: string) => html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
   const verbOf = (html: string) =>
     header(html).match(
-      /data-zerops-primitive="status-dot"[\s\S]*?class="min-w-0 truncate">([^<]*)</,
+      /data-zerops-primitive="status-dot"[\s\S]*?data-zerops-primitive="micro-label">([^<]*)</,
     )?.[1];
   const chipOf = (html: string) =>
     header(html).match(/data-zerops-subject-chip[^>]*>([^<]*)</)?.[1];
@@ -705,14 +845,15 @@ describe("ZeropsOperationCard — a running card's header always says what it is
       input: { serviceHostname: "appdev", action: "enable" },
       word: "Enabling",
     },
+    { toolName: "zerops_verify", input: { serviceHostname: "appdev" }, word: "Checking" },
     { toolName: "zerops_delete", input: { serviceHostname: "appdev" }, word: "Deleting" },
     { toolName: "zerops_scale", input: { serviceHostname: "appdev" }, word: "Scaling" },
     { toolName: "zerops_manage", input: { serviceHostname: "appdev" }, word: "Managing" },
-    { toolName: "zerops_env", input: { serviceHostname: "appdev" }, word: "Updating environment" },
+    { toolName: "zerops_env", input: { serviceHostname: "appdev" }, word: "Updating" },
     {
       toolName: "zerops_dev_server",
       input: { hostname: "appdev", action: "start" },
-      word: "dev server",
+      word: "Starting",
     },
   ])("$toolName: $word", ({ toolName, input, word }) => {
     const operation = operationFor(
@@ -727,8 +868,15 @@ describe("ZeropsOperationCard — a running card's header always says what it is
     );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+    const verb = header.match(
+      /data-zerops-primitive="status-dot"[\s\S]*?data-zerops-primitive="micro-label">([^<]*)</,
+    )?.[1];
 
-    expect(header).toContain(word);
+    expect(verb).toBe(word);
+    if (toolName !== "zerops_browser") {
+      expect(header).toMatch(/data-zerops-subject-chip[^>]*>appdev</);
+      expect(header).not.toContain("data-zerops-voice-source");
+    }
   });
 });
 
@@ -809,7 +957,9 @@ describe("ZeropsOperationCard — empty body", () => {
     );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
 
-    expect(html.match(/data-zerops-process-state=/g)?.length ?? 0).toBe(5);
+    const row = html.match(/<ol[^>]*data-zerops-pipeline-segments[\s\S]*?<\/ol>/)?.[0];
+    expect(row).toContain("grid-template-columns:repeat(5, minmax(0, 1fr))");
+    expect(row?.match(/data-zerops-process-state=/g)?.length ?? 0).toBe(5);
   });
 });
 
@@ -1005,15 +1155,18 @@ describe("ZeropsOperationCard — one quiet surface", () => {
 
     expect(header).not.toBe("");
     expect(header).not.toMatch(/zerops-status-[a-z]+-surface/);
-    // The kicker stays only as the steps' accessible name, and the status
-    // word reads in sentence form in both header grammars — never a label.
+    // The kicker stays only as the steps' accessible name. A card that names
+    // one service heads with its status word as the verb label; a voice-line
+    // card reads its status in sentence form, never a label.
     expect(header).not.toContain(operation.kicker);
-    expect(microLabels).toEqual([]);
+    expect(microLabels).toEqual(
+      header.includes("data-zerops-operation-subject") ? [operation.statusWord] : [],
+    );
     expect(html).not.toContain("border-t");
   });
 
-  it("verify, done: the status reads as a word beside the voice line", () => {
-    const operation = cases[1]!.operation;
+  it("a card with no single target: the status reads as a word beside the voice line", () => {
+    const operation = operationsFor(weatherdashFirstDeploy).find((o) => o.kind === "bootstrap")!;
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const status = html.match(/<span aria-label="Result status"[\s\S]*?<\/span><\/span>/)?.[0];
 
@@ -1032,9 +1185,52 @@ describe("ZeropsOperationCard — one quiet surface", () => {
     );
   });
 
-  it("sets its steps in the compact density", () => {
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={cases[1]!.operation} />);
-    expect(html).toContain('data-zerops-process-density="compact"');
+  it("verify: its checks read as one row of chips, never a list", () => {
+    const operation = cases[1]!.operation;
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const row = html.match(/<ul[^>]*data-zerops-verify-checks[\s\S]*?<\/ul>/)?.[0];
+
+    expect(operation.steps.length).toBeGreaterThan(1);
+    expect(row).toContain("flex-wrap");
+    expect(row?.match(/data-zerops-process-state=/g)?.length).toBe(operation.steps.length);
+    expect(html).not.toContain('data-zerops-primitive="process-steps"');
+  });
+
+  it("verify, failed: the failed checks are listed under the row with their result", () => {
+    const failed = operationFor(
+      zeropsCall({
+        id: "verify-failed",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_verify",
+        input: { serviceHostname: "apidev" },
+        status: "completed",
+        resultText: JSON.stringify({
+          hostname: "apidev",
+          status: "unhealthy",
+          checks: [
+            { name: "service_running", status: "pass" },
+            { name: "http_public", status: "fail", httpStatus: 502, detail: "bad gateway" },
+          ],
+        }),
+      }),
+    );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={failed} />);
+    const failures = html.match(/<ol[^>]*aria-label="Failed checks"[\s\S]*?<\/ol>/)?.[0];
+
+    expect(failed.phase).toBe("failed");
+    expect(failures).toBeDefined();
+    expect(failures?.match(/data-zerops-process-state="failed"/g)?.length).toBe(1);
+    expect(failures).toContain("HTTP public");
+    expect(failures).toContain("502");
+    expect(html).toContain(failed.closing!);
+  });
+
+  it("verify, done: the chips say it passed — no closing sentence under them", () => {
+    const operation = cases[1]!.operation;
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    expect(operation.closing).toBeDefined();
+    expect(html).not.toContain(operation.closing!);
   });
 });
 
@@ -1137,7 +1333,7 @@ describe("ZeropsOperationCard — the version a settled deploy shipped", () => {
     expect(html).toContain(line);
     expect(html).not.toContain("3f2a9c1d");
     expect(html.indexOf("data-zerops-operation-version")).toBeGreaterThan(
-      html.indexOf('data-zerops-primitive="process-steps"'),
+      html.indexOf("data-zerops-pipeline-segments"),
     );
   });
 

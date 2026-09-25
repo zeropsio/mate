@@ -190,6 +190,15 @@ const PAST_PARTICIPLE: Readonly<Record<string, string>> = {
   env: "Updated",
 };
 
+/** A dev server call in flight, by its action — an unknown or unnamed one is only "Working". */
+const DEV_SERVER_RUNNING_WORD: Readonly<Record<string, string>> = {
+  start: "Starting",
+  restart: "Restarting",
+  stop: "Stopping",
+  status: "Checking",
+  logs: "Reading",
+};
+
 /** The label of a link to the project on the Zerops dashboard. */
 export const OPEN_IN_ZEROPS = "Open in Zerops";
 
@@ -248,11 +257,15 @@ export function operationStatusWord(
       case "subdomain":
         return context.action === "disable" ? "Disabling" : "Enabling";
       case "delete":
+        return "Deleting";
       case "scale":
+        return "Scaling";
       case "manage":
+        return "Managing";
       case "env":
+        return "Updating";
       case "devServer":
-        return "Working";
+        return DEV_SERVER_RUNNING_WORD[context.action ?? ""] ?? "Working";
       case "browser":
         return "Checking";
       case "logs":
@@ -443,8 +456,7 @@ function browserClosing(context: OperationClosingContext): string {
   return `checked ${target}. ${counts}.`;
 }
 
-export interface BrowserCondensedLineInput {
-  readonly url: string;
+export interface BrowserFiguresInput {
   readonly viewport?: { readonly width: number; readonly height: number };
   readonly media?: "dark" | "light";
   readonly stepCount: number;
@@ -454,7 +466,7 @@ export interface BrowserCondensedLineInput {
 }
 
 /** The viewport segment — `<w>×<h>[, dark]`, `dark` alone with no known viewport, or absent entirely. */
-function browserViewportSegment(input: BrowserCondensedLineInput): string | undefined {
+function browserViewportSegment(input: BrowserFiguresInput): string | undefined {
   if (input.viewport !== undefined) {
     const dimensions = `${input.viewport.width}×${input.viewport.height}`;
     return input.media === "dark" ? `${dimensions}, dark` : dimensions;
@@ -463,18 +475,19 @@ function browserViewportSegment(input: BrowserCondensedLineInput): string | unde
 }
 
 /**
- * The card's condensed line, under the viewport —
- * `opened <url> · <viewport w×h>[, dark] · <n> steps · <errors> errors, <failed requests> failed requests`.
- * `errors` folds `consoleErrorCount` and `pageErrorCount` into one figure —
- * `browserClosing`'s Details-disclosure text keeps them apart, this line
- * does not have the room.
+ * A browser check's figures, beside its thumbnail —
+ * `<viewport w×h>[, dark] · <n> steps · <errors> errors[ · <n> failed requests]`.
+ * The page is the card's subject, so the line never repeats it. `errors`
+ * folds `consoleErrorCount` and `pageErrorCount` into one figure and is
+ * always said, zero included; failed requests are named only when there are
+ * some. `browserClosing`'s text keeps all three apart.
  */
-export function browserCondensedLine(input: BrowserCondensedLineInput): string {
+export function browserFiguresLine(input: BrowserFiguresInput): string {
   const segments = [
-    `opened ${input.url}`,
     browserViewportSegment(input),
     plural(input.stepCount, "step"),
-    `${plural(input.consoleErrorCount + input.pageErrorCount, "error")}, ${plural(input.failedRequestCount, "failed request")}`,
+    plural(input.consoleErrorCount + input.pageErrorCount, "error"),
+    input.failedRequestCount > 0 ? plural(input.failedRequestCount, "failed request") : undefined,
   ].filter((segment): segment is string => segment !== undefined);
   return segments.join(" · ");
 }
