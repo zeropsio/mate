@@ -588,6 +588,7 @@ export function useThreadActions() {
       const orderKey = readEnvironmentSupportsPinReorder(target.environmentId)
         ? (opts.orderKey ?? topOfPinnedRunOrderKey())
         : undefined;
+      ThreadUndo.invalidate("pin", scopedThreadKey(target));
       return pinThreadMutation({
         environmentId: target.environmentId,
         input: {
@@ -611,12 +612,27 @@ export function useThreadActions() {
           ),
         );
       }
-      return unpinThreadMutation({
+      const thread = readThreadShell(target);
+      const orderKey = thread?.pinOrderKey ?? undefined;
+      const action = ThreadUndo.begin("pin", scopedThreadKey(target));
+      const result = await unpinThreadMutation({
         environmentId: target.environmentId,
         input: { threadId: target.threadId },
       });
+      if (result._tag === "Success" && action.isCurrent()) {
+        showUndoToast({
+          title: "Thread unpinned",
+          description: thread?.title,
+          claim: action,
+          undo: () => pinThread(target, orderKey === undefined ? {} : { orderKey }),
+          failureTitle: "Failed to undo unpin",
+        });
+      } else {
+        action.finish();
+      }
+      return result;
     },
-    [unpinThreadMutation],
+    [pinThread, unpinThreadMutation],
   );
 
   const settleThread = useCallback(
@@ -661,6 +677,7 @@ export function useThreadActions() {
       const snoozedUntil = resolved?.thread.snoozedUntil ?? null;
       // An older snooze Undo would re-snooze, and the server treats that as a
       // promotion that un-settles; settling supersedes it.
+      ThreadUndo.invalidate("pin", scopedThreadKey(target));
       ThreadUndo.invalidate("snooze", scopedThreadKey(target));
       const action = ThreadUndo.begin("settle", scopedThreadKey(target));
       const result = await settleThreadMutation({
@@ -729,6 +746,7 @@ export function useThreadActions() {
           ),
         );
       }
+      ThreadUndo.invalidate("pin", scopedThreadKey(target));
       return reorderPinnedThreadMutation({
         environmentId: target.environmentId,
         input: { threadId: target.threadId, orderKey },

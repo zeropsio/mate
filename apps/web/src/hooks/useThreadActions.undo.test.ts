@@ -100,6 +100,30 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+describe("unpin Undo", () => {
+  it("ignores an old toast across hook instances and still restores the latest unpin", async () => {
+    const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+    vi.spyOn(toastManager, "close").mockImplementation(() => {});
+    const sidebar = useThreadActions();
+    const header = useThreadActions();
+    await sidebar.unpinThread(target);
+    const staleUndo = undoOf(add, 0);
+    await header.pinThread(target, { orderKey: "a1" });
+    await header.unpinThread(target);
+    const latestUndo = undoOf(add, 1);
+    await staleUndo();
+    expect(commands.pin).toHaveBeenCalledTimes(1);
+    await latestUndo();
+    expect(commands.pin).toHaveBeenCalledTimes(2);
+    expect(commands.pin).toHaveBeenLastCalledWith({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, orderKey: "a0" },
+    });
+    await latestUndo();
+    expect(commands.pin).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("archive Undo", () => {
   it("unarchives and returns to the thread when archiving left it", async () => {
     const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
@@ -173,6 +197,17 @@ describe("settle and snooze Undo", () => {
       environmentId: target.environmentId,
       input: { threadId: target.threadId, snoozedUntil },
     });
+  });
+
+  it("expires an older unpin Undo when the thread is settled", async () => {
+    const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+    vi.spyOn(toastManager, "close").mockImplementation(() => {});
+    const actions = useThreadActions();
+    await actions.unpinThread(target);
+    const staleUnpinUndo = undoOf(add, 0);
+    await actions.settleThread(target);
+    await staleUnpinUndo();
+    expect(commands.pin).not.toHaveBeenCalled();
   });
 
   it("stays silent for batch settles", async () => {
