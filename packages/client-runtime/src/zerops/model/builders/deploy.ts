@@ -1,10 +1,16 @@
+import {
+  PIPELINE_SLOTS,
+  failedPipelineSlots,
+  pipelineStepSlots,
+} from "../../activity/observedSteps.ts";
+import type { PipelineState } from "../../activity/pipelineState.ts";
 import { readRecordArray, readString } from "../../cards/decode.ts";
 import {
   type ZeropsCardPayload,
   type ZeropsDeployCard,
   decodeDeployResult,
 } from "../../cards/payloads.ts";
-import { OPEN_IN_ZEROPS, operationClosing, sentenceCase } from "../../operations/phrases.ts";
+import { OPEN_IN_ZEROPS, operationClosing } from "../../operations/phrases.ts";
 import { zeropsProjectUrl } from "../../serviceMap.ts";
 import type {
   ZeropsCall,
@@ -20,6 +26,7 @@ import {
   type ErrorInfo,
   KIND_LABEL,
   type OperationBuildContext,
+  UNREPORTED_STEP_STATUS,
   buildStep,
   decodeCall,
   detailField,
@@ -70,6 +77,33 @@ function deployLinks(
   return [];
 }
 
+/** zcp's `failedPhase` (`failedPhaseForStatus`) → the pipeline slot it failed at. */
+const FAILED_PHASE_SLOT: Readonly<Record<string, keyof PipelineState>> = {
+  build: "RUN_BUILD_COMMANDS",
+  prepare: "RUN_PREPARE_COMMANDS",
+  init: "DEPLOY",
+};
+
+/**
+ * A single-service deploy holds the pipeline's five slots from birth to
+ * settle, whether or not the card was open to observe them: queued while it
+ * runs, then read from the result — the slot a failure names and the ones
+ * around it, else every slot under the call's own phase.
+ */
+function deploySlots(
+  phase: ZeropsOperationPhase,
+  failedPhase: string | undefined,
+): ReadonlyArray<ZeropsOperationStep> {
+  if (phase === "running") {
+    return pipelineStepSlots([]);
+  }
+  const failedAt = failedPhase === undefined ? undefined : FAILED_PHASE_SLOT[failedPhase];
+  if (failedAt !== undefined) {
+    return failedPipelineSlots(failedAt);
+  }
+  return PIPELINE_SLOTS.map(({ id, label }) => buildStep(id, label, UNREPORTED_STEP_STATUS[phase]));
+}
+
 export function buildDeployFields(
   call: ZeropsCall,
   context: OperationBuildContext,
@@ -91,28 +125,11 @@ export function buildDeployFields(
   // needs naming, so a failed call's document is read as a deploy result here.
   const result =
     card ?? (decoded.document !== undefined ? decodeDeployResult(decoded.document) : undefined);
-  const steps: ZeropsOperationStep[] = [];
   const failureClassification =
     phase === "failed" && decoded.document !== undefined
       ? readRecord(decoded.document.failureClassification)
       : undefined;
-  if (phase === "failed") {
-    const buildStatus = result?.buildStatus;
-    const failedPhase = result?.failedPhase;
-    if (buildStatus !== undefined) {
-      steps.push(buildStep("build", "Build", failedPhase === "build" ? "FAILED" : buildStatus));
-    }
-    if (decoded.document !== undefined) {
-      const stepId = failedPhase ?? "deploy";
-      const stepLabel = failedPhase !== undefined ? sentenceCase(failedPhase) : "Deploy";
-      steps.push(buildStep(stepId, stepLabel, "FAILED"));
-    }
-  } else if (card !== undefined) {
-    if (card.buildStatus !== undefined) {
-      steps.push(buildStep("build", "Build", card.buildStatus));
-    }
-    steps.push(buildStep("deploy", "Deploy", card.status));
-  }
+  const steps = deploySlots(phase, result?.failedPhase);
 
   const links = deployLinks(phase, card?.subdomainUrl, context.projectId);
 

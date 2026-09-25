@@ -728,8 +728,8 @@ describe("ZeropsOperationCard — empty body", () => {
         id: "e3",
         startedAt: "2026-09-01T00:00:00.000Z",
         turnId: null,
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
+        toolName: "zerops_verify",
+        input: { serviceHostname: "weatherdash" },
         status: "inProgress",
       }),
     );
@@ -737,6 +737,22 @@ describe("ZeropsOperationCard — empty body", () => {
 
     expect(operation.steps).toHaveLength(0);
     expect(html).not.toContain('data-zerops-primitive="process-steps"');
+  });
+
+  it("a deploy with no observed region still draws its five pipeline slots", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "e3",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: null,
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "inProgress",
+      }),
+    );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+
+    expect(html.match(/data-zerops-process-state=/g)?.length ?? 0).toBe(5);
   });
 });
 

@@ -124,6 +124,18 @@ export function stepState(rawStatus: string): ZeropsOperationStepState {
   }
 }
 
+/** A step no result has reported on reads as the call's own phase. */
+export const UNREPORTED_STEP_STATUS: Readonly<Record<ZeropsOperationPhase, string>> = {
+  running: "in_progress",
+  done: "FINISHED",
+  failed: "FAILED",
+  uncertain: "pending",
+  declined: "pending",
+  stopped: "pending",
+  interrupted: "pending",
+  reset: "pending",
+};
+
 export function buildStep(
   id: string,
   label: string,

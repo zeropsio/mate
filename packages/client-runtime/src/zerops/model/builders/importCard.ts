@@ -1,8 +1,9 @@
 import { operationClosing } from "../../operations/phrases.ts";
-import type { ZeropsCall, ZeropsOperationPhase, ZeropsOperationStep } from "../types.ts";
+import type { ZeropsCall, ZeropsOperationStep } from "../types.ts";
 import {
   type BuiltCardFields,
   KIND_LABEL,
+  UNREPORTED_STEP_STATUS,
   buildStep,
   decodeCall,
   type DecodedEntry,
@@ -77,18 +78,6 @@ function importYamlHostnames(input: Record<string, unknown>): ReadonlyArray<stri
     return hostname === undefined ? [] : [hostname];
   });
 }
-
-/** A YAML-named service the result has not reported on yet reads as the call's own phase. */
-const UNREPORTED_STEP_STATUS: Readonly<Record<ZeropsOperationPhase, string>> = {
-  running: "in_progress",
-  done: "FINISHED",
-  failed: "FAILED",
-  uncertain: "pending",
-  declined: "pending",
-  stopped: "pending",
-  interrupted: "pending",
-  reset: "pending",
-};
 
 export function buildImportFields(call: ZeropsCall): BuiltCardFields {
   const decoded = decodeCall(call);

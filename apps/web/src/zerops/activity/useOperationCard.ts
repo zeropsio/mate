@@ -158,9 +158,9 @@ export interface ObservedStepsRegion {
  * drives the region once a read has produced steps or secondary processes;
  * until then — and whenever the feed goes quiet or off — the history holds
  * what was already shown (steps, secondary processes, build log), so nothing
- * once on the card leaves it. A deploy renders its five pipeline slots
- * (`pipelineStepSlots`) from its first frame, observed or not, so the steps
- * fill in place instead of appearing.
+ * once on the card leaves it. A deploy's observed steps fill the same five
+ * pipeline slots (`pipelineStepSlots`) the operation itself holds from birth
+ * to settle, so they fill in place instead of appearing.
  */
 export function deriveObservedStepsRegion(
   kind: ZeropsOperationKind,
@@ -188,7 +188,7 @@ export function deriveObservedStepsRegion(
       : state.observation;
   const source = current ?? history;
   if (source === undefined) {
-    return kind === "deploy" ? regionOf({ steps: [], chips: [], readAtMs: nowMs }, "") : undefined;
+    return undefined;
   }
 
   const provenanceLabel =

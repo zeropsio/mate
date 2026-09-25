@@ -153,6 +153,25 @@ export function pipelineStepSlots(steps: ReadonlyArray<ObservedStep>): ReadonlyA
   );
 }
 
+/** The five slots in order, with their labels. */
+export const PIPELINE_SLOTS: ReadonlyArray<{
+  readonly id: keyof PipelineState;
+  readonly label: string;
+}> = STEP_ORDER.map((id) => ({ id, label: LABELS[id] }));
+
+/**
+ * The five slots of a pipeline that stopped at `failedAt`, read the way the
+ * platform reads a failed pipeline (`getPipelineState`): every slot before it
+ * done, it failed, every later one cancelled.
+ */
+export function failedPipelineSlots(failedAt: keyof PipelineState): ReadonlyArray<ObservedStep> {
+  const at = STEP_ORDER.indexOf(failedAt);
+  return STEP_ORDER.map((id, index) => {
+    const raw = index < at ? "finished" : index === at ? "failed" : "cancelled";
+    return { id, label: LABELS[id], state: STATE[raw], stateLabel: STATE_LABEL[raw] };
+  });
+}
+
 /** A secondary process (an observation's chip) as one compact row. */
 export interface ObservedProcessStep {
   readonly id: string;

@@ -534,15 +534,18 @@ describe("deriveObservedStepsRegion — a deploy holds its five pipeline slots f
   };
 
   it.each([
-    { name: "before the first read", state: before, running: undefined },
-    { name: "with the feed off", state: off, running: undefined },
-    { name: "once the build runs", state: building, running: "RUN_BUILD_COMMANDS" },
-  ])("$name: five slots, the observed one filled in place", ({ state, running }) => {
-    const region = deriveObservedStepsRegion("deploy", "running", state, undefined, NOW);
+    { name: "before the first read", state: before },
+    { name: "with the feed off", state: off },
+  ])("$name: no region — the card draws the operation's own five slots", ({ state }) => {
+    expect(deriveObservedStepsRegion("deploy", "running", state, undefined, NOW)).toBeUndefined();
+  });
+
+  it("once the build runs: five slots, the observed one filled in place", () => {
+    const region = deriveObservedStepsRegion("deploy", "running", building, undefined, NOW);
 
     expect(region?.steps.map((slot) => slot.id)).toEqual(SLOT_IDS);
     expect(region?.steps.filter((slot) => slot.state === "running").map((slot) => slot.id)).toEqual(
-      running === undefined ? [] : [running],
+      ["RUN_BUILD_COMMANDS"],
     );
   });
 });

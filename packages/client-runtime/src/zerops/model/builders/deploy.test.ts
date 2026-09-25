@@ -56,6 +56,93 @@ describe("buildDeployFields — the version a settled deploy shipped", () => {
   });
 });
 
+const SLOT_LABELS = ["Build container", "Build", "Prepare container", "Prepare runtime", "Deploy"];
+const slots = (...words: ReadonlyArray<readonly [string, string]>) =>
+  words.map(([state, stateLabel], index) => [SLOT_LABELS[index], state, stateLabel]);
+const five = (state: string, stateLabel: string) =>
+  slots(...Array.from({ length: 5 }, () => [state, stateLabel] as const));
+
+describe("buildDeployFields — the five pipeline slots, from birth to settle", () => {
+  it.each([
+    { name: "queued while the call runs", overrides: {}, expected: five("queued", "Queued") },
+    {
+      name: "queued while the triggered build runs",
+      overrides: { result: { status: "BUILD_TRIGGERED", targetService: "apidev" } },
+      expected: five("queued", "Queued"),
+    },
+    {
+      name: "done once the deploy landed",
+      overrides: { result: { status: "DEPLOYED", targetService: "apidev", buildStatus: "ACTIVE" } },
+      expected: five("done", "Done"),
+    },
+    {
+      name: "the build failed, the later slots never ran",
+      overrides: {
+        result: {
+          status: "BUILD_FAILED",
+          targetService: "apidev",
+          buildStatus: "BUILD_FAILED",
+          failedPhase: "build",
+        },
+      },
+      expected: slots(
+        ["done", "Done"],
+        ["failed", "Failed"],
+        ["failed", "Cancelled"],
+        ["failed", "Cancelled"],
+        ["failed", "Cancelled"],
+      ),
+    },
+    {
+      name: "the prepare commands failed",
+      overrides: {
+        result: {
+          status: "PREPARING_RUNTIME_FAILED",
+          targetService: "apidev",
+          failedPhase: "prepare",
+        },
+      },
+      expected: slots(
+        ["done", "Done"],
+        ["done", "Done"],
+        ["done", "Done"],
+        ["failed", "Failed"],
+        ["failed", "Cancelled"],
+      ),
+    },
+    {
+      name: "the new container failed to start",
+      overrides: {
+        result: { status: "DEPLOY_FAILED", targetService: "apidev", failedPhase: "init" },
+      },
+      expected: slots(
+        ["done", "Done"],
+        ["done", "Done"],
+        ["done", "Done"],
+        ["done", "Done"],
+        ["failed", "Failed"],
+      ),
+    },
+    {
+      name: "every slot reads the call's own phase when no result reports it",
+      overrides: { status: "interrupted" as const, settledAt: "2026-09-01T00:00:50.000Z" },
+      expected: five("queued", "Waiting"),
+    },
+    {
+      name: "a failed call that names no failing phase",
+      overrides: {
+        status: "failed" as const,
+        resultText: "service not found",
+        settledAt: "2026-09-01T00:00:50.000Z",
+      },
+      expected: five("failed", "Failed"),
+    },
+  ])("$name", ({ overrides, expected }) => {
+    const fields = buildDeployFields(deployCall(overrides), CONTEXT);
+    expect(fields.steps.map((step) => [step.label, step.state, step.stateLabel])).toEqual(expected);
+  });
+});
+
 const lines = (count: number, prefix: string) =>
   Array.from({ length: count }, (_, index) => `${prefix} ${index + 1}`);
 
