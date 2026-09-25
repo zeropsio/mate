@@ -120,10 +120,11 @@ export function DraftHeroHeadline({
       <Tooltip>
         <TooltipTrigger
           render={
-            <MenuTrigger
-              aria-label={hasResolvedProject ? "Change project" : "Choose a project"}
-              className="pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            />
+            // The trigger's accessible name comes from its visible text (the
+            // project title) so the hero sentence reads naturally: an
+            // aria-label here would replace the title with an action phrase
+            // mid-sentence and baffle screen-reader users.
+            <MenuTrigger className="pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" />
           }
         >
           {selectorLabel ?? "Choose a project"}
@@ -188,10 +189,32 @@ export function DraftHeroHeadline({
     </button>
   );
 
+  // The composer hero is a sentence, so the heading's accessible name must be
+  // a complete sentence too. The project picker is a control rendered inline
+  // in the h1; without an explicit label its widget state bleeds into the
+  // announced phrase.
+  const projectSelectorText = shouldShowProjectMenu
+    ? (selectorLabel ?? "Choose a project")
+    : (activeProjectTitle ?? "Add a project");
+  const headingLabel = hasResolvedProject
+    ? whoLivesHere?.kind === "unknown"
+      ? projectSelectorText
+      : mate === undefined
+        ? `What should we build in ${projectSelectorText}?`
+        : mate.project === undefined
+          ? `What should ${mate.name} do?`
+          : `What should ${mate.name} do on ${projectSelectorText}?`
+    : canChooseProject
+      ? `${projectSelectorText} to start`
+      : "Add a project to start";
+
   return (
     <div className="flex flex-col items-center gap-5">
       <MateMark playful className="h-16 w-auto sm:h-[72px]" tint={mate?.tint} />
-      <h1 className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
+      <h1
+        aria-label={headingLabel}
+        className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl"
+      >
         {hasResolvedProject ? (
           whoLivesHere?.kind === "unknown" ? (
             // Neither question while who lives here is not known: the
