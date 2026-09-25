@@ -1241,7 +1241,12 @@ export function deriveMessagesTimelineRows(input: {
     unsettledTurnId,
     turnDiffSummaries: input.turnDiffSummaries,
   });
-  const headerAnchorIndices = new Set(turnSpans.map((span) => span.anchorIndex));
+  const spansByAnchorIndex = new Map<number, TurnSpan[]>();
+  for (const span of turnSpans) {
+    const atIndex = spansByAnchorIndex.get(span.anchorIndex);
+    if (atIndex) atIndex.push(span);
+    else spansByAnchorIndex.set(span.anchorIndex, [span]);
+  }
   const activeSpan = input.isWorking
     ? turnSpans.find((span) => span.turnId === unsettledTurnId)
     : undefined;
@@ -1280,7 +1285,7 @@ export function deriveMessagesTimelineRows(input: {
     const pendingLanded: ChangeLandedEntry[] = [];
     let end = index + 1;
     let cursor = index + 1;
-    while (cursor < timelineEntries.length && !headerAnchorIndices.has(cursor)) {
+    while (cursor < timelineEntries.length && !spansByAnchorIndex.has(cursor)) {
       const next = timelineEntries[cursor]!;
       if (next.kind === "change-landed") {
         pendingLanded.push(next);
@@ -1409,8 +1414,7 @@ export function deriveMessagesTimelineRows(input: {
           activeTurnHasVisibleContent,
         });
   const appendTurnHeaders = (anchorIndex: number) => {
-    for (const span of turnSpans) {
-      if (span.anchorIndex !== anchorIndex) continue;
+    for (const span of spansByAnchorIndex.get(anchorIndex) ?? []) {
       const live = span === activeSpan;
       const fold = foldBySpan.get(span);
       const settled = live ? null : describeSettledTurn(span, input.latestTurn ?? null);
@@ -1533,7 +1537,7 @@ export function deriveMessagesTimelineRows(input: {
       let cursor = index + 1;
       while (cursor < timelineEntries.length) {
         const nextEntry = timelineEntries[cursor];
-        if (nextEntry?.kind === "change-landed" && !headerAnchorIndices.has(cursor)) {
+        if (nextEntry?.kind === "change-landed" && !spansByAnchorIndex.has(cursor)) {
           pendingLanded.push(nextEntry);
           cursor += 1;
           continue;
@@ -1550,7 +1554,7 @@ export function deriveMessagesTimelineRows(input: {
           timelineEntry.entry.tone === "error" ||
           activeWorkEntries.has(nextEntry) ||
           collapsedEntries.has(nextEntry) ||
-          headerAnchorIndices.has(cursor)
+          spansByAnchorIndex.has(cursor)
         ) {
           break;
         }
