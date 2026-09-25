@@ -76,12 +76,22 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
   if (!isObservedKind(operation.kind) || operation.batch === true) {
     return null;
   }
+  const appVersionId = operation.version?.id;
+  const processIds = operation.processIds ?? [];
   return {
     key: operation.key,
     kind: operation.kind,
     hostnames: hostnamesFor(operation),
     startedAtMs: Date.parse(operation.anchorAt),
     running: operation.phase === "running",
+    ...(appVersionId === undefined && processIds.length === 0
+      ? {}
+      : {
+          exact: {
+            ...(appVersionId === undefined ? {} : { appVersionId }),
+            ...(processIds.length === 0 ? {} : { processIds }),
+          },
+        }),
   };
 }
 

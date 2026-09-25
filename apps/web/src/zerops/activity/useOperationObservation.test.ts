@@ -273,6 +273,33 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
   });
 });
 
+describe("deriveOperationObservation — a result's own ids pin the attributed process", () => {
+  const own = process({ id: "p-own", appVersion: { id: "av-own", status: "ACTIVE" } });
+  const later = process({
+    id: "p-later",
+    created: "2026-09-02T10:00:30.000Z",
+    appVersion: { id: "av-later", status: "BUILDING", build: { pipelineStart: "t1" } },
+  });
+
+  it.each([
+    { name: "no ids: the newest in the window", exact: undefined, expected: "p-later" },
+    {
+      name: "the shipped version: that process",
+      exact: { appVersionId: "av-own" },
+      expected: "p-own",
+    },
+  ])("$name", ({ exact, expected }) => {
+    const result = deriveOperationObservation(
+      baseInput({
+        target: target(exact === undefined ? {} : { exact }),
+        snapshot: { processes: [own, later], atMs: NOW },
+      }),
+      NOW,
+    );
+    expect(result.lastRead?.attribution.stepSource?.id).toBe(expected);
+  });
+});
+
 describe("deriveOperationObservation — the build log a card keeps showing", () => {
   const query = { buildServiceStackId: "svc-build", appVersionId: "av-1" };
   const history: Observation = {

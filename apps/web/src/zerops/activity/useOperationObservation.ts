@@ -13,6 +13,7 @@
 import { useMemo, useRef } from "react";
 
 import {
+  type AttributionInput,
   type AttributionResult,
   type ObservedKind,
   attributeActivity,
@@ -42,6 +43,8 @@ export interface ObservationTarget {
   readonly startedAtMs: number;
   /** Operation phase === "running" — a BUILD_TRIGGERED result is still running. */
   readonly running: boolean;
+  /** The ids the result named (`AttributionInput.exact`) — present once it named any. */
+  readonly exact?: AttributionInput["exact"];
 }
 
 export interface OperationObservation {
@@ -134,6 +137,7 @@ export function deriveOperationObservation(
       serviceIds: input.serviceIds,
       startedAtMs: target.startedAtMs,
       kind: target.kind,
+      ...(target.exact === undefined ? {} : { exact: target.exact }),
     });
     if (attribution.projectMismatch) {
       unavailableReason = "project-mismatch";

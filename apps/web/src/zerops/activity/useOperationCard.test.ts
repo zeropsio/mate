@@ -133,6 +133,27 @@ describe("observationTargetFor — building the ObservationTarget from an operat
     expect(target?.running).toBe(false);
   });
 
+  it.each([
+    { name: "nothing named yet", fields: {}, exact: undefined },
+    {
+      name: "the version a deploy shipped",
+      fields: { version: { id: "av-1", name: "abc123" } },
+      exact: { appVersionId: "av-1" },
+    },
+    {
+      name: "a version name alone pins nothing",
+      fields: { version: { name: "abc123" } },
+      exact: undefined,
+    },
+    {
+      name: "the processes an import started",
+      fields: { kind: "import" as const, processIds: ["p-1", "p-2"] },
+      exact: { processIds: ["p-1", "p-2"] },
+    },
+  ])("the result's own ids pin the observation: $name", ({ fields, exact }) => {
+    expect(observationTargetFor(operation({ phase: "done", ...fields }))?.exact).toEqual(exact);
+  });
+
   it("a batch deploy has no target: its per-target rows stand from birth to settle", () => {
     expect(observationTargetFor(operation({ batch: true, subject: "api, web" }))).toBeNull();
   });
