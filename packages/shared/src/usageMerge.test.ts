@@ -391,3 +391,231 @@ describe("mergeUsage", () => {
     expect(merged.daily[0]?.costUsd).toBe(10);
   });
 });
+
+describe("mergeUsage byEnvironment", () => {
+  const claudeAt = (hostId: string) => ({
+    provider: "claude" as const,
+    hostId,
+    homePath: `/${hostId}/.claude`,
+  });
+  const codexAt = (hostId: string) => ({
+    provider: "codex" as const,
+    hostId,
+    homePath: `/${hostId}/.codex`,
+  });
+  // bucket() carries 1160 tokens: 100 uncached + 1000 cached + 10 creation + 50 output.
+  const cases: readonly {
+    readonly name: string;
+    readonly environments: readonly EnvironmentUsage[];
+    readonly expected: readonly {
+      environmentId: string;
+      costUsd: number;
+      totalTokens: number;
+      records: number;
+      unpricedRecords: number;
+      sessions: number;
+      providers: readonly UsageProviderKind[];
+    }[];
+  }[] = [
+    {
+      name: "splits two environments, the costlier first",
+      environments: [
+        environment("env-a", summary([bucket()], [claudeAt("mac")])),
+        environment(
+          "env-b",
+          summary(
+            [
+              bucket({ provider: "codex", model: "gpt-5.6-sol", costUsd: 4, unpricedRecords: 2 }),
+              bucket({ costUsd: 20 }),
+            ],
+            [claudeAt("linux"), { ...codexAt("linux"), distinctSessions: 3 }],
+          ),
+        ),
+      ],
+      expected: [
+        {
+          environmentId: "env-b",
+          costUsd: 24,
+          totalTokens: 2320,
+          records: 10,
+          unpricedRecords: 2,
+          sessions: 4,
+          providers: ["claude", "codex"],
+        },
+        {
+          environmentId: "env-a",
+          costUsd: 10,
+          totalTokens: 1160,
+          records: 5,
+          unpricedRecords: 0,
+          sessions: 1,
+          providers: ["claude"],
+        },
+      ],
+    },
+    {
+      name: "counts a shared directory only to the environment that claims it",
+      environments: [
+        environment("env-a", {
+          ...summary([bucket()], [claudeAt("mac")]),
+          readAt: "2026-08-07T01:00:00.000Z",
+        }),
+        environment(
+          "env-b",
+          summary(
+            [
+              bucket({ costUsd: 50 }),
+              bucket({ provider: "codex", model: "gpt-5.6-sol", costUsd: 4 }),
+            ],
+            [claudeAt("mac"), codexAt("mac")],
+          ),
+        ),
+      ],
+      expected: [
+        {
+          environmentId: "env-a",
+          costUsd: 10,
+          totalTokens: 1160,
+          records: 5,
+          unpricedRecords: 0,
+          sessions: 1,
+          providers: ["claude"],
+        },
+        {
+          environmentId: "env-b",
+          costUsd: 4,
+          totalTokens: 1160,
+          records: 5,
+          unpricedRecords: 0,
+          sessions: 1,
+          providers: ["codex"],
+        },
+      ],
+    },
+    {
+      name: "leaves out a stale environment",
+      environments: [
+        environment("env-a", summary([bucket()], [claudeAt("mac")])),
+        environment(
+          "env-b",
+          summary([bucket({ costUsd: 99 })], [claudeAt("linux")], USAGE_CONTRACT_VERSION - 2),
+        ),
+      ],
+      expected: [
+        {
+          environmentId: "env-a",
+          costUsd: 10,
+          totalTokens: 1160,
+          records: 5,
+          unpricedRecords: 0,
+          sessions: 1,
+          providers: ["claude"],
+        },
+      ],
+    },
+    {
+      name: "leaves out environments with no buckets of their own",
+      environments: [
+        environment("env-a", {
+          ...summary([bucket()], [claudeAt("mac")]),
+          readAt: "2026-08-07T01:00:00.000Z",
+        }),
+        // Every bucket duplicates env-a's directory.
+        environment("env-b", summary([bucket()], [claudeAt("mac")])),
+        // Owns a directory, but it holds no usage.
+        environment("env-c", summary([], [{ ...claudeAt("linux"), distinctSessions: 0 }])),
+      ],
+      expected: [
+        {
+          environmentId: "env-a",
+          costUsd: 10,
+          totalTokens: 1160,
+          records: 5,
+          unpricedRecords: 0,
+          sessions: 1,
+          providers: ["claude"],
+        },
+      ],
+    },
+    {
+      name: "is empty with no environments",
+      environments: [],
+      expected: [],
+    },
+  ];
+
+  it.each(cases)("$name", ({ environments, expected }) => {
+    const merged = mergeUsage(environments, USAGE_CONTRACT_VERSION);
+
+    expect(merged.byEnvironment.map(({ costShare: _c, tokenShare: _t, ...rest }) => rest)).toEqual(
+      expected,
+    );
+
+    const sum = (pick: (row: (typeof merged.byEnvironment)[number]) => number) =>
+      merged.byEnvironment.reduce((total, row) => total + pick(row), 0);
+    expect(sum((row) => row.costUsd)).toBeCloseTo(merged.costUsd, 9);
+    expect(sum((row) => row.totalTokens)).toBe(merged.totalTokens);
+    expect(sum((row) => row.records)).toBe(merged.records);
+    expect(sum((row) => row.sessions)).toBe(merged.sessions);
+    expect(sum((row) => row.unpricedRecords)).toBe(
+      merged.models.reduce((total, model) => total + model.unpricedRecords, 0),
+    );
+    if (merged.byEnvironment.length > 0) {
+      expect(sum((row) => row.costShare)).toBeCloseTo(1, 9);
+      expect(sum((row) => row.tokenShare)).toBeCloseTo(1, 9);
+    }
+  });
+
+  it.each([
+    {
+      name: "shares follow cost and tokens separately",
+      costs: [30, 10],
+      tokenScale: [1, 3],
+      expected: [
+        { environmentId: "env-a", costShare: 0.75, tokenShare: 0.25 },
+        { environmentId: "env-b", costShare: 0.25, tokenShare: 0.75 },
+      ],
+    },
+    {
+      name: "cost share is 0 when nothing was priced",
+      costs: [0, 0],
+      tokenScale: [3, 1],
+      expected: [
+        { environmentId: "env-a", costShare: 0, tokenShare: 0.75 },
+        { environmentId: "env-b", costShare: 0, tokenShare: 0.25 },
+      ],
+    },
+  ])("$name", ({ costs, tokenScale, expected }) => {
+    const merged = mergeUsage(
+      ["env-a", "env-b"].map((id, index) =>
+        environment(
+          id,
+          summary(
+            [
+              bucket({
+                costUsd: costs[index] ?? 0,
+                totals: {
+                  uncachedInputTokens: 100 * (tokenScale[index] ?? 0),
+                  cachedInputTokens: 0,
+                  cacheCreationTokens: 0,
+                  outputTokens: 0,
+                  reasoningTokens: 0,
+                },
+              }),
+            ],
+            [claudeAt(id)],
+          ),
+        ),
+      ),
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(
+      merged.byEnvironment.map(({ environmentId, costShare, tokenShare }) => ({
+        environmentId,
+        costShare,
+        tokenShare,
+      })),
+    ).toEqual(expected);
+  });
+});

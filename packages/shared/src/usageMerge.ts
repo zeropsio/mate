@@ -75,6 +75,22 @@ export interface CostQuality {
   readonly cacheSavingsUsd: number;
 }
 
+/** One environment's own share of the merge, after de-duplication. */
+export interface EnvironmentTotals {
+  readonly environmentId: EnvironmentId;
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly records: number;
+  readonly unpricedRecords: number;
+  readonly sessions: number;
+  /** Of the merged `costUsd`; 0 when that total is 0. */
+  readonly costShare: number;
+  /** Of the merged `totalTokens`; 0 when that total is 0. */
+  readonly tokenShare: number;
+  /** Providers with buckets in this environment, costliest first. */
+  readonly providers: readonly UsageProviderKind[];
+}
+
 export interface MergedUsage {
   readonly costUsd: number;
   readonly uncachedInputTokens: number;
@@ -94,6 +110,11 @@ export interface MergedUsage {
   readonly duplicateSources: readonly string[];
   readonly contributingEnvironments: readonly EnvironmentId[];
   readonly staleEnvironments: readonly EnvironmentId[];
+  /**
+   * Each contributing environment's own share, after de-duplication; stale and
+   * fully-duplicate environments are absent. Sorted by cost desc, then tokens desc.
+   */
+  readonly byEnvironment: readonly EnvironmentTotals[];
 }
 
 /**
@@ -217,6 +238,7 @@ const EMPTY_MERGED: MergedUsage = {
   duplicateSources: [],
   contributingEnvironments: [],
   staleEnvironments: [],
+  byEnvironment: [],
 };
 
 /**
@@ -291,13 +313,35 @@ export function mergeUsage(
     }
   >();
   const contributingEnvironments: EnvironmentId[] = [];
+  const environmentAccumulator: {
+    environmentId: EnvironmentId;
+    costUsd: number;
+    totalTokens: number;
+    records: number;
+    unpricedRecords: number;
+    sessions: number;
+    providers: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  }[] = [];
 
   for (const environment of current) {
     const { buckets, sessionsByProvider } = ownedContribution(environment, ownerByFingerprint);
-    if (buckets.length > 0) contributingEnvironments.push(environment.environmentId);
+    const own = {
+      environmentId: environment.environmentId,
+      costUsd: 0,
+      totalTokens: 0,
+      records: 0,
+      unpricedRecords: 0,
+      sessions: 0,
+      providers: new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>(),
+    };
+    if (buckets.length > 0) {
+      contributingEnvironments.push(environment.environmentId);
+      environmentAccumulator.push(own);
+    }
 
     for (const [providerKind, providerSessions] of sessionsByProvider) {
       sessions += providerSessions;
+      own.sessions += providerSessions;
       if (providerSessions === 0) continue;
       const provider = providerAccumulator.get(providerKind) ?? {
         costUsd: 0,
@@ -322,6 +366,15 @@ export function mergeUsage(
       records += bucket.records;
       unpricedRecords += bucket.unpricedRecords;
       if (bucket.costSource === "providerReported") providerReportedRecords += bucket.records;
+
+      own.costUsd += bucket.costUsd;
+      own.totalTokens += tokens;
+      own.records += bucket.records;
+      own.unpricedRecords += bucket.unpricedRecords;
+      const ownProvider = own.providers.get(bucket.provider) ?? { costUsd: 0, totalTokens: 0 };
+      ownProvider.costUsd += bucket.costUsd;
+      ownProvider.totalTokens += tokens;
+      own.providers.set(bucket.provider, ownProvider);
 
       const provider = providerAccumulator.get(bucket.provider) ?? {
         costUsd: 0,
@@ -422,6 +475,27 @@ export function mergeUsage(
     a.hourStart.localeCompare(b.hourStart),
   );
 
+  const byEnvironment: EnvironmentTotals[] = environmentAccumulator
+    .map((totals) => ({
+      environmentId: totals.environmentId,
+      costUsd: totals.costUsd,
+      totalTokens: totals.totalTokens,
+      records: totals.records,
+      unpricedRecords: totals.unpricedRecords,
+      sessions: totals.sessions,
+      costShare: costUsd === 0 ? 0 : totals.costUsd / costUsd,
+      tokenShare: totalTokens === 0 ? 0 : totals.totalTokens / totalTokens,
+      providers: [...totals.providers.entries()]
+        .sort(([, a], [, b]) => b.costUsd - a.costUsd || b.totalTokens - a.totalTokens)
+        .map(([provider]) => provider),
+    }))
+    .sort(
+      (a, b) =>
+        b.costUsd - a.costUsd ||
+        b.totalTokens - a.totalTokens ||
+        a.environmentId.localeCompare(b.environmentId),
+    );
+
   return {
     costUsd,
     uncachedInputTokens,
@@ -446,5 +520,6 @@ export function mergeUsage(
     duplicateSources: duplicates,
     contributingEnvironments,
     staleEnvironments,
+    byEnvironment,
   };
 }
