@@ -1,5 +1,9 @@
-/** delete / scale / manage / env — no `payloads.ts` decoder, just a message document. */
+/**
+ * delete / scale / manage / env — no `payloads.ts` card, just a message
+ * document plus the process outcome `decodeProcessOutcome` reads off it.
+ */
 import { readString } from "../../cards/decode.ts";
+import { decodeProcessOutcome, type ZeropsProcessOutcome } from "../../cards/payloads.ts";
 import { operationClosing } from "../../operations/phrases.ts";
 import type { ZeropsCall } from "../types.ts";
 import {
@@ -9,6 +13,8 @@ import {
   decodeCall,
   detailField,
   errorInfoFor,
+  explanationField,
+  failedCallReason,
   firstLine,
   firstParagraph,
   gatedStatusWord,
@@ -49,6 +55,8 @@ export function buildSimpleFields(
   const subject = readSimpleSubject(call.input, decoded.document) ?? "the service";
   const { voice, voiceSource } = mateVoiceFor(kind, subject);
 
+  const outcome =
+    decoded.document !== undefined ? decodeProcessOutcome(decoded.document) : undefined;
   const rawMessage =
     decoded.document !== undefined ? readString(decoded.document.message) : undefined;
   const summary = decoded.document !== undefined ? readString(decoded.document.summary) : undefined;
@@ -88,11 +96,29 @@ export function buildSimpleFields(
     links: [],
     ...detailField([
       !messageUsedAsClosing ? rawMessage : undefined,
+      outcome?.nextActions,
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
       decoded.document === undefined ? undecodedDetail(call) : undefined,
     ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
+    ...(errorInfo !== undefined
+      ? explanationField(failedCallReason(decoded, errorInfo))
+      : explanationField(outcomeReason(decoded.document, outcome))),
   };
+}
+
+/** The platform's reason for a failed process, else zcp's own word on a process it stopped waiting for. */
+function outcomeReason(
+  document: Record<string, unknown> | undefined,
+  outcome: ZeropsProcessOutcome | undefined,
+): string | undefined {
+  if (outcome?.process?.status === "FAILED") {
+    return outcome.process.failReason ?? readString(document?.message);
+  }
+  if (outcome?.timedOut === true) {
+    return readString(document?.message) ?? readString(document?.warning);
+  }
+  return undefined;
 }

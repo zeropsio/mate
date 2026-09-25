@@ -76,12 +76,6 @@ export interface FlowPullRequest {
   readonly merged: boolean;
   /** When it landed — the moment a timeline places it. Absent unless `merged`. */
   readonly mergedAt: string | undefined;
-  /**
-   * The commit it landed on main as (Gitea's `merge_commit_sha`), whole: a
-   * stop running that commit is running this change, so the menu names the
-   * change by its title rather than by a hash. Absent unless `merged`.
-   */
-  readonly mergeCommit?: string;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
   /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
@@ -125,9 +119,6 @@ export function flowPullRequest(input: {
     mergeability: input.mergeability,
     merged: pull.merged === true,
     mergedAt: pull.merged_at,
-    ...(pull.merged === true && typeof pull.merge_commit_sha === "string"
-      ? { mergeCommit: pull.merge_commit_sha }
-      : {}),
     headSha: pull.head?.sha,
     baseBranch: pull.base?.ref ?? FALLBACK_BASE,
     line,

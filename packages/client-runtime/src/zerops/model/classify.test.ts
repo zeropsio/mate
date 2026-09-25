@@ -167,14 +167,7 @@ describe("classifyZeropsCall — dev_server and browser", () => {
 });
 
 describe("classifyZeropsCall — generic zerops_* tools", () => {
-  const cases = [
-    "zerops_discover",
-    "zerops_knowledge",
-    "zerops_events",
-    "zerops_logs",
-    "zerops_process",
-    "zerops_yml_exists",
-  ];
+  const cases = ["zerops_knowledge", "zerops_yml_exists"];
   for (const toolName of cases) {
     it(`is generic for ${toolName}`, () => {
       expect(classifyZeropsCall(toolName, {}, "completed")).toBe("generic");
@@ -182,8 +175,20 @@ describe("classifyZeropsCall — generic zerops_* tools", () => {
   }
 
   it("is a card when a generic zerops_* tool call fails", () => {
-    expect(classifyZeropsCall("zerops_discover", {}, "failed")).toBe("card");
+    expect(classifyZeropsCall("zerops_knowledge", {}, "failed")).toBe("card");
   });
+});
+
+describe("classifyZeropsCall — read tools", () => {
+  const tools = ["zerops_discover", "zerops_events", "zerops_logs", "zerops_process"];
+  const statuses = ["inProgress", "completed", "failed", "interrupted"] as const;
+  for (const toolName of tools) {
+    for (const status of statuses) {
+      it(`is a card for ${toolName} ${status}, from its name alone`, () => {
+        expect(classifyZeropsCall(toolName, {}, status)).toBe("card");
+      });
+    }
+  }
 });
 
 describe("TIMELINE_HIDDEN_TOOL_NAMES", () => {

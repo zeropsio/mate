@@ -9,7 +9,13 @@
  * Never render a raw enum in a label: every raw status a card shows goes
  * through `statusWord` first.
  */
-import type { ZeropsOperationKind, ZeropsOperationPhase } from "../model/types.ts";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+
+import type {
+  ZeropsOperationKind,
+  ZeropsOperationPhase,
+  ZeropsOperationStepState,
+} from "../model/types.ts";
 
 export function sentenceCase(raw: string): string {
   const words = raw.trim().toLowerCase().replace(/[_-]+/g, " ").split(/\s+/).filter(Boolean);
@@ -57,11 +63,6 @@ export function statusWord(raw: string): string {
   return sentenceCase(raw);
 }
 
-/** "attempt 3" for a folded retry chain (R8) — `undefined` at a single attempt, never rendered. */
-export function attemptWord(attempts: number): string | undefined {
-  return attempts > 1 ? `attempt ${attempts}` : undefined;
-}
-
 const UPPERCASE_TOKENS: ReadonlySet<string> = new Set(["http", "https", "url", "ssh", "db"]);
 
 /** `service_running` → `"Service running"`, `http_root` → `"HTTP root"`. */
@@ -77,18 +78,120 @@ export function humanizeToolName(toolName: string): string {
   return sentenceCase(toolName.replace(/^zerops_/, ""));
 }
 
+/** "1 error", "3 warnings" — a count with its noun. */
+export function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** `stack.enableSubdomainAccess` → `"Enable subdomain access"` — a platform process's action, never its raw name. */
+export function processActionWord(actionName: string): string {
+  const action = actionName.slice(actionName.lastIndexOf(".") + 1);
+  return sentenceCase(action.replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+}
+
+/**
+ * A platform process (`ProcessStatusEnum`) or app-version status as every
+ * card shows it — a deploy's secondary row, a process card's step, an events
+ * row: the row's state, its dot's tone (the state's own, as `ProcessSteps`
+ * draws it) and its word.
+ */
+export interface PlatformStatus {
+  readonly state: ZeropsOperationStepState;
+  readonly tone: ServiceStatusToneId;
+  readonly word: string;
+}
+
+const STATE_TONE: Readonly<Record<ZeropsOperationStepState, ServiceStatusToneId>> = {
+  queued: "off",
+  running: "busy",
+  done: "ok",
+  failed: "failed",
+};
+
+/** `ProcessStatusEnum` in words; a cancelled process was stopped, not failed. */
+const PROCESS_STATUS: Readonly<
+  Record<string, { readonly state: ZeropsOperationStepState; readonly word: string }>
+> = {
+  PENDING: { state: "queued", word: "Queued" },
+  RUNNING: { state: "running", word: "Running" },
+  ROLLBACKING: { state: "running", word: "Rolling back" },
+  CANCELING: { state: "running", word: "Cancelling" },
+  FINISHED: { state: "done", word: "Done" },
+  FAILED: { state: "failed", word: "Failed" },
+  CANCELED: { state: "queued", word: "Cancelled" },
+};
+
+/** App-version states still in flight whose `statusWord` is not already "Running". */
+const IN_FLIGHT_APP_VERSION_STATUSES: ReadonlySet<string> = new Set([
+  "UPLOADING",
+  "PREPARING_RUNTIME",
+]);
+
+export function platformStatus(raw: string): PlatformStatus {
+  const known = PROCESS_STATUS[raw];
+  const word = known?.word ?? statusWord(raw);
+  const state: ZeropsOperationStepState =
+    known?.state ??
+    (word === "Failed" || /FAIL/u.test(raw)
+      ? "failed"
+      : word === "Done"
+        ? "done"
+        : word === "Running" || IN_FLIGHT_APP_VERSION_STATUSES.has(raw)
+          ? "running"
+          : "queued");
+  return { state, tone: STATE_TONE[state], word };
+}
+
+/**
+ * An operation's tone — its card's dot and edge, and every summary of it
+ * (the turn tally): running → busy, failed → failed; uncertain, or a
+ * settled operation with a failed step → attention; else ok.
+ */
+export function operationTone(operation: {
+  readonly phase: ZeropsOperationPhase;
+  readonly steps: ReadonlyArray<{ readonly state: ZeropsOperationStepState }>;
+}): ServiceStatusToneId {
+  if (operation.phase === "running") {
+    return "busy";
+  }
+  if (operation.phase === "failed") {
+    return "failed";
+  }
+  if (operation.phase === "uncertain") {
+    return "attention";
+  }
+  return operation.steps.some((step) => step.state === "failed") ? "attention" : "ok";
+}
+
 export interface OperationStatusWordContext {
   readonly resultStatus?: string | undefined;
   readonly action?: string | undefined;
   /** `devServer` only: the decoded card's own `running` field. */
   readonly running?: boolean | undefined;
+  /** `process` only: what the processes it read came to, when not simply done. */
+  readonly processOutcome?: "failed" | "timedOut" | "canceled" | undefined;
 }
+
+const PROCESS_OUTCOME_WORD: Readonly<Record<"failed" | "timedOut" | "canceled", string>> = {
+  failed: "Process failed",
+  timedOut: "Still running",
+  canceled: "Cancelled",
+};
 
 const PAST_PARTICIPLE: Readonly<Record<string, string>> = {
   delete: "Deleted",
   scale: "Scaled",
   manage: "Managed",
   env: "Updated",
+};
+
+/** A dev server call in flight, by its action — an unknown or unnamed one is only "Working". */
+const DEV_SERVER_RUNNING_WORD: Readonly<Record<string, string>> = {
+  start: "Starting",
+  restart: "Restarting",
+  stop: "Stopping",
+  status: "Checking",
+  logs: "Reading",
 };
 
 /** The label of a link to the project on the Zerops dashboard. */
@@ -149,13 +252,27 @@ export function operationStatusWord(
       case "subdomain":
         return context.action === "disable" ? "Disabling" : "Enabling";
       case "delete":
+        return "Deleting";
       case "scale":
+        return "Scaling";
       case "manage":
+        return "Managing";
       case "env":
+        return "Updating";
       case "devServer":
-        return "Working";
+        return DEV_SERVER_RUNNING_WORD[context.action ?? ""] ?? "Working";
       case "browser":
         return "Checking";
+      case "logs":
+      case "events":
+      case "discover":
+        return "Reading";
+      case "process":
+        return context.action === "wait"
+          ? "Waiting"
+          : context.action === "cancel"
+            ? "Cancelling"
+            : "Checking";
       case "bootstrap":
         return "In progress";
       case "error":
@@ -195,6 +312,15 @@ export function operationStatusWord(
       return context.running === false ? "Not running" : "Running";
     case "browser":
       return "Checked";
+    case "logs":
+    case "events":
+      return "Read";
+    case "discover":
+      return "Listed";
+    case "process":
+      return context.processOutcome === undefined
+        ? "Done"
+        : PROCESS_OUTCOME_WORD[context.processOutcome];
     case "bootstrap":
       return "Complete";
     case "error":
@@ -259,6 +385,14 @@ export function operationVoice(kind: ZeropsOperationKind, subject: string): stri
       return `Managing the dev server on ${subject}.`;
     case "browser":
       return `Checking ${subject}.`;
+    case "logs":
+      return `Reading the ${subject} log.`;
+    case "events":
+      return `Reading recent events of ${subject}.`;
+    case "process":
+      return `Following ${subject}.`;
+    case "discover":
+      return `Looking at ${subject}.`;
     case "bootstrap":
       return `Setting up ${subject}.`;
     case "error":
@@ -291,11 +425,6 @@ export interface OperationClosingContext {
   readonly failedRequestCount?: number | undefined;
 }
 
-/** "1 thing" vs "2 things" — the small plural forms these closings need. */
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
-
 function devServerClosing(context: OperationClosingContext): string {
   const host = context.hostname ?? "the dev server";
   if (context.action === "stop") {
@@ -322,8 +451,7 @@ function browserClosing(context: OperationClosingContext): string {
   return `checked ${target}. ${counts}.`;
 }
 
-export interface BrowserCondensedLineInput {
-  readonly url: string;
+export interface BrowserFiguresInput {
   readonly viewport?: { readonly width: number; readonly height: number };
   readonly media?: "dark" | "light";
   readonly stepCount: number;
@@ -333,7 +461,7 @@ export interface BrowserCondensedLineInput {
 }
 
 /** The viewport segment — `<w>×<h>[, dark]`, `dark` alone with no known viewport, or absent entirely. */
-function browserViewportSegment(input: BrowserCondensedLineInput): string | undefined {
+function browserViewportSegment(input: BrowserFiguresInput): string | undefined {
   if (input.viewport !== undefined) {
     const dimensions = `${input.viewport.width}×${input.viewport.height}`;
     return input.media === "dark" ? `${dimensions}, dark` : dimensions;
@@ -342,18 +470,19 @@ function browserViewportSegment(input: BrowserCondensedLineInput): string | unde
 }
 
 /**
- * The card's condensed line, under the viewport —
- * `opened <url> · <viewport w×h>[, dark] · <n> steps · <errors> errors, <failed requests> failed requests`.
- * `errors` folds `consoleErrorCount` and `pageErrorCount` into one figure —
- * `browserClosing`'s Details-disclosure text keeps them apart, this line
- * does not have the room.
+ * A browser check's figures, beside its thumbnail —
+ * `<viewport w×h>[, dark] · <n> steps · <errors> errors[ · <n> failed requests]`.
+ * The page is the card's subject, so the line never repeats it. `errors`
+ * folds `consoleErrorCount` and `pageErrorCount` into one figure and is
+ * always said, zero included; failed requests are named only when there are
+ * some. `browserClosing`'s text keeps all three apart.
  */
-export function browserCondensedLine(input: BrowserCondensedLineInput): string {
+export function browserFiguresLine(input: BrowserFiguresInput): string {
   const segments = [
-    `opened ${input.url}`,
     browserViewportSegment(input),
     plural(input.stepCount, "step"),
-    `${plural(input.consoleErrorCount + input.pageErrorCount, "error")}, ${plural(input.failedRequestCount, "failed request")}`,
+    plural(input.consoleErrorCount + input.pageErrorCount, "error"),
+    input.failedRequestCount > 0 ? plural(input.failedRequestCount, "failed request") : undefined,
   ].filter((segment): segment is string => segment !== undefined);
   return segments.join(" · ");
 }
@@ -413,6 +542,10 @@ export function operationClosing(
     case "scale":
     case "manage":
     case "env":
+    case "logs":
+    case "events":
+    case "process":
+    case "discover":
       return context.message ?? context.summary ?? "Finished.";
     case "devServer":
       return devServerClosing(context);

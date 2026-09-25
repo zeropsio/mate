@@ -391,9 +391,7 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
-  changeTitles,
   productionDistance,
-  runName,
   stageDistance,
   stageMarks,
   stageStandings,

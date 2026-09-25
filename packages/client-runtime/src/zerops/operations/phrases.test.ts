@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  attemptWord,
-  browserCondensedLine,
+  browserFiguresLine,
   browserLiveCaption,
   humanizeCheckName,
   humanizeToolName,
   operationStatusWord,
+  operationTone,
+  platformStatus,
+  processActionWord,
   sentenceCase,
   statusWord,
 } from "./phrases.ts";
@@ -86,13 +88,15 @@ describe("humanizeToolName", () => {
   });
 });
 
-describe("attemptWord — R8 retry count", () => {
-  it("is undefined for a single attempt", () => {
-    expect(attemptWord(1)).toBeUndefined();
-  });
-
-  it("reads 'attempt 3' for three folded attempts", () => {
-    expect(attemptWord(3)).toBe("attempt 3");
+describe("processActionWord — a platform process's action, in words", () => {
+  it.each([
+    { actionName: "stack.enableSubdomainAccess", word: "Enable subdomain access" },
+    { actionName: "stack.deploy", word: "Deploy" },
+    { actionName: "stack.updateUserData", word: "Update user data" },
+    { actionName: "stack.restart", word: "Restart" },
+    { actionName: "serviceStackRestart", word: "Service stack restart" },
+  ])("$actionName → $word", ({ actionName, word }) => {
+    expect(processActionWord(actionName)).toBe(word);
   });
 });
 
@@ -113,11 +117,13 @@ describe("operationStatusWord — running phase", () => {
     expect(operationStatusWord("mount", "running")).toBe("Mounting");
   });
 
-  it("delete/scale/manage/env running is Working", () => {
-    expect(operationStatusWord("delete", "running")).toBe("Working");
-    expect(operationStatusWord("scale", "running")).toBe("Working");
-    expect(operationStatusWord("manage", "running")).toBe("Working");
-    expect(operationStatusWord("env", "running")).toBe("Working");
+  it.each([
+    { kind: "delete", word: "Deleting" },
+    { kind: "scale", word: "Scaling" },
+    { kind: "manage", word: "Managing" },
+    { kind: "env", word: "Updating" },
+  ] as const)("$kind running names its own verb: $word", ({ kind, word }) => {
+    expect(operationStatusWord(kind, "running")).toBe(word);
   });
 
   it("bootstrap running is In progress", () => {
@@ -135,8 +141,15 @@ describe("operationStatusWord — running phase", () => {
     expect(operationStatusWord("subdomain", "running", { action: "disable" })).toBe("Disabling");
   });
 
-  it("devServer running is Working", () => {
-    expect(operationStatusWord("devServer", "running")).toBe("Working");
+  it.each([
+    { action: "start", word: "Starting" },
+    { action: "restart", word: "Restarting" },
+    { action: "stop", word: "Stopping" },
+    { action: "status", word: "Checking" },
+    { action: "logs", word: "Reading" },
+    { action: undefined, word: "Working" },
+  ])("devServer running with action $action is $word", ({ action, word }) => {
+    expect(operationStatusWord("devServer", "running", { action })).toBe(word);
   });
 
   it("browser running is Checking", () => {
@@ -203,65 +216,42 @@ describe("operationStatusWord — failed phase", () => {
   });
 });
 
-describe("browserCondensedLine", () => {
-  const base = {
-    url: "https://kanbandev-26a7.prg1.zerops.app",
-    stepCount: 4,
-    consoleErrorCount: 1,
-    pageErrorCount: 1,
-    failedRequestCount: 1,
-  };
-
-  it("joins the url, viewport with dark, step count and folded error/failed-request counts", () => {
-    expect(
-      browserCondensedLine({ ...base, viewport: { width: 1920, height: 1080 }, media: "dark" }),
-    ).toBe(
-      "opened https://kanbandev-26a7.prg1.zerops.app · 1920×1080, dark · 4 steps · 2 errors, 1 failed request",
-    );
-  });
-
-  it("omits the dark suffix for an explicit light media", () => {
-    expect(
-      browserCondensedLine({ ...base, viewport: { width: 1920, height: 1080 }, media: "light" }),
-    ).toBe(
-      "opened https://kanbandev-26a7.prg1.zerops.app · 1920×1080 · 4 steps · 2 errors, 1 failed request",
-    );
-  });
-
-  it("drops the viewport segment entirely when no viewport step was seen", () => {
-    expect(browserCondensedLine(base)).toBe(
-      "opened https://kanbandev-26a7.prg1.zerops.app · 4 steps · 2 errors, 1 failed request",
-    );
-  });
-
-  it("shows a bare 'dark' segment when media is known but the viewport size is not", () => {
-    expect(browserCondensedLine({ ...base, media: "dark" })).toBe(
-      "opened https://kanbandev-26a7.prg1.zerops.app · dark · 4 steps · 2 errors, 1 failed request",
-    );
-  });
-
-  it("singularizes a lone step, error and failed request", () => {
-    expect(
-      browserCondensedLine({
-        url: "https://kanbandev-26a7.prg1.zerops.app",
-        stepCount: 1,
-        consoleErrorCount: 1,
-        pageErrorCount: 0,
-        failedRequestCount: 1,
-      }),
-    ).toBe("opened https://kanbandev-26a7.prg1.zerops.app · 1 step · 1 error, 1 failed request");
-  });
-
-  it("zero errors and zero failed requests still render their counts", () => {
-    expect(
-      browserCondensedLine({
-        url: "https://kanbandev-26a7.prg1.zerops.app",
-        stepCount: 2,
-        consoleErrorCount: 0,
-        pageErrorCount: 0,
-        failedRequestCount: 0,
-      }),
-    ).toBe("opened https://kanbandev-26a7.prg1.zerops.app · 2 steps · 0 errors, 0 failed requests");
+describe("browserFiguresLine", () => {
+  const clean = { stepCount: 7, consoleErrorCount: 0, pageErrorCount: 0, failedRequestCount: 0 };
+  it.each([
+    {
+      name: "a viewport, steps and no errors",
+      input: { ...clean, viewport: { width: 1440, height: 900 } },
+      line: "1440×900 · 7 steps · 0 errors",
+    },
+    {
+      name: "dark media beside the viewport",
+      input: { ...clean, viewport: { width: 1920, height: 1080 }, media: "dark" as const },
+      line: "1920×1080, dark · 7 steps · 0 errors",
+    },
+    {
+      name: "an explicit light media adds nothing",
+      input: { ...clean, viewport: { width: 1920, height: 1080 }, media: "light" as const },
+      line: "1920×1080 · 7 steps · 0 errors",
+    },
+    {
+      name: "dark with no known viewport",
+      input: { ...clean, media: "dark" as const },
+      line: "dark · 7 steps · 0 errors",
+    },
+    { name: "no viewport at all", input: clean, line: "7 steps · 0 errors" },
+    {
+      name: "console and page errors fold into one figure",
+      input: { ...clean, consoleErrorCount: 1, pageErrorCount: 1 },
+      line: "7 steps · 2 errors",
+    },
+    {
+      name: "failed requests are named only when there are some",
+      input: { ...clean, stepCount: 1, consoleErrorCount: 1, failedRequestCount: 1 },
+      line: "1 step · 1 error · 1 failed request",
+    },
+  ])("$name", ({ input, line }) => {
+    expect(browserFiguresLine(input)).toBe(line);
   });
 });
 
@@ -270,5 +260,51 @@ describe("browserLiveCaption", () => {
     expect(browserLiveCaption("https://kanbandev-26a7.prg1.zerops.app")).toBe(
       "Agent is verifying https://kanbandev-26a7.prg1.zerops.app.",
     );
+  });
+});
+
+describe("operationTone — one tone for a card and every summary of it", () => {
+  const step = (state: "done" | "failed") => ({
+    id: state,
+    label: state,
+    state,
+    stateLabel: state,
+  });
+  it.each([
+    { phase: "running" as const, steps: [], expected: "busy" },
+    { phase: "done" as const, steps: [step("done")], expected: "ok" },
+    { phase: "done" as const, steps: [step("done"), step("failed")], expected: "attention" },
+    { phase: "failed" as const, steps: [], expected: "failed" },
+    { phase: "uncertain" as const, steps: [], expected: "attention" },
+    { phase: "interrupted" as const, steps: [], expected: "ok" },
+  ])("$phase with $steps.length steps: $expected", ({ phase, steps, expected }) => {
+    expect(operationTone({ phase, steps })).toBe(expected);
+  });
+});
+
+describe("platformStatus — one reading of a platform process or app-version status", () => {
+  it.each([
+    { raw: "PENDING", expected: { state: "queued", tone: "off", word: "Queued" } },
+    { raw: "RUNNING", expected: { state: "running", tone: "busy", word: "Running" } },
+    { raw: "ROLLBACKING", expected: { state: "running", tone: "busy", word: "Rolling back" } },
+    { raw: "CANCELING", expected: { state: "running", tone: "busy", word: "Cancelling" } },
+    { raw: "FINISHED", expected: { state: "done", tone: "ok", word: "Done" } },
+    { raw: "FAILED", expected: { state: "failed", tone: "failed", word: "Failed" } },
+    { raw: "CANCELED", expected: { state: "queued", tone: "off", word: "Cancelled" } },
+    { raw: "ACTIVE", expected: { state: "done", tone: "ok", word: "Done" } },
+    { raw: "BUILD_FAILED", expected: { state: "failed", tone: "failed", word: "Failed" } },
+    { raw: "DEPLOY_FAILED", expected: { state: "failed", tone: "failed", word: "Deploy failed" } },
+    { raw: "UPLOADING", expected: { state: "running", tone: "busy", word: "Uploading" } },
+    { raw: "WAITING_TO_BUILD", expected: { state: "queued", tone: "off", word: "Waiting" } },
+    { raw: "SOMETHING_NEW", expected: { state: "queued", tone: "off", word: "Something new" } },
+  ])("$raw", ({ raw, expected }) => {
+    expect(platformStatus(raw)).toEqual(expected);
+  });
+
+  it("a process card's cancel words use the same spelling", () => {
+    expect([
+      operationStatusWord("process", "running", { action: "cancel" }),
+      operationStatusWord("process", "done", { processOutcome: "canceled" }),
+    ]).toEqual(["Cancelling", "Cancelled"]);
   });
 });

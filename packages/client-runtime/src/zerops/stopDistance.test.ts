@@ -5,9 +5,7 @@ import type { EnvironmentServiceState } from "./groupRows.ts";
 import { deployedVersion } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
-  changeTitles,
   productionDistance,
-  runName,
   stopRowLine,
   type StopRowLine,
   stageDistance,
@@ -402,90 +400,12 @@ describe("stageStandings", () => {
   });
 });
 
-describe("changeTitles", () => {
-  it.each<{
-    readonly name: string;
-    readonly contents: ReadonlyArray<ServiceChanges>;
-    readonly merged: ReadonlyArray<{
-      readonly mergeCommit?: string | undefined;
-      readonly title: string;
-    }>;
-    readonly expected: Record<string, string>;
-  }>([
-    {
-      name: "a commit's subject, keyed by its lower-case sha",
-      contents: [{ service: "app", commits: [change(C.toUpperCase(), " Cart badge ")] }],
-      merged: [],
-      expected: { [C]: "Cart badge" },
-    },
-    {
-      name: "a merged pull request's title names its merge commit",
-      contents: [],
-      merged: [{ mergeCommit: D, title: "Checkout in one step" }],
-      expected: { [D]: "Checkout in one step" },
-    },
-    {
-      name: "the pull request's title over the squash subject",
-      contents: [{ service: "app", commits: [change(D, "Checkout in one step (#4)")] }],
-      merged: [{ mergeCommit: D, title: "Checkout in one step" }],
-      expected: { [D]: "Checkout in one step" },
-    },
-    {
-      name: "no merge commit, a short one, or an empty title names nothing",
-      contents: [{ service: "app", commits: [change(B, "  ")] }],
-      merged: [
-        { title: "Unknown merge" },
-        { mergeCommit: C.slice(0, 7), title: "Short" },
-        { mergeCommit: A, title: " " },
-      ],
-      expected: {},
-    },
-  ])("$name", ({ contents, merged, expected }) => {
-    expect(Object.fromEntries(changeTitles({ contents, merged }))).toEqual(expected);
-  });
-});
-
-describe("runName", () => {
-  const titles = new Map([[C, "Cart badge"]]);
-
-  it.each<{
-    readonly name: string;
-    readonly appVersionName: string | undefined;
-    readonly expected: string | undefined;
-  }>([
-    { name: "the version's name first", appVersionName: `${C} v1.2.0 ada`, expected: "v1.2.0" },
-    { name: "else the change's title", appVersionName: C, expected: "Cart badge" },
-    {
-      name: "the title by the whole sha, whatever its case",
-      appVersionName: C.toUpperCase(),
-      expected: "Cart badge",
-    },
-    { name: "else the short commit", appVersionName: D, expected: "ddddddd" },
-    {
-      name: "a hand-made name is its own name",
-      appVersionName: "hotfix friday",
-      expected: "hotfix friday",
-    },
-    { name: "nothing runs, nothing named", appVersionName: undefined, expected: undefined },
-  ])("$name", ({ appVersionName, expected }) => {
-    expect(runName({ version: deployedVersion(appVersionName), titles })).toBe(expected);
-  });
-
-  it("names nothing without a version", () => {
-    expect(runName({ version: undefined, titles })).toBeUndefined();
-  });
-});
-
 describe("stopRowLine", () => {
-  const titles = new Map([
-    [C, "Cart badge"],
-    [D, "Checkout in one step"],
-  ]);
   const behind = { count: 2, changes: [change(D, "Checkout in one step (#4)"), change(B, " ")] };
   const opened = {
     count: 2,
     changes: [
-      { sha: D, title: "Checkout in one step" },
+      { sha: D, title: "Checkout in one step (#4)" },
       { sha: B, title: "bbbbbbb" },
     ],
   };
@@ -502,7 +422,7 @@ describe("stopRowLine", () => {
 
   it.each<{
     readonly name: string;
-    readonly input: Omit<Parameters<typeof stopRowLine>[0], "titles">;
+    readonly input: Parameters<typeof stopRowLine>[0];
     readonly expected: StopRowLine;
   }>([
     {
@@ -513,17 +433,27 @@ describe("stopRowLine", () => {
         releasing: undefined,
         distance: { count: 0, changes: [] },
       },
-      expected: { word: undefined, runs: "Cart badge", distance: undefined },
+      expected: { word: undefined, runs: "ccccccc", distance: undefined },
     },
     {
-      name: "behind: what it runs and the distance, titled",
+      name: "behind: what it runs and the distance, by each commit's subject",
       input: { tier: "stage", stop: stop("deployed"), releasing: undefined, distance: behind },
-      expected: { word: undefined, runs: "Cart badge", distance: opened },
+      expected: { word: undefined, runs: "ccccccc", distance: opened },
     },
     {
       name: "unknown distance shows none",
       input: { tier: "stage", stop: stop("deployed"), releasing: undefined, distance: undefined },
-      expected: { word: undefined, runs: "Cart badge", distance: undefined },
+      expected: { word: undefined, runs: "ccccccc", distance: undefined },
+    },
+    {
+      name: "a tag names a stage's run as it names production's",
+      input: {
+        tier: "stage",
+        stop: stop("deployed", `${C} v1.2.0 ada`),
+        releasing: undefined,
+        distance: undefined,
+      },
+      expected: { word: undefined, runs: "v1.2.0", distance: undefined },
     },
     {
       name: "a tag names production's run",
@@ -543,7 +473,7 @@ describe("stopRowLine", () => {
         releasing: undefined,
         distance: undefined,
       },
-      expected: { word: undefined, runs: "feat/cart · Cart badge", distance: undefined },
+      expected: { word: undefined, runs: "feat/cart · ccccccc", distance: undefined },
     },
     {
       name: "a branch-fed stage has no distance, whatever it is given",
@@ -553,7 +483,7 @@ describe("stopRowLine", () => {
         releasing: undefined,
         distance: behind,
       },
-      expected: { word: undefined, runs: "feat/cart · Cart badge", distance: undefined },
+      expected: { word: undefined, runs: "feat/cart · ccccccc", distance: undefined },
     },
     {
       name: "a stage declaring no branch says no source",
@@ -563,14 +493,14 @@ describe("stopRowLine", () => {
         releasing: undefined,
         distance: undefined,
       },
-      expected: { word: undefined, runs: "Cart badge", distance: undefined },
+      expected: { word: undefined, runs: "ccccccc", distance: undefined },
     },
     {
       name: "failed: the word first, the distance hidden",
       input: { tier: "stage", stop: stop("failed"), releasing: undefined, distance: behind },
       expected: {
         word: { kind: "failed", text: "Failed on" },
-        runs: "Cart badge",
+        runs: "ccccccc",
         distance: undefined,
       },
     },
@@ -616,7 +546,7 @@ describe("stopRowLine", () => {
       name: "a deploy names what it builds",
       input: { tier: "stage", stop: stop("deploying", D), releasing: undefined, distance: behind },
       expected: {
-        word: { kind: "deploying", text: "Deploying Checkout in one step…" },
+        word: { kind: "deploying", text: "Deploying ddddddd" },
         runs: undefined,
         distance: undefined,
       },
@@ -673,6 +603,6 @@ describe("stopRowLine", () => {
       },
     },
   ])("$name", ({ input, expected }) => {
-    expect(stopRowLine({ ...input, titles })).toEqual(expected);
+    expect(stopRowLine(input)).toEqual(expected);
   });
 });

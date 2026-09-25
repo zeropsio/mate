@@ -1,4 +1,9 @@
-export { browserLiveCaption, humanizeToolName } from "../operations/phrases.ts";
+export {
+  browserLiveCaption,
+  humanizeToolName,
+  operationTone,
+  plural,
+} from "../operations/phrases.ts";
 export { normalizedToolName } from "./partition.ts";
 export { compareCallRows, compareAnchors } from "./order.ts";
 export { collectZeropsCalls } from "./calls.ts";
@@ -10,7 +15,11 @@ export {
   TIMELINE_HIDDEN_TOOL_NAMES,
   type ZeropsCallClass,
 } from "./classify.ts";
-export { reduceZeropsOperations, type ZeropsOperationsReduction } from "./operations.ts";
+export {
+  isReadOperationKind,
+  reduceZeropsOperations,
+  type ZeropsOperationsReduction,
+} from "./operations.ts";
 export { composeSession } from "./session.ts";
 export {
   deriveZeropsThreadModel,
@@ -28,6 +37,7 @@ export type {
   ZeropsOperationPhase,
   ZeropsOperationStep,
   ZeropsOperationStepState,
+  ZeropsReadResult,
   ZeropsSessionView,
   ZeropsTimelineEntry,
   ZeropsWorkAttempt,

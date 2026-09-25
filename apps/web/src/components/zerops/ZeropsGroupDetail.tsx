@@ -1637,7 +1637,7 @@ export function ZeropsChangeDetailPage({
   /**
    * A change that has landed is not in the flow, which holds the open ones —
    * and it is exactly the change somebody links to. Read it from the forge,
-   * once, for this number only.
+   * for this number only.
    */
   const landed = useZeropsLandedChange(
     flow === undefined || open !== undefined

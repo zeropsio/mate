@@ -4,11 +4,12 @@
  * bootstrap sessions key `bootstrap:<founderCallId>` — a fixed identity
  * (§2.1 principle 1), never re-keyed once a session id decodes. See
  * `mate-session-model-2026-09-05.md` §2.3 R4-R9 and
- * `C-client-domain.md` §1.5.
+ * `C-client-domain.md` §1.5 — except R8 and R9: a same-turn retry is never
+ * folded into the card it retries, it is a card of its own, so no row leaves
+ * the timeline and no older card is rewritten; and no card is numbered.
  *
  * Pure and deterministic: same calls and context in, same operations out.
  */
-import { attemptWord } from "../operations/phrases.ts";
 import {
   classifyZeropsCall,
   isBootstrapRouteMenuStart,
@@ -38,6 +39,12 @@ import { buildErrorFields } from "./builders/errorKind.ts";
 import { buildImportFields, readImport } from "./builders/importCard.ts";
 import { buildMountFields } from "./builders/mount.ts";
 import {
+  buildDiscoverFields,
+  buildEventsFields,
+  buildLogsFields,
+  buildProcessFields,
+} from "./builders/readTools.ts";
+import {
   type BuiltCardFields,
   decodeCall,
   type OperationBuildContext,
@@ -60,7 +67,26 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_env: "env",
   zerops_dev_server: "devServer",
   zerops_browser: "browser",
+  zerops_logs: "logs",
+  zerops_events: "events",
+  zerops_process: "process",
+  zerops_discover: "discover",
 };
+
+/**
+ * The read tools' kinds: a read is how the agent looked, not an outcome, so
+ * its card folds with the turn's work once the turn settles.
+ */
+const READ_KINDS: ReadonlySet<ZeropsOperationKind> = new Set([
+  "logs",
+  "events",
+  "process",
+  "discover",
+]);
+
+export function isReadOperationKind(kind: ZeropsOperationKind): boolean {
+  return READ_KINDS.has(kind);
+}
 
 /**
  * The operation kind a "card"-classified call becomes — independent of
@@ -87,55 +113,11 @@ function anchorOf(call: ZeropsCall): { anchorAt: string; anchorActivityId: strin
   return { anchorAt: call.startedAt, anchorActivityId: call.anchorActivityId };
 }
 
-// --- standalone (per-call) groups: the retry fold (R8/R9) --------------------
+// --- standalone (per-call) operations ----------------------------------------
 
-interface StandaloneGroup {
+interface StandaloneCall {
   readonly kind: Exclude<ZeropsOperationKind, "bootstrap">;
-  readonly targetKey: string;
-  readonly calls: ZeropsCall[];
-}
-
-function targetKeyFor(call: ZeropsCall): string {
-  return (
-    readInputString(call.input, "targetService") ??
-    readInputString(call.input, "serviceHostname") ??
-    readInputString(call.input, "hostname") ??
-    JSON.stringify(call.input)
-  );
-}
-
-/**
- * The most recent call that produced or joined ANY card — bootstrap or
- * standalone — regardless of which typed collection it landed in. R8's join
- * requires "no other card operation lies between them" (C §1.5), so the
- * retry fold must see a bootstrap card that intervened between two same-turn
- * failures of one standalone kind+target, not just the last standalone call.
- */
-interface LastCardTouch {
-  readonly kind: ZeropsOperationKind;
-  readonly targetKey: string | undefined;
   readonly call: ZeropsCall;
-}
-
-function foldStandalone(
-  call: ZeropsCall,
-  kind: Exclude<ZeropsOperationKind, "bootstrap">,
-  targetKey: string,
-  groups: StandaloneGroup[],
-  lastCard: LastCardTouch | undefined,
-): void {
-  const joinsRetry =
-    call.status === "failed" &&
-    lastCard !== undefined &&
-    lastCard.kind === kind &&
-    lastCard.targetKey === targetKey &&
-    lastCard.call.status === "failed" &&
-    lastCard.call.turnId === call.turnId;
-  if (joinsRetry) {
-    groups[groups.length - 1]!.calls.push(call);
-    return;
-  }
-  groups.push({ kind, targetKey, calls: [call] });
 }
 
 const BUILDER_BY_KIND: Readonly<
@@ -151,6 +133,10 @@ const BUILDER_BY_KIND: Readonly<
   subdomain: buildSubdomainFields,
   devServer: buildDevServerFields,
   browser: buildBrowserFields,
+  logs: buildLogsFields,
+  events: buildEventsFields,
+  process: buildProcessFields,
+  discover: buildDiscoverFields,
   error: buildErrorFields,
 };
 
@@ -166,22 +152,18 @@ function buildFieldsFor(
 }
 
 function buildStandaloneOperation(
-  group: StandaloneGroup,
-  attempts: number,
+  { kind, call }: StandaloneCall,
   context: OperationBuildContext,
 ): ZeropsOperation {
-  const founder = group.calls[0]!;
-  const latest = group.calls[group.calls.length - 1]!;
-  const fields = buildFieldsFor(group.kind, latest, context);
-  const phase = fields.phaseOverride ?? phaseFor(latest.status);
-  const attemptWordText = attemptWord(attempts);
+  const fields = buildFieldsFor(kind, call, context);
+  const phase = fields.phaseOverride ?? phaseFor(call.status);
   return {
-    key: `op:${founder.id}`,
-    kind: group.kind,
+    key: `op:${call.id}`,
+    kind,
     phase,
-    ...anchorOf(founder),
-    ...(phase !== "running" ? { settledAt: latest.settledAt ?? latest.startedAt } : {}),
-    turnId: founder.turnId,
+    ...anchorOf(call),
+    ...(phase !== "running" ? { settledAt: call.settledAt ?? call.startedAt } : {}),
+    turnId: call.turnId,
     subject: fields.subject,
     kicker: fields.kicker,
     voice: fields.voice,
@@ -191,14 +173,18 @@ function buildStandaloneOperation(
     steps: fields.steps,
     links: fields.links,
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
-    callIds: group.calls.map((c) => c.id),
-    attempts,
-    ...(attemptWordText !== undefined ? { attemptWord: attemptWordText } : {}),
+    callIds: [call.id],
     ...(fields.target !== undefined ? { target: fields.target } : {}),
+    ...(fields.batch !== undefined ? { batch: fields.batch } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
     hasResult: fields.hasResult,
+    ...(fields.version !== undefined ? { version: fields.version } : {}),
+    ...(fields.processIds !== undefined ? { processIds: fields.processIds } : {}),
+    ...(fields.explanation !== undefined ? { explanation: fields.explanation } : {}),
     ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),
     ...(fields.browserSummary !== undefined ? { browserSummary: fields.browserSummary } : {}),
+    ...(fields.viewport !== undefined ? { viewport: fields.viewport } : {}),
+    ...(fields.readResult !== undefined ? { readResult: fields.readResult } : {}),
   };
 }
 
@@ -355,7 +341,6 @@ function buildBootstrapOperation(group: BootstrapGroup): ZeropsOperation {
     links: fields.links,
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
     callIds: [...group.members.map((m) => m.call.id), ...group.joinedImports.map((m) => m.call.id)],
-    attempts: group.members.length,
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     hasResult: fields.hasResult,
     session: {
@@ -386,16 +371,12 @@ export function reduceZeropsOperations(
     open: undefined,
     pendingIntent: undefined,
   };
-  const standaloneGroups: StandaloneGroup[] = [];
+  const standaloneCalls: StandaloneCall[] = [];
   const genericCalls: ZeropsCall[] = [];
 
-  // R9: `attempts` = 1 + earlier SETTLED calls of the same (toolName, target)
-  // across the whole thread — independent of the R8 join above, which only
-  // decides whether same-turn failures visually merge into one card.
-  const settledAttemptsSoFar = new Map<string, number>();
-  const attemptByCallId = new Map<string, number>();
-  let lastCard: LastCardTouch | undefined;
-
+  // Every call is a card of its own: a retry never merges into an earlier
+  // card, which would remove a row mid-turn and rewrite what an older card
+  // already showed.
   for (const call of ordered) {
     if (call.agentInternal) {
       continue;
@@ -420,7 +401,6 @@ export function reduceZeropsOperations(
     if (kind === "bootstrap") {
       foldBootstrap(call, bootstrapState);
       bootstrapState.pendingIntent = undefined;
-      lastCard = { kind, targetKey: undefined, call };
       continue;
     }
     if (
@@ -429,32 +409,15 @@ export function reduceZeropsOperations(
       importJoinsOpenGroup(call, bootstrapState.open)
     ) {
       bootstrapState.open.joinedImports.push({ call, decoded: decodeCall(call) });
-      lastCard = { kind: "bootstrap", targetKey: undefined, call };
       continue;
     }
 
-    const targetKey = targetKeyFor(call);
-    const attemptKey = `${call.toolName} ${targetKey}`;
-    const priorSettled = settledAttemptsSoFar.get(attemptKey) ?? 0;
-    attemptByCallId.set(call.id, priorSettled + 1);
-    if (call.status !== "inProgress") {
-      settledAttemptsSoFar.set(attemptKey, priorSettled + 1);
-    }
-
-    foldStandalone(call, kind, targetKey, standaloneGroups, lastCard);
-    lastCard = { kind, targetKey, call };
+    standaloneCalls.push({ kind, call });
   }
 
   const operations = [
     ...bootstrapState.groups.map(buildBootstrapOperation),
-    ...standaloneGroups.map((group) => {
-      const latest = group.calls[group.calls.length - 1]!;
-      return buildStandaloneOperation(
-        group,
-        attemptByCallId.get(latest.id) ?? group.calls.length,
-        context,
-      );
-    }),
+    ...standaloneCalls.map((standalone) => buildStandaloneOperation(standalone, context)),
   ].sort((a, b) => compareAnchors(a, b));
 
   return { operations, genericCalls };

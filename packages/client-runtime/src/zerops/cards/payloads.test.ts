@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsActivityResult } from "../activityResult.ts";
 import { readZeropsCardSource } from "./decode.ts";
 import { LIVE_DEPLOY_ERROR_RESULT, LIVE_VERIFY_RESULT } from "./liveFixtures.ts";
-import { decodeZeropsCard } from "./payloads.ts";
+import { decodeProcessOutcome, decodeZeropsCard } from "./payloads.ts";
 
 const result = (toolName: string, body: unknown): ZeropsActivityResult => ({
   toolName,
@@ -38,6 +38,7 @@ describe("decodeZeropsCard — deploy", () => {
       buildDuration: "48s",
       subdomainUrl: "https://kanbandev-26a7-3000.prg1.zerops.app",
       warnings: [],
+      targetServiceId: "svc-1",
     });
   });
 
@@ -80,6 +81,122 @@ describe("decodeZeropsCard — deploy", () => {
       status: "DEPLOYED",
       warnings: [],
     });
+  });
+});
+
+describe("decodeZeropsCard — deploy result ids", () => {
+  const base = { status: "DEPLOYED", targetService: "kanbandev" };
+  it.each([
+    {
+      name: "carries the appVersion id, version name and target service id",
+      extra: { appVersionId: "av-1", versionName: "abc123-dirty", targetServiceId: "svc-1" },
+      expected: { appVersionId: "av-1", versionName: "abc123-dirty", targetServiceId: "svc-1" },
+    },
+    {
+      name: "leaves out an id zcp sent empty (no appVersion before the build resolves)",
+      extra: { appVersionId: "", versionName: "abc123", targetServiceId: "svc-1" },
+      expected: { versionName: "abc123", targetServiceId: "svc-1" },
+    },
+  ])("$name", ({ extra, expected }) => {
+    expect(card("zerops_deploy", { ...base, ...extra })).toEqual({
+      kind: "deploy",
+      target: "kanbandev",
+      status: "DEPLOYED",
+      warnings: [],
+      ...expected,
+    });
+  });
+});
+
+describe("decodeZeropsCard — deploy failure evidence", () => {
+  const base = { status: "BUILD_FAILED", targetService: "kanbandev" };
+  it.each([
+    {
+      name: "carries the build log tail zcp attached",
+      extra: { buildLogs: ["npm ERR! missing", "exit 1"], buildLogsSource: "build_container" },
+      expected: { buildLogs: ["npm ERR! missing", "exit 1"] },
+    },
+    {
+      name: "carries the runtime log tail of a failed init",
+      extra: { runtimeLogs: ["Error: EADDRINUSE"] },
+      expected: { runtimeLogs: ["Error: EADDRINUSE"] },
+    },
+    {
+      name: "marks a build zcp stopped waiting for",
+      extra: { timedOut: true },
+      expected: { timedOut: true },
+    },
+    {
+      name: "carries zcp's next actions",
+      extra: { nextActions: "Fix package.json and redeploy." },
+      expected: { nextActions: "Fix package.json and redeploy." },
+    },
+    {
+      name: "leaves out empty logs and a false timeout",
+      extra: { buildLogs: [], runtimeLogs: [], timedOut: false },
+      expected: {},
+    },
+  ])("$name", ({ extra, expected }) => {
+    expect(card("zerops_deploy", { ...base, ...extra })).toEqual({
+      kind: "deploy",
+      target: "kanbandev",
+      status: "BUILD_FAILED",
+      warnings: [],
+      ...expected,
+    });
+  });
+});
+
+describe("decodeZeropsCard — deploy batch", () => {
+  /** `internal/ops/deploy_batch.go` `DeployBatchResult`, wrapped by `deployBatchResponse`. */
+  it("reads one entry per target, each with its own deploy result or kickoff error", () => {
+    expect(
+      card("zerops_deploy_batch", {
+        batchId: "batch-1",
+        entries: [
+          {
+            target: { sourceService: "apidev", targetService: "apistage" },
+            result: { status: "DEPLOYED", targetService: "apistage", appVersionId: "av-1" },
+            startedAt: "2026-09-01T00:00:00Z",
+            endedAt: "2026-09-01T00:01:00Z",
+          },
+          {
+            target: { targetService: "webstage" },
+            error: "ssh: connection refused",
+            startedAt: "2026-09-01T00:00:00Z",
+            endedAt: "2026-09-01T00:00:02Z",
+          },
+        ],
+        succeeded: 1,
+        failed: 1,
+        summary: "1/2 succeeded, 1 failed",
+        durationSeconds: 61.2,
+        workSessionState: { status: "open" },
+      }),
+    ).toEqual({
+      kind: "deployBatch",
+      summary: "1/2 succeeded, 1 failed",
+      entries: [
+        {
+          target: "apistage",
+          result: {
+            kind: "deploy",
+            target: "apistage",
+            status: "DEPLOYED",
+            appVersionId: "av-1",
+            warnings: [],
+          },
+        },
+        { target: "webstage", error: "ssh: connection refused" },
+      ],
+    });
+  });
+
+  it.each([
+    { name: "has no card without entries", body: { batchId: "b", entries: [] } },
+    { name: "has no card for an entry-less document", body: { summary: "no targets" } },
+  ])("$name", ({ body }) => {
+    expect(card("zerops_deploy_batch", body)).toBeUndefined();
   });
 });
 
@@ -154,10 +271,39 @@ describe("decodeZeropsCard — import, mount, subdomain, plan", () => {
       projectName: "z3-eval",
       summary: "3 services",
       services: [
-        { hostname: "kanbandev", status: "FINISHED", action: "stack.create" },
-        { hostname: "kanbanstage", status: "RUNNING", action: "stack.create" },
+        { hostname: "kanbandev", status: "FINISHED", action: "stack.create", processId: "p1" },
+        { hostname: "kanbanstage", status: "RUNNING", action: "stack.create", processId: "p2" },
       ],
       errors: [{ hostname: "db", message: "unknown type" }],
+    });
+  });
+
+  it.each([
+    {
+      name: "carries each process's id and service id",
+      process: { processId: "p1", serviceId: "svc-1" },
+      expected: { processId: "p1", serviceId: "svc-1" },
+    },
+    {
+      name: "leaves out ids zcp sent empty",
+      process: { processId: "", serviceId: "" },
+      expected: {},
+    },
+  ])("$name", ({ process, expected }) => {
+    expect(
+      card("zerops_import", {
+        processes: [
+          { actionName: "stack.create", status: "FINISHED", service: "kanbandev", ...process },
+        ],
+        nextActions: "Deploy kanbandev next.",
+      }),
+    ).toEqual({
+      kind: "import",
+      services: [
+        { hostname: "kanbandev", status: "FINISHED", action: "stack.create", ...expected },
+      ],
+      errors: [],
+      nextActions: "Deploy kanbandev next.",
     });
   });
 
@@ -543,5 +689,51 @@ describe("decodeZeropsCard — live payloads", () => {
 
     expect(decoded?.kind === "error" && decoded.message).toContain("\n");
     expect(decoded?.kind === "error" && decoded.message.split("\n").length).toBeGreaterThan(4);
+  });
+});
+
+describe("decodeProcessOutcome — delete / scale / manage / env", () => {
+  it.each([
+    {
+      name: "reads the process zcp waited on, its timeout and next actions",
+      document: {
+        process: {
+          id: "proc-1",
+          actionName: "stack.scale",
+          status: "FAILED",
+          created: "2026-09-01T00:00:00Z",
+          failReason: "quota exceeded",
+        },
+        timedOut: true,
+        nextActions: "Lower the RAM maximum.",
+      },
+      expected: {
+        process: {
+          id: "proc-1",
+          actionName: "stack.scale",
+          status: "FAILED",
+          failReason: "quota exceeded",
+        },
+        timedOut: true,
+        nextActions: "Lower the RAM maximum.",
+      },
+    },
+    {
+      name: "reads manage's process, embedded at the top level",
+      document: { id: "proc-2", actionName: "stack.restart", status: "FINISHED", timedOut: false },
+      expected: { process: { id: "proc-2", actionName: "stack.restart", status: "FINISHED" } },
+    },
+    {
+      name: "is empty for a message-only document",
+      document: { message: "Deleted kanbandev" },
+      expected: {},
+    },
+    {
+      name: "drops a process without an id",
+      document: { process: { actionName: "stack.delete", status: "FINISHED" } },
+      expected: {},
+    },
+  ])("$name", ({ document, expected }) => {
+    expect(decodeProcessOutcome(document)).toEqual(expected);
   });
 });

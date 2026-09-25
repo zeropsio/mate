@@ -13,13 +13,15 @@
  * as a dot, and *Merge* where Gitea allows it — folded behind a count once
  * there are more than a handful (`pullRequestsFolded`). Then the pull
  * requests that are nobody's Mate's, a person's own branch. Then the stops,
- * one row each and every one the same row: the last deploy as a badge, the
- * name, the one glyph that opens the public route (or offers them) and a
- * menu; under it what the stop runs and how far it is behind `main`.
+ * one line each and every one the same line (the owner, 2026-09-25): the
+ * last deploy as a badge on the rail, the role as a pill and the name only
+ * where it says more, what the stop runs, how far it is behind `main` as a
+ * `+N` chip, the verb, then the globe and the stop's menu in two slots that
+ * are always there.
  *
  * `main` is not a row. It is what every stop measures itself against, so
- * "N behind" means the same on a stage and on production, and a stage 0
- * behind above a production 3 behind says all three have run on the stage.
+ * `+N` means the same on a stage and on production, and a stage with none
+ * above a production at `+3` says all three have run on the stage.
  * The row stays quiet unless something differs, and the distance opens to the
  * changes it counts — the one place a project lists them.
  *
@@ -45,7 +47,6 @@ import {
   checkDotTone,
   assignCandidateMateTints,
   botDisplayName,
-  changeTitles,
   flowVerbLabel,
   buildZeropsGroupTree,
   environmentNameUnderGroup,
@@ -120,12 +121,9 @@ import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { Avatar, MateFace, StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
-import {
-  environmentRoleTag,
-  environmentRoleTagIsRedundant,
-  groupNameIsPlaceholder,
-} from "./ZeropsGroupTree.logic";
+import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
+import { stopNameSaysOnlyRole } from "./SidebarZeropsTree.logic";
 import {
   comingMateLine,
   groupFlowInputOf,
@@ -242,8 +240,7 @@ export interface SidebarProjectFlow {
   readonly merged?: ReadonlyArray<FlowPullRequest> | undefined;
   /**
    * What a release would carry, per production service: the count *Release*
-   * wears, its confirm's list, and the subjects that name each change where
-   * no merged pull request names it better.
+   * wears and its confirm's list.
    */
   readonly releaseContents?:
     | ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>
@@ -780,7 +777,7 @@ function ListingNotice({
  *
  * Its name collapses the project to this one line and opens it again, the
  * gesture every sidebar's section heading makes (the owner, 2026-09-25); the
- * project's own page is *Open project* in its menu. The chevron before the
+ * project's own page is *Open project* in its menu. The chevron after the
  * name says which way it will go — on hover, and always while collapsed, when
  * nothing else says there is more under it.
  *
@@ -835,7 +832,14 @@ export function ProjectHeader({
           bigger visual impact"). 15px, and the only thing in the column set
           that large. */}
       {onToggle === undefined ? (
-        <span className={cn(HEADING_CLASS, muted && HEADING_MUTED, placeholder && HEADING_UNNAMED)}>
+        <span
+          className={cn(
+            HEADING_CLASS,
+            "flex-1",
+            muted && HEADING_MUTED,
+            placeholder && HEADING_UNNAMED,
+          )}
+        >
           {title}
         </span>
       ) : (
@@ -846,13 +850,17 @@ export function ProjectHeader({
           onClick={onToggle}
           type="button"
         >
-          {/* The slot is always there, so nothing moves when it shows. */}
-          <DisclosureGlyph collapsed={collapsed} />
           <span
             className={cn(HEADING_CLASS, muted && HEADING_MUTED, placeholder && HEADING_UNNAMED)}
           >
             {title}
           </span>
+          {/* After the words, not before them: before, it pushed the title
+              18px right of the rail's own left edge, where every heading had
+              started (the owner, 2026-09-25: "everything jumps around
+              differently"). The title hugs its text, so the chevron follows
+              it. */}
+          <DisclosureGlyph collapsed={collapsed} />
         </button>
       )}
       {/* Hidden until hover keeps a list of five projects calm, but a finger
@@ -933,7 +941,7 @@ const NO_MISSING_TIERS: ReadonlyArray<MissingEnvironmentRow> = [];
 
 /** The hover affordances on a heading and on a stop: the same control. */
 const HEADING_CLASS =
-  "min-w-0 flex-1 truncate text-base leading-6 font-semibold tracking-tight text-sidebar-foreground";
+  "min-w-0 truncate text-base leading-6 font-semibold tracking-tight text-sidebar-foreground";
 const HEADING_MUTED = "text-[13px] font-medium tracking-normal text-sidebar-muted-foreground";
 const HEADING_UNNAMED = "font-normal text-sidebar-muted-foreground italic";
 
@@ -974,7 +982,9 @@ function MateRow<T extends RosterCandidate>({
       aria-current={active ? "true" : undefined}
       className={cn(
         // The wider gap is the face's: it overhangs the 20px spine column by
-        // 4px a side, and the owner's badge by as much again.
+        // 4px a side, and the owner's badge by as much again. It is also the
+        // menu's one text column — every stop and change row takes the same
+        // gap after the same 20px cell (the owner, 2026-09-25).
         "flex w-full min-w-0 cursor-pointer items-center gap-3.5 rounded-md px-2.5 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
         active
           ? "bg-sidebar-row-active text-sidebar-foreground"
@@ -1450,13 +1460,14 @@ function MergeVerb({
 }
 
 /**
- * *Release*, wearing how many changes it would put in front of people.
+ * *Release*, and only the word.
  *
  * The verb keeps its name: renaming it would cost the people who know exactly
- * what it means and buy the others only a different word to learn. The
- * changes themselves are production's distance, opened on its own line — the
- * one place the menu lists them (the owner, 2026-09-25); a hover listing them
- * too was a second copy nobody on a touch screen could reach.
+ * what it means and buy the others only a different word to learn. How many
+ * changes it would carry is the `+N` chip right before it, which opens to
+ * them — the one place the menu lists them (the owner, 2026-09-25); a count
+ * on the verb too was the same number twice on one line. The tag and what it
+ * carries are its accessible name, and its confirm spells them out.
  */
 function ReleaseVerb({
   contents,
@@ -1471,10 +1482,12 @@ function ReleaseVerb({
 }) {
   const [confirming, setConfirming] = useState(false);
   const summary = releaseContentsSummary(contents ?? []);
+  const sentence = releaseContentsSentence(summary);
   const verb = (
     <ZeropsMateVerb
-      count={summary.total}
-      description={releaseContentsSentence(summary)}
+      description={
+        [releaseTag, sentence].filter((part) => part !== undefined).join(", ") || undefined
+      }
       disabled={releasing}
       label={flowVerbLabel("release", releasing)}
       // Blue, not amber: work merged and waiting is in flight, not stuck.
@@ -1576,19 +1589,21 @@ const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null
  * to be one muted line after production, `↳ stage · follows main`, which said
  * where it was and never what it ran or whether it had the newest change.
  *
- * Two lines, like a Mate. The first is the badge, the name and the stop's
- * controls. The second answers where the newest change is: what the stop
- * runs — the version's **name** where Zerops has one, else the change's own
- * title, the commit only where nothing names it ("the commit hash should only
- * be a fallback", the owner, 2026-09-19) — then how far it is behind `main`,
- * then at most one verb. Quiet unless something differs: a stop in sync and
- * healthy says only what it runs; otherwise one word leads (`stopRowLine`).
- * What runs gives way first at 256px; the word, the distance and the verb
- * never shrink.
+ * One line, and no switch for another (the owner, 2026-09-25): the badge on
+ * the rail; the role as a pill, the name after it only where the name says
+ * more; then where the newest change is — what the stop runs, the version's
+ * **name** where Zerops has one, else its commit, the same on a stage as on
+ * production, with one word in front where something differs (`stopRowLine`)
+ * — then how far it is behind `main` as a `+N` chip; then *Release*; then two
+ * slots that are always there, the globe and the stop's menu, which shows on
+ * hover without moving anything. Never a change's title: a stage is not tied
+ * to a Mate, it deploys whatever is pushed to the branch its trigger watches,
+ * and "Mate: zitdev" on it read as that Mate's. What runs truncates first;
+ * the pill, the chip, the verb and the two slots never give way.
  *
- * The distance is the detail, opened: "3 behind" lists the three changes
- * under the stop, and under production each says whether the stage has run
- * it yet. Nothing about a stop is folded away any more — the project itself
+ * The chip is the detail, opened: `+3` lists the three changes under the
+ * stop, and under production each says whether the stage has run it yet.
+ * Nothing about a stop is folded away any more — the project itself
  * collapses instead.
  */
 function EnvironmentRows<T extends RosterCandidate>({
@@ -1613,12 +1628,6 @@ function EnvironmentRows<T extends RosterCandidate>({
   // Only a countdown reads the clock, and a stop's line carries none; the
   // time the rows were first drawn is enough.
   const [nowMs] = useState(Date.now);
-  // Each change named for a person: a merged pull request's title, else the
-  // subject it was committed under.
-  const titles = changeTitles({
-    contents: flow?.releaseContents ?? [],
-    merged: flow?.merged ?? [],
-  });
   return (
     // The stops belong to the project, not to the Mate they happen to follow.
     <ul className="flex flex-col" data-zerops-surface="sidebar-environment-rows">
@@ -1654,7 +1663,6 @@ function EnvironmentRows<T extends RosterCandidate>({
                 stop: flowStop,
                 releasing: tier === "production" ? flow?.releaseInFlight : undefined,
                 distance: flow?.distances?.get(projectId),
-                titles,
               });
         return (
           <StopRowItem
@@ -1713,6 +1721,29 @@ const WORD_CLASS: Record<StopWordKind, string> = {
 };
 
 /**
+ * A stop's role as its pill, and its own name after it only where the name
+ * says something the pill does not — `qa`, `stage 2`, `eu-west` — never
+ * `production` beside `prod` (the owner, 2026-09-25).
+ */
+function StopTitle({ name, tag }: { readonly name: string; readonly tag: string | null }) {
+  return (
+    <>
+      {tag === null ? null : <ZeropsRoleTag className="px-1" label={tag} />}
+      {stopNameSaysOnlyRole(tag, name) ? null : (
+        <span className="min-w-0 truncate text-sm leading-5 font-medium text-sidebar-foreground">
+          {name}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** The distance in words, for the chip that only says `+3`. */
+function distanceWords(count: number): string {
+  return `${String(count)} ${count === 1 ? "change" : "changes"} on main not here yet`;
+}
+
+/**
  * One listed stop: its row, and — opened from its distance — the changes it
  * does not run yet, one row each under it.
  *
@@ -1761,107 +1792,112 @@ function StopRowItem({
   return (
     <>
       <li
-        className="group/stop flex min-w-0 items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
+        className="group/stop flex h-7 min-w-0 items-center gap-3.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
         data-zerops-project={projectId}
         data-zerops-surface="sidebar-environment"
       >
         {/* Centred on the row, because the Mate face directly above it is:
             two neighbouring rows may not have two rules for their first
-            column. It was pinned to the first line, 11px high of centre. */}
+            column. The gap after it is the Mate row's, so what follows starts
+            on the Mates' text column — at `gap-2.5` it sat 4px left of theirs
+            (the owner, 2026-09-25: "everything jumps around differently"). */}
         <RailCell cap={listed ? undefined : railCap}>
           <StopBadge tone={badge.tone} word={badge.word} />
         </RailCell>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
-          <span className="flex min-w-0 items-center gap-2">
-            {/* A stop is named in the same hand as a Mate: it is a place the
-                work reaches, not a footnote under the ones who did it. */}
-            {onOpenStop === undefined ? (
-              <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium text-sidebar-foreground">
-                {name}
-              </span>
-            ) : (
-              <button
-                className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sm leading-5 font-medium text-sidebar-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-                onClick={onOpenStop}
-                type="button"
-              >
-                {name}
-              </button>
-            )}
-            {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
-              <ZeropsRoleTag label={tag} />
-            )}
-            {/* The two controls ride the name's line; the verb does not. It
-                was up here too, on the reading that this line "is short" —
-                true of `stage`, false of `production`, whose name had 43px
-                for the 68px it needs once a release is waiting and rendered
-                as `prod…` at the default 238px (measured 2026-09-20). */}
-            <span className="flex shrink-0 items-center gap-1">
-              <ZeropsRoutesMenu label={`Public access of ${projectName}`} routes={routes} />
-              <ZeropsStopMenu
-                name={name}
-                onOpenProject={onOpenProject}
-                onOpenStop={onOpenStop}
-                routes={routes}
-                stop={view}
-                triggerClassName={ROW_ACTION_CLASS}
-              />
+        {/* Gaps of 4px: at the menu's 208px a production waiting on
+            *Release* needs every one of them for its pill, its verb and the
+            two end slots. */}
+        <span className="flex min-w-0 flex-1 items-center gap-1 text-[11px] leading-4 text-sidebar-muted-foreground">
+          {/* The pill and the name are the way into the stop, as the name
+              alone was. */}
+          {onOpenStop === undefined ? (
+            <span className="flex min-w-0 shrink-0 items-center gap-1.5">
+              <StopTitle name={name} tag={tag} />
             </span>
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-sidebar-muted-foreground">
-            {word === undefined ? null : (
-              <span
-                className={cn(
-                  "shrink-0",
-                  WORD_CLASS[word.kind],
-                  // A placeholder waits a beat before it says anything, so a
-                  // quick answer never flickers "Checking…".
-                  checking && view.afterMs > 0 && "animate-zerops-appear",
-                )}
-                data-zerops-surface="sidebar-stop-word"
-                data-zerops-word-kind={word.kind}
-                style={
-                  checking && view.afterMs > 0 ? { animationDelay: `${view.afterMs}ms` } : undefined
+          ) : (
+            <button
+              className="flex max-w-[60%] min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm text-left underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+              data-zerops-surface="sidebar-stop-open"
+              onClick={onOpenStop}
+              type="button"
+            >
+              <StopTitle name={name} tag={tag} />
+            </button>
+          )}
+          {word === undefined ? null : (
+            <span
+              className={cn(
+                // The last thing on the line to give way, and only once what
+                // runs has: at 208px "Checking what runs here…" beside a pill
+                // and the two end slots does not fit whole, and a row may not
+                // run past its own edge.
+                "min-w-0 truncate",
+                WORD_CLASS[word.kind],
+                // A placeholder waits a beat before it says anything, so a
+                // quick answer never flickers "Checking…".
+                checking && view.afterMs > 0 && "animate-zerops-appear",
+              )}
+              data-zerops-surface="sidebar-stop-word"
+              data-zerops-word-kind={word.kind}
+              style={
+                checking && view.afterMs > 0 ? { animationDelay: `${view.afterMs}ms` } : undefined
+              }
+            >
+              {/* Checking says the platform's own words, which name a read
+                  that failed where there was one. */}
+              {checking ? view.line : word.text}
+            </span>
+          )}
+          {/* What is actually running here — the question the row never
+              answered (the owner, 2026-09-19: "nothing shows what version
+              they run"). It gives way first when room runs out, and only it:
+              the rest of the line is what a person acts on. */}
+          {runs === undefined ? null : onOpenStop === undefined ? (
+            <span
+              className="min-w-0 shrink-[1000] truncate"
+              data-zerops-surface="sidebar-environment-version"
+            >
+              {runs}
+            </span>
+          ) : (
+            <button
+              className="min-w-0 shrink-[1000] cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+              data-zerops-surface="sidebar-environment-version"
+              onClick={onOpenStop}
+              type="button"
+            >
+              {runs}
+            </button>
+          )}
+          {distance === undefined ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-expanded={listed}
+                    aria-label={distanceWords(distance.count)}
+                    className="inline-flex h-4 shrink-0 cursor-pointer items-center rounded-full bg-sidebar-row-active px-1.5 text-[10px] leading-none font-medium text-sidebar-foreground tabular-nums outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-sidebar-foreground aria-expanded:text-sidebar"
+                    data-zerops-surface="sidebar-stop-distance"
+                    onClick={() => {
+                      setOpen(!listed);
+                    }}
+                    type="button"
+                  />
                 }
               >
-                {/* Checking says the platform's own words, which name a read
-                    that failed where there was one. */}
-                {checking ? view.line : word.text}
-              </span>
-            )}
-            {/* What is actually running here — the question the row never
-                answered (the owner, 2026-09-19: "nothing shows what version
-                they run"). It gives way first: the rest of the line is what
-                a person acts on. */}
-            {runs === undefined ? null : onOpenStop === undefined ? (
-              <span className="min-w-0 truncate" data-zerops-surface="sidebar-environment-version">
-                {runs}
-              </span>
-            ) : (
-              <button
-                className="min-w-0 cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-                data-zerops-surface="sidebar-environment-version"
-                onClick={onOpenStop}
-                type="button"
-              >
-                {runs}
-              </button>
-            )}
-            {distance === undefined ? null : (
-              <button
-                aria-expanded={listed}
-                className="shrink-0 cursor-pointer rounded-sm tabular-nums underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-                data-zerops-surface="sidebar-stop-distance"
-                onClick={() => {
-                  setOpen(!listed);
-                }}
-                type="button"
-              >
-                {`${String(distance.count)} behind`}
-              </button>
-            )}
+                {`+${String(distance.count)}`}
+              </TooltipTrigger>
+              <TooltipPopup side="right">{distanceWords(distance.count)}</TooltipPopup>
+            </Tooltip>
+          )}
+          {/* The verb and the two end slots hold the row's end together, so
+              the globes stand in one column whether or not a verb is there.
+              2px between the verb and the globe: with 4px a production waiting
+              on *Release* ran 1px past the row at 208px (measured
+              2026-09-25). */}
+          <span className="ms-auto flex shrink-0 items-center gap-0.5">
             {/* What is merged and not live is worn by *Release*, which is the
-                thing that deals with it, on the line with the room for it. */}
+                thing that deals with it. */}
             {release === undefined ? null : (
               <ReleaseVerb
                 contents={release.releaseContents}
@@ -1870,6 +1906,35 @@ function StopRowItem({
                 releasing={release.releasing}
               />
             )}
+            {/* The row ends in two slots that are always there: the globe, and
+                the stop's menu. Reserved, so the globes stand in one column down
+                every stop and nothing moves when the menu shows — "the globe
+                jumping because of the dots is exactly the problematic detail"
+                (the owner, 2026-09-25). */}
+            <span className="flex shrink-0 items-center">
+              <span
+                className="flex w-5 shrink-0 justify-center"
+                data-zerops-surface="sidebar-stop-globe-slot"
+              >
+                <ZeropsRoutesMenu label={`Public access of ${projectName}`} routes={routes} />
+              </span>
+              {/* Invisible at rest, never gone: shown on hover and while anything
+                  in the row has focus, its own button included, so a keyboard
+                  reaches it. A finger never hovers, so a coarse pointer keeps it. */}
+              <span
+                className="flex w-5 shrink-0 justify-center opacity-0 transition-opacity group-focus-within/stop:opacity-100 group-hover/stop:opacity-100 pointer-coarse:opacity-100"
+                data-zerops-surface="sidebar-stop-menu-slot"
+              >
+                <ZeropsStopMenu
+                  name={name}
+                  onOpenProject={onOpenProject}
+                  onOpenStop={onOpenStop}
+                  routes={routes}
+                  stop={view}
+                  triggerClassName={ROW_ACTION_CLASS}
+                />
+              </span>
+            </span>
           </span>
         </span>
       </li>
@@ -1911,12 +1976,16 @@ function StopChangeRow({
   const shown = mark === undefined || mark === "none" ? undefined : STAGE_MARK[mark];
   return (
     <li
-      className="flex h-6 min-w-0 items-center gap-2.5 px-2.5 text-[11px] leading-4"
+      className="flex h-6 min-w-0 items-center gap-3.5 px-2.5 text-[11px] leading-4"
       data-zerops-stage-mark={mark ?? "none"}
       data-zerops-surface="sidebar-stop-change"
     >
       {/* The line runs on past a list under a stop that is not the last. */}
       <RailCell cap={railCap} />
+      {/* The title on the Mates' text column, the mark trailing it: a mark
+          slot in front pushed every title 24px past the names above (the
+          owner, 2026-09-25: "everything jumps around differently"). */}
+      <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{title}</span>
       <span className="flex w-3.5 shrink-0 items-center justify-center">
         {shown === undefined ? null : (
           <Tooltip>
@@ -1936,7 +2005,6 @@ function StopChangeRow({
           </Tooltip>
         )}
       </span>
-      <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{title}</span>
     </li>
   );
 }
@@ -1987,17 +2055,18 @@ function CreatingStopRow({
   return (
     <li
       aria-busy="true"
-      className="flex min-w-0 items-center gap-2.5 rounded-md px-2.5"
+      className="flex h-7 min-w-0 items-center gap-3.5 rounded-md px-2.5"
       data-zerops-project={member.projectId}
       data-zerops-surface="sidebar-environment-creating"
     >
       <RailCell cap={railCap}>
         <StopBadge tone="pending" word={line} />
       </RailCell>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
-        <span className="min-w-0 truncate text-sm leading-5 font-medium text-sidebar-foreground">
-          {member.name}
-        </span>
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <StopTitle
+          name={member.name}
+          tag={environmentRoleTag(tier === "production" ? "prod" : "stage")}
+        />
         <span className="min-w-0 truncate text-[11px] leading-4 text-sidebar-muted-foreground">
           {line}
         </span>
@@ -2018,7 +2087,7 @@ function DisclosureGlyph({ collapsed }: { readonly collapsed: boolean }) {
     <Glyph
       aria-hidden="true"
       className={cn(
-        "size-3.5 shrink-0 text-sidebar-muted-foreground transition-opacity",
+        "size-3 shrink-0 text-sidebar-muted-foreground transition-opacity",
         !collapsed &&
           "opacity-0 group-focus-within/project:opacity-100 group-hover/project:opacity-100 pointer-coarse:opacity-100",
       )}

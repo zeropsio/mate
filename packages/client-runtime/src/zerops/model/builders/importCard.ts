@@ -3,11 +3,14 @@ import type { ZeropsCall, ZeropsOperationStep } from "../types.ts";
 import {
   type BuiltCardFields,
   KIND_LABEL,
+  UNREPORTED_STEP_STATUS,
   buildStep,
   decodeCall,
   type DecodedEntry,
   detailField,
   errorInfoFor,
+  explanationField,
+  failedCallReason,
   firstLine,
   gatedStatusWord,
   mateVoiceFor,
@@ -58,6 +61,24 @@ export function readImport(decoded: DecodedEntry): ImportRead {
   };
 }
 
+/**
+ * The `services[].hostname` values of an inline import YAML (`content`), in
+ * its order — known from the call's start, so the card and the overlay name
+ * their targets before the result lands. A line reader, not a YAML parser: a
+ * hostname written in a shape it does not recognise is simply not known
+ * until the result names it. `filePath` imports carry no YAML to read.
+ */
+function importYamlHostnames(input: Record<string, unknown>): ReadonlyArray<string> {
+  const content = readString(input.content);
+  if (content === undefined) {
+    return [];
+  }
+  return content.split("\n").flatMap((line) => {
+    const hostname = line.match(/^\s*(?:-\s+)?hostname:\s*["']?([a-z0-9]+)["']?\s*(?:#.*)?$/)?.[1];
+    return hostname === undefined ? [] : [hostname];
+  });
+}
+
 export function buildImportFields(call: ZeropsCall): BuiltCardFields {
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
@@ -66,8 +87,24 @@ export function buildImportFields(call: ZeropsCall): BuiltCardFields {
   const basePhase = phaseFor(call.status);
   const phase =
     basePhase === "done" && read.steps.some((s) => s.state === "failed") ? "failed" : basePhase;
-  const subject = read.hostnames.length > 0 ? read.hostnames.join(", ") : "the services";
-  const target = read.hostnames[0];
+  const hostnames = [...new Set([...importYamlHostnames(call.input), ...read.hostnames])];
+  const processIds = (card?.services ?? []).flatMap((service) =>
+    service.processId === undefined ? [] : [service.processId],
+  );
+  const subject = hostnames.length > 0 ? hostnames.join(", ") : "the services";
+  const target = hostnames[0];
+  // A row once drawn never leaves: a host no result reports on, or the
+  // result neither reports nor names an error for, reads as the call's phase.
+  const steps = hostnames.map((hostname) => {
+    const reported = read.steps.find((step) => step.id === hostname);
+    if (reported !== undefined) {
+      return reported;
+    }
+    const error = card?.errors.find((entry) => entry.hostname === hostname);
+    return error === undefined
+      ? buildStep(hostname, hostname, UNREPORTED_STEP_STATUS[phase])
+      : buildStep(hostname, hostname, "FAILED", error.message);
+  });
   const { voice, voiceSource } = mateVoiceFor("import", subject);
 
   const closing =
@@ -95,16 +132,20 @@ export function buildImportFields(call: ZeropsCall): BuiltCardFields {
     voiceSource,
     statusWord: gatedStatusWord("import", phase, card !== undefined, call.resultText !== undefined),
     ...(closing !== undefined ? { closing } : {}),
-    steps: read.steps,
+    steps,
     links: [],
     ...detailField([
-      read.document !== undefined ? readString(read.document.nextActions) : undefined,
+      card?.nextActions,
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
       decoded.card === undefined ? undecodedDetail(call) : undefined,
     ]),
     ...(target !== undefined ? { target: { hostname: target } } : {}),
     hasResult: read.document !== undefined,
+    ...(processIds.length > 0 ? { processIds } : {}),
+    ...(errorInfo !== undefined
+      ? explanationField(failedCallReason(decoded, errorInfo))
+      : explanationField(read.errorFirstLine)),
     phaseOverride: phase,
   };
 }

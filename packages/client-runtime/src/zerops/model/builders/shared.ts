@@ -19,13 +19,17 @@ import {
   type OperationStatusWordContext,
 } from "../../operations/phrases.ts";
 import type {
+  ZeropsBrowserViewport,
   ZeropsCall,
   ZeropsOperationBrowserSummary,
+  ZeropsOperationExplanation,
   ZeropsOperationKind,
   ZeropsOperationLink,
   ZeropsOperationPhase,
   ZeropsOperationStep,
   ZeropsOperationStepState,
+  ZeropsOperationVersion,
+  ZeropsReadResult,
 } from "../types.ts";
 
 /**
@@ -47,7 +51,7 @@ export interface OperationBuildContext {
 /**
  * What a per-kind builder returns: everything about a `ZeropsOperation` that
  * depends on the tool's own shape. `operations.ts` fills in the rest (key,
- * kind, phase, anchor, callIds, attempts) — the same fields for every kind.
+ * kind, phase, anchor, callIds) — the same fields for every kind.
  */
 export interface BuiltCardFields {
   readonly subject: string;
@@ -60,12 +64,20 @@ export interface BuiltCardFields {
   readonly links: ReadonlyArray<ZeropsOperationLink>;
   readonly detail?: string;
   readonly target?: { readonly hostname: string };
+  readonly batch?: true;
   readonly resultStatus?: string;
   readonly hasResult: boolean;
+  readonly version?: ZeropsOperationVersion;
+  readonly processIds?: ReadonlyArray<string>;
+  readonly explanation?: ZeropsOperationExplanation;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. */
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
+  /** `browser` only. */
+  readonly viewport?: ZeropsBrowserViewport;
+  /** `logs` · `events` · `process` · `discover` only. */
+  readonly readResult?: ZeropsReadResult;
   /**
    * Overrides `phaseFor(call.status)`, where the call's own status is not what
    * happened: `deploy`'s BUILD_TRIGGERED is still running (uncertain past its
@@ -115,6 +127,18 @@ export function stepState(rawStatus: string): ZeropsOperationStepState {
       return "queued";
   }
 }
+
+/** A step no result has reported on reads as the call's own phase. */
+export const UNREPORTED_STEP_STATUS: Readonly<Record<ZeropsOperationPhase, string>> = {
+  running: "in_progress",
+  done: "FINISHED",
+  failed: "FAILED",
+  uncertain: "pending",
+  declined: "pending",
+  stopped: "pending",
+  interrupted: "pending",
+  reset: "pending",
+};
 
 export function buildStep(
   id: string,
@@ -202,6 +226,10 @@ export const KIND_LABEL: Readonly<
   env: "Env",
   devServer: "Dev server",
   browser: "Browser",
+  logs: "Logs",
+  events: "Events",
+  process: "Process",
+  discover: "Discover",
 };
 
 /** The ONE call-status → operation-phase mapping (§2.3, declined/stopped are not "done"). */
@@ -266,6 +294,29 @@ export function detailField(
 ): { detail: string } | Record<string, never> {
   const detail = buildDetail(parts);
   return detail !== undefined ? { detail } : {};
+}
+
+/** How many of a failure's log lines a card carries — the end of the log, where the failure is. */
+export const EXPLANATION_LOG_TAIL_LINES = 12;
+
+/** `{ explanation }` when there is a reason to give, else `{}` — spread directly into the built fields. */
+export function explanationField(
+  reason: string | undefined,
+  log: ReadonlyArray<string> | undefined = undefined,
+): { explanation: ZeropsOperationExplanation } | Record<string, never> {
+  if (reason === undefined) {
+    return {};
+  }
+  const logTail = log?.slice(-EXPLANATION_LOG_TAIL_LINES) ?? [];
+  return { explanation: { reason, ...(logTail.length > 0 ? { logTail } : {}) } };
+}
+
+/** A failed call's reason: zcp's classified cause when it made one, else the error's own line. */
+export function failedCallReason(decoded: DecodedEntry, errorInfo: ErrorInfo): string {
+  return (
+    readString(readRecord(decoded.document?.failureClassification)?.likelyCause) ??
+    firstLine(errorInfo.message)
+  );
 }
 
 export { readRecord };

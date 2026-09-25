@@ -5,8 +5,9 @@
  * it, e.g. a start-without-code deploy with no build) is omitted rather than
  * rendered as an empty row.
  */
+import { platformStatus, processActionWord, statusWord } from "../operations/phrases.ts";
 import { type PipelineState, type PipelineStepStatus, getPipelineState } from "./pipelineState.ts";
-import type { ActivityAppVersion } from "./dto.ts";
+import type { ActivityAppVersion, ActivityProcess } from "./dto.ts";
 
 export interface ObservedStep {
   readonly id: keyof PipelineState;
@@ -41,7 +42,7 @@ const STATE: Record<Exclude<PipelineStepStatus, "noop">, ObservedStep["state"]> 
   running: "running",
   finished: "done",
   failed: "failed",
-  cancelled: "failed",
+  cancelled: "queued",
   activating: "running",
 };
 
@@ -133,4 +134,59 @@ export function observedSteps(
   }
 
   return steps;
+}
+
+/**
+ * The five pipeline slots a deploy card holds from its first frame, so the
+ * steps fill in place instead of appearing: nothing observed yet → every slot
+ * queued; once the pipeline has spoken, a slot `observedSteps` omitted (a
+ * `noop` — no build, no prepare) reads skipped rather than vanishing.
+ */
+export function pipelineStepSlots(steps: ReadonlyArray<ObservedStep>): ReadonlyArray<ObservedStep> {
+  const byId = new Map(steps.map((step) => [step.id, step]));
+  return STEP_ORDER.map(
+    (id) =>
+      byId.get(id) ??
+      (steps.length === 0
+        ? { id, label: LABELS[id], state: STATE.waiting, stateLabel: STATE_LABEL.waiting }
+        : { id, label: LABELS[id], state: "done", stateLabel: statusWord("skipped") }),
+  );
+}
+
+/** The five slots in order, with their labels. */
+export const PIPELINE_SLOTS: ReadonlyArray<{
+  readonly id: keyof PipelineState;
+  readonly label: string;
+}> = STEP_ORDER.map((id) => ({ id, label: LABELS[id] }));
+
+/**
+ * The five slots of a pipeline that stopped at `failedAt`, read the way the
+ * platform reads a failed pipeline (`getPipelineState`): every slot before it
+ * done, it failed, every later one cancelled.
+ */
+export function failedPipelineSlots(failedAt: keyof PipelineState): ReadonlyArray<ObservedStep> {
+  const at = STEP_ORDER.indexOf(failedAt);
+  return STEP_ORDER.map((id, index) => {
+    const raw = index < at ? "finished" : index === at ? "failed" : "cancelled";
+    return { id, label: LABELS[id], state: STATE[raw], stateLabel: STATE_LABEL[raw] };
+  });
+}
+
+/** A secondary process (an observation's chip) as one compact row. */
+export interface ObservedProcessStep {
+  readonly id: string;
+  readonly label: string;
+  readonly state: ObservedStep["state"];
+  readonly stateLabel: string;
+}
+
+/** The row reads the process's status the way every card does (`platformStatus`). */
+export function observedProcessStep(process: ActivityProcess): ObservedProcessStep {
+  const { state, word } = platformStatus(process.status);
+  return {
+    id: process.id,
+    label: processActionWord(process.actionName),
+    state,
+    stateLabel: word,
+  };
 }

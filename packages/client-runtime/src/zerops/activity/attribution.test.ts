@@ -304,3 +304,80 @@ describe("attributeActivity — §3 attribution rules", () => {
     });
   });
 });
+
+describe("attributeActivity — a settled card's exact keys win over time and service", () => {
+  // The card's own deploy, then a later deploy of the same service: the
+  // heuristic picks the newest, which is the wrong one for the first card.
+  const own = process({
+    id: "p-own",
+    actionName: "stack.build",
+    created: "2026-09-02T10:00:01.000Z",
+    appVersion: { id: "av-own" },
+  });
+  const later = process({
+    id: "p-later",
+    actionName: "stack.build",
+    created: "2026-09-02T10:05:00.000Z",
+    appVersion: { id: "av-later" },
+  });
+  const toggle = process({
+    id: "p-toggle",
+    actionName: "stack.enableSubdomainAccess",
+    created: "2026-09-02T10:00:02.000Z",
+  });
+  const created = process({ id: "p-create", actionName: "stack.create", status: "FINISHED" });
+  const otherCreate = process({
+    id: "p-other",
+    actionName: "stack.create",
+    created: "2026-09-02T10:00:03.000Z",
+  });
+
+  it.each([
+    {
+      name: "the heuristic alone picks the newest matching process",
+      kind: "deploy" as const,
+      processes: [own, later],
+      exact: undefined,
+      expected: { stepSource: later, chips: [own] },
+    },
+    {
+      name: "a deploy's appVersion id pins the step source to its own build",
+      kind: "deploy" as const,
+      processes: [own, later, toggle],
+      exact: { appVersionId: "av-own" },
+      expected: { stepSource: own, chips: [] },
+    },
+    {
+      name: "an import's process ids pin every attributed process",
+      kind: "import" as const,
+      processes: [created, otherCreate],
+      exact: { processIds: ["p-create"] },
+      expected: { stepSource: created, chips: [] },
+    },
+    {
+      name: "an exact key the read does not hold attributes nothing rather than a neighbour",
+      kind: "deploy" as const,
+      processes: [later],
+      exact: { appVersionId: "av-own" },
+      expected: { chips: [] },
+    },
+    {
+      name: "empty exact keys fall back to the heuristic",
+      kind: "deploy" as const,
+      processes: [own, later],
+      exact: { processIds: [] },
+      expected: { stepSource: later, chips: [own] },
+    },
+  ])("$name", ({ kind, processes, exact, expected }) => {
+    expect(
+      attributeActivity({
+        processes,
+        projectId: "proj-1",
+        serviceIds: ["svc-1"],
+        startedAtMs: NOW,
+        kind,
+        ...(exact === undefined ? {} : { exact }),
+      }),
+    ).toEqual({ ...expected, projectMismatch: false });
+  });
+});

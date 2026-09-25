@@ -1,5 +1,10 @@
-import { browserCondensedLine, operationClosing, sentenceCase } from "../../operations/phrases.ts";
-import type { ZeropsCall, ZeropsOperationBrowserSummary, ZeropsOperationStep } from "../types.ts";
+import { browserFiguresLine, operationClosing, sentenceCase } from "../../operations/phrases.ts";
+import type {
+  ZeropsBrowserViewport,
+  ZeropsCall,
+  ZeropsOperationBrowserSummary,
+  ZeropsOperationStep,
+} from "../types.ts";
 import {
   type BuiltCardFields,
   KIND_LABEL,
@@ -42,13 +47,25 @@ function isBrowserTailLabel(label: string): boolean {
   return BROWSER_TAIL_COMMANDS.has(label.split(" ")[0] ?? "");
 }
 
-/** `["set", "viewport", "1920", "1080"]` (agent-browser `set --help`) — the caller's own resize, if it issued one. */
-function browserViewportFromLabel(label: string): { width: number; height: number } | undefined {
-  const match = label.match(/^set viewport (\d+) (\d+)/);
-  if (match === undefined || match === null) {
+/** `["set", "viewport", "1920", "1080"]` (agent-browser `set --help`) — the caller's own resize, if it issued one; a zero side is none. */
+function browserViewportFromLabel(label: string): ZeropsBrowserViewport | undefined {
+  const match = label.match(/^set viewport ([1-9]\d*) ([1-9]\d*)(?:\s|$)/);
+  if (match === null) {
     return undefined;
   }
   return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+/** The last resize among the call's own `commands` (`BrowserInput.Commands`, one string array each). */
+function inputViewport(input: Record<string, unknown>): ZeropsBrowserViewport | undefined {
+  const commands = Array.isArray(input.commands) ? input.commands : [];
+  let viewport: ZeropsBrowserViewport | undefined;
+  for (const command of commands) {
+    if (Array.isArray(command) && command.every((word) => typeof word === "string")) {
+      viewport = browserViewportFromLabel(command.join(" ")) ?? viewport;
+    }
+  }
+  return viewport;
 }
 
 /** `["set", "media", "dark"|"light", ...]` — the caller's own colour-scheme emulation, if it issued one. */
@@ -64,11 +81,10 @@ function browserMediaFromLabel(label: string): "dark" | "light" | undefined {
  * the agent did".
  */
 function browserSummaryFor(
-  subject: string,
   steps: ReadonlyArray<ZeropsOperationStep>,
   counts: { consoleErrorCount: number; pageErrorCount: number; failedRequestCount: number },
 ): ZeropsOperationBrowserSummary {
-  let viewport: { width: number; height: number } | undefined;
+  let viewport: ZeropsBrowserViewport | undefined;
   let media: "dark" | "light" | undefined;
   for (const step of steps) {
     if (step.kind === "tail") {
@@ -84,8 +100,9 @@ function browserSummaryFor(
     ...(media !== undefined ? { media } : {}),
     stepCount: visibleSteps.length,
     ...(failedStep !== undefined ? { failedStep } : {}),
-    line: browserCondensedLine({
-      url: subject,
+    errorCount: counts.consoleErrorCount + counts.pageErrorCount,
+    failedRequestCount: counts.failedRequestCount,
+    line: browserFiguresLine({
       stepCount: visibleSteps.length,
       ...counts,
       ...(viewport !== undefined ? { viewport } : {}),
@@ -113,7 +130,7 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
   });
   const browserSummary =
     card !== undefined
-      ? browserSummaryFor(subject, steps, {
+      ? browserSummaryFor(steps, {
           consoleErrorCount: card.consoleErrorCount,
           pageErrorCount: card.pageErrorCount,
           failedRequestCount: card.failedRequestCount,
@@ -138,6 +155,7 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
             : "Finished."
           : operationClosing("browser", phase, {});
 
+  const viewport = inputViewport(call.input) ?? browserSummary?.viewport;
   const firstImage = call.images?.[0];
   const screenshot =
     firstImage !== undefined
@@ -162,6 +180,7 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
     ...(closing !== undefined ? { closing } : {}),
     ...(screenshot !== undefined ? { screenshot } : {}),
     ...(browserSummary !== undefined ? { browserSummary } : {}),
+    ...(viewport !== undefined ? { viewport } : {}),
     steps,
     links: [],
     ...detailField([

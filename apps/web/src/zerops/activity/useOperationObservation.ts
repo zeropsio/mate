@@ -13,6 +13,7 @@
 import { useMemo, useRef } from "react";
 
 import {
+  type AttributionInput,
   type AttributionResult,
   type ObservedKind,
   attributeActivity,
@@ -23,6 +24,7 @@ import {
   type ObservationState,
   observe,
 } from "@t3tools/client-runtime/zerops/activity/observe";
+import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
@@ -41,6 +43,8 @@ export interface ObservationTarget {
   readonly startedAtMs: number;
   /** Operation phase === "running" — a BUILD_TRIGGERED result is still running. */
   readonly running: boolean;
+  /** The ids the result named (`AttributionInput.exact`) — present once it named any. */
+  readonly exact?: AttributionInput["exact"];
 }
 
 export interface OperationObservation {
@@ -93,6 +97,8 @@ export interface DeriveOperationObservationResult {
   readonly lastRead: LastRead | undefined;
   readonly history: Observation | undefined;
   readonly wantsPoll: boolean;
+  /** The build whose log the card shows: the current read's, else the remembered one's — so a log once shown never leaves. */
+  readonly buildLogQuery?: BuildLogQuery;
 }
 
 /**
@@ -131,6 +137,7 @@ export function deriveOperationObservation(
       serviceIds: input.serviceIds,
       startedAtMs: target.startedAtMs,
       kind: target.kind,
+      ...(target.exact === undefined ? {} : { exact: target.exact }),
     });
     if (attribution.projectMismatch) {
       unavailableReason = "project-mismatch";
@@ -173,8 +180,15 @@ export function deriveOperationObservation(
   // arrive from a read that is not even reading that project).
   const outcomeSettled = observationNow?.outcome !== undefined;
   const wantsPoll = target.running && state.kind !== "off" && !outcomeSettled;
+  const buildLogQuery = observationNow?.buildLog ?? history?.buildLog;
 
-  return { state, lastRead, history, wantsPoll };
+  return {
+    state,
+    lastRead,
+    history,
+    wantsPoll,
+    ...(buildLogQuery === undefined ? {} : { buildLogQuery }),
+  };
 }
 
 function serviceIdsFor(
@@ -257,7 +271,7 @@ export function useOperationObservation(
   const observationNow = result.state.kind === "off" ? undefined : result.state.observation;
   const buildLog = useBuildLog({
     projectId: projectId ?? null,
-    query: observationNow?.buildLog ?? null,
+    query: result.buildLogQuery ?? null,
     live: target !== null && target.running && observationNow?.outcome === undefined,
   });
 

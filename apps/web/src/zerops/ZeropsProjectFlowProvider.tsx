@@ -346,6 +346,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     giteaProjectId: accountGitea?.projectId,
     enabled: signedInToMate,
   });
+  const { askForOwner } = registry;
   const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
   const {
     signedIn,
@@ -826,6 +827,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       flows: lapsed ? EMPTY_FLOWS : flows,
       deployments,
       slugs: lapsed ? EMPTY_SLUGS : slugs,
+      askForOwner,
       mateNames,
       pending: pendingOrHeld,
       // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
@@ -836,6 +838,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       rollBack,
     }),
     [
+      askForOwner,
       createPullRequest,
       deployments,
       flows,

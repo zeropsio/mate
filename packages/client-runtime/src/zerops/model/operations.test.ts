@@ -11,6 +11,7 @@ import {
 import type { OperationBuildContext } from "./builders/shared.ts";
 import { collectZeropsCalls } from "./calls.ts";
 import { reduceZeropsOperations } from "./operations.ts";
+import type { ZeropsOperation } from "./types.ts";
 
 /** The clock at the synthetic calls' own moment, no project known — a triggered build is still running. */
 const CONTEXT: OperationBuildContext = {
@@ -19,10 +20,13 @@ const CONTEXT: OperationBuildContext = {
 };
 
 // ---- a hand-built call, as one activity row (RAW, R1-R4 fold degenerately
-// to one row for these synthetic cases) ----
+// to one row for these synthetic cases; rows sharing a `toolCallId` fold into
+// one call) ----
 
 interface EntrySpec {
   readonly id: string;
+  /** Rows of one call share it; defaults to `id` (one row per call). */
+  readonly toolCallId?: string;
   readonly createdAt: string;
   readonly turnId?: string | null;
   readonly toolName: string;
@@ -42,7 +46,7 @@ function activityFor(entry: EntrySpec): OrchestrationThreadActivity {
     turnId: entry.turnId === undefined ? "t1" : entry.turnId,
     createdAt: entry.createdAt,
     payload: {
-      toolCallId: entry.id,
+      toolCallId: entry.toolCallId ?? entry.id,
       status: entry.status,
       data: {
         toolName: entry.toolName,
@@ -84,25 +88,31 @@ function planResult(overrides: Record<string, unknown>): string {
 describe("reduceZeropsOperations — weatherdash-first-deploy", () => {
   const { operations } = reduceFrom2(weatherdashFirstDeploy);
 
-  it("produces bootstrap, deploy, verify in order", () => {
-    expect(operations.map((o) => o.kind)).toEqual(["bootstrap", "deploy", "verify"]);
+  it("produces discover, bootstrap, deploy, verify in order", () => {
+    expect(operations.map((o) => o.kind)).toEqual(["discover", "bootstrap", "deploy", "verify"]);
+  });
+
+  it("the opening discover is its own card, done, listing the project's services", () => {
+    const discover = operations[0]!;
+    expect(discover.phase).toBe("done");
+    expect(discover.readResult).toMatchObject({ kind: "discover", pending: false });
   });
 
   it("keys the bootstrap operation by the founder call id, membership by the zcp session id", () => {
-    const bootstrap = operations[0]!;
+    const bootstrap = operations[1]!;
     expect(bootstrap.key).toMatch(/^bootstrap:/);
     expect(bootstrap.session?.sessionIds).toContain("61892e75bf9a9ad9");
   });
 
   it("the bootstrap operation is done, voiced by the agent, with a New service kicker", () => {
-    const bootstrap = operations[0]!;
+    const bootstrap = operations[1]!;
     expect(bootstrap.phase).toBe("done");
     expect(bootstrap.voiceSource).toBe("agent");
     expect(bootstrap.kicker).toBe("New service · weatherdash");
   });
 
   it("the deploy operation is done, subject weatherdash, live with a link", () => {
-    const deploy = operations[1]!;
+    const deploy = operations[2]!;
     expect(deploy.phase).toBe("done");
     expect(deploy.subject).toBe("weatherdash");
     expect(deploy.closing).toBe("weatherdash is live.");
@@ -115,7 +125,7 @@ describe("reduceZeropsOperations — weatherdash-first-deploy", () => {
   });
 
   it("the verify operation is done with two checks", () => {
-    const verify = operations[2]!;
+    const verify = operations[3]!;
     expect(verify.phase).toBe("done");
     expect(verify.steps).toHaveLength(2);
     expect(verify.closing).toBe("All 2 checks passed.");
@@ -503,10 +513,10 @@ describe("reduceZeropsOperations — bootstrap session identity", () => {
   });
 });
 
-// ---- retries: R8/R9 ----
+// ---- retries ----
 
-describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
-  it("N failed retries of the same tool+target in one turn fold into one operation with attempts: N", () => {
+describe("reduceZeropsOperations — retries", () => {
+  it("N failed retries of the same tool+target in one turn are N cards", () => {
     const failedDeploy = (id: string, createdAt: string): EntrySpec => ({
       id,
       createdAt,
@@ -520,13 +530,14 @@ describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
       failedDeploy("t1b", "2026-09-01T00:01:00.000Z"),
       failedDeploy("t1c", "2026-09-01T00:02:00.000Z"),
     ]);
-    expect(operations).toHaveLength(1);
-    expect(operations[0]!.attempts).toBe(3);
-    expect(operations[0]!.callIds).toEqual(["t1a", "t1b", "t1c"]);
-    expect(operations[0]!.key).toBe("op:t1a");
+    expect(operations.map((o) => [o.key, o.callIds])).toEqual([
+      ["op:t1a", ["t1a"]],
+      ["op:t1b", ["t1b"]],
+      ["op:t1c", ["t1c"]],
+    ]);
   });
 
-  it("a succeeding attempt after failures is its own new operation, numbered as the 2nd attempt (R9)", () => {
+  it("a succeeding retry after a failure is its own card, and the failed one stays failed", () => {
     const { operations } = reduceFrom([
       {
         id: "s1",
@@ -545,78 +556,10 @@ describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
         resultText: JSON.stringify({ status: "DEPLOYED", target: "weatherdash" }),
       },
     ]);
-    expect(operations).toHaveLength(2);
-    expect(operations[0]!.attempts).toBe(1);
-    expect(operations[1]!.phase).toBe("done");
-    expect(operations[1]!.attempts).toBe(2);
-  });
-
-  it("R9's attempt count spans turns, independent of the R8 same-turn join", () => {
-    const failedDeploy = (id: string, createdAt: string, turnId: string): EntrySpec => ({
-      id,
-      createdAt,
-      turnId,
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "failed",
-      resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
-    });
-    const { operations } = reduceFrom([
-      failedDeploy("d1", "2026-09-01T00:00:00.000Z", "t1"),
-      failedDeploy("d2", "2026-09-01T00:01:00.000Z", "t2"),
-      {
-        id: "d3",
-        createdAt: "2026-09-01T00:02:00.000Z",
-        turnId: "t3",
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "completed",
-        resultText: JSON.stringify({ status: "DEPLOYED", target: "weatherdash" }),
-      },
+    expect(operations.map((o) => [o.key, o.phase])).toEqual([
+      ["op:s1", "failed"],
+      ["op:s2", "done"],
     ]);
-    // three turns, each failure in its own turn, never join by R8 —
-    // three separate operations, not folded into one.
-    expect(operations).toHaveLength(3);
-    expect(operations[0]!.attempts).toBe(1);
-    expect(operations[1]!.attempts).toBe(2);
-    expect(operations[2]!.phase).toBe("done");
-    expect(operations[2]!.attempts).toBe(3);
-  });
-
-  it("a bootstrap card between two same-turn failures of one target breaks the R8 join", () => {
-    const { operations } = reduceFrom([
-      {
-        id: "d1",
-        createdAt: "2026-09-01T00:00:00.000Z",
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "failed",
-        resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
-      },
-      {
-        id: "w1",
-        createdAt: "2026-09-01T00:01:00.000Z",
-        toolName: "zerops_workflow",
-        input: { action: "start", workflow: "bootstrap", route: "adopt" },
-        status: "failed",
-        resultText: JSON.stringify({ code: "WORKFLOW_ACTIVE", error: "already running" }),
-      },
-      {
-        id: "d2",
-        createdAt: "2026-09-01T00:02:00.000Z",
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "failed",
-        resultText: JSON.stringify({ code: "API_ERROR", error: "boom again" }),
-      },
-    ]);
-    const deploys = operations.filter((o) => o.kind === "deploy");
-    // d1 and d2 stay two separate deploy operations — the bootstrap attempt
-    // in between (no open session, so it founds its own card) means d2 is
-    // not a retry of d1.
-    expect(deploys).toHaveLength(2);
-    expect(deploys[0]!.callIds).toEqual(["d1"]);
-    expect(deploys[1]!.callIds).toEqual(["d2"]);
   });
 });
 
@@ -779,9 +722,9 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
     expect(op.browserSummary?.stepCount).toBe(4);
     expect(op.browserSummary?.failedStep?.label).toBe("click @e1");
     expect(op.browserSummary?.failedStep?.state).toBe("failed");
-    expect(op.browserSummary?.line).toBe(
-      "opened https://kanbandev-26a7.prg1.zerops.app · 1920×1080, dark · 4 steps · 2 errors, 1 failed request",
-    );
+    expect(op.browserSummary?.line).toBe("1920×1080, dark · 4 steps · 2 errors · 1 failed request");
+    expect(op.browserSummary?.errorCount).toBe(2);
+    expect(op.browserSummary?.failedRequestCount).toBe(1);
 
     const tailLabels = op.steps.filter((step) => step.kind === "tail").map((step) => step.label);
     expect(tailLabels).toEqual([
@@ -798,6 +741,60 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
       "set media dark",
       "click @e1",
     ]);
+  });
+
+  it.each([
+    {
+      name: "read from the call's own commands while it runs",
+      input: { url: "https://a.example.com", commands: [["set", "viewport", "390", "844"]] },
+      resultText: undefined,
+      expected: { width: 390, height: 844 },
+    },
+    {
+      name: "the last resize wins",
+      input: {
+        url: "https://a.example.com",
+        commands: [
+          ["set", "viewport", "390", "844"],
+          ["set", "viewport", "1280", "720"],
+        ],
+      },
+      resultText: undefined,
+      expected: { width: 1280, height: 720 },
+    },
+    {
+      name: "a zero dimension is no viewport",
+      input: { url: "https://a.example.com", commands: [["set", "viewport", "1280", "0"]] },
+      resultText: undefined,
+      expected: undefined,
+    },
+    {
+      name: "no resize: none",
+      input: { url: "https://a.example.com", commands: [["click", "@e1"]] },
+      resultText: undefined,
+      expected: undefined,
+    },
+    {
+      name: "the result's own steps when the input carried none",
+      input: { url: "https://a.example.com" },
+      resultText: JSON.stringify({
+        url: "https://a.example.com",
+        steps: [{ command: ["set", "viewport", "800", "600"], success: true }],
+      }),
+      expected: { width: 800, height: 600 },
+    },
+  ])("the browser viewport is $name", ({ input, resultText, expected }) => {
+    const { operations } = reduceFrom([
+      {
+        id: "brw-viewport",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_browser",
+        input,
+        status: resultText === undefined ? "inProgress" : "completed",
+        ...(resultText === undefined ? {} : { resultText }),
+      },
+    ]);
+    expect(operations[0]!.viewport).toEqual(expected);
   });
 
   it("browserSummary is absent when the result did not decode into a browser card", () => {
@@ -827,7 +824,9 @@ describe("a verify whose checks failed", () => {
   // verify that ran to completion over a service that is down came back
   // `completed`, and the card said HEALTHY above three red steps (measured on
   // the test account, 2026-09-20).
-  const verifyWith = (checks: ReadonlyArray<{ name: string; status: string }>) =>
+  const verifyWith = (
+    checks: ReadonlyArray<{ name: string; status: string; httpStatus?: number }>,
+  ) =>
     reduceFrom([
       {
         id: "v1",
@@ -857,11 +856,172 @@ describe("a verify whose checks failed", () => {
     expect(verify.closing).toBe("2 of 3 checks failed.");
   });
 
+  it.each([
+    { name: "http_internal", httpStatus: 200, chip: { label: "HTTP internal", note: "200" } },
+    { name: "http_public", httpStatus: 502, chip: { label: "HTTP public", note: "502" } },
+    { name: "service_running", httpStatus: undefined, chip: { label: "Service running" } },
+  ])("$name reads as its name and its result, HTTP said once", ({ name, httpStatus, chip }) => {
+    const verify = verifyWith([
+      { name, status: "pass", ...(httpStatus === undefined ? {} : { httpStatus }) },
+    ]);
+    const [step] = verify.steps;
+    expect({
+      label: step?.label,
+      ...(step?.note === undefined ? {} : { note: step.note }),
+    }).toEqual(chip);
+  });
+
   it("stays healthy when nothing failed, so a skipped check is not a failure", () => {
     const verify = verifyWith([
       { name: "service_running", status: "pass" },
       { name: "http_public", status: "skip" },
     ]);
     expect(verify.phase).toBe("done");
+  });
+});
+
+// ---- a growing stream ----
+
+describe("reduceZeropsOperations — a growing stream", () => {
+  const at = (minute: number) => `2026-09-01T00:${String(minute).padStart(2, "0")}:00.000Z`;
+  const deploy = (
+    id: string,
+    minute: number,
+    status: EntrySpec["status"],
+    input: Record<string, unknown> = { targetService: "appdev" },
+    turnId = "t1",
+  ): EntrySpec => ({
+    id,
+    createdAt: at(minute),
+    turnId,
+    toolName: "zerops_deploy",
+    input,
+    status,
+    ...(status === "failed"
+      ? { resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }) }
+      : {}),
+  });
+
+  // A live stream, row by row in arrival order: turn t1 settles, turn t2 is
+  // still running when the page reloads.
+  const stream: ReadonlyArray<EntrySpec> = [
+    deploy("a", 0, "failed", undefined, "t1"),
+    deploy("b", 1, "completed", undefined, "t1"),
+    deploy("d", 2, "inProgress", { targetService: "apistage" }, "t2"),
+    { ...deploy("c-start", 3, "inProgress", {}, "t2"), toolCallId: "c" },
+    { ...deploy("c-args", 4, "inProgress", undefined, "t2"), toolCallId: "c" },
+    { ...deploy("c-done", 5, "failed", undefined, "t2"), toolCallId: "c" },
+    deploy("e", 6, "failed", undefined, "t2"),
+    deploy("f", 7, "inProgress", undefined, "t2"),
+  ];
+  const keysOf = (operations: ReadonlyArray<ZeropsOperation>) =>
+    operations.map((operation) => operation.key);
+
+  it("a card is never removed while the stream grows", () => {
+    const seen = new Set<string>();
+    for (let length = 1; length <= stream.length; length += 1) {
+      const keys = new Set(keysOf(reduceFrom(stream.slice(0, length), "t2").operations));
+      for (const key of seen) {
+        expect(keys).toContain(key);
+      }
+      for (const key of keys) {
+        seen.add(key);
+      }
+    }
+    expect(keysOf(reduceFrom(stream, "t2").operations)).toStrictEqual([
+      "op:a",
+      "op:b",
+      "op:d",
+      "op:c",
+      "op:e",
+      "op:f",
+    ]);
+  });
+
+  it("a reload — rows in any order, the turn no longer running — gives the same cards", () => {
+    const live = keysOf(reduceFrom(stream, "t2").operations);
+    const reloaded = keysOf(reduceFrom(stream.toReversed(), null).operations);
+    expect(reloaded).toStrictEqual(live);
+  });
+});
+
+describe("reduceZeropsOperations — read tools", () => {
+  const cases = [
+    {
+      toolName: "zerops_logs",
+      kind: "logs",
+      input: { serviceHostname: "app" },
+      result: { entries: [], hasMore: false },
+    },
+    {
+      toolName: "zerops_events",
+      kind: "events",
+      input: { serviceHostname: "app" },
+      result: { events: [] },
+    },
+    {
+      toolName: "zerops_process",
+      kind: "process",
+      input: { action: "wait", service: "app" },
+      result: { processes: [], settled: true },
+    },
+    {
+      toolName: "zerops_discover",
+      kind: "discover",
+      input: { service: "app" },
+      result: { project: {}, services: [] },
+    },
+  ] as const;
+
+  for (const { toolName, kind, input, result } of cases) {
+    it(`${toolName} is a ${kind} card from its start, filled in place under one key`, () => {
+      const running = reduceFrom([
+        { id: "c1", createdAt: "2026-09-01T00:00:00.000Z", toolName, input, status: "inProgress" },
+      ]);
+      const done = reduceFrom([
+        {
+          id: "c1",
+          createdAt: "2026-09-01T00:00:00.000Z",
+          toolName,
+          input,
+          status: "completed",
+          resultText: JSON.stringify(result),
+        },
+      ]);
+      expect(running.genericCalls).toEqual([]);
+      expect(running.operations[0]).toMatchObject({
+        key: "op:c1",
+        kind,
+        phase: "running",
+        readResult: { kind, pending: true },
+      });
+      expect(done.operations[0]).toMatchObject({
+        key: "op:c1",
+        kind,
+        phase: "done",
+        readResult: { kind, pending: false },
+      });
+    });
+  }
+
+  it("keeps the kind of a read call that failed, drawn as the error card", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "c1",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_logs",
+        input: { serviceHostname: "app" },
+        status: "failed",
+        resultText: JSON.stringify({ code: "SERVICE_NOT_FOUND", error: "No service app" }),
+      },
+    ]);
+    expect(operations[0]).toMatchObject({
+      key: "op:c1",
+      kind: "logs",
+      phase: "failed",
+      kicker: "Error · SERVICE_NOT_FOUND",
+      closing: "No service app",
+    });
+    expect(operations[0]).not.toHaveProperty("readResult");
   });
 });

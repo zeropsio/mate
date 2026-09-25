@@ -265,10 +265,62 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
   it("carries an explicit previousHistory forward with no observation at all yet", () => {
     const history: Observation = {
       steps: [{ id: "DEPLOY", label: "Deploy", state: "running", stateLabel: "Running" }],
-      processes: [],
+      chips: [],
       readAtMs: NOW,
     };
     const result = deriveOperationObservation(baseInput({ previousHistory: history }), NOW);
     expect(result.history).toEqual(history);
+  });
+});
+
+describe("deriveOperationObservation — a result's own ids pin the attributed process", () => {
+  const own = process({ id: "p-own", appVersion: { id: "av-own", status: "ACTIVE" } });
+  const later = process({
+    id: "p-later",
+    created: "2026-09-02T10:00:30.000Z",
+    appVersion: { id: "av-later", status: "BUILDING", build: { pipelineStart: "t1" } },
+  });
+
+  it.each([
+    { name: "no ids: the newest in the window", exact: undefined, expected: "p-later" },
+    {
+      name: "the shipped version: that process",
+      exact: { appVersionId: "av-own" },
+      expected: "p-own",
+    },
+  ])("$name", ({ exact, expected }) => {
+    const result = deriveOperationObservation(
+      baseInput({
+        target: target(exact === undefined ? {} : { exact }),
+        snapshot: { processes: [own, later], atMs: NOW },
+      }),
+      NOW,
+    );
+    expect(result.lastRead?.attribution.stepSource?.id).toBe(expected);
+  });
+});
+
+describe("deriveOperationObservation — the build log a card keeps showing", () => {
+  const query = { buildServiceStackId: "svc-build", appVersionId: "av-1" };
+  const history: Observation = {
+    steps: [{ id: "DEPLOY", label: "Deploy", state: "running", stateLabel: "Running" }],
+    chips: [],
+    readAtMs: NOW,
+    buildLog: query,
+  };
+
+  it.each([
+    { name: "running, the feed gone off", running: true, attributable: false },
+    { name: "settled, nothing read since", running: false, attributable: true },
+  ])("$name: the remembered build's log", ({ running, attributable }) => {
+    const result = deriveOperationObservation(
+      baseInput({ target: target({ running }), attributable, previousHistory: history }),
+      NOW + 1_000,
+    );
+    expect(result.buildLogQuery).toEqual(query);
+  });
+
+  it("none before any build was seen", () => {
+    expect(deriveOperationObservation(baseInput(), NOW).buildLogQuery).toBeUndefined();
   });
 });

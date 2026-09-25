@@ -19,7 +19,11 @@ import type {
   Observation,
   ObservationState,
 } from "@t3tools/client-runtime/zerops/activity/observe";
-import type { ObservedStep } from "@t3tools/client-runtime/zerops/activity/observedSteps";
+import {
+  type ObservedStep,
+  observedProcessStep,
+  pipelineStepSlots,
+} from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type {
@@ -31,6 +35,7 @@ import type {
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
+import { browserPageUrl } from "../../components/zerops/operation/subject";
 import type {
   BrowserScreenshot,
   LiveBrowserFrame,
@@ -63,18 +68,30 @@ function hostnamesFor(operation: ZeropsOperation): ReadonlyArray<string> {
 
 /**
  * `null` for a kind the Observation layer has no attribution rules for
- * (bootstrap, mount, verify, env, error) — those never get a region.
+ * (bootstrap, mount, verify, env, error) — those never get a region — and
+ * for a batch deploy, whose per-target rows are its steps from birth to
+ * settle.
  */
 export function observationTargetFor(operation: ZeropsOperation): ObservationTarget | null {
-  if (!isObservedKind(operation.kind)) {
+  if (!isObservedKind(operation.kind) || operation.batch === true) {
     return null;
   }
+  const appVersionId = operation.version?.id;
+  const processIds = operation.processIds ?? [];
   return {
     key: operation.key,
     kind: operation.kind,
     hostnames: hostnamesFor(operation),
     startedAtMs: Date.parse(operation.anchorAt),
     running: operation.phase === "running",
+    ...(appVersionId === undefined && processIds.length === 0
+      ? {}
+      : {
+          exact: {
+            ...(appVersionId === undefined ? {} : { appVersionId }),
+            ...(processIds.length === 0 ? {} : { processIds }),
+          },
+        }),
   };
 }
 
@@ -100,6 +117,25 @@ export function devServerUrlFor(
   return topology.services.find((service) => service.hostname === hostname)?.subdomainUrl;
 }
 
+/**
+ * A browser check's subject chip: the hostname of the service one of whose
+ * public routes answers the page's host — `undefined` before the URL or the
+ * topology view arrives, for a host no service answers (the card then names
+ * the URL's own host), and for any other kind.
+ */
+export function browserSubjectHostFor(
+  operation: ZeropsOperation,
+  topology: ZeropsTopologyView | undefined,
+): string | undefined {
+  const url = browserPageUrl(operation);
+  if (url === undefined || topology === undefined) {
+    return undefined;
+  }
+  return topology.services.find((service) =>
+    service.routes.some((route) => URL.canParse(route.url) && new URL(route.url).host === url.host),
+  )?.hostname;
+}
+
 type CardStep = ZeropsOperationStep & { readonly durationMs?: number };
 
 function toCardStep(step: ObservedStep): CardStep {
@@ -118,45 +154,63 @@ function secondsAgo(readAtMs: number, nowMs: number): number {
 
 export interface ObservedStepsRegion {
   readonly steps: ReadonlyArray<CardStep>;
+  /** The observation's secondary processes, one compact row each. */
+  readonly chips: ReadonlyArray<CardStep>;
   readonly provenance: string;
   /** Present iff the observation names a build to show a log for. */
   readonly buildLogQuery?: BuildLogQuery;
 }
 
+/** A settled card's provenance: what it last read, no longer counting seconds. */
+const SETTLED_PROVENANCE = "as last read from Zerops";
+
 /**
- * Pure: `(operation phase, current state, remembered history, now) → region`.
+ * Pure: `(operation kind, phase, current state, remembered history, now) → region`.
  * A settled operation (`phase !== "running"`) always prefers its history —
  * the observed steps it last saw while running, frozen under the result's
- * verdict — over whatever the current `state` happens to compute, per the
- * concept's "the result is the verdict" rule (§3). Only while running does
- * `state` drive the region, and then only once the first read has produced
- * steps — an empty `observing` region is worse than none at all, since the
- * card already shows its own steps and elapsed clock.
+ * verdict with its provenance line and build log kept in place — over
+ * whatever the current `state` happens to compute, per the concept's "the
+ * result is the verdict" rule (§3). While running, `state`
+ * drives the region once a read has produced steps or secondary processes;
+ * until then — and whenever the feed goes quiet or off — the history holds
+ * what was already shown (steps, secondary processes, build log), so nothing
+ * once on the card leaves it. A deploy's observed steps fill the same five
+ * pipeline slots (`pipelineStepSlots`) the operation itself holds from birth
+ * to settle, so they fill in place instead of appearing.
  */
 export function deriveObservedStepsRegion(
+  kind: ZeropsOperationKind,
   phase: ZeropsOperationPhase,
   state: ObservationState,
   history: Observation | undefined,
   nowMs: number,
 ): ObservedStepsRegion | undefined {
+  const regionOf = (observation: Observation, provenance: string): ObservedStepsRegion => ({
+    steps: (kind === "deploy" ? pipelineStepSlots(observation.steps) : observation.steps).map(
+      toCardStep,
+    ),
+    chips: observation.chips.map(observedProcessStep),
+    provenance,
+    ...(observation.buildLog === undefined ? {} : { buildLogQuery: observation.buildLog }),
+  });
+
   if (phase !== "running") {
-    return history === undefined
-      ? undefined
-      : { steps: history.steps.map(toCardStep), provenance: "" };
+    return history === undefined ? undefined : regionOf(history, SETTLED_PROVENANCE);
   }
 
-  if (state.kind === "off" || state.observation.steps.length === 0) {
+  const current =
+    state.kind === "off" ||
+    (state.observation.steps.length === 0 && state.observation.chips.length === 0)
+      ? undefined
+      : state.observation;
+  const source = current ?? history;
+  if (source === undefined) {
     return undefined;
   }
 
-  const provenanceLabel = state.kind === "stale" ? "last read" : "live from Zerops ·";
-  return {
-    steps: state.observation.steps.map(toCardStep),
-    provenance: `${provenanceLabel} ${secondsAgo(state.observation.readAtMs, nowMs)} s ago`,
-    ...(state.observation.buildLog === undefined
-      ? {}
-      : { buildLogQuery: state.observation.buildLog }),
-  };
+  const provenanceLabel =
+    current === undefined || state.kind === "stale" ? "last read" : "live from Zerops ·";
+  return regionOf(source, `${provenanceLabel} ${secondsAgo(source.readAtMs, nowMs)} s ago`);
 }
 
 /** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
@@ -220,6 +274,8 @@ export interface OperationCardRegions {
   readonly observed?: ObservedRegion;
   readonly devServerUrl?: string;
   readonly browserScreenshot?: BrowserScreenshot;
+  /** `browser` only: the hostname of the service whose route answers the page — `browserSubjectHostFor`. */
+  readonly subjectHost?: string;
   /** `browser` only: the call is currently in progress. */
   readonly live?: boolean;
   /** `browser` only: the latest live frame, kept across the running→done transition. */
@@ -234,30 +290,40 @@ export function useOperationCard(
   const { state, history, buildLog } = useOperationObservation(target, environmentId);
   const topology = useZeropsTopology(environmentId);
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  // A log that opened itself while live stays open once it ends: closing it
+  // at settle would shrink the card under the reader.
+  const [wasLive, setWasLive] = useState(false);
+  const logEverLive = wasLive || buildLog.status === "live";
+  if (logEverLive && !wasLive) {
+    setWasLive(true);
+  }
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
   const devServerUrl = devServerUrlFor(operation, topology);
-  const devServerUrlField = devServerUrl === undefined ? {} : { devServerUrl };
   const browserScreenshot = browserScreenshotFor(operation);
-  const browserScreenshotField = browserScreenshot === undefined ? {} : { browserScreenshot };
-  const liveField =
-    operation.kind === "browser" ? { live, ...(liveFrame === undefined ? {} : { liveFrame }) } : {};
+  const subjectHost = browserSubjectHostFor(operation, topology);
+  const fields = {
+    ...(devServerUrl === undefined ? {} : { devServerUrl }),
+    ...(browserScreenshot === undefined ? {} : { browserScreenshot }),
+    ...(subjectHost === undefined ? {} : { subjectHost }),
+    ...(operation.kind === "browser"
+      ? { live, ...(liveFrame === undefined ? {} : { liveFrame }) }
+      : {}),
+  };
 
   const nowMs = useSecondsNowMs(operation.phase === "running");
-  const region = deriveObservedStepsRegion(operation.phase, state, history, nowMs);
+  const region = deriveObservedStepsRegion(operation.kind, operation.phase, state, history, nowMs);
   if (region === undefined) {
-    return { ...devServerUrlField, ...browserScreenshotField, ...liveField };
+    return fields;
   }
   if (region.buildLogQuery === undefined) {
     return {
-      observed: { steps: region.steps, provenance: region.provenance },
-      ...devServerUrlField,
-      ...browserScreenshotField,
-      ...liveField,
+      observed: { steps: region.steps, chips: region.chips, provenance: region.provenance },
+      ...fields,
     };
   }
 
-  const open = manualOpen ?? buildLog.status === "live";
+  const open = manualOpen ?? logEverLive;
   const log: ReactElement = createElement(ZeropsBuildLog, {
     lines: buildLog.lines,
     onToggle: () => setManualOpen(!open),
@@ -265,9 +331,7 @@ export function useOperationCard(
     status: buildLog.status,
   });
   return {
-    observed: { steps: region.steps, provenance: region.provenance, log },
-    ...devServerUrlField,
-    ...browserScreenshotField,
-    ...liveField,
+    observed: { steps: region.steps, chips: region.chips, provenance: region.provenance, log },
+    ...fields,
   };
 }

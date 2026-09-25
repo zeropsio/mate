@@ -5,6 +5,7 @@
  * `../../../../../../../zcp/plans/mate-session-model-2026-09-05.md` §2.2 and
  * `mate-session-model-2026-09-05-designs/C-client-domain.md` §1.
  */
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 /**
  * `inProgress` is the only non-terminal value. `interrupted` is the client
@@ -69,6 +70,10 @@ export type ZeropsOperationKind =
   | "env"
   | "devServer"
   | "browser"
+  | "logs"
+  | "events"
+  | "process"
+  | "discover"
   | "error";
 
 /**
@@ -117,17 +122,115 @@ export interface ZeropsOperationLink {
  * off a `set viewport <w> <h>` / `set media dark|light` step when the agent
  * issued one, `stepCount` the number of non-tail steps, `failedStep` the
  * first non-tail step that failed (always shown even with the step list
- * collapsed). `line` is the ready-made condensed text
- * (`phrases.ts`'s `browserCondensedLine`) — the card renders it verbatim,
- * the same way it already renders `closing`.
+ * collapsed), `errorCount` the console and page errors together and
+ * `failedRequestCount` the failed network requests — what the card tones its
+ * figures by. `line` is the ready-made figures text (`phrases.ts`'s
+ * `browserFiguresLine`) — the card renders it verbatim, the same way it
+ * already renders `closing`.
  */
+/** A browser viewport in CSS pixels; both sides are positive. */
+export interface ZeropsBrowserViewport {
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface ZeropsOperationBrowserSummary {
-  readonly viewport?: { readonly width: number; readonly height: number };
+  readonly viewport?: ZeropsBrowserViewport;
   readonly media?: "dark" | "light";
   readonly stepCount: number;
   readonly failedStep?: ZeropsOperationStep;
+  readonly errorCount: number;
+  readonly failedRequestCount: number;
   readonly line: string;
 }
+
+/**
+ * `deploy` only: what zcp says the deploy shipped. `id` is the platform
+ * appVersion (filled once the build resolves, never on a failed or timed-out
+ * build) — the exact key for attributing the card's processes and build log;
+ * `name` is the `--version-name` passed to the push (the commit sha).
+ */
+export interface ZeropsOperationVersion {
+  readonly id?: string;
+  readonly name?: string;
+}
+
+/**
+ * Why a card failed or timed out, read off the result's own evidence — never
+ * composed copy. `logTail` is the last lines of the log zcp attached for the
+ * failing phase, capped (`EXPLANATION_LOG_TAIL_LINES`).
+ */
+export interface ZeropsOperationExplanation {
+  readonly reason: string;
+  readonly logTail?: ReadonlyArray<string>;
+}
+/** A status a read card draws beside a row: the word, and the tone of its dot. */
+export interface ZeropsReadStatus {
+  readonly word: string;
+  readonly tone: ServiceStatusToneId;
+}
+
+/** One log line, oldest first. `at` is the entry's own ISO timestamp. */
+export interface ZeropsLogLine {
+  readonly id: string;
+  readonly at?: string;
+  readonly severity: "error" | "warning" | "info";
+  readonly text: string;
+}
+
+/** One platform event, newest first. */
+export interface ZeropsEventRow {
+  readonly id: string;
+  readonly at?: string;
+  readonly service?: string;
+  readonly action: string;
+  readonly status: ZeropsReadStatus;
+}
+
+/** One service `zerops_discover` listed. */
+export interface ZeropsDiscoverRow {
+  readonly hostname: string;
+  readonly type?: string;
+  readonly status: ZeropsReadStatus;
+  readonly note?: string;
+}
+
+/**
+ * What a read tool's card draws (`logs` · `events` · `process` · `discover`).
+ * `pending` while the call runs with no result yet: the card draws its final
+ * shape empty, so nothing moves when the result lands. `process` rows are the
+ * operation's own `steps`. Absent once the call failed or settled without a
+ * result — the card then reads like any other.
+ */
+export type ZeropsReadResult =
+  | {
+      readonly kind: "logs";
+      readonly pending: boolean;
+      readonly service: string;
+      /** The filter the agent asked for: "errors · since 5m · “timeout”". */
+      readonly filter?: string;
+      readonly lines: ReadonlyArray<ZeropsLogLine>;
+      /** "2 errors · 1 warning", over every line zcp returned. */
+      readonly counts?: string;
+      /** Why fewer lines are drawn than exist, or why there are none. */
+      readonly note?: string;
+    }
+  | {
+      readonly kind: "events";
+      readonly pending: boolean;
+      readonly rows: ReadonlyArray<ZeropsEventRow>;
+      /** "5 more" past the cap. */
+      readonly more?: string;
+    }
+  | {
+      readonly kind: "process";
+      readonly pending: boolean;
+    }
+  | {
+      readonly kind: "discover";
+      readonly pending: boolean;
+      readonly rows: ReadonlyArray<ZeropsDiscoverRow>;
+    };
 
 export interface ZeropsOperation {
   /** `op:<callId>` for every per-call kind; `bootstrap:<founderCallId>` for a session. Never re-keyed. */
@@ -149,19 +252,31 @@ export interface ZeropsOperation {
   readonly steps: ReadonlyArray<ZeropsOperationStep>;
   readonly links: ReadonlyArray<ZeropsOperationLink>;
   readonly detail?: string;
-  /** Every call folded into this operation, anchor first. */
+  /** The operation's calls, anchor first: one per per-call kind, a bootstrap session's members and joined imports. */
   readonly callIds: ReadonlyArray<string>;
-  /** >= 1; > 1 when failed retries folded in (§2.3 R8/R9). */
-  readonly attempts: number;
-  /** "attempt 3" — `phrases.ts`' `attemptWord(attempts)`, standalone kinds only; absent at 1. */
-  readonly attemptWord?: string;
   readonly target?: { readonly hostname: string };
+  /** `deploy` only: a `zerops_deploy_batch` — one step per target, no single service to observe or name. */
+  readonly batch?: true;
   readonly resultStatus?: string;
   readonly hasResult: boolean;
+  /** `deploy` only, once the result names one. */
+  readonly version?: ZeropsOperationVersion;
+  /** `import` only: the platform processes the result says it started — exact attribution keys. */
+  readonly processIds?: ReadonlyArray<string>;
+  /** A failed or timed-out card's reason and log tail. */
+  readonly explanation?: ZeropsOperationExplanation;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. Absent when the result carried none, or the provider dropped the image content block. */
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
+  /**
+   * `browser` only: the viewport the agent set — read from the call's own
+   * commands once its arguments arrive, else from the result's steps — so the
+   * frame takes its final shape before any pixel does.
+   */
+  readonly viewport?: ZeropsBrowserViewport;
+  /** `logs` · `events` · `process` · `discover` only. */
+  readonly readResult?: ZeropsReadResult;
   /** bootstrap only. */
   readonly session?: {
     readonly sessionIds: ReadonlyArray<string>;
@@ -187,9 +302,18 @@ export type ZeropsTimelineEntry =
       readonly call: ZeropsCall;
     };
 
-/** One work-session attempt, the shape `strip.ts` already reads off the envelope. */
+/**
+ * One work-session attempt — zcp's own per-host count and reading of it
+ * (`workflow.AttemptInfo`), which a failed deploy/verify card may cite.
+ */
 export interface ZeropsWorkAttempt {
   readonly success: boolean;
+  /** zcp's per-work-session, per-host count. */
+  readonly iteration: number;
+  readonly reason?: string;
+  /** zcp's coarse failure class, e.g. `build`, `start`, `credential`. */
+  readonly failureClass?: string;
+  readonly summary?: string;
 }
 
 /**

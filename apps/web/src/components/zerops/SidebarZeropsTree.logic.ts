@@ -77,3 +77,20 @@ export function sidebarStopReads(input: {
     stageMarks: stageMarks({ contents, mainHeads, stage: marked }),
   };
 }
+
+/** The words a stop's name can be and still say only its role, by role tag. */
+const ROLE_NAMES: Readonly<Record<string, ReadonlyArray<string>>> = {
+  prod: ["prod", "production"],
+  stage: ["stage"],
+};
+
+/**
+ * Whether a stop's own name only repeats the role its pill says — then the
+ * pill says it alone. Any more than the role stays: `stage 2` beside `stage`
+ * is what tells two stages apart, and `qa` or `eu-west` says where (the
+ * owner, 2026-09-25). Stricter than a prefix match on purpose.
+ */
+export function stopNameSaysOnlyRole(tag: string | null, name: string): boolean {
+  if (tag === null) return false;
+  return (ROLE_NAMES[tag] ?? [tag]).includes(name.trim().toLocaleLowerCase());
+}

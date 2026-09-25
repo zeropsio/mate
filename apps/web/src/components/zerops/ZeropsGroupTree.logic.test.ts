@@ -5,7 +5,6 @@ import {
   creatableRoles,
   environmentRoleLabel,
   environmentRoleTag,
-  environmentRoleTagIsRedundant,
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
 
@@ -16,30 +15,6 @@ function item(name: string, tagList: ReadonlyArray<string>): { readonly project:
 const CRM_DEV = item("crm-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:Beviro CRM"]);
 const CRM_STAGE = item("crm-stage", ["mate:g:aaa", "mate:role:stage"]);
 const CRM_PROD = item("crm-prod", ["mate:g:aaa", "mate:role:prod", "mate:name:Beviro CRM"]);
-
-describe("environmentRoleTagIsRedundant", () => {
-  const cases: ReadonlyArray<[string | null, string, boolean]> = [
-    // The shortened name already says the role: the pill would be the same
-    // word twice on one line.
-    ["stage", "stage", true],
-    ["prod", "production", true],
-    ["prod", "Production", true],
-    ["dev", "dev", true],
-    ["dev/stage", "dev/stage", true],
-    // A name somebody chose says nothing about the role, so the tag does.
-    ["prod", "eu-west", false],
-    ["stage", "Links - stage", false],
-    ["stage", "canary", false],
-    // No role, nothing to repeat.
-    [null, "stage", false],
-  ];
-
-  for (const [tag, name, expected] of cases) {
-    it(`${expected ? "drops" : "keeps"} ${JSON.stringify(tag)} beside ${JSON.stringify(name)}`, () => {
-      expect(environmentRoleTagIsRedundant(tag, name)).toBe(expected);
-    });
-  }
-});
 
 describe("environmentRoleLabel", () => {
   it.each([

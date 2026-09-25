@@ -1,11 +1,11 @@
 /**
- * How far a stop is from `main`, and what its row's second line says about it
+ * How far a stop is from `main`, and what its row's line says about it
  * (the owner, 2026-09-25, "Stage row redesign" v3).
  *
  * `main` is not a row: it is the reference every stop measures itself against.
- * "N behind" means the same on a stage and on production — the changes on
- * `main` this stop does not run yet — so a stage 0 behind beside a production
- * 3 behind says all three have run on the stage.
+ * The distance (`+N` on the row) means the same on a stage and on
+ * production — the changes on `main` this stop does not run yet — so a stage
+ * at none beside a production at `+3` says all three have run on the stage.
  *
  * ## Where the numbers come from
  *
@@ -34,12 +34,7 @@
 import { CHECKING_WHAT_RUNS, NOTHING_DEPLOYED, type Deployment } from "./flow/deployment.ts";
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import { PRODUCTION_DEPLOYING, type GroupFlowStop } from "./groupFlow.ts";
-import {
-  deployedCommit,
-  deployTone,
-  type DeployedVersion,
-  type EnvironmentServiceState,
-} from "./groupRows.ts";
+import { deployedCommit, deployTone, type EnvironmentServiceState } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import { releaseInFlightReason, shortCommit } from "./release.ts";
 
@@ -290,47 +285,7 @@ export function stageMarks(input: {
   return marks;
 }
 
-/**
- * A title per change, keyed by the lower-case sha: a merged pull request's
- * title for its merge commit, else the commit's subject. The pull request's
- * words win — the squash subject is the same title with `(#4)` behind it.
- */
-export function changeTitles(input: {
-  readonly contents: ReadonlyArray<{ readonly commits: ReadonlyArray<StopChange> }>;
-  readonly merged: ReadonlyArray<{
-    /** The whole sha the merge made (`merge_commit_sha`). */
-    readonly mergeCommit?: string | undefined;
-    readonly title: string;
-  }>;
-}): ReadonlyMap<string, string> {
-  const titles = new Map<string, string>();
-  const name = (sha: string | undefined, title: string): void => {
-    const words = title.trim();
-    if (sha === undefined || !FULL_SHA.test(sha) || words.length === 0) return;
-    titles.set(sha.toLowerCase(), words);
-  };
-  for (const entry of input.contents)
-    for (const commit of entry.commits) name(commit.sha, commit.subject);
-  for (const pull of input.merged) name(pull.mergeCommit, pull.title);
-  return titles;
-}
-
-/**
- * What a stop runs, named for a person: the version's name (a tag), else the
- * change's title, else the short commit (the owner, 2026-09-25: names, not
- * hashes). A name that is not one of ours is its own name.
- */
-export function runName(input: {
-  readonly version: DeployedVersion | undefined;
-  readonly titles: ReadonlyMap<string, string>;
-}): string | undefined {
-  const { version } = input;
-  if (version === undefined) return undefined;
-  const title = version.sha === undefined ? undefined : input.titles.get(version.sha.toLowerCase());
-  return version.name ?? title ?? version.commit;
-}
-
-/** Which state word leads a stop's second line, in the order the first match wins. */
+/** Which state word leads what a stop's line says it runs, in the order the first match wins. */
 export type StopWordKind = "failed" | "deploying" | "releasing" | "empty" | "checking";
 
 /** One change under an opened distance, in words. */
@@ -340,7 +295,7 @@ export interface StopRowChange {
 }
 
 /**
- * A stop row's second line: the state word where something differs, what it
+ * A stop row's line: the state word where something differs, what it
  * runs, and its distance. `distance` is `undefined` where nothing is behind or
  * nothing says — the row then offers nothing to open.
  */
@@ -354,7 +309,7 @@ export interface StopRowLine {
 
 /**
  * The words that hide the distance: while a stop fails, deploys or is
- * checked, "N behind" answers a question nobody can act on yet.
+ * checked, a distance answers a question nobody can act on yet.
  */
 const HIDES_DISTANCE: ReadonlySet<StopWordKind> = new Set([
   "failed",
@@ -369,7 +324,7 @@ const FAILED_ON = "Failed on";
 const FAILED = "Failed";
 
 /**
- * The line under a stop's name, stage or production alike (the owner,
+ * What a stop's line says after its name, stage or production alike (the owner,
  * 2026-09-25). Quiet unless something differs: in sync and healthy it says
  * only what the stop runs. Otherwise one word leads, first match wins —
  * failed, deploying or releasing, running nothing, checking — and while it
@@ -377,9 +332,13 @@ const FAILED = "Failed";
  * distance is what the first deploy will bring. A stop being set up is not
  * held by the flow yet: its row says so on its own, with no line of this kind.
  *
- * A stage that follows anything but `main` says its source in front of what
- * it runs (`feat/cart · Cart badge`); `—`, a stage declaring no branch, is not
- * a source worth saying.
+ * What it runs is named the same on both tiers: the version's name (a tag),
+ * else its short commit (`DeployedVersion.label`). A stage is not tied to a
+ * Mate — whatever is pushed to the branch its trigger watches gets deployed —
+ * so a change's title never names a stop (the owner, 2026-09-25: "Mate:
+ * zitdev" on a stage read as that Mate's). A stage that follows anything but
+ * `main` says its source in front (`feat/cart · 3f9c1b2`); `—`, a stage
+ * declaring no branch, is not a source worth saying.
  */
 export function stopRowLine(input: {
   readonly tier: GroupEnvironmentTier;
@@ -389,21 +348,19 @@ export function stopRowLine(input: {
   readonly releasing: string | undefined;
   /** `productionDistance` or `stageDistance`. */
   readonly distance: StopDistance | undefined;
-  /** `changeTitles`. */
-  readonly titles: ReadonlyMap<string, string>;
 }): StopRowLine {
-  const { stop, titles } = input;
+  const { stop } = input;
   // Only a stage on `main`'s line is measured against it, whatever a caller hands in.
   const distance =
     input.tier === "production" || stop.source === "main"
-      ? distanceLine(input.distance, titles)
+      ? distanceLine(input.distance)
       : undefined;
   const word = (kind: StopWordKind, text: string, runs?: string): StopRowLine => ({
     word: { kind, text },
     runs,
     distance: HIDES_DISTANCE.has(kind) ? undefined : distance,
   });
-  const name = runName({ version: stop.version, titles });
+  const name = stop.version?.label;
   const shown =
     input.tier === "stage" &&
     stop.source !== undefined &&
@@ -416,24 +373,26 @@ export function stopRowLine(input: {
   if (input.tier === "production" && input.releasing !== undefined)
     return word("releasing", releaseInFlightReason(input.releasing));
   if (stop.state === "deploying")
-    return word("deploying", name === undefined ? PRODUCTION_DEPLOYING : `Deploying ${name}…`);
+    // No ellipsis after a name: on the stop's one line it is a character the
+    // hash needs more (the owner, 2026-09-25: "Deploying 9e4b7d2").
+    return word("deploying", name === undefined ? PRODUCTION_DEPLOYING : `Deploying ${name}`);
   if (stop.state === "empty") return word("empty", NOTHING_DEPLOYED);
   if (stop.state === "checking") return word("checking", CHECKING_WHAT_RUNS);
   return { word: undefined, runs, distance };
 }
 
-/** The distance in words, or `undefined` where nothing is behind. */
-function distanceLine(
-  distance: StopDistance | undefined,
-  titles: ReadonlyMap<string, string>,
-): StopRowLine["distance"] {
+/**
+ * The distance in words, or `undefined` where nothing is behind. Each change
+ * by the subject it was committed under: this list is about the changes, so
+ * their own words name them.
+ */
+function distanceLine(distance: StopDistance | undefined): StopRowLine["distance"] {
   if (distance === undefined || distance.count === 0) return undefined;
   return {
     count: distance.count,
     changes: distance.changes.map((change) => ({
       sha: change.sha,
-      title:
-        titles.get(change.sha.toLowerCase()) ?? (change.subject.trim() || shortCommit(change.sha)),
+      title: change.subject.trim() || shortCommit(change.sha),
     })),
   };
 }

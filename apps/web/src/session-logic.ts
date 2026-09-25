@@ -98,19 +98,16 @@ export interface WorkLogEntry {
   id: string;
   createdAt: string;
   /**
-   * The server-stamped time this entry was FIRST observed (its earliest
-   * lifecycle activity's own `createdAt`), preserved across every later
-   * merge — unlike `createdAt`, which moves to the newest activity's own
-   * timestamp on each update/completion. Absent for an entry never derived
-   * from a tool-lifecycle activity; a reader wanting "when did this call
-   * start" falls back to `createdAt` in that case.
+   * The server-stamped time this entry's call started (its `tool.started`,
+   * else its earliest lifecycle activity's own `createdAt`), preserved across
+   * every later merge, like `id` and `createdAt` (see `deriveWorkLogEntries`,
+   * `mergeDerivedWorkLogEntries`).
    */
   startedAt?: string;
   /**
-   * The latest merged activity's own `createdAt`, set on every merge (all
-   * tools) — unlike `createdAt`, which a Zerops call's merge deliberately
-   * pins to the FIRST activity's timestamp (see `mergeDerivedWorkLogEntries`).
-   * Absent on an entry that was never merged.
+   * The latest lifecycle activity's own `createdAt`, set on every merge and
+   * on a row anchored at its `tool.started` — unlike `createdAt`, which stays
+   * pinned to the anchor. Absent on an entry that is its own only activity.
    */
   updatedAt?: string;
   turnId?: TurnId | null;
@@ -720,9 +717,20 @@ export function deriveWorkLogEntries(
     }
   }
   const entries: DerivedWorkLogEntry[] = [];
+  // A tool row is anchored at its call's `tool.started`, which draws nothing
+  // itself: a reload's snapshot keeps the start but drops every update a
+  // completion supersedes, so an anchor at the first update would key and
+  // place the row differently live and after a reload.
+  const startedAnchorByKey = new Map<string, { id: string; createdAt: string }>();
   for (const activity of ordered) {
     if (exclude?.has(activity.id)) continue;
-    if (activity.kind === "tool.started") continue;
+    if (activity.kind === "tool.started") {
+      const startedKey = toolLifecycleCollapseMapKey(toDerivedWorkLogEntry(activity));
+      if (startedKey !== undefined) {
+        startedAnchorByKey.set(startedKey, { id: activity.id, createdAt: activity.createdAt });
+      }
+      continue;
+    }
     // Agent task.started rows are CTA seeds: they carry the true spawn turn,
     // which is the batch key (completions of background subagents arrive
     // under later synthetic turns and must not start new batches). They
@@ -757,7 +765,22 @@ export function deriveWorkLogEntries(
     ) {
       continue;
     }
-    entries.push(entry);
+    // The first row of a call takes the anchor; later rows merge into it,
+    // which keeps it (`mergeDerivedWorkLogEntries`).
+    const lifecycleKey = toolLifecycleCollapseMapKey(entry);
+    const anchor = lifecycleKey === undefined ? undefined : startedAnchorByKey.get(lifecycleKey);
+    if (lifecycleKey !== undefined) startedAnchorByKey.delete(lifecycleKey);
+    entries.push(
+      anchor === undefined
+        ? entry
+        : {
+            ...entry,
+            id: anchor.id,
+            createdAt: anchor.createdAt,
+            startedAt: anchor.createdAt,
+            updatedAt: entry.createdAt,
+          },
+    );
   }
   return collapseDerivedWorkLogEntries(entries);
 }
@@ -1070,13 +1093,9 @@ function collapseDerivedWorkLogEntries(
         collapsed[existingIndex] = {
           ...mergeDerivedWorkLogEntries(existing, entry),
           // The CTA row keeps the group's ANCHOR identity, not the last
-          // agent's: id/createdAt/turnId stay pinned to the spawn point so
-          // the row renders where the run launched instead of drifting to
-          // the newest progress tick (mid-run it drifted below the whole
-          // conversation, reading as "no visualization"), and the stable id
-          // keeps React state/virtualization sane.
-          id: existing.id,
-          createdAt: existing.createdAt,
+          // agent's: beyond the id/createdAt every merge pins, turnId stays
+          // at the spawn point so the batch never drifts to a completion's
+          // synthetic turn.
           turnId: existing.turnId ?? null,
           ...(existing.taskId !== undefined ? { taskId: existing.taskId } : {}),
           label: existing.label,
@@ -1177,13 +1196,15 @@ function mergeDerivedWorkLogEntries(
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
   const toolInput = next.toolInput ?? previous.toolInput;
-  // The FIRST observation's timestamp, never the latest — `createdAt` itself
-  // moves to `next`'s own timestamp via the spread below, which is right for
-  // "when was this last updated" but wrong for "when did this call start".
   const startedAt = previous.startedAt ?? previous.createdAt;
   return {
     ...previous,
     ...next,
+    // The row is anchored at first sight: its key and timeline position stay
+    // those of the first merged activity from start to completion, while the
+    // content (status, label, detail, result) comes from the latest one.
+    id: previous.id,
+    createdAt: previous.createdAt,
     startedAt,
     updatedAt: next.createdAt,
     ...(detail ? { detail } : {}),
