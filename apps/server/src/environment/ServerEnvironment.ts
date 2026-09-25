@@ -103,6 +103,7 @@ export const makeServerEnvironmentCapabilities = (
     threadPinning: true,
     threadPinReorder: true,
     threadActiveReorder: true,
+    threadAutoSettleOptOut: true,
     threadTitleRegeneration: true,
     threadPullRequestLinking: true,
     projectCloneTracking: true,
