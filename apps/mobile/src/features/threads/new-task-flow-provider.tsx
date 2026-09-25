@@ -89,7 +89,7 @@ import { useMobileProjectGroupingSettings } from "../../state/project-grouping";
 import {
   resolvePendingTaskInteractionMode,
   resolveProviderInteractionMode,
-} from "./legacy-plan-mode";
+} from "../../state/legacy-plan-mode";
 import { resolveDraftWorkspaceMode, resolveWorkspaceModeSelection } from "./workspaceMode";
 import { useLegacyPlanModeState } from "./use-legacy-plan-mode-enabled";
 import {

@@ -3,7 +3,7 @@ import { Alert } from "react-native";
 import ImageViewing from "react-native-image-viewing";
 
 import { downloadAndShareAttachment, shareLocalAttachment } from "../lib/attachmentDownload";
-import type { ResolvedFilePreviewSource } from "./FilePreviewModal";
+import type { ResolvedFilePreviewSource } from "./FilePreviewModal.types";
 
 function PdfPreview(props: {
   readonly source: ResolvedFilePreviewSource;
