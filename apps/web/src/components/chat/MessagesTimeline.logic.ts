@@ -15,6 +15,7 @@ import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../..
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
   isReadOperationKind,
+  operationTone,
   plural,
   type ZeropsOperation,
 } from "@t3tools/client-runtime/zerops/model";
@@ -951,15 +952,8 @@ const TALLIED_OPERATION_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
   "browser",
 ]);
 
-/** The operation card's own tone rule, for an operation that has settled. */
-function settledOperationTone(operation: ZeropsOperation): ServiceStatusToneId {
-  if (operation.phase === "failed") return "failed";
-  if (operation.phase === "uncertain") return "attention";
-  return operation.steps.some((step) => step.state === "failed") ? "attention" : "ok";
-}
-
 function operationFact(operation: ZeropsOperation): TurnTallyFact {
-  return { word: operation.statusWord, tone: settledOperationTone(operation) };
+  return { word: operation.statusWord, tone: operationTone(operation) };
 }
 
 /**

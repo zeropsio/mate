@@ -20,9 +20,9 @@ import type { JSX, ReactNode } from "react";
 import { GlobeIcon } from "lucide-react";
 
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   browserLiveCaption,
+  operationTone,
   type ZeropsOperation,
   type ZeropsOperationStep,
 } from "@t3tools/client-runtime/zerops/model";
@@ -55,20 +55,6 @@ export interface ObservedRegion {
   readonly provenance: string;
   /** The build log region, when the caller has one. */
   readonly log?: ReactNode;
-}
-
-/** running -> busy, done -> ok, failed -> failed; uncertain, or a done operation with any failed step -> attention. */
-function operationTone(operation: ZeropsOperation): ServiceStatusToneId {
-  if (operation.phase === "running") {
-    return "busy";
-  }
-  if (operation.phase === "failed") {
-    return "failed";
-  }
-  if (operation.phase === "uncertain") {
-    return "attention";
-  }
-  return operation.steps.some((step) => step.state === "failed") ? "attention" : "ok";
 }
 
 /** `m:ss` — the running clock, ticking once a second. */

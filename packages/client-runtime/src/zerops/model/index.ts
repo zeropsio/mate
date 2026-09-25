@@ -1,4 +1,9 @@
-export { browserLiveCaption, humanizeToolName, plural } from "../operations/phrases.ts";
+export {
+  browserLiveCaption,
+  humanizeToolName,
+  operationTone,
+  plural,
+} from "../operations/phrases.ts";
 export { normalizedToolName } from "./partition.ts";
 export { compareCallRows, compareAnchors } from "./order.ts";
 export { collectZeropsCalls } from "./calls.ts";

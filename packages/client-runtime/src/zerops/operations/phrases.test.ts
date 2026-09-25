@@ -7,6 +7,7 @@ import {
   humanizeCheckName,
   humanizeToolName,
   operationStatusWord,
+  operationTone,
   platformStatus,
   processActionWord,
   sentenceCase,
@@ -285,6 +286,25 @@ describe("browserLiveCaption", () => {
     expect(browserLiveCaption("https://kanbandev-26a7.prg1.zerops.app")).toBe(
       "Agent is verifying https://kanbandev-26a7.prg1.zerops.app.",
     );
+  });
+});
+
+describe("operationTone — one tone for a card and every summary of it", () => {
+  const step = (state: "done" | "failed") => ({
+    id: state,
+    label: state,
+    state,
+    stateLabel: state,
+  });
+  it.each([
+    { phase: "running" as const, steps: [], expected: "busy" },
+    { phase: "done" as const, steps: [step("done")], expected: "ok" },
+    { phase: "done" as const, steps: [step("done"), step("failed")], expected: "attention" },
+    { phase: "failed" as const, steps: [], expected: "failed" },
+    { phase: "uncertain" as const, steps: [], expected: "attention" },
+    { phase: "interrupted" as const, steps: [], expected: "ok" },
+  ])("$phase with $steps.length steps: $expected", ({ phase, steps, expected }) => {
+    expect(operationTone({ phase, steps })).toBe(expected);
   });
 });
 

@@ -147,6 +147,27 @@ export function platformStatus(raw: string): PlatformStatus {
   return { state, tone: STATE_TONE[state], word };
 }
 
+/**
+ * An operation's tone — its card's dot and edge, and every summary of it
+ * (the turn tally): running → busy, failed → failed; uncertain, or a
+ * settled operation with a failed step → attention; else ok.
+ */
+export function operationTone(operation: {
+  readonly phase: ZeropsOperationPhase;
+  readonly steps: ReadonlyArray<{ readonly state: ZeropsOperationStepState }>;
+}): ServiceStatusToneId {
+  if (operation.phase === "running") {
+    return "busy";
+  }
+  if (operation.phase === "failed") {
+    return "failed";
+  }
+  if (operation.phase === "uncertain") {
+    return "attention";
+  }
+  return operation.steps.some((step) => step.state === "failed") ? "attention" : "ok";
+}
+
 export interface OperationStatusWordContext {
   readonly resultStatus?: string | undefined;
   readonly action?: string | undefined;
