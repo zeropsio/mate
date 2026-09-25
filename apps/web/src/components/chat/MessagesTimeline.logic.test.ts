@@ -1159,7 +1159,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rowIdentities(rows)).toEqual([
       { id: "turn-header:turn-milestone", kind: "turn-header" },
       { id: "operation:standalone-operation", kind: "operation" },
-      { id: "work-toggle:standalone-tool-1-entry", kind: "work-toggle" },
+      { id: "work-group:standalone-tool-1-entry", kind: "work-toggle" },
     ]);
     expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({ hiddenCount: 2 });
   });
@@ -1173,7 +1173,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rowIdentities(rows)).toEqual([
       { id: "generic-status-entry", kind: "generic-call" },
-      { id: "work-toggle:standalone-tool-1-entry", kind: "work-toggle" },
+      { id: "work-group:standalone-tool-1-entry", kind: "work-toggle" },
     ]);
     expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({ hiddenCount: 2 });
   });
@@ -1190,9 +1190,9 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rowIdentities(rows)).toEqual([
       { id: "turn-header:turn-active", kind: "turn-header" },
-      { id: "work-live:active-running-before-entry", kind: "work-live" },
+      { id: "work-group:active-running-before-entry", kind: "work-live" },
       { id: "operation:active-middle-operation", kind: "operation" },
-      { id: "work-live:active-running-after-entry", kind: "work-live" },
+      { id: "work-group:active-running-after-entry", kind: "work-live" },
     ]);
   });
 
@@ -1207,7 +1207,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rowIdentities(rows)).toEqual([
       { id: "turn-header:turn-active", kind: "turn-header" },
-      { id: "work-live:active-running-before-entry", kind: "work-live" },
+      { id: "work-group:active-running-before-entry", kind: "work-live" },
       { id: "operation:active-trailing-operation", kind: "operation" },
     ]);
   });
@@ -1224,7 +1224,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rowIdentities(rows)).toEqual([
       { id: "turn-header:turn-active", kind: "turn-header" },
       { id: "operation:active-leading-operation", kind: "operation" },
-      { id: "work-live:active-running-entry", kind: "work-live" },
+      { id: "work-group:active-running-entry", kind: "work-live" },
     ]);
   });
 
@@ -1363,7 +1363,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(expandedRows.map((row) => ({ id: row.id, kind: row.kind }))).toEqual([
       { id: "turn-header:turn-1", kind: "turn-header" },
       { id: "assistant-first-entry", kind: "message" },
-      { id: "work-toggle:work-entry", kind: "work-toggle" },
+      { id: "work-group:work-entry", kind: "work-toggle" },
       { id: "compaction-entry", kind: "context-compaction" },
       { id: "assistant-final-entry", kind: "message" },
     ]);
@@ -1763,7 +1763,7 @@ describe("deriveMessagesTimelineRows", () => {
       "user-entry",
       "turn-header:user-1",
       "assistant-first-entry",
-      "work-toggle:work-entry-1",
+      "work-group:work-entry-1",
       "assistant-final-entry",
     ]);
     expect(expandedRows[1]).toMatchObject({ fold: { expanded: true } });
@@ -2450,7 +2450,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.map((row) => row.id)).toEqual([
       "turn-header:turn-1",
       "assistant-thought-entry",
-      "work-live:work-entry-1",
+      "work-group:work-entry-1",
     ]);
   });
 
@@ -2872,7 +2872,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(
       rows.filter(isFoldingHeader).map((row) => row.kind === "turn-header" && row.turnId),
     ).toEqual(["turn-1"]);
-    expect(rows.map((row) => row.id)).toContain("work-live:running-work-entry");
+    expect(rows.map((row) => row.id)).toContain("work-group:running-work-entry");
   });
 
   it("only shows assistant metadata on the terminal assistant message", () => {
@@ -3014,7 +3014,7 @@ describe("deriveMessagesTimelineRows", () => {
       expandedWorkGroupIds: new Set(["work-group:work-entry-1"]),
     });
 
-    expect(collapsedRows.map((row) => row.id)).toEqual(["work-toggle:work-entry-1"]);
+    expect(collapsedRows.map((row) => row.id)).toEqual(["work-group:work-entry-1"]);
     expect(collapsedRows.find((row) => row.kind === "work-toggle")).toMatchObject({
       groupId: "work-group:work-entry-1",
       hiddenCount: 3,
@@ -3023,7 +3023,7 @@ describe("deriveMessagesTimelineRows", () => {
       summary: "Used 3 tools",
     });
     expect(expandedRows.map((row) => row.id)).toEqual([
-      "work-toggle:work-entry-1",
+      "work-group:work-entry-1",
       "work-1",
       "work-2",
       "work-3",
@@ -3941,6 +3941,19 @@ describe("turn header", () => {
       "appdev #2 landed",
       "1 ask",
     ]);
+  });
+
+  it("never drops or reorders a row while the turn runs, and keeps the header through settle", () => {
+    const expanded = new Set([T1]);
+    let previous: ReadonlyArray<string> = [];
+    for (const { event, conversation } of liveTurnSequence) {
+      const ids = deriveRows(conversation, expanded).map((row) => row.id);
+      expect({ event, kept: ids.filter((id) => previous.includes(id)) }).toEqual({
+        event,
+        kept: previous,
+      });
+      previous = ids;
+    }
   });
 
   it("derives the same rows from the stored thread as the live page ended with", () => {

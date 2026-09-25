@@ -1364,7 +1364,9 @@ export function deriveMessagesTimelineRows(input: {
           const groupId = workGroupId(activeWorkAnchor.id, activeWorkAnchor.entry);
           return {
             kind: "work-live" as const,
-            id: `work-live:${workGroupIdentity(activeWorkAnchor.id, activeWorkAnchor.entry)}`,
+            // One id for a tool run, live or summarized: it never re-keys at
+            // the moment its last call settles or the turn moves on.
+            id: groupId,
             createdAt: activeWorkAnchor.createdAt,
             entry: latestActiveToolEntry.entry,
             groupedEntries: visibleActiveToolEntries.map((entry) => entry.entry),
@@ -1557,7 +1559,7 @@ export function deriveMessagesTimelineRows(input: {
           const latestActiveToolEntry = activeInProgressToolEntries.at(-1)!;
           nextRows.push({
             kind: "work-live",
-            id: `work-live:${workGroupIdentity(timelineEntry.id, timelineEntry.entry)}`,
+            id: groupId,
             createdAt: timelineEntry.createdAt,
             entry: latestActiveToolEntry,
             groupedEntries: visibleGroupedEntries,
@@ -1582,7 +1584,7 @@ export function deriveMessagesTimelineRows(input: {
           const lastEntry = visibleGroupedEntries.at(-1)!;
           nextRows.push({
             kind: "work-toggle",
-            id: `work-toggle:${timelineEntry.id}`,
+            id: groupId,
             createdAt: timelineEntry.createdAt,
             groupId,
             hiddenCount: visibleGroupedEntries.length,
