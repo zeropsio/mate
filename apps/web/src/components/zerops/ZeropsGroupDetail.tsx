@@ -109,7 +109,7 @@ import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
 import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
-import type { ZeropsDeployRunRequest } from "~/zerops/useZeropsDeployRun";
+import type { ZeropsDeployRun, ZeropsDeployRunRequest } from "~/zerops/useZeropsDeployRun";
 import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import {
   useZeropsChangeCommits,
@@ -1122,6 +1122,7 @@ const MENU_CHANGES_SHOWN = 8;
  * and how the stop got here (a production's releases, a stage's deploys).
  */
 export function ZeropsStopPane({
+  buildOf,
   commits,
   crumbs,
   deployed,
@@ -1164,6 +1165,11 @@ export function ZeropsStopPane({
   readonly services: ReadonlyArray<StopServiceRow>;
   /** Where an opened service's build is read from. */
   readonly forge: StopBuildForge;
+  /**
+   * The build behind a service's commit where the caller already holds it — the design harness's
+   * canned runs; read from Gitea by `forge` otherwise.
+   */
+  readonly buildOf?: ((row: StopServiceRow) => ZeropsDeployRun) | undefined;
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
   readonly runAgain?: StopRunAgain | undefined;
@@ -1271,6 +1277,7 @@ export function ZeropsStopPane({
           <ul className="flex flex-col">
             {services.map((row) => (
               <StopServiceLine
+                buildOf={buildOf}
                 enablingServiceId={enablingServiceId ?? null}
                 forge={forge}
                 key={row.hostname}
@@ -1387,11 +1394,13 @@ function CardGroup({
 function StopServiceLine({
   row,
   forge,
+  buildOf,
   onEnableRoute,
   enablingServiceId,
 }: {
   readonly row: StopServiceRow;
   readonly forge: StopBuildForge;
+  readonly buildOf: ((row: StopServiceRow) => ZeropsDeployRun) | undefined;
   readonly onEnableRoute: ((serviceId: string) => void) | undefined;
   readonly enablingServiceId: string | null;
 }) {
@@ -1498,14 +1507,21 @@ function StopServiceLine({
           })}
         </span>
       </div>
-      {open && request !== null ? <ServiceBuild request={request} /> : null}
+      {!open || request === null ? null : buildOf === undefined ? (
+        <ServiceBuild request={request} />
+      ) : (
+        <ServiceBuildView run={buildOf(row)} />
+      )}
     </li>
   );
 }
 
 /** The build behind one service's commit — read only while its row is open. */
 function ServiceBuild({ request }: { readonly request: ZeropsDeployRunRequest }) {
-  const run = useZeropsDeployRun(request);
+  return <ServiceBuildView run={useZeropsDeployRun(request)} />;
+}
+
+function ServiceBuildView({ run }: { readonly run: ZeropsDeployRun }) {
   return (
     <div className="mb-2 ml-9 rounded-md bg-muted/50 px-3 py-2">
       <ZeropsDeployRunView run={run} />

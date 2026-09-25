@@ -34,7 +34,15 @@ import {
   stopVerdict,
   stopView,
   type Deployment,
+  type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
+import {
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+  ZeropsProjectId,
+  ZeropsServiceId,
+} from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import {
@@ -42,6 +50,7 @@ import {
   ZeropsStopPane,
   type ReleaseOffer,
 } from "~/components/zerops/ZeropsGroupDetail";
+import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
@@ -237,6 +246,71 @@ const READ_DETAIL = async (sha: string) => ({
 
 const NOW = Date.now();
 
+function run(state: ZeropsDeployRun["state"]): ZeropsDeployRun {
+  return {
+    state,
+    readLog: async () => "",
+    rerun: async () => {},
+    refresh: () => {},
+    rerunning: false,
+    rerunFailure: null,
+  };
+}
+
+/** A build that went through, as an opened service row shows it. */
+const BUILT: ZeropsDeployRun = run({
+  kind: "read",
+  runId: 41,
+  runNumber: 12,
+  jobs: [
+    {
+      id: 1,
+      name: "build",
+      status: "completed",
+      conclusion: "success",
+      run_id: 41,
+      started_at: "2026-09-19T11:00:00Z",
+      completed_at: "2026-09-19T11:01:32Z",
+    },
+    {
+      id: 2,
+      name: "deploy",
+      status: "completed",
+      conclusion: "success",
+      run_id: 41,
+      started_at: "2026-09-19T11:01:32Z",
+      completed_at: "2026-09-19T11:01:50Z",
+    },
+  ],
+});
+
+/** A build whose deploy job failed: the row a failed service opens onto. */
+const BROKEN: ZeropsDeployRun = run({
+  kind: "read",
+  runId: 42,
+  runNumber: 13,
+  jobs: [
+    {
+      id: 3,
+      name: "build",
+      status: "completed",
+      conclusion: "success",
+      run_id: 42,
+      started_at: "2026-09-19T11:00:00Z",
+      completed_at: "2026-09-19T11:02:11Z",
+    },
+    {
+      id: 4,
+      name: "deploy",
+      status: "completed",
+      conclusion: "failure",
+      run_id: 42,
+      started_at: "2026-09-19T11:02:11Z",
+      completed_at: "2026-09-19T11:02:15Z",
+    },
+  ],
+});
+
 /** One service of a stop, as the group's Gitea read it: what it runs and how its deploy went. */
 function service(
   environment: string,
@@ -341,13 +415,52 @@ const BEVIRO_BEHIND: ReleaseOffer = {
 
 const BEVIRO_RELEASING: ReleaseOffer = { ...BEVIRO_BEHIND, releasing: true };
 
+/** Beviro's production as the platform lists it: every service running what its deploy named. */
+const BEVIRO_RUNNING = known({
+  kind: "running",
+  activatedAt: new Date(NOW - 7_200_000).toISOString(),
+  version: deployedVersion(`${sha(NEXTSTORE[0])} v0.1.13 ales`),
+});
+
+/** The nextstore commit v0.1.14 listed, whose production deploy failed. */
+const NEXTSTORE_FAILED = "9c41d2e0";
+
+/** v0.1.14 tagged on top of Beviro's releases: only the newest tag's time is read. */
+const BEVIRO_FAILED_RELEASES: ReadonlyArray<FlowRelease> = [
+  {
+    tag: "v0.1.14",
+    verdict: "approved",
+    detail: undefined,
+    line: `medusa ${MEDUSA.slice(0, 7)} · nextstore ${NEXTSTORE_FAILED.slice(0, 7)}`,
+    entries: [
+      { service: "medusa", commit: sha(MEDUSA) },
+      { service: "nextstore", commit: sha(NEXTSTORE_FAILED) },
+    ],
+    taggedAt: new Date(NOW - 600_000).toISOString(),
+  },
+  ...BEVIRO_RELEASES.map((release) => ({ ...release, taggedAt: undefined })),
+];
+
+/** A stage the platform lists, each service running what its deploy named. */
+const STAGE_RUNNING = known({
+  kind: "running",
+  activatedAt: new Date(NOW - 7_200_000).toISOString(),
+  version: deployedVersion(sha("b21d904c")),
+});
+
 interface StopFixture {
   readonly tier: EnvironmentRow["tier"];
   /** The project's name; Shop unless the fixture is Beviro's. */
   readonly group?: string;
   readonly services: ReadonlyArray<EnvironmentServiceState>;
-  /** What the platform says the stop runs; unread unless given. */
+  /**
+   * What the platform says the stop runs; unread unless given. Its services are listed the way
+   * `useStopServices` lists them: each running what its own deploy named, unless `platform` says
+   * otherwise for it.
+   */
   readonly deployment?: Shown<Deployment>;
+  /** A service's own deployment where it differs from what its deploy named. */
+  readonly platform?: Readonly<Record<string, Deployment>>;
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers?: ReadonlyArray<ZeropsRouteOffer>;
   readonly release?: ReleaseOffer;
@@ -373,6 +486,56 @@ function runningCommits(
     if (commit !== undefined) running.set(entry.hostname, commit);
   }
   return running;
+}
+
+/**
+ * The platform's listing of the stop's services, as `useStopServices` hands it to the page: read
+ * when the stop's own deployment is, each service running the version its deploy named — or, on a
+ * stop nothing runs on, nothing.
+ */
+function platformListing(fixture: StopFixture): Shown<ReadonlyArray<StopService>> {
+  const { deployment } = fixture;
+  if (deployment === undefined || deployment.state !== "known") return UNREAD_LISTING;
+  const activatedAt = deployment.value.kind === "running" ? deployment.value.activatedAt : null;
+  return {
+    ...deployment,
+    value: fixture.services.map((entry) => ({
+      service: platformService(`svc-${entry.hostname}`),
+      hostname: entry.hostname,
+      deployment: known(
+        fixture.platform?.[entry.hostname] ??
+          (deployment.value.kind === "none"
+            ? deployment.value
+            : {
+                kind: "running",
+                activatedAt,
+                version: deployedVersion(entry.appVersionName),
+              }),
+      ),
+    })),
+  };
+}
+
+const UNREAD_LISTING: Shown<ReadonlyArray<StopService>> = { state: "unread", waitingFor: null };
+
+/** A service of the harness's one pretend project, as the platform's listing refers to it. */
+function platformService(id: string): StopService["service"] {
+  return {
+    kind: "service",
+    project: {
+      kind: "project",
+      organization: {
+        kind: "organization",
+        account: {
+          apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+          accountId: ZeropsAccountId.make("harness"),
+        },
+        organizationId: ZeropsOrganizationId.make("harness"),
+      },
+      projectId: ZeropsProjectId.make("harness"),
+    },
+    serviceId: ZeropsServiceId.make(id),
+  };
 }
 
 /**
@@ -415,7 +578,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   const services = serviceRows({
     environment: name,
     services: fixture.services,
-    platform: { state: "unread", waitingFor: null },
+    platform: platformListing(fixture),
     routes,
     offers: fixture.offers ?? [],
     nowMs: NOW,
@@ -428,6 +591,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       : { ...failedDeploy, jobKnown: fixture.jobKnown ?? false };
   return (
     <ZeropsStopPane
+      buildOf={(entry) => (entry.tone === "bad" ? BROKEN : BUILT)}
       commits={commits}
       crumbs={crumbs(group)}
       deployed={new Map(stop.version.sha === undefined ? [] : [[name, stop.version.sha]])}
@@ -633,6 +797,17 @@ function Harness() {
               version: deployedVersion(sha("b21d904c")),
               previous: null,
             }),
+            platform: {
+              api: {
+                kind: "deploying",
+                version: deployedVersion(sha("b21d904c")),
+                previous: {
+                  kind: "running",
+                  activatedAt: null,
+                  version: deployedVersion(sha("5c3ea18b")),
+                },
+              },
+            },
             routes: ROUTES,
           }}
         />
@@ -657,7 +832,7 @@ function Harness() {
 
       <State
         label="A stage whose deploy failed, its job known"
-        note="The verdict names the service and runs its failed job again."
+        note="api's deploy of the commit it runs failed: the verdict names the service and runs its failed job again, and its row opens onto the failed job."
       >
         <StopState
           fixture={{
@@ -666,6 +841,7 @@ function Harness() {
               service("stage", "api", "b21d904c", undefined, "failure"),
               service("stage", "app", "5c3ea18b", undefined),
             ],
+            deployment: STAGE_RUNNING,
             routes: ROUTES,
             jobKnown: true,
           }}
@@ -674,7 +850,7 @@ function Harness() {
 
       <State
         label="A stage whose deploy failed, its job unknown"
-        note="No job to run again, so no verb; the platform still runs the commit before it."
+        note="No job to run again, so no verb."
       >
         <StopState
           fixture={{
@@ -683,12 +859,27 @@ function Harness() {
               service("stage", "api", "b21d904c", undefined, "failure"),
               service("stage", "app", "5c3ea18b", undefined),
             ],
-            deployment: known({
-              kind: "running",
-              activatedAt: null,
-              version: deployedVersion(sha("5c3ea18b")),
-            }),
+            deployment: STAGE_RUNNING,
             routes: ROUTES,
+          }}
+        />
+      </State>
+
+      <State
+        label="A production whose release failed to deploy"
+        note="Beviro: v0.1.14's nextstore deploy failed and nextstore runs on v0.1.13 — the verdict says so, and the release row reads Deploy failed."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Beviro",
+            services: BEVIRO_LIVE,
+            deployment: BEVIRO_RUNNING,
+            routes: BEVIRO_ROUTES,
+            releases: BEVIRO_FAILED_RELEASES,
+            failedDeploys: new Map([
+              [`nextstore@${sha(NEXTSTORE_FAILED)}`, new Date(NOW - 360_000).toISOString()],
+            ]),
           }}
         />
       </State>
@@ -711,7 +902,7 @@ function Harness() {
 
       <State
         label="A production, live"
-        note="Beviro: medusa runs v0.1.9's commit, nextstore v0.1.13 — the stop is v0.1.13, the release both run. v0.1.11's nextstore deploy failed; two releases wait behind the quiet verb."
+        note="Beviro: medusa runs v0.1.9's commit, nextstore v0.1.13 — the stop is v0.1.13, the release both run. Two releases wait behind the quiet verb."
       >
         <StopState
           fixture={{
@@ -719,8 +910,8 @@ function Harness() {
             group: "Beviro",
             services: BEVIRO_LIVE,
             routes: BEVIRO_ROUTES,
+            deployment: BEVIRO_RUNNING,
             releases: BEVIRO_RELEASES,
-            failedDeploys: new Map([[`nextstore@${sha(NEXTSTORE[2])}`, undefined]]),
             releasedAge: "1h ago",
           }}
         />
