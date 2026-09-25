@@ -326,18 +326,34 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     expect(html).toContain("Roll back to this");
   });
 
-  it("is the environment row it was while it says nothing it carried", () => {
+  it("draws a row that says nothing it carried on the described rows' grid, its line in their middle", () => {
     const html = renderToStaticMarkup(
       carriedRows(
-        [NEWEST],
-        carriedOf(TITAN_RELEASES, TITAN_ONLY, new Map([["titan", { kind: "reading" }]])),
+        [
+          // A roll-back carried nothing new: its tag lists what an older one did.
+          row(TITAN_RELEASES[1]!, 0, { live: true }),
+          NEWEST,
+          row(
+            titanRelease("v0.1.24", "3dd0000", {
+              verdict: "refused",
+              detail: "The build of titan failed.",
+            }),
+            2,
+          ),
+        ],
+        TITAN_READ,
       ),
     );
-    expect(html).toContain(`<li class="group/row ${ENVIRONMENT_ROW_GRID_CLASS}"`);
-    expect(html).toContain(
-      '<span class="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1" data-zerops-surface="environment-summary">titan 1bcc930</span>',
+    const grids = [...html.matchAll(/<li class="([^"]*)"/gu)].map((match) => match[1]);
+    expect(grids).toHaveLength(3);
+    expect(new Set(grids).size).toBe(1);
+    expect(html).not.toContain(ENVIRONMENT_ROW_GRID_CLASS);
+    expect(html).toMatch(
+      /data-zerops-surface="role-tag"[\s\S]*?<\/span><\/span><span class="[^"]*sm:col-start-2[^"]*" data-zerops-surface="environment-summary">titan 2cc0000<\/span>/u,
     );
-    expect(html).not.toContain("release-description");
+    expect(html).toContain(
+      'data-zerops-surface="environment-summary">The build of titan failed.</span>',
+    );
   });
 
   it("is still one row per release", () => {
