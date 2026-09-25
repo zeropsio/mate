@@ -84,25 +84,31 @@ function planResult(overrides: Record<string, unknown>): string {
 describe("reduceZeropsOperations — weatherdash-first-deploy", () => {
   const { operations } = reduceFrom2(weatherdashFirstDeploy);
 
-  it("produces bootstrap, deploy, verify in order", () => {
-    expect(operations.map((o) => o.kind)).toEqual(["bootstrap", "deploy", "verify"]);
+  it("produces discover, bootstrap, deploy, verify in order", () => {
+    expect(operations.map((o) => o.kind)).toEqual(["discover", "bootstrap", "deploy", "verify"]);
+  });
+
+  it("the opening discover is its own card, done, listing the project's services", () => {
+    const discover = operations[0]!;
+    expect(discover.phase).toBe("done");
+    expect(discover.readResult).toMatchObject({ kind: "discover", pending: false });
   });
 
   it("keys the bootstrap operation by the founder call id, membership by the zcp session id", () => {
-    const bootstrap = operations[0]!;
+    const bootstrap = operations[1]!;
     expect(bootstrap.key).toMatch(/^bootstrap:/);
     expect(bootstrap.session?.sessionIds).toContain("61892e75bf9a9ad9");
   });
 
   it("the bootstrap operation is done, voiced by the agent, with a New service kicker", () => {
-    const bootstrap = operations[0]!;
+    const bootstrap = operations[1]!;
     expect(bootstrap.phase).toBe("done");
     expect(bootstrap.voiceSource).toBe("agent");
     expect(bootstrap.kicker).toBe("New service · weatherdash");
   });
 
   it("the deploy operation is done, subject weatherdash, live with a link", () => {
-    const deploy = operations[1]!;
+    const deploy = operations[2]!;
     expect(deploy.phase).toBe("done");
     expect(deploy.subject).toBe("weatherdash");
     expect(deploy.closing).toBe("weatherdash is live.");
@@ -115,7 +121,7 @@ describe("reduceZeropsOperations — weatherdash-first-deploy", () => {
   });
 
   it("the verify operation is done with two checks", () => {
-    const verify = operations[2]!;
+    const verify = operations[3]!;
     expect(verify.phase).toBe("done");
     expect(verify.steps).toHaveLength(2);
     expect(verify.closing).toBe("All 2 checks passed.");
@@ -863,5 +869,108 @@ describe("a verify whose checks failed", () => {
       { name: "http_public", status: "skip" },
     ]);
     expect(verify.phase).toBe("done");
+  });
+});
+
+describe("reduceZeropsOperations — read tools", () => {
+  const cases = [
+    {
+      toolName: "zerops_logs",
+      kind: "logs",
+      input: { serviceHostname: "app" },
+      result: { entries: [], hasMore: false },
+    },
+    {
+      toolName: "zerops_events",
+      kind: "events",
+      input: { serviceHostname: "app" },
+      result: { events: [] },
+    },
+    {
+      toolName: "zerops_process",
+      kind: "process",
+      input: { action: "wait", service: "app" },
+      result: { processes: [], settled: true },
+    },
+    {
+      toolName: "zerops_discover",
+      kind: "discover",
+      input: { service: "app" },
+      result: { project: {}, services: [] },
+    },
+  ] as const;
+
+  for (const { toolName, kind, input, result } of cases) {
+    it(`${toolName} is a ${kind} card from its start, filled in place under one key`, () => {
+      const running = reduceFrom([
+        { id: "c1", createdAt: "2026-09-01T00:00:00.000Z", toolName, input, status: "inProgress" },
+      ]);
+      const done = reduceFrom([
+        {
+          id: "c1",
+          createdAt: "2026-09-01T00:00:00.000Z",
+          toolName,
+          input,
+          status: "completed",
+          resultText: JSON.stringify(result),
+        },
+      ]);
+      expect(running.genericCalls).toEqual([]);
+      expect(running.operations[0]).toMatchObject({
+        key: "op:c1",
+        kind,
+        phase: "running",
+        readResult: { kind, pending: true },
+      });
+      expect(done.operations[0]).toMatchObject({
+        key: "op:c1",
+        kind,
+        phase: "done",
+        readResult: { kind, pending: false },
+      });
+    });
+
+    it(`${toolName} read again is never "attempt 2"`, () => {
+      const { operations } = reduceFrom([
+        {
+          id: "c1",
+          createdAt: "2026-09-01T00:00:00.000Z",
+          toolName,
+          input,
+          status: "completed",
+          resultText: JSON.stringify(result),
+        },
+        {
+          id: "c2",
+          createdAt: "2026-09-01T00:00:05.000Z",
+          toolName,
+          input,
+          status: "completed",
+          resultText: JSON.stringify(result),
+        },
+      ]);
+      expect(operations.map((operation) => operation.attemptWord)).toEqual([undefined, undefined]);
+    });
+  }
+
+  it("keeps the kind of a read call that failed, drawn as the error card", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "c1",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_logs",
+        input: { serviceHostname: "app" },
+        status: "failed",
+        resultText: JSON.stringify({ code: "SERVICE_NOT_FOUND", error: "No service app" }),
+      },
+    ]);
+    expect(operations[0]).toMatchObject({
+      key: "op:c1",
+      kind: "logs",
+      phase: "failed",
+      kicker: "Error · SERVICE_NOT_FOUND",
+      closing: "No service app",
+    });
+    expect(operations[0]).not.toHaveProperty("readResult");
   });
 });

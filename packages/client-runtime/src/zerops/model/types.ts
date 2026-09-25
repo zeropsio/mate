@@ -5,6 +5,7 @@
  * `../../../../../../../zcp/plans/mate-session-model-2026-09-05.md` §2.2 and
  * `mate-session-model-2026-09-05-designs/C-client-domain.md` §1.
  */
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 /**
  * `inProgress` is the only non-terminal value. `interrupted` is the client
@@ -69,6 +70,10 @@ export type ZeropsOperationKind =
   | "env"
   | "devServer"
   | "browser"
+  | "logs"
+  | "events"
+  | "process"
+  | "discover"
   | "error";
 
 /**
@@ -129,6 +134,74 @@ export interface ZeropsOperationBrowserSummary {
   readonly line: string;
 }
 
+/** A status a read card draws beside a row: the word, and the tone of its dot. */
+export interface ZeropsReadStatus {
+  readonly word: string;
+  readonly tone: ServiceStatusToneId;
+}
+
+/** One log line, oldest first. `at` is the entry's own ISO timestamp. */
+export interface ZeropsLogLine {
+  readonly id: string;
+  readonly at?: string;
+  readonly severity: "error" | "warning" | "info";
+  readonly text: string;
+}
+
+/** One platform event, newest first. */
+export interface ZeropsEventRow {
+  readonly id: string;
+  readonly at?: string;
+  readonly service?: string;
+  readonly action: string;
+  readonly status: ZeropsReadStatus;
+}
+
+/** One service `zerops_discover` listed. */
+export interface ZeropsDiscoverRow {
+  readonly hostname: string;
+  readonly type?: string;
+  readonly status: ZeropsReadStatus;
+  readonly note?: string;
+}
+
+/**
+ * What a read tool's card draws (`logs` · `events` · `process` · `discover`).
+ * `pending` while the call runs with no result yet: the card draws its final
+ * shape empty, so nothing moves when the result lands. `process` rows are the
+ * operation's own `steps`. Absent once the call failed or settled without a
+ * result — the card then reads like any other.
+ */
+export type ZeropsReadResult =
+  | {
+      readonly kind: "logs";
+      readonly pending: boolean;
+      readonly service: string;
+      /** The filter the agent asked for: "errors · since 5m · “timeout”". */
+      readonly filter?: string;
+      readonly lines: ReadonlyArray<ZeropsLogLine>;
+      /** "2 errors · 1 warning", over every line zcp returned. */
+      readonly counts?: string;
+      /** Why fewer lines are drawn than exist, or why there are none. */
+      readonly note?: string;
+    }
+  | {
+      readonly kind: "events";
+      readonly pending: boolean;
+      readonly rows: ReadonlyArray<ZeropsEventRow>;
+      /** "5 more" past the cap. */
+      readonly more?: string;
+    }
+  | {
+      readonly kind: "process";
+      readonly pending: boolean;
+    }
+  | {
+      readonly kind: "discover";
+      readonly pending: boolean;
+      readonly rows: ReadonlyArray<ZeropsDiscoverRow>;
+    };
+
 export interface ZeropsOperation {
   /** `op:<callId>` for every per-call kind; `bootstrap:<founderCallId>` for a session. Never re-keyed. */
   readonly key: string;
@@ -162,6 +235,8 @@ export interface ZeropsOperation {
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
+  /** `logs` · `events` · `process` · `discover` only. */
+  readonly readResult?: ZeropsReadResult;
   /** bootstrap only. */
   readonly session?: {
     readonly sessionIds: ReadonlyArray<string>;

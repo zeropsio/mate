@@ -38,6 +38,12 @@ import { buildErrorFields } from "./builders/errorKind.ts";
 import { buildImportFields, readImport } from "./builders/importCard.ts";
 import { buildMountFields } from "./builders/mount.ts";
 import {
+  buildDiscoverFields,
+  buildEventsFields,
+  buildLogsFields,
+  buildProcessFields,
+} from "./builders/readTools.ts";
+import {
   type BuiltCardFields,
   decodeCall,
   type OperationBuildContext,
@@ -60,7 +66,19 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_env: "env",
   zerops_dev_server: "devServer",
   zerops_browser: "browser",
+  zerops_logs: "logs",
+  zerops_events: "events",
+  zerops_process: "process",
+  zerops_discover: "discover",
 };
+
+/** Reading the same thing twice is not a retry: these kinds never count an "attempt N". */
+const READ_KINDS: ReadonlySet<ZeropsOperationKind> = new Set([
+  "logs",
+  "events",
+  "process",
+  "discover",
+]);
 
 /**
  * The operation kind a "card"-classified call becomes — independent of
@@ -151,6 +169,10 @@ const BUILDER_BY_KIND: Readonly<
   subdomain: buildSubdomainFields,
   devServer: buildDevServerFields,
   browser: buildBrowserFields,
+  logs: buildLogsFields,
+  events: buildEventsFields,
+  process: buildProcessFields,
+  discover: buildDiscoverFields,
   error: buildErrorFields,
 };
 
@@ -199,6 +221,7 @@ function buildStandaloneOperation(
     hasResult: fields.hasResult,
     ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),
     ...(fields.browserSummary !== undefined ? { browserSummary: fields.browserSummary } : {}),
+    ...(fields.readResult !== undefined ? { readResult: fields.readResult } : {}),
   };
 }
 
@@ -434,11 +457,13 @@ export function reduceZeropsOperations(
     }
 
     const targetKey = targetKeyFor(call);
-    const attemptKey = `${call.toolName} ${targetKey}`;
-    const priorSettled = settledAttemptsSoFar.get(attemptKey) ?? 0;
-    attemptByCallId.set(call.id, priorSettled + 1);
-    if (call.status !== "inProgress") {
-      settledAttemptsSoFar.set(attemptKey, priorSettled + 1);
+    if (!READ_KINDS.has(kind)) {
+      const attemptKey = `${call.toolName} ${targetKey}`;
+      const priorSettled = settledAttemptsSoFar.get(attemptKey) ?? 0;
+      attemptByCallId.set(call.id, priorSettled + 1);
+      if (call.status !== "inProgress") {
+        settledAttemptsSoFar.set(attemptKey, priorSettled + 1);
+      }
     }
 
     foldStandalone(call, kind, targetKey, standaloneGroups, lastCard);
