@@ -7890,7 +7890,7 @@ export default function ChatView(props: ChatViewProps) {
                   <Button
                     aria-label="Scroll to end"
                     onClick={() => scrollToEnd(true)}
-                    className="pointer-events-auto gap-1.5 rounded-full px-3 text-muted-foreground hover:text-foreground"
+                    className="pointer-events-auto"
                     size="xs"
                     variant="glass"
                   >

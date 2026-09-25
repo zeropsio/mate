@@ -959,10 +959,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                             <Button
                               size="icon-micro"
                               variant="ghost"
-                              className={cn(
-                                "-ms-0.5 [--control-icon-color:currentColor] bg-transparent hover:bg-foreground/10",
-                                getDiffCollapseIconClassName(fileDiff),
-                              )}
+                              className="-ms-0.5"
                               aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}
                               aria-expanded={!collapsed}
                               onClick={(event) => {
@@ -973,9 +970,13 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                           }
                         >
                           {collapsed ? (
-                            <ChevronRightIcon className="size-4" />
+                            <ChevronRightIcon
+                              className={cn("size-4", getDiffCollapseIconClassName(fileDiff))}
+                            />
                           ) : (
-                            <ChevronDownIcon className="size-4" />
+                            <ChevronDownIcon
+                              className={cn("size-4", getDiffCollapseIconClassName(fileDiff))}
+                            />
                           )}
                         </TooltipTrigger>
                         <TooltipPopup side="top">

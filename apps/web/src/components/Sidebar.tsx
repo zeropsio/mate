@@ -3955,7 +3955,7 @@ export default function Sidebar() {
                               variant="ghost-muted"
                               aria-label={`Add source to ${project.displayName}`}
                               title={`Add source to ${project.displayName}`}
-                              className="ml-auto focus-visible:bg-accent focus-visible:text-foreground"
+                              className="ml-auto"
                               onPointerDown={(event) => event.stopPropagation()}
                               onClick={(event) => {
                                 event.preventDefault();
@@ -3970,7 +3970,6 @@ export default function Sidebar() {
                               variant="ghost-muted"
                               aria-label={`Project settings for ${project.displayName}`}
                               title={`Project settings for ${project.displayName}`}
-                              className="focus-visible:bg-accent focus-visible:text-foreground"
                               onPointerDown={(event) => event.stopPropagation()}
                               onClick={(event) => {
                                 void handleProjectSettings(event, project);

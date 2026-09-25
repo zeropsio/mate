@@ -2097,16 +2097,16 @@ export default function GitActionsControl({
               Abort
             </Button>
             <Button
-              className="min-h-8 w-full max-w-full whitespace-normal py-1.5 leading-snug sm:min-h-7 sm:w-auto"
+              className="w-full max-w-full sm:w-auto"
               variant="outline"
-              size="sm"
+              size="sm-multiline"
               onClick={continuePendingDefaultBranchAction}
             >
               {pendingDefaultBranchActionCopy?.continueLabel ?? "Continue"}
             </Button>
             <Button
-              className="min-h-8 w-full max-w-full whitespace-normal py-1.5 leading-snug sm:min-h-7 sm:w-auto"
-              size="sm"
+              className="w-full max-w-full sm:w-auto"
+              size="sm-multiline"
               onClick={checkoutFeatureBranchAndContinuePendingAction}
             >
               Check out feature branch & continue

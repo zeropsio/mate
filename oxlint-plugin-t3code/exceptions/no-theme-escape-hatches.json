@@ -2025,14 +2025,6 @@
   },
   {
     "path": "apps/web/src/components/projectScriptEditor.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"size-9 shrink-0 hover:bg-popover active:bg-popover data-pressed:bg-popover data-pressed:shadow-xs/5 data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] dark:border-transparent dark:bg-white/[0.035] dark:data-pressed:before:shadow-none\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in projectScriptEditor awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/projectScriptEditor.tsx",
     "kind": "TemplateElement",
     "fingerprint": "`relative flex flex-col items-center gap-2 rounded-md border px-2 py-2 text-xs dark:border-transparent ${ isSelected ? \"border-primary/70 bg-primary/10 dark:ring-1 dark:ring-primary/30\" : \"border-border/70 hover:bg-accent/60 dark:bg-white/[0.035]\" }`",
     "owner": "karel",
