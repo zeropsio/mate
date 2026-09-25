@@ -132,6 +132,8 @@ describe("ZeropsReadResultBody — events", () => {
     expect(markup).toContain(">Build<");
     expect(markup).toContain('data-zerops-status-tone="failed"');
     expect(markup).toContain(">Failed<");
+    // A state read in a list row is a sentence, never a MicroLabel.
+    expect(markup).not.toContain('data-zerops-primitive="micro-label"');
     expect(markup).toContain("4 more");
   });
 });

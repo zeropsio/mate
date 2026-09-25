@@ -118,6 +118,7 @@ function EventsBody({ readResult }: { readonly readResult: ReadResultOf<"events"
                   <StatusDot
                     className="ml-auto shrink-0"
                     label={row.status.word}
+                    sentence
                     tone={row.status.tone}
                   />
                 </li>
