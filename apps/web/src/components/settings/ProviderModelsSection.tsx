@@ -303,7 +303,6 @@ export function ProviderModelsSection({
                         <Button
                           size="icon-micro"
                           variant="ghost-muted"
-                          className={cn(isFavorite && "text-yellow-500 hover:text-yellow-600")}
                           onClick={() => handleToggleFavorite(model.slug)}
                           aria-label={`${isFavorite ? "Remove" : "Add"} ${model.name} ${
                             isFavorite ? "from" : "to"
@@ -311,7 +310,9 @@ export function ProviderModelsSection({
                         />
                       }
                     >
-                      <StarIcon className={cn("size-3", isFavorite && "fill-current")} />
+                      <StarIcon
+                        className={cn("size-3", isFavorite && "fill-current text-warning")}
+                      />
                     </TooltipTrigger>
                     <TooltipPopup side="top">
                       {isFavorite ? "Remove from favorites" : "Add to favorites"}

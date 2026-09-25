@@ -2216,14 +2216,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"text-yellow-500 hover:text-yellow-600\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ProviderModelsSection awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
     "kind": "Literal",
     "fingerprint": "\"bg-amber-500\"",
