@@ -373,7 +373,12 @@ export function ZeropsOperationCard(props: {
           >
             <div className="flex min-w-0 items-center gap-1.5 text-foreground">
               <ZeropsMark className="size-3.5 shrink-0" />
-              <StatusDot label={operation.statusWord} pulse={tone === "busy"} tone={tone} />
+              <StatusDot
+                label={operation.statusWord}
+                pulse={tone === "busy"}
+                sentence
+                tone={tone}
+              />
             </div>
             <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs">
               <HeaderMeta

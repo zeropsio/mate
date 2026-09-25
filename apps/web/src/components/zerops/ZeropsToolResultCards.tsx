@@ -46,19 +46,16 @@ function clockTime(at: string | undefined): string | undefined {
   return formatted.length > 0 ? formatted : undefined;
 }
 
+/** The service is named on the card's subject line; the body says only what was asked of its log. */
 function LogsBody({ readResult }: { readonly readResult: ReadResultOf<"logs"> }) {
   return (
     <>
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-        <MicroLabel>Service</MicroLabel>
-        <span className="font-medium text-foreground">{readResult.service}</span>
-        {readResult.filter !== undefined ? (
-          <>
-            <MicroLabel className="ml-1.5">Filter</MicroLabel>
-            <span className="min-w-0 text-muted-foreground">{readResult.filter}</span>
-          </>
-        ) : null}
-      </div>
+      {readResult.filter !== undefined ? (
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <MicroLabel>Filter</MicroLabel>
+          <span className="min-w-0 text-muted-foreground">{readResult.filter}</span>
+        </div>
+      ) : null}
       <ol
         aria-label={`Log of ${readResult.service}`}
         className="max-h-56 space-y-0.5 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[11px] leading-relaxed"

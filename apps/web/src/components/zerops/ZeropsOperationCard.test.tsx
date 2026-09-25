@@ -124,7 +124,7 @@ describe("ZeropsOperationCard — fixture operations", () => {
     if (operation.kind === "deploy") {
       // A card that names one service reads verb + hostname chip, not the voice sentence.
       expect(html).toMatch(
-        new RegExp(`data-zerops-identity-chip[^>]*>${operation.target!.hostname}<`),
+        new RegExp(`data-zerops-subject-chip[^>]*>${operation.target!.hostname}<`),
       );
       expect(html).not.toContain("data-zerops-voice-source");
     } else {
@@ -595,9 +595,11 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
     );
   const header = (html: string) => html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
   const verbOf = (html: string) =>
-    header(html).match(/data-zerops-primitive="micro-label"[^>]*>([^<]*)</)?.[1];
+    header(html).match(
+      /data-zerops-primitive="status-dot"[\s\S]*?class="min-w-0 truncate">([^<]*)</,
+    )?.[1];
   const chipOf = (html: string) =>
-    header(html).match(/data-zerops-identity-chip[^>]*>([^<]*)</)?.[1];
+    header(html).match(/data-zerops-subject-chip[^>]*>([^<]*)</)?.[1];
   const pathOf = (html: string) =>
     header(html).match(/data-zerops-subject-path[^>]*>([^<]*)</)?.[1];
 
@@ -626,6 +628,23 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
       chip: "weatherdash",
       path: undefined,
     },
+    {
+      name: "a service's log",
+      operation: operationFor(
+        zeropsCall({
+          id: "logs-subject",
+          startedAt: "2026-09-01T00:00:00.000Z",
+          turnId: "t1",
+          toolName: "zerops_logs",
+          input: { serviceHostname: "appdev" },
+          status: "inProgress",
+        }),
+      ),
+      subjectHost: undefined,
+      verb: "Reading",
+      chip: "appdev",
+      path: undefined,
+    },
   ])("$name: $verb · $chip", ({ operation, subjectHost, verb, chip, path }) => {
     const html = renderToStaticMarkup(
       <ZeropsOperationCard
@@ -637,6 +656,8 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
     expect(verbOf(html)).toBe(verb);
     expect(chipOf(html)).toBe(chip);
     expect(pathOf(html)).toBe(path);
+    // A service is not the product: its chip is neutral, never the identity teal.
+    expect(header(html)).not.toContain("--zerops-update-role");
     expect(header(html)).not.toContain(operation.voice);
     expect(header(html)).not.toContain("https://");
   });
@@ -984,11 +1005,10 @@ describe("ZeropsOperationCard — one quiet surface", () => {
 
     expect(header).not.toBe("");
     expect(header).not.toMatch(/zerops-status-[a-z]+-surface/);
-    // The kicker stays only as the steps' accessible name; the one label a
-    // header may set is the status word, as the verb of a card that names
-    // one service.
+    // The kicker stays only as the steps' accessible name, and the status
+    // word reads in sentence form in both header grammars — never a label.
     expect(header).not.toContain(operation.kicker);
-    expect(microLabels).toEqual(operation.kind === "deploy" ? [operation.statusWord] : []);
+    expect(microLabels).toEqual([]);
     expect(html).not.toContain("border-t");
   });
 

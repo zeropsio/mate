@@ -23,6 +23,7 @@ export type OperationSubject =
 const SUBJECT_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
   "browser",
   "deploy",
+  "logs",
   "subdomain",
 ]);
 

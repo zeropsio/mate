@@ -78,7 +78,7 @@ describe("ZeropsReadResultBody — the running shape is the final shape", () => 
 });
 
 describe("ZeropsReadResultBody — logs", () => {
-  it("puts the service and the filter above the lines", () => {
+  it("puts the filter above the lines; the service is the card's subject, not a body row", () => {
     const markup = render({
       kind: "logs",
       pending: true,
@@ -86,7 +86,7 @@ describe("ZeropsReadResultBody — logs", () => {
       filter: "errors · since 5m",
       lines: [],
     });
-    expect(markup).toContain(">app<");
+    expect(markup).not.toContain(">app<");
     expect(markup).toContain("errors · since 5m");
   });
 

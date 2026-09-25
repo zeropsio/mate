@@ -1,8 +1,9 @@
 import type { OperationSubject } from "./subject";
 
 /**
- * The line under a card's verb: the service as a teal identity chip (teal
- * identifies, design-system §2), the page's path + query in mono, wrapping
+ * The line under a card's verb: the service (or host) as a neutral chip — a
+ * service is something inside the product, and teal identifies only the
+ * product (design-system §2) — the page's path + query in mono, wrapping
  * anywhere. Before the input names the target the line is held at its
  * height by a static tint (R6: nothing animates); a settled card that never
  * learned its target says so in the reducer's own words.
@@ -19,8 +20,8 @@ export function OperationSubjectLine({
       {subject.kind === "named" ? (
         <>
           <span
-            className="me-1.5 inline-flex rounded-[var(--zerops-chip-radius)] bg-[color-mix(in_srgb,var(--zerops-update-role)_13%,transparent)] px-1.5 font-medium text-[var(--zerops-update-role)]"
-            data-zerops-identity-chip
+            className="me-1.5 inline-flex rounded-[var(--zerops-chip-radius)] bg-muted px-1.5 font-medium text-foreground"
+            data-zerops-subject-chip
           >
             {subject.host}
           </span>
