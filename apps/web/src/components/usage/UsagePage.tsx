@@ -440,7 +440,7 @@ export function UsagePage({
               <UsageLimitsSection now={limitsNow} identities={identities} />
             ) : settling ? (
               <>
-                {environments.length > 1 ? (
+                {(isPending || isPartial) && environments.length > 1 ? (
                   <UsageDeviceStrip environments={environments} nameOf={nameOf} />
                 ) : null}
                 <UsageSkeleton />

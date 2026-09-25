@@ -398,7 +398,7 @@ describe("UsagePage dimensions", () => {
       notice: false,
     },
     {
-      name: "renders a project scope while owners resolve",
+      name: "renders a project scope when owners are unavailable",
       owners: "unavailable" as const,
       scope: { project: "blog" },
       total: true,
@@ -411,12 +411,19 @@ describe("UsagePage dimensions", () => {
         costUsd: 30,
         identity: { mateName: "Otto", projectName: "blog", owner: owner("u2", "Bara") },
       },
+      {
+        id: "d",
+        costUsd: 0,
+        identity: { mateName: "Ida", projectName: "blog", owner: owner("u2", "Bara") },
+      },
     ]);
     testState.owners = owners;
 
     const markup = renderPage(scope);
 
     expect(markup.includes("$30.00")).toBe(total);
+    // Every device has answered: waiting on owners is not a device scan.
+    expect(markup).not.toContain("still scanning");
     expect(markup.includes("Can&#x27;t tell whose Mates these are right now.")).toBe(notice);
   });
 
