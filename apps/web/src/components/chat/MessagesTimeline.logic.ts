@@ -15,6 +15,7 @@ import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../..
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
@@ -235,6 +236,19 @@ export type TurnHeaderActivity =
   | { readonly kind: "tool"; readonly entry: WorkLogEntry }
   | { readonly kind: "operation"; readonly operation: ZeropsOperation };
 
+/** One settled fact in a turn's tally: a status word and its tone (none for a plain count). */
+export interface TurnTallyFact {
+  readonly word: string;
+  readonly tone: ServiceStatusToneId | null;
+}
+
+/** A service, an import, the browser checks, a landing or the asks — with its facts. */
+export interface TurnTallyItem {
+  readonly key: string;
+  readonly subject: string | null;
+  readonly facts: ReadonlyArray<TurnTallyFact>;
+}
+
 export type MessagesTimelineRow =
   | {
       kind: "activity-group";
@@ -298,6 +312,8 @@ export type MessagesTimelineRow =
       endedAt: string | null;
       /** Settled turns that fold work away; the same entries fold as always. */
       fold: { readonly expanded: boolean } | null;
+      /** What the turn did, both live and settled; grows only as facts settle. */
+      tally: ReadonlyArray<TurnTallyItem>;
     }
   | {
       kind: "context-compaction";
@@ -882,6 +898,200 @@ function deriveLiveTurnActivity(input: {
   return input.activeTurnHasVisibleContent ? null : { kind: "thinking" };
 }
 
+/**
+ * The window a turn owns on the clock: from its opening message to its end.
+ * A live turn's window is still open. Asks and landings are placed by it,
+ * so a reload reads the same facts the live page wrote.
+ */
+function turnWindow(input: {
+  span: TurnSpan;
+  latestTurn: TimelineLatestTurn | null;
+  unsettledTurnId: TurnId | null;
+  checkpointCompletedAtByTurnId: ReadonlyMap<TurnId, string>;
+}): { startMs: number; endMs: number } | null {
+  const { span, latestTurn } = input;
+  const isLatestTurn = span.turnId !== null && latestTurn?.turnId === span.turnId;
+  const start =
+    span.opener?.createdAt ??
+    span.entries[0]?.createdAt ??
+    (isLatestTurn ? latestTurn.startedAt : null);
+  const startMs = start === null ? Number.NaN : Date.parse(start);
+  if (!Number.isFinite(startMs)) return null;
+  if (span.turnId === null || span.turnId === input.unsettledTurnId) {
+    return { startMs, endMs: Number.POSITIVE_INFINITY };
+  }
+  const lastEntry = span.entries.at(-1);
+  const ends = [
+    lastEntry?.kind === "message" ? lastEntry.message.updatedAt : lastEntry?.createdAt,
+    isLatestTurn ? latestTurn.completedAt : null,
+    input.checkpointCompletedAtByTurnId.get(span.turnId),
+  ].flatMap((end) => (end ? [Date.parse(end)] : []));
+  return { startMs, endMs: Math.max(startMs, ...ends.filter(Number.isFinite)) };
+}
+
+const TALLIED_OPERATION_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
+  "deploy",
+  "verify",
+  "import",
+  "browser",
+]);
+
+/** The operation card's own tone rule, for an operation that has settled. */
+function settledOperationTone(operation: ZeropsOperation): ServiceStatusToneId {
+  if (operation.phase === "failed") return "failed";
+  if (operation.phase === "uncertain") return "attention";
+  return operation.steps.some((step) => step.state === "failed") ? "attention" : "ok";
+}
+
+function operationFact(operation: ZeropsOperation): TurnTallyFact {
+  return { word: operation.statusWord, tone: settledOperationTone(operation) };
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * What a turn did, as facts appended once they settle — never predicted:
+ * per service its latest deploy and verify outcome, imports, browser checks,
+ * the changes that landed inside the turn's window, and the messages the
+ * person sent into it. Operation facts keep the order they first settled
+ * in; landings follow by landing time; asks come last. The words are the
+ * operations' own status words (R5).
+ */
+function deriveTurnTally(input: {
+  span: TurnSpan;
+  landed: ReadonlyArray<ChangeLandedEntry>;
+  asks: number;
+}): TurnTallyItem[] {
+  const settled = input.span.entries
+    .flatMap((entry) =>
+      entry.kind === "operation" &&
+      entry.operation.phase !== "running" &&
+      TALLIED_OPERATION_KINDS.has(entry.operation.kind)
+        ? [entry.operation]
+        : [],
+    )
+    .toSorted(
+      (left, right) =>
+        (left.settledAt ?? left.anchorAt).localeCompare(right.settledAt ?? right.anchorAt) ||
+        left.key.localeCompare(right.key),
+    );
+  const services = new Map<string, { deploy?: ZeropsOperation; verify?: ZeropsOperation }>();
+  const browser = { checks: 0, withErrors: 0 };
+  const itemBuilders = new Map<string, () => TurnTallyItem>();
+  for (const operation of settled) {
+    if (operation.kind === "deploy" || operation.kind === "verify") {
+      const host = operation.target?.hostname ?? operation.subject;
+      const key = `service:${host}`;
+      const service = services.get(key) ?? {};
+      service[operation.kind] = operation;
+      services.set(key, service);
+      if (!itemBuilders.has(key)) {
+        itemBuilders.set(key, () => ({
+          key,
+          subject: host,
+          facts: [service.deploy, service.verify].flatMap((outcome) =>
+            outcome ? [operationFact(outcome)] : [],
+          ),
+        }));
+      }
+    } else if (operation.kind === "import") {
+      const key = `import:${operation.key}`;
+      itemBuilders.set(key, () => ({
+        key,
+        subject: operation.subject,
+        facts: [operationFact(operation)],
+      }));
+    } else {
+      browser.checks += 1;
+      if (operation.phase === "failed" || operation.browserSummary?.failedStep !== undefined) {
+        browser.withErrors += 1;
+      }
+      if (!itemBuilders.has("browser")) {
+        itemBuilders.set("browser", () => ({
+          key: "browser",
+          subject: null,
+          facts: [
+            {
+              word: plural(browser.checks, "browser check"),
+              tone: browser.withErrors > 0 ? "attention" : "ok",
+            },
+            ...(browser.withErrors > 0
+              ? [{ word: `${browser.withErrors} with errors`, tone: "failed" as const }]
+              : []),
+          ],
+        }));
+      }
+    }
+  }
+  return [
+    ...[...itemBuilders.values()].map((build) => build()),
+    ...input.landed.map((entry) => ({
+      key: `landed:${entry.event.key}`,
+      subject: null,
+      facts: [
+        {
+          word: `${entry.event.repository} #${String(entry.event.number)} landed`,
+          tone: "ok" as const,
+        },
+      ],
+    })),
+    ...(input.asks > 0
+      ? [{ key: "asks", subject: null, facts: [{ word: plural(input.asks, "ask"), tone: null }] }]
+      : []),
+  ];
+}
+
+function deriveTurnTallies(input: {
+  spans: ReadonlyArray<TurnSpan>;
+  timelineEntries: ReadonlyArray<TimelineEntry>;
+  latestTurn: TimelineLatestTurn | null;
+  unsettledTurnId: TurnId | null;
+  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
+}): Map<TurnSpan, TurnTallyItem[]> {
+  const checkpointCompletedAtByTurnId = new Map<TurnId, string>();
+  for (const summary of input.turnDiffSummaries) {
+    const known = checkpointCompletedAtByTurnId.get(summary.turnId);
+    checkpointCompletedAtByTurnId.set(
+      summary.turnId,
+      maxIsoTimestamp(known ?? null, summary.completedAt) ?? summary.completedAt,
+    );
+  }
+  const openers = new Set(input.spans.flatMap((span) => (span.opener ? [span.opener] : [])));
+  const windows = input.spans.map((span) => ({
+    span,
+    window: turnWindow({
+      span,
+      latestTurn: input.latestTurn,
+      unsettledTurnId: input.unsettledTurnId,
+      checkpointCompletedAtByTurnId,
+    }),
+    landed: [] as ChangeLandedEntry[],
+    asks: 0,
+  }));
+  const windowAt = (iso: string, inclusiveStart: boolean) => {
+    const ms = Date.parse(iso);
+    return windows.find(
+      ({ window }) =>
+        window !== null &&
+        (inclusiveStart ? ms >= window.startMs : ms > window.startMs) &&
+        ms <= window.endMs,
+    );
+  };
+  for (const entry of input.timelineEntries) {
+    if (entry.kind === "change-landed") {
+      windowAt(entry.event.landedAt, true)?.landed.push(entry);
+    } else if (entry.kind === "message" && entry.message.role === "user" && !openers.has(entry)) {
+      const owner = windowAt(entry.message.createdAt, false);
+      if (owner) owner.asks += 1;
+    }
+  }
+  return new Map(
+    windows.map(({ span, landed, asks }) => [span, deriveTurnTally({ span, landed, asks })]),
+  );
+}
+
 /** Match each user message to the next assistant checkpoint. */
 function buildRevertTurnCountByUserMessageId(input: {
   supportsConversationRollback: boolean;
@@ -1007,6 +1217,13 @@ export function deriveMessagesTimelineRows(input: {
       }
     }
   }
+  const tallyBySpan = deriveTurnTallies({
+    spans: turnSpans,
+    timelineEntries,
+    latestTurn: input.latestTurn ?? null,
+    unsettledTurnId,
+    turnDiffSummaries: input.turnDiffSummaries,
+  });
   const headerAnchorIndices = new Set(turnSpans.map((span) => span.anchorIndex));
   const activeSpan = input.isWorking
     ? turnSpans.find((span) => span.turnId === unsettledTurnId)
@@ -1193,6 +1410,7 @@ export function deriveMessagesTimelineRows(input: {
           fold && span.turnId !== null
             ? { expanded: input.expandedTurnIds?.has(span.turnId) ?? false }
             : null,
+        tally: tallyBySpan.get(span) ?? [],
       });
     }
   };
@@ -1677,7 +1895,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.label === bh.label &&
         a.endedAt === bh.endedAt &&
         a.fold?.expanded === bh.fold?.expanded &&
-        Equal.equals(a.activity, bh.activity)
+        Equal.equals(a.activity, bh.activity) &&
+        Equal.equals(a.tally, bh.tally)
       );
     }
 

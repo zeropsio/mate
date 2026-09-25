@@ -149,6 +149,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
+import { TurnTally } from "./TurnHeader";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -1674,6 +1675,7 @@ function TurnHeaderTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "tur
             <span className="min-w-0 truncate text-muted-foreground/55">· {workingStepLabel}</span>
           ) : null}
         </div>
+        <TurnTally items={row.tally} />
       </div>
     );
   }
@@ -1682,30 +1684,33 @@ function TurnHeaderTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "tur
   const turnId = row.turnId;
   const Icon = fold?.expanded ? ChevronDownIcon : ChevronRightIcon;
   return (
-    <div className="group/timeline-row relative flex items-center gap-1 border-b border-border/60 pb-2 pe-0.5 pt-1">
-      {fold && turnId !== null ? (
-        <button
-          type="button"
-          aria-expanded={fold.expanded}
-          data-scroll-anchor-ignore
-          onClick={() => ctx.onToggleTurnFold(turnId, row.id)}
-          className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-        >
-          <span>{row.label}</span>
-          <Icon className="size-3.5" />
-        </button>
-      ) : (
-        <span className="px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
-          {row.label}
-        </span>
-      )}
-      {row.endedAt ? (
-        <TimelineRowTimestamp
-          createdAt={row.endedAt}
-          timestampFormat={ctx.timestampFormat}
-          className="ms-auto"
-        />
-      ) : null}
+    <div className="border-b border-border/60 pb-2 pt-1">
+      <div className="group/timeline-row relative flex items-center gap-1 pe-0.5">
+        {fold && turnId !== null ? (
+          <button
+            type="button"
+            aria-expanded={fold.expanded}
+            data-scroll-anchor-ignore
+            onClick={() => ctx.onToggleTurnFold(turnId, row.id)}
+            className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+          >
+            <span>{row.label}</span>
+            <Icon className="size-3.5" />
+          </button>
+        ) : (
+          <span className="px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
+            {row.label}
+          </span>
+        )}
+        {row.endedAt ? (
+          <TimelineRowTimestamp
+            createdAt={row.endedAt}
+            timestampFormat={ctx.timestampFormat}
+            className="ms-auto"
+          />
+        ) : null}
+      </div>
+      <TurnTally items={row.tally} />
     </div>
   );
 }

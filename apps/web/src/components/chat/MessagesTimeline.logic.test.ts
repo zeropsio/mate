@@ -1,6 +1,6 @@
 import { ApprovalRequestId, CheckpointRef, MessageId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type { ZeropsOperation, ZeropsTimelineEntry } from "@t3tools/client-runtime/zerops/model";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
@@ -3448,6 +3448,7 @@ describe("turn header", () => {
     readonly isWorking: boolean;
     readonly activeTurnStartedAt: string | null;
     readonly landed?: ReadonlyArray<ChangeLandedEvent>;
+    readonly operations?: ReadonlyArray<ZeropsTimelineEntry>;
   }
 
   const userMessage = (id: string, second: number): ChatMessage => ({
@@ -3509,7 +3510,7 @@ describe("turn header", () => {
         [],
         conversation.work,
         [],
-        [],
+        conversation.operations ?? [],
         conversation.landed ?? [],
       ),
       latestTurn: conversation.latestTurn,
@@ -3701,6 +3702,307 @@ describe("turn header", () => {
 
     expect(rows[toggleIndex]).toMatchObject({ hiddenCount: 2 });
     expect(rows[toggleIndex + 1]).toMatchObject({ kind: "change-landed" });
+  });
+
+  const operation = (
+    key: string,
+    kind: "deploy" | "verify" | "browser" | "import",
+    subject: string,
+    startedSecond: number,
+    settled?: {
+      readonly second: number;
+      readonly phase: "done" | "failed";
+      readonly statusWord: string;
+      readonly failedStep?: boolean;
+    },
+  ): ZeropsTimelineEntry => {
+    const failedStep = {
+      id: "step-0",
+      label: "click #buy",
+      state: "failed" as const,
+      stateLabel: "Failed",
+    };
+    return {
+      kind: "operation",
+      key,
+      anchorAt: at(startedSecond),
+      anchorActivityId: key,
+      operation: {
+        key,
+        kind,
+        phase: settled?.phase ?? "running",
+        anchorAt: at(startedSecond),
+        anchorActivityId: key,
+        ...(settled ? { settledAt: at(settled.second) } : {}),
+        turnId: T1,
+        subject,
+        kicker: `${kind} · ${subject}`,
+        voice: `Working on ${subject}.`,
+        voiceSource: "mate",
+        statusWord: settled?.statusWord ?? "Working",
+        steps: settled?.failedStep ? [failedStep] : [],
+        links: [],
+        callIds: [key],
+        attempts: 1,
+        ...(kind === "import" ? {} : { target: { hostname: subject } }),
+        hasResult: settled !== undefined,
+        ...(kind === "browser" && settled?.failedStep
+          ? { browserSummary: { stepCount: 1, failedStep, line: "opened /" } }
+          : {}),
+      },
+    };
+  };
+  const tallyOf = (rows: ReturnType<typeof deriveRows>, id = "turn-header:u1") => {
+    const header = rows.find((row) => row.id === id);
+    return header?.kind === "turn-header" ? header.tally : [];
+  };
+  const tallyText = (rows: ReturnType<typeof deriveRows>) =>
+    tallyOf(rows).map((item) =>
+      [item.subject, ...item.facts.map((fact) => fact.word)].filter(Boolean).join(" "),
+    );
+
+  /** One live turn, event by event; `settles` marks events that bring a new fact. */
+  const liveTurnEvents: ReadonlyArray<{
+    readonly event: string;
+    readonly settles: boolean;
+    readonly apply: (conversation: Conversation) => Conversation;
+  }> = [
+    { event: "send", settles: false, apply: (c) => c },
+    {
+      event: "turn starts",
+      settles: false,
+      apply: (c) => ({ ...c, latestTurn: started.latestTurn, runningTurnId: T1 }),
+    },
+    {
+      event: "reasoning",
+      settles: false,
+      apply: (c) => ({ ...c, messages: [...c.messages, reasoningMessage("r1", 2)] }),
+    },
+    {
+      event: "deploy starts",
+      settles: false,
+      apply: (c) => ({ ...c, operations: [operation("op:d1", "deploy", "appstage", 3)] }),
+    },
+    {
+      event: "deploy settles",
+      settles: true,
+      apply: (c) => ({
+        ...c,
+        operations: [
+          operation("op:d1", "deploy", "appstage", 3, {
+            second: 10,
+            phase: "done",
+            statusWord: "Deployed",
+          }),
+        ],
+      }),
+    },
+    {
+      event: "narration",
+      settles: false,
+      apply: (c) => ({ ...c, messages: [...c.messages, assistantMessage("a1", 11)] }),
+    },
+    {
+      event: "a tool call starts",
+      settles: false,
+      apply: (c) => ({ ...c, work: [toolWork("w1", 11, "inProgress")] }),
+    },
+    {
+      event: "the tool call completes",
+      settles: false,
+      apply: (c) => ({ ...c, work: [toolWork("w1", 11)] }),
+    },
+    {
+      event: "browser check starts",
+      settles: false,
+      apply: (c) => ({
+        ...c,
+        operations: [...(c.operations ?? []), operation("op:b1", "browser", "appstage", 12)],
+      }),
+    },
+    {
+      event: "browser check settles with an error",
+      settles: true,
+      apply: (c) => ({
+        ...c,
+        operations: [
+          ...(c.operations ?? []).slice(0, 1),
+          operation("op:b1", "browser", "appstage", 12, {
+            second: 14,
+            phase: "done",
+            statusWord: "Checked",
+            failedStep: true,
+          }),
+        ],
+      }),
+    },
+    {
+      event: "the user asks mid-turn",
+      settles: true,
+      apply: (c) => ({ ...c, messages: [...c.messages, userMessage("u2", 15)] }),
+    },
+    {
+      event: "a change lands",
+      settles: true,
+      apply: (c) => ({ ...c, landed: [landedChange(1, 16)] }),
+    },
+    {
+      event: "verify settles",
+      settles: true,
+      apply: (c) => ({
+        ...c,
+        operations: [
+          ...(c.operations ?? []),
+          operation("op:v1", "verify", "appstage", 17, {
+            second: 18,
+            phase: "done",
+            statusWord: "Healthy",
+          }),
+        ],
+      }),
+    },
+    {
+      event: "final answer starts streaming",
+      settles: false,
+      apply: (c) => ({
+        ...c,
+        messages: [...c.messages, { ...assistantMessage("a2", 19, { streaming: true }), text: "" }],
+      }),
+    },
+    {
+      event: "final answer streams on",
+      settles: false,
+      apply: (c) => ({
+        ...c,
+        messages: c.messages.map((message) =>
+          message.id === "a2" ? { ...message, text: "a2 so far" } : message,
+        ),
+      }),
+    },
+    {
+      event: "final answer completes",
+      settles: false,
+      apply: (c) => ({
+        ...c,
+        messages: c.messages.map((message) =>
+          message.id === "a2" ? assistantMessage("a2", 19) : message,
+        ),
+      }),
+    },
+    {
+      event: "a change lands before the turn is marked done",
+      settles: true,
+      apply: (c) => ({ ...c, landed: [...(c.landed ?? []), landedChange(2, 20)] }),
+    },
+    {
+      event: "turn settles",
+      settles: false,
+      apply: (c) => ({
+        ...c,
+        latestTurn: { turnId: T1, state: "completed", startedAt: at(1), completedAt: at(21) },
+        runningTurnId: null,
+        isWorking: false,
+        activeTurnStartedAt: null,
+      }),
+    },
+    {
+      event: "a change lands after the turn",
+      settles: false,
+      apply: (c) => ({ ...c, landed: [...(c.landed ?? []), landedChange(3, 30)] }),
+    },
+  ];
+  const liveTurnSequence: Array<{ event: string; settles: boolean; conversation: Conversation }> =
+    [];
+  for (const step of liveTurnEvents) {
+    liveTurnSequence.push({
+      event: step.event,
+      settles: step.settles,
+      conversation: step.apply(liveTurnSequence.at(-1)?.conversation ?? sent),
+    });
+  }
+
+  it("tallies what settled, in the order it settled, never before", () => {
+    let previous: ReadonlyArray<string> = [];
+    for (const { event, settles, conversation } of liveTurnSequence) {
+      const keys = tallyOf(deriveRows(conversation)).map((item) => item.key);
+      const keptInOrder = keys.filter((key) => previous.includes(key));
+      expect({ event, kept: keptInOrder }).toEqual({ event, kept: previous });
+      if (!settles) {
+        expect({ event, keys }).toEqual({ event, keys: previous });
+      } else {
+        expect({ event, grew: keys.length >= previous.length }).toEqual({ event, grew: true });
+      }
+      previous = keys;
+    }
+    expect(tallyText(deriveRows(liveTurnSequence.at(-1)!.conversation))).toEqual([
+      "appstage Deployed Healthy",
+      "1 browser check 1 with errors",
+      "appdev #1 landed",
+      "appdev #2 landed",
+      "1 ask",
+    ]);
+  });
+
+  it("derives the same rows from the stored thread as the live page ended with", () => {
+    let entries: ReturnType<typeof deriveTimelineEntriesWithState> | null = null;
+    let projection: ReturnType<typeof deriveMessagesTimelineRowsWithState> | null = null;
+    let stable: ReturnType<typeof computeStableMessagesTimelineRows> = {
+      byId: new Map(),
+      result: [],
+    };
+    for (const { conversation } of liveTurnSequence) {
+      entries = deriveTimelineEntriesWithState(
+        conversation.messages,
+        [],
+        conversation.work,
+        entries,
+        [],
+        conversation.operations ?? [],
+        conversation.landed ?? [],
+      );
+      projection = deriveMessagesTimelineRowsWithState(
+        {
+          timelineEntries: entries.entries,
+          latestTurn: conversation.latestTurn,
+          runningTurnId: conversation.runningTurnId,
+          isWorking: conversation.isWorking,
+          activeTurnStartedAt: conversation.activeTurnStartedAt,
+          turnDiffSummaries: [],
+          supportsConversationRollback: false,
+        },
+        projection,
+      );
+      stable = computeStableMessagesTimelineRows(projection.rows, stable);
+    }
+
+    expect(stable.result).toEqual(deriveRows(liveTurnSequence.at(-1)!.conversation));
+  });
+
+  it.each([
+    { count: 0, messages: [], asks: [] },
+    { count: 1, messages: [userMessage("u2", 4)], asks: ["1 ask"] },
+    { count: 2, messages: [userMessage("u2", 4), userMessage("u3", 5)], asks: ["2 asks"] },
+  ])("counts $count messages sent into the running turn", ({ messages, asks }) => {
+    const rows = deriveRows({ ...working, messages: [...working.messages, ...messages] });
+
+    expect(tallyText(rows)).toEqual(asks);
+  });
+
+  it("tallies an ask or a landing only in the turn whose window holds it", () => {
+    const rows = deriveRows({
+      ...settled,
+      messages: [...settled.messages, userMessage("u2", 7)],
+      landed: [landedChange(1, 4), landedChange(2, 8)],
+      isWorking: true,
+      activeTurnStartedAt: at(7),
+    });
+
+    // u2 came after the turn ended: it opens the next turn, not an ask. The
+    // second change landed while that next turn was starting.
+    expect(tallyText(rows)).toEqual(["appdev #1 landed"]);
+    expect(tallyOf(rows, "turn-header:u2").map((item) => item.key)).toEqual([
+      "landed:change-landed:appdev#2",
+    ]);
   });
 
   it("names the running tool in the live header and nothing once settled", () => {
