@@ -13,6 +13,7 @@ import {
   mergeConsequence,
   pullRequestMergeLine,
   releaseContentsSentence,
+  releaseContentsCommits,
   releaseContentsSummary,
   releaseWaitingLabel,
   flowPullRequest,
@@ -390,6 +391,14 @@ describe("pullRequestBlockedReason", () => {
     expect(
       pullRequestBlocked({ number: 4, mergeability: "conflicting", checks: "pending" })?.ask,
     ).toBeUndefined();
+  });
+});
+
+describe("releaseContentsCommits", () => {
+  it("lists each change once, in order, however many services take it", () => {
+    const a = { sha: "a", subject: "Add a search box" };
+    const b = { sha: "b", subject: "Fix the footer" };
+    expect(releaseContentsCommits([{ commits: [a] }, { commits: [a, b] }])).toEqual([a, b]);
   });
 });
 

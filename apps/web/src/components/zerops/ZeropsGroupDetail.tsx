@@ -36,6 +36,7 @@ import {
   readZeropsGroupTags,
   PROJECT_ALL_CLEAR,
   projectAttention,
+  releaseContentsCommits,
   releaseContentsSummary,
   type ReleaseContentsSummary,
   resolvePrimaryConversation,
@@ -1054,23 +1055,9 @@ export function ZeropsStopDetailPage({
       trouble={flowValue.trouble}
       verdict={verdict}
       view={view}
-      waiting={production ? waitingCommits(flow.release.contents) : NO_COMMITS}
+      waiting={production ? releaseContentsCommits(flow.release.contents) : NO_COMMITS}
     />
   );
-}
-
-/** What `main` has that production does not, one row per commit however many services take it. */
-function waitingCommits(
-  contents: ReadonlyArray<{ readonly commits: ReadonlyArray<WaitingCommit> }>,
-): ReadonlyArray<WaitingCommit> {
-  const seen = new Set<string>();
-  return contents
-    .flatMap((entry) => entry.commits)
-    .filter((commit) => {
-      if (seen.has(commit.sha)) return false;
-      seen.add(commit.sha);
-      return true;
-    });
 }
 
 /** Where a service's build is read from: its own repository and the commit it runs. */

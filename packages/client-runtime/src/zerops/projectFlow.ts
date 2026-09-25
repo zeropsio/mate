@@ -456,6 +456,28 @@ export interface ReleaseContentsSummary {
   readonly total: number;
 }
 
+/** What a release would carry, service by service. */
+type ReleaseContents = ReadonlyArray<{
+  readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
+}>;
+
+/**
+ * Every commit a release would carry, once each and in order: one commit reaches several services
+ * in a monorepo, and it is one change however many take it.
+ */
+export function releaseContentsCommits<Commit extends { readonly sha: string }>(
+  contents: ReadonlyArray<{ readonly commits: ReadonlyArray<Commit> }>,
+): ReadonlyArray<Commit> {
+  const seen = new Set<string>();
+  return contents
+    .flatMap((entry) => entry.commits)
+    .filter((commit) => {
+      if (seen.has(commit.sha)) return false;
+      seen.add(commit.sha);
+      return true;
+    });
+}
+
 /**
  * The words a release is about to put in front of people.
  *
@@ -471,20 +493,14 @@ export interface ReleaseContentsSummary {
  * once: the person is being told what changes, not how many services take it.
  */
 export function releaseContentsSummary(
-  contents: ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>,
+  contents: ReleaseContents,
   limit = 4,
 ): ReleaseContentsSummary {
-  const seen = new Set<string>();
-  const subjects: Array<string> = [];
-  for (const entry of contents) {
-    for (const commit of entry.commits) {
-      if (seen.has(commit.sha)) continue;
-      seen.add(commit.sha);
-      const subject = commit.subject.trim();
-      if (subject.length > 0) subjects.push(subject);
-    }
-  }
-  const total = seen.size;
+  const commits = releaseContentsCommits(contents);
+  const subjects = commits
+    .map((commit) => commit.subject.trim())
+    .filter((subject) => subject.length > 0);
+  const total = commits.length;
   return {
     subjects: subjects.slice(0, limit),
     more: Math.max(0, subjects.length - limit),

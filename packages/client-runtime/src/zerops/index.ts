@@ -439,6 +439,7 @@ export {
   releaseContentsSentence,
   releaseWaitingLabel,
   type ReleaseContentsSummary,
+  releaseContentsCommits,
   releaseContentsSummary,
   sidebarChangeLabel,
   stopAttention,
