@@ -518,6 +518,12 @@ It provides:
 - optional OTLP log exporter
 - Effect trace-level and timing refs
 
+The desktop main process is a second producer, assembled in
+`apps/desktop/src/app/DesktopObservability.ts`. It reads the same `T3CODE_OTLP_*` names and the same
+Settings entries as the server, and covers work the server cannot see: app startup, window and menu
+handling, connections to remote Mates, and updates. It reports as service `desktop` regardless of
+`T3CODE_OTLP_SERVICE_NAME`, so a collector shows it alongside the server rather than mixed into it.
+
 ### Env Vars
 
 Local trace file:
