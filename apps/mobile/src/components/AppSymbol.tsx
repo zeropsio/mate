@@ -52,6 +52,7 @@ import IconHammer from "@tabler/icons-react-native/IconHammer";
 import IconInfoCircle from "@tabler/icons-react-native/IconInfoCircle";
 import IconKeyboard from "@tabler/icons-react-native/IconKeyboard";
 import IconKeyboardHide from "@tabler/icons-react-native/IconKeyboardHide";
+import IconLock from "@tabler/icons-react-native/IconLock";
 import IconLayoutColumns from "@tabler/icons-react-native/IconLayoutColumns";
 import IconLayoutSidebar from "@tabler/icons-react-native/IconLayoutSidebar";
 import IconLayoutSidebarRight from "@tabler/icons-react-native/IconLayoutSidebarRight";
@@ -194,6 +195,7 @@ const ANDROID_ICON_BY_MATERIAL_NAME: Record<string, Icon> = {
   keyboard_arrow_down: IconChevronDown,
   keyboard_arrow_up: IconChevronUp,
   keyboard_hide: IconKeyboardHide,
+  lock: IconLock,
   public: IconWorld,
   remove: IconMinus,
   terminal: IconTerminal2,
