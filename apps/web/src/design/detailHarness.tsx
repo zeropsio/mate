@@ -795,13 +795,13 @@ function Harness() {
 
       <State
         label="A stage, deploying"
-        note="A build runs for api: the verdict and the menu read Deploying…, and so does its row."
+        note="A build of b21d904 runs for api: the verdict, the menu and its row read Deploying…, and the row keeps 5c3ea18, which runs until the build lands."
       >
         <StopState
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "5c3ea18b", undefined, "pending"),
+              service("stage", "api", "b21d904c", undefined, "pending"),
               service("stage", "app", "5c3ea18b", undefined),
             ],
             deployment: known({

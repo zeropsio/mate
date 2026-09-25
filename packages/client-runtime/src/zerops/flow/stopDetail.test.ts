@@ -463,6 +463,96 @@ describe("serviceRows", () => {
     expect(rowsOf(PLATFORM).find((row) => row.hostname === expected.hostname)).toEqual(expected);
   });
 
+  it.each<{
+    name: string;
+    appVersionName: string | undefined;
+    previous: Extract<Deployment, { kind: "deploying" }>["previous"];
+    expected: Pick<StopServiceRow, "sha" | "commit" | "line" | "status" | "runs">;
+  }>([
+    {
+      name: "keeps what ran before, not the build, while a build of a named release runs",
+      appVersionName: SHA_WEB,
+      previous: {
+        kind: "running",
+        activatedAt: "2026-09-25T08:00:00Z",
+        version: deployedVersion(`${SHA_DOCS} v0.1.12 gitea`),
+      },
+      expected: {
+        sha: SHA_DOCS,
+        commit: "9e8d7c6",
+        line: "deployed with v0.1.12",
+        status: "Deploying…",
+        runs: { label: "v0.1.12", since: "since 2026-09-25T08:00:00Z" },
+      },
+    },
+    {
+      name: "keeps what ran before while the build names nothing",
+      appVersionName: undefined,
+      previous: {
+        kind: "running",
+        activatedAt: null,
+        version: deployedVersion(SHA_DOCS),
+      },
+      expected: {
+        sha: SHA_DOCS,
+        commit: "9e8d7c6",
+        line: undefined,
+        status: "Deploying…",
+        runs: { label: "9e8d7c6", since: undefined },
+      },
+    },
+    {
+      name: "for the first time runs nothing yet",
+      appVersionName: SHA_WEB,
+      previous: { kind: "none" },
+      expected: {
+        sha: undefined,
+        commit: undefined,
+        line: undefined,
+        status: "Deploying…",
+        runs: undefined,
+      },
+    },
+    {
+      name: "says the build's commit while nothing states what ran before",
+      appVersionName: SHA_WEB,
+      previous: null,
+      expected: {
+        sha: SHA_WEB,
+        commit: "a1b2c3d",
+        line: undefined,
+        status: "Deploying…",
+        runs: undefined,
+      },
+    },
+  ])("a service deploying $name", ({ appVersionName, previous, expected }) => {
+    const [row] = serviceRows({
+      environment: "production",
+      services: [{ hostname: "web", repository: "web", appVersionName }],
+      platform: {
+        ...PLATFORM,
+        value: [
+          platformService("web", {
+            kind: "deploying",
+            version: deployedVersion(appVersionName),
+            previous,
+          }),
+        ],
+      },
+      routes: [],
+      offers: [],
+      nowMs: 100_000,
+      age: (iso) => `since ${iso}`,
+    });
+    expect({
+      sha: row?.sha,
+      commit: row?.commit,
+      line: row?.line,
+      status: row?.status,
+      runs: row?.runs,
+    }).toEqual(expected);
+  });
+
   it.each<{ hostname: string; tone: StopServiceRow["tone"]; status: string }>([
     { hostname: "api", tone: "good", status: "Deployed" },
     { hostname: "web", tone: "neutral", status: "Deployed" },

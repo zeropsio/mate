@@ -29,6 +29,7 @@ import {
   NOTHING_DEPLOYED,
   stopView,
   type Deployment,
+  type SettledDeployment,
   type StopService,
   type StopView,
 } from "./deployment.ts";
@@ -228,15 +229,35 @@ export interface ServiceRuns {
 
 const UNREAD: Shown<Deployment> = { state: "unread", waitingFor: null };
 
+/**
+ * What the platform says a service runs — through a build, what ran before it; `null` where it
+ * does not say, the platform not read or nothing stating what ran before the build.
+ */
+function settledOf(deployment: Shown<Deployment>): SettledDeployment | null {
+  if (deployment.state !== "known") return null;
+  const { value } = deployment;
+  return value.kind === "deploying" ? value.previous : value;
+}
+
+/**
+ * The version a service's row names: what the platform says it runs, the Gitea side's where the
+ * platform does not say — never the one a build is deploying, which runs nothing yet.
+ */
+function rowVersionOf(settled: SettledDeployment | null, read: DeployedVersion): DeployedVersion {
+  if (settled === null) return read;
+  return settled.kind === "running" ? settled.version : NO_VERSION;
+}
+
+const NO_VERSION = deployedVersion(undefined);
+
 function runsOf(
   deployment: Shown<Deployment>,
+  settled: SettledDeployment | null,
   read: DeployedVersion,
   age: (iso: string) => string,
 ): ServiceRuns | undefined {
   if (deployment.state !== "known")
     return read.label === undefined ? undefined : { label: read.label, since: undefined };
-  const settled =
-    deployment.value.kind === "deploying" ? deployment.value.previous : deployment.value;
   if (settled?.kind !== "running" || settled.version.label === undefined) return undefined;
   const { activatedAt } = settled;
   return {
@@ -282,7 +303,10 @@ export function serviceRows(input: {
   return code.map((state) => {
     const { hostname } = state;
     const deployment = deploymentOf(hostname);
-    const version = deployedVersion(state.appVersionName);
+    // What the Gitea side read: the version a build deploys, while one runs.
+    const read = deployedVersion(state.appVersionName);
+    const settled = settledOf(deployment);
+    const version = rowVersionOf(settled, read);
     // The service's own row: `stopView` reads only its version and tone, which the one service
     // and the environment's statuses decide; the row's name, tier and source go unread.
     const row = environmentRow({
@@ -307,7 +331,7 @@ export function serviceRows(input: {
       tone,
       word,
       status: activatedAt === null ? word : `${word} · ${input.age(activatedAt)}`,
-      runs: runsOf(deployment, version, input.age),
+      runs: runsOf(deployment, settled, read, input.age),
       routes: input.routes.filter((route) => route.service === hostname),
       offers: input.offers.filter((offer) => offer.service === hostname),
     };
