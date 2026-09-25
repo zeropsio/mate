@@ -12,8 +12,6 @@ import {
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { gatedPortal } from "~/components/ui/portal-gate";
 
-const DialogCreateHandle = DialogPrimitive.createHandle;
-
 const Dialog = DialogPrimitive.Root;
 
 const DialogPortal = gatedPortal(DialogPrimitive.Portal);
@@ -166,7 +164,6 @@ function DialogPanel({
 }
 
 export {
-  DialogCreateHandle,
   Dialog,
   DialogTrigger,
   DialogPortal,

@@ -10,15 +10,9 @@ import {
 } from "~/components/ui/dialog-styles";
 import { gatedPortal } from "~/components/ui/portal-gate";
 
-const AlertDialogCreateHandle = AlertDialogPrimitive.createHandle;
-
 const AlertDialog = AlertDialogPrimitive.Root;
 
 const AlertDialogPortal = gatedPortal(AlertDialogPrimitive.Portal);
-
-function AlertDialogTrigger(props: AlertDialogPrimitive.Trigger.Props) {
-  return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />;
-}
 
 function AlertDialogBackdrop({ className, ...props }: AlertDialogPrimitive.Backdrop.Props) {
   return (
@@ -130,12 +124,10 @@ function AlertDialogClose(props: AlertDialogPrimitive.Close.Props) {
 }
 
 export {
-  AlertDialogCreateHandle,
   AlertDialog,
   AlertDialogPortal,
   AlertDialogBackdrop,
   AlertDialogBackdrop as AlertDialogOverlay,
-  AlertDialogTrigger,
   AlertDialogPopup,
   AlertDialogPopup as AlertDialogContent,
   AlertDialogHeader,

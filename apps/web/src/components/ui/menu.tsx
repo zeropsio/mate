@@ -8,8 +8,6 @@ import { cn } from "~/lib/utils";
 import { buttonVariants } from "./button";
 import { gatedPortal } from "./portal-gate";
 
-const MenuCreateHandle = MenuPrimitive.createHandle;
-
 const Menu = MenuPrimitive.Root;
 
 const MenuPortal = gatedPortal(MenuPrimitive.Portal);
@@ -283,12 +281,8 @@ function MenuSubPopup({
 }
 
 export {
-  MenuCreateHandle,
-  MenuCreateHandle as DropdownMenuCreateHandle,
   Menu,
   Menu as DropdownMenu,
-  MenuPortal,
-  MenuPortal as DropdownMenuPortal,
   MenuTrigger,
   MenuTrigger as DropdownMenuTrigger,
   MenuPopup,

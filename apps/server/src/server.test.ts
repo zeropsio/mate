@@ -129,7 +129,6 @@ import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
-import { OrchestrationListenerCallbackError } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
@@ -6668,8 +6667,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 Effect.flatMap(() =>
                   command.commandId === failedCommandId
                     ? Effect.fail(
-                        new OrchestrationListenerCallbackError({
-                          listener: "domain-event",
+                        new PersistenceSqlError({
+                          operation: "OrchestrationEventStore.append:query",
                           detail: "thread creation failed",
                         }),
                       )
@@ -10015,8 +10014,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               effects.push(`dispatch:${command.type}`);
               if (command.type === "thread.session.stop") {
                 return Effect.fail(
-                  new OrchestrationListenerCallbackError({
-                    listener: "domain-event",
+                  new PersistenceSqlError({
+                    operation: "OrchestrationEventStore.append:query",
                     detail: "simulated archive stop failure",
                   }),
                 );
@@ -10592,8 +10591,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 setupActivityAppendAttempt += 1;
                 if (setupActivityAppendAttempt === 2) {
                   return Effect.fail(
-                    new OrchestrationListenerCallbackError({
-                      listener: "domain-event",
+                    new PersistenceSqlError({
+                      operation: "OrchestrationEventStore.append:query",
                       detail: "failed to append setup-script.started activity",
                     }),
                   );
@@ -10902,8 +10901,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               dispatchedCommands.push(command);
               if (command.type === "thread.delete") {
                 return Effect.fail(
-                  new OrchestrationListenerCallbackError({
-                    listener: "domain-event",
+                  new PersistenceSqlError({
+                    operation: "OrchestrationEventStore.append:query",
                     detail: "thread cleanup exploded",
                   }),
                 );

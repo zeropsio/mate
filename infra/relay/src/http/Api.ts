@@ -755,7 +755,6 @@ const RelayCommonPersistenceError = Schema.Union([
   Devices.DeviceUnregistrationPersistenceError,
   LiveActivities.LiveActivityRegistrationPersistenceError,
   EnvironmentLinks.EnvironmentLinkUserListPersistenceError,
-  EnvironmentLinks.EnvironmentPublicKeyListPersistenceError,
   EnvironmentCredentials.EnvironmentCredentialAuthenticatePersistenceError,
   DpopProofs.DpopProofReplayPersistenceError,
   LiveActivities.LiveActivityTargetListPersistenceError,

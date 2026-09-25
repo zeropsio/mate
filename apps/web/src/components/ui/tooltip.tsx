@@ -5,8 +5,6 @@ import { gatedPortal } from "~/components/ui/portal-gate";
 
 const TooltipPortal = gatedPortal(TooltipPrimitive.Portal);
 
-const TooltipCreateHandle = TooltipPrimitive.createHandle;
-
 const TooltipProvider = TooltipPrimitive.Provider;
 
 const Tooltip = TooltipPrimitive.Root;
@@ -64,4 +62,4 @@ function TooltipPopup({
   );
 }
 
-export { TooltipCreateHandle, TooltipProvider, Tooltip, TooltipTrigger, TooltipPopup };
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipPopup };

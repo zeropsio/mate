@@ -20,7 +20,6 @@ import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import { makeEnvironmentHttpApiClient } from "@t3tools/client-runtime/rpc";
 
 import type { SavedRemoteConnection } from "../../lib/connection";
-import * as MobilePreferences from "../../persistence/mobile-preferences";
 import * as MobileStorage from "../../persistence/mobile-storage";
 import { resolveCloudPublicConfig } from "./publicConfig";
 
@@ -279,23 +278,4 @@ export function linkEnvironmentToCloudWithPreference(
         Effect.mapError(cloudEnvironmentLinkError("Could not configure environment relay access.")),
       );
   });
-}
-
-export function linkEnvironmentToCloud(
-  input: LinkEnvironmentToCloudInput,
-): Effect.Effect<
-  void,
-  CloudEnvironmentLinkError,
-  LinkEnvironmentToCloudRequirements | MobilePreferences.MobilePreferencesStore
-> {
-  return MobilePreferences.MobilePreferencesStore.pipe(
-    Effect.flatMap((preferencesStore) => preferencesStore.load),
-    Effect.mapError(cloudEnvironmentLinkError("Could not load mobile notification preferences.")),
-    Effect.flatMap((preferences) =>
-      linkEnvironmentToCloudWithPreference({
-        ...input,
-        liveActivitiesEnabled: preferences.liveActivitiesEnabled !== false,
-      }),
-    ),
-  );
 }
