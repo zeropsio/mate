@@ -15,6 +15,7 @@ import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as References from "effect/References";
 import * as Scope from "effect/Scope";
+import { TestClock } from "effect/testing";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { expect } from "vite-plus/test";
 import type {
@@ -960,6 +961,70 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       expect(first.pr?.number).toBe(113);
       expect(second.pr?.number).toBe(113);
       expect(ghCalls.filter((call) => call.startsWith("pr list "))).toHaveLength(1);
+    }),
+  );
+
+  it.effect("status rechecks open PRs every two minutes and settled answers less often", () =>
+    Effect.gen(function* () {
+      const remoteDir = yield* createBareRemote();
+      // One checkout per branch: status reads the PR of the branch a cwd has out.
+      const checkouts: Array<string> = [];
+      for (const branch of ["feature/open-pr", "feature/merged-pr", "feature/no-pr"]) {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        yield* runGit(repoDir, ["checkout", "-b", branch]);
+        yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+        yield* runGit(repoDir, ["push", "-u", "origin", branch]);
+        checkouts.push(repoDir);
+      }
+      const pullRequest = (number: number, headRefName: string, state: string) => ({
+        number,
+        title: headRefName,
+        url: `https://github.com/pingdotgg/codething-mvp/pull/${number}`,
+        baseRefName: "main",
+        headRefName,
+        state,
+        updatedAt: "2026-04-07T15:00:00Z",
+      });
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          prListByHeadSelector: {
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            "feature/open-pr": JSON.stringify([pullRequest(301, "feature/open-pr", "OPEN")]),
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            "feature/merged-pr": JSON.stringify([pullRequest(302, "feature/merged-pr", "MERGED")]),
+          },
+        },
+      });
+      const lookupAll = Effect.forEach(checkouts, (cwd) => manager.status({ cwd }));
+      const prListCalls = () => ghCalls.filter((call) => call.startsWith("pr list "));
+
+      yield* lookupAll;
+      const initialCalls = prListCalls().length;
+      expect(initialCalls).toBeGreaterThanOrEqual(3);
+
+      yield* TestClock.adjust("121 seconds");
+      yield* lookupAll;
+      const openRecheck = prListCalls().slice(initialCalls);
+      expect(openRecheck.length).toBeGreaterThan(0);
+      expect(openRecheck.every((call) => call.includes("feature/open-pr"))).toBe(true);
+
+      // Just inside the 5-minute window only the open PR is asked again.
+      const beforeSecondRecheck = prListCalls().length;
+      yield* TestClock.adjust("178 seconds");
+      yield* lookupAll;
+      const secondRecheck = prListCalls().slice(beforeSecondRecheck);
+      expect(secondRecheck.length).toBeGreaterThan(0);
+      expect(secondRecheck.every((call) => call.includes("feature/open-pr"))).toBe(true);
+
+      // Just past it the settled answers expire too.
+      const beforeSettledRecheck = prListCalls().length;
+      yield* TestClock.adjust("2 seconds");
+      yield* lookupAll;
+      const settledRecheck = prListCalls().slice(beforeSettledRecheck);
+      expect(settledRecheck.some((call) => call.includes("feature/merged-pr"))).toBe(true);
+      expect(settledRecheck.some((call) => call.includes("feature/no-pr"))).toBe(true);
+      expect(settledRecheck.some((call) => call.includes("feature/open-pr"))).toBe(false);
     }),
   );
 
