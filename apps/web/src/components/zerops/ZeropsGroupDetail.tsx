@@ -52,6 +52,7 @@ import {
   type EnvironmentRow,
   type FlowPullRequest,
   type FlowReleaseRow,
+  type GroupEnvironmentRowInput,
   type GroupEnvironmentTier,
   type GroupRowTone,
   type ZeropsEnvironmentRole,
@@ -922,7 +923,7 @@ export function ZeropsStopDetailPage({
   const deployed = useMemo(() => deployedShas(shown), [shown]);
   const stage = stop?.tier === "stage";
   const production = stop?.tier === "production";
-  const forge = { giteaOrigin: flowValue?.giteaOrigin, owner: flow?.slug };
+  const forge = useStopForge(flowValue?.giteaOrigin, flow?.slug);
   // Only a stage draws its deploys: a production moves by release, and its
   // releases are the list it is read by.
   const commits = useZeropsRepositoryCommits(
@@ -931,25 +932,10 @@ export function ZeropsStopDetailPage({
       : { giteaOrigin: flowValue?.giteaOrigin, owner: flow.slug, repo },
   );
   const readDetail = useZeropsCommitDetailReader({ ...forge, repo });
-  // A production's releases say what each carried: its code services'
-  // repositories, read once when the page opens, never on the clock.
-  const releaseServices = production && withheld === null ? declared?.services : undefined;
-  const repositoryOf =
-    releaseServices === undefined
-      ? NO_REPOSITORIES
-      : new Map(
-          releaseServices.flatMap((entry) =>
-            entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
-          ),
-        );
-  const repositories = [...new Set(repositoryOf.values())];
-  const repositoryReads = useZeropsRepositoriesCommits(
-    production && flow !== undefined && repositories.length > 0
-      ? { giteaOrigin: flowValue?.giteaOrigin, owner: flow.slug, repositories }
-      : null,
-  );
-  const releaseReads =
-    releaseServices === undefined ? undefined : { reads: repositoryReads, repositoryOf };
+  const releaseReads = useStopReleaseReads({
+    ...forge,
+    services: production && withheld === null ? declared?.services : undefined,
+  });
   const release = useReleaseOffer(groupId);
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
@@ -1124,6 +1110,48 @@ const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
   stage: "stage",
   production: "prod",
 };
+
+/**
+ * Where a stop's repositories live, held across renders: the build and
+ * release reads that take it are not asked again by a render alone.
+ */
+function useStopForge(giteaOrigin: string | undefined, owner: string | undefined): StopBuildForge {
+  return useMemo(() => ({ giteaOrigin, owner }), [giteaOrigin, owner]);
+}
+
+/**
+ * A production's releases say what each carried: its code services'
+ * repositories, read once when the page opens, never on the clock. Held
+ * across renders, so the release rows are measured once per read.
+ * `undefined` without the services — a stage, or a withheld stop.
+ */
+function useStopReleaseReads({
+  giteaOrigin,
+  owner,
+  services,
+}: StopBuildForge & {
+  readonly services: GroupEnvironmentRowInput["services"] | undefined;
+}): StopReleaseReads | undefined {
+  const repositoryOf = useMemo(
+    () =>
+      services === undefined
+        ? NO_REPOSITORIES
+        : new Map(
+            services.flatMap((entry) =>
+              entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
+            ),
+          ),
+    [services],
+  );
+  const repositories = [...new Set(repositoryOf.values())];
+  const reads = useZeropsRepositoriesCommits(
+    owner !== undefined && repositories.length > 0 ? { giteaOrigin, owner, repositories } : null,
+  );
+  return useMemo(
+    () => (services === undefined ? undefined : { reads, repositoryOf }),
+    [services, reads, repositoryOf],
+  );
+}
 
 /** A production's code repositories, read for what its releases carried. */
 interface StopReleaseReads {
