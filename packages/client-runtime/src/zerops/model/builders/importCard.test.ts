@@ -76,6 +76,16 @@ describe("buildImportFields — targets from the import YAML while it runs", () 
       ["db", "done"],
     ]);
   });
+
+  it("keeps a YAML-named service the result does not report, under the call's own phase", () => {
+    const fields = buildImportFields(
+      importCall({ content: YAML }, { processes: [process("apidev", "p1")] }),
+    );
+    expect(fields.steps.map((step) => [step.label, step.state])).toEqual([
+      ["apidev", "done"],
+      ["db", "done"],
+    ]);
+  });
 });
 
 describe("buildImportFields — what a settled import started, and why it failed", () => {

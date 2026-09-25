@@ -93,16 +93,17 @@ export function buildImportFields(call: ZeropsCall): BuiltCardFields {
   );
   const subject = hostnames.length > 0 ? hostnames.join(", ") : "the services";
   const target = hostnames[0];
-  const steps = hostnames.flatMap((hostname) => {
-    if (card === undefined) {
-      return [buildStep(hostname, hostname, UNREPORTED_STEP_STATUS[phase])];
-    }
+  // A row once drawn never leaves: a host no result reports on, or the
+  // result neither reports nor names an error for, reads as the call's phase.
+  const steps = hostnames.map((hostname) => {
     const reported = read.steps.find((step) => step.id === hostname);
     if (reported !== undefined) {
-      return [reported];
+      return reported;
     }
-    const error = card.errors.find((entry) => entry.hostname === hostname);
-    return error === undefined ? [] : [buildStep(hostname, hostname, "FAILED", error.message)];
+    const error = card?.errors.find((entry) => entry.hostname === hostname);
+    return error === undefined
+      ? buildStep(hostname, hostname, UNREPORTED_STEP_STATUS[phase])
+      : buildStep(hostname, hostname, "FAILED", error.message);
   });
   const { voice, voiceSource } = mateVoiceFor("import", subject);
 
