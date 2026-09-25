@@ -455,6 +455,8 @@ export interface FlowReleaseRow extends FlowRelease {
   readonly word: string | undefined;
   /** Whether *Roll back to this* is offered. */
   readonly rollBack: boolean;
+  /** The commit, and its service, whose production deploy failed; on a Deploy failed row only. */
+  readonly failedEntry: ReleaseEntry | undefined;
 }
 
 /** A release as far as telling what runs it needs. */
@@ -509,8 +511,8 @@ export function nameStopByRelease(row: EnvironmentRow, tag: string): Environment
 }
 
 /**
- * Whether a commit the release lists, and production does not run, failed its production deploy
- * after the release was tagged. A failure whose time is not read, or posted before the tag,
+ * The commit the release lists, and production does not run, that failed its production deploy
+ * after the release was tagged; `undefined` for none. A failure whose time is not read, or posted before the tag,
  * belongs to an earlier release of the same commit — as {@link releaseInFlight} reads it. With no
  * tag time to measure against, the failure alone counts for the newest release only: the tag time
  * is read for the newest alone, and an older tag listing the same commit may have deployed it fine.
@@ -520,9 +522,9 @@ function deployFailed(
   index: number,
   production: ReadonlyMap<string, string>,
   failed: ReadonlyMap<string, string | undefined>,
-): boolean {
+): ReleaseEntry | undefined {
   const taggedMs = release.taggedAt === undefined ? Number.NaN : Date.parse(release.taggedAt);
-  return release.entries.some((entry) => {
+  return release.entries.find((entry) => {
     if (production.get(entry.service) === entry.commit) return false;
     const key = `${entry.service}@${entry.commit}`;
     if (!failed.has(key)) return false;
@@ -557,14 +559,30 @@ export function releaseRow(
   const line =
     release.verdict === "refused" && release.detail !== undefined ? release.detail : release.line;
   if (deploys.live && release.verdict !== "refused")
-    return { ...release, line, standing: "live", word: "Live", rollBack: false };
-  if (
-    release.verdict !== "refused" &&
-    deployFailed(release, index, deploys.production, deploys.failed)
-  )
-    return { ...release, line, standing: "deploy-failed", word: "Deploy failed", rollBack: false };
+    return {
+      ...release,
+      line,
+      standing: "live",
+      word: "Live",
+      rollBack: false,
+      failedEntry: undefined,
+    };
+  const failedEntry =
+    release.verdict === "refused"
+      ? undefined
+      : deployFailed(release, index, deploys.production, deploys.failed);
+  if (failedEntry !== undefined)
+    return {
+      ...release,
+      line,
+      standing: "deploy-failed",
+      word: "Deploy failed",
+      rollBack: false,
+      failedEntry,
+    };
   return {
     ...release,
+    failedEntry: undefined,
     line,
     standing: undefined,
     word: releaseWord(release.verdict),

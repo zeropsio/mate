@@ -377,7 +377,13 @@ describe("ZeropsStopPane", () => {
       input: {
         tier: "production",
         services: [service("production", "api", "a1", "v0.1.14", "failure")],
-        failed: { label: "v0.1.14", service: "api", running: undefined, jobKnown: false },
+        failed: {
+          label: "v0.1.14",
+          service: "api",
+          sha: undefined,
+          running: undefined,
+          jobKnown: false,
+        },
       },
       contains: ["The deploy of v0.1.14 failed on api."],
     },

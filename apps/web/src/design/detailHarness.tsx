@@ -30,10 +30,10 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
+  stopFailedDeploy,
   stopVerdict,
   stopView,
   type Deployment,
-  type StopView,
 } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
@@ -421,11 +421,11 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     nowMs: NOW,
     age: () => "2h ago",
   });
-  const failed = stopFailure(
-    fixture,
-    view,
-    services.find((entry) => entry.tone === "bad"),
-  );
+  const failedDeploy = stopFailedDeploy({ tier: fixture.tier, rows: services, releases });
+  const failed =
+    failedDeploy === undefined
+      ? undefined
+      : { ...failedDeploy, jobKnown: fixture.jobKnown ?? false };
   return (
     <ZeropsStopPane
       commits={commits}
@@ -473,28 +473,6 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       waiting={waiting}
     />
   );
-}
-
-/**
- * The deploy that failed, as the stop page names it: the version the failed service's row names,
- * and what the stop runs instead when the platform names something else.
- */
-function stopFailure(
-  fixture: StopFixture,
-  view: StopView,
-  row: { readonly hostname: string } | undefined,
-) {
-  if (row === undefined) return undefined;
-  const state = fixture.services.find((entry) => entry.hostname === row.hostname);
-  const label = deployedVersion(state?.appVersionName).label;
-  if (label === undefined) return undefined;
-  const running = view.version?.label;
-  return {
-    label,
-    service: row.hostname,
-    running: running === label ? undefined : running,
-    jobKnown: fixture.jobKnown ?? false,
-  };
 }
 
 function State({

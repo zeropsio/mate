@@ -13,12 +13,17 @@ import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import {
   deployedVersion,
   environmentRow,
+  type DeployedVersion,
   type EnvironmentServiceState,
   type GroupRowTone,
 } from "../groupRows.ts";
 import type { Shown } from "../knowledge/known.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
-import { releaseInFlightReason, RELEASE_NOTHING_NEW_ON_MAIN } from "../release.ts";
+import {
+  releaseInFlightReason,
+  RELEASE_NOTHING_NEW_ON_MAIN,
+  type FlowReleaseRow,
+} from "../release.ts";
 import {
   NOTHING_DEPLOYED,
   stopView,
@@ -41,14 +46,23 @@ export interface StopVerdict {
 }
 
 /** A deploy of the stop that failed: what it deployed, where, and what runs on instead. */
-export interface StopFailure {
+export interface StopFailedDeploy {
   readonly label: string;
   readonly service: string;
-  /** What still runs on that service, when anything is known to. */
-  readonly running: string | undefined;
+  /** The commit it deployed, whose build is the job that failed. */
+  readonly sha: string | undefined;
+  /** What still runs on that service, when something other than the failed deploy is known to. */
+  readonly running: ServiceRuns | undefined;
+}
+
+export interface StopFailure extends StopFailedDeploy {
   /** Whether the failed job is known, so it can be run again. */
   readonly jobKnown: boolean;
 }
+
+/** `text · since`, or the text alone while how long is not known. */
+const withSince = (text: string, since: string | undefined): string =>
+  since === undefined ? text : `${text} · ${since}`;
 
 const plural = (count: number, one: string, many: string): string =>
   `${count} ${count === 1 ? one : many}`;
@@ -78,7 +92,8 @@ export function stopVerdict(input: {
     return {
       tone: "failed",
       text: `The deploy of ${label} failed on ${service}.`,
-      detail: running === undefined ? undefined : `${running} still runs`,
+      detail:
+        running === undefined ? undefined : withSince(`${running.label} still runs`, running.since),
       verb: jobKnown ? { kind: "run-again" } : null,
     };
   }
@@ -157,11 +172,40 @@ export interface StopServiceRow {
   readonly word: string;
   /** The word, and how long it has run when the platform says. */
   readonly status: string;
+  /**
+   * What the service runs now — through a build, what ran before it — and how long it has, when
+   * the platform says; the Gitea side's name while the platform's is not read. `undefined` for
+   * nothing known to run.
+   */
+  readonly runs: ServiceRuns | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
 }
 
+/** A version a service runs, and how long it has run, already said. */
+export interface ServiceRuns {
+  readonly label: string;
+  readonly since: string | undefined;
+}
+
 const UNREAD: Shown<Deployment> = { state: "unread", waitingFor: null };
+
+function runsOf(
+  deployment: Shown<Deployment>,
+  read: DeployedVersion,
+  age: (iso: string) => string,
+): ServiceRuns | undefined {
+  if (deployment.state !== "known")
+    return read.label === undefined ? undefined : { label: read.label, since: undefined };
+  const settled =
+    deployment.value.kind === "deploying" ? deployment.value.previous : deployment.value;
+  if (settled?.kind !== "running" || settled.version.label === undefined) return undefined;
+  const { activatedAt } = settled;
+  return {
+    label: settled.version.label,
+    since: activatedAt === null ? undefined : age(activatedAt),
+  };
+}
 
 /**
  * The services the platform lists, and each one's deployment. A listing not read yet, failing or
@@ -228,10 +272,48 @@ export function serviceRows(input: {
       tone,
       word,
       status: activatedAt === null ? word : `${word} · ${input.age(activatedAt)}`,
+      runs: runsOf(deployment, version, input.age),
       routes: input.routes.filter((route) => route.service === hostname),
       offers: input.offers.filter((offer) => offer.service === hostname),
     };
   });
+}
+
+/**
+ * The deploy of the stop that failed, if one did.
+ *
+ * A production's is the newest release whose deploy failed and that is newer than the one it runs
+ * (`FlowReleaseRow.failedEntry`): a release that failed never becomes what a service runs, so its
+ * failure sits on a commit none of the stop's rows carries, and the service runs on what it ran.
+ * A release that failed before the live one is history.
+ *
+ * Otherwise — and always on a stage — a service whose own running commit carries a failed deploy:
+ * it names the version that failed, which is what it runs, so nothing else is said to run on.
+ */
+export function stopFailedDeploy(input: {
+  readonly tier: GroupEnvironmentTier;
+  readonly rows: ReadonlyArray<StopServiceRow>;
+  /** The group's releases, newest first. */
+  readonly releases: ReadonlyArray<FlowReleaseRow>;
+}): StopFailedDeploy | undefined {
+  if (input.tier === "production") {
+    const live = input.releases.findIndex((release) => release.standing === "live");
+    const newer = live === -1 ? input.releases : input.releases.slice(0, live);
+    const failed = newer.find((release) => release.failedEntry !== undefined);
+    if (failed?.failedEntry !== undefined) {
+      const { service, commit } = failed.failedEntry;
+      return {
+        label: failed.tag,
+        service,
+        sha: commit,
+        running: input.rows.find((row) => row.hostname === service)?.runs,
+      };
+    }
+  }
+  const row = input.rows.find((entry) => entry.tone === "bad");
+  const label = row?.runs?.label ?? row?.commit;
+  if (row === undefined || label === undefined) return undefined;
+  return { label, service: row.hostname, sha: row.sha, running: undefined };
 }
 
 /** What a stage's deploy history says beside the commit that stage runs. */

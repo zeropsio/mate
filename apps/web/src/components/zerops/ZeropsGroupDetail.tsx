@@ -28,7 +28,6 @@ import {
   changeSubtitle,
   changeVerdict,
   historyAge,
-  deployedVersion,
   deployWord,
   environmentNameUnderGroup,
   flowVerbKey,
@@ -50,7 +49,6 @@ import {
   type EnvironmentRow,
   type FlowPullRequest,
   type FlowReleaseRow,
-  type GroupEnvironmentRowInput,
   type GroupEnvironmentTier,
   type GroupRowTone,
   type ZeropsEnvironmentRole,
@@ -61,11 +59,11 @@ import {
   earlierReleasesLabel,
   NOTHING_DEPLOYED,
   serviceRows,
+  stopFailedDeploy,
   stopMetaLine,
   stopVerdict,
   stopView,
   type Deployment,
-  type StopFailure,
   type StopServiceRow,
   type StopVerdict,
   type StopView,
@@ -950,11 +948,23 @@ export function ZeropsStopDetailPage({
           nowMs,
           age: formatRelativeTimeLabel,
         });
-  const failedRow = services.find((row) => row.tone === "bad");
-  // The build behind the deploy that failed, read whether or not its row is
-  // open: whether its job is known decides the verdict's *Run again*.
+  const failedDeploy =
+    flow === undefined || stop === undefined
+      ? undefined
+      : stopFailedDeploy({ tier: stop.tier, rows: services, releases: flow.releases });
+  // The build behind the deploy that failed — its service's repository, the
+  // commit it deployed — read whether or not its row is open: whether its job
+  // is known decides the verdict's *Run again*.
   const failedRun = useZeropsDeployRun(
-    failedRow === undefined ? null : serviceBuildRequest(failedRow, forge),
+    failedDeploy === undefined
+      ? null
+      : serviceBuildRequest(
+          {
+            repository: services.find((row) => row.hostname === failedDeploy.service)?.repository,
+            sha: failedDeploy.sha,
+          },
+          forge,
+        ),
   );
 
   if (flowValue === null || flow === undefined || stop === undefined) {
@@ -986,9 +996,7 @@ export function ZeropsStopDetailPage({
     view,
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
     failed:
-      failedRow === undefined
-        ? undefined
-        : stopFailure(failedRow, declared, view, job !== undefined),
+      failedDeploy === undefined ? undefined : { ...failedDeploy, jobKnown: job !== undefined },
     waiting: releaseContentsSummary(flow.release.contents, 20).total,
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
@@ -1046,29 +1054,6 @@ export function ZeropsStopDetailPage({
       waiting={production ? waitingCommits(flow.release.contents) : NO_COMMITS}
     />
   );
-}
-
-/**
- * The deploy of one service that failed, as the verdict names it: the version
- * its row says failed, and what the stop still runs when the platform names
- * something else (`stopView`, which says nothing runs until that is known).
- */
-function stopFailure(
-  row: StopServiceRow,
-  declared: GroupEnvironmentRowInput | undefined,
-  view: StopView,
-  jobKnown: boolean,
-): StopFailure | undefined {
-  const state = declared?.services.find((entry) => entry.hostname === row.hostname);
-  const label = deployedVersion(state?.appVersionName).label;
-  if (label === undefined) return undefined;
-  const running = view.version?.label;
-  return {
-    label,
-    service: row.hostname,
-    running: running === label ? undefined : running,
-    jobKnown,
-  };
 }
 
 /** What `main` has that production does not, one row per commit however many services take it. */

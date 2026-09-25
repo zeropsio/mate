@@ -571,6 +571,16 @@ describe("a release's row", () => {
     expect(rows(releases, production, failed).map(brief)).toEqual(expected);
   });
 
+  it("says which of its commits failed, on which service, and nothing for any other row", () => {
+    const [failed, live] = rows(
+      [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      runs(API, OLD),
+      new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+    );
+    expect(failed!.failedEntry).toEqual({ service: "web", commit: WEB });
+    expect(live!.failedEntry).toBeUndefined();
+  });
+
   it("never names a release that lists nothing as Live", () => {
     const empty = release("v1.3.0", { entries: [], line: "" });
     expect(releaseRunBy([empty, release("v1.2.0")], runs(API, WEB))).toBe("v1.2.0");
