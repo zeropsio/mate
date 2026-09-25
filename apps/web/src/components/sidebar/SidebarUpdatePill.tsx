@@ -347,7 +347,7 @@ function SidebarUpdateControl() {
             showUpdateDetails && state?.channel === "nightly" && state.releaseNotes.length > 0
               ? // pointer-events-auto overrides the positioner's pointer-events-none so the
                 // release notes stay open (and scrollable) when the cursor moves into them.
-                "pointer-events-auto max-w-none text-balance"
+                "pointer-events-auto text-balance"
               : undefined
           }
           side="top"

@@ -101,7 +101,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           >
             <EllipsisIcon />
           </MenuTrigger>
-          <MenuPopup side="top" align="end" className="w-56 max-w-[calc(100vw-2rem)]">
+          <MenuPopup side="top" align="end">
             {moreOptions.map((option) => {
               const item = (
                 <MenuItem
