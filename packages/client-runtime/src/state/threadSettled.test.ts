@@ -326,6 +326,34 @@ describe("effectiveSettled", () => {
     ).toBe(true);
   });
 
+  it.each([
+    { name: "a stale thread", changeRequest: undefined, settledOverride: null, expected: false },
+    { name: "a merged PR", changeRequest: "merged", settledOverride: null, expected: false },
+    { name: "a closed PR", changeRequest: "closed", settledOverride: null, expected: false },
+    {
+      name: "a manual settle",
+      changeRequest: undefined,
+      settledOverride: "settled",
+      expected: true,
+    },
+  ] as const)(
+    "with auto-settle off for the thread, $name settles only if manual",
+    ({ changeRequest, settledOverride, expected }) => {
+      const shell = {
+        ...makeShell({ settledOverride, activityAt: STALE }),
+        autoSettleDisabledAt: STALE,
+      };
+      expect(
+        effectiveSettled(shell, {
+          now: NOW,
+          autoSettleAfterDays: 3,
+          autoSettleOnMerge: true,
+          ...(changeRequest === undefined ? {} : { changeRequest: { state: changeRequest } }),
+        }),
+      ).toBe(expected);
+    },
+  );
+
   it("never auto-settles a stale thread with an open change request", () => {
     const stale = makeShell({ activityAt: STALE });
     expect(

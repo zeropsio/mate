@@ -154,7 +154,6 @@ export function MateMark({
               frame (and if its script never runs) it reads as the logo rather
               than as eyes painted over a band that is still in the way. */}
         <g
-          className="mate-mark-eyes"
           fill="currentColor"
           ref={(node) => {
             parts.current.eyes = node;

@@ -1193,10 +1193,9 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       {layout.usesSplitView ? (
         <NativeHeaderToolbar placement="left">
           <NativeHeaderToolbar.Button
-            accessibilityLabel="Close terminal"
-            icon="xmark"
+            accessibilityLabel="Back to chat"
+            icon="chevron.left"
             onPress={handleCloseTerminal}
-            separateBackground
           />
           <NativeHeaderToolbar.Button
             accessibilityLabel={panes.primarySidebarVisible ? "Maximize terminal" : "Show threads"}
@@ -1204,7 +1203,6 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
               panes.primarySidebarVisible ? "arrow.up.left.and.arrow.down.right" : "sidebar.left"
             }
             onPress={togglePrimarySidebar}
-            separateBackground
           />
         </NativeHeaderToolbar>
       ) : null}

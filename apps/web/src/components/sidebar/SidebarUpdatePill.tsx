@@ -128,7 +128,7 @@ function SidebarUpdateArchitectureWarningContent() {
   if (!visible || !description) return null;
 
   return (
-    <Alert variant="warning" className="rounded-2xl border-warning/40 bg-warning/8 text-xs">
+    <Alert variant="warning">
       <TriangleAlertIcon />
       <AlertTitle>Intel build on Apple Silicon</AlertTitle>
       <AlertDescription>{description}</AlertDescription>
@@ -323,7 +323,7 @@ function SidebarUpdateControl() {
                       !isInteractionDisabled && "hover:bg-update/12",
                     )
                   : cn(
-                      "text-[var(--sidebar-icon-color)]",
+                      "text-(--sidebar-icon-color)",
                       !isInteractionDisabled &&
                         "hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
                     ),
@@ -347,7 +347,7 @@ function SidebarUpdateControl() {
             showUpdateDetails && state?.channel === "nightly" && state.releaseNotes.length > 0
               ? // pointer-events-auto overrides the positioner's pointer-events-none so the
                 // release notes stay open (and scrollable) when the cursor moves into them.
-                "pointer-events-auto max-w-none text-balance"
+                "pointer-events-auto text-balance"
               : undefined
           }
           side="top"

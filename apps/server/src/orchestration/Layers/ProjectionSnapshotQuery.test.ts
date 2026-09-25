@@ -345,6 +345,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           pinnedAt: "2026-02-24T00:00:01.000Z",
           pinOrderKey: "gm",
           activeOrderKey: "hq",
+          autoSettleDisabledAt: null,
           titleRegeneration: null,
           titleState: null,
           deletedAt: null,
@@ -473,6 +474,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           pinnedAt: "2026-02-24T00:00:01.000Z",
           pinOrderKey: "gm",
           activeOrderKey: "hq",
+          autoSettleDisabledAt: null,
           titleRegeneration: null,
           titleState: null,
           session: {

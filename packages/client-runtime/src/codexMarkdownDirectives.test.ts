@@ -9,6 +9,16 @@ import {
   splitCodexArtifactTemplateMarkdown,
 } from "./codexMarkdownDirectives.js";
 
+// The clients' file-link readers split off the `#L` hash and percent-decode the
+// path; this reads a copied citation back the same way.
+function readCopiedFileLink(url: string): { readonly path: string; readonly line: number } {
+  const hashIndex = url.indexOf("#L");
+  return {
+    path: decodeURIComponent(hashIndex === -1 ? url : url.slice(0, hashIndex)),
+    line: hashIndex === -1 ? Number.NaN : Number(url.slice(hashIndex + 2)),
+  };
+}
+
 interface TestNode {
   readonly type: string;
   readonly value?: string;
@@ -86,6 +96,24 @@ describe("remarkCodexDirectives", () => {
     '::artifact-template{skill_name="artifact-template-hello-world"}',
   ])("keeps malformed supported directives literal: %s", (markdown) => {
     expect(parse(markdown)).toEqual(parseOrdinaryMarkdown(markdown));
+  });
+});
+
+describe.each([
+  { name: "renderCodexDirectivesForCopy", render: renderCodexDirectivesForCopy },
+  { name: "renderCodexFileCitationsAsMarkdown", render: renderCodexFileCitationsAsMarkdown },
+])("$name file citation round trips", ({ render }) => {
+  it.each([
+    "C:\\Users\\test\\[draft]\\report.md",
+    "\\\\server\\share\\report.md",
+    "outputs/report.md",
+    "/tmp/report%5C.md",
+  ])("preserves the literal path and line: %s", (path) => {
+    const markdown = render(`:codex-file-citation{path="${path}" line_range_start="7"}`);
+    const link = parseOrdinaryMarkdown(markdown).children?.[0]?.children?.[0];
+
+    expect(link?.type).toBe("link");
+    expect(readCopiedFileLink(link?.url ?? "")).toEqual({ path, line: 7 });
   });
 });
 

@@ -15,6 +15,7 @@
           "forkedFromId": null,
           "parentThreadId": null,
           "preview": "",
+          "projectId": null,
           "ephemeral": false,
           "historyMode": "legacy",
           "modelProvider": "openai",

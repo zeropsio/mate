@@ -1,0 +1,2122 @@
+[
+  {
+    "path": "apps/web/src/components/AppSidebarLayout.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--control-radius)] in \"flex size-8 cursor-pointer items-center justify-center rounded-[var(--control-radius)] text-[var(--sidebar-icon-color)] outline-hidden ring-ring transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 [-webkit-app-region:no-drag]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/AppSidebarLayout.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--sidebar-icon-color)] in \"flex size-8 cursor-pointer items-center justify-center rounded-[var(--control-radius)] text-[var(--sidebar-icon-color)] outline-hidden ring-ring transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 [-webkit-app-region:no-drag]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> px-[calc(--spacing(2)-1px)] in \"inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 md:hidden\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> ease-[cubic-bezier(0.32,0.72,0,1)] in \"flex w-full max-w-[240px] origin-left transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] font-medium tabular-nums transition-colors hover:bg-muted/60\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> ease-[cubic-bezier(0.32,0.72,0,1)] in \"block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> px-[calc(--spacing(3)-1px)] in \"inline-flex h-7 shrink-0 items-center gap-1 border border-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 sm:text-xs\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarEnvironmentSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> ease-[cubic-bezier(0.32,0.72,0,1)] in \"block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarEnvironmentSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> ease-[cubic-bezier(0.32,0.72,0,1)] in \"block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarEnvironmentSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> px-[calc(--spacing(3)-1px)] in \"inline-flex h-7 min-w-0 max-w-full items-center gap-1 border border-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 sm:text-xs\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/ChatView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[22px] in \"chat-composer-glass-host relative z-10 w-full rounded-[22px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/ComposerPromptEditor.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)] in \"relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/ComposerPromptEditor.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> [font-family:var(--font-composer,var(--font-sans))] in \"relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/ComposerPromptEditor.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> [font-size:var(--font-size-prompt,0.875rem)] in \"relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/DiffPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground/75\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"text-[10px] font-medium uppercase text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> ps-[8.5px] in \"cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> ps-[8.5px] in \"ps-[8.5px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> rounded-[.25rem] in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-[10px] in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/RightPanelTabs.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> pb-[calc(var(--workspace-topbar-height)+--spacing(6))] in \"pb-[calc(var(--workspace-topbar-height)+--spacing(6))]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/RightPanelTabs.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)] in \"wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> px-[var(--sidebar-row-content-inset)] in \"relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> py-[var(--sidebar-content-inset)] in \"relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> pe-[var(--sidebar-content-inset)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> ps-[calc(var(--sidebar-content-inset)+1px)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> ps-[calc(var(--sidebar-row-content-inset)-1px)] in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> dark:bg-[color-mix(in_srgb,var(--contrast-foreground)_2.5%,var(--background))] in \"sticky top-2 z-10 mb-2 bg-secondary dark:bg-[color-mix(in_srgb,var(--contrast-foreground)_2.5%,var(--background))]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"inline-flex max-w-48 items-center gap-1 rounded-md border border-border/70 bg-background/45 px-1.5 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"break-words px-2 py-1 text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"flex min-w-0 font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"ml-1 hidden min-w-0 flex-1 truncate text-[11px] text-muted-foreground group-hover:text-foreground/80 @[24rem]/changed-files:inline\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"space-y-1 break-words px-2 py-1 text-[11px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[20px] in \"rounded-[20px] transition-[background-color] duration-200\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[22px] in \"group relative z-10 rounded-[22px] p-px transition-colors duration-200\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[14px] in \"min-w-0 flex-1 truncate bg-transparent p-0 text-left text-[14px] focus:outline-none\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatHeader.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> ps-[8.5px] in \"ps-[8.5px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> shadow-[0_6px_18px_rgba(0,0,0,0.06)] in \"chat-composer-banner-stack-cap border border-b-0 shadow-[0_6px_18px_rgba(0,0,0,0.06)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"ml-auto shrink-0 text-[10px] font-medium text-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"max-w-32 shrink truncate text-[11px] font-medium text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"whitespace-pre font-mono text-[11px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"text-[10px] font-medium text-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-secondary-label text-[11px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> active:inset-shadow-[0_1px_--theme(--color-black/8%)] in \"flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] in \"flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"text-[10px] font-medium leading-none tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> [--control-icon-color:currentColor] in \"[--control-icon-color:currentColor] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"shrink-0 text-[10px] text-secondary-label\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"shrink-0 text-[10px] text-warning-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> [--control-icon-color:currentColor] in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"ml-auto w-12 shrink-0 text-right text-[10px] text-muted-foreground/45 tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> stroke-[1.8] in \"block size-3.5 shrink-0 stroke-[1.8] opacity-70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> stroke-[1.8] in \"block size-3.5 shrink-0 stroke-[1.8] opacity-70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> stroke-[1.8] in \"block size-3.5 shrink-0 stroke-[1.8] opacity-70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"w-3 shrink-0 text-center font-mono text-[10px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"px-0.5 pb-0.5 font-medium text-secondary-label text-[11px]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"w-3.5 shrink-0 text-center font-mono text-[11px] leading-none text-muted-foreground/70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[12px] in \"flex items-baseline gap-2 text-[12px] leading-5\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[12px] in \"flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-0.5 py-0.5 text-left text-[12px] leading-5 transition-colors duration-150 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"flex cursor-pointer select-none items-center gap-2 rounded-sm px-0.5 py-px text-start text-[13px] leading-5 transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"flex min-w-0 flex-1 items-baseline gap-2 py-px text-[13px] leading-5 text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"flex min-w-0 items-baseline gap-2 py-px text-[13px] leading-5 text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"flex min-w-0 w-full items-baseline gap-1.5 text-[13px] leading-5\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"w-fit max-w-full min-w-0 overflow-hidden rounded-md text-[13px] leading-5\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-update-role,var(--foreground))] in \"text-[var(--zerops-update-role,var(--foreground))]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"cursor-pointer mt-1 text-[11px] font-medium text-foreground/70 underline-offset-2 hover:text-foreground hover:underline\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> focus-visible:ring-[3px] in \"group inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-1.5 outline-none transition-colors hover:border-border/70 hover:bg-background focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> focus-visible:ring-[3px] in \"inline-flex size-4.5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> focus-visible:ring-[3px] in \"inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"text-[10px] uppercase tracking-[0.08em] text-muted-foreground/0 transition-opacity group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"grid min-w-[680px] grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] border-b border-border/70 bg-muted/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[12px] in \"flex items-start gap-2 border-b border-warning/20 bg-warning/5 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"truncate text-[13px] font-medium text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[0.07em] in \"grid min-w-[680px] grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] border-b border-border/70 bg-muted/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[0.08em] in \"text-[10px] uppercase tracking-[0.08em] text-muted-foreground/0 transition-opacity group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> text-[12px] in \"h-7 w-44 rounded-md text-[12px] sm:h-7\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-[3px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-[3px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-[12px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-[12px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 rounded-sm border border-border/60 px-1.5 py-px text-[11px] font-normal text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> shadow-[0_0_0_1px_rgb(0_0_0/0.35)] in \"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> shadow-[0_0_0_1px_rgb(0_0_0/0.35)] in \"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"mt-0.5 block truncate text-[10px] text-muted-foreground/70\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"truncate rounded bg-muted/60 px-1 py-0.5 text-[10px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"flex h-full w-max items-center whitespace-nowrap pr-3 font-mono text-[11px] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[-0.005em] in \"truncate text-sm font-medium tracking-[-0.005em] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableHeader> text-[11px] in \"bg-muted/25 text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"text-[10px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"text-[10px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"text-[10px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"block text-[11px] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsForm.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-[11px] font-medium text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground/50\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground/60\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[-0.025em] in \"text-lg font-semibold tracking-[-0.025em] text-muted-foreground transition-colors group-hover:text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsSidebarNav.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> shadow-[0_0_0_1px_rgb(0_0_0/0.4)] in \"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> shadow-[0_0_0_1px_rgb(0_0_0/0.4)] in \"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> shadow-[inset_0_0_0_1px_rgb(0_0_0_/_12%)] in \"h-2.5 w-full rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0_/_12%)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> leading-[1.45] in \"px-3 text-[13px] leading-[1.45] text-muted-foreground/80 sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"px-3 text-[13px] leading-[1.45] text-muted-foreground/80 sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[-0.005em] in \"px-3 text-sm font-medium tracking-[-0.005em] text-foreground sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[-0.005em] in \"text-sm font-medium tracking-[-0.005em] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/settingsLayout.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[-0.025em] in \"flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"block truncate text-[10px] text-sidebar-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsageDimensionViews.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[8px] in \"size-4 text-[8px]\"",
+    "owner": "karel",
+    "reason": "initials inside a 16px avatar in the usage breakdown; the scale has nothing below text-3xs (10px)",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsageDimensionViews.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[8px] in \"size-4 text-[8px] ring-1 ring-background\"",
+    "owner": "karel",
+    "reason": "initials inside a 16px avatar in the usage breakdown; the scale has nothing below text-3xs (10px)",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/MateUpdateLine.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-update-role,var(--foreground))] in \"text-[var(--zerops-update-role,var(--foreground))]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"min-w-0 truncate text-[11px] leading-4 text-sidebar-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"min-w-0 truncate text-[13px] leading-4 font-medium text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-rail)] in \"absolute start-[23.5px] top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--zerops-rail)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-rail)] in \"absolute start-[9.5px] top-[calc(50%-0.625rem)] h-2.5 w-3.5 rounded-bl-[0.625rem] border-b border-s border-[var(--zerops-rail)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-bl-[0.625rem] in \"absolute start-[9.5px] top-[calc(50%-0.625rem)] h-2.5 w-3.5 rounded-bl-[0.625rem] border-b border-s border-[var(--zerops-rail)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"inline-flex h-4 shrink-0 cursor-pointer items-center rounded-full bg-sidebar-row-active px-1.5 text-[10px] leading-none font-medium text-sidebar-foreground tabular-nums outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-sidebar-foreground aria-expanded:text-sidebar\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"flex h-6 min-w-0 items-center gap-3.5 px-2.5 text-[11px] leading-4\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"flex h-7 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-[11px] text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"flex min-w-0 flex-1 items-center gap-1 text-[11px] leading-4 text-sidebar-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"min-w-0 truncate text-[11px] leading-4 text-sidebar-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] leading-5 text-sidebar-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] text-sidebar-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"text-[13px] font-medium tracking-normal text-sidebar-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-auth-terminal-header)] in \"flex h-9 items-center gap-2 border-b border-[var(--zerops-auth-terminal-border)] bg-[var(--zerops-auth-terminal-header)] px-3 text-xs text-[var(--zerops-auth-terminal-muted)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-auth-terminal-surface)] in \"relative min-h-0 overflow-hidden bg-[var(--zerops-auth-terminal-surface)] text-[var(--zerops-auth-terminal-text)] [--terminal-background:var(--zerops-auth-terminal-surface)] [--terminal-cursor:var(--zerops-auth-terminal-text)] [--terminal-foreground:var(--zerops-auth-terminal-text)] [--terminal-selection-background:color-mix(in_srgb,var(--zerops-auth-terminal-text)_24%,transparent)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-mint-surface)] in \"max-w-44 truncate rounded-md bg-[var(--zerops-mint-surface)] px-1.5 py-0.5 font-medium text-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-status-attention-surface)] in \"space-y-3 rounded-xl border border-border/60 bg-[var(--zerops-status-attention-surface)] p-3.5\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-auth-terminal-border)] in \"flex h-9 items-center gap-2 border-b border-[var(--zerops-auth-terminal-border)] bg-[var(--zerops-auth-terminal-header)] px-3 text-xs text-[var(--zerops-auth-terminal-muted)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"block text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"block max-h-14 select-all overflow-hidden break-all font-mono text-[11px] leading-4 text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-center text-[11px] italic text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-auth-terminal-faint)] in \"text-[var(--zerops-auth-terminal-faint)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-auth-terminal-muted)] in \"flex h-9 items-center gap-2 border-b border-[var(--zerops-auth-terminal-border)] bg-[var(--zerops-auth-terminal-header)] px-3 text-xs text-[var(--zerops-auth-terminal-muted)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-auth-terminal-muted)] in \"flex h-full flex-col justify-between p-5 font-mono text-xs leading-5 text-[var(--zerops-auth-terminal-muted)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-auth-terminal-text)] in \"relative min-h-0 overflow-hidden bg-[var(--zerops-auth-terminal-surface)] text-[var(--zerops-auth-terminal-text)] [--terminal-background:var(--zerops-auth-terminal-surface)] [--terminal-cursor:var(--zerops-auth-terminal-text)] [--terminal-foreground:var(--zerops-auth-terminal-text)] [--terminal-selection-background:color-mix(in_srgb,var(--zerops-auth-terminal-text)_24%,transparent)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-auth-terminal-text)] in \"text-[var(--zerops-auth-terminal-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text,var(--foreground))] in \"text-sm leading-6 text-[var(--zerops-status-failed-text,var(--foreground))]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[0.08em] in \"block text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 font-mono text-[11px] tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-flat-card-border)] in \"relative overflow-hidden rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"relative overflow-hidden rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11.5px] in \"max-h-56 overflow-auto whitespace-pre rounded-md bg-background/60 p-2 font-mono text-[11.5px] leading-relaxed\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"flex w-full items-center justify-between gap-2 text-[11px] text-muted-foreground uppercase tracking-wide\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed)] in \"text-[var(--zerops-status-failed)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-rail)] in \"h-2 w-px bg-[var(--zerops-rail)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-rail)] in \"h-5 w-px bg-[var(--zerops-rail)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-rail)] in \"size-2 shrink-0 rounded-full border border-[var(--zerops-rail)] bg-background\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-rail)] in \"size-5 border border-[var(--zerops-rail)] bg-background text-[9px]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[9px] in \"size-5 border border-[var(--zerops-rail)] bg-background text-[9px]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--control-radius)] in \"inline-flex items-center gap-0.5 rounded-[var(--control-radius)] border border-border\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"h-7 rounded-[var(--zerops-card-radius)] border border-border bg-transparent px-2 text-xs\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] bg-destructive/8 px-2 py-1 text-destructive-foreground text-xs\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataQuery.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"shrink-0 space-y-1 rounded-[var(--zerops-card-radius)] border border-border p-2\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataTable.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex shrink-0 flex-wrap gap-2 rounded-[var(--zerops-card-radius)] border border-border p-2\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2 disabled:opacity-50\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDeployRun.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"mb-2 max-h-72 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex cursor-pointer items-start gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 px-3 py-2.5 text-sm transition-colors\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitBlock.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 font-mono text-[11px] tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitBlock.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitBlock.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-ok-text)] in \"text-[var(--zerops-status-ok-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed)] in \"px-4 pt-3 text-xs text-[var(--zerops-status-failed)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitTab.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 font-mono text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGiteaPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[15px] in \"min-w-0 truncate text-[15px] font-semibold tracking-tight text-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGiteaPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed)] in \"text-sm text-[var(--zerops-status-failed)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGiteaPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed)] in \"text-sm text-[var(--zerops-status-failed)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"col-start-3 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-4\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"flex min-w-0 items-center gap-1.5 text-[13px] text-foreground underline-offset-2 hover:underline\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"truncate font-mono text-[13px] leading-5 text-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"truncate text-[13px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"mt-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"mt-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--app-theme-surface)] in \"size-2 shrink-0 rounded-full border border-[var(--zerops-rail)] bg-[var(--app-theme-surface)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-rail)] in \"h-3.5 w-px bg-[var(--zerops-rail)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-status-ok)] in \"size-2 shrink-0 rounded-full bg-[var(--zerops-status-ok)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-status-ok-surface)] in \"shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-rail)] in \"size-2 shrink-0 rounded-full border border-[var(--zerops-rail)] bg-[var(--app-theme-surface)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> leading-[18px] in \"shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 font-mono text-[11px] leading-5 text-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"truncate font-mono text-[11px] leading-4 text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"text-[13px] leading-5 text-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-ok-text)] in \"shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[10px] in \"ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-busy-text)] in \"relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text,var(--foreground))] in \"text-[var(--zerops-status-failed-text,var(--foreground))]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex cursor-pointer items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 text-sm transition-colors\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsNewProjectWizard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] border border-border/60 bg-card\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-status-failed)]/35 in \"border-[var(--zerops-status-failed)]/35\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/60 p-2 text-[11px]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"min-w-0 text-[13px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"text-[13px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-status-failed-surface)] in \"flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-status-failed-surface)] in \"rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-status-failed)]/40 in \"flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-status-failed)]/40 in \"rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"min-w-0 truncate text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-sm text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[9px] in \"absolute -top-1 -end-1 inline-flex h-3 min-w-3 items-center justify-center rounded-full bg-sidebar-foreground px-0.5 text-[9px] leading-none font-semibold text-sidebar tabular-nums ring-1 ring-sidebar\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsReadOnlyConversationFooter.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[22px] in \"relative z-10 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[22px] px-4 py-3\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsToolResultCards.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"max-h-40 space-y-0.5 overflow-auto rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-relaxed\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-center text-[11px] text-muted-foreground/70\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/operation/ExplanationBlock.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"space-y-0.5 overflow-x-auto rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-relaxed\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/operation/ExplanationBlock.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"text-[13px] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/operation/OperationStepRow.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/operation/OperationSubjectLine.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-chip-radius)] in \"me-1.5 inline-flex rounded-[var(--zerops-chip-radius)] bg-muted px-1.5 font-medium text-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/Chip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> [font-weight:var(--zerops-micro-label-font-weight)] in \"inline-flex items-center rounded-[var(--zerops-chip-radius)] px-2 py-1 text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] uppercase\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/Chip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-chip-radius)] in \"inline-flex items-center rounded-[var(--zerops-chip-radius)] px-2 py-1 text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] uppercase\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/Chip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[length:var(--zerops-micro-label-font-size)] in \"inline-flex items-center rounded-[var(--zerops-chip-radius)] px-2 py-1 text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] uppercase\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/Chip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[var(--zerops-micro-label-tracking)] in \"inline-flex items-center rounded-[var(--zerops-chip-radius)] px-2 py-1 text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] uppercase\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/FlatCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[var(--zerops-flat-card-border)] in \"rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/FlatCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> rounded-[var(--zerops-key-chip-radius)] in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFace.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> fill-[var(--zerops-mate-face-ink)] in \"fill-[var(--zerops-mate-face-ink)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFace.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> stroke-[var(--zerops-mate-face-ink)] in \"stroke-[var(--zerops-mate-face-ink)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFace.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> stroke-[var(--zerops-mate-face-ink)] in \"stroke-[var(--zerops-mate-face-ink)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MicroLabel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> [font-weight:var(--zerops-micro-label-font-weight)] in \"text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] opacity-[var(--zerops-micro-label-opacity)] uppercase\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MicroLabel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> opacity-[var(--zerops-micro-label-opacity)] in \"text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] opacity-[var(--zerops-micro-label-opacity)] uppercase\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MicroLabel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[length:var(--zerops-micro-label-font-size)] in \"text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] opacity-[var(--zerops-micro-label-opacity)] uppercase\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MicroLabel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[var(--zerops-micro-label-tracking)] in \"text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] opacity-[var(--zerops-micro-label-opacity)] uppercase\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MintPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[var(--zerops-mint-panel)] in \"rounded-[var(--zerops-card-radius)] bg-[var(--zerops-mint-panel)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MintPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] bg-[var(--zerops-mint-panel)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/Pill.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> rounded-[var(--zerops-pill-radius)] in \"inline-flex items-center justify-center gap-2 rounded-[var(--zerops-pill-radius)] border text-sm font-medium outline-none transition-[background-color,transform] duration-150 focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-background active:scale-[0.97] disabled:pointer-events-none disabled:opacity-64 motion-reduce:transition-none\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> border-[length:var(--zerops-process-step-border-width)] in \"inline-flex size-[var(--zerops-process-step-glyph-size)] items-center justify-center rounded-full border-[length:var(--zerops-process-step-border-width)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 pt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] text-muted-foreground tabular-nums\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[13px] in \"min-w-0 flex-1 text-[13px] leading-5 text-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/OverviewView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> @2xl/flow:ps-[calc(1.75rem+1rem+0.75rem)] in \"flex flex-col gap-3 px-3 pb-3 @2xl/flow:ps-[calc(1.75rem+1rem+0.75rem)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/OverviewView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> after:rounded-[var(--zerops-card-radius)] in \"min-w-0 rounded-sm text-left outline-none after:absolute after:inset-0 after:rounded-[var(--zerops-card-radius)] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/design/changeHarness.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] font-semibold tracking-wide text-muted-foreground uppercase\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/design/detailHarness.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] font-semibold tracking-wide text-muted-foreground uppercase\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/design/sidebarHarness.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"px-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/__root.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)] in \"absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/__root.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> bg-[radial-gradient(44rem_16rem_at_top,color-mix(in_srgb,var(--color-red-500)_16%,transparent),transparent)] in \"absolute inset-x-0 top-0 h-44 bg-[radial-gradient(44rem_16rem_at_top,color-mix(in_srgb,var(--color-red-500)_16%,transparent),transparent)]\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/__root.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[11px] in \"text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/__root.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> tracking-[0.18em] in \"text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase\"",
+    "owner": "web-intake",
+    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  }
+]

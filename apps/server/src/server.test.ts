@@ -129,7 +129,6 @@ import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
-import { OrchestrationListenerCallbackError } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
@@ -137,6 +136,7 @@ import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationE
 import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
@@ -146,7 +146,10 @@ import {
 } from "./provider/AntigravityInstallation.ts";
 import type { ProviderInstance } from "./provider/ProviderDriver.ts";
 import { ProviderAdapterRequestError } from "./provider/Errors.ts";
-import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
+import {
+  makeManualOnlyProviderMaintenanceCapabilities,
+  ProviderVersionCache,
+} from "./provider/providerMaintenance.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
@@ -224,7 +227,8 @@ import {
   transferBudgetViolations,
 } from "../integration/TransferBudgetReport.integration.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
-import { otlpSerializationLayer } from "@t3tools/shared/observability";
+import { DEFAULT_SIGNAL_EXPORT, otlpSerializationLayer } from "@t3tools/shared/observability";
+import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
@@ -548,6 +552,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
+    modelManifest?: Partial<ModelManifest.ModelManifest["Service"]>;
     usageLimitSources?: Partial<UsageLimitSources.UsageLimitSources["Service"]>;
     providerService?: Partial<ProviderService.ProviderService["Service"]>;
     providerAuth?: Partial<ProviderAuthService["Service"]>;
@@ -627,10 +632,12 @@ const buildAppUnderTest = (options?: {
       traceMaxFiles: 10,
       otlpTracesUrl: undefined,
       otlpMetricsUrl: undefined,
-      otlpExportIntervalMs: 10_000,
+      otlpLogsUrl: undefined,
+      otlpTracesExport: DEFAULT_SIGNAL_EXPORT,
+      otlpMetricsExport: DEFAULT_SIGNAL_EXPORT,
+      otlpLogsExport: DEFAULT_SIGNAL_EXPORT,
       otlpServiceName: "t3-server",
-      otlpHeaders: undefined,
-      otlpProtocol: "http/json",
+      otelEnvironment: OtelEnvironment.none,
       mode: "desktop",
       port: 0,
       host: "127.0.0.1",
@@ -697,25 +704,25 @@ const buildAppUnderTest = (options?: {
       get: () => Effect.succeed(defaultVcsDriver),
       detect: (input) =>
         defaultVcsDriver.detectRepository(input.cwd).pipe(
-          Effect.flatMap((repository) =>
-            repository
-              ? Effect.succeed(repository)
-              : defaultVcsDriver.isInsideWorkTree(input.cwd).pipe(
-                  Effect.map((isInsideWorkTree) =>
-                    isInsideWorkTree
-                      ? {
-                          kind: "git" as const,
-                          rootPath: input.cwd,
-                          metadataPath: null,
-                          freshness: {
-                            source: "live-local" as const,
-                            observedAt: TEST_EPOCH,
-                            expiresAt: Option.none(),
-                          },
-                        }
-                      : null,
-                  ),
+          Effect.filterOrElse(
+            (repository) => repository !== null,
+            () =>
+              defaultVcsDriver.isInsideWorkTree(input.cwd).pipe(
+                Effect.map((isInsideWorkTree) =>
+                  isInsideWorkTree
+                    ? {
+                        kind: "git" as const,
+                        rootPath: input.cwd,
+                        metadataPath: null,
+                        freshness: {
+                          source: "live-local" as const,
+                          observedAt: TEST_EPOCH,
+                          expiresAt: Option.none(),
+                        },
+                      }
+                    : null,
                 ),
+              ),
           ),
           Effect.map((repository) =>
             repository
@@ -823,6 +830,10 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(
         Layer.mergeAll(
+          Layer.mock(ModelManifest.ModelManifest)({
+            forceRefresh: Effect.succeed(ModelManifest.BUNDLED_MODEL_MANIFEST),
+            ...options?.layers?.modelManifest,
+          }),
           Layer.mock(ProviderRegistry.ProviderRegistry)({
             getProviders: Effect.succeed([]),
             refresh: () => Effect.succeed([]),
@@ -843,7 +854,7 @@ const buildAppUnderTest = (options?: {
             ...options?.layers?.providerAuth,
           }),
           Layer.mock(ProviderInstanceRegistry)({
-            getInstance: () => Effect.succeed(undefined),
+            getInstance: () => Effect.undefined,
             listInstances: Effect.succeed([]),
             ...options?.layers?.providerInstanceRegistry,
           }),
@@ -867,7 +878,7 @@ const buildAppUnderTest = (options?: {
         Layer.mergeAll(
           Layer.mock(ExternalLauncher.ExternalLauncher)({
             resolveAvailableEditors: () => Effect.succeed([]),
-            resolveFileManagerRevealKind: () => Effect.sync((): undefined => undefined),
+            resolveFileManagerRevealKind: () => Effect.undefined,
             ...options?.layers?.externalLauncher,
           }),
           Layer.mock(RemoteOpenTargets.RemoteOpenTargets)({
@@ -1012,10 +1023,10 @@ const buildAppUnderTest = (options?: {
             }),
           searchThreads: () => Effect.succeed({ matches: [] }),
           getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
-          getProjectShellById: () => Effect.succeed(Option.none()),
-          getThreadShellById: () => Effect.succeed(Option.none()),
-          getThreadDetailById: () => Effect.succeed(Option.none()),
-          getThreadDetailSnapshot: () => Effect.succeed(Option.none()),
+          getProjectShellById: () => Effect.succeedNone,
+          getThreadShellById: () => Effect.succeedNone,
+          getThreadDetailById: () => Effect.succeedNone,
+          getThreadDetailSnapshot: () => Effect.succeedNone,
           getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
           getEventReplayStats: ({ fromSequenceExclusive, toSequenceInclusive }) =>
             Effect.succeed({
@@ -1067,7 +1078,7 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(
         Layer.mergeAll(
-          otlpSerializationLayer(config.otlpProtocol),
+          otlpSerializationLayer(config.otlpTracesExport.protocol),
           // The door (`zerops/http.ts`) requires these two directly, outside
           // the fixture/feeds bundle the next `Layer.provide` supplies: a
           // test machine has no live env store either, so the reader
@@ -1318,7 +1329,7 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         Layer.mock(CloudCliTokenManager.CloudCliTokenManager)({
           get: Effect.die(new Error("Unexpected T3 Connect CLI authorization request.")),
-          getExisting: Effect.succeed(Option.none()),
+          getExisting: Effect.succeedNone,
           hasCredential: Effect.succeed(false),
           clear: Effect.void,
           ...options?.layers?.cloudCliTokenManager,
@@ -4966,7 +4977,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         config: {
           otlpTracesUrl: collector.url,
-          otlpProtocol: "http/protobuf",
+          otlpTracesExport: { ...DEFAULT_SIGNAL_EXPORT, protocol: "http/protobuf" },
         },
         layers: {
           browserTraceCollector: {
@@ -5758,6 +5769,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         config: {
           otlpTracesUrl: "http://localhost:4318/v1/traces",
           otlpMetricsUrl: "http://localhost:4318/v1/metrics",
+          otlpLogsUrl: "http://localhost:4318/v1/logs",
         },
         layers: {
           keybindings: {
@@ -5793,6 +5805,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(first.config.observability.otlpTracesEnabled, true);
         assert.equal(first.config.observability.otlpMetricsUrl, "http://localhost:4318/v1/metrics");
         assert.equal(first.config.observability.otlpMetricsEnabled, true);
+        assert.equal(first.config.observability.otlpLogsUrl, "http://localhost:4318/v1/logs");
+        assert.equal(first.config.observability.otlpLogsEnabled, true);
         assert.deepEqual(first.config.settings, DEFAULT_SERVER_SETTINGS);
       }
       assert.deepEqual(second, {
@@ -5802,6 +5816,99 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       });
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
+
+  for (const mode of ["all", "targeted", "background"] as const) {
+    it.effect(`provider refresh invalidates T3 caches before probing (${mode})`, () => {
+      const driver = ProviderDriverKind.make("codex");
+      const instanceIds = [ProviderInstanceId.make("codex"), ProviderInstanceId.make("codex_work")];
+      const packageNames = ["@example/personal", "@example/work"];
+      const versionCache = new Map(
+        packageNames.map((name) => [
+          name,
+          {
+            expiresAt: Number.MAX_SAFE_INTEGER,
+            version: "1.0.0",
+          },
+        ]),
+      );
+      const invalidated: string[] = [];
+      const freshMaintenance: string[] = [];
+      let manifestRefreshed = false;
+      let probed = false;
+      const instances = instanceIds.map(
+        (instanceId, index) =>
+          ({
+            instanceId,
+            driverKind: driver,
+            continuationIdentity: { driverKind: driver, continuationKey: instanceId },
+            displayName: undefined,
+            enabled: true,
+            invalidateCaches: Effect.sync(() => {
+              invalidated.push(instanceId);
+            }),
+            snapshot: {
+              resolveMaintenance: (options) =>
+                Effect.sync(() => {
+                  assert.isTrue(options?.fresh);
+                  freshMaintenance.push(instanceId);
+                  return makeManualOnlyProviderMaintenanceCapabilities({
+                    provider: driver,
+                    packageName: packageNames[index]!,
+                  });
+                }),
+              getSnapshot: Effect.never,
+              refresh: Effect.never,
+              streamChanges: Stream.empty,
+              applyUsageLimits: () => Effect.void,
+            },
+            adapter: {} as ProviderInstance["adapter"],
+            textGeneration: {} as ProviderInstance["textGeneration"],
+          }) satisfies ProviderInstance,
+      );
+      const expected =
+        mode === "background" ? [] : mode === "targeted" ? [instanceIds[1]!] : instanceIds;
+      const probe = Effect.sync(() => {
+        probed = true;
+        assert.equal(manifestRefreshed, mode !== "background");
+        assert.deepEqual(invalidated.toSorted(), expected.toSorted());
+        assert.deepEqual(freshMaintenance.toSorted(), expected.toSorted());
+        for (let index = 0; index < instanceIds.length; index++) {
+          assert.equal(
+            versionCache.has(packageNames[index]!),
+            !expected.includes(instanceIds[index]!),
+          );
+        }
+        return [];
+      });
+      return Effect.gen(function* () {
+        yield* buildAppUnderTest({
+          layers: {
+            modelManifest: {
+              forceRefresh: Effect.sync(() => {
+                manifestRefreshed = true;
+                return ModelManifest.BUNDLED_MODEL_MANIFEST;
+              }),
+            },
+            providerInstanceRegistry: { listInstances: Effect.succeed(instances) },
+            providerRegistry: { refresh: () => probe, refreshInstance: () => probe },
+          },
+        });
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.serverRefreshProviders]({
+              ...(mode === "targeted" ? { instanceId: instanceIds[1]! } : {}),
+              ...(mode !== "background" ? { refreshModels: true } : {}),
+            }),
+          ),
+        );
+        assert.isTrue(probed);
+      }).pipe(
+        Effect.provideService(ProviderVersionCache, versionCache),
+        Effect.provide(NodeHttpServer.layerTest),
+      );
+    });
+  }
 
   it.effect("streams all three fixture feeds through the real Zerops RPC handlers", () =>
     Effect.gen(function* () {
@@ -6668,8 +6775,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 Effect.flatMap(() =>
                   command.commandId === failedCommandId
                     ? Effect.fail(
-                        new OrchestrationListenerCallbackError({
-                          listener: "domain-event",
+                        new PersistenceSqlError({
+                          operation: "OrchestrationEventStore.append:query",
                           detail: "thread creation failed",
                         }),
                       )
@@ -7969,8 +8076,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         layers: {
           projectionSnapshotQuery: {
-            getThreadDetailSnapshot: () =>
-              Effect.succeed(Option.some({ snapshotSequence: 1, thread })),
+            getThreadDetailSnapshot: () => Effect.succeedSome({ snapshotSequence: 1, thread }),
           },
         },
       });
@@ -8143,16 +8249,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               streamDomainEvents: Stream.concat(Stream.make(event), Stream.never),
             },
             projectionSnapshotQuery: {
-              getThreadDetailSnapshot: () =>
-                Effect.succeed(Option.some({ snapshotSequence: 1, thread })),
+              getThreadDetailSnapshot: () => Effect.succeedSome({ snapshotSequence: 1, thread }),
               getThreadShellById: (threadId) =>
-                Effect.succeed(
-                  Option.some({
-                    ...makeDefaultOrchestrationThreadShell(),
-                    id: threadId,
-                    title: "Build complete",
-                  }),
-                ),
+                Effect.succeedSome({
+                  ...makeDefaultOrchestrationThreadShell(),
+                  id: threadId,
+                  title: "Build complete",
+                }),
             },
           },
         });
@@ -8430,7 +8533,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             },
             projectionSnapshotQuery: {
               getThreadDetailSnapshot: () =>
-                Effect.succeed(Option.some({ snapshotSequence: 100_000, thread })),
+                Effect.succeedSome({ snapshotSequence: 100_000, thread }),
             },
           },
         });
@@ -8748,8 +8851,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               }),
           },
           projectionSnapshotQuery: {
-            getThreadDetailSnapshot: () =>
-              Effect.succeed(Option.some({ snapshotSequence: 5, thread })),
+            getThreadDetailSnapshot: () => Effect.succeedSome({ snapshotSequence: 5, thread }),
           },
         },
       });
@@ -8837,7 +8939,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           projectionSnapshotQuery: {
             getThreadDetailSnapshot: (_threadId, options) => {
               requestedTurnLimit = options?.turnLimit;
-              return Effect.succeed(Option.some({ snapshotSequence: 5, thread }));
+              return Effect.succeedSome({ snapshotSequence: 5, thread });
             },
           },
         },
@@ -8930,7 +9032,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 readEvents: store.readFromSequence,
               },
               projectionSnapshotQuery: {
-                getThreadDetailSnapshot: () => Effect.succeed(Option.none()),
+                getThreadDetailSnapshot: () => Effect.succeedNone,
               },
             },
           });
@@ -9160,8 +9262,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 replayStatsCalls += 1;
                 return { eventCount: 5, payloadBytes: 8 * 1024 * 1024 + 1 };
               }),
-            getThreadDetailSnapshot: () =>
-              Effect.succeed(Option.some({ snapshotSequence: 5, thread })),
+            getThreadDetailSnapshot: () => Effect.succeedSome({ snapshotSequence: 5, thread }),
             getShellSnapshot: () =>
               Effect.succeed({
                 snapshotSequence: 5,
@@ -9465,7 +9566,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               ]),
           },
           projectionSnapshotQuery: {
-            getThreadShellById: () => Effect.succeed(Option.none()),
+            getThreadShellById: () => Effect.succeedNone,
           },
         },
       });
@@ -9523,9 +9624,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                         detail: "transient failure",
                       }),
                     )
-                  : Effect.succeed(
-                      Option.some(makeDefaultOrchestrationThreadShell({ id: threadId })),
-                    );
+                  : Effect.succeedSome(makeDefaultOrchestrationThreadShell({ id: threadId }));
               }),
           },
         },
@@ -9585,7 +9684,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               ]),
           },
           projectionSnapshotQuery: {
-            getProjectShellById: () => Effect.succeed(Option.none()),
+            getProjectShellById: () => Effect.succeedNone,
           },
         },
       });
@@ -9631,22 +9730,20 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
           projectionSnapshotQuery: {
             getThreadShellById: () =>
-              Effect.succeed(
-                Option.some(
-                  makeDefaultOrchestrationThreadShell({
-                    id: threadId,
+              Effect.succeedSome(
+                makeDefaultOrchestrationThreadShell({
+                  id: threadId,
+                  updatedAt: now,
+                  session: {
+                    threadId,
+                    status: "ready",
+                    providerName: "claudeAgent",
+                    runtimeMode: "full-access",
+                    activeTurnId: null,
+                    lastError: null,
                     updatedAt: now,
-                    session: {
-                      threadId,
-                      status: "ready",
-                      providerName: "claudeAgent",
-                      runtimeMode: "full-access",
-                      activeTurnId: null,
-                      lastError: null,
-                      updatedAt: now,
-                    },
-                  }),
-                ),
+                  },
+                }),
               ),
           },
         },
@@ -9779,8 +9876,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
           projectionSnapshotQuery: {
             getThreadShellById: () =>
-              Effect.succeed(
-                Option.some(makeDefaultOrchestrationThreadShell({ id: threadId, session: null })),
+              Effect.succeedSome(
+                makeDefaultOrchestrationThreadShell({ id: threadId, session: null }),
               ),
           },
         },
@@ -9833,22 +9930,20 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             },
             projectionSnapshotQuery: {
               getThreadShellById: () =>
-                Effect.succeed(
-                  Option.some(
-                    makeDefaultOrchestrationThreadShell({
-                      id: threadId,
+                Effect.succeedSome(
+                  makeDefaultOrchestrationThreadShell({
+                    id: threadId,
+                    updatedAt: now,
+                    session: {
+                      threadId,
+                      status: "stopped",
+                      providerName: "claudeAgent",
+                      runtimeMode: "full-access",
+                      activeTurnId: null,
+                      lastError: null,
                       updatedAt: now,
-                      session: {
-                        threadId,
-                        status: "stopped",
-                        providerName: "claudeAgent",
-                        runtimeMode: "full-access",
-                        activeTurnId: null,
-                        lastError: null,
-                        updatedAt: now,
-                      },
-                    }),
-                  ),
+                    },
+                  }),
                 ),
             },
           },
@@ -9899,22 +9994,20 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
           projectionSnapshotQuery: {
             getThreadShellById: () =>
-              Effect.succeed(
-                Option.some(
-                  makeDefaultOrchestrationThreadShell({
-                    id: threadId,
+              Effect.succeedSome(
+                makeDefaultOrchestrationThreadShell({
+                  id: threadId,
+                  updatedAt: now,
+                  session: {
+                    threadId,
+                    status: "ready",
+                    providerName: "claudeAgent",
+                    runtimeMode: "full-access",
+                    activeTurnId: null,
+                    lastError: null,
                     updatedAt: now,
-                    session: {
-                      threadId,
-                      status: "ready",
-                      providerName: "claudeAgent",
-                      runtimeMode: "full-access",
-                      activeTurnId: null,
-                      lastError: null,
-                      updatedAt: now,
-                    },
-                  }),
-                ),
+                  },
+                }),
               ),
           },
         },
@@ -10015,8 +10108,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               effects.push(`dispatch:${command.type}`);
               if (command.type === "thread.session.stop") {
                 return Effect.fail(
-                  new OrchestrationListenerCallbackError({
-                    listener: "domain-event",
+                  new PersistenceSqlError({
+                    operation: "OrchestrationEventStore.append:query",
                     detail: "simulated archive stop failure",
                   }),
                 );
@@ -10026,22 +10119,20 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
           projectionSnapshotQuery: {
             getThreadShellById: () =>
-              Effect.succeed(
-                Option.some(
-                  makeDefaultOrchestrationThreadShell({
-                    id: threadId,
+              Effect.succeedSome(
+                makeDefaultOrchestrationThreadShell({
+                  id: threadId,
+                  updatedAt: now,
+                  session: {
+                    threadId,
+                    status: "ready",
+                    providerName: "claudeAgent",
+                    runtimeMode: "full-access",
+                    activeTurnId: null,
+                    lastError: null,
                     updatedAt: now,
-                    session: {
-                      threadId,
-                      status: "ready",
-                      providerName: "claudeAgent",
-                      runtimeMode: "full-access",
-                      activeTurnId: null,
-                      lastError: null,
-                      updatedAt: now,
-                    },
-                  }),
-                ),
+                  },
+                }),
               ),
           },
         },
@@ -10098,22 +10189,20 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
           projectionSnapshotQuery: {
             getThreadShellById: () =>
-              Effect.succeed(
-                Option.some(
-                  makeDefaultOrchestrationThreadShell({
-                    id: threadId,
+              Effect.succeedSome(
+                makeDefaultOrchestrationThreadShell({
+                  id: threadId,
+                  updatedAt: now,
+                  session: {
+                    threadId,
+                    status: "ready",
+                    providerName: "claudeAgent",
+                    runtimeMode: "full-access",
+                    activeTurnId: null,
+                    lastError: null,
                     updatedAt: now,
-                    session: {
-                      threadId,
-                      status: "ready",
-                      providerName: "claudeAgent",
-                      runtimeMode: "full-access",
-                      activeTurnId: null,
-                      lastError: null,
-                      updatedAt: now,
-                    },
-                  }),
-                ),
+                  },
+                }),
               ),
           },
         },
@@ -10592,8 +10681,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 setupActivityAppendAttempt += 1;
                 if (setupActivityAppendAttempt === 2) {
                   return Effect.fail(
-                    new OrchestrationListenerCallbackError({
-                      listener: "domain-event",
+                    new PersistenceSqlError({
+                      operation: "OrchestrationEventStore.append:query",
                       detail: "failed to append setup-script.started activity",
                     }),
                   );
@@ -10902,8 +10991,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               dispatchedCommands.push(command);
               if (command.type === "thread.delete") {
                 return Effect.fail(
-                  new OrchestrationListenerCallbackError({
-                    listener: "domain-event",
+                  new PersistenceSqlError({
+                    operation: "OrchestrationEventStore.append:query",
                     detail: "thread cleanup exploded",
                   }),
                 );

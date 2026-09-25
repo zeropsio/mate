@@ -98,7 +98,7 @@ function VerdictPanelWaiting({ className, ...props }: React.ComponentProps<"div"
       data-zerops-primitive="verdict-panel-waiting"
     >
       <span className="flex h-5 min-w-0 items-center gap-1.5">
-        <Skeleton className="size-2 shrink-0 rounded-full" />
+        <Skeleton shape="pill" className="size-2 shrink-0" />
         <Skeleton className="h-3 w-44 max-w-full" />
       </span>
     </div>

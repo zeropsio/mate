@@ -16,9 +16,7 @@ import {
   normalizeModelSlug,
 } from "@t3tools/shared/model";
 import { memo, useCallback, useState } from "react";
-import type { VariantProps } from "class-variance-authority";
 import { ZapIcon } from "lucide-react";
-import { buttonVariants } from "../ui/button";
 import {
   Menu,
   MenuGroup,
@@ -87,10 +85,7 @@ const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
 
 function DefaultBadge() {
   return (
-    <Badge
-      variant="outline"
-      className="inline-flex h-4 w-fit min-w-0 items-center justify-center gap-0 border-border/70 bg-muted/60 px-1.5 py-0 font-semibold text-[10px] text-muted-foreground leading-none sm:h-4"
-    >
+    <Badge variant="outline" size="sm" className="min-w-0">
       Default
     </Badge>
   );
@@ -272,7 +267,6 @@ export interface TraitsMenuContentProps {
   modelOptions?: ProviderOptions | null | undefined;
   allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
-  triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
 }
 
@@ -538,7 +532,6 @@ export const TraitsPicker = memo(function TraitsPicker({
   modelOptions,
   allowPromptInjectedEffort = true,
   planModeEnabled,
-  triggerVariant,
   triggerClassName,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
@@ -599,7 +592,6 @@ export const TraitsPicker = memo(function TraitsPicker({
         render={
           <ComposerControl
             data-composer-shortcut="composer.effort"
-            variant={triggerVariant ?? "ghost"}
             className={cn(
               isCodexStyle
                 ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"

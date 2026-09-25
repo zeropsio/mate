@@ -67,7 +67,7 @@ const readClientSettings = (
   settingsPath: string,
 ): Effect.Effect<Option.Option<ClientSettings>> =>
   fileSystem.readFileString(settingsPath).pipe(
-    Effect.map(Option.some),
+    Effect.asSome,
     Effect.catchTags({
       PlatformError: (cause) =>
         cause.reason._tag === "NotFound"
@@ -82,7 +82,7 @@ const readClientSettings = (
         onNone: () => Effect.succeed(Option.none<ClientSettings>()),
         onSome: (raw) =>
           decodeClientSettingsJson(raw).pipe(
-            Effect.map((settings) => Option.some(settings)),
+            Effect.asSome,
             Effect.catchTags({
               SchemaError: (cause) =>
                 Effect.logWarning("Could not decode desktop client settings.", cause).pipe(

@@ -329,6 +329,9 @@ export function effectiveSettled(
   // "active" is the explicit keep-active pin: it suppresses auto-settle
   // until real activity clears it server-side.
   if (shell.settledOverride === "active") return false;
+  // The user turned automatic settlement off for this thread: neither a
+  // merged or closed PR nor inactivity settles it; only a manual settle does.
+  if (shell.autoSettleDisabledAt != null) return false;
   if (
     changeRequestAutoSettles(options.changeRequest, {
       autoSettleOnMerge: options.autoSettleOnMerge,

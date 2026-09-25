@@ -46,6 +46,7 @@ import {
   type ComposerSubmissionIntent,
   type ComposerTrigger,
   collapseExpandedComposerCursor,
+  composerStateAtPromptEnd,
   composerSubmissionIntentForEnter,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
@@ -85,6 +86,7 @@ import {
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
 import { ComposerStashMenu } from "./ComposerStashMenu";
+import { useComposerTriggerState } from "./useComposerTriggerState";
 import {
   ComposerTasksBadge,
   ComposerTasksDrawer,
@@ -469,7 +471,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               const option = runtimeModeConfig[mode];
               const OptionIcon = option.icon;
               return (
-                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
+                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="grid min-w-0 flex-1 gap-0.5">
                       <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
@@ -1196,9 +1198,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [composerCursor, setComposerCursor] = useState(() =>
     collapseExpandedComposerCursor(prompt, prompt.length),
   );
-  const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger | null>(() =>
-    detectComposerTrigger(prompt, prompt.length),
-  );
+  const {
+    trigger: composerTrigger,
+    setTrigger: setComposerTrigger,
+    resolveTrigger: resolveComposerTrigger,
+    dismissTrigger: dismissComposerTrigger,
+    resetTrigger: resetComposerTrigger,
+  } = useComposerTriggerState(() => detectComposerTrigger(prompt, prompt.length));
   // Active ArrowUp recall. Cleared on edit and on thread switch.
   const promptHistoryPositionRef = useRef<ComposerPromptHistoryPosition | null>(null);
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
@@ -1525,7 +1531,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
       scheduleComposerFocus();
     },
-    [composerDraftTarget, promptRef, scheduleComposerFocus, setComposerDraftPrompt],
+    [
+      composerDraftTarget,
+      promptRef,
+      scheduleComposerFocus,
+      setComposerDraftPrompt,
+      setComposerTrigger,
+    ],
   );
 
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
@@ -1679,6 +1691,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useEffect(() => {
     const nextCustomAnswer = activePendingProgress?.customAnswer;
     if (typeof nextCustomAnswer !== "string") {
+      // The question is gone and the editor shows the thread draft again. The
+      // ref still holds the last answer text, and Send reads the ref. Place
+      // the caret at the end so the next keystroke appends.
+      if (lastSyncedPendingInputRef.current !== null) {
+        promptRef.current = prompt;
+        const { cursor, trigger } = composerStateAtPromptEnd(prompt);
+        setComposerCursor(cursor);
+        resetComposerTrigger(trigger);
+      }
       lastSyncedPendingInputRef.current = null;
       return;
     }
@@ -1700,20 +1721,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
 
     promptRef.current = nextCustomAnswer;
-    const nextCursor = collapseExpandedComposerCursor(nextCustomAnswer, nextCustomAnswer.length);
-    setComposerCursor(nextCursor);
-    setComposerTrigger(
-      detectComposerTrigger(
-        nextCustomAnswer,
-        expandCollapsedComposerCursor(nextCustomAnswer, nextCursor),
-      ),
-    );
+    const { cursor, trigger } = composerStateAtPromptEnd(nextCustomAnswer);
+    setComposerCursor(cursor);
+    resetComposerTrigger(trigger);
     setComposerHighlightedItemId(null);
   }, [
     activePendingProgress?.customAnswer,
     activePendingProgress?.activeQuestion?.id,
     activePendingUserInput?.requestId,
+    prompt,
     promptRef,
+    resetComposerTrigger,
   ]);
 
   // ------------------------------------------------------------------
@@ -1724,9 +1742,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setComposerSubmissionError(null);
     setProviderInputSubmissionError(null);
     setComposerCursor(collapseExpandedComposerCursor(promptRef.current, promptRef.current.length));
-    setComposerTrigger(detectComposerTrigger(promptRef.current, promptRef.current.length));
+    resetComposerTrigger(detectComposerTrigger(promptRef.current, promptRef.current.length));
     setIsDragOverComposer(false);
-  }, [draftId, activeThreadId, promptRef]);
+  }, [draftId, activeThreadId, promptRef, resetComposerTrigger]);
 
   // ------------------------------------------------------------------
   // Footer compact layout observation
@@ -1893,6 +1911,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onChangeActivePendingUserInputCustomAnswer,
       promptRef,
       setPrompt,
+      setComposerTrigger,
       composerDraftTarget,
       composerTerminalContexts,
       setComposerDraftTerminalContexts,
@@ -1955,6 +1974,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onChangeActivePendingUserInputCustomAnswer,
       promptRef,
       setPrompt,
+      setComposerTrigger,
     ],
   );
 
@@ -2111,9 +2131,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const snapshot = readComposerSnapshot();
     return {
       snapshot,
-      trigger: detectComposerTrigger(snapshot.value, snapshot.expandedCursor),
+      trigger: resolveComposerTrigger(
+        detectComposerTrigger(snapshot.value, snapshot.expandedCursor),
+      ),
     };
-  }, [readComposerSnapshot]);
+  }, [readComposerSnapshot, resolveComposerTrigger]);
 
   const { onUsageLimitsCommand } = props;
   const onSelectComposerItem = useCallback(
@@ -2433,7 +2455,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerTrigger(null);
       setComposerHighlightedItemId(null);
     },
-    [composerDraftTarget, promptRef, setComposerDraftPrompt],
+    [composerDraftTarget, promptRef, setComposerDraftPrompt, setComposerTrigger],
   );
 
   const navigatePromptHistory = useCallback(
@@ -2482,7 +2504,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Callbacks: command key
   // ------------------------------------------------------------------
   const onComposerCommandKey = (
-    key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
+    key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab" | "Escape",
     event: KeyboardEvent,
   ) => {
     if (key === "Tab" && event.shiftKey) {
@@ -2492,6 +2514,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     const { trigger } = resolveActiveComposerTrigger();
     const menuIsActive = composerMenuOpenRef.current || trigger !== null;
+    if (key === "Escape") {
+      if (!menuIsActive || event.isComposing || event.keyCode === 229) return false;
+      dismissComposerTrigger(trigger);
+      composerMenuOpenRef.current = false;
+      return true;
+    }
     if (menuIsActive) {
       const currentItems = composerMenuItemsRef.current;
       const selectedItem = activeComposerMenuItemRef.current ?? currentItems[0];
@@ -2672,6 +2700,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerImagesRef,
       promptRef,
       setComposerDraftPrompt,
+      setComposerTrigger,
       takeStashEntry,
     ],
   );
@@ -2844,6 +2873,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   }, [
     clearComposerDraftPromptAndImages,
+    setComposerTrigger,
     composerDraftTarget,
     composerImagesRef,
     finalizeStashEntryImages,
@@ -3267,7 +3297,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         const cursor = clampCollapsedComposerCursor(promptForState, options?.cursor ?? 0);
         setComposerHighlightedItemId(null);
         setComposerCursor(cursor);
-        setComposerTrigger(
+        resetComposerTrigger(
           options?.detectTrigger
             ? detectComposerTrigger(
                 promptForState,
@@ -3326,6 +3356,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       applyPromptReplacement,
       isComposerModelPickerOpen,
       readComposerSnapshot,
+      resetComposerTrigger,
+      setComposerTrigger,
       selectedModel,
       selectedModelOptionsForDispatch,
       selectedModelSelection,
@@ -3568,7 +3600,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   {inlineStashBadge}
                   <button
                     type="button"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-30"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
                     disabled={collapsedComposerPrimaryActionDisabled}
                     aria-label={collapsedComposerPrimaryActionLabel}
                     onPointerDown={(event) => event.preventDefault()}
@@ -3671,14 +3703,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                   alt={image.name}
                                   className="h-full w-full object-cover"
                                   fallback={
-                                    <span className="flex h-full items-center justify-center px-1 text-[10px] text-secondary-label">
+                                    <span className="flex h-full items-center justify-center px-1 text-3xs text-secondary-label">
                                       {image.name}
                                     </span>
                                   }
                                 />
                               </button>
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-secondary-label">
+                              <div className="flex h-full w-full items-center justify-center px-1 text-center text-3xs text-secondary-label">
                                 {image.name}
                               </div>
                             )}
@@ -3689,23 +3721,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                     <span
                                       role="img"
                                       aria-label="Draft attachment may not persist"
-                                      className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-amber-600"
+                                      className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-warning-foreground"
                                     >
                                       <CircleAlertIcon className="size-3" />
                                     </span>
                                   }
                                 />
-                                <TooltipPopup
-                                  side="top"
-                                  className="max-w-64 whitespace-normal leading-tight"
-                                >
+                                <TooltipPopup side="top">
                                   Draft attachment could not be saved locally and may be lost on
                                   navigation.
                                 </TooltipPopup>
                               </Tooltip>
                             )}
                             {upload?.status === "uploading" && (
-                              <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-background/85 px-1 text-center text-[10px] text-foreground">
+                              <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-background/85 px-1 text-center text-3xs text-foreground">
                                 {formatAttachmentUploadProgress(upload.progress)}
                               </span>
                             )}
@@ -3726,12 +3755,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 >
                                   <RotateCcwIcon />
                                 </TooltipTrigger>
-                                <TooltipPopup
-                                  side="top"
-                                  className="max-w-64 whitespace-normal leading-tight"
-                                >
-                                  {upload.reason}
-                                </TooltipPopup>
+                                <TooltipPopup side="top">{upload.reason}</TooltipPopup>
                               </Tooltip>
                             )}
                             <Button

@@ -31,6 +31,7 @@ import {
   linkApi,
   metadataApi,
   mobileApi,
+  RELAY_HTTP_ROUTER_CONFIG,
   relayClientAuthLayer,
   relayCors,
   relayDocsRedirectRoute,
@@ -193,6 +194,7 @@ const HttpServerLive = Layer.unwrap(
 
 const serveLayer = Layer.merge(
   HttpRouter.serve(routerLayer, {
+    routerConfig: RELAY_HTTP_ROUTER_CONFIG,
     middleware: (effect) =>
       traceRelayHttpRequest(effect).pipe(Effect.provide(httpHeaderRedactionLayer)),
   }).pipe(Layer.provideMerge(HttpServerLive), Layer.provideMerge(FetchHttpClient.layer)),

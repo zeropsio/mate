@@ -19,7 +19,11 @@ import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-scree
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUniwindTheme } from "../../../lib/useUniwindTheme";
 
-import { AndroidSheetHeader } from "../../../components/AndroidScreenHeader";
+import {
+  AndroidHeaderIconButton,
+  AndroidSheetHeader,
+} from "../../../components/AndroidScreenHeader";
+import { AndroidAnchoredMenu } from "../../../components/AndroidAnchoredMenu";
 import { AppText as Text } from "../../../components/AppText";
 import { nativeHeaderScrollEdgeEffects } from "../../../native/StackHeader";
 import { tryOpenExternalUrl } from "../../../lib/openExternalUrl";
@@ -211,6 +215,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
 
   const content = (
     <ScrollView
+      alwaysBounceVertical
       className="flex-1 bg-screen"
       contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
       showsVerticalScrollIndicator={false}
@@ -325,7 +330,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
     // stack header, so — like the Settings sheet — the header must come from a
     // nested native stack INSIDE the sheet. This reuses the exact structure of the
     // inspector branch below: branch as the title, status summary as the native
-    // subtitle, refresh as a header button.
+    // subtitle, and content that owns pull-to-refresh.
     return (
       <View collapsable={false} className="flex-1 bg-sheet">
         <ScreenStack style={{ flex: 1 }}>
@@ -356,6 +361,30 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
     );
   }
 
+  const refreshMenu = (
+    <AndroidAnchoredMenu
+      title="Repository options"
+      actions={[
+        {
+          id: "refresh",
+          title: "Refresh repository status",
+          attributes: { disabled: busy || isPullRefreshing },
+        },
+      ]}
+      onPressAction={({ nativeEvent }) => {
+        if (nativeEvent.event === "refresh") void handlePullRefresh();
+      }}
+    >
+      {(open) => (
+        <AndroidHeaderIconButton
+          accessibilityLabel="Repository options"
+          icon="ellipsis"
+          onPress={open}
+        />
+      )}
+    </AndroidAnchoredMenu>
+  );
+
   return (
     <View
       collapsable={false}
@@ -372,23 +401,27 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
 
       {isInspector ? (
         <View className="gap-1 border-b border-border px-4 pb-4 pt-3">
-          <Pressable
-            className={
-              busy
-                ? "absolute right-3 top-4 z-[1] h-9 w-9 items-center justify-center rounded-full bg-subtle opacity-[0.45]"
-                : "absolute right-3 top-4 z-[1] h-9 w-9 items-center justify-center rounded-full bg-subtle"
-            }
-            disabled={busy}
-            onPress={() => void gitActions.refreshSelectedThreadGitStatus()}
-          >
-            <SymbolView
-              name="arrow.clockwise"
-              size={16}
-              tintColorClassName={"accent-icon"}
-              type="monochrome"
-              weight="medium"
-            />
-          </Pressable>
+          {Platform.OS === "android" ? (
+            <View className="absolute right-3 top-4 z-[1]">{refreshMenu}</View>
+          ) : (
+            <Pressable
+              className={
+                busy
+                  ? "absolute right-3 top-4 z-[1] h-9 w-9 items-center justify-center rounded-full bg-subtle opacity-[0.45]"
+                  : "absolute right-3 top-4 z-[1] h-9 w-9 items-center justify-center rounded-full bg-subtle"
+              }
+              disabled={busy}
+              onPress={() => void gitActions.refreshSelectedThreadGitStatus()}
+            >
+              <SymbolView
+                name="arrow.clockwise"
+                size={16}
+                tintColorClassName={"accent-icon"}
+                type="monochrome"
+                weight="medium"
+              />
+            </Pressable>
+          )}
           <Text className="text-xs font-t3-bold tracking-[1px] uppercase text-foreground-muted">
             Repository
           </Text>
@@ -402,14 +435,19 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
           title={currentBranchLabel}
           subtitle={currentStatusSummary}
           onBack={() => navigation.goBack()}
-          actions={[
-            {
-              accessibilityLabel: "Refresh repository status",
-              disabled: busy,
-              icon: "arrow.clockwise",
-              onPress: () => void gitActions.refreshSelectedThreadGitStatus(),
-            },
-          ]}
+          trailing={Platform.OS === "android" ? refreshMenu : undefined}
+          actions={
+            Platform.OS === "android"
+              ? undefined
+              : [
+                  {
+                    accessibilityLabel: "Refresh repository status",
+                    disabled: busy,
+                    icon: "arrow.clockwise",
+                    onPress: () => void gitActions.refreshSelectedThreadGitStatus(),
+                  },
+                ]
+          }
         />
       )}
 

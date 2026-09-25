@@ -25,6 +25,28 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
+export const CURSOR_USAGE_WINDOWS = [
+  {
+    id: "totalPercentUsed",
+    label: "Overall",
+    description: "Combined usage across both allowances, not a third quota.",
+  },
+  {
+    id: "autoPercentUsed",
+    label: "Cursor Models",
+    description: "Grok and Composer use this first. Auto can use either pool.",
+  },
+  {
+    id: "apiPercentUsed",
+    label: "Other Models",
+    description: "Claude, GPT, and Gemini use this pool. Grok and Composer fall back here.",
+  },
+] as const;
+
+export function cursorUsageWindowDetails(id: string) {
+  return CURSOR_USAGE_WINDOWS.find((window) => window.id === id);
+}
+
 /**
  * Providers that belong on the Limits view: enabled, installed, and one whose
  * driver reports subscription usage at all. A driver with no notion of usage

@@ -6,7 +6,6 @@ import {
   FolderGit2Icon,
   FolderGitIcon,
   FolderIcon,
-  HistoryIcon,
   MonitorIcon,
 } from "lucide-react";
 import {
@@ -47,7 +46,8 @@ import {
 } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
-import { Button } from "./ui/button";
+import { PreviousWorktreeItemContent } from "./PreviousWorktreeItemContent";
+import { ComposerControl } from "./chat/ComposerControl";
 import {
   Menu,
   MenuGroup,
@@ -59,6 +59,7 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import { Separator } from "./ui/separator";
+import { MiddleTruncate } from "./ui/middle-truncate";
 
 export interface BranchToolbarHandle {
   openBranchPicker: () => void;
@@ -97,6 +98,7 @@ interface MobileRunContextSelectorProps {
   activeWorktreePath: string | null;
   onEnvModeChange: (mode: EnvMode) => void;
   previousWorktreeLabel: string | null;
+  previousWorktreeBranch: string | null;
   onUsePreviousWorktree: () => void;
 }
 
@@ -113,6 +115,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   activeWorktreePath,
   onEnvModeChange,
   previousWorktreeLabel,
+  previousWorktreeBranch,
   onUsePreviousWorktree,
 }: MobileRunContextSelectorProps) {
   const activeEnvironment = useMemo(
@@ -126,7 +129,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
         ? FolderGitIcon
         : FolderIcon;
   const workspaceLabel = envModeLocked
-    ? resolveLockedWorkspaceLabel(activeWorktreePath)
+    ? resolveLockedWorkspaceLabel(activeWorktreePath, effectiveEnvMode)
     : effectiveEnvMode === "worktree"
       ? resolveEnvModeLabel("worktree")
       : resolveCurrentWorkspaceLabel(activeWorktreePath);
@@ -162,8 +165,8 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   return (
     <Menu>
       <MenuTrigger
-        render={<Button variant="ghost" size="xs" />}
-        className="min-w-0 max-w-[48%] flex-1 justify-start text-muted-foreground/70 hover:text-foreground/80 md:hidden"
+        render={<ComposerControl size="xs" />}
+        className="min-w-0 max-w-[48%] flex-1 justify-start md:hidden"
         data-composer-shortcut={[
           showEnvironmentPicker && !envLocked ? "composer.host" : "",
           !envModeLocked ? "composer.workspace" : "",
@@ -172,7 +175,11 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
         {triggerContent}
         <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
       </MenuTrigger>
-      <MenuPopup align="start" side="top" className="w-64">
+      <MenuPopup
+        align="start"
+        side="top"
+        className={previousWorktreeLabel ? "w-[min(21rem,calc(100vw-2rem))]" : undefined}
+      >
         {showEnvironmentPicker && availableEnvironments && onEnvironmentChange ? (
           <>
             <MenuGroup>
@@ -188,6 +195,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
                       key={env.environmentId}
                       disabled={envLocked}
                       value={env.environmentId}
+                      closeOnClick
                     >
                       <span className="flex min-w-0 items-center gap-1.5">
                         <Icon className="size-3" />
@@ -213,20 +221,18 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               onEnvModeChange(value as EnvMode);
             }}
           >
-            <MenuRadioItem disabled={envModeLocked} value="local">
+            <MenuRadioItem disabled={envModeLocked} value="local" closeOnClick>
               <span className="flex min-w-0 items-center gap-1.5">
                 {activeWorktreePath ? (
                   <FolderGitIcon className="size-3" />
                 ) : (
                   <FolderIcon className="size-3" />
                 )}
-                <span className="min-w-0 truncate">
-                  {resolveCurrentWorkspaceLabel(activeWorktreePath)}
-                </span>
+                <MiddleTruncate value={resolveCurrentWorkspaceLabel(activeWorktreePath)} />
               </span>
             </MenuRadioItem>
             {worktreesAllowed ? (
-              <MenuRadioItem disabled={envModeLocked} value="worktree">
+              <MenuRadioItem disabled={envModeLocked} value="worktree" closeOnClick>
                 <span className="flex min-w-0 items-center gap-1.5">
                   <FolderGit2Icon className="size-3" />
                   <span className="min-w-0 truncate">{resolveEnvModeLabel("worktree")}</span>
@@ -234,11 +240,8 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               </MenuRadioItem>
             ) : null}
             {worktreesAllowed && previousWorktreeLabel ? (
-              <MenuRadioItem disabled={envModeLocked} value="previous-worktree">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <HistoryIcon className="size-3" />
-                  <span className="min-w-0 truncate">{previousWorktreeLabel}</span>
-                </span>
+              <MenuRadioItem disabled={envModeLocked} value="previous-worktree" closeOnClick>
+                <PreviousWorktreeItemContent branch={previousWorktreeBranch} />
               </MenuRadioItem>
             ) : null}
           </MenuRadioGroup>
@@ -247,6 +250,33 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     </Menu>
   );
 });
+
+const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
+const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+
+/**
+ * The width a label takes when shown, clipped parts included.
+ *
+ * Text keeps its full width when its box clips it, so each text run measures
+ * whole. A label can hold more than one run (MiddleTruncate splits a branch
+ * into a head and a tail), so the runs are added. Reading one element's
+ * scrollWidth drops the tail when the label is hidden or squeezed, and the
+ * strip then flips between labels and icons on every measure.
+ *
+ * A shown label never grows past its motion span's max width, so longer text
+ * reserves only that much.
+ */
+function labelTextWidth(label: HTMLElement, range: Range): number {
+  const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+  let width = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    range.selectNodeContents(node);
+    width += range.getBoundingClientRect().width;
+  }
+  const motion = label.querySelector<HTMLElement>("[data-composer-label-motion]");
+  const maxWidth = motion ? Number.parseFloat(getComputedStyle(motion).maxWidth) : Number.NaN;
+  return Number.isFinite(maxWidth) ? Math.min(width, maxWidth) : width;
+}
 
 /**
  * Collapse the strip's labels to icons only when the text no longer fits.
@@ -257,8 +287,6 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
  * the strip compact. A small hysteresis keeps the boundary from flapping.
  */
 const COMPACT_EXPAND_HYSTERESIS_PX = 16;
-const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
-const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const COMPOSER_CONTEXT_CONTROL_SELECTOR = "[data-composer-context-control]";
 
 function useLabelsOverflow(element: HTMLDivElement | null): boolean {
@@ -302,14 +330,9 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
       groups += 1;
     }
     needed += stripGap * Math.max(0, groups - 1);
+    const range = document.createRange();
     for (const label of current.querySelectorAll<HTMLElement>("[data-composer-label]")) {
-      // The clipping can happen below the marker (SelectValue truncates
-      // internally), where the outer span's scrollWidth matches its clipped
-      // box. The text's real width is the largest scrollWidth in the subtree.
-      let textWidth = label.scrollWidth;
-      for (const inner of label.querySelectorAll<HTMLElement>("*")) {
-        textWidth = Math.max(textWidth, inner.scrollWidth);
-      }
+      const textWidth = labelTextWidth(label, range);
       if (compact) {
         // Compact: the label is squeezed to zero width but keeps reporting
         // the full width it would need when expanded.
@@ -578,6 +601,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           activeWorktreePath={activeWorktreePath}
           onEnvModeChange={onEnvModeChange}
           previousWorktreeLabel={previousWorktreeLabel}
+          previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
           onUsePreviousWorktree={onUsePreviousWorktree}
         />
       ) : (
@@ -607,6 +631,7 @@ export const BranchToolbar = memo(function BranchToolbar({
               activeWorktreePath={activeWorktreePath}
               onEnvModeChange={onEnvModeChange}
               previousWorktreeLabel={previousWorktreeLabel}
+              previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
               onUsePreviousWorktree={onUsePreviousWorktree}
             />
           ) : null}

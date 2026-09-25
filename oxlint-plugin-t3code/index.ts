@@ -1,6 +1,7 @@
 import { definePlugin } from "@oxlint/plugins";
 
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
+import noArbitraryValues from "./rules/no-arbitrary-values.ts";
 import noFailureToEmpty from "./rules/no-failure-to-empty.ts";
 import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
 import noHermesUnsupportedApis from "./rules/no-hermes-unsupported-apis.ts";
@@ -10,7 +11,10 @@ import noLegacyVocabulary from "./rules/no-legacy-vocabulary.ts";
 import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-tests.ts";
 import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
 import noPlatformGlobals from "./rules/no-platform-globals.ts";
+import noRestyle from "./rules/no-restyle.ts";
+import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
+import requireStaticClasses from "./rules/require-static-classes.ts";
 
 export default definePlugin({
   meta: {
@@ -18,6 +22,7 @@ export default definePlugin({
   },
   rules: {
     "namespace-node-imports": namespaceNodeImports,
+    "no-arbitrary-values": noArbitraryValues,
     "no-failure-to-empty": noFailureToEmpty,
     "no-global-process-runtime": noGlobalProcessRuntime,
     "no-hermes-unsupported-apis": noHermesUnsupportedApis,
@@ -27,6 +32,9 @@ export default definePlugin({
     "no-manual-effect-runtime-in-tests": noManualEffectRuntimeInTests,
     "no-native-title-tooltip": noNativeTitleTooltip,
     "no-platform-globals": noPlatformGlobals,
+    "no-restyle": noRestyle,
+    "no-unknown-classes": noUnknownClasses,
     "no-theme-escape-hatches": noThemeEscapeHatches,
+    "require-static-classes": requireStaticClasses,
   },
 });

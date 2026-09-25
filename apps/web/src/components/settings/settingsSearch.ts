@@ -184,6 +184,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "new-threads",
   },
   {
+    id: "worktree-submodules",
+    title: "Submodules",
+    to: "/settings/general",
+    targetId: "new-threads",
+    searchTerms: ["git submodule init recursive top-level none checkout t3.json"],
+  },
+  {
     id: "add-project-starts-in",
     title: "Add project starts in",
     to: "/settings/general",

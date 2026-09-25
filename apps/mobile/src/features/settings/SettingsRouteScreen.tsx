@@ -29,8 +29,9 @@ import {
   subscribeAgentAwarenessRegistrationStatus,
 } from "../agent-awareness/remoteRegistration";
 import { hasCloudPublicConfig, resolveRelayClerkTokenOptions } from "../cloud/publicConfig";
+import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
-import { WorkspaceSidebarToolbar } from "../layout/workspace-sidebar-toolbar";
+import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { runtime } from "../../lib/runtime";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import {
@@ -64,10 +65,19 @@ function useDeviceRegistered(): boolean {
 
 export function SettingsRouteScreen() {
   const navigation = useNavigation();
+  const { layout } = useAdaptiveWorkspaceLayout();
 
   return (
     <>
-      <WorkspaceSidebarToolbar />
+      {Platform.OS === "ios" && layout.usesSplitView ? (
+        <NativeHeaderToolbar placement="left">
+          <NativeHeaderToolbar.Button
+            accessibilityLabel="Go back"
+            icon="chevron.left"
+            onPress={() => navigation.goBack()}
+          />
+        </NativeHeaderToolbar>
+      ) : null}
       {Platform.OS === "android" ? (
         <>
           {/* Android renders its own in-screen header instead of the native bar. */}
@@ -76,10 +86,14 @@ export function SettingsRouteScreen() {
         </>
       ) : (
         <NativeStackScreenOptions
+          optionsVersion={layout.usesSplitView}
           options={{
-            unstable_headerRightItems:
-              Platform.OS === "ios"
-                ? () => [
+            // The workspace opens settings as a page with a back button; only the
+            // compact sheet closes.
+            unstable_headerRightItems: () =>
+              layout.usesSplitView
+                ? []
+                : [
                     withNativeGlassHeaderItem({
                       accessibilityLabel: "Close settings",
                       icon: { name: "xmark", type: "sfSymbol" } as const,
@@ -88,8 +102,7 @@ export function SettingsRouteScreen() {
                       onPress: () => navigation.goBack(),
                       type: "button",
                     }),
-                  ]
-                : undefined,
+                  ],
           }}
         />
       )}

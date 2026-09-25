@@ -66,6 +66,9 @@ import {
   resolveFileDiffPath,
 } from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Root, RootContent } from "mdast";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
   ArrowUpIcon,
@@ -176,6 +179,7 @@ interface TimelineRowSharedState {
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  onRunShellCommand: ((command: string) => void) | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   /** `anchorKey` is the header row that holds the fold control. */
@@ -264,6 +268,7 @@ interface MessagesTimelineProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   supportsConversationRollback: boolean;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  onRunShellCommand?: (command: string) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
@@ -317,6 +322,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   supportsConversationRollback,
   onRevertToTurnCount,
+  onRunShellCommand,
   isRevertingCheckpoint,
   onImageExpand,
   activeThreadEnvironmentId,
@@ -804,6 +810,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertToTurnCount,
+      onRunShellCommand,
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
@@ -827,6 +834,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertToTurnCount,
+      onRunShellCommand,
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
@@ -1137,7 +1145,7 @@ function TimelineMinimap({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "pointer-events-none absolute left-0 h-0.5 -translate-y-1/2 rounded-full bg-muted-foreground/35 transition-[background-color,width] duration-150 data-[in-view=true]:bg-foreground/90",
+                    "pointer-events-none absolute left-0 h-0.5 -translate-y-1/2 rounded-full bg-muted-foreground/35 transition-[width,background-color] duration-150 data-[in-view=true]:bg-foreground/90",
                     activeDistance === 0
                       ? "w-6 bg-muted-foreground/75"
                       : activeDistance === 1
@@ -1347,7 +1355,12 @@ function QueuedMessageTimelineRow({
     <div className="flex flex-col items-end" data-queued-message-id={queuedMessage.id}>
       <div className="max-w-[80%] rounded-2xl border border-dashed border-border p-3 text-message-foreground/80">
         {text.length > 0 ? (
-          <div className="whitespace-pre-wrap break-words text-sm">{text}</div>
+          <UserMessageBody
+            text={text}
+            terminalContexts={[]}
+            skills={ctx.skills}
+            markdownCwd={ctx.markdownCwd}
+          />
         ) : null}
         {attachmentCount > 0 || contextCount > 0 ? (
           <div className={cn("text-secondary-label text-xs", text.length > 0 && "mt-1.5")}>
@@ -1379,9 +1392,8 @@ function QueuedMessageTimelineRow({
                 render={
                   <Button
                     type="button"
-                    size="icon-micro"
+                    size="icon-xs"
                     variant="ghost-muted"
-                    className="size-6"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => ctx.onSteerQueuedMessage(queuedMessage.id)}
                     aria-label="Send now"
@@ -1402,9 +1414,8 @@ function QueuedMessageTimelineRow({
                 render={
                   <Button
                     type="button"
-                    size="icon-micro"
+                    size="icon-xs"
                     variant="ghost-muted"
-                    className="size-6"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => ctx.onRemoveQueuedMessage(queuedMessage.id)}
                     aria-label="Cancel and return to the composer"
@@ -1536,7 +1547,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     />
                   </button>
                 ) : (
-                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-[11px]">
+                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
                     {image.name}
                   </div>
                 )}
@@ -1768,6 +1779,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
         skills={ctx.skills}
         headingLevelOffset={MESSAGE_HEADING_LEVEL}
+        onRunShellCommand={ctx.onRunShellCommand}
       />
       <AssistantChangedFilesSection
         turnSummary={row.assistantTurnDiffSummary}
@@ -2280,6 +2292,28 @@ function ActivityGroupTimelineRow({
   );
 }
 
+function remarkThoughtPreview(fallback: string) {
+  return (tree: Root) => {
+    const plainText = (node: Root | RootContent): string => {
+      if (node.type === "html" || node.type === "definition") return "";
+      if ("alt" in node) return node.alt ?? "";
+      if ("value" in node) return node.value;
+      if ("children" in node) {
+        const separator = ["root", "blockquote", "list", "listItem", "table", "tableRow"].includes(
+          node.type,
+        )
+          ? " "
+          : "";
+        return node.children.map(plainText).join(separator);
+      }
+      return node.type === "break" ? " " : "";
+    };
+    tree.children = [
+      { type: "text", value: plainText(tree).replace(/\s+/g, " ").trim() || fallback },
+    ];
+  };
+}
+
 /**
  * Thinking inside an activity row. Beside tool calls it has its own
  * disclosure, whose collapsed header previews the first line; a row that
@@ -2313,7 +2347,13 @@ function ReasoningTraceBlock({
   }
   const label = streaming ? "Thinking" : "Thought";
   const collapsedPreview = messages.find((message) => message.text.trim().length > 0)?.text.trim();
-  const headerText = expanded ? label : (collapsedPreview ?? label);
+  const headerText = expanded ? (
+    label
+  ) : (
+    <ReactMarkdown remarkPlugins={[remarkGfm, [remarkThoughtPreview, label]]}>
+      {collapsedPreview ?? label}
+    </ReactMarkdown>
+  );
   return (
     <div className="flex flex-col">
       {showHeader ? (
@@ -2597,11 +2637,11 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
             <Button
               type="button"
               size="xs"
-              variant="ghost"
+              variant="ghost-muted"
               aria-expanded={expanded}
               data-scroll-anchor-ignore
               onClick={() => setExpanded((value) => !value)}
-              className="-ml-1 h-6 rounded-md px-1.5 text-secondary-label text-xs hover:bg-muted/55 hover:text-message-foreground"
+              className="-ml-1"
             >
               {expanded ? "Show less" : "Show full message"}
             </Button>
@@ -2803,7 +2843,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
         <div className="text-message-foreground text-xs font-medium">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
         </div>
-        <div className="text-secondary-label text-[11px]">
+        <div className="text-secondary-label text-2xs">
           {comment.sectionTitle} · {comment.rangeLabel}
         </div>
       </div>
@@ -2950,7 +2990,7 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
   if (tone === "thinking") {
     return {
       iconName: "bot",
-      className: "text-foreground",
+      className: "text-icon-muted",
     };
   }
   if (tone === "info") {
@@ -3216,7 +3256,7 @@ function buildToolCallExpandedBody(
 }
 
 const toolCallExpandedBodyClassName =
-  "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-[length:var(--font-size-code,0.6875rem)] leading-relaxed select-text";
+  "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
 
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (
@@ -3425,12 +3465,12 @@ function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
             {agent.title}
           </span>
           {role ? (
-            <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-[.65rem] text-muted-foreground">
+            <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-3xs text-muted-foreground">
               {role}
             </span>
           ) : null}
         </p>
-        <span className="shrink-0 font-mono text-[.7rem] tabular-nums text-muted-foreground">
+        <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
           {statusLabel}
         </span>
       </div>

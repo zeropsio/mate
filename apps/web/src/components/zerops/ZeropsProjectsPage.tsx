@@ -2390,7 +2390,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   if (status === "loading") {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner className="size-4" />
+        <Spinner size="md" />
         Checking your Zerops session…
       </div>
     );
@@ -2983,7 +2983,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               : undefined
           }
         >
-          <Spinner className="size-3.5" />
+          <Spinner size="sm" />
           <span>{listingNotice.message.text}</span>
           {listingAffordance}
         </div>

@@ -73,7 +73,7 @@ function ModelPricesDialog({
             on the selected environment.
           </DialogDescription>
         </DialogHeader>
-        <DialogPanel className="grid gap-5 pb-6">
+        <DialogPanel className="grid gap-5 space-y-0 pb-6">
           {environment ? (
             <>
               <div className="grid gap-1.5">

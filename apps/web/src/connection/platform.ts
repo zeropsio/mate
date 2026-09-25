@@ -128,7 +128,7 @@ const capabilitiesLayer = Layer.effectContext(
       scopes: AuthZeropsClientScopes,
     });
     const identity = RelayDeviceIdentity.of({
-      deviceId: Effect.succeed(Option.none()),
+      deviceId: Effect.succeedNone,
     });
     // No client-side source ever mints a bearer credential for the primary
     // environment (the desktop app's local backend, the sole former source,

@@ -9,7 +9,7 @@ import { resolveElectronLaunchCommand } from "./electron-launcher.mjs";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const desktopDir = NodePath.resolve(__dirname, "..");
-const mainJs = NodePath.resolve(desktopDir, "dist-electron/main.cjs");
+const mainJs = NodePath.resolve(desktopDir, "dist-electron/boot.cjs");
 const webBundleDir = NodePath.resolve(desktopDir, "prod-resources/web");
 const stagedWebEntry = NodePath.join(webBundleDir, "index.html");
 const stageCommand = "node scripts/stage-desktop-web.ts";

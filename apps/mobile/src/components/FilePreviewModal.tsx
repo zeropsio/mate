@@ -1,27 +1,14 @@
 import { useIsFocused } from "@react-navigation/native";
-import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Alert, Keyboard } from "react-native";
 
-import type { FileBackedComposerAttachment } from "../lib/composerImages";
 import { loadLocalAttachmentPreview } from "../lib/localAttachmentPreview";
 import { useAssetUrlState } from "../state/assets";
 import { usePreparedConnection } from "../state/session";
 import { FilePreview } from "./FilePreview";
+import type { FilePreviewSource } from "./FilePreviewModal.types";
 
-export interface ResolvedFilePreviewSource {
-  readonly kind: "image" | "pdf";
-  readonly uri: string;
-  readonly name?: string;
-  readonly sourceIdentifier?: string;
-}
-
-export type FilePreviewSource = Omit<ResolvedFilePreviewSource, "uri"> &
-  (
-    | { readonly uri: string }
-    | { readonly attachment: FileBackedComposerAttachment }
-    | { readonly environmentId: EnvironmentId; readonly resource: AssetResource }
-  );
+export type { FilePreviewSource, ResolvedFilePreviewSource } from "./FilePreviewModal.types";
 
 function ResolvedFilePreview(props: {
   readonly source: FilePreviewSource;

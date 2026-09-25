@@ -21,7 +21,6 @@ import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import { cn } from "../../lib/cn";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
-import { relativeTime } from "../../lib/time";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr, type ThreadPrPresentation } from "../../state/use-thread-pr";
@@ -77,10 +76,6 @@ export function ThreadListV2PullRequestLink(props: {
       </Text>
     </Pressable>
   );
-}
-
-function threadTimeLabel(thread: EnvironmentThreadShell): string {
-  return relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt);
 }
 
 // Menus keep lifecycle and title regeneration together. Archive keeps its
@@ -354,8 +349,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   /** Preformatted against the parent minute tick so this memoized row's
       countdown keeps moving. */
   readonly snoozeWakeLabelText?: string;
-  /** Parent minute tick passed as a prop so this memoized row refreshes its
-      native snooze menu while mounted. */
+  /** Preformatted against the parent clock (latest activity). Blank while a
+      status label or the wake countdown owns that slot. Precomputed per row —
+      not via the list's extraData — so the minute tick re-renders only rows
+      whose displayed text moved. */
+  readonly timeLabel: string;
+  /** Parent minute tick carried on the row's list item, present only when the
+      row's menu offers snooze presets, so those menus refresh while mounted
+      without invalidating every other row. */
   readonly snoozePresetMinute: string;
   readonly project: EnvironmentProject | null;
   readonly projectTitle?: string;
@@ -390,6 +391,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onArchiveThread: (thread: EnvironmentThreadShell) => void;
   readonly onPinThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnpinThread: (thread: EnvironmentThreadShell) => void;
+  readonly onSetThreadAutoSettle: (thread: EnvironmentThreadShell, enabled: boolean) => void;
   /** False on environments whose server predates thread.settle/unsettle:
       swipe + menu fall back to Archive instead of failing on use. */
   readonly settlementSupported: boolean;
@@ -397,6 +399,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly snoozeSupported: boolean;
   /** False on servers that predate thread.pin/unpin. */
   readonly pinningSupported: boolean;
+  /** False on servers that predate thread.auto-settle.set. */
+  readonly autoSettleOptOutSupported: boolean;
   /** False on servers that predate thread title regeneration. */
   readonly titleRegenerationSupported: boolean;
   /** False on servers that predate thread.pin.reorder. Gates the pinned
@@ -438,6 +442,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onArchiveThread,
     onPinThread,
     onUnpinThread,
+    onSetThreadAutoSettle,
     onMovePinnedThread,
     onChangeRequestState,
   } = props;
@@ -477,7 +482,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const resolvedStatus = resolveThreadStatus(thread);
   const statusPresentation = threadListV2StatusPresentation(resolvedStatus);
   const failureDetail = threadListV2FailureDetail(resolvedStatus, thread.session?.lastError);
-  const timeLabel = threadTimeLabel(thread);
+  // The timestamp is precomputed on the list item so a minute tick only
+  // re-renders rows that draw it.
+  const timeLabel = props.timeLabel;
 
   const handleDelete = useCallback(() => onDeleteThread(thread), [onDeleteThread, thread]);
   const handleRename = useCallback(() => onRenameThread(thread), [onRenameThread, thread]);
@@ -494,6 +501,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const handleUnsettle = useCallback(() => onUnsettleThread(thread), [onUnsettleThread, thread]);
   const handlePin = useCallback(() => onPinThread(thread), [onPinThread, thread]);
   const handleUnpin = useCallback(() => onUnpinThread(thread), [onUnpinThread, thread]);
+  const handleSetAutoSettle = useCallback(
+    (enabled: boolean) => onSetThreadAutoSettle(thread, enabled),
+    [onSetThreadAutoSettle, thread],
+  );
   const handleMovePinnedUp = useCallback(
     () => onMovePinnedThread?.(thread, "up"),
     [onMovePinnedThread, thread],
@@ -575,6 +586,33 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       thread.pinnedAt,
     ],
   );
+  // A submenu with the current option checked, matching web. This is a
+  // per-thread setting, not a lifecycle verb.
+  const autoSettleMenuItems = useMemo<MenuAction[]>(
+    () =>
+      props.autoSettleOptOutSupported
+        ? [
+            {
+              id: "auto-settle",
+              title: "Auto-settle behavior",
+              image: "timer",
+              subactions: [
+                {
+                  id: "auto-settle:enabled",
+                  title: "Enabled",
+                  state: thread.autoSettleDisabledAt == null ? "on" : "off",
+                },
+                {
+                  id: "auto-settle:disabled",
+                  title: "Disabled",
+                  state: thread.autoSettleDisabledAt == null ? "off" : "on",
+                },
+              ],
+            } satisfies MenuAction,
+          ]
+        : [],
+    [props.autoSettleOptOutSupported, thread.autoSettleDisabledAt],
+  );
   const titleMenuItems = useMemo<MenuAction[]>(
     () => [
       { id: "rename", title: "Rename", image: "square.and.pencil" },
@@ -596,26 +634,41 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       },
       ...pinMenuItem,
       ...titleMenuItems,
+      ...autoSettleMenuItems,
       { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
     ],
-    [pinMenuItem, snoozePresetActions, titleMenuItems],
+    [autoSettleMenuItems, pinMenuItem, snoozePresetActions, titleMenuItems],
   );
   const cardMenuActions = useMemo<MenuAction[]>(
-    () => [CARD_MENU_ACTIONS[0]!, ...pinMenuItem, ...titleMenuItems, ...CARD_MENU_ACTIONS.slice(1)],
-    [pinMenuItem, titleMenuItems],
+    () => [
+      CARD_MENU_ACTIONS[0]!,
+      ...pinMenuItem,
+      ...titleMenuItems,
+      ...autoSettleMenuItems,
+      ...CARD_MENU_ACTIONS.slice(1),
+    ],
+    [autoSettleMenuItems, pinMenuItem, titleMenuItems],
   );
+  // Settled and snoozed rows keep the setting too, matching web where every
+  // row shares one menu builder.
   const slimMenuActions = useMemo<MenuAction[]>(
     () => [
       SLIM_MENU_ACTIONS[0]!,
       ...(thread.pinnedAt != null ? pinMenuItem : []),
       ...titleMenuItems,
+      ...autoSettleMenuItems,
       SLIM_MENU_ACTIONS[1]!,
     ],
-    [pinMenuItem, thread.pinnedAt, titleMenuItems],
+    [autoSettleMenuItems, pinMenuItem, thread.pinnedAt, titleMenuItems],
   );
   const snoozedMenuActions = useMemo<MenuAction[]>(
-    () => [SNOOZED_MENU_ACTIONS[0]!, ...titleMenuItems, SNOOZED_MENU_ACTIONS[1]!],
-    [titleMenuItems],
+    () => [
+      SNOOZED_MENU_ACTIONS[0]!,
+      ...titleMenuItems,
+      ...autoSettleMenuItems,
+      SNOOZED_MENU_ACTIONS[1]!,
+    ],
+    [autoSettleMenuItems, titleMenuItems],
   );
   const legacyMenuActions = useMemo<MenuAction[]>(
     () => [LEGACY_MENU_ACTIONS[0]!, ...titleMenuItems, LEGACY_MENU_ACTIONS[1]!],
@@ -629,6 +682,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       if (nativeEvent.event === "unsnooze") handleUnsnooze();
       if (nativeEvent.event === "pin") handlePin();
       if (nativeEvent.event === "unpin") handleUnpin();
+      if (nativeEvent.event === "auto-settle:enabled") handleSetAutoSettle(true);
+      if (nativeEvent.event === "auto-settle:disabled") handleSetAutoSettle(false);
       if (nativeEvent.event === "move-pin-up") handleMovePinnedUp();
       if (nativeEvent.event === "move-pin-down") handleMovePinnedDown();
       if (nativeEvent.event === "archive") handleArchive();
@@ -661,6 +716,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       handlePin,
       handleSettle,
       handleSnooze,
+      handleSetAutoSettle,
       handleUnpin,
       handleUnsettle,
       handleUnsnooze,
@@ -1019,7 +1075,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           >
             {snoozedRow && props.snoozeWakeLabelText !== undefined
               ? props.snoozeWakeLabelText
-              : relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt)}
+              : timeLabel}
           </Text>
         </View>
       </RowPressable>

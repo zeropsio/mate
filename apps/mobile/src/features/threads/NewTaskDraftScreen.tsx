@@ -88,7 +88,7 @@ import {
   isModelSelectionUnavailable,
   resolveSelectableModelSelection,
 } from "../../lib/modelOptions";
-import { resolveProviderInteractionMode } from "./legacy-plan-mode";
+import { resolveProviderInteractionMode } from "../../state/legacy-plan-mode";
 import { deriveThreadTitleFromPrompt } from "../../lib/projectThreadStartTurn";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
@@ -111,31 +111,41 @@ import { serverEnvironment } from "../../state/server";
 function NewTaskWorkspaceIcon(props: {
   readonly workspaceMode: "local" | "worktree";
   readonly worktreePath: string | null;
+  readonly size: number;
 }) {
   if (props.workspaceMode === "local" && props.worktreePath === null) {
     return (
       <SymbolView
         name="folder"
-        size={16}
-        tintColorClassName={"accent-icon-muted"}
+        size={props.size}
+        tintColorClassName="accent-icon-muted"
         type="monochrome"
       />
     );
   }
 
+  const boxSize = (14 * props.size) / 16;
   return (
-    <View className="size-4">
+    <View
+      className="size-4"
+      style={Platform.OS === "android" ? { width: boxSize, height: boxSize } : undefined}
+    >
       <SymbolView
         name="folder"
-        size={16}
-        tintColorClassName={"accent-icon-muted"}
+        size={props.size}
+        tintColorClassName="accent-icon-muted"
         type="monochrome"
       />
-      <View className="absolute -right-1 -bottom-1">
+      <View
+        className="absolute -right-1 -bottom-1"
+        style={
+          Platform.OS === "android" ? { right: -boxSize / 4, bottom: -boxSize / 4 } : undefined
+        }
+      >
         <SymbolView
           name="arrow.triangle.branch"
-          size={9}
-          tintColorClassName={"accent-icon-muted"}
+          size={Math.round((9 * props.size) / 16)}
+          tintColorClassName="accent-icon-muted"
           type="monochrome"
         />
       </View>
@@ -1246,7 +1256,7 @@ export function NewTaskDraftScreen(props: {
           <Text className="text-2xl font-t3-medium tracking-tight text-foreground">in </Text>
           <Pressable
             accessibilityHint="Opens the project picker"
-            accessibilityLabel={`Change project from ${selectedProject.title}`}
+            accessibilityLabel={selectedProject.title}
             accessibilityRole="button"
             disabled={isComposerInteractionLocked}
             onPress={chooseProject}
@@ -1318,12 +1328,13 @@ export function NewTaskDraftScreen(props: {
               accessibilityHint={`Switches to ${flow.workspaceMode === "local" ? "a new worktree" : "the current checkout"}`}
               accessibilityLabel={workspaceLabel}
               disabled={isComposerInteractionLocked || voiceInput.isBusy}
-              iconNode={
+              renderIcon={(size) => (
                 <NewTaskWorkspaceIcon
                   workspaceMode={flow.workspaceMode}
                   worktreePath={flow.selectedWorktreePath}
+                  size={size}
                 />
-              }
+              )}
               label={workspaceLabel}
               maxWidth={flow.workspaceMode === "local" ? 220 : 148}
               onPress={() =>
@@ -1441,12 +1452,12 @@ export function NewTaskDraftScreen(props: {
                       accessibilityLabel="Model and reasoning settings"
                       disabled={isComposerInteractionLocked}
                       emphasized
-                      iconNode={
+                      renderIcon={(size) => (
                         <ProviderIcon
                           provider={flow.selectedModelOption?.providerDriver}
-                          size={16}
+                          size={size}
                         />
-                      }
+                      )}
                       label={flow.selectedModelOption?.label ?? "Choose model"}
                       maxWidth={152}
                       onPress={settingsSheetPresentation.open}

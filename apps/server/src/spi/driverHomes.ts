@@ -18,12 +18,18 @@
  *
  * @module driverHomes
  */
-import type { ClaudeSettings, CodexSettings, ProviderInstanceConfig } from "@t3tools/contracts";
+import type {
+  ClaudeSettings,
+  CodexSettings,
+  ProviderInstanceConfig,
+  ProviderInstanceId,
+} from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
 import type * as Path from "effect/Path";
 
 import { makeClaudeEnvironment, resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
+import { resolveAntigravityProfileDirectory } from "../provider/antigravityAuthSupport.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 
 /**
@@ -59,6 +65,18 @@ export function claudeEnvironment(
   baseEnv?: NodeJS.ProcessEnv,
 ): Effect.Effect<NodeJS.ProcessEnv, never, Path.Path> {
   return makeClaudeEnvironment(config, baseEnv);
+}
+
+/**
+ * The per-instance Google profile the Antigravity driver keeps under the
+ * server's state directory; its `antigravity-acp` folder holds the agent's
+ * conversations, which `usage/**` scans for history.
+ */
+export function antigravityProfileDirectory(
+  stateDir: string,
+  instanceId: ProviderInstanceId,
+): string {
+  return resolveAntigravityProfileDirectory(stateDir, instanceId);
 }
 
 /** Resolves where the Codex CLI's config/session directory pair lives. */

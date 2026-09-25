@@ -80,14 +80,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/threads/ThreadGitControls.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Turn diffs and worktree changes\"",
-    "owner": "karel",
-    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/threads/git/GitBranchesSheet.tsx",
     "kind": "Literal",
     "fingerprint": "\"Branches & worktrees\"",
@@ -244,6 +236,14 @@
     "kind": "Literal",
     "fingerprint": "\"worktree\"",
     "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "web-intake",
     "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
     "expires": "never"
   },
@@ -428,6 +428,14 @@
     "kind": "Literal",
     "fingerprint": "\"Setting up worktree\u2026\"",
     "owner": "mobile-intake",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PreviousWorktreeItemContent.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Previous worktree",
+    "owner": "web-intake",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
   }

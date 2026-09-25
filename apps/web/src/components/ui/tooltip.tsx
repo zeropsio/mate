@@ -5,8 +5,6 @@ import { gatedPortal } from "~/components/ui/portal-gate";
 
 const TooltipPortal = gatedPortal(TooltipPrimitive.Portal);
 
-const TooltipCreateHandle = TooltipPrimitive.createHandle;
-
 const TooltipProvider = TooltipPrimitive.Provider;
 
 const Tooltip = TooltipPrimitive.Root;
@@ -28,7 +26,8 @@ function TooltipPopup({
   align?: TooltipPrimitive.Positioner.Props["align"];
   side?: TooltipPrimitive.Positioner.Props["side"];
   sideOffset?: TooltipPrimitive.Positioner.Props["sideOffset"];
-  variant?: "default" | "glass";
+  /** `code` renders monospace content that breaks anywhere, for paths and commands. */
+  variant?: "default" | "glass" | "code";
   anchor?: TooltipPrimitive.Positioner.Props["anchor"];
 }) {
   return (
@@ -47,6 +46,10 @@ function TooltipPopup({
             variant === "glass"
               ? "dropdown-glass shadow-xl shadow-black/25 before:hidden"
               : "border bg-popover not-dark:bg-clip-padding shadow-md/5",
+            // One wrap width for prose; code dumps get more room and break anywhere.
+            variant === "code"
+              ? "max-w-120 wrap-anywhere text-left font-mono text-[11px] leading-relaxed"
+              : "max-w-80 wrap-anywhere whitespace-normal leading-snug",
             className,
           )}
           data-slot="tooltip-popup"
@@ -64,4 +67,4 @@ function TooltipPopup({
   );
 }
 
-export { TooltipCreateHandle, TooltipProvider, Tooltip, TooltipTrigger, TooltipPopup };
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipPopup };

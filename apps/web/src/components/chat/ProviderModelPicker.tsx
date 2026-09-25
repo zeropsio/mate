@@ -5,9 +5,7 @@ import {
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { memo, useEffect, useMemo, useState } from "react";
-import type { VariantProps } from "class-variance-authority";
 import { Badge } from "../ui/badge";
-import { buttonVariants } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
@@ -45,7 +43,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   disabled?: boolean;
   terminalOpen?: boolean;
   open?: boolean;
-  triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
   triggerAriaLabel?: string;
   /**
@@ -182,7 +179,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         render={
           <ComposerControl
             aria-label={props.triggerAriaLabel}
-            variant={props.triggerVariant ?? "ghost"}
             data-chat-provider-model-picker="true"
             className={cn(
               "min-w-0 shrink justify-between whitespace-nowrap",
@@ -205,7 +201,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               indicatorBackground="var(--contrast-input)"
               badgeClassName={cn(
                 "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3",
-                "px-0.5 text-[7px]",
+                "px-0.5 text-3xs",
               )}
             />
           ) : null}
@@ -225,11 +221,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControlChevron />
         </span>
       </PopoverTrigger>
-      <PopoverPopup
-        align="start"
-        className="before:hidden [--viewport-inline-padding:0]"
-        viewportClassName="!overflow-hidden rounded-[calc(var(--radius-lg)-1px)] p-0 [clip-path:inset(0_round_calc(var(--radius-lg)-1px))]"
-      >
+      <PopoverPopup align="start" className="before:hidden" padding="none">
         <ModelPickerContent
           activeInstanceId={activeInstanceId}
           model={props.model}

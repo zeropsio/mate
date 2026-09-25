@@ -132,7 +132,7 @@ export function ZeropsEnvironmentCreationForm({
           A new Zerops project in {groupName}. It takes a couple of minutes to come up.
         </DialogDescription>
       </DialogHeader>
-      <DialogPanel className="flex flex-col gap-5">
+      <DialogPanel className="flex flex-col gap-5 space-y-0">
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-name`}>Environment</Label>
           <Input
@@ -216,7 +216,7 @@ export function ZeropsEnvironmentCreationForm({
                 className="flex items-center gap-3 px-3 py-2.5"
                 role="status"
               >
-                <Skeleton className="size-4 rounded-full" />
+                <Skeleton shape="pill" className="size-4" />
                 <Skeleton className="h-3.5 w-48" />
               </div>
             ) : null}

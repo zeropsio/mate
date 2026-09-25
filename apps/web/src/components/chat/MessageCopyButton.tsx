@@ -2,7 +2,6 @@ import { memo, useRef } from "react";
 import { CopyIcon, CheckIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { cn } from "~/lib/utils";
 import { anchoredToastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -61,21 +60,21 @@ export const MessageCopyButton = memo(function MessageCopyButton({
       <TooltipTrigger
         render={
           <Button
-            aria-label="Copy link"
+            aria-label="Copy message"
             disabled={isCopied}
             onClick={() => copyToClipboard(text)}
             ref={ref}
             type="button"
             size={size}
-            variant={variant}
-            className={cn("text-muted-foreground hover:text-foreground", className)}
+            variant={variant === "ghost" ? "ghost-muted" : variant}
+            className={className}
           />
         }
       >
         {isCopied ? <CheckIcon className="size-3 text-primary" /> : <CopyIcon className="size-3" />}
       </TooltipTrigger>
       <TooltipPopup>
-        <p>Copy to clipboard</p>
+        <p>Copy message</p>
       </TooltipPopup>
     </Tooltip>
   );

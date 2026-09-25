@@ -12,9 +12,8 @@ import { useState } from "react";
 
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
-import { cn } from "~/lib/utils";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { buttonVariants } from "../../ui/button";
+import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../ui/menu";
 import { Avatar } from "../primitives";
 import { zeropsAccountDisplay, type ZeropsAccountDisplay } from "./ZeropsAccountControl.logic";
@@ -36,10 +35,8 @@ export function ZeropsAccountControl({
     <Menu>
       <MenuTrigger
         aria-label={`Account: ${account.name}`}
-        className={cn(
-          buttonVariants({ size: "sm", variant: "ghost" }),
-          "min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent",
-        )}
+        render={<Button size="sm" variant="ghost" />}
+        className="min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent"
         data-zerops-account-control="true"
       >
         <Avatar initials={account.initials} src={account.avatarUrl} />

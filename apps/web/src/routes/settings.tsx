@@ -1,16 +1,10 @@
 import { RotateCcwIcon } from "lucide-react";
-import {
-  Outlet,
-  createFileRoute,
-  redirect,
-  useCanGoBack,
-  useLocation,
-  useNavigate,
-} from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
 import { SettingsBreadcrumb } from "../components/settings/SettingsBreadcrumb";
+import { useNavigateToMainApp } from "../components/sidebar/mainAppLocation";
 import { Button } from "../components/ui/button";
 import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
@@ -36,18 +30,10 @@ function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
 
 function SettingsContentLayout() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const canGoBack = useCanGoBack();
+  const navigateToMainApp = useNavigateToMainApp();
   const [restoreSignal, setRestoreSignal] = useState(0);
   const showRestoreDefaults = location.pathname === "/settings/general";
   const handleRestored = () => setRestoreSignal((value) => value + 1);
-  const navigateBackWithinApp = useCallback(() => {
-    if (canGoBack) {
-      window.history.back();
-      return;
-    }
-    void navigate({ to: "/" });
-  }, [canGoBack, navigate]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -60,7 +46,7 @@ function SettingsContentLayout() {
           activeElement.blur();
         }
 
-        navigateBackWithinApp();
+        void navigateToMainApp();
       }
     };
 
@@ -68,10 +54,10 @@ function SettingsContentLayout() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [navigateBackWithinApp]);
+  }, [navigateToMainApp]);
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         <WorkspacePageHeader electron={isElectron}>
           <div className="flex w-full items-center gap-3">

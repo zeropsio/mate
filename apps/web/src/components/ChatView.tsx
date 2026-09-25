@@ -126,6 +126,7 @@ import {
 } from "./chat/timelineScrollAnchoring";
 import {
   buildPendingUserInputAnswers,
+  carryDisplacedCustomAnswerIntoPrompt,
   derivePendingUserInputProgress,
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
@@ -199,6 +200,8 @@ import {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
+import { isEditableFocused } from "../lib/editableFocus";
+import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
   AlarmClockIcon,
@@ -303,6 +306,7 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { agentAuthAction, zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import {
@@ -418,6 +422,7 @@ import {
   shouldRefocusComposerOnWindowFocus,
 } from "./ChatView.logic";
 import type { ThreadSyncPhase } from "../threadSync";
+import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
 import {
@@ -543,14 +548,16 @@ const TYPE_TO_FOCUS_INTERACTIVE_SELECTOR = [
   '[role="switch"]',
   '[role="tab"]',
 ].join(",");
+// Popups match only while open or closing: some stay mounted when closed,
+// such as the chat header actions menu.
 const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
   '[role="dialog"][aria-modal="true"]',
   '[data-slot="dialog"]',
-  '[data-slot="menu-popup"]',
-  '[data-slot="select-popup"]',
-  '[data-slot="popover-popup"]',
-  '[data-slot="combobox-popup"]',
-  '[data-slot="autocomplete-popup"]',
+  '[data-slot="menu-popup"]:is([data-open],[data-ending-style])',
+  '[data-slot="select-popup"]:is([data-open],[data-ending-style])',
+  '[data-slot="popover-popup"]:is([data-open],[data-ending-style])',
+  '[data-slot="combobox-popup"]:is([data-open],[data-ending-style])',
+  '[data-slot="autocomplete-popup"]:is([data-open],[data-ending-style])',
 ].join(",");
 
 type EnvironmentUnavailableState = {
@@ -1324,6 +1331,10 @@ export default function ChatView(props: ChatViewProps) {
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
+  // Opening a running thread resyncs for a few frames. Show the sync pill only
+  // when the sync lasts; logic that depends on the real phase keeps reading
+  // `threadSyncPhase`.
+  const shownThreadSyncPhase = useDelayedStatus(`${environmentId}:${threadId}`, threadSyncPhase);
   const threadDetailLoading = threadSyncPhase === "loading";
   const handleNewThread = useNewThreadHandler();
   const { settleThread, pinThread, unpinThread, archiveThread } = useThreadActions();
@@ -3492,6 +3503,23 @@ export default function ChatView(props: ChatViewProps) {
     ],
   );
 
+  const runProjectScriptRef = useRef(runProjectScript);
+  useLayoutEffect(() => {
+    runProjectScriptRef.current = runProjectScript;
+  }, [runProjectScript]);
+  const runShellCommand = useCallback((command: string) => {
+    void runProjectScriptRef.current(
+      {
+        id: "chat-code-block",
+        name: "Chat code block",
+        command,
+        icon: "play",
+        runOnWorktreeCreate: false,
+      },
+      { rememberAsLastInvoked: false },
+    );
+  }, []);
+
   const persistProjectScripts = useCallback(
     async (input: {
       projectId: ProjectId;
@@ -4314,6 +4342,11 @@ export default function ChatView(props: ChatViewProps) {
         // Only an upward wheel is a navigation intent; wheeling down while
         // following either does nothing (at the end) or moves toward it.
         const handleWheel = (event: WheelEvent) => {
+          // A wheel inside a nested scroller (a reasoning trace, a tool
+          // result, a code block) scrolls that, not the timeline.
+          if (event.ctrlKey || !isTimelineScrollTarget(event.target, scrollNode, event.deltaY)) {
+            return;
+          }
           if (event.deltaY < 0 && contentScrollsUp()) {
             handleManualNavigation();
           }
@@ -4347,6 +4380,16 @@ export default function ChatView(props: ChatViewProps) {
         // pointer events entirely; without this the timeline yanks back to
         // the end on the next stream chunk.
         const handleKeyDown = (event: KeyboardEvent) => {
+          if (!["PageUp", "Home", "ArrowUp", "PageDown", "End", "ArrowDown"].includes(event.key)) {
+            return;
+          }
+          const scrollDirection = ["PageUp", "Home", "ArrowUp"].includes(event.key) ? -1 : 1;
+          if (
+            scrollNode.contains(event.target as Node | null) &&
+            !isTimelineScrollTarget(event.target, scrollNode, scrollDirection)
+          ) {
+            return;
+          }
           switch (event.key) {
             case "PageUp":
             case "Home":
@@ -4622,6 +4665,7 @@ export default function ChatView(props: ChatViewProps) {
     activeWorktreePath,
     hasServerThread: isServerThread,
     draftThreadEnvMode: isLocalDraftThread ? draftThread?.envMode : undefined,
+    preparingWorktree: isPreparingWorktree,
   });
   const canOverrideServerThreadEnvMode = Boolean(
     isServerThread &&
@@ -5304,7 +5348,7 @@ export default function ChatView(props: ChatViewProps) {
                   </code>
                 }
               />
-              <TooltipPopup side="top" className="max-w-80">
+              <TooltipPopup side="top">
                 This thread last ran on {localCheckoutBranchMismatch.threadBranch}. Sending will
                 continue on {localCheckoutBranchMismatch.currentBranch}.
               </TooltipPopup>
@@ -5427,9 +5471,10 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeThreadKey, focusComposer, terminalUiState.terminalOpen]);
 
   const getShortcutContext = useCallback(
-    () => ({
+    (eventTarget: EventTarget | null = document.activeElement) => ({
       terminalFocus: getTerminalFocusOwner() !== null,
       terminalOpen: Boolean(terminalUiState.terminalOpen),
+      editableFocus: isEditableFocused(eventTarget),
       modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
       isWeb: !isElectron,
       isDesktop: isElectron,
@@ -5457,7 +5502,7 @@ export default function ChatView(props: ChatViewProps) {
       if (event.defaultPrevented && terminalFocusOwner === null) {
         return;
       }
-      const shortcutContext = getShortcutContext();
+      const shortcutContext = getShortcutContext(event.target);
 
       if (
         !shortcutContext.terminalFocus &&
@@ -5496,6 +5541,17 @@ export default function ChatView(props: ChatViewProps) {
             }),
           );
         });
+        return;
+      }
+
+      if (command === "thread.undo") {
+        // Only claim the chord when there is an Undo to run; otherwise the
+        // page keeps its native behavior for the key.
+        if (event.repeat) return;
+        if (undoLatestThreadAction()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
         return;
       }
 
@@ -6870,6 +6926,17 @@ export default function ChatView(props: ChatViewProps) {
       if (!activePendingUserInput) {
         return;
       }
+      // The option replaces the custom answer. Anything typed there is the
+      // user's text, so it goes back to the thread draft instead of vanishing.
+      const displacedAnswer =
+        pendingUserInputAnswersByRequestId[activePendingUserInput.requestId]?.[questionId]
+          ?.customAnswer;
+      const currentPrompt =
+        useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.prompt ?? "";
+      const nextPrompt = carryDisplacedCustomAnswerIntoPrompt(currentPrompt, displacedAnswer);
+      if (nextPrompt !== currentPrompt) {
+        setComposerDraftPrompt(composerDraftTarget, nextPrompt);
+      }
       setPendingUserInputAnswersByRequestId((existing) => {
         const question =
           (activePendingProgress?.activeQuestion?.id === questionId
@@ -6895,7 +6962,14 @@ export default function ChatView(props: ChatViewProps) {
       promptRef.current = "";
       composerRef.current?.resetCursorState({ cursor: 0 });
     },
-    [activePendingProgress?.activeQuestion, activePendingUserInput, composerRef],
+    [
+      activePendingProgress?.activeQuestion,
+      activePendingUserInput,
+      composerDraftTarget,
+      composerRef,
+      pendingUserInputAnswersByRequestId,
+      setComposerDraftPrompt,
+    ],
   );
 
   const onChangeActivePendingUserInputCustomAnswer = useCallback(
@@ -7654,7 +7728,8 @@ export default function ChatView(props: ChatViewProps) {
     },
   });
   const externalComposerDrawerAttached =
-    composerBannerItems.length > 0 || Boolean(threadSyncPhase && !activeEnvironmentUnavailable);
+    composerBannerItems.length > 0 ||
+    Boolean(shownThreadSyncPhase && !activeEnvironmentUnavailable);
 
   /**
    * A pull request address a Mate wrote into its conversation opens on the
@@ -7795,6 +7870,7 @@ export default function ChatView(props: ChatViewProps) {
                 onOpenTurnDiff={onOpenTurnDiff}
                 supportsConversationRollback={supportsConversationRollback}
                 onRevertToTurnCount={onRevertTimelineTurn}
+                {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImage}
                 markdownCwd={gitCwd ?? undefined}
@@ -7835,7 +7911,7 @@ export default function ChatView(props: ChatViewProps) {
                   <Button
                     aria-label="Scroll to end"
                     onClick={() => scrollToEnd(true)}
-                    className="pointer-events-auto gap-1.5 rounded-full px-3 text-muted-foreground hover:text-foreground"
+                    className="pointer-events-auto"
                     size="xs"
                     variant="glass"
                   >
@@ -7859,7 +7935,7 @@ export default function ChatView(props: ChatViewProps) {
             >
               <div
                 ref={attachDraftHeroTransitionGroupRef}
-                className="w-full ps-[calc(env(safe-area-inset-left)+0.75rem)] pe-[calc(env(safe-area-inset-right)+0.75rem)] sm:ps-[calc(env(safe-area-inset-left)+1.25rem)] sm:pe-[calc(env(safe-area-inset-right)+1.25rem)]"
+                className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)"
               >
                 <div className="pointer-events-auto relative z-10">
                   {isDraftHeroState ? (
@@ -7892,8 +7968,8 @@ export default function ChatView(props: ChatViewProps) {
                       stackRef={setComposerBannerStackElement}
                     />
                   )}
-                  {threadSyncPhase && !activeEnvironmentUnavailable ? (
-                    <ThreadSyncStatusPill phase={threadSyncPhase} />
+                  {shownThreadSyncPhase && !activeEnvironmentUnavailable ? (
+                    <ThreadSyncStatusPill phase={shownThreadSyncPhase} />
                   ) : null}
                   <div
                     className="relative"
@@ -8054,7 +8130,7 @@ export default function ChatView(props: ChatViewProps) {
                                 onEnvModeChange={onEnvModeChange}
                                 startFromOrigin={startFromOrigin}
                                 onStartFromOriginChange={onStartFromOriginChange}
-                                {...(canOverrideServerThreadEnvMode
+                                {...(canOverrideServerThreadEnvMode || isPreparingWorktree
                                   ? { effectiveEnvModeOverride: envMode }
                                   : {})}
                                 {...(canOverrideServerThreadEnvMode

@@ -19,7 +19,7 @@ describe("mobile native branding", () => {
     const mark = NodeFS.readFileSync(markUrl, "utf8");
     const compactTitle = readSource("src/components/CompactBrandTitle.tsx");
     const brandMark = readSource("src/components/BrandMark.tsx");
-    const homeHeader = readSource("src/features/home/HomeHeader.tsx");
+    const homeHeader = readSource("src/features/home/HomeHeader.android.tsx");
     const workspaceTitle = readSource("src/features/home/WorkspaceConnectionTitle.tsx");
     const threadSidebar = readSource("src/features/threads/ThreadNavigationSidebar.tsx");
 

@@ -25,7 +25,7 @@ import { resolveEnvModeLabel } from "../BranchToolbar.logic";
 import { createModelSelection } from "@t3tools/shared/model";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
-import { useCanGoBack, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
 import { ChevronDownIcon, CopyIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import {
@@ -105,6 +105,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { useNavigateToMainApp } from "../sidebar/mainAppLocation";
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
   SettingResetButton,
@@ -151,15 +152,7 @@ function memberKey(member: { environmentId: string; id: string }): string {
 }
 
 export function ProjectSettingsPage({ projectKey }: { projectKey: string }) {
-  const navigate = useNavigate();
-  const canGoBack = useCanGoBack();
-  const navigateBackWithinApp = useCallback(() => {
-    if (canGoBack) {
-      window.history.back();
-      return;
-    }
-    void navigate({ to: "/" });
-  }, [canGoBack, navigate]);
+  const navigateToMainApp = useNavigateToMainApp();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -170,11 +163,11 @@ export function ProjectSettingsPage({ projectKey }: { projectKey: string }) {
       if (activeElement instanceof HTMLElement) {
         activeElement.blur();
       }
-      navigateBackWithinApp();
+      void navigateToMainApp();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigateBackWithinApp]);
+  }, [navigateToMainApp]);
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
@@ -856,7 +849,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     lockedProvider={null}
                     instanceEntries={instanceEntries}
                     modelOptionsByInstance={modelOptionsByInstance}
-                    triggerVariant="outline"
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     onOpenProviderSetup={(instanceId) => {
                       void navigate({
@@ -877,7 +869,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     modelOptions={resolvedSelection.options ?? []}
                     allowPromptInjectedEffort={false}
                     planModeEnabled={settings.planModeEnabled}
-                    triggerVariant="outline"
                     triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
                     onModelOptionsChange={(nextOptions) => {
                       setDefaultModel(

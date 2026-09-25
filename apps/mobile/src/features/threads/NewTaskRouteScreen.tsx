@@ -7,8 +7,16 @@ import {
 } from "@react-navigation/native";
 import { SymbolView } from "../../components/AppSymbol";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { useEffect, useRef } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cn } from "../../lib/cn";
 
@@ -21,7 +29,7 @@ import { useWorkspaceState } from "../../state/workspace";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useIncomingShare } from "../sharing/IncomingShareProvider";
 import { useNewTaskFlow } from "./new-task-flow-provider";
-import { getProjectScopeSelectionTarget } from "./new-task-project-selection";
+import { filterProjectScopes, getProjectScopeSelectionTarget } from "./new-task-project-selection";
 
 type NewTaskRouteParams = {
   readonly incomingShareId?: string | string[];
@@ -84,6 +92,7 @@ function deriveProjectEmptyState(catalogState: WorkspaceState): {
 
 export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRouteParams | undefined>) {
   const projects = useProjects();
+  const [searchText, setSearchText] = useState("");
   const { projectScopes, selectedEnvironmentId, setProject } = useNewTaskFlow();
   const { state: catalogState } = useWorkspaceState();
   const navigation = useNavigation();
@@ -104,6 +113,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     : null;
   const screenTitle = incomingShare ? "Start a task" : "Choose project";
   const projectEmptyState = deriveProjectEmptyState(catalogState);
+  const visibleScopes = filterProjectScopes(projectScopes, searchText);
   const resumedDestinationKeyRef = useRef<string | null>(null);
   const reservedDestinationProject = incomingShare?.destination
     ? (projects.find(
@@ -197,6 +207,18 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                 : []
             }
           />
+          <View className="px-4 pb-2 pt-3">
+            <TextInput
+              accessibilityLabel="Search projects"
+              autoCapitalize="none"
+              autoCorrect={false}
+              className="h-11 rounded-xl bg-card px-4 font-sans text-base text-foreground"
+              onChangeText={setSearchText}
+              placeholder="Search projects"
+              placeholderTextColorClassName={"accent-placeholder"}
+              value={searchText}
+            />
+          </View>
         </>
       ) : (
         <>
@@ -204,17 +226,32 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
             options={{
               title: screenTitle,
               unstable_headerSubtitle: incomingShareSubtitle ?? undefined,
+              // The workspace opens the flow as a page; its own back button leads.
+              headerBackVisible: !layout.usesSplitView,
+              headerSearchBarOptions: {
+                autoCapitalize: "none",
+                hideNavigationBar: false,
+                obscureBackground: false,
+                placeholder: "Search projects",
+                onChangeText: (event) => {
+                  setSearchText(event.nativeEvent.text);
+                },
+                onCancelButtonPress: () => {
+                  setSearchText("");
+                },
+              },
             }}
           />
-          <NativeHeaderToolbar placement="right">
-            {layout.usesSplitView ? (
+          {layout.usesSplitView ? (
+            <NativeHeaderToolbar placement="left">
               <NativeHeaderToolbar.Button
-                accessibilityLabel="Close new task"
-                icon="xmark"
+                accessibilityLabel="Go back"
+                icon="chevron.left"
                 onPress={() => navigation.goBack()}
-                separateBackground
               />
-            ) : null}
+            </NativeHeaderToolbar>
+          ) : null}
+          <NativeHeaderToolbar placement="right">
             {catalogState.hasReadyEnvironment ? (
               <NativeHeaderToolbar.Button
                 icon="plus"
@@ -229,6 +266,8 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         className="flex-1"
         contentContainerStyle={{
           gap: 12,
@@ -268,9 +307,18 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               </Pressable>
             )}
           </View>
+        ) : visibleScopes.length === 0 ? (
+          <View className="items-center gap-2 px-6 py-8">
+            <Text className="text-center text-lg font-t3-bold text-foreground">
+              No matching projects
+            </Text>
+            <Text className="text-center text-sm leading-normal text-foreground-muted">
+              Try a different project name or workspace path.
+            </Text>
+          </View>
         ) : (
           <View collapsable={false} className="overflow-hidden rounded-[24px] bg-card">
-            {projectScopes.map((scope, scopeIndex) => {
+            {visibleScopes.map((scope, scopeIndex) => {
               const hasMultipleProjects = scope.projects.length > 1;
               const selectionTarget = getProjectScopeSelectionTarget(scope, selectedEnvironmentId);
               return (

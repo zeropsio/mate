@@ -7,10 +7,10 @@ import { RelayMobileClientId } from "@t3tools/contracts/relay";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import { remoteHttpClientLayer } from "@t3tools/client-runtime/rpc";
 import { HttpClient } from "effect/unstable/http";
-import { MobilePreferencesStore } from "../../persistence/mobile-preferences";
+
 import { MobileStorage } from "../../persistence/mobile-storage";
 
-import { linkEnvironmentToCloud, linkEnvironmentToCloudWithPreference } from "./linkEnvironment";
+import { linkEnvironmentToCloudWithPreference } from "./linkEnvironment";
 
 vi.mock("expo-constants", () => ({
   default: {
@@ -49,8 +49,6 @@ vi.mock("expo-secure-store", () => ({
   setItemAsync: vi.fn(),
 }));
 
-const loadPreferences = vi.fn(() => Effect.succeed({}));
-
 const savedConnection = {
   environmentId: EnvironmentId.make("env-1"),
   environmentLabel: "Desktop",
@@ -77,14 +75,6 @@ function cloudClientLayer() {
   const httpClientLayer = remoteHttpClientLayer((input, init) => globalThis.fetch(input, init));
   return Layer.mergeAll(
     httpClientLayer,
-    Layer.succeed(
-      MobilePreferencesStore,
-      MobilePreferencesStore.of({
-        load: loadPreferences(),
-        savePatch: (patch) => Effect.succeed(patch),
-        update: () => Effect.succeed({}),
-      }),
-    ),
     Layer.succeed(
       MobileStorage,
       MobileStorage.of({
@@ -114,7 +104,6 @@ const withCloudServices = <A, E>(
     | HttpClient.HttpClient
     | ManagedRelay.ManagedRelayClient
     | ManagedRelay.ManagedRelayDpopSigner
-    | MobilePreferencesStore
     | MobileStorage
   >,
 ) => effect.pipe(Effect.provide(cloudClientLayer()));
@@ -154,7 +143,6 @@ describe("mobile cloud link environment client", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     createProofMock.mockClear();
-    loadPreferences.mockClear();
   });
 
   it.effect(
@@ -173,9 +161,10 @@ describe("mobile cloud link environment client", () => {
         vi.stubGlobal("fetch", fetchMock);
 
         const error = yield* withCloudServices(
-          linkEnvironmentToCloud({
+          linkEnvironmentToCloudWithPreference({
             clerkToken: "clerk-token",
             connection: savedConnection,
+            liveActivitiesEnabled: true,
           }),
         ).pipe(Effect.flip);
         expect(error).toMatchObject({
@@ -205,9 +194,10 @@ describe("mobile cloud link environment client", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       const error = yield* withCloudServices(
-        linkEnvironmentToCloud({
+        linkEnvironmentToCloudWithPreference({
           clerkToken: "clerk-token",
           connection: savedConnection,
+          liveActivitiesEnabled: true,
         }),
       ).pipe(Effect.flip);
       expect(error._tag).toBe("CloudEnvironmentLinkError");
@@ -242,9 +232,10 @@ describe("mobile cloud link environment client", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       const error = yield* withCloudServices(
-        linkEnvironmentToCloud({
+        linkEnvironmentToCloudWithPreference({
           clerkToken: "clerk-token",
           connection: savedConnection,
+          liveActivitiesEnabled: true,
         }),
       ).pipe(Effect.flip);
       expect(error).toMatchObject({
@@ -279,9 +270,10 @@ describe("mobile cloud link environment client", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       const error = yield* withCloudServices(
-        linkEnvironmentToCloud({
+        linkEnvironmentToCloudWithPreference({
           clerkToken: "clerk-token",
           connection: savedConnection,
+          liveActivitiesEnabled: true,
         }),
       ).pipe(Effect.flip);
       expect(error).toMatchObject({
@@ -294,7 +286,6 @@ describe("mobile cloud link environment client", () => {
 
   it.effect("preserves disabled Live Activity preferences when linking an environment", () =>
     Effect.gen(function* () {
-      loadPreferences.mockReturnValueOnce(Effect.succeed({ liveActivitiesEnabled: false }));
       const bodies: Array<unknown> = [];
       const fetchMock = vi.fn((url: string | URL, init?: RequestInit) => {
         if (init?.body) {
@@ -317,9 +308,10 @@ describe("mobile cloud link environment client", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       yield* withCloudServices(
-        linkEnvironmentToCloud({
+        linkEnvironmentToCloudWithPreference({
           clerkToken: "clerk-token",
           connection: savedConnection,
+          liveActivitiesEnabled: false,
         }),
       );
 
@@ -346,9 +338,8 @@ describe("mobile cloud link environment client", () => {
     }),
   );
 
-  it.effect("uses an explicit Live Activity preference when persisted state is unavailable", () =>
+  it.effect("enables Live Activities for both the link challenge and registration", () =>
     Effect.gen(function* () {
-      loadPreferences.mockReturnValueOnce(Effect.die("persisted preferences must not be read"));
       const bodies: Array<Record<string, unknown>> = [];
       const fetchMock = vi.fn((url: string | URL, init?: RequestInit) => {
         if (init?.body) {

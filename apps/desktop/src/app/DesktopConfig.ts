@@ -29,6 +29,8 @@ export const DesktopConfig = Config.all({
   appUserModelIdOverride: trimmedString("T3CODE_DESKTOP_APP_USER_MODEL_ID"),
   commitHashOverride: trimmedString("T3CODE_COMMIT_HASH"),
   otlpTracesUrl: trimmedString("T3CODE_OTLP_TRACES_URL"),
+  otlpMetricsUrl: trimmedString("T3CODE_OTLP_METRICS_URL"),
+  otlpLogsUrl: trimmedString("T3CODE_OTLP_LOGS_URL"),
   otlpExportIntervalMs: Config.Int("T3CODE_OTLP_EXPORT_INTERVAL_MS").pipe(
     Config.withDefault(10_000),
   ),

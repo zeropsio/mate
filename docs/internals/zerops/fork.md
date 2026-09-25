@@ -116,16 +116,33 @@ unused; dead surfaces are `check-guard-exceptions.ts` and `surface-manifest.test
 this fork) and **upstream's release pipeline** (zcp owns the binary). Name any of them in a row only
 when the reason changes.
 
-Trigger: the drift watch (§7) or a monthly tick, whichever comes first. Steps (agent tasks):
+Trigger: the drift watch (§7) or a monthly tick, whichever comes first.
 
-1. **Triage**: `git log <last-reviewed>..upstream/main` → three lists only: (a) **every** commit
+**The fork never fetches upstream.** No upstream remote, no upstream refs, no upstream history in
+this repository — the owner's rule since row 5. Upstream lives in a scratch clone
+(`git clone --filter=blob:none https://github.com/pingdotgg/t3code.git`) where triage runs. A port is
+`git format-patch -1 --full-index --binary -M <sha>` in the clone, applied in a fork worktree with
+`git apply --3way` after writing only that commit's **preimage blobs** into the fork's object store
+(`git -C <clone> cat-file blob <pre> | git hash-object -w --stdin`) — content, never history — so the
+3-way merge has its base. Paths the fork deleted are excluded up front; a file the fork keeps at
+another path (row 5: `NodeSqliteClient.ts`) is ported by hand. Commits come out as
+`port: <sha9> <subject>` with no upstream references (PR numbers, handles, trailers). Row 5's
+helpers (`port.py`, `commit.py`, the CI-mirror `gate.sh`) did exactly this; the gate runs every
+`ci.yml` Check and Test step by exit code — after `vp install` in a fresh worktree, `hash -r`, or the
+shell keeps the main checkout's `vp` and the tests load its vite-plus.
+
+Steps (agent tasks):
+
+1. **Triage** (in the scratch clone): `git log <last-reviewed>..origin/main` → three lists only: (a) **every** commit
    that touches the ported zone (`-- apps/server/src/provider packages/contracts/src/provider*`),
    each either ported or named in the intake row with its reason — a ported-zone commit skipped by
    moving the SHA is a hidden prerequisite of the next intake (row 2 hid eight, every one found as a
    missing symbol under a later port); (b) `fix`/security in auth, http, ws, uploads → cherry-pick candidates; (c) ideas for
    the owner (the only list they read). Everything else is implicitly skipped by moving the SHA.
-2. **Import** the wire packages from the new SHA (one commit, lock regenerated). The import is
-   formatted with whatever vite-plus upstream used; when upstream moved the catalog, the bump rides in
+2. **Import** the wire packages from the new SHA (one commit, lock regenerated; the lock tool's
+   write mode resolves `<ref>:<path>` in the fork, where no upstream objects exist, so write the
+   lock from the scratch clone's tree OIDs and prove it with `imported-lock.ts --check`). The
+   import is formatted with whatever vite-plus upstream used; when upstream moved the catalog, the bump rides in
    the same commit — neither half is green alone (row 3: 0.2.2 → 0.3.0).
 3. **Port** the provider commits behind the SPI: fixtures replayed, matrix row added, live canary
    (§7) green on `z3-eval`. A port that lands a client test runs that package's whole test suite

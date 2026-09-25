@@ -1,0 +1,2634 @@
+[
+  {
+    "path": "apps/web/src/components/AppSidebarLayout.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Sidebar> border-r in \"border-r border-sidebar-border\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/AppSidebarLayout.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Sidebar> border-sidebar-border in \"border-r border-sidebar-border\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SelectTrigger> font-medium in \"min-w-0 shrink font-medium\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarEnvironmentSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SelectTrigger> font-medium in \"min-w-0 max-w-full font-medium\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/ComposerPromptEditor.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TooltipPopup> leading-tight in \"max-w-120 whitespace-normal leading-tight wrap-anywhere\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/ComposerPromptEditor.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TooltipPopup> leading-tight in \"max-w-120 whitespace-normal leading-tight\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/DiffPanelShell.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Skeleton> rounded-md in \"size-7 rounded-md\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/DiffPanelShell.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Skeleton> rounded-md in \"size-7 rounded-md\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> before:rounded-e-none in \"cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> border-e-0 in \"cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> opacity-64 in \"cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> ps-[8.5px] in \"cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> ps-[8.5px] in \"ps-[8.5px]\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-1.5 in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> rounded-[.25rem] in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> rounded-e-none in \"cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-[10px] in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-warning-foreground in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogFooter> dark:bg-transparent in \"dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogFooter> dark:border-transparent in \"dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogHeader> bg-foreground/[0.025] in \"border-b border-border/70 bg-foreground/[0.025] dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogHeader> border-b in \"border-b border-border/70 bg-foreground/[0.025] dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogHeader> border-border/70 in \"border-b border-border/70 bg-foreground/[0.025] dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogHeader> dark:bg-transparent in \"border-b border-border/70 bg-foreground/[0.025] dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogHeader> dark:border-transparent in \"border-b border-border/70 bg-foreground/[0.025] dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> bg-muted/20 in \"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> border-b in \"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> border-border/70 in \"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> dark:bg-transparent in \"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> dark:border-transparent in \"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> px-6 in \"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> py-5 in \"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> space-y-5 in \"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/RightPanelTabs.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ScrollArea> drag-region in \"drag-region\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> bg-sidebar-row-active in \"bg-sidebar-row-active text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:bg-sidebar-control-surface in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:bg-sidebar-control-surface in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:bg-sidebar-control-surface in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-sidebar-foreground in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-sidebar-foreground in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-sidebar-foreground in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> opacity-80 in \"z-20 opacity-80\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-sidebar-foreground in \"bg-sidebar-row-active text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-sidebar-muted-foreground in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-sidebar-muted-foreground in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-sidebar-muted-foreground in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuRadioItem> [&>span:last-child]:gap-2 in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuRadioItem> [&>span:last-child]:gap-2 in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuRadioItem> font-medium in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuRadioItem> font-medium in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuRadioItem> py-0 in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuRadioItem> py-0 in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuRadioItem> text-sm in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuRadioItem> text-sm in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> gap-1 in \"z-[1] gap-1\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> pb-1 in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> pe-[var(--sidebar-content-inset)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> ps-[calc(var(--sidebar-content-inset)+1px)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> pt-0 in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-2 in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-2 in \"relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-2 in \"relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-sidebar in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-sidebar in \"relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-sidebar in \"relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> font-medium in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> gap-2 in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> hover:text-sidebar-foreground in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> ps-[calc(var(--sidebar-row-content-inset)-1px)] in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> px-2 in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> text-sidebar-muted-foreground in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarMenuButton> text-sm in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> bg-background/80 in \"absolute right-1 top-1 bg-background/80 hover:bg-background/90\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> bg-background/85 in \"absolute bottom-1 left-1 bg-background/85 hover:bg-background/95\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> gap-2 in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:bg-background/90 in \"absolute right-1 top-1 bg-background/80 hover:bg-background/90\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:bg-background/95 in \"absolute bottom-1 left-1 bg-background/85 hover:bg-background/95\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-2 in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> sm:px-3 in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-secondary-label in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-foreground/80 in \"shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-2 in \"shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-muted-foreground/70 in \"shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> alert-glass in \"alert-glass rounded-2xl\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> chat-composer-drawer-attached in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> chat-composer-drawer-surface in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> pt-2 in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> px-3 in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> rounded-2xl in \"alert-glass rounded-2xl\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> sm:px-4 in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Alert> text-xs in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> font-normal in \"font-normal\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
+    "kind": "TemplateElement",
+    "fingerprint": "<Button> px-2.5 in } h-auto min-h-7 max-w-full px-2.5 py-1.5${",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingReviewComments.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TooltipPopup> leading-tight in \"max-w-96 whitespace-pre-wrap leading-tight\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Collapsible> py-2 in \"py-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CollapsiblePanel> px-3 in \"px-3 sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CollapsiblePanel> sm:px-4 in \"px-3 sm:px-4\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> [--control-icon-color:currentColor] in \"[--control-icon-color:currentColor] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> gap-1 in \"shrink-0 gap-1 px-1.5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-1.5 in \"shrink-0 gap-1 px-1.5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-foreground in \"[--control-icon-color:currentColor] text-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> [--control-icon-color:currentColor] in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> focus-visible:opacity-100 in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> group-focus-within/stash:opacity-100 in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> group-hover/stash:opacity-100 in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> opacity-0 in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> pointer-coarse:opacity-100 in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> shadow-none! in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> transition-opacity in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> bg-accent! in \"bg-accent! text-accent-foreground!\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> data-highlighted:bg-transparent in \"group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> data-highlighted:text-inherit in \"group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> gap-3 in \"group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> hover:bg-transparent in \"group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> hover:text-inherit in \"group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> px-3 in \"group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> py-1.5! in \"group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> rounded-lg in \"group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<CommandItem> text-accent-foreground! in \"bg-accent! text-accent-foreground!\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> gap-1 in \"shrink-0 gap-1 px-1.5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-1.5 in \"shrink-0 gap-1 px-1.5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> border-b in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> border-dotted in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> border-foreground/60 in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:outline-hidden in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:ring-2 in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:ring-ring in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:rounded-sm in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> hover:border-foreground/80 in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> text-foreground in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> transition-colors in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> truncate in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:bg-white/10 in \"absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:bg-white/10 in \"absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-white in \"absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-white in \"absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-white/90 in \"absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-white/90 in \"absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-0 in \"mt-1 px-0 text-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-foreground in \"mt-1 px-0 text-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxEmpty> font-normal in \"not-empty:py-6 empty:h-0 text-xs font-normal leading-snug\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxEmpty> leading-snug in \"not-empty:py-6 empty:h-0 text-xs font-normal leading-snug\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxEmpty> not-empty:py-6 in \"not-empty:py-6 empty:h-0 text-xs font-normal leading-snug\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxEmpty> text-xs in \"not-empty:py-6 empty:h-0 text-xs font-normal leading-snug\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxInput> [&_input]:font-sans in \"[&_input]:h-6.5 [&_input]:font-sans [&_input]:leading-6.5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxInput> [&_input]:leading-6.5 in \"[&_input]:h-6.5 [&_input]:font-sans [&_input]:leading-6.5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxItem> px-2 in \"group w-full cursor-pointer rounded-md px-2 py-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxItem> py-2 in \"group w-full cursor-pointer rounded-md px-2 py-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxItem> rounded-md in \"group w-full cursor-pointer rounded-md px-2 py-2\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
+    "kind": "Literal",
+    "fingerprint": "<ComboboxListVirtualized> not-empty:p-0 in \"not-empty:p-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/TerminalContextInlineChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TooltipPopup> leading-tight in \"max-w-80 whitespace-pre-wrap leading-tight\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-2 in \"h-7 px-2 text-xs\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-xs in \"h-7 px-2 text-xs\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> bg-zinc-25/80 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> dark:bg-white/2 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> dark:ring-white/5 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> px-6 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> py-5 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> ring-1 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> ring-black/5 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> space-y-4 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> rounded-md in \"h-7 w-44 rounded-md text-[12px] sm:h-7\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> text-[12px] in \"h-7 w-44 rounded-md text-[12px] sm:h-7\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> bg-background in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> bg-background in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> border in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> border in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> border-input in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> border-input in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:border-ring in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:border-ring in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-[3px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-[3px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-ring/24 in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-ring/24 in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> font-mono in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> font-mono in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> gap-2 in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> gap-2 in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> hover:bg-accent in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> hover:bg-accent in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> outline-none in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> outline-none in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> px-2.5 in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> px-2.5 in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> rounded-md in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> rounded-md in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> shadow-xs/5 in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> shadow-xs/5 in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-[12px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-[12px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-foreground in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-foreground in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-muted-foreground in \"text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-muted-foreground in \"text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> transition-colors in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> transition-colors in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> group-focus-within:opacity-100 in \"shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> group-hover:opacity-100 in \"shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> opacity-0 in \"shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-muted-foreground in \"shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarInset> bg-background in \"h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarInset> text-foreground in \"h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> opacity-0 in \"pointer-events-none opacity-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> opacity-100 in \"opacity-100\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-muted-foreground in \"size-7 shrink-0 text-muted-foreground transition-opacity\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> transition-opacity in \"size-7 shrink-0 text-muted-foreground transition-opacity\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> gap-1.5 in \"h-7 gap-1.5 px-2 text-xs\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-update-foreground in \"text-update-foreground hover:text-update-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-warning in \"text-warning hover:text-warning\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> p-0 in \"size-5 rounded-sm p-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> p-0 in \"size-6 shrink-0 rounded-sm p-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-2 in \"h-7 gap-1.5 px-2 text-xs\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> rounded-sm in \"size-5 rounded-sm p-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> rounded-sm in \"size-6 shrink-0 rounded-sm p-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-update-foreground in \"text-update-foreground hover:text-update-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-warning in \"text-warning hover:text-warning\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-xs in \"h-7 gap-1.5 px-2 text-xs\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableHeader> bg-muted/25 in \"bg-muted/25 text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableHeader> text-[11px] in \"bg-muted/25 text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableHeader> text-muted-foreground in \"bg-muted/25 text-[11px] text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableRow> border-border/60 in \"border-border/60 odd:bg-muted/20 even:bg-background/20\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableRow> even:bg-background/20 in \"border-border/60 odd:bg-muted/20 even:bg-background/20\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableRow> hover:bg-transparent in \"hover:bg-transparent\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableRow> odd:bg-muted/20 in \"border-border/60 odd:bg-muted/20 even:bg-background/20\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-muted-foreground in \"text-muted-foreground/60 hover:text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-muted-foreground/60 in \"text-muted-foreground/60 hover:text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Collapsible> border-border/70 in \"mt-2 border-t border-border/70\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Collapsible> border-t in \"mt-2 border-t border-border/70\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> gap-1.5 in \"h-7 shrink-0 cursor-pointer gap-1.5 px-2.5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-2.5 in \"h-7 shrink-0 cursor-pointer gap-1.5 px-2.5\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsSidebarNav.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SourceControlSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> gap-1.5 in \"h-8 gap-1.5 px-3 text-xs\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SourceControlSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> px-3 in \"h-8 gap-1.5 px-3 text-xs\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SourceControlSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-xs in \"h-8 gap-1.5 px-3 text-xs\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarHeader> drag-region in \"drag-region\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarHeader> md:px-0 in \"@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarHeader> px-3 in \"@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarHeader> py-0 in \"@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarUpdatePill.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Separator> bg-border/60 in \"my-3 bg-border/60\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarUpdatePill.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TooltipPopup> text-balance in \"pointer-events-auto text-balance\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsagePriceOverrides.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> gap-5 in \"grid gap-5 space-y-0 pb-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsagePriceOverrides.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> pb-6 in \"grid gap-5 space-y-0 pb-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsagePriceOverrides.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> space-y-0 in \"grid gap-5 space-y-0 pb-6\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> data-popup-open:bg-sidebar-row-active in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:ring-2 in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:ring-ring in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> gap-2.5 in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> hover:bg-sidebar-row-hover in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> outline-none in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> p-1.5 in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> rounded-md in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> transition-colors in \"flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> data-popup-open:bg-sidebar-row-active in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> data-popup-open:text-sidebar-foreground in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:ring-2 in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:ring-ring in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> hover:bg-sidebar-row-hover in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> hover:text-sidebar-foreground in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> outline-none in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> rounded in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> text-sidebar-muted-foreground in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> transition-colors in \"inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPopup> p-0 in \"h-[min(1080px,calc(100dvh-3rem))] max-w-[min(1720px,calc(100vw-3rem))] overflow-hidden p-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> space-y-0 in \"space-y-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-2 in \"flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-ring in \"flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> gap-1 in \"flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> leading-4 in \"flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> outline-none in \"flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> rounded-sm in \"flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-muted-foreground in \"flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> text-xs in \"flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> bg-transparent in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> border-0 in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> focus-visible:ring-0 in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> px-1 in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> shadow-none in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> text-xs in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Input> text-xs in \"h-7 text-xs\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataTable.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableHeader> bg-card in \"sticky top-0 z-10 bg-card\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataTable.tsx",
+    "kind": "Literal",
+    "fingerprint": "<TableRow> bg-accent in \"bg-accent\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> gap-5 in \"flex flex-col gap-5 space-y-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> space-y-0 in \"flex flex-col gap-5 space-y-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<RadioGroup> gap-2 in \"gap-2\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-muted-foreground in \"my-1 text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> gap-5 in \"flex flex-col gap-5 space-y-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<DialogPanel> space-y-0 in \"flex flex-col gap-5 space-y-0\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<RadioGroup> gap-2 in \"flex-row flex-wrap gap-2\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "<RadioGroup> gap-2 in \"gap-2\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-muted-foreground in \"size-7 text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> text-muted-foreground in \"text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> data-popup-open:bg-sidebar-row-active in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> data-popup-open:text-sidebar-foreground in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:ring-2 in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> focus-visible:ring-ring in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> hover:bg-sidebar-row-hover in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> hover:text-sidebar-foreground in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> outline-none in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> rounded in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> text-sidebar-muted-foreground in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "Literal",
+    "fingerprint": "<MenuTrigger> transition-colors in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-2 in \"block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> focus-visible:ring-ring in \"block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+    "kind": "Literal",
+    "fingerprint": "<PopoverTrigger> outline-none in \"block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> data-popup-open:bg-accent in \"min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> gap-2 in \"min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> pe-2 in \"min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> ps-1 in \"min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsHostedFrame.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarInset> bg-background in \"h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsHostedFrame.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarInset> text-foreground in \"h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> bg-muted in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> border in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> border-border in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> font-mono in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> px-1.5 in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> rounded-[var(--zerops-key-chip-radius)] in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> text-muted-foreground in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Kbd> text-xs in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.$environmentId.$threadId.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarInset> bg-background in \"h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.$environmentId.$threadId.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarInset> text-foreground in \"h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.draft.$draftId.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarInset> bg-background in \"h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.draft.$draftId.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarInset> text-foreground in \"h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.index.tsx",
+    "kind": "Literal",
+    "fingerprint": "<EmptyDescription> text-muted-foreground/78 in \"mt-2 text-muted-foreground/78\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.index.tsx",
+    "kind": "Literal",
+    "fingerprint": "<EmptyTitle> sm:text-3xl in \"text-foreground text-2xl sm:text-3xl\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.index.tsx",
+    "kind": "Literal",
+    "fingerprint": "<EmptyTitle> text-2xl in \"text-foreground text-2xl sm:text-3xl\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.index.tsx",
+    "kind": "Literal",
+    "fingerprint": "<EmptyTitle> text-foreground in \"text-foreground text-2xl sm:text-3xl\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  }
+]

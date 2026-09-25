@@ -3,7 +3,11 @@ import {
   makeTraceSink,
   otlpSerializationLayer,
 } from "@t3tools/shared/observability";
-import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
+import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
+import {
+  parsePersistedServerObservabilitySettings,
+  type PersistedServerObservabilitySettings,
+} from "@t3tools/shared/serverSettings";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -11,7 +15,7 @@ import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as References from "effect/References";
 import * as Tracer from "effect/Tracer";
-import { OtlpExporter, OtlpTracer } from "effect/unstable/observability";
+import { OtlpExporter, OtlpLogger, OtlpTracer } from "effect/unstable/observability";
 
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
@@ -53,76 +57,149 @@ export function makeComponentLogger(component: string): DesktopComponentLogger {
   };
 }
 
-const readPersistedOtlpTracesUrl: Effect.Effect<
-  Option.Option<string>,
+const noPersistedObservabilitySettings: PersistedServerObservabilitySettings = {
+  otlpTracesUrl: undefined,
+  otlpMetricsUrl: undefined,
+  otlpLogsUrl: undefined,
+};
+
+const readPersistedObservabilitySettings: Effect.Effect<
+  PersistedServerObservabilitySettings,
   never,
   FileSystem.FileSystem | DesktopEnvironment.DesktopEnvironment
 > = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const raw = yield* fileSystem.readFileString(environment.serverSettingsPath).pipe(Effect.option);
-  if (Option.isNone(raw)) {
-    return Option.none();
-  }
-
-  const parsed = parsePersistedServerObservabilitySettings(raw.value);
-  return Option.fromNullishOr(parsed.otlpTracesUrl);
+  return Option.isNone(raw)
+    ? noPersistedObservabilitySettings
+    : parsePersistedServerObservabilitySettings(raw.value);
 });
 
-const resolveOtlpTracesUrl = Effect.gen(function* () {
+/**
+ * Settings is read once for every signal, so the main process cannot
+ * resolve traces against one revision of the file and logs against another.
+ */
+const resolveOtlpEndpoints = Effect.gen(function* () {
+  const otel = yield* OtelEnvironment.load;
+  if (otel.disabled) {
+    return {
+      traces: undefined,
+      metrics: undefined,
+      logs: undefined,
+      warnings: otel.warnings,
+      resourceAttributes: otel.resourceAttributes,
+    };
+  }
+
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
-  if (Option.isSome(environment.otlpTracesUrl)) {
-    return environment.otlpTracesUrl;
-  }
-  return yield* readPersistedOtlpTracesUrl;
+  const persisted = yield* readPersistedObservabilitySettings;
+  return {
+    traces: Option.getOrUndefined(environment.otlpTracesUrl) ?? persisted.otlpTracesUrl,
+    metrics: Option.getOrUndefined(environment.otlpMetricsUrl) ?? persisted.otlpMetricsUrl,
+    logs: Option.getOrUndefined(environment.otlpLogsUrl) ?? persisted.otlpLogsUrl,
+    warnings: otel.warnings,
+    resourceAttributes: otel.resourceAttributes,
+  };
 });
 
-const desktopLoggerLayer = Layer.mergeAll(
-  Logger.layer([Logger.consolePretty(), Logger.tracerLogger], { mergeWithExisting: false }),
-  Layer.succeed(References.MinimumLogLevel, "Info"),
-);
-
-const tracerLayer = Layer.unwrap(
+/**
+ * Logs and traces for the main process, assembled together because they share
+ * one read of the environment and Settings, and because a process gets exactly
+ * one logger set.
+ */
+const telemetryLayer = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    const otlpTracesUrl = yield* resolveOtlpTracesUrl;
-    const tracePath = environment.path.join(environment.logDir, "desktop.trace.ndjson");
-    const sink = yield* makeTraceSink({
-      filePath: tracePath,
-      maxBytes: DESKTOP_LOG_FILE_MAX_BYTES,
-      maxFiles: DESKTOP_LOG_FILE_MAX_FILES,
-      batchWindowMs: DESKTOP_TRACE_BATCH_WINDOW_MS,
-    });
-    const delegate = Option.isNone(otlpTracesUrl)
-      ? undefined
-      : yield* OtlpTracer.make({
-          url: otlpTracesUrl.value,
-          exportInterval: `${environment.otlpExportIntervalMs} millis`,
-          headers: Option.getOrUndefined(environment.otlpHeaders),
-          resource: {
-            serviceName: "desktop",
-            attributes: {
-              "service.runtime": "desktop",
-              "service.mode": environment.isDevelopment ? "development" : "packaged",
-            },
-          },
-        }).pipe(Effect.provide(otlpSerializationLayer(environment.otlpProtocol)));
-    const tracer = yield* makeLocalFileTracer({
-      filePath: tracePath,
-      maxBytes: DESKTOP_LOG_FILE_MAX_BYTES,
-      maxFiles: DESKTOP_LOG_FILE_MAX_FILES,
-      batchWindowMs: DESKTOP_TRACE_BATCH_WINDOW_MS,
-      sink,
-      ...(delegate ? { delegate } : {}),
-    });
+    const endpoints = yield* resolveOtlpEndpoints;
+    const headers = Option.getOrUndefined(environment.otlpHeaders);
+    const serializationLayer = otlpSerializationLayer(environment.otlpProtocol);
+    const resource = {
+      serviceName: "desktop",
+      attributes: {
+        "service.runtime": "desktop",
+        "service.mode": environment.isDevelopment ? "development" : "packaged",
+      },
+    };
 
-    return Layer.succeed(Tracer.Tracer, tracer);
+    // `Logger.layer` writes the whole logger set rather than adding to it, so
+    // every logger the main process wants has to be named in this one call.
+    // Splitting the OTLP logger back out into a layer of its own silently
+    // drops either it or the console output.
+    //
+    // Swapping `Logger.tracerLogger` out for the OTLP logger matches the
+    // server: both reach a collector, but the tracer logger covers only
+    // messages logged inside a recorded span and files them under traces,
+    // while the OTLP logger carries every message as a log record stamped
+    // with its trace and span ids. Keeping both would export every in-span
+    // message twice.
+    const loggerLayer = Logger.layer(
+      endpoints.logs === undefined
+        ? [Logger.consolePretty(), Logger.tracerLogger]
+        : [
+            Logger.consolePretty(),
+            OtlpLogger.make({
+              url: endpoints.logs,
+              exportInterval: `${environment.otlpExportIntervalMs} millis`,
+              headers,
+              resource,
+            }),
+          ],
+      { mergeWithExisting: false },
+    ).pipe(Layer.provide(OtlpExporter.layerFlusher), Layer.provide(serializationLayer));
+
+    const tracerLayer = Layer.unwrap(
+      Effect.gen(function* () {
+        const tracePath = environment.path.join(environment.logDir, "desktop.trace.ndjson");
+        const sink = yield* makeTraceSink({
+          filePath: tracePath,
+          maxBytes: DESKTOP_LOG_FILE_MAX_BYTES,
+          maxFiles: DESKTOP_LOG_FILE_MAX_FILES,
+          batchWindowMs: DESKTOP_TRACE_BATCH_WINDOW_MS,
+        });
+        const delegate =
+          endpoints.traces === undefined
+            ? undefined
+            : yield* OtlpTracer.make({
+                url: endpoints.traces,
+                exportInterval: `${environment.otlpExportIntervalMs} millis`,
+                headers,
+                resource,
+              }).pipe(Effect.provide(serializationLayer));
+        const tracer = yield* makeLocalFileTracer({
+          filePath: tracePath,
+          maxBytes: DESKTOP_LOG_FILE_MAX_BYTES,
+          maxFiles: DESKTOP_LOG_FILE_MAX_FILES,
+          batchWindowMs: DESKTOP_TRACE_BATCH_WINDOW_MS,
+          sink,
+          ...(delegate ? { delegate } : {}),
+        });
+
+        return Layer.succeed(Tracer.Tracer, tracer);
+      }),
+    ).pipe(Layer.provide(OtlpExporter.layerFlusher));
+
+    // Metrics stay off until the main process records one: `OtlpMetrics`
+    // exports on every interval even when the registry is empty, so wiring it
+    // up would post an empty payload every ten seconds to any collector
+    // configured for the server. Add an `OtlpMetrics.layer` on
+    // `endpoints.metrics` here when a desktop metric exists.
+
+    // Logged once the loggers above are installed, so the warnings use them.
+    const otelWarningsLayer = Layer.effectDiscard(
+      Effect.forEach(endpoints.warnings, (warning) => Effect.logWarning(warning)),
+    );
+
+    return otelWarningsLayer.pipe(
+      Layer.provideMerge(Layer.mergeAll(loggerLayer, tracerLayer)),
+      Layer.provide(OtelEnvironment.layerResourceAttributes(endpoints.resourceAttributes)),
+    );
   }),
-).pipe(Layer.provide(OtlpExporter.layerFlusher));
+);
 
 export const layer = Layer.mergeAll(
-  desktopLoggerLayer,
-  tracerLayer,
+  telemetryLayer,
+  Layer.succeed(References.MinimumLogLevel, "Info"),
   Layer.succeed(Tracer.MinimumTraceLevel, "Info"),
   Layer.succeed(References.TracerTimingEnabled, true),
 );

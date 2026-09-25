@@ -15,7 +15,7 @@ describe("ComposerStashBadge", () => {
       />,
     );
 
-    expect(markup).toContain("chat-composer-stash-tab");
+    expect(markup).toContain("chat-composer-shoulder-tab");
     expect(markup).toContain("rounded-t-xl");
     expect(markup).toContain("border-b-0");
     expect(markup).toContain("items-center");
@@ -61,7 +61,7 @@ describe("ComposerStashBadge", () => {
     expect(markup).toContain("pointer-coarse:after:min-h-11");
     expect(markup).toContain("Stashed prompts: 3. Open stash.");
     expect(markup).toContain('aria-expanded="true"');
-    expect(markup).not.toContain("chat-composer-stash-tab");
+    expect(markup).not.toContain("chat-composer-shoulder-tab");
     expect(markup).not.toContain("rounded-t-xl");
     expect(markup).not.toContain(" pointer-events-none ");
   });

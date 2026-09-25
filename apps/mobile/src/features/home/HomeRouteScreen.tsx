@@ -11,7 +11,6 @@ import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { WorkspaceEmptyDetail } from "../layout/WorkspaceEmptyDetail";
-import { WorkspaceSidebarToolbar } from "../layout/workspace-sidebar-toolbar";
 import { checkForAppUpdateOnLaunch, startAppUpdateForegroundRecheck } from "../updates/app-updates";
 import { AndroidHomeFabLayout } from "./AndroidHomeFab";
 import { HomeScreen } from "./HomeScreen";
@@ -49,6 +48,7 @@ export function HomeRouteScreen() {
     unsnoozeThread,
     pinThread,
     unpinThread,
+    setThreadAutoSettle,
     movePinnedThread,
     renameThread,
     regenerateThreadTitle,
@@ -113,15 +113,15 @@ export function HomeRouteScreen() {
               : { title: "", headerTitle: "", unstable_headerLeftItems: () => [] }
           }
         />
-        <WorkspaceSidebarToolbar
-          afterSidebarButton={
+        {Platform.OS === "ios" ? (
+          <NativeHeaderToolbar placement="left">
             <NativeHeaderToolbar.Button
               accessibilityLabel="New task"
               icon="square.and.pencil"
               onPress={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
             />
-          }
-        />
+          </NativeHeaderToolbar>
+        ) : null}
         <WorkspaceEmptyDetail
           onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
         />
@@ -192,6 +192,7 @@ export function HomeRouteScreen() {
           onUnsettleThread={unsettleThread}
           onPinThread={pinThread}
           onUnpinThread={unpinThread}
+          onSetThreadAutoSettle={setThreadAutoSettle}
           onMovePinnedThread={movePinnedThread}
           onRenameThread={renameThread}
           onRegenerateThreadTitle={regenerateThreadTitle}

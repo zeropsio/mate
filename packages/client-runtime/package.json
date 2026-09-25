@@ -87,6 +87,10 @@
       "types": "./src/state/attachments.ts",
       "default": "./src/state/attachments.ts"
     },
+    "./delayed-status": {
+      "types": "./src/delayedStatus.ts",
+      "default": "./src/delayedStatus.ts"
+    },
     "./state/connections": {
       "types": "./src/state/connections.ts",
       "default": "./src/state/connections.ts"

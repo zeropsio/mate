@@ -163,6 +163,15 @@ Mounted detail consumers share one live thread subscription. The subscription
 ends when the last consumer leaves. Hidden routes that remain mounted still
 count as consumers.
 
+The desktop app adds one consumer: a
+[keep-alive](../../apps/web/src/state/threads.ts) mounts every thread whose
+session is starting or running, in each saved environment. Opening a running
+thread then needs no replay. The shell and detail streams are independent, so
+the shell can report a stop before the detail loads or catches up. A stopped
+thread stays mounted until its own stream is live and shows the stop, and the
+stream then closes and saves the settled state. Web and mobile do not keep
+threads alive.
+
 A separate registry-local atom retains the last thread state and replay cursor
 for five idle minutes. A warm mount renders that state and resumes the stream
 without another snapshot download. The cache holds completed state and cursor

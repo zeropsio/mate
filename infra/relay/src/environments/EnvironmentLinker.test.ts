@@ -182,9 +182,7 @@ function testLayer(input?: {
         }),
         Layer.succeed(EnvironmentLinks.EnvironmentLinks, {
           upsert: input?.upsert ?? (() => Effect.void),
-          listUsersForEnvironment: () => Effect.succeed([]),
           listDeliveryUsersForEnvironment: () => Effect.succeed([]),
-          listPublicKeysForEnvironment: () => Effect.succeed([]),
         }),
         Layer.succeed(EnvironmentCredentials.EnvironmentCredentials, {
           create: () => Effect.succeed("t3env_credential_secret"),

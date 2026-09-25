@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangleIcon,
   ArrowUpCircleIcon,
   CopyIcon,
   DownloadIcon,
@@ -334,8 +335,8 @@ function ProviderEnvironmentSection(props: {
                       <Button
                         type="button"
                         size="icon-sm"
-                        variant="ghost"
-                        className="size-8 text-muted-foreground hover:text-destructive"
+                        variant="ghost-destructive"
+                        className="size-8"
                         onClick={() => removeVariable(variable.id)}
                         aria-label={`Remove environment variable ${variable.name || index + 1}`}
                       >
@@ -446,8 +447,28 @@ export function ProviderInstanceCard({
   const authEmail = liveProvider?.auth.email;
   const showEditorStatus = enabled && (statusKey === "warning" || statusKey === "error");
   const versionLabel = getProviderVersionLabel(liveProvider?.version);
-  const versionAdvisory = getProviderVersionAdvisoryPresentation(liveProvider?.versionAdvisory);
+  const compatibility = enabled ? liveProvider?.compatibilityAdvisory : undefined;
+  const versionAdvisory = getProviderVersionAdvisoryPresentation(
+    liveProvider?.versionAdvisory,
+    liveProvider?.compatibilityAdvisory,
+    enabled,
+  );
   const updateCommand = versionAdvisory?.updateCommand ?? null;
+  const hasCompatibilityWarning =
+    compatibility !== undefined &&
+    compatibility.status !== "supported" &&
+    compatibility.status !== "unknown";
+  const compatibilityLabel = hasCompatibilityWarning
+    ? compatibility?.status === "broken"
+      ? "Incompatible"
+      : compatibility?.status === "unsupported"
+        ? "Unsupported"
+        : "Limited support"
+    : null;
+  const VersionAdvisoryIcon = hasCompatibilityWarning ? AlertTriangleIcon : ArrowUpCircleIcon;
+  // A recommended pin is not installed from here: the image owns the CLI and a
+  // container restart would put its own version back.
+  const onRunVersionAction = versionAdvisory?.targetVersion ? undefined : onRunUpdate;
   const FallbackIconComponent = driverOption?.icon;
   const displayName =
     instance.displayName?.trim() || driverOption?.label || String(instance.driver);
@@ -551,7 +572,7 @@ export function ProviderInstanceCard({
       showBadge={Boolean(accentColor)}
       className="size-5"
       iconClassName="size-4 text-foreground/80"
-      badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-[7px]"
+      badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-3xs"
     />
   ) : FallbackIconComponent ? (
     <span className="inline-flex size-5 shrink-0 items-center justify-center">
@@ -559,7 +580,7 @@ export function ProviderInstanceCard({
     </span>
   ) : (
     <span
-      className="inline-flex size-5 shrink-0 items-center justify-center text-[10px] font-semibold leading-none text-foreground/80"
+      className="inline-flex size-5 shrink-0 items-center justify-center text-3xs font-semibold leading-none text-foreground/80"
       aria-hidden
     >
       {providerInstanceInitials(displayName)}
@@ -599,8 +620,7 @@ export function ProviderInstanceCard({
               render={
                 <Button
                   size="icon-micro"
-                  variant="ghost"
-                  className="text-muted-foreground hover:text-destructive"
+                  variant="ghost-destructive"
                   onClick={onDelete}
                   aria-label={`Delete provider instance ${instanceId}`}
                 >
@@ -645,7 +665,10 @@ export function ProviderInstanceCard({
             </span>
             <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className={cn("size-1.5 shrink-0 rounded-full", statusStyle.dot)} />
-              <span className="truncate">{summary.headline}</span>
+              <span className="truncate">
+                {summary.headline}
+                {compatibilityLabel ? ` · ${compatibilityLabel}` : null}
+              </span>
             </span>
             {String(instanceId) !== String(instance.driver) ? (
               <code className="mt-0.5 block truncate text-[10px] text-muted-foreground/70">
@@ -692,21 +715,17 @@ export function ProviderInstanceCard({
                           ? "text-warning hover:text-warning"
                           : "text-update-foreground hover:text-update-foreground",
                       )}
-                      aria-label="Update available — view details"
+                      aria-label={`${versionAdvisory.title} — view details`}
                     >
-                      <ArrowUpCircleIcon className="size-3.5" />
+                      <VersionAdvisoryIcon className="size-3.5" />
                     </Button>
                   }
                 />
-                <PopoverPopup
-                  side="bottom"
-                  align="start"
-                  className="w-[min(21rem,calc(100vw-1.5rem))] [--popup-width:min(21rem,calc(100vw-1.5rem))]"
-                >
+                <PopoverPopup side="bottom" align="start" width="md">
                   <div className="grid min-w-0 gap-3">
                     <div className="grid gap-0.5">
-                      <p className="text-[13px] font-semibold leading-tight text-foreground">
-                        Update available
+                      <p className="text-sm font-semibold leading-tight text-foreground">
+                        {versionAdvisory.title}
                       </p>
                       <p
                         className={cn(
@@ -719,21 +738,21 @@ export function ProviderInstanceCard({
                         {versionAdvisory.detail}
                       </p>
                     </div>
-                    {onRunUpdate ? (
+                    {onRunVersionAction ? (
                       <Button
                         type="button"
                         size="xs"
                         variant="default"
                         className="w-full"
                         disabled={isUpdating}
-                        onClick={onRunUpdate}
+                        onClick={onRunVersionAction}
                       >
                         {isUpdating ? <LoaderIcon className="animate-spin" /> : <DownloadIcon />}
                         {isUpdating ? "Updating" : "Update now"}
                       </Button>
                     ) : null}
-                    {onRunUpdate && updateCommand ? (
-                      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {onRunVersionAction && updateCommand ? (
+                      <div className="flex items-center gap-2 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
                         <span aria-hidden className="h-px flex-1 bg-border" />
                         or, update manually using
                         <span aria-hidden className="h-px flex-1 bg-border" />
@@ -741,7 +760,7 @@ export function ProviderInstanceCard({
                     ) : null}
                     {updateCommand ? (
                       <div className="flex min-w-0 items-center gap-1 rounded-md border border-border/70 bg-muted/40 py-0.5 pr-0.5 pl-2">
-                        <ScrollArea scrollFade className="h-8 min-w-0 flex-1 rounded-none">
+                        <ScrollArea radius="none" scrollFade className="h-8 min-w-0 flex-1">
                           <code className="flex h-full w-max items-center whitespace-nowrap pr-3 font-mono text-[11px] text-foreground">
                             {updateCommand}
                           </code>
@@ -752,8 +771,8 @@ export function ProviderInstanceCard({
                               <Button
                                 type="button"
                                 size="icon-xs"
-                                variant="ghost"
-                                className="size-6 shrink-0 rounded-sm p-0 text-muted-foreground hover:text-foreground"
+                                variant="ghost-muted"
+                                className="size-6 shrink-0 rounded-sm p-0"
                                 onClick={() =>
                                   copyToClipboard(updateCommand, {
                                     providerName: displayName,
