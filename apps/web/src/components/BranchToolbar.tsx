@@ -47,7 +47,7 @@ import {
 } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
-import { Button } from "./ui/button";
+import { ComposerControl } from "./chat/ComposerControl";
 import {
   Menu,
   MenuGroup,
@@ -163,8 +163,8 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   return (
     <Menu>
       <MenuTrigger
-        render={<Button variant="ghost" size="xs" />}
-        className="min-w-0 max-w-[48%] flex-1 justify-start text-muted-foreground/70 hover:text-foreground/80 md:hidden"
+        render={<ComposerControl size="xs" />}
+        className="min-w-0 max-w-[48%] flex-1 justify-start md:hidden"
         data-composer-shortcut={[
           showEnvironmentPicker && !envLocked ? "composer.host" : "",
           !envModeLocked ? "composer.workspace" : "",
