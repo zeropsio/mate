@@ -305,7 +305,7 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
       vi.unstubAllGlobals();
     });
 
-    const opened = async (carried: ReturnType<typeof carriedOf>) => {
+    const opened = async (shown: FlowReleaseRow, carried: ReturnType<typeof carriedOf>) => {
       const document = new SvgDocument("#document", null, 9);
       vi.stubGlobal("document", document);
       vi.stubGlobal("window", { document, HTMLIFrameElement: TestNode });
@@ -313,10 +313,10 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
       const container = document.createElement("div");
       const root = createRoot(container as unknown as Element);
       await act(async () => {
-        root.render(carriedRows([NEWEST], carried));
+        root.render(carriedRows([shown], carried));
       });
       const chevron = elementsOf(container, "button").find(
-        (button) => button.getAttribute("aria-label") === "Show what v0.1.27 carried",
+        (button) => button.getAttribute("aria-label") === `Show what ${shown.tag} carried`,
       );
       expect(chevron).toBeDefined();
       await act(async () => {
@@ -338,6 +338,7 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     it.each([
       [
         "lists the commits it carried, each with its short sha",
+        NEWEST,
         carriedOf(
           [TITAN_RELEASES[0]!, titanRelease("v0.1.20", "3dd0000")],
           TITAN_ONLY,
@@ -347,11 +348,13 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
       ],
       [
         "says the history is being read",
+        NEWEST,
         carriedOf(TITAN_RELEASES, TITAN_ONLY, new Map([["titan", { kind: "reading" }]])),
         ["Reading the history\u2026"],
       ],
       [
         "says why the history could not be read",
+        NEWEST,
         carriedOf(
           TITAN_RELEASES,
           TITAN_ONLY,
@@ -359,10 +362,23 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
         ),
         ["Gitea answered 502."],
       ],
-    ] as const)("%s", async (_case, carried, has) => {
-      const { text, expanded, label } = await opened(carried);
+      [
+        "lists one repository's commits and says why another's could not be read",
+        row(SPLIT_RELEASES[0]!, 1),
+        carriedOf(
+          SPLIT_RELEASES,
+          SPLIT,
+          new Map<string, ZeropsCommitsState>([
+            ["api", read(API)],
+            ["web", { kind: "failed", reason: "Gitea answered 502." }],
+          ]),
+        ),
+        ["api", "Fix the cart", "web", "Gitea answered 502."],
+      ],
+    ] as const)("%s", async (_case, shown, carried, has) => {
+      const { text, expanded, label } = await opened(shown, carried);
       expect(expanded).toBe("true");
-      expect(label).toBe("Hide what v0.1.27 carried");
+      expect(label).toBe(`Hide what ${shown.tag} carried`);
       for (const part of has) expect(text).toContain(part);
     });
   });

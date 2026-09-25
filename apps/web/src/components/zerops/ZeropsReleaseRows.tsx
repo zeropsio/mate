@@ -7,7 +7,7 @@ import {
   type ReleaseServiceChange,
 } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
@@ -142,16 +142,20 @@ function CarriedReleaseRow({
 }) {
   const [open, setOpen] = useState(false);
   const changes = carried.changes.get(release.tag) ?? [];
-  // The first of this release's repositories whose commits are not read: its
-  // note is what the row opens onto until they are.
-  const waiting = [
-    ...new Set(release.entries.map((entry) => carried.repositoryOf.get(entry.service))),
-  ].flatMap((repository) => {
-    const state = repository === undefined ? undefined : carried.reads.get(repository);
-    return repository === undefined || state === undefined || state.kind === "read"
-      ? []
-      : [{ repository, state }];
-  })[0];
+  // This release's repositories whose commits are not read, each named by its
+  // first service: their notes stand beside the commits that were.
+  const serviceOf = new Map<string, string>();
+  for (const entry of release.entries) {
+    const repository = carried.repositoryOf.get(entry.service);
+    if (repository !== undefined && !serviceOf.has(repository)) {
+      serviceOf.set(repository, entry.service);
+    }
+  }
+  const waiting = [...serviceOf].flatMap(([repository, service]) => {
+    const state = carried.reads.get(repository);
+    return state === undefined || state.kind === "read" ? [] : [{ service, repository, state }];
+  });
+  const named = changes.length + waiting.length > 1;
   // A refused release's line is the broker's reason, and the reason stays.
   const description =
     changes.length === 0 || (release.verdict === "refused" && release.detail !== undefined)
@@ -163,28 +167,29 @@ function CarriedReleaseRow({
       expansion={
         open ? (
           <div className="flex flex-col gap-1 pl-7.5" data-zerops-surface="release-carried">
-            {changes.length > 0 ? (
-              changes.map((change) => (
-                <ReleaseServiceCommits
-                  change={change}
-                  forge={carried.forge}
-                  key={change.repository}
-                  named={changes.length > 1}
-                  names={carried.names}
-                />
-              ))
-            ) : waiting === undefined ? null : (
-              <ZeropsHistoryView
-                commits={waiting.state}
+            {changes.map((change) => (
+              <ReleaseServiceCommits
+                change={change}
+                forge={carried.forge}
+                key={change.repository}
+                named={named}
                 names={carried.names}
-                request={{ repo: waiting.repository, deployed: EMPTY_DEPLOYED }}
               />
-            )}
+            ))}
+            {waiting.map((unread) => (
+              <ReleaseService key={unread.repository} named={named} service={unread.service}>
+                <ZeropsHistoryView
+                  commits={unread.state}
+                  names={carried.names}
+                  request={{ repo: unread.repository, deployed: EMPTY_DEPLOYED }}
+                />
+              </ReleaseService>
+            ))}
           </div>
         ) : undefined
       }
       leading={
-        changes.length > 0 || waiting !== undefined ? (
+        changes.length > 0 || waiting.length > 0 ? (
           <button
             aria-expanded={open}
             aria-label={releaseCarriedToggleLabel(release.tag, open)}
@@ -209,6 +214,25 @@ function CarriedReleaseRow({
   );
 }
 
+/** One repository's block in a release's expansion, under its hostname where there are several. */
+function ReleaseService({
+  service,
+  named,
+  children,
+}: {
+  readonly service: string;
+  /** Whether the expansion holds more than this one, so its hostname is said. */
+  readonly named: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col">
+      {named ? <span className="text-xs text-muted-foreground">{service}</span> : null}
+      {children}
+    </div>
+  );
+}
+
 /** One repository's commits in a release, each opening onto what it changed. */
 function ReleaseServiceCommits({
   change,
@@ -218,20 +242,19 @@ function ReleaseServiceCommits({
 }: {
   readonly change: ReleaseServiceChange;
   readonly forge: ZeropsReleasesCarried["forge"];
-  /** Whether the release moved more than this one, so its hostname is said. */
+  /** Whether the expansion holds more than this one, so its hostname is said. */
   readonly named: boolean;
   readonly names: HistoryNames;
 }) {
   const readDetail = useZeropsCommitDetailReader({ ...forge, repo: change.repository });
   return (
-    <div className="flex min-w-0 flex-col">
-      {named ? <span className="text-xs text-muted-foreground">{change.service}</span> : null}
+    <ReleaseService named={named} service={change.service}>
       <ZeropsHistoryView
         commits={{ kind: "read", commits: change.commits, releases: EMPTY_RELEASES }}
         names={names}
         readDetail={readDetail}
         request={{ repo: change.repository, deployed: EMPTY_DEPLOYED }}
       />
-    </div>
+    </ReleaseService>
   );
 }
