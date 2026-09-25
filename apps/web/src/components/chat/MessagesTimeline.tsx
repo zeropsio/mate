@@ -1443,10 +1443,12 @@ function ContextCompactionTimelineRow({
 /**
  * One of this Mate's changes landing.
  *
- * A separator, not a card: nothing the agent did caused it, and the person is
- * reading the work in order — "appdev #1 landed" belongs between the message
- * that asked for it and whatever came next, at the moment it happened. The
- * chip inside the message is what is clicked; this is what is scanned.
+ * A quiet line in the same family as the work rows, not a card: nothing the
+ * agent did caused it, and the person is reading the work in order —
+ * "appdev #1 landed" belongs at the moment it happened. It never splits the
+ * work around it: a run it lands inside stays one row, with this line right
+ * after it. The chip inside the message is what is clicked; this is what is
+ * scanned.
  */
 function ChangeLandedTimelineRow({
   row,
@@ -1459,17 +1461,14 @@ function ChangeLandedTimelineRow({
   // nothing about where it landed.
   const label = `${row.event.repository} #${String(row.event.number)} landed`;
   return (
-    <div
-      role="separator"
-      aria-label={label}
-      className="mx-auto flex w-full max-w-3xl items-center gap-3 py-1 text-muted-foreground text-xs"
-    >
-      <span className="h-px flex-1 bg-border/70" />
-      <span className="flex shrink-0 items-center gap-1.5">
-        <GitPullRequestArrow aria-hidden="true" className="size-3" />
-        {label}
+    <div className="flex min-h-6 min-w-0 items-center gap-1.5 px-0.5 py-0.5 text-secondary-label text-sm leading-relaxed">
+      <span className="flex size-6 shrink-0 items-center justify-center text-icon-muted">
+        <GitPullRequestArrow
+          aria-hidden="true"
+          className="block size-4 shrink-0 stroke-[1.8] opacity-70"
+        />
       </span>
-      <span className="h-px flex-1 bg-border/70" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
     </div>
   );
 }

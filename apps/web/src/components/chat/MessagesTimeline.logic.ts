@@ -218,6 +218,8 @@ export type TimelineLatestTurn = Pick<
  */
 export type ActivityEntry = Extract<TimelineEntry, { kind: "message" | "work" }>;
 
+type ChangeLandedEntry = Extract<TimelineEntry, { kind: "change-landed" }>;
+
 function isActivityEntry(entry: TimelineEntry): entry is ActivityEntry {
   return entry.kind === "message"
     ? entry.message.role === "reasoning"
@@ -1017,9 +1019,19 @@ export function deriveMessagesTimelineRows(input: {
   // Runs of thinking and tool calls in one turn become a single activity row,
   // so a provider that thinks between every tool call does not stack "Thought"
   // rows between the calls. A run without thinking stays ordinary tool work.
+  //
+  // A change landing is a fact about the forge, placed by its moment: it is
+  // transparent to a run, which stays one row with the landing right after
+  // it, instead of splitting where the landing fell.
   const activityGroupsByStart = new Map<
     TimelineEntry,
-    { entries: ActivityEntry[]; end: number; turnId: TurnId; active: boolean }
+    {
+      entries: ActivityEntry[];
+      landed: ChangeLandedEntry[];
+      end: number;
+      turnId: TurnId;
+      active: boolean;
+    }
   >();
   const activityGroupEntries = new Set<TimelineEntry>();
   for (let index = 0; index < timelineEntries.length;) {
@@ -1030,19 +1042,28 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
     const entries: ActivityEntry[] = [entry];
+    const landed: ChangeLandedEntry[] = [];
+    const pendingLanded: ChangeLandedEntry[] = [];
+    let end = index + 1;
     let cursor = index + 1;
-    while (cursor < timelineEntries.length) {
+    while (cursor < timelineEntries.length && !headerAnchorIndices.has(cursor)) {
       const next = timelineEntries[cursor]!;
+      if (next.kind === "change-landed") {
+        pendingLanded.push(next);
+        cursor += 1;
+        continue;
+      }
       if (
         !isActivityEntry(next) ||
         timelineEntryTurnId(next) !== turnId ||
-        collapsedEntries.has(next) ||
-        headerAnchorIndices.has(cursor)
+        collapsedEntries.has(next)
       ) {
         break;
       }
       entries.push(next);
+      landed.push(...pendingLanded.splice(0));
       cursor += 1;
+      end = cursor;
     }
     if (entries.some((candidate) => candidate.kind === "message")) {
       const lastWork = entries.findLast(
@@ -1052,12 +1073,13 @@ export function deriveMessagesTimelineRows(input: {
       const active =
         input.isWorking &&
         turnId === unsettledTurnId &&
+        // Nothing but landings after it: still the live tail.
         cursor === timelineEntries.length &&
         !(lastWork && workEntryDisplayIndicatesToolFailure(lastWork.entry));
-      activityGroupsByStart.set(entry, { entries, end: cursor, turnId, active });
+      activityGroupsByStart.set(entry, { entries, landed, end, turnId, active });
       for (const member of entries) activityGroupEntries.add(member);
     }
-    index = cursor;
+    index = end;
   }
   const workEntryIsInActiveRun = (entry: WorkLogEntry) =>
     input.isWorking &&
@@ -1089,9 +1111,13 @@ export function deriveMessagesTimelineRows(input: {
 
   // Stops at any non-"work" neighbour, including an "operation" row: an
   // operation card ends the live tail on both sides, same as any other kind.
+  // A change landing is transparent: it renders right after the live row.
   const activeToolEntries: Array<Extract<TimelineEntry, { kind: "work" }>> = [];
   for (let index = timelineEntries.length - 1; index >= activeTurnStartIndex; index -= 1) {
     const entry = timelineEntries[index]!;
+    if (entry.kind === "change-landed") {
+      continue;
+    }
     if (
       !entryBelongsToActiveTurn(entry, index) ||
       entry.kind !== "work" ||
@@ -1113,7 +1139,8 @@ export function deriveMessagesTimelineRows(input: {
   );
   const activeWorkAnchor = activeToolEntries[0];
   const latestActiveToolEntry = visibleActiveToolEntries.at(-1);
-  const activeWorkPlacementEntry = latestActiveToolEntry;
+  // The live row stays where the run began; later calls update it in place.
+  const activeWorkPlacementEntry = latestActiveToolEntry ? activeWorkAnchor : undefined;
   const activeWorkRow =
     activeWorkAnchor && latestActiveToolEntry
       ? (() => {
@@ -1169,6 +1196,14 @@ export function deriveMessagesTimelineRows(input: {
       });
     }
   };
+  const pushChangeLandedRow = (entry: ChangeLandedEntry) => {
+    nextRows.push({
+      kind: "change-landed",
+      id: entry.id,
+      createdAt: entry.createdAt,
+      event: entry.event,
+    });
+  };
   const appendActiveWorkRows = () => {
     if (activeWorkRow === null) return;
     nextRows.push(activeWorkRow);
@@ -1217,6 +1252,7 @@ export function deriveMessagesTimelineRows(input: {
         expanded: input.expandedWorkGroupIds?.has(groupId) ?? false,
         active: activityGroup.active,
       });
+      for (const landed of activityGroup.landed) pushChangeLandedRow(landed);
       index = activityGroup.end - 1;
       continue;
     }
@@ -1254,9 +1290,17 @@ export function deriveMessagesTimelineRows(input: {
 
     if (timelineEntry.kind === "work") {
       const groupedEntries = [timelineEntry.entry];
+      const landedInRun: ChangeLandedEntry[] = [];
+      const pendingLanded: ChangeLandedEntry[] = [];
+      let end = index + 1;
       let cursor = index + 1;
       while (cursor < timelineEntries.length) {
         const nextEntry = timelineEntries[cursor];
+        if (nextEntry?.kind === "change-landed" && !headerAnchorIndices.has(cursor)) {
+          pendingLanded.push(nextEntry);
+          cursor += 1;
+          continue;
+        }
         if (
           !nextEntry ||
           // An "operation" row (like any other non-"work" kind) ends the run.
@@ -1271,7 +1315,9 @@ export function deriveMessagesTimelineRows(input: {
           break;
         }
         groupedEntries.push(nextEntry.entry);
+        landedInRun.push(...pendingLanded.splice(0));
         cursor += 1;
+        end = cursor;
       }
       const visibleGroupedEntries = omitSupersededLifecycleMarkers(
         groupedEntries.filter((entry) =>
@@ -1402,7 +1448,8 @@ export function deriveMessagesTimelineRows(input: {
           }
         }
       }
-      index = cursor - 1;
+      for (const landed of landedInRun) pushChangeLandedRow(landed);
+      index = end - 1;
       continue;
     }
 
@@ -1447,12 +1494,7 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (timelineEntry.kind === "change-landed") {
-      nextRows.push({
-        kind: "change-landed",
-        id: timelineEntry.id,
-        createdAt: timelineEntry.createdAt,
-        event: timelineEntry.event,
-      });
+      pushChangeLandedRow(timelineEntry);
       continue;
     }
 

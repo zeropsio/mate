@@ -1,6 +1,7 @@
 import { ApprovalRequestId, CheckpointRef, MessageId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
   computeStableMessagesTimelineRows,
@@ -3446,6 +3447,7 @@ describe("turn header", () => {
     readonly runningTurnId: TurnId | null;
     readonly isWorking: boolean;
     readonly activeTurnStartedAt: string | null;
+    readonly landed?: ReadonlyArray<ChangeLandedEvent>;
   }
 
   const userMessage = (id: string, second: number): ChatMessage => ({
@@ -3487,9 +3489,29 @@ describe("turn header", () => {
     sourceActivityKind: status === "inProgress" ? "tool.updated" : "tool.completed",
   });
 
+  const reasoningMessage = (id: string, second: number): ChatMessage => ({
+    ...assistantMessage(id, second),
+    role: "reasoning",
+  });
+  const landedChange = (number: number, second: number): ChangeLandedEvent => ({
+    key: `change-landed:appdev#${number}`,
+    repository: "appdev",
+    number,
+    title: `Change ${number}`,
+    line: `appdev #${number}`,
+    landedAt: at(second),
+  });
+
   const deriveRows = (conversation: Conversation, expandedTurnIds?: ReadonlySet<TurnId>) =>
     deriveMessagesTimelineRows({
-      timelineEntries: deriveTimelineEntries(conversation.messages, [], conversation.work),
+      timelineEntries: deriveTimelineEntries(
+        conversation.messages,
+        [],
+        conversation.work,
+        [],
+        [],
+        conversation.landed ?? [],
+      ),
       latestTurn: conversation.latestTurn,
       runningTurnId: conversation.runningTurnId,
       ...(expandedTurnIds === undefined ? {} : { expandedTurnIds }),
@@ -3621,6 +3643,65 @@ describe("turn header", () => {
       ).toEqual(narration);
     },
   );
+
+  it.each([
+    {
+      run: "a live thinking-and-tools row",
+      kind: "activity-group",
+      before: { ...working, messages: [...sent.messages, reasoningMessage("r1", 2)] },
+      landing: 4,
+      after: toolWork("w2", 5, "inProgress"),
+    },
+    {
+      run: "a live tool row",
+      kind: "work-live",
+      before: { ...started, work: [toolWork("w1", 3, "inProgress")] },
+      landing: 4,
+      after: toolWork("w2", 5, "inProgress"),
+    },
+  ])(
+    "keeps $run whole when a change lands inside it, with the landing right after it",
+    ({ kind, before, landing, after }) => {
+      const landed = { ...before, landed: [landedChange(1, landing)] };
+      const grown = { ...landed, work: [...landed.work, after] };
+      const runRows = (rows: ReturnType<typeof deriveRows>) =>
+        rows.filter((row) => row.kind === kind).map((row) => row.id);
+
+      const beforeRows = deriveRows(before);
+      const landedRows = deriveRows(landed);
+      const grownRows = deriveRows(grown);
+
+      expect(runRows(grownRows)).toEqual(runRows(beforeRows));
+      expect(runRows(landedRows)).toEqual(runRows(beforeRows));
+      expect(grownRows.map((row) => row.kind)).toEqual([
+        "message",
+        "turn-header",
+        kind,
+        "change-landed",
+      ]);
+      for (const rows of [landedRows, grownRows]) {
+        const runIndex = rows.findIndex((row) => row.kind === kind);
+        expect(rows[runIndex + 1]).toMatchObject({
+          kind: "change-landed",
+          id: "zerops:change-landed:appdev#1",
+        });
+      }
+    },
+  );
+
+  it("keeps a settled tool run whole around a change that landed inside it", () => {
+    const conversation = {
+      ...settled,
+      messages: [userMessage("u1", 0), assistantMessage("a1", 2), assistantMessage("a2", 7)],
+      work: [toolWork("w1", 3), toolWork("w2", 5)],
+      landed: [landedChange(1, 4)],
+    };
+    const rows = deriveRows(conversation, new Set([T1]));
+    const toggleIndex = rows.findIndex((row) => row.kind === "work-toggle");
+
+    expect(rows[toggleIndex]).toMatchObject({ hiddenCount: 2 });
+    expect(rows[toggleIndex + 1]).toMatchObject({ kind: "change-landed" });
+  });
 
   it("names the running tool in the live header and nothing once settled", () => {
     const live = deriveRows(working).find((row) => row.kind === "turn-header");
