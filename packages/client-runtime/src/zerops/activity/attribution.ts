@@ -12,6 +12,10 @@
  * steps; every other attributed process (an older matching action, or a
  * different action within the same window, e.g. a subdomain toggle beside a
  * deploy) is a secondary chip, never a step source.
+ *
+ * Once a card's result has named its own appVersion or processes
+ * (`AttributionInput.exact`), those ids replace the window: the frozen steps
+ * and the build log then belong to exactly that operation.
  */
 import type { ActivityProcess } from "./dto.ts";
 
@@ -38,6 +42,17 @@ export interface AttributionInput {
   /** Server-stamped operation start time, in epoch ms — never the browser clock. */
   readonly startedAtMs: number;
   readonly kind: ObservedKind;
+  /**
+   * The ids a settled card's result named (`ZeropsOperation.version.id`,
+   * `ZeropsOperation.processIds`). When any is given they replace the
+   * time + service heuristic outright: only a process carrying one of them is
+   * attributed, and a read that holds none of them attributes nothing — the
+   * heuristic's newest match would be a later operation on the same service.
+   */
+  readonly exact?: {
+    readonly appVersionId?: string;
+    readonly processIds?: ReadonlyArray<string>;
+  };
 }
 
 export interface AttributionResult {
@@ -57,6 +72,26 @@ export interface AttributionResult {
 
 const EMPTY: AttributionResult = { chips: [], projectMismatch: false };
 
+/** The exact-key test when the card has one, else the time + service window. */
+function matchesFor(input: AttributionInput): (process: ActivityProcess) => boolean {
+  const appVersionId = input.exact?.appVersionId;
+  const processIds = new Set(input.exact?.processIds);
+  if (appVersionId !== undefined || processIds.size > 0) {
+    return (process) =>
+      processIds.has(process.id) ||
+      (appVersionId !== undefined && process.appVersion?.id === appVersionId);
+  }
+  const serviceIds = new Set(input.serviceIds);
+  const threshold = input.startedAtMs - ATTRIBUTION_LOOKBACK_MS;
+  return (process) => {
+    if (!process.serviceStackIds.some((id) => serviceIds.has(id))) {
+      return false;
+    }
+    const createdAtMs = Date.parse(process.created);
+    return !Number.isNaN(createdAtMs) && createdAtMs >= threshold;
+  };
+}
+
 export function attributeActivity(input: AttributionInput): AttributionResult {
   if (
     input.processes.length > 0 &&
@@ -65,18 +100,9 @@ export function attributeActivity(input: AttributionInput): AttributionResult {
     return { chips: [], projectMismatch: true };
   }
 
-  const serviceIds = new Set(input.serviceIds);
-  const threshold = input.startedAtMs - ATTRIBUTION_LOOKBACK_MS;
-  const matches = input.processes.filter((process) => {
-    if (process.projectId !== input.projectId) {
-      return false;
-    }
-    if (!process.serviceStackIds.some((id) => serviceIds.has(id))) {
-      return false;
-    }
-    const createdAtMs = Date.parse(process.created);
-    return !Number.isNaN(createdAtMs) && createdAtMs >= threshold;
-  });
+  const matches = input.processes.filter(
+    (process) => process.projectId === input.projectId && matchesFor(input)(process),
+  );
 
   if (matches.length === 0) {
     return EMPTY;
