@@ -2337,14 +2337,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     });
     const indexExists = yield* fileSystem.exists(indexPath);
     if (indexExists) {
+      const { mtime } = yield* fileSystem.stat(indexPath);
       yield* fileSystem.copyFile(indexPath, tempIndexPath);
-      // Git decides which entries are racily clean by comparing them with the
-      // index file's own mtime. A fresh copy would make a same-size edit from
-      // the same second look clean, so the copy keeps the original's mtime.
-      const indexMtime = Option.getOrUndefined((yield* fileSystem.stat(indexPath)).mtime);
-      if (indexMtime !== undefined) {
-        yield* fileSystem.utimes(tempIndexPath, indexMtime, indexMtime);
-      }
+      // A newer copy timestamp hides racily clean edits. Round down before Git reads or rewrites it.
+      const indexTime = Option.isSome(mtime)
+        ? Math.max(0, Math.floor((mtime.value.getTime() - 1) / 1000))
+        : 0;
+      yield* fileSystem.utimes(tempIndexPath, indexTime, indexTime);
     }
     const env = { GIT_INDEX_FILE: tempIndexPath } satisfies NodeJS.ProcessEnv;
     const tempIndexConfig = [
