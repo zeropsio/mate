@@ -591,6 +591,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     environment: name,
     services: fixture.services,
     platform: platformListing(fixture),
+    mainHead: !production && commits.kind === "read" ? commits.commits[0]?.sha : undefined,
     routes,
     offers: fixture.offers ?? [],
     nowMs: NOW,
@@ -935,7 +936,7 @@ function Harness() {
 
       <State
         label="A stage at the head of main"
-        note="It runs main's newest commit, which no release names: the verdict says the commit and for how long, and the database beside it has no row."
+        note="It runs main's newest commit, which no release names: the verdict says the commit and for how long, each row says head of main under it, and the database beside it has no row."
       >
         <StopState
           fixture={{

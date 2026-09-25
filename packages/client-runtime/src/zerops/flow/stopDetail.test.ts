@@ -407,6 +407,7 @@ const rowsOf = (platform: Shown<ReadonlyArray<StopService>>) =>
     environment: "production",
     services: GITEA,
     platform,
+    mainHead: undefined,
     routes: ROUTES,
     offers: OFFERS,
     nowMs: 100_000,
@@ -426,6 +427,7 @@ describe("serviceRows", () => {
       environment: "production",
       services: [...GITEA, { hostname: "db", appVersionName: "v1" }],
       platform: PLATFORM,
+      mainHead: undefined,
       routes: ROUTES,
       offers: OFFERS,
       nowMs: 100_000,
@@ -554,6 +556,7 @@ describe("serviceRows", () => {
           }),
         ],
       },
+      mainHead: undefined,
       routes: [],
       offers: [],
       nowMs: 100_000,
@@ -568,11 +571,36 @@ describe("serviceRows", () => {
     }).toEqual(expected);
   });
 
+  it.each<{ name: string; appVersionName: string; mainHead: string | undefined; line?: string }>([
+    { name: "at main's head", appVersionName: SHA_WEB, mainHead: SHA_WEB, line: "head of main" },
+    { name: "behind main's head", appVersionName: SHA_WEB, mainHead: SHA_API },
+    { name: "while main's head is not read", appVersionName: SHA_WEB, mainHead: undefined },
+    {
+      name: "at main's head, deployed with a name",
+      appVersionName: `${SHA_WEB} v0.1.14 gitea`,
+      mainHead: SHA_WEB,
+      line: "deployed with v0.1.14",
+    },
+  ])("says under a stage's commit $name", ({ appVersionName, mainHead, line }) => {
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [{ hostname: "web", repository: "web", appVersionName }],
+      platform: { state: "unread", waitingFor: null },
+      mainHead,
+      routes: [],
+      offers: [],
+      nowMs: 100_000,
+      age: (iso) => iso,
+    });
+    expect(row?.line).toBe(line);
+  });
+
   it("says no state for a service that runs nothing, whose commit's place already says so", () => {
     const [row] = serviceRows({
       environment: "stage",
       services: [{ hostname: "web", repository: "web" }],
       platform: { ...PLATFORM, value: [platformService("web", { kind: "none" })] },
+      mainHead: undefined,
       routes: [],
       offers: [],
       nowMs: 100_000,
@@ -610,6 +638,7 @@ describe("serviceRows", () => {
       environment: "production",
       services: [{ hostname: "queue", repository: "queue" }],
       platform: failed,
+      mainHead: undefined,
       routes: [],
       offers: [],
       nowMs: 100_000,

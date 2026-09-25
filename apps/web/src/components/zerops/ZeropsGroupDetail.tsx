@@ -950,6 +950,7 @@ export function ZeropsStopDetailPage({
           environment: declared.environment,
           services: declared.services,
           platform,
+          mainHead: stage && commits.kind === "read" ? commits.commits[0]?.sha : undefined,
           routes,
           offers,
           nowMs,

@@ -207,7 +207,7 @@ export interface StopServiceRow {
   readonly repository: string;
   readonly sha: string | undefined;
   readonly commit: string | undefined;
-  /** `deployed with <name>` when the app version names one. */
+  /** `deployed with <name>` when the app version names one, else `head of main` where it is. */
   readonly line: string | undefined;
   readonly tone: GroupRowTone;
   readonly word: string;
@@ -230,6 +230,14 @@ export interface StopServiceRow {
 export interface ServiceRuns {
   readonly label: string;
   readonly since: string | undefined;
+}
+
+/** Said under a stage service's commit where it is main's head and no release names it. */
+const HEAD_OF_MAIN = "head of main";
+
+function commitLine(version: DeployedVersion, mainHead: string | undefined): string | undefined {
+  if (version.name !== undefined) return `deployed with ${version.name}`;
+  return version.sha !== undefined && version.sha === mainHead ? HEAD_OF_MAIN : undefined;
 }
 
 const UNREAD: Shown<Deployment> = { state: "unread", waitingFor: null };
@@ -299,6 +307,8 @@ export function serviceRows(input: {
   readonly environment: string;
   readonly services: ReadonlyArray<EnvironmentServiceState>;
   readonly platform: Shown<ReadonlyArray<StopService>>;
+  /** The head commit of `main` a stage follows; `undefined` for a production or while unread. */
+  readonly mainHead: string | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
   readonly nowMs: number;
@@ -337,7 +347,7 @@ export function serviceRows(input: {
       repository: state.repository,
       sha: version.sha,
       commit: version.commit,
-      line: version.name === undefined ? undefined : `deployed with ${version.name}`,
+      line: commitLine(version, input.mainHead),
       tone,
       word,
       status:
