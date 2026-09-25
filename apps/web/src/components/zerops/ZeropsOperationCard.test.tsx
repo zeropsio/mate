@@ -121,8 +121,16 @@ describe("ZeropsOperationCard — fixture operations", () => {
     expect(html).toContain(`data-zerops-card-kind="${operation.kind}"`);
     expect(html).toContain(`data-zerops-operation-key="${operation.key}"`);
     expect(html).toContain(operation.kicker);
-    expect(html).toContain(operation.voice);
-    expect(html).toContain(`data-zerops-voice-source="${operation.voiceSource}"`);
+    if (operation.kind === "deploy") {
+      // A card that names one service reads verb + hostname chip, not the voice sentence.
+      expect(html).toMatch(
+        new RegExp(`data-zerops-identity-chip[^>]*>${operation.target!.hostname}<`),
+      );
+      expect(html).not.toContain("data-zerops-voice-source");
+    } else {
+      expect(html).toContain(operation.voice);
+      expect(html).toContain(`data-zerops-voice-source="${operation.voiceSource}"`);
+    }
     if (operation.closing !== undefined) {
       expect(html).toContain(operation.closing);
     }
@@ -531,6 +539,142 @@ describe("ZeropsOperationCard — browser", () => {
   });
 });
 
+describe("ZeropsOperationCard — a verb and a subject, never a sentence with the URL", () => {
+  const PAGE = "https://kanbandev-26a7.prg1.zerops.app/cz/products/vltava?lang=cs";
+  const browser = (status: ZeropsCall["status"], input: Record<string, unknown>) =>
+    operationFor(
+      zeropsCall({
+        id: `brw-${status}`,
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_browser",
+        input,
+        status,
+        ...(status === "inProgress"
+          ? {}
+          : {
+              resultText: JSON.stringify({
+                url: PAGE,
+                steps: [],
+                errorsOutput: [],
+                consoleOutput: [],
+                networkOutput: [],
+              }),
+            }),
+      }),
+    );
+  const deploy = (input: Record<string, unknown>) =>
+    operationFor(
+      zeropsCall({
+        id: "dep-subject",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input,
+        status: "inProgress",
+      }),
+    );
+  const header = (html: string) => html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+  const verbOf = (html: string) =>
+    header(html).match(/data-zerops-primitive="micro-label"[^>]*>([^<]*)</)?.[1];
+  const chipOf = (html: string) =>
+    header(html).match(/data-zerops-identity-chip[^>]*>([^<]*)</)?.[1];
+  const pathOf = (html: string) =>
+    header(html).match(/data-zerops-subject-path[^>]*>([^<]*)</)?.[1];
+
+  it.each([
+    {
+      name: "a running browser check on a service's subdomain",
+      operation: browser("inProgress", { url: PAGE }),
+      subjectHost: "kanbandev",
+      verb: "Checking",
+      chip: "kanbandev",
+      path: "/cz/products/vltava?lang=cs",
+    },
+    {
+      name: "a settled browser check on a host no service answers",
+      operation: browser("completed", { url: PAGE }),
+      subjectHost: undefined,
+      verb: "Checked",
+      chip: "kanbandev-26a7.prg1.zerops.app",
+      path: "/cz/products/vltava?lang=cs",
+    },
+    {
+      name: "a deploy",
+      operation: deploy({ targetService: "weatherdash" }),
+      subjectHost: undefined,
+      verb: "Deploying",
+      chip: "weatherdash",
+      path: undefined,
+    },
+  ])("$name: $verb · $chip", ({ operation, subjectHost, verb, chip, path }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        operation={operation}
+        {...(subjectHost === undefined ? {} : { subjectHost })}
+      />,
+    );
+
+    expect(verbOf(html)).toBe(verb);
+    expect(chipOf(html)).toBe(chip);
+    expect(pathOf(html)).toBe(path);
+    expect(header(html)).not.toContain(operation.voice);
+    expect(header(html)).not.toContain("https://");
+  });
+
+  it.each([
+    { name: "a browser check before its URL", operation: browser("inProgress", {}) },
+    { name: "a deploy before its target", operation: deploy({}) },
+  ])(
+    "$name: the subject line is held by a static placeholder, never a fallback phrase",
+    ({ operation }) => {
+      const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+      const subject = header(html).match(/data-zerops-operation-subject[\s\S]*?<\/p>/)?.[0];
+
+      expect(subject).toContain("data-zerops-subject-placeholder");
+      expect(subject).not.toMatch(/animate-/);
+      expect(chipOf(html)).toBeUndefined();
+      expect(header(html)).not.toContain(operation.subject);
+    },
+  );
+});
+
+describe("ZeropsOperationCard — a running card's header always says what it is doing", () => {
+  it.each([
+    { toolName: "zerops_browser", input: { url: "https://app.example.com/" }, word: "Checking" },
+    { toolName: "zerops_deploy", input: { targetService: "appdev" }, word: "Deploying" },
+    {
+      toolName: "zerops_subdomain",
+      input: { serviceHostname: "appdev", action: "enable" },
+      word: "Enabling",
+    },
+    { toolName: "zerops_delete", input: { serviceHostname: "appdev" }, word: "Deleting" },
+    { toolName: "zerops_scale", input: { serviceHostname: "appdev" }, word: "Scaling" },
+    { toolName: "zerops_manage", input: { serviceHostname: "appdev" }, word: "Managing" },
+    { toolName: "zerops_env", input: { serviceHostname: "appdev" }, word: "Updating environment" },
+    {
+      toolName: "zerops_dev_server",
+      input: { hostname: "appdev", action: "start" },
+      word: "dev server",
+    },
+  ])("$toolName: $word", ({ toolName, input, word }) => {
+    const operation = operationFor(
+      zeropsCall({
+        id: `word-${toolName}`,
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName,
+        input,
+        status: "inProgress",
+      }),
+    );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+
+    expect(header).toContain(word);
+  });
+});
+
 describe("ZeropsOperationCard — attempt count (R8)", () => {
   it("renders a muted 'attempt 3' in the status cluster for a folded retry chain", () => {
     const failedDeploy = (id: string, createdAt: string) =>
@@ -782,17 +926,22 @@ describe("ZeropsOperationCard — one quiet surface", () => {
   it.each(cases)("$name: no tinted band, no kicker label, no inner rules", ({ operation }) => {
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+    const microLabels = [
+      ...header.matchAll(/data-zerops-primitive="micro-label"[^>]*>([^<]*)</g),
+    ].map((match) => match[1]);
 
     expect(header).not.toBe("");
     expect(header).not.toMatch(/zerops-status-[a-z]+-surface/);
-    // The voice line already names the operation; the kicker stays only as
-    // the steps' accessible name.
-    expect(header).not.toContain('data-zerops-primitive="micro-label"');
-    expect(header).not.toContain("uppercase");
+    // The kicker stays only as the steps' accessible name; the one label a
+    // header may set is the status word, as the verb of a card that names
+    // one service.
+    expect(header).not.toContain(operation.kicker);
+    expect(microLabels).toEqual(operation.kind === "deploy" ? [operation.statusWord] : []);
     expect(html).not.toContain("border-t");
   });
 
-  it.each(cases)("$name: the status reads as a word beside the voice line", ({ operation }) => {
+  it("verify, done: the status reads as a word beside the voice line", () => {
+    const operation = cases[1]!.operation;
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const status = html.match(/<span aria-label="Result status"[\s\S]*?<\/span><\/span>/)?.[0];
 

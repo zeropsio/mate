@@ -35,6 +35,7 @@ import type {
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
+import { browserPageUrl } from "../../components/zerops/operation/subject";
 import type {
   BrowserScreenshot,
   LiveBrowserFrame,
@@ -102,6 +103,25 @@ export function devServerUrlFor(
     return undefined;
   }
   return topology.services.find((service) => service.hostname === hostname)?.subdomainUrl;
+}
+
+/**
+ * A browser check's subject chip: the hostname of the service one of whose
+ * public routes answers the page's host — `undefined` before the URL or the
+ * topology view arrives, for a host no service answers (the card then names
+ * the URL's own host), and for any other kind.
+ */
+export function browserSubjectHostFor(
+  operation: ZeropsOperation,
+  topology: ZeropsTopologyView | undefined,
+): string | undefined {
+  const url = browserPageUrl(operation);
+  if (url === undefined || topology === undefined) {
+    return undefined;
+  }
+  return topology.services.find((service) =>
+    service.routes.some((route) => URL.canParse(route.url) && new URL(route.url).host === url.host),
+  )?.hostname;
 }
 
 type CardStep = ZeropsOperationStep & { readonly durationMs?: number };
@@ -240,6 +260,8 @@ export interface OperationCardRegions {
   readonly observed?: ObservedRegion;
   readonly devServerUrl?: string;
   readonly browserScreenshot?: BrowserScreenshot;
+  /** `browser` only: the hostname of the service whose route answers the page — `browserSubjectHostFor`. */
+  readonly subjectHost?: string;
   /** `browser` only: the call is currently in progress. */
   readonly live?: boolean;
   /** `browser` only: the latest live frame, kept across the running→done transition. */
@@ -257,23 +279,26 @@ export function useOperationCard(
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
   const devServerUrl = devServerUrlFor(operation, topology);
-  const devServerUrlField = devServerUrl === undefined ? {} : { devServerUrl };
   const browserScreenshot = browserScreenshotFor(operation);
-  const browserScreenshotField = browserScreenshot === undefined ? {} : { browserScreenshot };
-  const liveField =
-    operation.kind === "browser" ? { live, ...(liveFrame === undefined ? {} : { liveFrame }) } : {};
+  const subjectHost = browserSubjectHostFor(operation, topology);
+  const fields = {
+    ...(devServerUrl === undefined ? {} : { devServerUrl }),
+    ...(browserScreenshot === undefined ? {} : { browserScreenshot }),
+    ...(subjectHost === undefined ? {} : { subjectHost }),
+    ...(operation.kind === "browser"
+      ? { live, ...(liveFrame === undefined ? {} : { liveFrame }) }
+      : {}),
+  };
 
   const nowMs = useSecondsNowMs(operation.phase === "running");
   const region = deriveObservedStepsRegion(operation.kind, operation.phase, state, history, nowMs);
   if (region === undefined) {
-    return { ...devServerUrlField, ...browserScreenshotField, ...liveField };
+    return fields;
   }
   if (region.buildLogQuery === undefined) {
     return {
       observed: { steps: region.steps, chips: region.chips, provenance: region.provenance },
-      ...devServerUrlField,
-      ...browserScreenshotField,
-      ...liveField,
+      ...fields,
     };
   }
 
@@ -286,8 +311,6 @@ export function useOperationCard(
   });
   return {
     observed: { steps: region.steps, chips: region.chips, provenance: region.provenance, log },
-    ...devServerUrlField,
-    ...browserScreenshotField,
-    ...liveField,
+    ...fields,
   };
 }

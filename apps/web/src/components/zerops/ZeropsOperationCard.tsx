@@ -5,6 +5,12 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
  * · manage · env · error). Presentational, props only (R2) — the reducer
  * already produced every people-facing word this renders.
  *
+ * A card is born with its kind's final structure and only fills in: a card
+ * that names one service or page (`operationSubject`) heads with the status
+ * word as its verb and the subject line under it, held by a placeholder
+ * until the input names the target; a browser check reserves its frame; a
+ * deploy's five pipeline slots arrive with the observed region.
+ *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
 import type { JSX, ReactNode } from "react";
@@ -21,6 +27,8 @@ import {
 import { useRightPanelStore } from "../../rightPanelStore";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
+import { OperationSubjectLine } from "./operation/OperationSubjectLine";
+import { operationSubject } from "./operation/subject";
 import {
   FlatCard,
   formatStepDuration,
@@ -80,6 +88,35 @@ function headerDurationText(operation: ZeropsOperation, now: number): string | u
   return Number.isFinite(settledAtMs)
     ? formatStepDuration(Math.max(0, settledAtMs - startedAtMs))
     : undefined;
+}
+
+/** The attempt count and the clock after the status word — each led by a middle dot unless it opens the cluster. */
+function HeaderMeta({
+  attemptWord,
+  durationText,
+  led,
+}: {
+  readonly attemptWord: string | undefined;
+  readonly durationText: string | undefined;
+  readonly led: boolean;
+}) {
+  const durationLed = led || attemptWord !== undefined;
+  return (
+    <>
+      {attemptWord !== undefined ? (
+        <span data-zerops-operation-attempt>
+          {led ? "· " : ""}
+          {attemptWord}
+        </span>
+      ) : null}
+      {durationText !== undefined ? (
+        <span className="tabular-nums" data-zerops-operation-duration>
+          {durationLed ? "· " : ""}
+          {durationText}
+        </span>
+      ) : null}
+    </>
+  );
 }
 
 function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
@@ -256,6 +293,12 @@ export function ZeropsOperationCard(props: {
   readonly liveFrame?: LiveBrowserFrame;
   /** `browser` only: the call is in progress right now — gates whether the viewport shows `liveFrame` or the screenshot. */
   readonly live?: boolean;
+  /**
+   * `browser` only: the service hostname whose route answers the page's host,
+   * resolved by the adapter from the topology view (`browserSubjectHostFor`) —
+   * absent, the chip names the URL's own host.
+   */
+  readonly subjectHost?: string;
   /** Opens the right-panel Browser surface — absent thread, absent click target. */
   readonly threadRef?: ScopedThreadRef | null;
   /** For tests; defaults to a clock that moves once a second while running — a text update, never an animation (R6). */
@@ -268,6 +311,7 @@ export function ZeropsOperationCard(props: {
     liveFrame,
     observed,
     operation,
+    subjectHost,
     threadRef,
   } = props;
   const tone = operationTone(operation);
@@ -276,6 +320,7 @@ export function ZeropsOperationCard(props: {
   const now = props.now ?? tickNow;
   const durationText = headerDurationText(operation, now);
   const isBrowser = operation.kind === "browser";
+  const subject = operationSubject(operation, subjectHost);
 
   const stepsForBody: ReadonlyArray<ProcessStep> = observed?.steps ?? operation.steps;
   const hasBody = isBrowser || stepsForBody.length > 0 || observed !== undefined;
@@ -305,27 +350,43 @@ export function ZeropsOperationCard(props: {
       data-zerops-card-tone={tone}
       data-zerops-operation-key={operation.key}
     >
-      <header className="flex items-center justify-between gap-3 px-3 pt-2.5 pb-1.5">
-        <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground text-sm">
-          <ZeropsMark className="size-3.5 shrink-0" />
-          <span data-zerops-voice-source={operation.voiceSource}>{operation.voice}</span>
-        </div>
-        <span
-          aria-label="Result status"
-          className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs"
-          role="status"
-        >
-          <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
-          {operation.attemptWord !== undefined ? (
-            <span data-zerops-operation-attempt>· {operation.attemptWord}</span>
-          ) : null}
-          {durationText !== undefined ? (
-            <span className="tabular-nums" data-zerops-operation-duration>
-              · {durationText}
+      {subject !== undefined ? (
+        <header className="px-3 pt-2.5 pb-1.5">
+          <div
+            aria-label="Result status"
+            className="flex items-center justify-between gap-3"
+            role="status"
+          >
+            <div className="flex min-w-0 items-center gap-1.5 text-foreground">
+              <ZeropsMark className="size-3.5 shrink-0" />
+              <StatusDot label={operation.statusWord} pulse={tone === "busy"} tone={tone} />
+            </div>
+            <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs">
+              <HeaderMeta
+                attemptWord={operation.attemptWord}
+                durationText={durationText}
+                led={false}
+              />
             </span>
-          ) : null}
-        </span>
-      </header>
+          </div>
+          <OperationSubjectLine running={isRunning} subject={subject} />
+        </header>
+      ) : (
+        <header className="flex items-center justify-between gap-3 px-3 pt-2.5 pb-1.5">
+          <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground text-sm">
+            <ZeropsMark className="size-3.5 shrink-0" />
+            <span data-zerops-voice-source={operation.voiceSource}>{operation.voice}</span>
+          </div>
+          <span
+            aria-label="Result status"
+            className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs"
+            role="status"
+          >
+            <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
+            <HeaderMeta attemptWord={operation.attemptWord} durationText={durationText} led />
+          </span>
+        </header>
+      )}
 
       {hasBody ? (
         isBrowser ? (

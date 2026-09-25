@@ -1435,6 +1435,7 @@ describe("MessagesTimeline", () => {
       links: [],
       callIds: ["deploy-operation"],
       attempts: 1,
+      target: { hostname: "kanbandev" },
       hasResult: true,
     };
     // The operation card reads the account data runtime and the inventory; a
@@ -1479,7 +1480,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("data-zerops-card");
     expect(markup).toContain('data-zerops-card-kind="deploy"');
-    expect(markup).toContain("Deploying kanbandev.");
+    expect(markup).toMatch(/data-zerops-identity-chip[^>]*>kanbandev</);
     expect(markup).toContain("kanbandev is live.");
   });
 

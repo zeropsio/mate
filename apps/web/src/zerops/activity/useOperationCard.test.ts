@@ -14,6 +14,7 @@ import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 
 const browserStreamSpy = vi.hoisted(() => vi.fn<() => unknown>(() => undefined));
+const topologySpy = vi.hoisted(() => vi.fn<() => unknown>(() => undefined));
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -31,7 +32,7 @@ vi.mock("react/compiler-runtime", async () => {
 });
 
 vi.mock("../useZeropsFeeds.ts", () => ({
-  useZeropsTopology: () => undefined,
+  useZeropsTopology: topologySpy,
   useZeropsBrowserStream: browserStreamSpy,
 }));
 
@@ -49,6 +50,7 @@ vi.mock("./useOperationObservation.ts", () => ({
 
 import {
   browserScreenshotFor,
+  browserSubjectHostFor,
   deriveObservedStepsRegion,
   devServerUrlFor,
   isBrowserOperationLive,
@@ -161,6 +163,70 @@ describe("browserScreenshotFor — the thumbnail from a browser operation's own 
   it("is undefined for a non-browser operation even if it somehow carried a screenshot field", () => {
     const screenshot = { src: "data:image/jpeg;base64,AAAA" };
     expect(browserScreenshotFor(operation({ kind: "deploy", screenshot }))).toBeUndefined();
+  });
+});
+
+describe("browserSubjectHostFor — the service a checked page belongs to", () => {
+  const kanbandev = {
+    hostname: "kanbandev",
+    serviceId: "svc-1",
+    type: "nodejs@22",
+    status: "ACTIVE",
+    group: "runtimes",
+    transient: false,
+    subdomainUrl: "https://kanbandev-26a7-3000.prg1.zerops.app",
+    ports: [],
+    routes: [
+      {
+        port: 3000,
+        url: "https://kanbandev-26a7-3000.prg1.zerops.app",
+        host: "kanbandev-26a7-3000.prg1.zerops.app",
+      },
+      {
+        port: 8080,
+        url: "https://kanbandev-26a7-8080.prg1.zerops.app",
+        host: "kanbandev-26a7-8080.prg1.zerops.app",
+      },
+    ],
+  } as const satisfies ZeropsTopologyView["services"][number];
+  const browser = (subject: string) => operation({ kind: "browser", subject });
+
+  it.each([
+    {
+      name: "a route's host names its service",
+      operation: browser("https://kanbandev-26a7-8080.prg1.zerops.app/cz/products?x=1"),
+      view: topology({ services: [kanbandev] }),
+      host: "kanbandev",
+    },
+    {
+      name: "a host no service answers stays unresolved",
+      operation: browser("https://example.com/cz"),
+      view: topology({ services: [kanbandev] }),
+      host: undefined,
+    },
+    {
+      name: "before the topology view loads",
+      operation: browser("https://kanbandev-26a7-3000.prg1.zerops.app/"),
+      view: undefined,
+      host: undefined,
+    },
+    {
+      name: "before the URL arrives",
+      operation: browser("the page"),
+      view: topology({ services: [kanbandev] }),
+      host: undefined,
+    },
+    {
+      name: "a kind that is not a browser check",
+      operation: operation({
+        kind: "deploy",
+        subject: "https://kanbandev-26a7-3000.prg1.zerops.app",
+      }),
+      view: topology({ services: [kanbandev] }),
+      host: undefined,
+    },
+  ])("$name", ({ operation: op, view, host }) => {
+    expect(browserSubjectHostFor(op, view)).toBe(host);
   });
 });
 
@@ -571,5 +637,51 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
     );
     expect(region.live).toBeUndefined();
     expect(region.liveFrame).toBeUndefined();
+  });
+});
+
+describe("useOperationCard — the browser check's subject host (hook)", () => {
+  const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
+
+  beforeEach(() => {
+    hooks.reset();
+    topologySpy.mockReset();
+  });
+
+  it.each([
+    {
+      name: "a page on a service's route carries that service's hostname",
+      view: topology({
+        services: [
+          {
+            hostname: "kanbandev",
+            serviceId: "svc-1",
+            type: "nodejs@22",
+            status: "ACTIVE",
+            group: "runtimes",
+            transient: false,
+            ports: [],
+            routes: [
+              {
+                port: 3000,
+                url: "https://kanbandev-26a7-3000.prg1.zerops.app",
+                host: "kanbandev-26a7-3000.prg1.zerops.app",
+              },
+            ],
+          },
+        ],
+      }),
+      subjectHost: "kanbandev",
+    },
+    { name: "no topology yet: no subjectHost at all", view: undefined, subjectHost: undefined },
+  ])("$name", ({ view, subjectHost }) => {
+    topologySpy.mockReturnValue(view);
+    hooks.beginRender();
+    const region = useOperationCard(
+      operation({ kind: "browser", subject: "https://kanbandev-26a7-3000.prg1.zerops.app/cz" }),
+      ENVIRONMENT_ID,
+    );
+    expect(region.subjectHost).toBe(subjectHost);
+    expect("subjectHost" in region).toBe(subjectHost !== undefined);
   });
 });
