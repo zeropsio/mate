@@ -20,8 +20,8 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type ZeropsGiteaState,
+  type FlowReleaseRow,
   type GroupRowTone,
-  type ReleaseVerdict,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
@@ -547,16 +547,16 @@ export function environmentSummaryLine(
 }
 
 /**
- * A deploy's tone as a dot's, for a group environment's row.
- *
- * `undefined` where the row model says `neutral`: nothing has been deployed
- * there, or nobody is signed in to Gitea to be told how it went, and a dot
- * without a word is exactly what rule R5 forbids. A row that has nothing to
- * say about its deploy says nothing.
+ * A release row's tone as a dot's: where it stands against production first —
+ * running there, or its deploy failed — else the broker's verdict; none before
+ * it spoke.
  */
-/** The broker's verdict on a release as a dot's tone; none before it spoke. */
-export function releaseRowTone(verdict: ReleaseVerdict): ServiceStatusToneId | undefined {
-  switch (verdict) {
+export function releaseRowTone(
+  release: Pick<FlowReleaseRow, "verdict" | "standing">,
+): ServiceStatusToneId | undefined {
+  if (release.standing === "live") return "ok";
+  if (release.standing === "deploy-failed") return "failed";
+  switch (release.verdict) {
     case "approved":
       return "ok";
     case "refused":
@@ -568,6 +568,14 @@ export function releaseRowTone(verdict: ReleaseVerdict): ServiceStatusToneId | u
   }
 }
 
+/**
+ * A deploy's tone as a dot's, for a group environment's row.
+ *
+ * `undefined` where the row model says `neutral`: nothing has been deployed
+ * there, or nobody is signed in to Gitea to be told how it went, and a dot
+ * without a word is exactly what rule R5 forbids. A row that has nothing to
+ * say about its deploy says nothing.
+ */
 export function deployRowTone(tone: GroupRowTone): ServiceStatusToneId | undefined {
   switch (tone) {
     case "good":

@@ -163,7 +163,8 @@ import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganization
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { readZeropsResourceOnce } from "~/zerops/useZeropsDeployedVersion";
-import { deployRowTone, releaseRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
+import { deployRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
+import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import {
@@ -2744,38 +2745,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const renderGroupRows = (group: ZeropsGroup): React.ReactNode => {
     const gate = releaseGateLine(group);
     const contents = releaseContentLines(group);
-    // The releases, newest first, each with the broker's word and, on an
-    // earlier approved one, the way back to it.
-    const releases = (groupDeploys.get(group.groupId)?.releases ?? []).map((release) => {
-      const tone = releaseRowTone(release.verdict);
-      const rollingBack = projectFlow.pending.has(
-        flowVerbKey({ kind: "roll-back", groupId: group.groupId, tag: release.tag }),
-      );
-      return (
-        <ZeropsEnvironmentRow
-          action={
-            release.rollBack ? (
-              <ZeropsMateVerb
-                disabled={rollingBack}
-                label={flowVerbLabel("roll-back", rollingBack)}
-                onClick={() => {
-                  void projectFlow.rollBack(group.groupId, release.tag);
-                }}
-              />
-            ) : undefined
-          }
-          key={`release-${group.groupId}-${release.tag}`}
-          name={release.tag}
-          status={
-            tone === undefined || release.word === undefined ? undefined : (
-              <StatusDot label={release.word} sentence tone={tone} />
-            )
-          }
-          summary={release.line}
-          tag="release"
-        />
-      );
-    });
+    const releases = groupDeploys.get(group.groupId)?.releases ?? [];
     // The recipe changes waiting on somebody: last, under the environments
     // they would change.
     const recipes = (groupDeploys.get(group.groupId)?.pullRequests ?? [])
@@ -2788,7 +2758,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       <>
         {gate}
         {contents}
-        {releases}
+        <ZeropsReleaseRows
+          groupId={group.groupId}
+          onRollBack={(tag) => {
+            void projectFlow.rollBack(group.groupId, tag);
+          }}
+          pending={projectFlow.pending}
+          releases={releases}
+        />
         {recipes}
       </>
     );
