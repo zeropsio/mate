@@ -1387,9 +1387,8 @@ function QueuedMessageTimelineRow({
                 render={
                   <Button
                     type="button"
-                    size="icon-micro"
+                    size="icon-xs"
                     variant="ghost-muted"
-                    className="size-6"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => ctx.onSteerQueuedMessage(queuedMessage.id)}
                     aria-label="Send now"
@@ -1410,9 +1409,8 @@ function QueuedMessageTimelineRow({
                 render={
                   <Button
                     type="button"
-                    size="icon-micro"
+                    size="icon-xs"
                     variant="ghost-muted"
-                    className="size-6"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => ctx.onRemoveQueuedMessage(queuedMessage.id)}
                     aria-label="Cancel and return to the composer"
