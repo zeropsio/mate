@@ -936,8 +936,9 @@ export function ZeropsStopDetailPage({
   // Only a countdown reads the clock, and nothing here counts down: the time
   // the page was first drawn is enough, as it is for the left menu's rows.
   const [nowMs] = useState(Date.now);
+  // A withheld stop lists no service, so no build of one is read either.
   const services =
-    declared === undefined
+    declared === undefined || withheld !== null
       ? NO_SERVICE_ROWS
       : serviceRows({
           environment: declared.environment,
