@@ -239,7 +239,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
     options.length === 1 && options[0]?.entry.target._tag === "PrimaryConnectionTarget";
   const deviceTabs =
     !onlyPrimaryDevice && options.length > 0 ? (
-      <ScrollArea hideScrollbars scrollFade className="h-11 min-w-0 rounded-none">
+      <ScrollArea radius="none" hideScrollbars scrollFade className="h-11 min-w-0">
         <div
           role="group"
           aria-label="Devices"

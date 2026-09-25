@@ -560,10 +560,11 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
       data-expanded={expanded ? "true" : "false"}
     >
       <ScrollArea
+        radius="none"
         chainVerticalScroll
         scrollFade
         hideScrollbars
-        className="w-full max-w-full rounded-none"
+        className="w-full max-w-full"
       >
         <table ref={tableRef} {...props}>
           {children}

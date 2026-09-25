@@ -213,10 +213,11 @@ function DiagnosticsTable({
 }) {
   return (
     <ScrollArea
+      radius="none"
       chainVerticalScroll
       scrollFade
       hideScrollbars
-      className="w-full max-w-full rounded-none"
+      className="w-full max-w-full"
     >
       <table
         className={cn("w-full text-left text-xs", minTableWidth, columnWidths && "table-fixed")}
@@ -396,10 +397,11 @@ function ProcessDiagnosticsTable({
 
   return (
     <ScrollArea
+      radius="none"
       chainVerticalScroll
       scrollFade
       hideScrollbars
-      className="max-h-[min(64vh,44rem)] w-full max-w-full rounded-none border-t border-border/60"
+      className="max-h-[min(64vh,44rem)] w-full max-w-full border-t border-border/60"
     >
       <table className="w-full min-w-[1040px] table-fixed text-left text-xs">
         <colgroup>
@@ -1252,10 +1254,11 @@ export function DiagnosticsSettingsPanel() {
       <SettingsSection title="Span Logs">
         {data && data.latestWarningAndErrorLogs.length > 0 ? (
           <ScrollArea
+            radius="none"
             chainVerticalScroll
             scrollFade
             hideScrollbars
-            className="w-full max-w-full rounded-none"
+            className="w-full max-w-full"
           >
             <table className="w-full min-w-[920px] table-fixed text-left text-xs">
               <colgroup>

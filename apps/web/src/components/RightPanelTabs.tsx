@@ -540,10 +540,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         data-right-panel-tabbar
       >
         <ScrollArea
+          radius="none"
           ref={tabListRef}
           hideScrollbars
           scrollFade
-          className={cn("min-w-0 flex-1 rounded-none", ownsDesktopTitleBar && "drag-region")}
+          className={cn("min-w-0 flex-1", ownsDesktopTitleBar && "drag-region")}
           data-right-panel-tab-list
         >
           <div className="flex h-full w-max min-w-full items-center gap-1">
