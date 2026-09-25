@@ -72,7 +72,7 @@ export function ZeropsMoveToGroupForm({
         </DialogDescription>
       </DialogHeader>
 
-      <DialogPanel className="flex flex-col gap-5">
+      <DialogPanel className="flex flex-col gap-5 space-y-0">
         <div className="space-y-2">
           <span className="text-sm">Group</span>
           <RadioGroup

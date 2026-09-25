@@ -132,7 +132,7 @@ export function ZeropsEnvironmentCreationForm({
           A new Zerops project in {groupName}. It takes a couple of minutes to come up.
         </DialogDescription>
       </DialogHeader>
-      <DialogPanel className="flex flex-col gap-5">
+      <DialogPanel className="flex flex-col gap-5 space-y-0">
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-name`}>Environment</Label>
           <Input

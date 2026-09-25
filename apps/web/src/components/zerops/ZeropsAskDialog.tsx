@@ -58,7 +58,7 @@ export function ZeropsAskConfirm({
           {what} Nobody reading this is going to do it by hand, so {who} is asked to.
         </DialogDescription>
       </DialogHeader>
-      <DialogPanel>
+      <DialogPanel className="space-y-0">
         <div className="my-2 flex min-w-0 items-start gap-3" data-zerops-surface="ask-confirm">
           {tint === undefined ? null : <MateFace size="md" state="idle" tint={tint} />}
           {/* Quoted, not paraphrased: this is the text being authorised. */}
