@@ -420,6 +420,7 @@ import {
   shouldRefocusComposerOnWindowFocus,
 } from "./ChatView.logic";
 import type { ThreadSyncPhase } from "../threadSync";
+import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
 import {
@@ -1326,6 +1327,10 @@ export default function ChatView(props: ChatViewProps) {
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
+  // Opening a running thread resyncs for a few frames. Show the sync pill only
+  // when the sync lasts; logic that depends on the real phase keeps reading
+  // `threadSyncPhase`.
+  const shownThreadSyncPhase = useDelayedStatus(`${environmentId}:${threadId}`, threadSyncPhase);
   const threadDetailLoading = threadSyncPhase === "loading";
   const handleNewThread = useNewThreadHandler();
   const { settleThread, pinThread, unpinThread, archiveThread } = useThreadActions();
@@ -7668,7 +7673,8 @@ export default function ChatView(props: ChatViewProps) {
     },
   });
   const externalComposerDrawerAttached =
-    composerBannerItems.length > 0 || Boolean(threadSyncPhase && !activeEnvironmentUnavailable);
+    composerBannerItems.length > 0 ||
+    Boolean(shownThreadSyncPhase && !activeEnvironmentUnavailable);
 
   /**
    * A pull request address a Mate wrote into its conversation opens on the
@@ -7906,8 +7912,8 @@ export default function ChatView(props: ChatViewProps) {
                       stackRef={setComposerBannerStackElement}
                     />
                   )}
-                  {threadSyncPhase && !activeEnvironmentUnavailable ? (
-                    <ThreadSyncStatusPill phase={threadSyncPhase} />
+                  {shownThreadSyncPhase && !activeEnvironmentUnavailable ? (
+                    <ThreadSyncStatusPill phase={shownThreadSyncPhase} />
                   ) : null}
                   <div
                     className="relative"
