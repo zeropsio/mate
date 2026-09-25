@@ -10,7 +10,9 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
  * that names one service or page (`operationSubject`) heads with the status
  * word as its verb and the subject line under it, held by a placeholder
  * until the input names the target; a browser check reserves its frame; a
- * deploy's five pipeline slots arrive with the observed region.
+ * deploy's five pipeline slots arrive with the observed region. What a
+ * result adds late — why it failed, the version it shipped — appends at the
+ * end of the body, below the live log, so nothing already drawn moves.
  *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
@@ -420,6 +422,15 @@ export function ZeropsOperationCard(props: {
                 steps={stepsForBody}
               />
             ) : null}
+            {observed?.chips !== undefined && observed.chips.length > 0 ? (
+              <ProcessSteps aria-label="Other activity" density="compact" steps={observed.chips} />
+            ) : null}
+            {observed?.log ?? null}
+            {observed !== undefined && observed.provenance.length > 0 ? (
+              <p className="text-muted-foreground text-xs" data-zerops-operation-provenance>
+                {observed.provenance}
+              </p>
+            ) : null}
             {operation.explanation !== undefined ? (
               <ExplanationBlock explanation={operation.explanation} />
             ) : null}
@@ -430,15 +441,6 @@ export function ZeropsOperationCard(props: {
               >
                 <MicroLabel>Version</MicroLabel>
                 <span className="font-mono">{version}</span>
-              </p>
-            ) : null}
-            {observed?.chips !== undefined && observed.chips.length > 0 ? (
-              <ProcessSteps aria-label="Other activity" density="compact" steps={observed.chips} />
-            ) : null}
-            {observed?.log ?? null}
-            {observed !== undefined && observed.provenance.length > 0 ? (
-              <p className="text-muted-foreground text-xs" data-zerops-operation-provenance>
-                {observed.provenance}
               </p>
             ) : null}
           </div>

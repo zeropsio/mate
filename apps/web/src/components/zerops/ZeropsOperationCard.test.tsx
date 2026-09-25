@@ -1068,6 +1068,32 @@ describe("ZeropsOperationCard — the version a settled deploy shipped", () => {
       html.indexOf('data-zerops-primitive="process-steps"'),
     );
   });
+
+  it("a triggered build that names its version while still running appends it below the live log", () => {
+    const triggered = deploy({
+      status: "BUILD_TRIGGERED",
+      targetService: "weatherdash",
+      versionName: "abc123",
+    });
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        now={Date.parse("2026-09-01T00:00:42.000Z")}
+        observed={{
+          ...frozen,
+          chips: [{ id: "sub", label: "Subdomain", state: "running", stateLabel: "Running" }],
+          provenance: "live from Zerops · 2 s ago",
+          log: <div data-testid="build-log-tail">log tail</div>,
+        }}
+        operation={triggered}
+      />,
+    );
+
+    expect(triggered.phase).toBe("running");
+    expect(html).toContain("abc123");
+    expect(html.indexOf("data-zerops-operation-version")).toBeGreaterThan(
+      html.indexOf("data-zerops-operation-provenance"),
+    );
+  });
 });
 
 describe("ZeropsOperationCard — why a card failed or timed out", () => {
