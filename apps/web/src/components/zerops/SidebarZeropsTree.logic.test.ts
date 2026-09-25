@@ -7,7 +7,7 @@ import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { describe, expect, it } from "vite-plus/test";
 
-import { sidebarStopReads } from "./SidebarZeropsTree.logic";
+import { sidebarStopReads, stopNameSaysOnlyRole } from "./SidebarZeropsTree.logic";
 
 /** A full sha whose first character says which commit it is. */
 const sha = (mark: string): string => mark.repeat(40);
@@ -154,5 +154,21 @@ describe("sidebarStopReads", () => {
   ])("marks where production's changes stand on the stage: $name", (row) => {
     const { stageMarks } = reads(row.inputs, row.deployments);
     expect(Object.fromEntries(stageMarks)).toEqual(row.expected);
+  });
+});
+
+describe("stopNameSaysOnlyRole", () => {
+  it.each<{ readonly tag: string | null; readonly name: string; readonly expected: boolean }>([
+    { tag: "prod", name: "production", expected: true },
+    { tag: "prod", name: "Prod", expected: true },
+    { tag: "stage", name: " stage ", expected: true },
+    // More than the role: the name tells two stages apart, or says where.
+    { tag: "stage", name: "stage 2", expected: false },
+    { tag: "stage", name: "qa", expected: false },
+    { tag: "prod", name: "production-eu", expected: false },
+    { tag: "prod", name: "eu-west", expected: false },
+    { tag: null, name: "stage", expected: false },
+  ])("$name as $tag: $expected", ({ tag, name, expected }) => {
+    expect(stopNameSaysOnlyRole(tag, name)).toBe(expected);
   });
 });

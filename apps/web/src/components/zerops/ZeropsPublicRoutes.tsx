@@ -122,7 +122,8 @@ export function ZeropsRouteMenuItems({
 }
 
 /**
- * The left menu's public-access control: a globe and **how many**.
+ * The left menu's public-access control: a globe, and **how many** once there
+ * is more than one.
  *
  * Neither of the two obvious answers survives ten routes. Writing the host out
  * spends most of a 256px row on one of them and looks ridiculous at ten (the
@@ -131,11 +132,13 @@ export function ZeropsRouteMenuItems({
  * urls/ips" — and, worse, two routes and ten drew identically, so the menu hid
  * the very fact a person opens it to learn.
  *
- * The count is the smallest thing that is honest at both ends: it is the same
- * width at 1 and at 10, it never claims a URL it is not opening, and it says
- * there are others before the person has to guess. One route still opens
- * directly, because a menu holding a single item is a click spent on nothing;
- * its host is the hover.
+ * One route is the globe alone: a globe already means "reachable here", and
+ * a `1` beside it spent the one-line stop row's width on saying so twice.
+ * Several wear the count as a bubble on the globe's corner rather than a
+ * number beside it (the owner, 2026-09-25), so the control is the same width
+ * at 2 and at 10. One route still opens directly, because a menu holding a
+ * single item is a click spent on nothing; its host is the hover. Several
+ * open the menu listing every one of them.
  */
 export function ZeropsRoutesMenu({
   routes,
@@ -154,7 +157,7 @@ export function ZeropsRoutesMenu({
           render={
             <a
               aria-label={`${label}: ${only.host}`}
-              className={ROUTE_COUNT_CLASS}
+              className={ROUTE_GLOBE_CLASS}
               data-zerops-surface="public-routes-menu"
               href={only.url}
               rel="noreferrer"
@@ -163,7 +166,6 @@ export function ZeropsRoutesMenu({
           }
         >
           <GlobeIcon aria-hidden="true" className="size-3.5" />
-          <span className="tabular-nums">1</span>
         </TooltipTrigger>
         <TooltipPopup side="right">{only.host}</TooltipPopup>
       </Tooltip>
@@ -179,11 +181,17 @@ export function ZeropsRoutesMenu({
           render={
             <MenuTrigger
               aria-label={`${label}: ${routes.length} public URLs`}
-              className={ROUTE_COUNT_CLASS}
+              className={ROUTE_GLOBE_CLASS}
               data-zerops-surface="public-routes-menu"
             >
               <GlobeIcon aria-hidden="true" className="size-3.5" />
-              <span className="tabular-nums">{routes.length}</span>
+              <span
+                aria-hidden="true"
+                className="absolute -top-1 -end-1 inline-flex h-3 min-w-3 items-center justify-center rounded-full bg-sidebar-foreground px-0.5 text-[9px] leading-none font-semibold text-sidebar tabular-nums ring-1 ring-sidebar"
+                data-zerops-surface="public-routes-count"
+              >
+                {routes.length}
+              </span>
             </MenuTrigger>
           }
         />
@@ -196,5 +204,5 @@ export function ZeropsRoutesMenu({
   );
 }
 
-const ROUTE_COUNT_CLASS =
-  "inline-flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded px-1 text-[11px] leading-none text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
+const ROUTE_GLOBE_CLASS =
+  "relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";

@@ -2,7 +2,8 @@ import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { routeMenuEntries, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
+import { visitElements } from "../../test/reactElementTree";
+import { routeMenuEntries, ZeropsRouteMenuItems, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
 
 const APP: ZeropsPublicRoute = {
   service: "app",
@@ -59,7 +60,7 @@ describe("ZeropsRoutesMenu", () => {
     expect(renderToStaticMarkup(<ZeropsRoutesMenu label="Routes" routes={[]} />)).toBe("");
   });
 
-  it("is the link itself when there is one route", () => {
+  it("is the globe alone, the link itself, when there is one route", () => {
     const html = renderToStaticMarkup(
       <ZeropsRoutesMenu label="Public routes of app" routes={[APP]} />,
     );
@@ -67,17 +68,36 @@ describe("ZeropsRoutesMenu", () => {
     expect(html).toContain(`href="${APP.url}"`);
     expect(html).toContain('aria-label="Public routes of app: app-26a7.prg1.zerops.app"');
     expect(html).not.toContain("<button");
-    // The count is on the row even at one, so one route and ten never look alike.
-    expect(html).toContain(">1<");
+    // One is the globe's own meaning; a bubble would only say it again.
+    expect(html).not.toContain('data-zerops-surface="public-routes-count"');
   });
 
-  it("offers a menu when there are several", () => {
+  it("wears the count as a bubble on the globe and opens a menu when there are several", () => {
     const html = renderToStaticMarkup(
       <ZeropsRoutesMenu label="Public routes of app" routes={[API, APP]} />,
     );
     expect(html).toContain('aria-label="Public routes of app: 2 public URLs"');
     expect(html).toContain("<button");
-    expect(html).toContain(">2<");
     expect(html).not.toContain(`href="${APP.url}"`);
+    const bubble =
+      /<span[^>]*class="([^"]*)"[^>]*data-zerops-surface="public-routes-count"[^>]*>2</u.exec(html);
+    expect(bubble?.[1]?.split(" ")).toEqual(
+      expect.arrayContaining(["absolute", "-top-1", "-end-1"]),
+    );
+    // The bubble sits inside the globe's own box, not beside it.
+    const trigger =
+      /<button[^>]*data-zerops-surface="public-routes-menu"[^>]*>(.*?)<\/button>/u.exec(html)?.[1];
+    expect(trigger).toContain("lucide-globe");
+    expect(trigger).toContain('data-zerops-surface="public-routes-count"');
+  });
+
+  it("lists every domain in its menu, each its own item", () => {
+    // The menu's popup renders only once opened, into a portal no test here
+    // has a DOM for; its content is read off the element tree instead.
+    const drawn = ZeropsRoutesMenu({ label: "Public routes of app", routes: [API, APP] });
+    const items = visitElements(drawn, (element) => element.type === ZeropsRouteMenuItems);
+    expect(items?.props["routes"]).toEqual([API, APP]);
+    // …and those items are one per domain, each a link out with its host.
+    expect(routeMenuEntries([API, APP]).map((entry) => entry.host)).toEqual([API.host, APP.host]);
   });
 });
