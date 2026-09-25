@@ -179,7 +179,7 @@ describe("stopView", () => {
     });
     expect(stopView({ deployment: known(RUNNING), row: undefined, nowMs: NOW })).toMatchObject({
       tone: "neutral",
-      word: "Running",
+      word: "Deployed",
       line: "v1.4.0",
       version: RUNNING.version,
     });
@@ -200,7 +200,7 @@ describe("stopView", () => {
     );
     expect(stopView({ deployment: known(RUNNING), row: read, nowMs: NOW })).toMatchObject({
       tone: "neutral",
-      word: "Running",
+      word: "Deployed",
       line: "v1.4.0",
       version: RUNNING.version,
     });
@@ -226,7 +226,7 @@ describe("stopView", () => {
       expect(
         stopView({ deployment: deploying, row: entry.row, nowMs: NOW }),
         entry.name,
-      ).toMatchObject({ tone: "pending", word: "Deploying", line: "v1.4.0", afterMs: 0 });
+      ).toMatchObject({ tone: "pending", word: "Deploying…", line: "v1.4.0", afterMs: 0 });
     }
     const unnamed = known({
       kind: "deploying",
@@ -240,7 +240,7 @@ describe("stopView", () => {
       previous: null,
     });
     expect(stopView({ deployment: unnamed, row: undefined, nowMs: NOW })).toMatchObject({
-      line: "Deploying",
+      line: "Deploying…",
       version: undefined,
     });
   });

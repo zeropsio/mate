@@ -472,7 +472,7 @@ describe("a stop's line", () => {
   });
   it.each([
     [{ state: "deployed" }, { word: "Deployed", version: "e014b0e", tone: "ok" }],
-    [{ state: "deploying" }, { word: "Deploying", version: "e014b0e", tone: "busy" }],
+    [{ state: "deploying" }, { word: "Deploying…", version: "e014b0e", tone: "busy" }],
     [{ state: "failed" }, { word: "Failed", version: "e014b0e", tone: "failed" }],
     [
       { state: "empty", version: undefined },

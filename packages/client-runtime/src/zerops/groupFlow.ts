@@ -50,7 +50,7 @@
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { BirthStep } from "./birth/birthStore.ts";
-import { CHECKING_WHAT_RUNS, type Deployment } from "./flow/deployment.ts";
+import { CHECKING_WHAT_RUNS, type Deployment, NOTHING_DEPLOYED } from "./flow/deployment.ts";
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import type { DeployedVersion, EnvironmentRow } from "./groupRows.ts";
@@ -262,8 +262,6 @@ export interface GroupFlow {
 export const PRODUCTION_AFTER_FIRST_MERGE = "After the first merge";
 /** Production's line once `main` has code and no production is there. */
 export const PRODUCTION_NOT_SET_UP = "Not set up";
-/** Production's line while it runs nothing. */
-export const PRODUCTION_NOTHING_LIVE = "Nothing live yet";
 /** Production's line while its creation is under way. */
 export const PRODUCTION_SETTING_UP = "Setting up production…";
 /** Production's line while a deploy runs on it. */
@@ -344,9 +342,7 @@ function productionOf(
     };
   }
   const line =
-    stop.state === "checking"
-      ? CHECKING_WHAT_RUNS
-      : (stop.version?.label ?? PRODUCTION_NOTHING_LIVE);
+    stop.state === "checking" ? CHECKING_WHAT_RUNS : (stop.version?.label ?? NOTHING_DEPLOYED);
   const candidate = releaseOffered(input)
     ? { tag: input.release.suggestion, waiting: input.release.waiting }
     : undefined;

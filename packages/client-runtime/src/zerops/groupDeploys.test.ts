@@ -258,7 +258,7 @@ describe("the join — a declaration, a version and a status", () => {
 describe("the word beside the dot", () => {
   it.each([
     { tone: "good", word: "Deployed" },
-    { tone: "pending", word: "Deploying" },
+    { tone: "pending", word: "Deploying…" },
     { tone: "bad", word: "Failed" },
     { tone: "neutral", word: undefined },
   ] as const)("says $word for $tone", ({ tone, word }) => {

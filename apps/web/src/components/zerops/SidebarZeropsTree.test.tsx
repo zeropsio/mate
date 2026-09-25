@@ -887,7 +887,7 @@ describe("the project's flow under it", () => {
       html.indexOf('data-zerops-project="crm-prod"'),
       html.indexOf('data-zerops-project="crm-stage"'),
     );
-    expect(production).toContain('aria-label="Running"');
+    expect(production).toContain('aria-label="Deployed"');
     expect(production).toContain('data-zerops-primary-action="Release"');
     const stage = html.slice(html.indexOf('data-zerops-project="crm-stage"'));
     expect(stage).toContain("↳ crm-stage · follows main");
@@ -1179,7 +1179,7 @@ describe("a stop's deployment", () => {
       ),
     );
     expect(stop(html, "crm-prod")).toContain("v1.4.0");
-    expect(stop(html, "crm-prod")).toContain('aria-label="Running"');
+    expect(stop(html, "crm-prod")).toContain('aria-label="Deployed"');
   });
 
   it("never shows deployment detail on a group stage — it stays the muted line that follows main", () => {

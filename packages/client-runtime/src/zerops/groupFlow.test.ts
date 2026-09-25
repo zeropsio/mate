@@ -205,7 +205,7 @@ describe("groupFlow", () => {
     expect(flow.production).toMatchObject({
       kind: "ready-to-release",
       candidate: { tag: "v0.1.0", waiting: 1 },
-      line: "Nothing live yet",
+      line: "Nothing deployed yet",
       stop: { projectId: "p-prod", state: "empty", version: undefined },
     });
     expect(flow.main).toEqual({ head: "055a7e8", hasCode: true, notLive: 1 });
@@ -480,7 +480,7 @@ describe("groupFlow", () => {
     {
       case: "empty: it runs nothing and there is nothing to release",
       production: productionOf({}),
-      expected: { kind: "empty", line: "Nothing live yet", stop: { state: "empty" } },
+      expected: { kind: "empty", line: "Nothing deployed yet", stop: { state: "empty" } },
     },
     {
       case: "checking: the platform has not answered and the row names nothing",

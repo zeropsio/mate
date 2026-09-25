@@ -313,7 +313,7 @@ export function deployWord(tone: GroupRowTone): string | undefined {
     case "good":
       return "Deployed";
     case "pending":
-      return "Deploying";
+      return "Deploying…";
     case "bad":
       return "Failed";
     case "neutral":
