@@ -19,6 +19,7 @@
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@types/pngjs": "6.0.5",
+    "oxc-parser": "0.148.0",
     "vite-plus": "catalog:"
   }
 }

@@ -153,12 +153,12 @@ describe("rewriteGitSpawn — the environment that crosses the wire", () => {
         HOME: "/home/zerops",
         ZCP_API_KEY: "secret",
         LC_ALL: "C",
-        GIT_AUTHOR_NAME: "T3 Code",
+        GIT_AUTHOR_NAME: "Zerops Mate",
       },
     });
     assert.include(remote, "LC_ALL=C");
     // The whole `K=V` token is quoted as one word, which is what `env` reads.
-    assert.include(remote, "'GIT_AUTHOR_NAME=T3 Code'");
+    assert.include(remote, "'GIT_AUTHOR_NAME=Zerops Mate'");
     assert.notInclude(remote, "PATH=");
     assert.notInclude(remote, "HOME=");
     assert.notInclude(remote, "secret");
@@ -167,7 +167,7 @@ describe("rewriteGitSpawn — the environment that crosses the wire", () => {
   it("strips the trace2 event stream, whose file is local and whose watcher never fires", () => {
     const remote = remoteOf(["status"], {
       cwd: "/var/www/kanbandev",
-      env: { GIT_TRACE2_EVENT: "/tmp/t3-trace.json", GIT_AUTHOR_NAME: "T3 Code" },
+      env: { GIT_TRACE2_EVENT: "/tmp/t3-trace.json", GIT_AUTHOR_NAME: "Zerops Mate" },
     });
     assert.notInclude(remote, "GIT_TRACE2_EVENT");
     assert.include(remote, "GIT_AUTHOR_NAME");

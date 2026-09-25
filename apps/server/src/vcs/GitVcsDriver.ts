@@ -766,10 +766,10 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       const commitEnv: NodeJS.ProcessEnv = {
         ...process.env,
         GIT_INDEX_FILE: tempIndexPath,
-        GIT_AUTHOR_NAME: "T3 Code",
-        GIT_AUTHOR_EMAIL: "t3code@users.noreply.github.com",
-        GIT_COMMITTER_NAME: "T3 Code",
-        GIT_COMMITTER_EMAIL: "t3code@users.noreply.github.com",
+        GIT_AUTHOR_NAME: "Mate",
+        GIT_AUTHOR_EMAIL: "mate@zerops.io",
+        GIT_COMMITTER_NAME: "Mate",
+        GIT_COMMITTER_EMAIL: "mate@zerops.io",
       };
 
       // Forced process termination can leave Git's private index lock behind.
