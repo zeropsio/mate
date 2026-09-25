@@ -920,6 +920,22 @@
     "expires": "F6"
   },
   {
+    "path": "apps/web/src/components/usage/UsageDimensionViews.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[8px] in \"size-4 text-[8px]\"",
+    "owner": "karel",
+    "reason": "initials inside a 16px avatar in the usage breakdown; the scale has nothing below text-3xs (10px)",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsageDimensionViews.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> text-[8px] in \"size-4 text-[8px] ring-1 ring-background\"",
+    "owner": "karel",
+    "reason": "initials inside a 16px avatar in the usage breakdown; the scale has nothing below text-3xs (10px)",
+    "expires": "F6"
+  },
+  {
     "path": "apps/web/src/components/zerops/MateUpdateLine.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[var(--zerops-update-role,var(--foreground))] in \"text-[var(--zerops-update-role,var(--foreground))]\"",
