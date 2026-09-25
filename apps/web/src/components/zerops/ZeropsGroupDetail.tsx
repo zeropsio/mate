@@ -127,9 +127,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsChangeConversation } from "./ZeropsChangeConversation";
 import { failedJob, runAgainLabel, ZeropsDeployRunView } from "./ZeropsDeployRun";
@@ -640,7 +638,6 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const mates_ = useMateMenus();
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
-  const frameActions = useFrameActions();
   const names = useHistoryNames(groupName);
   const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
   const openMate = useOpenMate();
@@ -654,7 +651,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
   if (flow === undefined) {
     return (
-      <DetailShell crumbs={crumbs} frameActions={frameActions} title={groupName ?? "Project"}>
+      <DetailShell crumbs={crumbs} title={groupName ?? "Project"}>
         <Note>This project has not been read yet.</Note>
       </DetailShell>
     );
@@ -685,7 +682,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       onAddMate={openProjects}
       onOpenMate={openMate}
       crumbs={crumbs}
-      frameActions={frameActions}
+
       onSetUp={openProjects}
       release={release}
       trouble={actions.trouble ?? mates_.trouble}
@@ -717,7 +714,6 @@ export function ZeropsGroupPane({
   name,
   names,
   crumbs,
-  frameActions,
   menu,
   menuForMate,
   onAddMate,
@@ -736,8 +732,6 @@ export function ZeropsGroupPane({
   readonly groupId: string;
   readonly name: string;
   readonly crumbs: ReadonlyArray<Crumb>;
-  /** The bar's right side — the organization and the account, handed in by the page. */
-  readonly frameActions?: React.ReactNode;
   /** Where a project with nothing set up goes to get something set up. */
   readonly onSetUp: () => void;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
@@ -797,7 +791,7 @@ export function ZeropsGroupPane({
         </>
       }
       crumbs={crumbs}
-      frameActions={frameActions}
+
       subtitle={groupSubtitle(environments.length, pullRequests.length)}
       title={name}
     >
@@ -939,7 +933,6 @@ export function ZeropsStopDetailPage({
   const release = useReleaseOffer(groupId);
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
-  const frameActions = useFrameActions();
   const names = useHistoryNames(stopGroupName);
   const openProjects = useOpenProjects();
   const { routes, offers } = useStopRoutes(projectId);
@@ -984,14 +977,14 @@ export function ZeropsStopDetailPage({
 
   if (flowValue === null || flow === undefined || stop === undefined) {
     return (
-      <DetailShell crumbs={crumbs} frameActions={frameActions} title="Environment">
+      <DetailShell crumbs={crumbs} title="Environment">
         <Note>This environment has not been read yet.</Note>
       </DetailShell>
     );
   }
   if (withheld !== null) {
     return (
-      <DetailShell crumbs={crumbs} frameActions={frameActions} title={stop.tier}>
+      <DetailShell crumbs={crumbs} title={stop.tier}>
         <Note>{withheld}</Note>
       </DetailShell>
     );
@@ -1026,7 +1019,7 @@ export function ZeropsStopDetailPage({
       deployed={deployed}
       enablingServiceId={route.enablingServiceId}
       forge={forge}
-      frameActions={frameActions}
+
       groupId={groupId}
       groupName={stopGroupName}
       names={names}
@@ -1176,7 +1169,6 @@ export function ZeropsStopPane({
   deployed,
   enablingServiceId,
   forge,
-  frameActions,
   groupId,
   groupName,
   names,
@@ -1200,8 +1192,6 @@ export function ZeropsStopPane({
   waiting,
 }: {
   readonly crumbs: ReadonlyArray<Crumb>;
-  /** The bar's right side — the organization and the account, handed in by the page. */
-  readonly frameActions?: React.ReactNode;
   readonly groupId: string;
   /** The project's name, so the stop's own title does not repeat it. */
   readonly groupName: string | undefined;
@@ -1287,7 +1277,7 @@ export function ZeropsStopPane({
         />
       }
       crumbs={crumbs}
-      frameActions={frameActions}
+
       subtitle={stopMetaLine({ tier: stop.tier, source: stop.source, services: services.length })}
       title={title}
       titleTag={<ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
@@ -1693,7 +1683,6 @@ export function ZeropsChangeDetailPage({
   );
   const groupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: groupName ?? groupId });
-  const frameActions = useFrameActions();
   const names = useHistoryNames(groupName);
   const now = useNowMs();
   const slug = flow?.slug;
@@ -1708,7 +1697,7 @@ export function ZeropsChangeDetailPage({
 
   if (flow === undefined || pull === undefined) {
     return (
-      <DetailShell crumbs={crumbs} frameActions={frameActions} title={`#${String(number)}`}>
+      <DetailShell crumbs={crumbs} title={`#${String(number)}`}>
         <Note>{landedNote(landed, repository, number)}</Note>
       </DetailShell>
     );
@@ -1735,7 +1724,7 @@ export function ZeropsChangeDetailPage({
       names={names}
       onAsk={askMate}
       crumbs={crumbs}
-      frameActions={frameActions}
+
       onMerge={merge}
       pull={pull}
       readDetail={readDetail}
@@ -1777,7 +1766,6 @@ export function ZeropsChangePane({
   names,
   onAsk,
   crumbs,
-  frameActions,
   onMerge,
   pull,
   readDetail,
@@ -1792,8 +1780,6 @@ export function ZeropsChangePane({
   readonly merging: boolean;
   readonly onAsk: (mateProjectId: string | undefined, ask: string) => void;
   readonly crumbs: ReadonlyArray<Crumb>;
-  /** The bar's right side — the organization and the account, handed in by the page. */
-  readonly frameActions?: React.ReactNode;
   readonly onMerge: () => void;
   readonly pull: FlowPullRequest;
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
@@ -1809,7 +1795,7 @@ export function ZeropsChangePane({
   return (
     <DetailShell
       crumbs={crumbs}
-      frameActions={frameActions}
+
       // Every fact the definition list held, as the one line of provenance it
       // always was. The org used to lead it — `shop · appdev · main` — which is
       // the project's name again with a typo's worth of difference.
@@ -2394,41 +2380,12 @@ export interface Crumb {
   readonly onClick: () => void;
 }
 
-/**
- * The bar's right side, as /zerops has it: the organization, once there is a
- * choice to show, and the account.
- *
- * Read by the pages only — the panes are drawn by harnesses and tests with no
- * session behind them, so they take it handed in.
- */
-function useFrameActions(): React.ReactNode {
-  const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
-    useZeropsSession();
-  const scoped =
-    status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
-  return (
-    <>
-      {scoped ? (
-        <ZeropsOrganizationSwitcher
-          activeOrganization={activeOrganization}
-          organizations={organizations}
-          onSelect={(membershipId) => {
-            void selectOrganization(membershipId);
-          }}
-        />
-      ) : null}
-      <ZeropsSessionAccountControl />
-    </>
-  );
-}
-
 function DetailShell({
   title,
   titleTag,
   subtitle,
   actions,
   crumbs,
-  frameActions,
   children,
 }: {
   readonly title: string;
@@ -2443,13 +2400,10 @@ function DetailShell({
    * and coming in again.
    */
   readonly crumbs: ReadonlyArray<Crumb>;
-  /** The bar's right side; absent where no session is behind the page. */
-  readonly frameActions?: React.ReactNode;
   readonly children: React.ReactNode;
 }) {
   return (
     <ZeropsHostedFrame
-      actions={frameActions}
       // The trail is a way out, not the page's business: it sits in the bar,
       // where /zerops keeps its own, rather than competing with the verbs
       // beside the name.
