@@ -300,7 +300,7 @@ function ZeropsNewProjectContent() {
   if (status === "loading") {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner className="size-4" />
+        <Spinner size="md" />
         Checking your Zerops session…
       </div>
     );
@@ -479,7 +479,7 @@ function ZeropsNewProjectContent() {
         }
         onClick={createProject}
       >
-        {creating || locationStatus === "loading" ? <Spinner className="size-4" /> : null}
+        {creating || locationStatus === "loading" ? <Spinner size="md" /> : null}
         {creating && phase === "gitea" ? "Setting up Git hosting" : "Create project"}
       </Button>
       {locationError ? (

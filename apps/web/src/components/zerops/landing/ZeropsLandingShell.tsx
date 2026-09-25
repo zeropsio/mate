@@ -95,7 +95,7 @@ export function ZeropsLandingWait({
     <ZeropsHostedFrame bar={false} centered footer={<ZeropsByline />}>
       <div {...props} aria-live="polite" className="flex flex-col items-center gap-6" role="status">
         <MateMark playful className="h-20 w-auto" />
-        <Spinner className="size-5" />
+        <Spinner size="lg" />
         <span className="sr-only">{label}</span>
       </div>
     </ZeropsHostedFrame>
@@ -122,7 +122,7 @@ function SubmitButton({
 }) {
   return (
     <Button type="submit" className="w-full" disabled={busy || blocked}>
-      {busy ? <Spinner className="size-4" /> : null}
+      {busy ? <Spinner size="md" /> : null}
       {label}
     </Button>
   );
@@ -427,7 +427,7 @@ export function ZeropsHandoverActions({
   if (nativeSignIn?.busy) {
     return (
       <div className="space-y-3 text-center">
-        <Spinner className="mx-auto size-5" />
+        <Spinner size="lg" className="mx-auto" />
         <p className="text-sm text-muted-foreground">
           Continue in your browser, then come back here.
         </p>

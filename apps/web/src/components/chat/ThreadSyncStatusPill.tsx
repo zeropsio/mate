@@ -26,7 +26,7 @@ export function ThreadSyncIndicator({ phase }: { readonly phase: ThreadSyncPhase
           />
         }
       >
-        <Spinner aria-label={label} className="size-3.5" />
+        <Spinner aria-label={label} size="sm" />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{label}</TooltipPopup>
     </Tooltip>

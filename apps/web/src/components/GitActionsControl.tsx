@@ -885,7 +885,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                     aria-live="polite"
                     className="flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-xs text-muted-foreground dark:border-transparent dark:bg-white/[0.035]"
                   >
-                    <Spinner className="size-3.5" aria-hidden />
+                    <Spinner size="sm" aria-hidden />
                     Publishing repository to {publishProviderLabel}...
                   </div>
                 ) : null}
@@ -984,7 +984,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                   >
                     {publishRepositoryAction.isPending ? (
                       <>
-                        <Spinner className="size-3.5" aria-hidden />
+                        <Spinner size="sm" aria-hidden />
                         Publishing...
                       </>
                     ) : (
