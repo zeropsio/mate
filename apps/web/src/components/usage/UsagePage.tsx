@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { UsageProviderKind } from "@t3tools/contracts";
+import type { EnvironmentId, UsageProviderKind } from "@t3tools/contracts";
 import { CheckIcon, RefreshCwIcon, XIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import {
   isModelCostUnknown,
@@ -15,6 +15,11 @@ import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { useAtomCommand } from "../../state/use-atom-command";
+import type {
+  UsageEnvironmentIdentities,
+  UsageEnvironmentOwner,
+} from "../../zerops/usageEnvironmentIdentities";
+import { useUsageEnvironmentIdentities } from "../../zerops/useUsageEnvironmentIdentities";
 import {
   enumerateDays,
   enumerateHourStarts,
@@ -39,6 +44,16 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { Avatar } from "../zerops/primitives/Avatar";
+import {
+  isUsageScopeEmpty,
+  usageDimensions,
+  usageScopeIncludes,
+  type UsageDimension,
+  type UsageDimensions,
+  type UsageScope,
+} from "./usageDimensions";
+import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
@@ -71,7 +86,48 @@ function isUsageWindowDays(value: number): value is UsagePagePreferences["window
   return WINDOW_OPTIONS.some((option) => option.days === value);
 }
 
-export function UsagePage() {
+type UsageBreakdown = UsageDimension | "model" | "time";
+/** Who-dimensions in the order the Breakdown toggle offers them. */
+const DIMENSION_OPTIONS = [
+  { value: "person", label: "Person" },
+  { value: "project", label: "Project" },
+  { value: "mate", label: "Mate" },
+] as const satisfies readonly { value: UsageDimension; label: string }[];
+const ALL = "all";
+
+/** "Mate · project" as the left menu reads it, else the environment's own label. */
+function environmentName(
+  identities: UsageEnvironmentIdentities,
+  environment: { readonly environmentId: EnvironmentId; readonly label: string },
+): string {
+  const identity = identities.get(environment.environmentId);
+  if (identity === undefined) return environment.label;
+  return identity.projectName === null
+    ? identity.mateName
+    : `${identity.mateName} · ${identity.projectName}`;
+}
+
+function scopeOwner(
+  identities: UsageEnvironmentIdentities,
+  personId: string,
+): UsageEnvironmentOwner | null {
+  for (const identity of identities.values()) {
+    if (identity.owner?.id === personId) return identity.owner;
+  }
+  return null;
+}
+
+function withoutScope(scope: UsageScope, dimension: UsageDimension): UsageScope {
+  return { ...scope, [dimension]: undefined };
+}
+
+export function UsagePage({
+  scope,
+  onScopeChange,
+}: {
+  readonly scope: UsageScope;
+  readonly onScopeChange: (scope: UsageScope) => void;
+}) {
   const [preferences, setPreferences] = useState(readUsagePagePreferences);
   const [windowSelection, setWindowSelection] = useState(() => ({
     days: preferences.windowDays,
@@ -83,10 +139,70 @@ export function UsagePage() {
   }));
   const metric = preferences.metric;
   const showingLimits = metric === "limits";
-  const [breakdown, setBreakdown] = useState<"model" | "time">("model");
+  const [breakdownChoice, setBreakdown] = useState<UsageBreakdown | "auto">("auto");
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
-  const { merged, environments, isPending, isPartial, refresh } = useUsage(window);
+  const identities = useUsageEnvironmentIdentities();
+  const { person: scopePerson, project: scopeProject, mate: scopeMate } = scope;
+  const include = useMemo(() => {
+    const current = { person: scopePerson, project: scopeProject, mate: scopeMate };
+    return isUsageScopeEmpty(current)
+      ? undefined
+      : (environmentId: EnvironmentId) => usageScopeIncludes(current, identities, environmentId);
+  }, [identities, scopeMate, scopePerson, scopeProject]);
+  const { merged, overall, environments, isPending, isPartial, refresh } = useUsage(
+    window,
+    include,
+  );
+  const dimensionMetric = metric === "tokens" ? "tokens" : "cost";
+  const labels = useMemo(
+    () =>
+      new Map(environments.map((environment) => [environment.environmentId, environment.label])),
+    [environments],
+  );
+  const dimensions = useMemo(
+    () =>
+      usageDimensions({
+        byEnvironment: merged.byEnvironment,
+        identities,
+        labels,
+        metric: dimensionMetric,
+      }),
+    [dimensionMetric, identities, labels, merged.byEnvironment],
+  );
+  // The top bar's filters choose from the whole window, not from the scope
+  // they would narrow.
+  const overallDimensions = useMemo(
+    () =>
+      usageDimensions({
+        byEnvironment: overall.byEnvironment,
+        identities,
+        labels,
+        metric: dimensionMetric,
+      }),
+    [dimensionMetric, identities, labels, overall.byEnvironment],
+  );
+  const nameOf = useCallback(
+    (environment: { readonly environmentId: EnvironmentId; readonly label: string }) =>
+      environmentName(identities, environment),
+    [identities],
+  );
+  const breakdownOptions: readonly { value: UsageBreakdown; label: string }[] = [
+    ...DIMENSION_OPTIONS.filter((option) => dimensions.visible[option.value]),
+    { value: "model", label: "Model" },
+    { value: "time", label: isPast24Hours ? "Hour" : "Day" },
+  ];
+  const breakdown: UsageBreakdown =
+    breakdownChoice !== "auto" &&
+    breakdownOptions.some((option) => option.value === breakdownChoice)
+      ? breakdownChoice
+      : (breakdownOptions[0]?.value ?? "model");
+  const whoSummary = [
+    dimensions.visible.mate ? ` · ${formatCount(dimensions.mates.length)} Mates` : "",
+    dimensions.visible.person
+      ? ` · ${formatCount(dimensions.people.filter((person) => person.owner !== null).length)} people`
+      : "",
+  ].join("");
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
@@ -184,10 +300,24 @@ export function UsagePage() {
             <WorkspaceBreadcrumbItem className="hidden min-w-0 shrink md:flex">
               <span className="truncate">{windowLabel}</span>
             </WorkspaceBreadcrumbItem>
+            <UsageScopeChips
+              scope={scope}
+              identities={identities}
+              dimensions={overallDimensions}
+              labels={labels}
+              onScopeChange={onScopeChange}
+            />
           </>
         )}
       </WorkspaceBreadcrumb>
       <div className="ms-auto hidden min-w-0 items-center justify-end gap-2 lg:flex">
+        {showingLimits ? null : (
+          <UsageScopeFilters
+            scope={scope}
+            dimensions={overallDimensions}
+            onScopeChange={onScopeChange}
+          />
+        )}
         <ToggleGroup
           aria-label="Usage metric"
           variant="segmented"
@@ -306,13 +436,16 @@ export function UsagePage() {
               <UsageLimitsSection now={limitsNow} />
             ) : settling ? (
               <>
-                {environments.length > 1 ? <UsageDeviceStrip environments={environments} /> : null}
+                {environments.length > 1 ? (
+                  <UsageDeviceStrip environments={environments} nameOf={nameOf} />
+                ) : null}
                 <UsageSkeleton />
               </>
             ) : (
               <>
                 <UsageCoverageNotice
                   environments={environments}
+                  nameOf={nameOf}
                   duplicateSources={merged.duplicateSources}
                   staleEnvironments={merged.staleEnvironments}
                 />
@@ -333,8 +466,13 @@ export function UsagePage() {
                                 merged.costQuality.unpricedShare,
                               )} unpriced records`
                             : `${formatCount(merged.sessions)} sessions · API estimate`}
+                        {whoSummary}
                       </span>
                     </div>
+
+                    {dimensions.visible.person ? (
+                      <UsagePeopleSplit people={dimensions.people} metric={dimensionMetric} />
+                    ) : null}
 
                     {activeProviders.map((provider) => {
                       const totals = merged.providers.find((entry) => entry.provider === provider);
@@ -425,16 +563,11 @@ export function UsagePage() {
                       variant="segmented"
                       value={[breakdown]}
                       onValueChange={(next) => {
-                        const value = next[0];
-                        if (value === "model" || value === "time") setBreakdown(value);
+                        const option = breakdownOptions.find((entry) => entry.value === next[0]);
+                        if (option !== undefined) setBreakdown(option.value);
                       }}
                     >
-                      {(
-                        [
-                          { value: "model", label: "Model" },
-                          { value: "time", label: isPast24Hours ? "Hour" : "Day" },
-                        ] as const
-                      ).map((option) => (
+                      {breakdownOptions.map((option) => (
                         <Toggle key={option.value} value={option.value}>
                           {option.label}
                         </Toggle>
@@ -442,7 +575,15 @@ export function UsagePage() {
                     </ToggleGroup>
                   </div>
 
-                  {breakdown === "model" ? (
+                  {breakdown === "person" || breakdown === "project" || breakdown === "mate" ? (
+                    <UsageDimensionTable
+                      dimension={breakdown}
+                      dimensions={dimensions}
+                      metric={dimensionMetric}
+                      scope={scope}
+                      onScopeChange={onScopeChange}
+                    />
+                  ) : breakdown === "model" ? (
                     <table className="w-full table-fixed text-sm">
                       <colgroup>
                         <col className="w-2/5" />
@@ -597,10 +738,12 @@ function Metric({ label, value }: { readonly label: string; readonly value: stri
  */
 function UsageCoverageNotice({
   environments,
+  nameOf,
   duplicateSources,
   staleEnvironments,
 }: {
   readonly environments: readonly EnvironmentUsageStatus[];
+  readonly nameOf: (environment: EnvironmentUsageStatus) => string;
   readonly duplicateSources: readonly string[];
   readonly staleEnvironments: readonly string[];
 }) {
@@ -615,11 +758,11 @@ function UsageCoverageNotice({
   return (
     <div className="flex flex-col gap-1 border border-border px-3 py-2 text-xs text-muted-foreground">
       {failed.map((environment) => (
-        <span key={environment.label}>{environment.label} could not report usage.</span>
+        <span key={environment.environmentId}>{nameOf(environment)} could not report usage.</span>
       ))}
       {stale.map((environment) => (
-        <span key={environment.label}>
-          {environment.label} runs an older server version and is excluded from totals.
+        <span key={environment.environmentId}>
+          {nameOf(environment)} runs an older server version and is excluded from totals.
         </span>
       ))}
       {duplicateSources.length > 0 ? (
@@ -639,8 +782,10 @@ function UsageCoverageNotice({
  */
 function UsageDeviceStrip({
   environments,
+  nameOf,
 }: {
   readonly environments: readonly EnvironmentUsageStatus[];
+  readonly nameOf: (environment: EnvironmentUsageStatus) => string;
 }) {
   const scanning = environments.filter(
     (environment) => environment.summary === null && environment.error === null,
@@ -655,7 +800,7 @@ function UsageDeviceStrip({
               className="flex items-center gap-1 text-foreground"
             >
               <CheckIcon className="size-3 text-emerald-600 dark:text-emerald-300/90" aria-hidden />
-              {environment.label}
+              {nameOf(environment)}
             </span>
           );
         }
@@ -666,7 +811,7 @@ function UsageDeviceStrip({
               className="flex items-center gap-1 text-destructive"
             >
               <XIcon className="size-3" aria-hidden />
-              {environment.label}
+              {nameOf(environment)}
             </span>
           );
         }
@@ -675,7 +820,7 @@ function UsageDeviceStrip({
             key={environment.environmentId}
             className="animate-status-pulse text-muted-foreground"
           >
-            {environment.label}…
+            {nameOf(environment)}…
           </span>
         );
       })}
@@ -686,6 +831,123 @@ function UsageDeviceStrip({
       </span>
     </div>
   );
+}
+
+/** The active scope as breadcrumb chips, each with its own clear button. */
+function UsageScopeChips({
+  scope,
+  identities,
+  dimensions,
+  labels,
+  onScopeChange,
+}: {
+  readonly scope: UsageScope;
+  readonly identities: UsageEnvironmentIdentities;
+  readonly dimensions: UsageDimensions;
+  readonly labels: ReadonlyMap<EnvironmentId, string>;
+  readonly onScopeChange: (scope: UsageScope) => void;
+}) {
+  const chips: { dimension: UsageDimension; label: string; owner: UsageEnvironmentOwner | null }[] =
+    [];
+  if (scope.person !== undefined) {
+    const owner = scopeOwner(identities, scope.person);
+    chips.push({ dimension: "person", label: owner?.name ?? scope.person, owner });
+  }
+  if (scope.project !== undefined) {
+    chips.push({ dimension: "project", label: scope.project, owner: null });
+  }
+  if (scope.mate !== undefined) {
+    const mate = dimensions.mates.find((row) => row.environmentId === scope.mate);
+    chips.push({
+      dimension: "mate",
+      label: mate?.mateName ?? labels.get(scope.mate) ?? scope.mate,
+      owner: null,
+    });
+  }
+  return chips.map((chip) => (
+    <span key={chip.dimension} className="contents">
+      <WorkspaceBreadcrumbSeparator />
+      <WorkspaceBreadcrumbItem className="min-w-0 shrink">
+        <span className="flex min-w-0 items-center gap-1.5 text-foreground">
+          {chip.owner === null ? null : (
+            <Avatar initials={chip.owner.initials} size="xs" src={chip.owner.avatarUrl} />
+          )}
+          <span className="truncate">{chip.label}</span>
+          <button
+            type="button"
+            aria-label={`Clear ${chip.dimension} filter`}
+            className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onScopeChange(withoutScope(scope, chip.dimension))}
+          >
+            <XIcon className="size-3" aria-hidden />
+          </button>
+        </span>
+      </WorkspaceBreadcrumbItem>
+    </span>
+  ));
+}
+
+/** Person and Project pickers, offered only when the window has two of them to choose between. */
+function UsageScopeFilters({
+  scope,
+  dimensions,
+  onScopeChange,
+}: {
+  readonly scope: UsageScope;
+  readonly dimensions: UsageDimensions;
+  readonly onScopeChange: (scope: UsageScope) => void;
+}) {
+  const people = dimensions.people.flatMap((person) =>
+    person.owner === null ? [] : [{ value: person.owner.id, label: person.owner.name }],
+  );
+  const projects = dimensions.projects.flatMap((project) =>
+    project.projectName === null
+      ? []
+      : [{ value: project.projectName, label: project.projectName }],
+  );
+  const filters = [
+    ...(dimensions.visible.person
+      ? [{ dimension: "person" as const, all: "All people", options: people }]
+      : []),
+    ...(dimensions.visible.project
+      ? [{ dimension: "project" as const, all: "All projects", options: projects }]
+      : []),
+  ];
+  return filters.map((filter) => {
+    const value = scope[filter.dimension] ?? ALL;
+    return (
+      <Select
+        key={filter.dimension}
+        value={value}
+        onValueChange={(next) => {
+          onScopeChange(
+            next === ALL || next === null
+              ? withoutScope(scope, filter.dimension)
+              : { ...scope, [filter.dimension]: next },
+          );
+        }}
+      >
+        <SelectTrigger
+          aria-label={`Usage ${filter.dimension}`}
+          size="compact"
+          variant="ghost"
+          className="w-auto min-w-0"
+        >
+          <SelectValue>
+            {filter.options.find((option) => option.value === value)?.label ?? filter.all}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectPopup align="end" alignItemWithTrigger={false}>
+          <SelectItem value={ALL}>{filter.all}</SelectItem>
+          {filter.options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectPopup>
+      </Select>
+    );
+  });
 }
 
 /**

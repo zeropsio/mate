@@ -58,7 +58,10 @@ const usageByWindowAtom = Atom.family((windowKey: string) =>
 );
 
 export interface UsageView {
+  /** The environments the predicate includes, merged. */
   readonly merged: MergedUsage;
+  /** Every answered environment, merged: what the scope is chosen from. */
+  readonly overall: MergedUsage;
   readonly environments: readonly EnvironmentUsageStatus[];
   /** True until at least one environment has answered. */
   readonly isPending: boolean;
@@ -71,7 +74,14 @@ export interface UsageView {
   readonly refresh: () => void;
 }
 
-export function useUsage(input: UsageSummaryInput): UsageView {
+/**
+ * `include` narrows `merged` to a scope; it must be stable across renders
+ * (memoised) or every render re-merges.
+ */
+export function useUsage(
+  input: UsageSummaryInput,
+  include?: (environmentId: EnvironmentId) => boolean,
+): UsageView {
   const windowKey = useMemo(
     () =>
       JSON.stringify({
@@ -106,20 +116,32 @@ export function useUsage(input: UsageSummaryInput): UsageView {
     }
   }, [environments, windowKey]);
 
-  const merged = useMemo(() => {
-    const answered: EnvironmentUsage[] = environments.flatMap((environment) =>
-      environment.summary === null
-        ? []
-        : [
-            {
-              environmentId: environment.environmentId,
-              label: environment.label,
-              summary: environment.summary,
-            },
-          ],
-    );
-    return mergeUsage(answered, USAGE_CONTRACT_VERSION);
-  }, [environments]);
+  const answered = useMemo(
+    (): readonly EnvironmentUsage[] =>
+      environments.flatMap((environment) =>
+        environment.summary === null
+          ? []
+          : [
+              {
+                environmentId: environment.environmentId,
+                label: environment.label,
+                summary: environment.summary,
+              },
+            ],
+      ),
+    [environments],
+  );
+  const overall = useMemo(() => mergeUsage(answered, USAGE_CONTRACT_VERSION), [answered]);
+  const merged = useMemo(
+    () =>
+      include === undefined
+        ? overall
+        : mergeUsage(
+            answered.filter((environment) => include(environment.environmentId)),
+            USAGE_CONTRACT_VERSION,
+          ),
+    [answered, include, overall],
+  );
 
   const answeredCount = environments.filter((environment) => environment.summary !== null).length;
   const stillReporting = environments.filter(
@@ -128,6 +150,7 @@ export function useUsage(input: UsageSummaryInput): UsageView {
 
   return {
     merged,
+    overall,
     environments,
     isPending: answeredCount === 0 && stillReporting > 0,
     isPartial: answeredCount > 0 && stillReporting > 0,
