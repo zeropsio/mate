@@ -1433,15 +1433,16 @@ function StopServiceLine({
           <span className="truncate text-xs leading-4 text-muted-foreground">{row.repository}</span>
         </span>
         <span className="col-span-2 col-start-2 flex min-w-0 flex-col sm:col-span-1 sm:col-start-3 sm:row-start-1">
-          {row.commit === undefined ? (
-            <span className="truncate text-sm leading-5 text-muted-foreground">
-              {NOTHING_DEPLOYED}
-            </span>
-          ) : (
+          {/* No commit and a state: what runs is not stated yet, so nothing is claimed. */}
+          {row.commit !== undefined ? (
             <span className="truncate font-mono text-[13px] leading-5 text-foreground tabular-nums">
               {row.commit}
             </span>
-          )}
+          ) : row.status === undefined ? (
+            <span className="truncate text-sm leading-5 text-muted-foreground">
+              {NOTHING_DEPLOYED}
+            </span>
+          ) : null}
           {row.line === undefined ? null : (
             <span className="truncate text-xs leading-4 text-muted-foreground">{row.line}</span>
           )}

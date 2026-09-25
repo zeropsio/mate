@@ -1,4 +1,5 @@
 import {
+  deployedVersion,
   environmentRow,
   releaseContentsSummary,
   releaseRow,
@@ -502,6 +503,26 @@ describe("ZeropsStopPane", () => {
     });
     const card = markup.slice(markup.indexOf("Services · 1"));
     expect(count(card, "Nothing deployed yet")).toBe(1);
+  });
+
+  it("never claims nothing runs on a row being deployed while nothing states what ran before", () => {
+    const deploying: Shown<Deployment> = {
+      ...NONE,
+      value: { kind: "deploying", version: deployedVersion(fullSha("b2")), previous: null },
+    };
+    const markup = renderStop({
+      tier: "stage",
+      services: [service("stage", "api", "b2", undefined)],
+      deployment: deploying,
+      platform: {
+        ...NONE,
+        value: [{ service: platformService("svc-api"), hostname: "api", deployment: deploying }],
+      },
+    });
+    const card = markup.slice(markup.indexOf("Services · 1"));
+    expect(card).toContain("Deploying…");
+    expect(card).not.toContain("Nothing deployed yet");
+    expect(card).not.toContain("b200000");
   });
 
   it("draws the verdict's verb as an outline button, not a filled one", () => {

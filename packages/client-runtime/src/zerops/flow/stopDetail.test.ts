@@ -464,8 +464,8 @@ describe("serviceRows", () => {
     {
       hostname: "web",
       repository: "web",
-      sha: SHA_WEB,
-      commit: "a1b2c3d",
+      sha: undefined,
+      commit: undefined,
       line: undefined,
       tone: "pending",
       word: "Deploying…",
@@ -529,12 +529,12 @@ describe("serviceRows", () => {
       },
     },
     {
-      name: "says the build's commit while nothing states what ran before",
+      name: "names no commit, never the build's, while nothing states what ran before",
       appVersionName: SHA_WEB,
       previous: null,
       expected: {
-        sha: SHA_WEB,
-        commit: "a1b2c3d",
+        sha: undefined,
+        commit: undefined,
         line: undefined,
         status: "Deploying…",
         runs: undefined,
