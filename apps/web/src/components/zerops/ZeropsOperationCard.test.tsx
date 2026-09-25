@@ -439,6 +439,81 @@ describe("ZeropsOperationCard — browser", () => {
     expect(html).not.toContain("data:image/jpeg;base64,BBBB");
   });
 
+  describe("the frame is reserved from birth, so the image fills it in place", () => {
+    const born = operationFor(
+      zeropsCall({
+        id: "brw-born",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_browser",
+        input: { url: "https://kanbandev-26a7.prg1.zerops.app/cz/products/vltava" },
+        status: "inProgress",
+      }),
+    );
+    const mobile = operationFor(
+      zeropsCall({
+        id: "brw-mobile",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_browser",
+        input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+        status: "completed",
+        resultText: JSON.stringify({
+          url: "https://kanbandev-26a7.prg1.zerops.app",
+          steps: [{ command: ["set", "viewport", "390", "844"], success: true }],
+          errorsOutput: [],
+          consoleOutput: [],
+          networkOutput: [],
+        }),
+      }),
+    );
+    const frame = (html: string) =>
+      html.match(/<button[^>]*data-zerops-browser-viewport[^>]*>[\s\S]*?<\/button>/)?.[0];
+
+    it.each([
+      {
+        name: "born, nothing to show yet",
+        operation: born,
+        props: {},
+        ratio: "16 / 9",
+        image: false,
+      },
+      {
+        name: "the first live frame",
+        operation: born,
+        props: {
+          live: true,
+          liveFrame: { src: "data:image/jpeg;base64,LIVE", width: 640, height: 400 },
+        },
+        ratio: "16 / 9",
+        image: true,
+      },
+      {
+        name: "the screenshot",
+        operation: born,
+        props: {
+          browserScreenshot: { src: "data:image/png;base64,DONE", width: 1280, height: 2400 },
+        },
+        ratio: "16 / 9",
+        image: true,
+      },
+      { name: "a known viewport", operation: mobile, props: {}, ratio: "390 / 844", image: false },
+    ])("$name: the frame keeps aspect-ratio $ratio", ({ operation, props, ratio, image }) => {
+      const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} {...props} />);
+      const viewport = frame(html);
+
+      expect(viewport).toBeDefined();
+      expect(viewport).toContain(`aspect-ratio:${ratio}`);
+      expect(viewport?.includes("data-zerops-browser-image")).toBe(image);
+      expect(viewport).not.toMatch(/animate-/);
+    });
+
+    it("the live caption follows the call's own phase, so a reload of a running call reads the same", () => {
+      const html = renderToStaticMarkup(<ZeropsOperationCard operation={born} />);
+      expect(html).toContain("data-zerops-browser-live-caption");
+    });
+  });
+
   it("clicking the viewport opens the Browser panel", () => {
     panelTestState.onOpen = null;
     panelTestState.open.mockClear();

@@ -125,41 +125,52 @@ function visibleBrowserSteps(operation: ZeropsOperation): ReadonlyArray<ZeropsOp
   return operation.steps.filter((step) => step.kind !== "tail");
 }
 
+/**
+ * The frame's shape, fixed before any pixel arrives: the viewport the agent
+ * set when the result names one, else agent-browser's default 16:9. Never the
+ * image's own size — a frame or a full-page screenshot fits inside it
+ * instead of reshaping the card.
+ */
+function browserFrameAspectRatio(operation: ZeropsOperation): string {
+  const viewport = operation.browserSummary?.viewport;
+  return viewport === undefined ? "16 / 9" : `${viewport.width} / ${viewport.height}`;
+}
+
 function BrowserViewport({
+  aspectRatio,
   image,
   live,
   onOpen,
   subject,
 }: {
-  readonly image: BrowserScreenshot | LiveBrowserFrame;
+  readonly aspectRatio: string;
+  readonly image: BrowserScreenshot | LiveBrowserFrame | undefined;
   readonly live: boolean;
   readonly onOpen: () => void;
   readonly subject: string;
 }) {
-  const aspectRatio =
-    image.width !== undefined && image.height !== undefined
-      ? `${image.width} / ${image.height}`
-      : undefined;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
             aria-label="Open the Browser panel"
-            className="block w-full cursor-pointer overflow-hidden rounded-md border border-[var(--zerops-flat-card-border)] bg-background/40 p-0"
+            className="block w-full cursor-pointer overflow-hidden rounded-md border border-[var(--zerops-flat-card-border)] bg-muted p-0"
             data-zerops-browser-viewport
             onClick={onOpen}
-            style={{ maxHeight: 360, ...(aspectRatio !== undefined ? { aspectRatio } : {}) }}
+            style={{ maxHeight: 360, aspectRatio }}
             type="button"
           />
         }
       >
-        <img
-          alt={live ? `Live view of ${subject}` : "Screenshot"}
-          className="block h-full max-h-[360px] w-full object-contain"
-          data-zerops-browser-image
-          src={image.src}
-        />
+        {image !== undefined ? (
+          <img
+            alt={live ? `Live view of ${subject}` : "Screenshot"}
+            className="block h-full max-h-[360px] w-full bg-background/40 object-contain"
+            data-zerops-browser-image
+            src={image.src}
+          />
+        ) : null}
       </TooltipTrigger>
       <TooltipPopup side="bottom">Open the Browser panel</TooltipPopup>
     </Tooltip>
@@ -185,15 +196,14 @@ function BrowserBody({
 
   return (
     <div className="space-y-2 px-3 pt-1 pb-2.5 text-xs leading-relaxed" data-zerops-browser-body>
-      {image !== undefined ? (
-        <BrowserViewport
-          image={image}
-          live={live}
-          onOpen={onOpenPanel}
-          subject={operation.subject}
-        />
-      ) : null}
-      {live ? (
+      <BrowserViewport
+        aspectRatio={browserFrameAspectRatio(operation)}
+        image={image}
+        live={live}
+        onOpen={onOpenPanel}
+        subject={operation.subject}
+      />
+      {operation.phase === "running" ? (
         <p className="text-muted-foreground text-xs" data-zerops-browser-live-caption>
           {browserLiveCaption(operation.subject)}
         </p>
@@ -268,12 +278,7 @@ export function ZeropsOperationCard(props: {
   const isBrowser = operation.kind === "browser";
 
   const stepsForBody: ReadonlyArray<ProcessStep> = observed?.steps ?? operation.steps;
-  const browserImage = isBrowser
-    ? browserViewportImage(live, browserScreenshot, liveFrame)
-    : undefined;
-  const hasBody = isBrowser
-    ? browserImage !== undefined || operation.browserSummary !== undefined || live
-    : stepsForBody.length > 0 || observed !== undefined;
+  const hasBody = isBrowser || stepsForBody.length > 0 || observed !== undefined;
 
   const openBrowserPanel = () => {
     if (threadRef !== undefined && threadRef !== null) {
