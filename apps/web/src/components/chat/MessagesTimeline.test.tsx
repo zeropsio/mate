@@ -1155,7 +1155,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Working for");
+    expect(markup).toContain("Working · ");
     expect(markup).toContain("Running pnpm");
   });
 
@@ -1253,19 +1253,19 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("tool call failed");
   });
 
-  it("aligns the iconless Thinking row with the working timer", () => {
+  it("says the turn is thinking in its header from the moment a message is sent", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
         isWorking
         activeTurnStartedAt={MESSAGE_CREATED_AT}
-        timelineEntries={[]}
+        timelineEntries={[buildUserTimelineEntry("Deploy it")]}
       />,
     );
 
-    expect(markup).toContain("Working for");
-    expect(markup).toContain("Thinking");
-    expect(markup).toContain("gap-1.5 py-0.5 px-1");
+    expect(markup).toContain('data-timeline-row-id="turn-header:message-1"');
+    expect(markup).toContain("Working · ");
+    expect(markup).toContain("· Thinking");
   });
 
   it("renders review comment contexts as structured cards instead of raw tags", () => {
