@@ -188,16 +188,29 @@ function HistoryRow({
               <span className="min-w-0 truncate">{entry.subject}</span>
             </button>
           )}
-          {/* The name it went live under, where a release carried it. */}
-          {entry.tags.map((tag) => (
-            <span
-              className="flex shrink-0 self-center"
-              data-zerops-surface="zerops-history-release"
-              key={tag}
-            >
-              <ZeropsRoleTag label={tag} />
-            </span>
-          ))}
+          {/* The name it went live under, where a release carried it: on a
+              stop's Deploys the version in plain text beside a release role
+              tag, as the stop's release rows draw it; the green chip elsewhere. */}
+          {entry.tags.map((tag) =>
+            here === undefined ? (
+              <span
+                className="shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]"
+                data-zerops-surface="zerops-history-release"
+                key={tag}
+              >
+                {tag}
+              </span>
+            ) : (
+              <span
+                className="flex shrink-0 items-center gap-1.5 self-center"
+                data-zerops-surface="zerops-history-release"
+                key={tag}
+              >
+                <span className="text-[13px] leading-5 text-foreground tabular-nums">{tag}</span>
+                <ZeropsRoleTag label="release" />
+              </span>
+            ),
+          )}
           <span className="shrink-0 font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
             {entry.shortSha}
           </span>
