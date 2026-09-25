@@ -772,6 +772,52 @@ describe("resolveAssistantMessageCopyState", () => {
   });
 });
 
+describe("deriveMessagesTimelineRows — a tool run keeps its row id once it is no longer live", () => {
+  const live = (id: string, minute: number) =>
+    makeWorkTimelineEntry(id, {
+      turnId: "turn-active" as never,
+      itemType: "command_execution",
+      toolLifecycleStatus: "inProgress",
+      createdAt: `2026-01-01T00:0${minute}:00Z`,
+    });
+  const settled = (entry: Extract<TimelineEntry, { kind: "work" }>) => ({
+    ...entry,
+    entry: { ...entry.entry, toolLifecycleStatus: "completed" as const },
+  });
+  const narration: TimelineEntry = {
+    id: "narration-entry",
+    kind: "message",
+    createdAt: "2026-01-01T00:09:00Z",
+    message: {
+      id: "narration" as never,
+      role: "assistant",
+      text: "Next I will check the logs.",
+      turnId: "turn-active" as never,
+      createdAt: "2026-01-01T00:09:00Z",
+      updatedAt: "2026-01-01T00:09:00Z",
+      streaming: false,
+    },
+  };
+
+  it("after an error-tone entry, which is a run of its own", () => {
+    const before = makeWorkTimelineEntry("denied", {
+      turnId: "turn-active" as never,
+      tone: "error",
+      label: "Tool call denied",
+      toolLifecycleStatus: "failed",
+    });
+    const first = live("first", 1);
+    const second = live("second", 2);
+    const liveIds = deriveActiveRows([before, first, second]).map((row) => row.id);
+    const movedOnIds = deriveActiveRows([before, settled(first), settled(second), narration]).map(
+      (row) => row.id,
+    );
+
+    expect(liveIds).toContain("work-group:first-entry");
+    expect(movedOnIds).toContain("work-group:first-entry");
+  });
+});
+
 describe("deriveMessagesTimelineRows", () => {
   it("keeps user input in its own row through tool grouping and turn folding", () => {
     const turnId = TurnId.make("answer-turn");
@@ -1009,7 +1055,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
       ] satisfies TimelineEntry[],
-      expectedIds: ["spawn-work", "ordinary-work-2", "work-toggle:ordinary-entry-1"],
+      expectedIds: ["spawn-work", "ordinary-work-2", "work-group:ordinary-entry-1"],
       expectedToggle: { hiddenCount: 1, summary: null, hasFailure: false },
     },
   ])(
@@ -3094,7 +3140,6 @@ describe("deriveMessagesTimelineRows", () => {
   it.each([
     ["the later success is hidden", ["failed", "completed", "info"], false],
     ["the later success is visible", ["failed", "info", "completed"], false],
-    ["an error-toned entry recovers", ["error", "info", "completed"], false],
     ["the final failure is hidden", ["completed", "failed", "info"], true],
     ["the final failure is visible", ["failed", "info", "failed"], true],
     ["the only failure is visible", ["completed", "info", "failed"], false],
@@ -3112,15 +3157,13 @@ describe("deriveMessagesTimelineRows", () => {
           entry:
             status === "info"
               ? { id, createdAt, label: "Status updated", tone: "info" as const }
-              : status === "error"
-                ? { id, createdAt, label: "Command failed", tone: "error" as const }
-                : {
-                    id,
-                    createdAt,
-                    label: "Ran command",
-                    tone: "tool" as const,
-                    toolLifecycleStatus: status,
-                  },
+              : {
+                  id,
+                  createdAt,
+                  label: "Ran command",
+                  tone: "tool" as const,
+                  toolLifecycleStatus: status,
+                },
         };
       });
 

@@ -1533,7 +1533,10 @@ export function deriveMessagesTimelineRows(input: {
           nextEntry.kind !== "work" ||
           nextEntry.entry.questionAnswer !== undefined ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
+          // An error is a run of its own, as the live tail reads it: the
+          // tools after it start their own run, live or summarized.
           nextEntry.entry.tone === "error" ||
+          timelineEntry.entry.tone === "error" ||
           activeWorkEntries.has(nextEntry) ||
           collapsedEntries.has(nextEntry) ||
           headerAnchorIndices.has(cursor)
@@ -1658,7 +1661,7 @@ export function deriveMessagesTimelineRows(input: {
 
             nextRows.push({
               kind: "work-toggle",
-              id: `work-toggle:${timelineEntry.id}`,
+              id: groupId,
               createdAt: timelineEntry.createdAt,
               groupId,
               hiddenCount: hiddenEntries.length,
