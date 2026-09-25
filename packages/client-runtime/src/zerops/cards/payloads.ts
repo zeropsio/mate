@@ -26,6 +26,34 @@ export interface ZeropsCheckLine {
   readonly httpStatus?: number;
 }
 
+/** `internal/ops/deploy_common.go` `DeployResult` — one target's deploy. */
+export interface ZeropsDeployCard {
+  readonly kind: "deploy";
+  readonly target: string;
+  readonly status: string;
+  readonly message?: string;
+  readonly buildStatus?: string;
+  readonly buildDuration?: string;
+  readonly subdomainUrl?: string;
+  readonly failedPhase?: string;
+  readonly failureCause?: string;
+  readonly failureAction?: string;
+  readonly warnings: ReadonlyArray<string>;
+  /** The platform service id of `target`. */
+  readonly targetServiceId?: string;
+  /** The appVersion this build produced — absent until the build resolves, and on a failed or timed-out build. */
+  readonly appVersionId?: string;
+  /** The `--version-name` zcp passed to the push (the commit sha, `-dirty` when uncommitted). */
+  readonly versionName?: string;
+  /** The build container's last lines, attached on a failed build or prepare. */
+  readonly buildLogs?: ReadonlyArray<string>;
+  /** The runtime container's last lines, attached on a failed init. */
+  readonly runtimeLogs?: ReadonlyArray<string>;
+  /** zcp stopped waiting for the build; it may still be running on the platform. */
+  readonly timedOut?: true;
+  readonly nextActions?: string;
+}
+
 export type ZeropsCardPayload =
   | {
       readonly kind: "error";
@@ -36,18 +64,17 @@ export type ZeropsCardPayload =
       readonly failureClass?: string;
       readonly checks: ReadonlyArray<ZeropsCheckLine>;
     }
+  | ZeropsDeployCard
   | {
-      readonly kind: "deploy";
-      readonly target: string;
-      readonly status: string;
-      readonly message?: string;
-      readonly buildStatus?: string;
-      readonly buildDuration?: string;
-      readonly subdomainUrl?: string;
-      readonly failedPhase?: string;
-      readonly failureCause?: string;
-      readonly failureAction?: string;
-      readonly warnings: ReadonlyArray<string>;
+      readonly kind: "deployBatch";
+      readonly summary?: string;
+      /** One per target, in the order the agent named them. */
+      readonly entries: ReadonlyArray<{
+        readonly target: string;
+        /** Absent when the kickoff itself failed — `error` says why. */
+        readonly result?: ZeropsDeployCard;
+        readonly error?: string;
+      }>;
     }
   | {
       readonly kind: "verify";
@@ -63,9 +90,13 @@ export type ZeropsCardPayload =
         readonly status: string;
         readonly action?: string;
         readonly failReason?: string;
+        /** The platform process this service's import started. */
+        readonly processId?: string;
+        readonly serviceId?: string;
       }>;
       readonly errors: ReadonlyArray<{ readonly hostname: string; readonly message: string }>;
       readonly summary?: string;
+      readonly nextActions?: string;
     }
   | {
       readonly kind: "mount";
@@ -146,6 +177,11 @@ const checkLines = (value: unknown): ReadonlyArray<ZeropsCheckLine> =>
 const optional = <K extends string>(key: K, value: string | number | undefined) =>
   value === undefined ? {} : ({ [key]: value } as Record<K, string | number>);
 
+const nonEmptyLines = <K extends string>(key: K, value: unknown) => {
+  const lines = readStringArray(value);
+  return lines.length === 0 ? {} : ({ [key]: lines } as Record<K, ReadonlyArray<string>>);
+};
+
 /** `internal/tools/errwire.go` `ErrorWire`. Never carries an envelope, by contract. */
 function decodeError(document: Record<string, unknown>): ZeropsCardPayload | undefined {
   const code = readString(document.code);
@@ -163,8 +199,14 @@ function decodeError(document: Record<string, unknown>): ZeropsCardPayload | und
   };
 }
 
-/** `internal/ops/deploy_common.go` `DeployResult`, wrapped by `deployLocalResponse`. */
-function decodeDeploy(document: Record<string, unknown>): ZeropsCardPayload | undefined {
+/**
+ * `internal/ops/deploy_common.go` `DeployResult`, wrapped by `deployLocalResponse`.
+ * Exported for the one caller that reads it off a failed call's document,
+ * which `decodeZeropsCard` deliberately never decodes as a success shape.
+ */
+export function decodeDeployResult(
+  document: Record<string, unknown>,
+): ZeropsDeployCard | undefined {
   const target = readString(document.targetService);
   const status = readString(document.status);
   if (target === undefined || status === undefined) {
@@ -183,7 +225,37 @@ function decodeDeploy(document: Record<string, unknown>): ZeropsCardPayload | un
     ...optional("failureCause", readString(classification?.likelyCause)),
     ...optional("failureAction", readString(classification?.suggestedAction)),
     warnings: readStringArray(document.warnings),
+    ...optional("targetServiceId", readString(document.targetServiceId)),
+    ...optional("appVersionId", readString(document.appVersionId)),
+    ...optional("versionName", readString(document.versionName)),
+    ...nonEmptyLines("buildLogs", document.buildLogs),
+    ...nonEmptyLines("runtimeLogs", document.runtimeLogs),
+    ...(document.timedOut === true ? { timedOut: true as const } : {}),
+    ...optional("nextActions", readString(document.nextActions)),
   };
+}
+
+/** `internal/ops/deploy_batch.go` `DeployBatchResult`, wrapped by `deployBatchResponse`. */
+function decodeDeployBatch(document: Record<string, unknown>): ZeropsCardPayload | undefined {
+  const entries = readRecordArray(document.entries).flatMap((entry) => {
+    const target = readString(readRecord(entry.target)?.targetService);
+    if (target === undefined) {
+      return [];
+    }
+    const result = readRecord(entry.result);
+    const decoded = result === undefined ? undefined : decodeDeployResult(result);
+    return [
+      {
+        target,
+        ...(decoded === undefined ? {} : { result: decoded }),
+        ...optional("error", readString(entry.error)),
+      },
+    ];
+  });
+  if (entries.length === 0) {
+    return undefined;
+  }
+  return { kind: "deployBatch", ...optional("summary", readString(document.summary)), entries };
 }
 
 /** `internal/ops/verify.go` `VerifyResult` / `VerifyAllResult`. */
@@ -235,6 +307,8 @@ function decodeImport(document: Record<string, unknown>): ZeropsCardPayload | un
               status,
               ...optional("action", readString(entry.actionName)),
               ...optional("failReason", readString(entry.failReason)),
+              ...optional("processId", readString(entry.processId)),
+              ...optional("serviceId", readString(entry.serviceId)),
             },
           ];
     }),
@@ -244,6 +318,7 @@ function decodeImport(document: Record<string, unknown>): ZeropsCardPayload | un
       return hostname === undefined || message === undefined ? [] : [{ hostname, message }];
     }),
     ...optional("summary", readString(document.summary)),
+    ...optional("nextActions", readString(document.nextActions)),
   };
 }
 
@@ -404,6 +479,47 @@ function decodeBrowser(document: Record<string, unknown>): ZeropsCardPayload | u
   };
 }
 
+/** What a delete / scale / manage / env result says about the platform process zcp waited on. */
+export interface ZeropsProcessOutcome {
+  readonly process?: {
+    readonly id: string;
+    readonly actionName: string;
+    readonly status: string;
+    readonly failReason?: string;
+  };
+  /** zcp stopped waiting for the process; it may still be running on the platform. */
+  readonly timedOut?: true;
+  readonly nextActions?: string;
+}
+
+/**
+ * `internal/ops/manage.go` `ScaleResult`, `internal/ops/env.go` `EnvSetResult` /
+ * `EnvDeleteResult`, `internal/tools/delete.go` — each an optional
+ * `platform.Process` beside `timedOut` and `nextActions`; `internal/tools/manage.go`
+ * embeds that process at the top level instead. Not a card of its own: these
+ * kinds draw from the message document, and this is what it adds.
+ */
+export function decodeProcessOutcome(document: Record<string, unknown>): ZeropsProcessOutcome {
+  const raw = readRecord(document.process) ?? document;
+  const id = readString(raw?.id);
+  const actionName = readString(raw?.actionName);
+  const status = readString(raw?.status);
+  return {
+    ...(id === undefined || actionName === undefined || status === undefined
+      ? {}
+      : {
+          process: {
+            id,
+            actionName,
+            status,
+            ...optional("failReason", readString(raw?.failReason)),
+          },
+        }),
+    ...(document.timedOut === true ? { timedOut: true as const } : {}),
+    ...optional("nextActions", readString(document.nextActions)),
+  };
+}
+
 /**
  * Which decoder a tool's result goes to.
  *
@@ -415,7 +531,8 @@ const DECODERS: Record<
   string,
   (document: Record<string, unknown>) => ZeropsCardPayload | undefined
 > = {
-  zerops_deploy: decodeDeploy,
+  zerops_deploy: decodeDeployResult,
+  zerops_deploy_batch: decodeDeployBatch,
   zerops_import: decodeImport,
   zerops_mount: decodeMount,
   zerops_subdomain: decodeSubdomain,

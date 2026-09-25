@@ -21,11 +21,13 @@ import {
 import type {
   ZeropsCall,
   ZeropsOperationBrowserSummary,
+  ZeropsOperationExplanation,
   ZeropsOperationKind,
   ZeropsOperationLink,
   ZeropsOperationPhase,
   ZeropsOperationStep,
   ZeropsOperationStepState,
+  ZeropsOperationVersion,
 } from "../types.ts";
 
 /**
@@ -62,6 +64,9 @@ export interface BuiltCardFields {
   readonly target?: { readonly hostname: string };
   readonly resultStatus?: string;
   readonly hasResult: boolean;
+  readonly version?: ZeropsOperationVersion;
+  readonly processIds?: ReadonlyArray<string>;
+  readonly explanation?: ZeropsOperationExplanation;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. */
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
@@ -266,6 +271,29 @@ export function detailField(
 ): { detail: string } | Record<string, never> {
   const detail = buildDetail(parts);
   return detail !== undefined ? { detail } : {};
+}
+
+/** How many of a failure's log lines a card carries — the end of the log, where the failure is. */
+export const EXPLANATION_LOG_TAIL_LINES = 12;
+
+/** `{ explanation }` when there is a reason to give, else `{}` — spread directly into the built fields. */
+export function explanationField(
+  reason: string | undefined,
+  log: ReadonlyArray<string> | undefined = undefined,
+): { explanation: ZeropsOperationExplanation } | Record<string, never> {
+  if (reason === undefined) {
+    return {};
+  }
+  const logTail = log?.slice(-EXPLANATION_LOG_TAIL_LINES) ?? [];
+  return { explanation: { reason, ...(logTail.length > 0 ? { logTail } : {}) } };
+}
+
+/** A failed call's reason: zcp's classified cause when it made one, else the error's own line. */
+export function failedCallReason(decoded: DecodedEntry, errorInfo: ErrorInfo): string {
+  return (
+    readString(readRecord(decoded.document?.failureClassification)?.likelyCause) ??
+    firstLine(errorInfo.message)
+  );
 }
 
 export { readRecord };

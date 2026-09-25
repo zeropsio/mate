@@ -129,6 +129,27 @@ export interface ZeropsOperationBrowserSummary {
   readonly line: string;
 }
 
+/**
+ * `deploy` only: what zcp says the deploy shipped. `id` is the platform
+ * appVersion (filled once the build resolves, never on a failed or timed-out
+ * build) — the exact key for attributing the card's processes and build log;
+ * `name` is the `--version-name` passed to the push (the commit sha).
+ */
+export interface ZeropsOperationVersion {
+  readonly id?: string;
+  readonly name?: string;
+}
+
+/**
+ * Why a card failed or timed out, read off the result's own evidence — never
+ * composed copy. `logTail` is the last lines of the log zcp attached for the
+ * failing phase, capped (`EXPLANATION_LOG_TAIL_LINES`).
+ */
+export interface ZeropsOperationExplanation {
+  readonly reason: string;
+  readonly logTail?: ReadonlyArray<string>;
+}
+
 export interface ZeropsOperation {
   /** `op:<callId>` for every per-call kind; `bootstrap:<founderCallId>` for a session. Never re-keyed. */
   readonly key: string;
@@ -158,6 +179,12 @@ export interface ZeropsOperation {
   readonly target?: { readonly hostname: string };
   readonly resultStatus?: string;
   readonly hasResult: boolean;
+  /** `deploy` only, once the result names one. */
+  readonly version?: ZeropsOperationVersion;
+  /** `import` only: the platform processes the result says it started — exact attribution keys. */
+  readonly processIds?: ReadonlyArray<string>;
+  /** A failed or timed-out card's reason and log tail. */
+  readonly explanation?: ZeropsOperationExplanation;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. Absent when the result carried none, or the provider dropped the image content block. */
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
