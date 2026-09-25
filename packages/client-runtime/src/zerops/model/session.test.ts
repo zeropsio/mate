@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 
-import { composeSession } from "./session.ts";
+import { composeSession, failedWorkAttempt } from "./session.ts";
 import type { ZeropsOperation } from "./types.ts";
 
 const envelope = (overrides: Record<string, unknown>): ZeropsStateEnvelope =>
@@ -84,7 +84,7 @@ describe("composeSession", () => {
     );
     expect(session.work?.key).toBe("work:2026-08-28T10:00:00Z");
     expect(session.work?.intent).toBe("build a kanban");
-    expect(session.work?.deploys?.kanbandev).toEqual([{ success: true }]);
+    expect(session.work?.deploys?.kanbandev).toEqual([{ success: true, iteration: 1 }]);
     expect(session.work?.verifies).toBeUndefined();
   });
 
@@ -113,5 +113,74 @@ describe("composeSession", () => {
     const done = bootstrapOperation({ phase: "done", steps: [] });
     const session = composeSession(envelope({ phase: "idle" }), [done]);
     expect(session.bootstrap?.step).toBeUndefined();
+  });
+});
+
+const workSessionWith = (deploys: Record<string, ReadonlyArray<Record<string, unknown>>>) =>
+  composeSession(
+    envelope({
+      phase: "develop-active",
+      workSession: {
+        intent: "build a kanban",
+        services: Object.keys(deploys),
+        createdAt: "2026-08-28T10:00:00Z",
+        deploys,
+      },
+    }),
+    [],
+  );
+
+describe("composeSession — zcp's own reading of each attempt", () => {
+  it.each([
+    {
+      name: "keeps a failed attempt's iteration, reason, failure class and summary",
+      attempt: {
+        at: "2026-08-28T10:05:00Z",
+        success: false,
+        iteration: 2,
+        setup: "dev",
+        reason: "deploy status BUILD_FAILED",
+        failureClass: "build",
+        summary: "npm install failed",
+      },
+      expected: {
+        success: false,
+        iteration: 2,
+        reason: "deploy status BUILD_FAILED",
+        failureClass: "build",
+        summary: "npm install failed",
+      },
+    },
+    {
+      name: "a successful attempt carries only what it has",
+      attempt: { at: "2026-08-28T10:05:00Z", success: true, iteration: 1 },
+      expected: { success: true, iteration: 1 },
+    },
+  ])("$name", ({ attempt, expected }) => {
+    expect(workSessionWith({ kanbandev: [attempt] }).work?.deploys?.kanbandev).toEqual([expected]);
+  });
+});
+
+describe("failedWorkAttempt — what a failed card may cite for its host", () => {
+  const failed = {
+    at: "2026-08-28T10:05:00Z",
+    success: false,
+    iteration: 2,
+    failureClass: "build",
+  };
+  const succeeded = { at: "2026-08-28T10:10:00Z", success: true, iteration: 3 };
+  it.each([
+    { name: "the host's last attempt when it failed", deploys: [failed], expected: 2 },
+    {
+      name: "nothing once a later attempt succeeded",
+      deploys: [failed, succeeded],
+      expected: undefined,
+    },
+    { name: "nothing for a host with no attempts", deploys: [], expected: undefined },
+  ])("$name", ({ deploys, expected }) => {
+    const session = workSessionWith({ kanbandev: deploys });
+    expect(failedWorkAttempt(session, "deploys", "kanbandev")?.iteration).toBe(expected);
+    expect(failedWorkAttempt(session, "deploys", "otherhost")).toBeUndefined();
+    expect(failedWorkAttempt(session, "verifies", "kanbandev")).toBeUndefined();
   });
 });

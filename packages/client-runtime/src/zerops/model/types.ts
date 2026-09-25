@@ -214,9 +214,18 @@ export type ZeropsTimelineEntry =
       readonly call: ZeropsCall;
     };
 
-/** One work-session attempt, the shape `strip.ts` already reads off the envelope. */
+/**
+ * One work-session attempt — zcp's own per-host count and reading of it
+ * (`workflow.AttemptInfo`), which a failed deploy/verify card may cite.
+ */
 export interface ZeropsWorkAttempt {
   readonly success: boolean;
+  /** zcp's per-work-session, per-host count — not the thread-wide `ZeropsOperation.attempts`. */
+  readonly iteration: number;
+  readonly reason?: string;
+  /** zcp's coarse failure class, e.g. `build`, `start`, `credential`. */
+  readonly failureClass?: string;
+  readonly summary?: string;
 }
 
 /**
