@@ -42,7 +42,7 @@ const STATE: Record<Exclude<PipelineStepStatus, "noop">, ObservedStep["state"]> 
   running: "running",
   finished: "done",
   failed: "failed",
-  cancelled: "failed",
+  cancelled: "queued",
   activating: "running",
 };
 

@@ -142,11 +142,11 @@ describe("observedSteps — pipeline steps with per-step durations", () => {
     expect(deploy).toMatchObject({ state: "running", stateLabel: "Activating" });
   });
 
-  it("cancelled before any build ran — every step failed with stateLabel Cancelled", () => {
+  it("cancelled before any build ran — every step off, with stateLabel Cancelled", () => {
     const steps = observedSteps({ status: "CANCELLED", build: { pipelineFailed: "t9" } }, NOW);
     expect(steps).toHaveLength(5);
     for (const step of steps) {
-      expect(step.state).toBe("failed");
+      expect(step.state).toBe("queued");
       expect(step.stateLabel).toBe("Cancelled");
     }
   });
@@ -161,7 +161,7 @@ describe("observedSteps — pipeline steps with per-step durations", () => {
       stateLabel: "Failed",
     });
     expect(steps.find((step) => step.id === "INIT_PREPARE_CONTAINER")).toMatchObject({
-      state: "failed",
+      state: "queued",
       stateLabel: "Cancelled",
     });
   });
