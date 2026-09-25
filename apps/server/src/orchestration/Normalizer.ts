@@ -5,7 +5,7 @@ import * as Path from "effect/Path";
 import {
   type ClientOrchestrationCommand,
   type UserInputAttachments,
-  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  getProviderAttachmentLimitError,
   type IsoDateTime,
   type OrchestrationCommand,
   OrchestrationDispatchCommandError,
@@ -142,18 +142,15 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
       canonicalCommand.type === "thread.turn.start"
         ? canonicalCommand.message.attachments
         : Object.values(canonicalCommand.attachmentsByQuestionId ?? {}).flat();
-    if (
-      canonicalCommand.type === "thread.user-input.respond" &&
-      attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS
-    ) {
-      return yield* new OrchestrationDispatchCommandError({
-        message: `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per question response.`,
-      });
+    const attachmentLimitError = getProviderAttachmentLimitError(attachments);
+    if (attachmentLimitError) {
+      return yield* new OrchestrationDispatchCommandError({ message: attachmentLimitError });
     }
     const claimedAttachmentPaths: string[] = [];
+    const attachmentsWithDecodedSizes = [...attachments];
     const normalizedAttachments = yield* Effect.forEach(
       attachments,
-      (attachment) =>
+      (attachment, index) =>
         Effect.gen(function* () {
           if (!("dataUrl" in attachment)) {
             const claim = planAttachmentClaim({
@@ -243,6 +240,11 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
             mimeType: parsed.mimeType.toLowerCase(),
             sizeBytes: bytes.byteLength,
           };
+          attachmentsWithDecodedSizes[index] = persistedAttachment;
+          const decodedLimitError = getProviderAttachmentLimitError(attachmentsWithDecodedSizes);
+          if (decodedLimitError) {
+            return yield* new OrchestrationDispatchCommandError({ message: decodedLimitError });
+          }
 
           const attachmentPath = resolveAttachmentPath({
             attachmentsDir: serverConfig.attachmentsDir,
@@ -270,6 +272,7 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
                 }),
             ),
           );
+          claimedAttachmentPaths.push(attachmentPath);
 
           return persistedAttachment;
         }),
