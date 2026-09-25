@@ -422,5 +422,13 @@
     "owner": "mobile-intake",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PreviousWorktreeItemContent.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Previous worktree",
+    "owner": "web-intake",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
   }
 ]
