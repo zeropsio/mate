@@ -758,9 +758,14 @@ function deriveTurnFolds(input: {
     const isLatestInterruptedTurn =
       input.latestTurn?.turnId === turnId && input.latestTurn.state === "interrupted";
     // A turn cut short by a steer leaves trailing work entries behind its
-    // terminal message — take whichever ended last.
+    // terminal message — take whichever ended last. A work row is anchored
+    // at its start, so its end is its latest update.
     const lastEntryEnd =
-      lastEntry.kind === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
+      lastEntry.kind === "message"
+        ? lastEntry.message.updatedAt
+        : lastEntry.kind === "work"
+          ? (lastEntry.entry.updatedAt ?? lastEntry.createdAt)
+          : lastEntry.createdAt;
     const elapsedMs =
       input.latestTurn?.turnId === turnId &&
       input.latestTurn.startedAt &&

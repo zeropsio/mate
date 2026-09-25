@@ -2170,102 +2170,110 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.some((row) => row.kind === "turn-fold")).toBe(true);
   });
 
-  it("derives a sane duration for a steer-superseded turn with one instant commentary message", () => {
-    // A steer ends the previous turn early: its only message completes the
-    // instant it is created, and trailing work entries land after it. The
-    // fold duration must span from the user message that started the turn to
-    // the last entry, not message createdAt → message updatedAt (~0ms).
-    const rows = deriveMessagesTimelineRows({
-      timelineEntries: [
-        {
-          id: "user-entry",
-          kind: "message",
-          createdAt: "2026-01-01T00:00:00Z",
-          message: {
-            id: "user-1" as never,
-            role: "user" as const,
-            text: "do it once more",
-            turnId: null,
+  it.each([
+    { name: "never updated", updatedAt: undefined, label: "Worked for 12s" },
+    // A merged tool row stays anchored at its start; it ended at its update.
+    { name: "completed later", updatedAt: "2026-01-01T00:00:13Z", label: "Worked for 13s" },
+  ])(
+    "derives a sane duration for a steer-superseded turn with one instant commentary message ($name)",
+    ({ updatedAt, label }) => {
+      // A steer ends the previous turn early: its only message completes the
+      // instant it is created, and trailing work entries land after it. The
+      // fold duration must span from the user message that started the turn to
+      // the last entry, not message createdAt → message updatedAt (~0ms).
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "user-entry",
+            kind: "message",
             createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-            streaming: false,
+            message: {
+              id: "user-1" as never,
+              role: "user" as const,
+              text: "do it once more",
+              turnId: null,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+              streaming: false,
+            },
           },
-        },
-        {
-          id: "assistant-commentary-entry",
-          kind: "message",
-          createdAt: "2026-01-01T00:00:09Z",
-          message: {
-            id: "assistant-commentary" as never,
-            role: "assistant" as const,
-            text: "Kicking off call 1.",
-            turnId: "turn-1" as never,
+          {
+            id: "assistant-commentary-entry",
+            kind: "message",
             createdAt: "2026-01-01T00:00:09Z",
-            updatedAt: "2026-01-01T00:00:09Z",
-            streaming: false,
+            message: {
+              id: "assistant-commentary" as never,
+              role: "assistant" as const,
+              text: "Kicking off call 1.",
+              turnId: "turn-1" as never,
+              createdAt: "2026-01-01T00:00:09Z",
+              updatedAt: "2026-01-01T00:00:09Z",
+              streaming: false,
+            },
           },
-        },
-        {
-          id: "work-entry-1",
-          kind: "work",
-          createdAt: "2026-01-01T00:00:12Z",
-          entry: {
-            id: "work-1",
+          {
+            id: "work-entry-1",
+            kind: "work",
             createdAt: "2026-01-01T00:00:12Z",
-            turnId: "turn-1" as never,
-            label: "Ran command",
-            tone: "tool" as const,
+            entry: {
+              id: "work-1",
+              createdAt: "2026-01-01T00:00:12Z",
+              ...(updatedAt ? { updatedAt } : {}),
+              turnId: "turn-1" as never,
+              label: "Ran command",
+              tone: "tool" as const,
+            },
           },
-        },
-        {
-          id: "steer-user-entry",
-          kind: "message",
-          createdAt: "2026-01-01T00:00:14Z",
-          message: {
-            id: "user-2" as never,
-            role: "user" as const,
-            text: "actually do 15",
-            turnId: null,
+          {
+            id: "steer-user-entry",
+            kind: "message",
             createdAt: "2026-01-01T00:00:14Z",
-            updatedAt: "2026-01-01T00:00:14Z",
-            streaming: false,
+            message: {
+              id: "user-2" as never,
+              role: "user" as const,
+              text: "actually do 15",
+              turnId: null,
+              createdAt: "2026-01-01T00:00:14Z",
+              updatedAt: "2026-01-01T00:00:14Z",
+              streaming: false,
+            },
           },
-        },
-        {
-          id: "assistant-next-turn-entry",
-          kind: "message",
-          createdAt: "2026-01-01T00:00:17Z",
-          message: {
-            id: "assistant-next" as never,
-            role: "assistant" as const,
-            text: "One down — adjusting.",
-            turnId: "turn-2" as never,
+          {
+            id: "assistant-next-turn-entry",
+            kind: "message",
             createdAt: "2026-01-01T00:00:17Z",
-            updatedAt: "2026-01-01T00:00:17Z",
-            streaming: true,
+            message: {
+              id: "assistant-next" as never,
+              role: "assistant" as const,
+              text: "One down — adjusting.",
+              turnId: "turn-2" as never,
+              createdAt: "2026-01-01T00:00:17Z",
+              updatedAt: "2026-01-01T00:00:17Z",
+              streaming: true,
+            },
           },
+        ],
+        latestTurn: {
+          turnId: "turn-2" as never,
+          state: "running",
+          startedAt: "2026-01-01T00:00:14Z",
+          completedAt: null,
         },
-      ],
-      latestTurn: {
-        turnId: "turn-2" as never,
-        state: "running",
-        startedAt: "2026-01-01T00:00:14Z",
-        completedAt: null,
-      },
-      isWorking: true,
-      activeTurnStartedAt: "2026-01-01T00:00:14Z",
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
-    });
+        isWorking: true,
+        activeTurnStartedAt: "2026-01-01T00:00:14Z",
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      });
 
-    const foldRow = rows.find(
-      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
-        row.kind === "turn-fold",
-    );
-    // User message (00:00:00) → trailing work entry (00:00:12).
-    expect(foldRow?.turnId).toBe("turn-1");
-    expect(foldRow?.label).toBe("Worked for 12s");
-  });
+      const foldRow = rows.find(
+        (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+          row.kind === "turn-fold",
+      );
+      // User message (00:00:00) → trailing work entry's end.
+      expect(foldRow?.turnId).toBe("turn-1");
+      expect(foldRow?.label).toBe(label);
+    },
+  );
 
   it("uses latest-turn timings and the stopped label for an interrupted latest turn", () => {
     const rows = deriveMessagesTimelineRows({

@@ -100,16 +100,12 @@ export interface WorkLogEntry {
   /**
    * The server-stamped time this entry was FIRST observed (its earliest
    * lifecycle activity's own `createdAt`), preserved across every later
-   * merge — unlike `createdAt`, which moves to the newest activity's own
-   * timestamp on each update/completion. Absent for an entry never derived
-   * from a tool-lifecycle activity; a reader wanting "when did this call
-   * start" falls back to `createdAt` in that case.
+   * merge, like `id` and `createdAt` (see `mergeDerivedWorkLogEntries`).
    */
   startedAt?: string;
   /**
-   * The latest merged activity's own `createdAt`, set on every merge (all
-   * tools) — unlike `createdAt`, which a Zerops call's merge deliberately
-   * pins to the FIRST activity's timestamp (see `mergeDerivedWorkLogEntries`).
+   * The latest merged activity's own `createdAt`, set on every merge — unlike
+   * `createdAt`, which stays pinned to the FIRST activity's timestamp.
    * Absent on an entry that was never merged.
    */
   updatedAt?: string;
@@ -1070,13 +1066,9 @@ function collapseDerivedWorkLogEntries(
         collapsed[existingIndex] = {
           ...mergeDerivedWorkLogEntries(existing, entry),
           // The CTA row keeps the group's ANCHOR identity, not the last
-          // agent's: id/createdAt/turnId stay pinned to the spawn point so
-          // the row renders where the run launched instead of drifting to
-          // the newest progress tick (mid-run it drifted below the whole
-          // conversation, reading as "no visualization"), and the stable id
-          // keeps React state/virtualization sane.
-          id: existing.id,
-          createdAt: existing.createdAt,
+          // agent's: beyond the id/createdAt every merge pins, turnId stays
+          // at the spawn point so the batch never drifts to a completion's
+          // synthetic turn.
           turnId: existing.turnId ?? null,
           ...(existing.taskId !== undefined ? { taskId: existing.taskId } : {}),
           label: existing.label,
@@ -1177,13 +1169,15 @@ function mergeDerivedWorkLogEntries(
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
   const toolInput = next.toolInput ?? previous.toolInput;
-  // The FIRST observation's timestamp, never the latest — `createdAt` itself
-  // moves to `next`'s own timestamp via the spread below, which is right for
-  // "when was this last updated" but wrong for "when did this call start".
   const startedAt = previous.startedAt ?? previous.createdAt;
   return {
     ...previous,
     ...next,
+    // The row is anchored at first sight: its key and timeline position stay
+    // those of the first merged activity from start to completion, while the
+    // content (status, label, detail, result) comes from the latest one.
+    id: previous.id,
+    createdAt: previous.createdAt,
     startedAt,
     updatedAt: next.createdAt,
     ...(detail ? { detail } : {}),

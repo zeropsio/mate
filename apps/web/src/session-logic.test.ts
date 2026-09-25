@@ -1007,49 +1007,6 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.toolInput).toBeUndefined();
   });
 
-  /**
-   * `createdAt` moves to the newest activity's own timestamp on every merge
-   * (right for "last updated"); `startedAt` must stay pinned to the FIRST
-   * observation so the platform-activity overlay's attribution window starts
-   * at the real call start, not at whenever the call happened to finish.
-   */
-  it("keeps startedAt pinned to the first observation across a started-then-completed merge", () => {
-    const activities: OrchestrationThreadActivity[] = [
-      makeActivity({
-        id: "cmd-updated",
-        createdAt: "2026-02-23T00:00:02.000Z",
-        kind: "tool.updated",
-        summary: "Run tests",
-        payload: {
-          itemType: "command_execution",
-          status: "inProgress",
-          toolCallId: "call-timing",
-          detail: "pnpm test",
-        },
-      }),
-      makeActivity({
-        id: "cmd-completed",
-        createdAt: "2026-02-23T00:00:09.000Z",
-        kind: "tool.completed",
-        summary: "Run tests",
-        payload: {
-          itemType: "command_execution",
-          toolCallId: "call-timing",
-          status: "completed",
-          detail: "pnpm test",
-        },
-      }),
-    ];
-
-    // `createdAt`/`id` move to the LATEST activity on merge; `startedAt`
-    // alone stays pinned to the first observation.
-    const [entry] = deriveWorkLogEntries(activities);
-    expect(entry?.id).toBe("cmd-completed");
-    expect(entry?.createdAt).toBe("2026-02-23T00:00:09.000Z");
-    expect(entry?.startedAt).toBe("2026-02-23T00:00:02.000Z");
-    expect(entry?.updatedAt).toBe("2026-02-23T00:00:09.000Z");
-  });
-
   it("collapses interleaved lifecycle updates by tool call id", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
@@ -1106,13 +1063,13 @@ describe("deriveWorkLogEntries", () => {
 
     expect(deriveWorkLogEntries(activities)).toMatchObject([
       {
-        id: "tool-a-complete",
+        id: "tool-a-progress",
         command: "vp test run",
         toolCallId: "call-a",
         toolLifecycleStatus: "completed",
       },
       {
-        id: "tool-b-complete",
+        id: "tool-b-progress",
         command: "vp lint",
         toolCallId: "call-b",
         toolLifecycleStatus: "completed",
@@ -1363,7 +1320,7 @@ describe("deriveWorkLogEntries", () => {
     const entries = deriveWorkLogEntries(activities);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      id: "grep-complete",
+      id: "grep-update",
       toolTitle: "grep",
       detail: "19 files",
       itemType: "web_search",
@@ -1412,7 +1369,7 @@ describe("deriveWorkLogEntries", () => {
     const entries = deriveWorkLogEntries(activities);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      id: "read-complete",
+      id: "read-update",
       toolTitle: "Read File",
       detail: 'import * as Effect from "effect/Effect"',
       itemType: "dynamic_tool_call",
@@ -1451,7 +1408,7 @@ describe("deriveWorkLogEntries", () => {
     const entries = deriveWorkLogEntries(activities);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      id: "image-read-complete",
+      id: "image-read-update",
       itemType: "image_view",
       viewedImagePath: imagePath,
     });
@@ -1526,7 +1483,7 @@ describe("deriveWorkLogEntries", () => {
     const entries = deriveWorkLogEntries(activities);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      id: "legacy-read-complete",
+      id: "legacy-read-update",
       toolTitle: "Read File",
       itemType: "dynamic_tool_call",
     });
@@ -1579,8 +1536,9 @@ describe("deriveWorkLogEntries", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      id: "tool-complete",
-      createdAt: "2026-02-23T00:00:03.000Z",
+      id: "tool-update-1",
+      createdAt: "2026-02-23T00:00:01.000Z",
+      updatedAt: "2026-02-23T00:00:03.000Z",
       label: "Tool call completed",
       detail: 'Read: {"file_path":"/tmp/app.ts"}',
       command: "sed -n 1,40p /tmp/app.ts",
@@ -1639,7 +1597,7 @@ describe("deriveWorkLogEntries", () => {
 
     const entries = deriveWorkLogEntries(activities);
 
-    expect(entries.map((entry) => entry.id)).toEqual(["tool-1-complete", "tool-2-complete"]);
+    expect(entries.map((entry) => entry.id)).toEqual(["tool-1-update", "tool-2-update"]);
   });
 
   it("collapses same-timestamp lifecycle rows even when completed sorts before updated by id", () => {
@@ -1682,7 +1640,10 @@ describe("deriveWorkLogEntries", () => {
     const entries = deriveWorkLogEntries(activities);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.id).toBe("a-complete-same-timestamp");
+    expect(entries[0]).toMatchObject({
+      id: "z-update-earlier",
+      toolLifecycleStatus: "completed",
+    });
   });
 });
 
@@ -2680,39 +2641,151 @@ describe("deriveWorkLogEntries — Zerops rows are excluded from work entries", 
 
     expect(entries.map((entry) => entry.id)).toEqual(["read-package"]);
   });
+});
 
-  it("an ordinary (non-Zerops) merge still moves id/createdAt to the newest activity", () => {
-    const entries = deriveWorkLogEntries([
-      makeActivity({
-        id: "cmd-updated",
-        kind: "tool.updated",
-        createdAt: "2026-02-23T00:00:01.000Z",
-        turnId: "turn-1",
-        payload: {
-          toolCallId: "call-cmd",
-          itemType: "command_execution",
-          status: "inProgress",
-          detail: "pnpm test",
+describe("deriveWorkLogEntries — a tool row is anchored at first sight", () => {
+  const toolActivity = (
+    id: string,
+    kind: "tool.started" | "tool.updated" | "tool.completed",
+    second: number,
+    toolCallId: string,
+  ) =>
+    makeActivity({
+      id,
+      kind,
+      createdAt: `2026-02-23T00:00:${String(second).padStart(2, "0")}.000Z`,
+      turnId: "turn-1",
+      summary: kind === "tool.completed" ? "Run tests completed" : "Run tests",
+      payload: {
+        itemType: "command_execution",
+        toolCallId,
+        status: kind === "tool.completed" ? "completed" : "inProgress",
+        detail: `pnpm test ${toolCallId}`,
+      },
+    });
+  const at = (second: number) => `2026-02-23T00:00:${String(second).padStart(2, "0")}.000Z`;
+
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
+    readonly expected: ReadonlyArray<Partial<WorkLogEntry>>;
+  }> = [
+    {
+      name: "started, updated, completed",
+      activities: [
+        toolActivity("a-started", "tool.started", 1, "call-a"),
+        toolActivity("a-updated", "tool.updated", 2, "call-a"),
+        toolActivity("a-completed", "tool.completed", 5, "call-a"),
+      ],
+      expected: [
+        {
+          id: "a-updated",
+          createdAt: at(2),
+          startedAt: at(2),
+          updatedAt: at(5),
+          label: "Run tests completed",
+          toolLifecycleStatus: "completed",
         },
-      }),
-      makeActivity({
-        id: "cmd-completed",
-        kind: "tool.completed",
-        createdAt: "2026-02-23T00:00:05.000Z",
-        turnId: "turn-1",
-        payload: {
-          toolCallId: "call-cmd",
-          itemType: "command_execution",
-          status: "completed",
-          detail: "pnpm test",
+      ],
+    },
+    {
+      name: "completed only",
+      activities: [toolActivity("a-completed", "tool.completed", 5, "call-a")],
+      expected: [
+        {
+          id: "a-completed",
+          createdAt: at(5),
+          toolLifecycleStatus: "completed",
         },
-      }),
+      ],
+    },
+    {
+      name: "updated listed before started and completed (persisted order differs)",
+      activities: [
+        toolActivity("a-completed", "tool.completed", 6, "call-a"),
+        toolActivity("a-updated-late", "tool.updated", 4, "call-a"),
+        toolActivity("a-updated-early", "tool.updated", 2, "call-a"),
+        toolActivity("a-started", "tool.started", 1, "call-a"),
+      ],
+      expected: [
+        {
+          id: "a-updated-early",
+          createdAt: at(2),
+          updatedAt: at(6),
+          toolLifecycleStatus: "completed",
+        },
+      ],
+    },
+    {
+      name: "two concurrent tools interleaved",
+      activities: [
+        toolActivity("a-updated", "tool.updated", 1, "call-a"),
+        toolActivity("b-updated", "tool.updated", 2, "call-b"),
+        toolActivity("a-completed", "tool.completed", 3, "call-a"),
+        toolActivity("b-completed", "tool.completed", 4, "call-b"),
+      ],
+      expected: [
+        {
+          id: "a-updated",
+          createdAt: at(1),
+          updatedAt: at(3),
+          toolCallId: "call-a",
+          toolLifecycleStatus: "completed",
+        },
+        {
+          id: "b-updated",
+          createdAt: at(2),
+          updatedAt: at(4),
+          toolCallId: "call-b",
+          toolLifecycleStatus: "completed",
+        },
+      ],
+    },
+  ];
+
+  it.each(cases)("$name", ({ activities, expected }) => {
+    expect(deriveWorkLogEntries(activities)).toMatchObject(expected);
+  });
+
+  it.each(cases)(
+    "$name: every streamed prefix keeps the anchor the reload derives",
+    ({ activities }) => {
+      const reloaded = deriveWorkLogEntries(activities);
+      const ordered = activities.toSorted((left, right) =>
+        left.createdAt.localeCompare(right.createdAt),
+      );
+      for (let length = 1; length <= ordered.length; length += 1) {
+        const live = deriveWorkLogEntries(ordered.slice(0, length));
+        for (const entry of live) {
+          const persisted = reloaded.find((candidate) => candidate.toolCallId === entry.toolCallId);
+          expect({ id: entry.id, createdAt: entry.createdAt }).toEqual({
+            id: persisted?.id,
+            createdAt: persisted?.createdAt,
+          });
+        }
+      }
+    },
+  );
+
+  it("keeps a completed tool row before the assistant message written while it ran", () => {
+    const workEntries = deriveWorkLogEntries([
+      toolActivity("a-updated", "tool.updated", 1, "call-a"),
+      toolActivity("a-completed", "tool.completed", 5, "call-a"),
     ]);
+    const message = {
+      id: MessageId.make("assistant-during-tool"),
+      role: "assistant" as const,
+      text: "Running the tests now.",
+      turnId: TurnId.make("turn-1"),
+      createdAt: at(3),
+      updatedAt: at(3),
+      streaming: false,
+    };
 
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.id).toBe("cmd-completed");
-    expect(entries[0]?.createdAt).toBe("2026-02-23T00:00:05.000Z");
-    expect(entries[0]?.updatedAt).toBe("2026-02-23T00:00:05.000Z");
+    expect(deriveTimelineEntries([message], [], workEntries).map((entry) => entry.id)).toEqual([
+      "a-updated",
+      "assistant-during-tool",
+    ]);
   });
 });
 
