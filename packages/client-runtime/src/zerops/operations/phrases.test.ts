@@ -86,13 +86,14 @@ describe("humanizeToolName", () => {
   });
 });
 
-describe("attemptWord — R8 retry count", () => {
-  it("is undefined for a single attempt", () => {
-    expect(attemptWord(1)).toBeUndefined();
-  });
-
-  it("reads 'attempt 3' for three folded attempts", () => {
-    expect(attemptWord(3)).toBe("attempt 3");
+describe("attemptWord — the R9 attempt ordinal", () => {
+  it.each([
+    { attempt: undefined, word: undefined },
+    { attempt: 1, word: undefined },
+    { attempt: 2, word: "attempt 2" },
+    { attempt: 3, word: "attempt 3" },
+  ])("attempt $attempt reads $word", ({ attempt, word }) => {
+    expect(attemptWord(attempt)).toBe(word);
   });
 });
 
