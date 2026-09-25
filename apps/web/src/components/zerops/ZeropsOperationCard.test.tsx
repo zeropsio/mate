@@ -1069,3 +1069,121 @@ describe("ZeropsOperationCard — the version a settled deploy shipped", () => {
     );
   });
 });
+
+describe("ZeropsOperationCard — why a card failed or timed out", () => {
+  const settled = (
+    toolName: string,
+    input: Record<string, unknown>,
+    status: ZeropsCall["status"],
+    result: Record<string, unknown>,
+  ) =>
+    operationFor(
+      zeropsCall({
+        id: `explain-${toolName}`,
+        toolName,
+        status,
+        startedAt: "2026-09-01T00:00:00.000Z",
+        input,
+        resultText: JSON.stringify(result),
+        settledAt: "2026-09-01T00:00:50.000Z",
+      }),
+    );
+
+  it.each([
+    {
+      name: "a failed build: its cause, then the log tail in mono with the error lines toned",
+      operation: settled("zerops_deploy", { targetService: "apidev" }, "completed", {
+        status: "BUILD_FAILED",
+        targetService: "apidev",
+        message: "Build failed",
+        failedPhase: "build",
+        failureClassification: { category: "build", likelyCause: "Build OOM-killed" },
+        buildLogs: ["> next build", "npm ERR! missing script: build"],
+      }),
+      reason: "Build OOM-killed",
+      tail: [
+        { text: "&gt; next build", error: false },
+        { text: "npm ERR! missing script: build", error: true },
+      ],
+    },
+    {
+      name: "a build zcp stopped waiting for: its word, no tail",
+      operation: settled("zerops_deploy", { targetService: "apidev" }, "completed", {
+        status: "BUILD_TRIGGERED",
+        targetService: "apidev",
+        message: "Build still running after 10m",
+        timedOut: true,
+      }),
+      reason: "Build still running after 10m",
+      tail: [],
+    },
+    {
+      name: "a failed scale with no steps of its own: the platform's reason",
+      operation: settled("zerops_scale", { serviceHostname: "apidev" }, "completed", {
+        process: {
+          id: "proc-1",
+          actionName: "stack.scale",
+          status: "FAILED",
+          created: "2026-09-01T00:00:01Z",
+          failReason: "quota exceeded",
+        },
+        message: "Scaling apidev",
+      }),
+      reason: "quota exceeded",
+      tail: [],
+    },
+    {
+      name: "a deploy call that failed outright: zcp's classified cause",
+      operation: settled("zerops_deploy", { targetService: "apidev" }, "failed", {
+        code: "DEPLOY_FAILED",
+        error: "zcli push failed",
+        failureClassification: { category: "credential", likelyCause: "GIT_TOKEN missing" },
+      }),
+      reason: "GIT_TOKEN missing",
+      tail: [],
+    },
+  ])("$name", ({ operation, reason, tail }) => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard now={0} operation={operation} />);
+    const block = html.slice(html.indexOf("data-zerops-operation-explanation"));
+
+    expect(html).toContain("data-zerops-operation-explanation");
+    expect(block).toContain(reason);
+    const lines = [
+      ...block.matchAll(/data-zerops-explanation-line="(error|plain)"[^>]*>([^<]*)</g),
+    ];
+    expect(lines.map(([, tone, text]) => ({ text, error: tone === "error" }))).toEqual(tail);
+    if (tail.length > 0) {
+      expect(block).toContain("font-mono");
+      expect(block).toContain("text-destructive-foreground");
+    }
+  });
+
+  it("a landed deploy explains nothing", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        now={0}
+        operation={settled("zerops_deploy", { targetService: "apidev" }, "completed", {
+          status: "DEPLOYED",
+          targetService: "apidev",
+        })}
+      />,
+    );
+    expect(html).not.toContain("data-zerops-operation-explanation");
+  });
+
+  it("keeps a failed call's closing line and Details beside the explanation", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        now={0}
+        operation={settled("zerops_deploy", { targetService: "apidev" }, "failed", {
+          code: "DEPLOY_FAILED",
+          error: "zcli push failed",
+          diagnostic: "exit status 1",
+          failureClassification: { category: "credential", likelyCause: "GIT_TOKEN missing" },
+        })}
+      />,
+    );
+    expect(html).toContain('data-zerops-card-outcome="true"');
+    expect(html).toContain("Details");
+  });
+});

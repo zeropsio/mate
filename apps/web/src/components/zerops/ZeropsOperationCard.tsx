@@ -28,6 +28,7 @@ import {
 import { useRightPanelStore } from "../../rightPanelStore";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
+import { ExplanationBlock } from "./operation/ExplanationBlock";
 import { OperationSubjectLine } from "./operation/OperationSubjectLine";
 import { operationSubject } from "./operation/subject";
 import { versionLabel } from "./operation/version";
@@ -332,6 +333,7 @@ export function ZeropsOperationCard(props: {
     isBrowser ||
     operation.readResult !== undefined ||
     stepsForBody.length > 0 ||
+    operation.explanation !== undefined ||
     version !== undefined ||
     observed !== undefined;
 
@@ -417,6 +419,9 @@ export function ZeropsOperationCard(props: {
                 density="compact"
                 steps={stepsForBody}
               />
+            ) : null}
+            {operation.explanation !== undefined ? (
+              <ExplanationBlock explanation={operation.explanation} />
             ) : null}
             {version !== undefined ? (
               <p
