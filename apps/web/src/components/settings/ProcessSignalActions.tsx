@@ -1,5 +1,6 @@
 import type { ServerProcessSignal } from "@t3tools/contracts";
 
+import { InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /** Process ownership and confirmation stay with the diagnostics view. */
@@ -15,15 +16,14 @@ export function ProcessSignalActions({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
-              type="button"
+            <InlineButton
               disabled={disabled}
               aria-label="Send SIGINT"
-              className="cursor-pointer text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-50"
+              tone="muted"
               onClick={() => onSignal("SIGINT")}
             >
               INT
-            </button>
+            </InlineButton>
           }
         />
         <TooltipPopup side="top">Send SIGINT</TooltipPopup>
@@ -31,15 +31,14 @@ export function ProcessSignalActions({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
-              type="button"
+            <InlineButton
               disabled={disabled}
               aria-label="Send SIGKILL"
-              className="cursor-pointer text-[11px] font-medium text-destructive underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
+              tone="destructive"
               onClick={() => onSignal("SIGKILL")}
             >
               KILL
-            </button>
+            </InlineButton>
           }
         />
         <TooltipPopup side="top">Send SIGKILL</TooltipPopup>
