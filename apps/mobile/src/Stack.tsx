@@ -543,6 +543,14 @@ const RootStackConfig = createNativeStackNavigator({
       linking: `${THREAD_LINKING_PREFIX}/files/:path*`,
       options: SOLID_HEADER_OPTIONS,
     }),
+    // Deliberately the one root route with no `linking:` path. The route
+    // carries zero params: its content is a session object (staged model,
+    // provider groups, and live update callbacks) that the active
+    // ThreadComposer presents into ExistingThreadSettingsRouteProvider before
+    // pushing this screen — state no URL can reconstruct. Reached without a
+    // presented session the screen navigates straight back, so a path would
+    // only produce a flash-and-dismiss link. Deep links to a thread land on
+    // `threads/:environmentId/:threadId`, where this sheet is one tap away.
     ThreadSettingsSheet: createNativeStackScreen({
       screen: ExistingThreadSettingsRouteScreen,
       options: {
