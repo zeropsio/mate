@@ -7,6 +7,7 @@ import {
   humanizeCheckName,
   humanizeToolName,
   operationStatusWord,
+  processActionWord,
   sentenceCase,
   statusWord,
 } from "./phrases.ts";
@@ -83,6 +84,18 @@ describe("humanizeToolName", () => {
 
   it("turns zerops_yml_exists into Yml exists", () => {
     expect(humanizeToolName("zerops_yml_exists")).toBe("Yml exists");
+  });
+});
+
+describe("processActionWord — a platform process's action, in words", () => {
+  it.each([
+    { actionName: "stack.enableSubdomainAccess", word: "Enable subdomain access" },
+    { actionName: "stack.deploy", word: "Deploy" },
+    { actionName: "stack.updateUserData", word: "Update user data" },
+    { actionName: "stack.restart", word: "Restart" },
+    { actionName: "serviceStackRestart", word: "Service stack restart" },
+  ])("$actionName → $word", ({ actionName, word }) => {
+    expect(processActionWord(actionName)).toBe(word);
   });
 });
 

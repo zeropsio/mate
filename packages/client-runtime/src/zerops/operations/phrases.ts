@@ -77,6 +77,12 @@ export function humanizeToolName(toolName: string): string {
   return sentenceCase(toolName.replace(/^zerops_/, ""));
 }
 
+/** `stack.enableSubdomainAccess` → `"Enable subdomain access"` — a platform process's action, never its raw name. */
+export function processActionWord(actionName: string): string {
+  const action = actionName.slice(actionName.lastIndexOf(".") + 1);
+  return sentenceCase(action.replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+}
+
 export interface OperationStatusWordContext {
   readonly resultStatus?: string | undefined;
   readonly action?: string | undefined;
