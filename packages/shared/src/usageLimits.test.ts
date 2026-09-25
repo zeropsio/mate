@@ -19,6 +19,7 @@ import {
   elapsedShare,
   formatResetsIn,
   limitsNotice,
+  limitsNoticeLine,
   paceOf,
   providersWithLimits,
   remainingPercent,
@@ -375,6 +376,30 @@ describe("collectLimitAccounts", () => {
         { driver: claude, notice: "Could not read limits.", environmentIds: ["env-b", "env-a"] },
       ],
     });
+  });
+});
+
+describe("limitsNoticeLine", () => {
+  it.each([
+    {
+      notice: "Could not read limits.",
+      places: ["Juno", "Nova", "Kai", "Theo"],
+      line: "Codex limits couldn't be read on Juno, Nova, Kai and Theo.",
+    },
+    { notice: "Could not read limits.", places: [], line: "Codex limits couldn't be read." },
+    {
+      notice: "Could not read limits.",
+      places: ["Juno", "Juno", "Nova"],
+      line: "Codex limits couldn't be read on Juno and Nova.",
+    },
+    {
+      notice: "Codex timed out.",
+      places: ["Juno"],
+      line: "Codex on Juno: Codex timed out.",
+    },
+    { notice: "No limits reported.", places: [], line: "Codex: No limits reported." },
+  ])("$line", ({ notice, places, line }) => {
+    expect(limitsNoticeLine({ driverLabel: "Codex", notice, places })).toBe(line);
   });
 });
 

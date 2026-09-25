@@ -254,15 +254,40 @@ export function providerLimitsLabel(
   return provider.displayName?.trim() || driverLabel(provider.driver) || String(provider.driver);
 }
 
+const LIMITS_UNREADABLE = "Could not read limits.";
+
 /** The one-line status under a provider heading when there are no bars to draw. */
 export function limitsNotice(limits: ServerProviderUsageLimits): string | null {
   if (limits.unavailable?.reason === "unsupported") {
     return limits.unavailable.message ?? "This account has no subscription limits.";
   }
   if (limits.unavailable?.reason === "probeFailed") {
-    return limits.unavailable.message ?? "Could not read limits.";
+    return limits.unavailable.message ?? LIMITS_UNREADABLE;
   }
   return limits.windows.length === 0 ? "No limits reported." : null;
+}
+
+/**
+ * One muted line for a notice shared by several places: `Codex limits couldn't
+ * be read on Juno and Nova.`, or the driver's own message after the places.
+ * A place named twice is said once.
+ */
+export function limitsNoticeLine(input: {
+  readonly driverLabel: string;
+  readonly notice: string;
+  readonly places: readonly string[];
+}): string {
+  const places = [...new Set(input.places)];
+  const last = places.at(-1);
+  const where =
+    last === undefined
+      ? ""
+      : places.length === 1
+        ? ` on ${last}`
+        : ` on ${places.slice(0, -1).join(", ")} and ${last}`;
+  return input.notice === LIMITS_UNREADABLE
+    ? `${input.driverLabel} limits couldn't be read${where}.`
+    : `${input.driverLabel}${where}: ${input.notice}`;
 }
 
 /** Quota left in the window, 0..100. Bars and labels show what remains, as Codex does. */

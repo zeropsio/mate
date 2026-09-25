@@ -11,12 +11,14 @@ import {
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  collectLimitAccounts,
   collectLimitSources,
-  collectLimitsGroups,
   elapsedShare,
   formatDuration,
   formatResetsIn,
+  type LimitAccount,
   limitsNotice,
+  limitsNoticeLine,
   type LimitPace,
   paceOf,
   providerLimitsLabel,
@@ -30,6 +32,11 @@ import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
+import type {
+  UsageEnvironmentIdentities,
+  UsageEnvironmentOwner,
+} from "../../zerops/usageEnvironmentIdentities";
+import { useUsageEnvironmentIdentities } from "../../zerops/useUsageEnvironmentIdentities";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { getDriverOption } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -44,6 +51,7 @@ import {
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Avatar } from "../zerops/primitives";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
 
 const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof GaugeIcon }> = {
@@ -262,18 +270,66 @@ function AccountHeading({
   );
 }
 
-function ProviderLimits({
-  provider,
-  environmentId,
+/**
+ * Where an account is signed in, as the left menu names it: the Mate and its
+ * project, or the environment's own label outside Zerops.
+ */
+export function limitsPlaceName(
+  environmentId: EnvironmentId,
+  identities: UsageEnvironmentIdentities,
+  label: string,
+): string {
+  const identity = identities.get(environmentId);
+  if (!identity) return label;
+  return identity.projectName
+    ? `${identity.mateName} · ${identity.projectName}`
+    : identity.mateName;
+}
+
+interface LimitsPlace {
+  readonly environmentId: EnvironmentId;
+  readonly name: string;
+  readonly owner: UsageEnvironmentOwner | null;
+}
+
+/** The Mates signed in to one account, each with its owner's face when known. */
+function PlaceChips({ places }: { readonly places: readonly LimitsPlace[] }) {
+  return (
+    <ul className="flex flex-wrap items-center gap-1.5" aria-label="Signed in on">
+      {places.map((place) => (
+        <li
+          key={place.environmentId}
+          className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+        >
+          {place.owner ? (
+            <Avatar initials={place.owner.initials} size="xs" src={place.owner.avatarUrl} />
+          ) : null}
+          <span className="truncate">{place.name}</span>
+          {place.owner ? <span className="sr-only">{`, ${place.owner.name}'s Mate`}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * One subscription account, however many Mates are signed in to it: the
+ * newest readable read's windows, and its reset credits acting on the
+ * environment that read came from.
+ */
+function AccountLimits({
+  account,
+  places,
   now,
 }: {
-  readonly provider: ServerProvider;
-  readonly environmentId: EnvironmentId;
+  readonly account: LimitAccount;
+  /** Null while only one environment is connected; there is nothing to tell apart. */
+  readonly places: readonly LimitsPlace[] | null;
   readonly now: number;
 }) {
+  const { provider } = account;
   const limits = provider.usageLimits;
   if (!limits) return null;
-  const notice = limitsNotice(limits);
   return (
     <section className="flex flex-col gap-3">
       <AccountHeading
@@ -284,14 +340,18 @@ function ProviderLimits({
         email={provider.auth.email}
         accentColor={provider.accentColor}
       />
-      {notice ? (
-        <span className="text-xs text-muted-foreground">{notice}</span>
-      ) : (
-        <LimitWindows driver={provider.driver} windows={limits.windows} now={now} />
-      )}
+      {places ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <PlaceChips places={places} />
+          {places.length > 1 ? (
+            <span className="text-xs text-muted-foreground">newest of {places.length} reads</span>
+          ) : null}
+        </div>
+      ) : null}
+      <LimitWindows driver={provider.driver} windows={limits.windows} now={now} />
       {limits.resetCredits ? (
         <ResetCredits
-          environmentId={environmentId}
+          environmentId={account.environmentId}
           input={{ instanceId: provider.instanceId }}
           credits={limits.resetCredits}
           now={now}
@@ -465,12 +525,28 @@ function SourceLimits({ source, now }: { readonly source: LimitsSource; readonly
  */
 export function UsageLimitsSection({ now }: { readonly now: number }) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const groups = collectLimitsGroups(presentations);
+  const identities = useUsageEnvironmentIdentities();
+  const { accounts, notices } = collectLimitAccounts(presentations);
   const sources = collectLimitSources(presentations);
+  const tellApart =
+    new Set([
+      ...accounts.flatMap((account) => account.environmentIds),
+      ...notices.flatMap((group) => group.environmentIds),
+    ]).size > 1;
+  const placesOf = (environmentIds: readonly EnvironmentId[]): readonly LimitsPlace[] =>
+    environmentIds.map((environmentId) => ({
+      environmentId,
+      name: limitsPlaceName(
+        environmentId,
+        identities,
+        presentations.get(environmentId)?.entry.target.label ?? String(environmentId),
+      ),
+      owner: identities.get(environmentId)?.owner ?? null,
+    }));
 
   return (
     <div className="flex flex-col gap-8">
-      {groups.length === 0 && sources.length === 0 ? (
+      {accounts.length === 0 && notices.length === 0 && sources.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on a connected environment reports subscription limits.
         </p>
@@ -478,23 +554,27 @@ export function UsageLimitsSection({ now }: { readonly now: number }) {
       {sources.map((source) => (
         <SourceLimits key={source.key} source={source} now={now} />
       ))}
-      {groups.map((group) => (
-        <div key={group.environmentId} className="flex flex-col gap-6">
-          {group.environmentLabel ? (
-            <h2 className="text-xs tracking-wide text-muted-foreground uppercase">
-              {group.environmentLabel}
-            </h2>
-          ) : null}
-          {group.providers.map((provider) => (
-            <ProviderLimits
-              key={provider.instanceId}
-              provider={provider}
-              environmentId={group.environmentId}
-              now={now}
-            />
+      {accounts.map((account) => (
+        <AccountLimits
+          key={account.key}
+          account={account}
+          places={tellApart ? placesOf(account.environmentIds) : null}
+          now={now}
+        />
+      ))}
+      {notices.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          {notices.map((group) => (
+            <p key={`${group.driver}:${group.notice}`} className="text-xs text-muted-foreground">
+              {limitsNoticeLine({
+                driverLabel: getDriverOption(group.driver)?.label ?? String(group.driver),
+                notice: group.notice,
+                places: tellApart ? placesOf(group.environmentIds).map((place) => place.name) : [],
+              })}
+            </p>
           ))}
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
