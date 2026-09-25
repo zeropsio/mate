@@ -15,7 +15,7 @@ import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { useNowMs } from "~/zerops/useNowMs";
 
 import { StatusDot } from "./primitives";
-import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
+import { ZeropsEnvironmentRow, ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { releaseRowTone } from "./ZeropsProjectRow.logic";
@@ -161,58 +161,109 @@ function CarriedReleaseRow({
     changes.length === 0 || (release.verdict === "refused" && release.detail !== undefined)
       ? undefined
       : releaseDescription(changes, release.line, now, carried.names);
+  const parts = releaseRowParts(release, groupId, pending, onRollBack);
+  const expansion = open ? (
+    <div className="flex flex-col gap-1 pl-7.5" data-zerops-surface="release-carried">
+      {changes.map((change) => (
+        <ReleaseServiceCommits
+          change={change}
+          forge={carried.forge}
+          key={change.repository}
+          named={named}
+          names={carried.names}
+        />
+      ))}
+      {waiting.map((unread) => (
+        <ReleaseService key={unread.repository} named={named} service={unread.service}>
+          <ZeropsHistoryView
+            commits={unread.state}
+            names={carried.names}
+            request={{ repo: unread.repository, deployed: EMPTY_DEPLOYED }}
+          />
+        </ReleaseService>
+      ))}
+    </div>
+  ) : undefined;
+  const leading =
+    changes.length > 0 || waiting.length > 0 ? (
+      <button
+        aria-expanded={open}
+        aria-label={releaseCarriedToggleLabel(release.tag, open)}
+        className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+        onClick={() => {
+          setOpen((current) => !current);
+        }}
+        type="button"
+      >
+        <ChevronRightIcon
+          aria-hidden="true"
+          className={cn("size-3.5 transition-transform", open && "rotate-90")}
+        />
+      </button>
+    ) : (
+      <span aria-hidden="true" className="size-5 shrink-0" />
+    );
+  if (description === undefined) {
+    return (
+      <ZeropsEnvironmentRow
+        {...parts}
+        expansion={expansion}
+        leading={leading}
+        summary={release.line}
+      />
+    );
+  }
   return (
-    <ZeropsEnvironmentRow
-      {...releaseRowParts(release, groupId, pending, onRollBack)}
-      expansion={
-        open ? (
-          <div className="flex flex-col gap-1 pl-7.5" data-zerops-surface="release-carried">
-            {changes.map((change) => (
-              <ReleaseServiceCommits
-                change={change}
-                forge={carried.forge}
-                key={change.repository}
-                named={named}
-                names={carried.names}
-              />
-            ))}
-            {waiting.map((unread) => (
-              <ReleaseService key={unread.repository} named={named} service={unread.service}>
-                <ZeropsHistoryView
-                  commits={unread.state}
-                  names={carried.names}
-                  request={{ repo: unread.repository, deployed: EMPTY_DEPLOYED }}
-                />
-              </ReleaseService>
-            ))}
-          </div>
-        ) : undefined
-      }
-      leading={
-        changes.length > 0 || waiting.length > 0 ? (
-          <button
-            aria-expanded={open}
-            aria-label={releaseCarriedToggleLabel(release.tag, open)}
-            className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-            onClick={() => {
-              setOpen((current) => !current);
-            }}
-            type="button"
-          >
-            <ChevronRightIcon
-              aria-hidden="true"
-              className={cn("size-3.5 transition-transform", open && "rotate-90")}
-            />
-          </button>
-        ) : (
-          <span aria-hidden="true" className="size-5 shrink-0" />
-        )
-      }
-      summary={description?.primary ?? release.line}
-      summaryDetail={description?.secondary}
-    />
+    <li className={DESCRIBED_RELEASE_ROW_CLASS} data-zerops-environment-row="true">
+      <span className="row-start-1 flex min-w-0 items-center gap-2.5">
+        {leading}
+        <span
+          className="min-w-0 truncate text-sm text-foreground"
+          data-zerops-surface="environment-name"
+        >
+          {parts.name}
+        </span>
+        <ZeropsRoleTag label={parts.tag} />
+      </span>
+      <span
+        className="col-span-full min-w-0 truncate pl-7.5 text-sm text-foreground sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:pl-0"
+        data-zerops-surface="release-description"
+      >
+        {description.primary}
+      </span>
+      <span
+        className="col-span-full min-w-0 truncate pl-7.5 text-xs text-muted-foreground sm:col-span-2 sm:col-start-1 sm:row-start-2"
+        data-zerops-surface="release-byline"
+      >
+        {description.secondary}
+      </span>
+      {/* The status word's hand is the row's, as on an environment row: a
+          `sentence` StatusDot has no size of its own. */}
+      <span className="col-start-2 row-start-1 flex min-w-0 justify-start text-xs text-muted-foreground sm:col-start-3 sm:row-span-2">
+        {parts.status}
+      </span>
+      {/* On a phone the verb takes its own line under the byline, where the
+          tag keeps its room; none, the cell takes no line. */}
+      <span className="col-span-full flex justify-start pl-7.5 empty:hidden sm:col-span-1 sm:col-start-4 sm:row-span-2 sm:row-start-1 sm:justify-end sm:pl-0">
+        {parts.action}
+      </span>
+      {expansion === undefined ? null : (
+        <div className="col-span-full min-w-0 pb-2">{expansion}</div>
+      )}
+    </li>
   );
 }
+
+/**
+ * A release row that says what it carried: the chevron, the tag and its pill;
+ * the description in the flexible middle, its byline under the tag; then the
+ * status and the verb, each in a column of one width on every row, so the
+ * descriptions, the dots and the verbs run down the list — the Live row's
+ * dot is where the others are, the verb's column empty. On a phone the
+ * description, its byline and the verb drop under the tag.
+ */
+const DESCRIBED_RELEASE_ROW_CLASS =
+  "grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(11rem,auto)_minmax(0,1fr)_6.5rem_7rem]";
 
 /** One repository's block in a release's expansion, under its hostname where there are several. */
 function ReleaseService({

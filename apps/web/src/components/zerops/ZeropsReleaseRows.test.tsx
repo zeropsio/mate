@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { elementsOf, press, readableText, TestNode } from "~/zerops/__fixtures__/testDom";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
+import { ENVIRONMENT_ROW_GRID_CLASS } from "./ZeropsEnvironmentRow";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -288,6 +289,55 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     for (const text of has) expect(html).toContain(text);
     for (const text of lacks) expect(html).not.toContain(text);
     expect(html.match(/data-zerops-environment-row/gu)).toHaveLength(1);
+  });
+
+  it("writes what a release carried in the row's flexible middle, the tag and its pill before it", () => {
+    const html = renderToStaticMarkup(carriedRows([NEWEST], TITAN_READ));
+    expect(html).toMatch(
+      /data-zerops-surface="environment-name">v0\.1\.27<\/span><span[^>]*data-zerops-surface="role-tag"[\s\S]*<\/span><\/span><span class="[^"]*" data-zerops-surface="release-description">v0\.23\.0: the void \(#32\)<\/span><span class="[^"]*text-muted-foreground[^"]*" data-zerops-surface="release-byline">ales · 4h · titan 1bcc930<\/span>/u,
+    );
+    expect(html).not.toContain("environment-summary");
+  });
+
+  it("gives the status and the verb one width on every row, so the dots and the verbs run down a column", () => {
+    const html = renderToStaticMarkup(
+      carriedRows(
+        [row(TITAN_RELEASES[0]!, 0, { live: true }), row(SPLIT_RELEASES[0]!, 1)],
+        carriedOf(
+          [...TITAN_RELEASES, ...SPLIT_RELEASES],
+          new Map([...TITAN_ONLY, ...SPLIT]),
+          new Map([
+            ["titan", read(TITAN)],
+            ["api", read(API)],
+            ["web", read(WEB)],
+          ]),
+        ),
+      ),
+    );
+    const grids = [...html.matchAll(/<li class="([^"]*)"/gu)].map((match) => match[1]);
+    expect(grids).toHaveLength(2);
+    expect(grids[0]).toBe(grids[1]);
+    expect(grids[0]).toContain("sm:grid-cols-[minmax(11rem,auto)_minmax(0,1fr)_6.5rem_7rem]");
+    // The Live row has no verb: its dot stays in the status column, the verb's column empty.
+    expect(html).toMatch(
+      /Live<\/span><\/span><\/span><span class="[^"]*empty:hidden[^"]*"><\/span><\/li>/u,
+    );
+    expect(html).toContain("Live");
+    expect(html).toContain("Roll back to this");
+  });
+
+  it("is the environment row it was while it says nothing it carried", () => {
+    const html = renderToStaticMarkup(
+      carriedRows(
+        [NEWEST],
+        carriedOf(TITAN_RELEASES, TITAN_ONLY, new Map([["titan", { kind: "reading" }]])),
+      ),
+    );
+    expect(html).toContain(`<li class="group/row ${ENVIRONMENT_ROW_GRID_CLASS}"`);
+    expect(html).toContain(
+      '<span class="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1" data-zerops-surface="environment-summary">titan 1bcc930</span>',
+    );
+    expect(html).not.toContain("release-description");
   });
 
   it("is still one row per release", () => {
