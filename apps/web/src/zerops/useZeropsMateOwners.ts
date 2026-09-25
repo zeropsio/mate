@@ -49,13 +49,26 @@ export function zeropsMateOwner(
   return { name, initials: display.initials, avatarUrl: display.avatarUrl };
 }
 
-export function useZeropsOrganizationMembers(input: {
+/**
+ * Where the member read stands: `idle` until a surface would use it, `failed`
+ * when it came back with nothing to tell (the list stays empty).
+ */
+export type ZeropsOrganizationMembersStatus = "idle" | "loading" | "ready" | "failed";
+
+export function useZeropsOrganizationMembersRead(input: {
   readonly clientId: string | undefined;
   /** Nothing is read until a surface would use it. */
   readonly enabled: boolean;
-}): ReadonlyArray<ZeropsOrganizationMember> {
+}): {
+  readonly members: ReadonlyArray<ZeropsOrganizationMember>;
+  readonly status: ZeropsOrganizationMembersStatus;
+} {
   const { client } = useZeropsSession();
   const [members, setMembers] = useState<ReadonlyArray<ZeropsOrganizationMember>>([]);
+  const [settled, setSettled] = useState<{
+    readonly clientId: string;
+    readonly failed: boolean;
+  } | null>(null);
   const read = useRef<string | null>(null);
   const { clientId, enabled } = input;
 
@@ -68,11 +81,14 @@ export function useZeropsOrganizationMembers(input: {
     void client
       .listOrganizationMembers(clientId, controller.signal)
       .then((answer) => {
-        if (!controller.signal.aborted) setMembers(answer);
+        if (controller.signal.aborted) return;
+        setMembers(answer);
+        setSettled({ clientId, failed: false });
       })
       .catch(() => {
         // No names, and the rows say the same thing without them.
         read.current = null;
+        if (!controller.signal.aborted) setSettled({ clientId, failed: true });
       });
 
     return () => {
@@ -80,7 +96,23 @@ export function useZeropsOrganizationMembers(input: {
     };
   }, [client, clientId, enabled]);
 
-  return members;
+  const status: ZeropsOrganizationMembersStatus =
+    !enabled || clientId === undefined
+      ? "idle"
+      : settled?.clientId !== clientId
+        ? "loading"
+        : settled.failed
+          ? "failed"
+          : "ready";
+  return { members, status };
+}
+
+export function useZeropsOrganizationMembers(input: {
+  readonly clientId: string | undefined;
+  /** Nothing is read until a surface would use it. */
+  readonly enabled: boolean;
+}): ReadonlyArray<ZeropsOrganizationMember> {
+  return useZeropsOrganizationMembersRead(input).members;
 }
 
 /**

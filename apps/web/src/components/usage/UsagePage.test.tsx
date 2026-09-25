@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 const testState = vi.hoisted(() => ({
   useUsage: vi.fn(),
   identities: new Map() as ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>,
+  owners: "resolved" as "resolving" | "resolved" | "unavailable",
   metric: "cost" as "cost" | "tokens" | "limits",
   breakdown: "time" as "auto" | "person" | "project" | "mate" | "model" | "time",
 }));
@@ -42,7 +43,10 @@ vi.mock("react", async (importOriginal) => {
 vi.mock("../../env", () => ({ isElectron: false }));
 vi.mock("../../state/usage", () => ({ useUsage: testState.useUsage }));
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
-  useUsageEnvironmentIdentities: () => testState.identities,
+  useUsageEnvironmentIdentities: () => ({
+    identities: testState.identities,
+    owners: testState.owners,
+  }),
 }));
 vi.mock("../ui/button", () => ({ Button: "button" }));
 vi.mock("../ui/scroll-area", () => ({ ScrollArea: "div" }));
@@ -133,6 +137,7 @@ beforeEach(() => {
   testState.metric = "cost";
   testState.breakdown = "time";
   testState.identities = new Map();
+  testState.owners = "resolved";
   const merged = {
     ...mergeUsage([], USAGE_CONTRACT_VERSION),
     models: modelTotals,
@@ -368,6 +373,51 @@ describe("UsagePage dimensions", () => {
     expect(include?.("a" as EnvironmentId)).toBe(false);
     expect(include?.("b" as EnvironmentId)).toBe(true);
     expect(markup).toMatch(/Bara.*aria-label="Clear person filter"/);
+  });
+
+  it.each([
+    {
+      name: "holds a person scope in the skeleton while owners resolve",
+      owners: "resolving" as const,
+      scope: { person: "u2" },
+      total: false,
+      notice: false,
+    },
+    {
+      name: "says it cannot tell whose Mates when owners are unavailable",
+      owners: "unavailable" as const,
+      scope: { person: "u2" },
+      total: false,
+      notice: true,
+    },
+    {
+      name: "renders an unscoped page while owners resolve",
+      owners: "resolving" as const,
+      scope: {},
+      total: true,
+      notice: false,
+    },
+    {
+      name: "renders a project scope while owners resolve",
+      owners: "unavailable" as const,
+      scope: { project: "blog" },
+      total: true,
+      notice: false,
+    },
+  ])("$name", ({ owners, scope, total, notice }) => {
+    withEnvironments([
+      {
+        id: "b",
+        costUsd: 30,
+        identity: { mateName: "Otto", projectName: "blog", owner: owner("u2", "Bara") },
+      },
+    ]);
+    testState.owners = owners;
+
+    const markup = renderPage(scope);
+
+    expect(markup.includes("$30.00")).toBe(total);
+    expect(markup.includes("Can&#x27;t tell whose Mates these are right now.")).toBe(notice);
   });
 
   it("names a failed environment by its Mate and project", () => {

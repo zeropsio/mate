@@ -142,7 +142,7 @@ export function UsagePage({
   const [breakdownChoice, setBreakdown] = useState<UsageBreakdown | "auto">("auto");
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
-  const identities = useUsageEnvironmentIdentities();
+  const { identities, owners } = useUsageEnvironmentIdentities();
   const { person: scopePerson, project: scopeProject, mate: scopeMate } = scope;
   const include = useMemo(() => {
     const current = { person: scopePerson, project: scopeProject, mate: scopeMate };
@@ -211,7 +211,10 @@ export function UsagePage({
   // Hold the content until every environment is terminal. Rendering merged
   // totals while devices are still answering makes every number on the page
   // jump as each one lands.
-  const settling = isPending || isPartial;
+  // A person scope matches nobody until the owners are known; rendering it
+  // earlier shows $0 and then jumps.
+  const settling = isPending || isPartial || (scopePerson !== undefined && owners === "resolving");
+  const ownersUnknown = scopePerson !== undefined && owners === "unavailable";
 
   const days = useMemo(
     () => enumerateDays(window.sinceDay, window.untilDay),
@@ -441,6 +444,10 @@ export function UsagePage({
                 ) : null}
                 <UsageSkeleton />
               </>
+            ) : ownersUnknown ? (
+              <p className="text-sm text-muted-foreground">
+                Can't tell whose Mates these are right now.
+              </p>
             ) : (
               <>
                 <UsageCoverageNotice
