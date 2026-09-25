@@ -568,6 +568,23 @@ describe("serviceRows", () => {
     }).toEqual(expected);
   });
 
+  it("says no state for a service that runs nothing, whose commit's place already says so", () => {
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [{ hostname: "web", repository: "web" }],
+      platform: { ...PLATFORM, value: [platformService("web", { kind: "none" })] },
+      routes: [],
+      offers: [],
+      nowMs: 100_000,
+      age: (iso) => iso,
+    });
+    expect({ commit: row?.commit, word: row?.word, status: row?.status }).toEqual({
+      commit: undefined,
+      word: NOTHING_DEPLOYED,
+      status: undefined,
+    });
+  });
+
   it.each<{ hostname: string; tone: StopServiceRow["tone"]; status: string }>([
     { hostname: "api", tone: "good", status: "Deployed" },
     { hostname: "web", tone: "neutral", status: "Deployed" },

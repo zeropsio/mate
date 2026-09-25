@@ -211,8 +211,11 @@ export interface StopServiceRow {
   readonly line: string | undefined;
   readonly tone: GroupRowTone;
   readonly word: string;
-  /** The word, and how long it has run when the platform says. */
-  readonly status: string;
+  /**
+   * The word, and how long it has run when the platform says; `undefined` for a service that runs
+   * nothing, whose commit's place already says so.
+   */
+  readonly status: string | undefined;
   /**
    * What the service runs now — through a build, what ran before it — and how long it has, when
    * the platform says; the Gitea side's name while the platform's is not read. `undefined` for
@@ -335,7 +338,12 @@ export function serviceRows(input: {
       line: version.name === undefined ? undefined : `deployed with ${version.name}`,
       tone,
       word,
-      status: activatedAt === null ? word : `${word} · ${input.age(activatedAt)}`,
+      status:
+        word === NOTHING_DEPLOYED
+          ? undefined
+          : activatedAt === null
+            ? word
+            : `${word} · ${input.age(activatedAt)}`,
       runs: runsOf(deployment, settled, read, input.age),
       routes: input.routes.filter((route) => route.service === hostname),
       offers: input.offers.filter((offer) => offer.service === hostname),

@@ -1447,7 +1447,7 @@ function StopServiceLine({
           )}
         </span>
         <span className="col-start-3 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-4">
-          {dot === undefined ? (
+          {row.status === undefined ? null : dot === undefined ? (
             <span className="truncate text-muted-foreground">{row.status}</span>
           ) : (
             <StatusDot label={row.status} sentence tone={dot} />

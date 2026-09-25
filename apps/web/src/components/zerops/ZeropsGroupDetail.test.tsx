@@ -12,11 +12,13 @@ import {
   stopView,
   type Deployment,
   type StopFailure,
+  type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import { serviceBuildRequest, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
@@ -246,6 +248,8 @@ interface StopCase {
   readonly tier: EnvironmentRow["tier"];
   readonly services: ReadonlyArray<EnvironmentServiceState>;
   readonly deployment?: Shown<Deployment>;
+  /** What the platform lists for each service; unread unless given. */
+  readonly platform?: Shown<ReadonlyArray<StopService>>;
   readonly waiting?: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
   readonly offered?: string;
   readonly failed?: StopFailure;
@@ -270,7 +274,7 @@ function renderStop(input: StopCase): string {
   const rows = serviceRows({
     environment: name,
     services: input.services,
-    platform: { state: "unread", waitingFor: null },
+    platform: input.platform ?? { state: "unread", waitingFor: null },
     routes: [],
     offers: [],
     nowMs: NOW,
@@ -478,6 +482,26 @@ describe("ZeropsStopPane", () => {
     for (const classes of [header?.[1], verdict?.[1]]) {
       expect(classes ?? "").not.toMatch(/(^|\s)(m[by]|mt|mb)-/);
     }
+  });
+
+  it("says a service runs nothing once on its row, in its commit's place", () => {
+    const markup = renderStop({
+      tier: "stage",
+      services: [{ hostname: "api", repository: "apidev" }],
+      deployment: NONE,
+      platform: {
+        ...NONE,
+        value: [
+          {
+            service: platformService("svc-api"),
+            hostname: "api",
+            deployment: NONE,
+          },
+        ],
+      },
+    });
+    const card = markup.slice(markup.indexOf("Services · 1"));
+    expect(count(card, "Nothing deployed yet")).toBe(1);
   });
 
   it("draws the verdict's verb as an outline button, not a filled one", () => {
