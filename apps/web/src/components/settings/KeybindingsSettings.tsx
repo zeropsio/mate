@@ -309,7 +309,7 @@ function WhenVariableSelect({
 
   return (
     <Select value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
-      <SelectTrigger size="compact" className="min-w-0 flex-1 font-mono">
+      <SelectTrigger size="compact" className="min-w-0 flex-1">
         <SelectValue placeholder="Condition" className="leading-7" />
         {unknownIdentifiers && unknownIdentifiers.length > 0 ? (
           <UnknownWhenVariableWarning identifiers={unknownIdentifiers} focusable={false} />
@@ -322,11 +322,7 @@ function WhenVariableSelect({
         className="max-h-72 w-fit min-w-44"
       >
         {options.map((option) => (
-          <SelectItem
-            key={option}
-            value={option}
-            className="min-h-7 w-full py-1 font-mono text-[12px]"
-          >
+          <SelectItem key={option} value={option} className="min-h-7 w-full py-1 text-[12px]">
             <span className="truncate">{option}</span>
           </SelectItem>
         ))}
@@ -515,10 +511,10 @@ function WhenExpressionNodeEditor({
             popupClassName="w-fit"
             className="w-fit min-w-24"
           >
-            <SelectItem value="and" className="min-h-7 py-1 font-mono text-[12px]">
+            <SelectItem value="and" className="min-h-7 py-1 text-[12px]">
               and
             </SelectItem>
-            <SelectItem value="or" className="min-h-7 py-1 font-mono text-[12px]">
+            <SelectItem value="or" className="min-h-7 py-1 text-[12px]">
               or
             </SelectItem>
           </SelectContent>
@@ -645,13 +641,14 @@ function WhenExpressionBuilder({
       <div className="space-y-1.5">
         <div className="relative">
           <Input
+            font="mono"
             value={expressionDraft}
             onChange={(event) => updateExpressionDraft(event.currentTarget.value)}
             placeholder="Always"
             aria-invalid={Boolean(parseError)}
             aria-label="When expression"
             className={cn(
-              "h-7 rounded-md font-mono text-[12px] leading-7 sm:h-7 sm:leading-7",
+              "h-7 rounded-md text-[12px] leading-7 sm:h-7 sm:leading-7",
               unknownIdentifiers.length > 0 && "pr-9",
               parseError && "border-destructive/70 focus-visible:border-destructive",
             )}
@@ -820,13 +817,14 @@ function KeybindingTableRow({
           </button>
         ) : (
           <Input
+            font="mono"
             data-keybinding-capture=""
             autoFocus={isRecording}
             aria-label={`Keybinding for ${commandLabel(row.command)}`}
             value={isRecording ? "" : keyDraft}
             placeholder={isRecording ? "Press shortcut" : "Unassigned"}
             className={cn(
-              "h-7 w-44 rounded-md font-mono text-[12px] sm:h-7",
+              "h-7 w-44 rounded-md text-[12px] sm:h-7",
               isRecording && "border-primary/70 bg-primary/5",
             )}
             onFocus={() => setDraft({ isRecording: true })}
@@ -982,12 +980,13 @@ function NewKeybindingTableRow({
       </div>
       <div className="flex min-w-0 items-center gap-2 pr-4">
         <Input
+          font="mono"
           data-keybinding-capture=""
           aria-label={`Keybinding for ${commandLabelText}`}
           value={isRecording ? "" : keyDraft}
           placeholder={isRecording ? "Press shortcut" : "Unassigned"}
           size="compact"
-          className={cn("w-44 font-mono", isRecording && "border-primary/70 bg-primary/5")}
+          className={cn("w-44", isRecording && "border-primary/70 bg-primary/5")}
           onFocus={() => setDraft({ isRecording: true })}
           onBlur={() => setDraft({ isRecording: false })}
           onChange={(event) => setDraft({ keyDraft: event.currentTarget.value })}
