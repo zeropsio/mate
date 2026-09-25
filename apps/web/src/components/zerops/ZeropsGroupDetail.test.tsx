@@ -147,6 +147,16 @@ describe("ZeropsGroupPane", () => {
     expect(bar).toMatch(/<nav aria-label="[^"]*breadcrumb"[\s\S]*Projects[\s\S]*<\/nav>/);
   });
 
+  it("spaces its blocks by the frame's one gap, as the header is, adding no margin of their own", () => {
+    const markup = render();
+    const sections = [...markup.matchAll(/<section(?: class="([^"]*)")?>/g)].map((m) => m[1] ?? "");
+    const attention = /class="([^"]*)" data-zerops-surface="project-attention/.exec(markup)?.[1];
+    expect(sections.length).toBeGreaterThan(0);
+    expect(attention).toBeDefined();
+    for (const classes of [...sections, attention ?? ""])
+      expect(classes).not.toMatch(/(^|\s)m[by]-\d/);
+  });
+
   const NO_MATE = "No Mate is working on this project yet.";
 
   it("never says no Mate is on it while the listing is unread: a placeholder instead", () => {

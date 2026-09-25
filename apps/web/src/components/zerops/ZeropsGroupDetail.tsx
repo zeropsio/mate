@@ -798,7 +798,7 @@ export function ZeropsGroupPane({
       title={name}
     >
       {trouble === null || trouble === undefined ? null : (
-        <p className="mb-4 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
+        <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
       )}
       <AttentionPanel items={attention} onAct={onAct} release={release} />
 
@@ -1995,7 +1995,7 @@ function AttentionPanel({
   if (first === undefined) {
     return (
       <p
-        className="mb-8 rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground"
+        className="rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground"
         data-zerops-surface="project-attention-clear"
       >
         {PROJECT_ALL_CLEAR}
@@ -2008,10 +2008,7 @@ function AttentionPanel({
       // The edge wears the worst thing inside it, and the list is ordered
       // worst first. It used to be amber whatever it held, so a panel whose
       // only row was a blue *Release* still had a blocked change's border.
-      className={cn(
-        "mb-8 flex flex-col overflow-hidden rounded-lg border",
-        VERDICT_BORDER_CLASS[worst],
-      )}
+      className={cn("flex flex-col overflow-hidden rounded-lg border", VERDICT_BORDER_CLASS[worst])}
       data-zerops-surface="project-attention"
     >
       {items.map((item) => (
@@ -2079,7 +2076,7 @@ function ChangeVerdictPanel({
   readonly verdict: ChangeVerdict;
 }) {
   return (
-    <div className="mb-8" data-zerops-surface="change-verdict">
+    <div data-zerops-surface="change-verdict">
       <VerdictPanel text={verdict.text} tone={verdict.tone}>
         {verdict.ask === undefined ? null : (
           <Button data-zerops-primary-action="Ask" onClick={onAsk} size="sm" variant="outline">
@@ -2395,7 +2392,7 @@ function DetailShell({
       }
       width="expanded"
     >
-      {/* The frame's page gap spaces the header from what follows, as on /zerops. */}
+      {/* The frame's page gap spaces the header and every block after it, as on /zerops. */}
       <header>
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="min-w-0 flex-1">
@@ -2427,7 +2424,7 @@ function Section({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="mb-8">
+    <section>
       {/* A hairline under the heading: without one the page was four blocks of
           identical weight and a reader had to parse it to find the seams. */}
       <h2 className="mb-3 border-b border-border pb-1.5 text-sm font-semibold tracking-tight text-foreground">
