@@ -260,9 +260,9 @@ describe("where a group's next step sits", () => {
     ["a release is production's", FLOWS.release, "production", "busy"],
     ["adding production is production's", FLOWS.addProduction, "production", "busy"],
     ["a failed production deploy is production's", failing("production"), "production", "failed"],
-    // A stage is never what anything downstream waits behind (D28): its own
-    // failure stays on its own row and is nobody's next step.
-    ["a failed stage deploy is nobody's next step", failing("stage"), undefined, "off"],
+    // A failed stage is a failed stop too (owner, 2026-09-25): the stages sit
+    // in main's cell, so that is where fixing it waits.
+    ["a failed stage deploy is main's cell's", failing("stage"), "main", "failed"],
     ["nothing to do sits nowhere", FLOWS.none, undefined, "off"],
   ];
   for (const [name, flow, cell, tone] of cases) {
