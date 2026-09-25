@@ -2679,9 +2679,9 @@ describe("deriveWorkLogEntries — a tool row is anchored at first sight", () =>
       ],
       expected: [
         {
-          id: "a-updated",
-          createdAt: at(2),
-          startedAt: at(2),
+          id: "a-started",
+          createdAt: at(1),
+          startedAt: at(1),
           updatedAt: at(5),
           label: "Run tests completed",
           toolLifecycleStatus: "completed",
@@ -2709,8 +2709,8 @@ describe("deriveWorkLogEntries — a tool row is anchored at first sight", () =>
       ],
       expected: [
         {
-          id: "a-updated-early",
-          createdAt: at(2),
+          id: "a-started",
+          createdAt: at(1),
           updatedAt: at(6),
           toolLifecycleStatus: "completed",
         },
@@ -2719,23 +2719,25 @@ describe("deriveWorkLogEntries — a tool row is anchored at first sight", () =>
     {
       name: "two concurrent tools interleaved",
       activities: [
-        toolActivity("a-updated", "tool.updated", 1, "call-a"),
-        toolActivity("b-updated", "tool.updated", 2, "call-b"),
-        toolActivity("a-completed", "tool.completed", 3, "call-a"),
-        toolActivity("b-completed", "tool.completed", 4, "call-b"),
+        toolActivity("a-started", "tool.started", 1, "call-a"),
+        toolActivity("a-updated", "tool.updated", 2, "call-a"),
+        toolActivity("b-started", "tool.started", 3, "call-b"),
+        toolActivity("b-updated", "tool.updated", 4, "call-b"),
+        toolActivity("a-completed", "tool.completed", 5, "call-a"),
+        toolActivity("b-completed", "tool.completed", 6, "call-b"),
       ],
       expected: [
         {
-          id: "a-updated",
+          id: "a-started",
           createdAt: at(1),
-          updatedAt: at(3),
+          updatedAt: at(5),
           toolCallId: "call-a",
           toolLifecycleStatus: "completed",
         },
         {
-          id: "b-updated",
-          createdAt: at(2),
-          updatedAt: at(4),
+          id: "b-started",
+          createdAt: at(3),
+          updatedAt: at(6),
           toolCallId: "call-b",
           toolLifecycleStatus: "completed",
         },
@@ -2747,10 +2749,33 @@ describe("deriveWorkLogEntries — a tool row is anchored at first sight", () =>
     expect(deriveWorkLogEntries(activities)).toMatchObject(expected);
   });
 
+  /**
+   * What a reload receives: the server's snapshot drops every `tool.updated`
+   * a later `tool.completed` of the same turn and call supersedes
+   * (`dropSupersededToolUpdatedActivities`, ActivityPayloadProjection.ts).
+   */
+  const snapshotOf = (activities: ReadonlyArray<OrchestrationThreadActivity>) => {
+    const ordered = activities.toSorted((left, right) =>
+      left.createdAt.localeCompare(right.createdAt),
+    );
+    const callOf = (activity: OrchestrationThreadActivity) =>
+      `${activity.turnId}:${(activity.payload as { toolCallId?: string }).toolCallId}`;
+    return ordered.filter(
+      (activity, index) =>
+        activity.kind !== "tool.updated" ||
+        !ordered.some(
+          (later, laterIndex) =>
+            laterIndex > index &&
+            later.kind === "tool.completed" &&
+            callOf(later) === callOf(activity),
+        ),
+    );
+  };
+
   it.each(cases)(
     "$name: every streamed prefix keeps the anchor the reload derives",
     ({ activities }) => {
-      const reloaded = deriveWorkLogEntries(activities);
+      const reloaded = deriveWorkLogEntries(snapshotOf(activities));
       const ordered = activities.toSorted((left, right) =>
         left.createdAt.localeCompare(right.createdAt),
       );

@@ -98,15 +98,16 @@ export interface WorkLogEntry {
   id: string;
   createdAt: string;
   /**
-   * The server-stamped time this entry was FIRST observed (its earliest
-   * lifecycle activity's own `createdAt`), preserved across every later
-   * merge, like `id` and `createdAt` (see `mergeDerivedWorkLogEntries`).
+   * The server-stamped time this entry's call started (its `tool.started`,
+   * else its earliest lifecycle activity's own `createdAt`), preserved across
+   * every later merge, like `id` and `createdAt` (see `deriveWorkLogEntries`,
+   * `mergeDerivedWorkLogEntries`).
    */
   startedAt?: string;
   /**
-   * The latest merged activity's own `createdAt`, set on every merge — unlike
-   * `createdAt`, which stays pinned to the FIRST activity's timestamp.
-   * Absent on an entry that was never merged.
+   * The latest lifecycle activity's own `createdAt`, set on every merge and
+   * on a row anchored at its `tool.started` — unlike `createdAt`, which stays
+   * pinned to the anchor. Absent on an entry that is its own only activity.
    */
   updatedAt?: string;
   turnId?: TurnId | null;
@@ -716,9 +717,20 @@ export function deriveWorkLogEntries(
     }
   }
   const entries: DerivedWorkLogEntry[] = [];
+  // A tool row is anchored at its call's `tool.started`, which draws nothing
+  // itself: a reload's snapshot keeps the start but drops every update a
+  // completion supersedes, so an anchor at the first update would key and
+  // place the row differently live and after a reload.
+  const startedAnchorByKey = new Map<string, { id: string; createdAt: string }>();
   for (const activity of ordered) {
     if (exclude?.has(activity.id)) continue;
-    if (activity.kind === "tool.started") continue;
+    if (activity.kind === "tool.started") {
+      const startedKey = toolLifecycleCollapseMapKey(toDerivedWorkLogEntry(activity));
+      if (startedKey !== undefined) {
+        startedAnchorByKey.set(startedKey, { id: activity.id, createdAt: activity.createdAt });
+      }
+      continue;
+    }
     // Agent task.started rows are CTA seeds: they carry the true spawn turn,
     // which is the batch key (completions of background subagents arrive
     // under later synthetic turns and must not start new batches). They
@@ -753,7 +765,22 @@ export function deriveWorkLogEntries(
     ) {
       continue;
     }
-    entries.push(entry);
+    // The first row of a call takes the anchor; later rows merge into it,
+    // which keeps it (`mergeDerivedWorkLogEntries`).
+    const lifecycleKey = toolLifecycleCollapseMapKey(entry);
+    const anchor = lifecycleKey === undefined ? undefined : startedAnchorByKey.get(lifecycleKey);
+    if (lifecycleKey !== undefined) startedAnchorByKey.delete(lifecycleKey);
+    entries.push(
+      anchor === undefined
+        ? entry
+        : {
+            ...entry,
+            id: anchor.id,
+            createdAt: anchor.createdAt,
+            startedAt: anchor.createdAt,
+            updatedAt: entry.createdAt,
+          },
+    );
   }
   return collapseDerivedWorkLogEntries(entries);
 }
