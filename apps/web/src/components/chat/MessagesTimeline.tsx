@@ -1808,11 +1808,21 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
 
   return (
     <>
-      <div className="relative min-w-0 px-1 py-0.5">
-        <MessageAuthorHeading>
-          {author.kind === "mate" ? author.mate.name : "Assistant"}
-        </MessageAuthorHeading>
+      <div
+        className={cn(
+          "relative min-w-0 py-0.5",
+          // Narration: what the agent says between steps, not its answer —
+          // a quieter voice on a thin rail, under no heading of its own.
+          row.narration ? "border-s-2 border-border/60 ps-3 pe-1" : "px-1",
+        )}
+      >
+        {row.narration ? null : (
+          <MessageAuthorHeading>
+            {author.kind === "mate" ? author.mate.name : "Assistant"}
+          </MessageAuthorHeading>
+        )}
         <ChatMarkdown
+          {...(row.narration ? { className: "text-[13px]" } : {})}
           text={messageText}
           cwd={ctx.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}

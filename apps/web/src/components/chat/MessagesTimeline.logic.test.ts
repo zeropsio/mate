@@ -3579,6 +3579,49 @@ describe("turn header", () => {
     },
   );
 
+  it.each([
+    { phase: "working", conversation: working, expanded: false, narration: { a1: true } },
+    {
+      phase: "answered",
+      conversation: answered,
+      expanded: false,
+      narration: { a1: true, a2: true },
+    },
+    {
+      phase: "settled",
+      conversation: settled,
+      expanded: false,
+      narration: { a1: true, a2: false },
+    },
+    {
+      phase: "settled and expanded",
+      conversation: {
+        ...settled,
+        messages: [
+          ...settled.messages.slice(0, 2),
+          assistantMessage("a-mid", 4),
+          settled.messages[2]!,
+        ],
+      },
+      expanded: true,
+      narration: { a1: true, "a-mid": true, a2: false },
+    },
+  ])(
+    "reads every assistant message but the settled final answer as narration when $phase",
+    ({ conversation, expanded, narration }) => {
+      const rows = deriveRows(conversation, expanded ? new Set([T1]) : undefined);
+      const assistantRows = rows.filter(
+        (row) => row.kind === "message" && row.message.role === "assistant",
+      );
+
+      expect(
+        Object.fromEntries(
+          assistantRows.map((row) => [row.id, row.kind === "message" && row.narration]),
+        ),
+      ).toEqual(narration);
+    },
+  );
+
   it("names the running tool in the live header and nothing once settled", () => {
     const live = deriveRows(working).find((row) => row.kind === "turn-header");
     const done = deriveRows(settled).find((row) => row.kind === "turn-header");

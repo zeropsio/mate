@@ -309,6 +309,12 @@ export type MessagesTimelineRow =
       createdAt: string;
       message: ChatMessage;
       durationStart: string;
+      /**
+       * An assistant message that is not its turn's final answer: every one
+       * while the turn runs (the answer is only known at settle), then all
+       * but the last. It reads as narration — the same row, restyled in place.
+       */
+      narration: boolean;
       showAssistantMeta: boolean;
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
@@ -1472,6 +1478,7 @@ export function deriveMessagesTimelineRows(input: {
       createdAt: timelineEntry.createdAt,
       message: timelineEntry.message,
       durationStart,
+      narration: timelineEntry.message.role === "assistant" && !showAssistantMeta,
       showAssistantMeta,
       showAssistantCopyButton: showAssistantMeta,
       assistantCopyStreaming: timelineEntry.message.streaming || assistantTurnStillInProgress,
@@ -1715,6 +1722,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.message === bm.message &&
         a.durationStart === bm.durationStart &&
+        a.narration === bm.narration &&
         a.showAssistantMeta === bm.showAssistantMeta &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
