@@ -1,3 +1,4 @@
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -81,6 +82,59 @@ void import("./linux.ts").then(({ result }) => process.emit("ready", result));`,
     load(NodePath.join(outputDirectory, "main.cjs"), false);
     assert.equal(await ready.promise, 43);
     assert.deepEqual(startups, [42]);
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("loads the emitted packaged boot entry with the compile cache on", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-desktop-boot-"));
+  try {
+    const entries = ["src/boot.ts", "src/compileCache.ts"];
+    await NodeFSP.mkdir(NodePath.join(directory, "src"));
+    await Promise.all(
+      entries.map((entry) =>
+        NodeFSP.copyFile(new URL(`../${entry}`, import.meta.url), NodePath.join(directory, entry)),
+      ),
+    );
+    assert.ok(Array.isArray(desktopConfig.pack));
+    for (const packConfig of desktopConfig.pack) {
+      if (!Array.isArray(packConfig.entry)) continue;
+      if (!packConfig.entry.some((entry) => entries.includes(entry))) continue;
+      await build({
+        ...packConfig,
+        config: false,
+        cwd: directory,
+        tsconfig: false,
+        sourcemap: false,
+        onSuccess: undefined,
+        logLevel: "silent",
+      });
+    }
+    const outputDirectory = NodePath.join(directory, "dist-electron");
+    const fixture = `console.log(require('node:module').getCompileCacheDir() ? 'cached' : 'uncached');`;
+    await NodeFSP.writeFile(NodePath.join(outputDirectory, "main.cjs"), fixture);
+    for (const disabled of [false, true]) {
+      const child = NodeChildProcess.spawnSync(
+        process.execPath,
+        [NodePath.join(outputDirectory, "boot.cjs")],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            APPIMAGE: "",
+            NODE_COMPILE_CACHE: undefined,
+            NODE_DISABLE_COMPILE_CACHE: disabled ? "1" : undefined,
+            XDG_CACHE_HOME: directory,
+            TMPDIR: directory,
+            TEMP: directory,
+            TMP: directory,
+          },
+        },
+      );
+      assert.equal(child.status, 0, child.stderr);
+      assert.equal(child.stdout.trim(), disabled ? "uncached" : "cached");
+    }
   } finally {
     await NodeFSP.rm(directory, { recursive: true, force: true });
   }
