@@ -120,8 +120,10 @@ export function stopVerdict(input: {
   }
   const label = view.version.label ?? view.line;
   if (tier === "stage") {
-    // The commit under a stage named by something else; a name that is the commit says it once.
-    const commit = view.version.commit === label ? undefined : view.version.commit;
+    // The commit it runs, and for how long: at main's head the sentence names neither, so the
+    // detail always says the commit; behind it, a sentence naming the commit already said it.
+    const commit =
+      !input.atMainHead && view.version.commit === label ? undefined : view.version.commit;
     return {
       tone: "ok",
       text: input.atMainHead ? "Stage runs the head of main." : `Stage runs ${label}.`,

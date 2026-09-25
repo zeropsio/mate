@@ -29,6 +29,22 @@ describe("VerdictPanel", () => {
     expect(panel).toContain(">Release</button>");
   });
 
+  it("says its detail inside the panel, muted, after the sentence", () => {
+    const html = renderToStaticMarkup(
+      <VerdictPanel
+        detail="v0.1.27 · released 1h ago"
+        text="Production already runs what is merged."
+        tone="ok"
+      />,
+    );
+    const panel = html.slice(html.indexOf('data-zerops-primitive="verdict-panel"'));
+    const sentence = panel.indexOf("Production already runs what is merged.");
+    const detail = panel.indexOf("v0.1.27 · released 1h ago");
+    expect(sentence).toBeGreaterThan(-1);
+    expect(detail).toBeGreaterThan(sentence);
+    expect(panel.slice(0, detail)).toMatch(/text-muted-foreground[^"]*"[^>]*>$/);
+  });
+
   it("spends no room on a verb column where there is no verb", () => {
     const html = renderToStaticMarkup(<VerdictPanel text="Merged into main." tone="ok" />);
     expect(html).not.toContain("shrink-0 items-center gap-2");

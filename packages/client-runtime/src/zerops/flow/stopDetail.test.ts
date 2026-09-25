@@ -239,7 +239,22 @@ describe("stopVerdict", () => {
       },
     },
     {
-      name: "a stage named by its commit does not say the commit twice",
+      name: "a stage at main's head named by its commit says the commit it runs",
+      input: {
+        tier: "stage",
+        atMainHead: true,
+        view: view({ version: { ...V13, name: undefined, label: "3f9c1b2" } }),
+        since: "18h ago",
+      },
+      expected: {
+        tone: "ok",
+        text: "Stage runs the head of main.",
+        detail: "3f9c1b2 · 18h ago",
+        verb: null,
+      },
+    },
+    {
+      name: "a stage behind main's head named by its commit does not say the commit twice",
       input: {
         tier: "stage",
         view: view({ version: { ...V13, name: undefined, label: "3f9c1b2" } }),

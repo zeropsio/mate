@@ -929,14 +929,19 @@ function Harness() {
         />
       </State>
 
-      <State label="A stage at the head of main" note="It runs main's newest commit.">
+      <State
+        label="A stage at the head of main"
+        note="It runs main's newest commit, which no release names: the verdict says the commit and for how long, and the database beside it has no row."
+      >
         <StopState
           fixture={{
             tier: "stage",
             services: [
               service("stage", "api", "b21d904c", undefined),
               service("stage", "app", "b21d904c", undefined),
+              managed("db"),
             ],
+            deployment: STAGE_RUNNING,
             routes: ROUTES,
           }}
         />

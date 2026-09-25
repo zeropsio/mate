@@ -33,6 +33,11 @@ type VerdictPanelProps = Omit<React.ComponentProps<"div">, "children"> & {
   /** The answer, in one sentence a person could read aloud. */
   readonly text: string;
   readonly tone: ServiceStatusToneId;
+  /**
+   * What stands behind the answer — the version, how long ago — said muted after the sentence on
+   * its line, and under it where the line is too narrow for both.
+   */
+  readonly detail?: string | undefined;
   /** The verb — or verbs — that act on that sentence. */
   readonly children?: React.ReactNode;
 };
@@ -51,14 +56,19 @@ type VerdictPanelProps = Omit<React.ComponentProps<"div">, "children"> & {
  * where a test and a harness can read every state of it without a forge or a
  * container behind them.
  */
-function VerdictPanel({ children, className, text, tone, ...props }: VerdictPanelProps) {
+function VerdictPanel({ children, className, detail, text, tone, ...props }: VerdictPanelProps) {
   return (
     <div
       {...props}
       className={cn(VERDICT_PANEL_CLASS, VERDICT_BORDER_CLASS[tone], className)}
       data-zerops-primitive="verdict-panel"
     >
-      <StatusDot className="min-w-0 text-sm text-foreground" label={text} sentence tone={tone} />
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+        <StatusDot className="min-w-0 text-foreground" label={text} sentence tone={tone} />
+        {detail === undefined ? null : (
+          <span className="min-w-0 text-muted-foreground tabular-nums">{detail}</span>
+        )}
+      </span>
       {children === undefined ? null : (
         <span className="flex shrink-0 items-center gap-2">{children}</span>
       )}

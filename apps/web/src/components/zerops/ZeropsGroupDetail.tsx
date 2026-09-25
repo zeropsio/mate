@@ -1224,7 +1224,7 @@ export function ZeropsStopPane({
       titleTag={<ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
     >
       <div className="mb-6">
-        <VerdictPanel text={verdict.text} tone={verdict.tone}>
+        <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
           {verb?.kind === "release" ? (
             <ReleaseAction
               label={`${flowVerbLabel("release", false)} ${verb.tag}`}
@@ -1244,9 +1244,6 @@ export function ZeropsStopPane({
             </Button>
           ) : undefined}
         </VerdictPanel>
-        {verdict.detail === undefined ? null : (
-          <p className="mt-1.5 px-3 text-sm text-muted-foreground tabular-nums">{verdict.detail}</p>
-        )}
         {runAgain?.failure === null || runAgain?.failure === undefined ? null : (
           <p className="mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]">
             {runAgain.failure}

@@ -437,6 +437,35 @@ describe("ZeropsStopPane", () => {
     for (const text of lacks) expect(markup).not.toContain(text);
   });
 
+  it.each<{ readonly name: string; readonly input: StopCase; readonly detail: string }>([
+    {
+      name: "a production behind",
+      input: {
+        tier: "production",
+        services: [service("production", "api", "a1", "v0.1.13")],
+        waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
+        offered: "v0.1.14",
+      },
+      detail: "Production runs v0.1.13",
+    },
+    {
+      name: "a stage at the head of main",
+      input: {
+        tier: "stage",
+        services: [service("stage", "api", "a1", undefined)],
+        atMainHead: true,
+      },
+      detail: fullSha("a1").slice(0, 7),
+    },
+  ])("says the verdict's detail inside its panel: $name", ({ input, detail }) => {
+    const markup = renderStop(input);
+    const panel = markup.indexOf('data-zerops-primitive="verdict-panel"');
+    const at = markup.indexOf(detail, panel);
+    expect(panel).toBeGreaterThan(-1);
+    expect(at).toBeGreaterThan(panel);
+    expect(markup.slice(panel, at)).not.toContain("</div>");
+  });
+
   it("draws the verdict's verb as an outline button, not a filled one", () => {
     const markup = renderStop({
       tier: "production",
