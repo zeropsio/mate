@@ -1059,7 +1059,7 @@ function deriveTurnTallies(input: {
     );
   }
   const openers = new Set(input.spans.flatMap((span) => (span.opener ? [span.opener] : [])));
-  const windows = input.spans.map((span) => ({
+  const tallies = input.spans.map((span) => ({
     span,
     window: turnWindow({
       span,
@@ -1070,25 +1070,32 @@ function deriveTurnTallies(input: {
     landed: [] as ChangeLandedEntry[],
     asks: 0,
   }));
-  const windowAt = (iso: string, inclusiveStart: boolean) => {
+  const byStart = tallies
+    .flatMap((tally) => (tally.window === null ? [] : [{ ...tally.window, tally }]))
+    .toSorted((left, right) => left.startMs - right.startMs);
+  // The turn that had most recently started by then, if it had not ended.
+  const ownerAt = (iso: string) => {
     const ms = Date.parse(iso);
-    return windows.find(
-      ({ window }) =>
-        window !== null &&
-        (inclusiveStart ? ms >= window.startMs : ms > window.startMs) &&
-        ms <= window.endMs,
-    );
+    let low = 0;
+    let high = byStart.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (byStart[middle]!.startMs <= ms) low = middle + 1;
+      else high = middle;
+    }
+    const candidate = byStart[low - 1];
+    return candidate !== undefined && ms <= candidate.endMs ? candidate.tally : undefined;
   };
   for (const entry of input.timelineEntries) {
     if (entry.kind === "change-landed") {
-      windowAt(entry.event.landedAt, true)?.landed.push(entry);
+      ownerAt(entry.event.landedAt)?.landed.push(entry);
     } else if (entry.kind === "message" && entry.message.role === "user" && !openers.has(entry)) {
-      const owner = windowAt(entry.message.createdAt, false);
+      const owner = ownerAt(entry.message.createdAt);
       if (owner) owner.asks += 1;
     }
   }
   return new Map(
-    windows.map(({ span, landed, asks }) => [span, deriveTurnTally({ span, landed, asks })]),
+    tallies.map(({ span, landed, asks }) => [span, deriveTurnTally({ span, landed, asks })]),
   );
 }
 
