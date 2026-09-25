@@ -5,6 +5,9 @@ environments. It reads the providers' local session history and shows API-equiva
 processed tokens, cache savings, provider shares, and model breakdowns. Subscription billing is
 separate from the raw token cost shown here.
 
+Open **Usage** from the command palette, or press `mod+u` on web and desktop when the terminal is
+not focused. Customize `usage.open` in **Settings → Keybindings**.
+
 Grok Build totals come from persisted session updates. Interactive turns that never wrote a
 completed-turn record will not appear.
 
