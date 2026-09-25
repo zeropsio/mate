@@ -188,6 +188,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
                       key={env.environmentId}
                       disabled={envLocked}
                       value={env.environmentId}
+                      closeOnClick
                     >
                       <span className="flex min-w-0 items-center gap-1.5">
                         <Icon className="size-3" />
@@ -213,7 +214,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               onEnvModeChange(value as EnvMode);
             }}
           >
-            <MenuRadioItem disabled={envModeLocked} value="local">
+            <MenuRadioItem disabled={envModeLocked} value="local" closeOnClick>
               <span className="flex min-w-0 items-center gap-1.5">
                 {activeWorktreePath ? (
                   <FolderGitIcon className="size-3" />
@@ -226,7 +227,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               </span>
             </MenuRadioItem>
             {worktreesAllowed ? (
-              <MenuRadioItem disabled={envModeLocked} value="worktree">
+              <MenuRadioItem disabled={envModeLocked} value="worktree" closeOnClick>
                 <span className="flex min-w-0 items-center gap-1.5">
                   <FolderGit2Icon className="size-3" />
                   <span className="min-w-0 truncate">{resolveEnvModeLabel("worktree")}</span>
@@ -234,7 +235,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               </MenuRadioItem>
             ) : null}
             {worktreesAllowed && previousWorktreeLabel ? (
-              <MenuRadioItem disabled={envModeLocked} value="previous-worktree">
+              <MenuRadioItem disabled={envModeLocked} value="previous-worktree" closeOnClick>
                 <span className="flex min-w-0 items-center gap-1.5">
                   <HistoryIcon className="size-3" />
                   <span className="min-w-0 truncate">{previousWorktreeLabel}</span>
