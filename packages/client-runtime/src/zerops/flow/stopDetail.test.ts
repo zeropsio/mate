@@ -19,6 +19,7 @@ import {
 } from "./deployment.ts";
 import {
   earlierReleasesLabel,
+  openStopLabel,
   serviceBuildToggleLabel,
   serviceRows,
   stopCardTitle,
@@ -297,6 +298,15 @@ describe("serviceBuildToggleLabel", () => {
     { open: true, expected: "Hide how api was deployed" },
   ])("open: $open", ({ open, expected }) => {
     expect(serviceBuildToggleLabel("api", open)).toBe(expected);
+  });
+});
+
+describe("openStopLabel", () => {
+  it.each([
+    { tier: "production" as const, expected: "Open production" },
+    { tier: "stage" as const, expected: "Open stage" },
+  ])("$tier", ({ tier, expected }) => {
+    expect(openStopLabel(tier)).toBe(expected);
   });
 });
 

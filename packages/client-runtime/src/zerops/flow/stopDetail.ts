@@ -187,6 +187,11 @@ export function serviceBuildToggleLabel(hostname: string, open: boolean): string
   return `${open ? "Hide" : "Show"} how ${hostname} was deployed`;
 }
 
+/** What a link into a stop's page says on hover, wherever it stands. */
+export function openStopLabel(tier: GroupEnvironmentTier): string {
+  return `Open ${tier}`;
+}
+
 /** The quiet label that shows a production's older releases. */
 export function earlierReleasesLabel(count: number): string {
   return `Show ${plural(count, "earlier release", "earlier releases")}`;

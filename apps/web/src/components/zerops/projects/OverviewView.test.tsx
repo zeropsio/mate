@@ -18,6 +18,24 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
+// Base UI's tooltip reads `window` as it mounts, which a node render has none of: the trigger
+// draws what it renders, and the hover it opens is not drawn.
+vi.mock("~/components/ui/tooltip", async () => {
+  const { cloneElement, Fragment, createElement } = await import("react");
+  return {
+    Tooltip: ({ children }: { readonly children: React.ReactNode }) =>
+      createElement(Fragment, null, children),
+    TooltipTrigger: ({
+      children,
+      render,
+    }: {
+      readonly children: React.ReactNode;
+      readonly render: React.ReactElement;
+    }) => cloneElement(render, undefined, children),
+    TooltipPopup: () => null,
+  };
+});
+
 import {
   born,
   brokenProduction,

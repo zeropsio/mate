@@ -18,6 +18,7 @@ import type {
   GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
 import { STAGE_SETTING_UP } from "@t3tools/client-runtime/zerops";
+import { openStopLabel } from "@t3tools/client-runtime/zerops/flow";
 import { Link } from "@tanstack/react-router";
 import { Children, Fragment, type ReactNode } from "react";
 
@@ -152,7 +153,8 @@ function Cell({
   readonly density: Density;
   readonly lines: ReactNode;
   readonly verbs?: ReactNode;
-  readonly link?: ZeropsStopLink | undefined;
+  /** The stop the lines open, and what the link says on hover. */
+  readonly link?: { readonly params: ZeropsStopLink; readonly label: string } | undefined;
   readonly className?: string;
 }) {
   const linesClass = cn(
@@ -171,14 +173,14 @@ function Cell({
           {lines}
         </span>
       ) : (
-        <Link
+        <StopLink
           className={cn(linesClass, STOP_LINK_CLASS)}
-          data-zerops-cell-lines="true"
-          params={link}
-          to="/group/$groupId/$projectId"
+          label={link.label}
+          lines
+          params={link.params}
         >
           {lines}
-        </Link>
+        </StopLink>
       )}
       <VerbSlot className={cn("ms-auto", density === "line" && MEDIUM_VERB_CLASS)}>
         {verbs}
@@ -196,6 +198,40 @@ function Cell({
     <div className={cn("min-w-0", className)} data-zerops-step={step}>
       {row}
     </div>
+  );
+}
+
+/** A way into a stop's page, saying on hover where it goes. */
+function StopLink({
+  params,
+  label,
+  className,
+  lines = false,
+  children,
+}: {
+  readonly params: ZeropsStopLink;
+  readonly label: string;
+  readonly className: string;
+  /** Whether it is a cell's lines, which the cell's layout finds by it. */
+  readonly lines?: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Link
+            className={className}
+            data-zerops-cell-lines={lines ? "true" : undefined}
+            params={params}
+            to="/group/$groupId/$projectId"
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -357,13 +393,13 @@ export function StageLines({
         {stop === undefined ? (
           words
         ) : (
-          <Link
+          <StopLink
             className={cn("flex min-w-0 items-center gap-1", STOP_LINK_CLASS)}
+            label={openStopLabel("stage")}
             params={{ groupId, projectId }}
-            to="/group/$groupId/$projectId"
           >
             {words}
-          </Link>
+          </StopLink>
         )}
         {drawn(menu) ? <span className="ms-auto flex shrink-0">{menu}</span> : null}
       </span>
@@ -488,7 +524,10 @@ export function ProductionStep<T>({
       density={density}
       link={
         "stop" in production
-          ? { groupId: entry.group.groupId, projectId: production.stop.projectId }
+          ? {
+              params: { groupId: entry.group.groupId, projectId: production.stop.projectId },
+              label: openStopLabel("production"),
+            }
           : undefined
       }
       lines={
