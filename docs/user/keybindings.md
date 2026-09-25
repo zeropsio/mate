@@ -63,9 +63,10 @@ Commands are IDs like `terminal.toggle`, `commandPalette.toggle`, `preview.refre
 `chat.new`. Project scripts are addressable as `script.{id}.run`, for example `script.test.run`.
 
 Available context keys are `terminalFocus`, `terminalOpen`,
-`modelPickerOpen`, `isWeb`, and `isDesktop`. `isWeb` is true in a
-browser tab. `isDesktop` is true in the desktop app. Unknown keys evaluate to
-`false`.
+`modelPickerOpen`, `editableFocus`, `isWeb`, and `isDesktop`. `editableFocus` is
+true while a text field, the composer, or another editor has the keyboard. `isWeb`
+is true in a browser tab. `isDesktop` is true in the desktop app. Unknown keys
+evaluate to `false`.
 
 `mod+1` through `mod+9` jump to the first nine threads, and to models while the
 model picker is open. Those defaults use `isDesktop` so they do not steal the
@@ -104,6 +105,10 @@ always matches the build you are running. Use that rather than a copied list.
 
 `thread.stop` interrupts the running turn in the focused thread. It has no default shortcut; assign
 one in **Settings** → **Keybindings**.
+
+`thread.undo` (`mod+z` by default) reverses the most recent thread action that is
+still offering **Undo** in a notification: a settle, snooze, or archive. Its default
+rule skips text fields and terminals so native undo keeps working there.
 
 Note that `chat.new` and `chat.newLocal` both create a thread through the same path. A new thread
 inherits the project you were in, along with model and mode selections. Branch, worktree, and

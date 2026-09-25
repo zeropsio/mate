@@ -30,6 +30,11 @@ be selected again. The option is hidden when the connected environment needs a s
 Manually settling an idle thread dismisses unanswered async questions without sending an answer or
 restarting the agent. Approvals and native questions still need a response first.
 
+On web and desktop, settling, snoozing, and archiving a thread each show a notification with
+**Undo** for five seconds. Undo restores the thread's previous state, including its pinned position
+and snooze, and reopens an archived thread you were viewing. `mod+z` triggers the most recent Undo
+when no text field is focused; see [Keybindings](./keybindings.md#commands).
+
 ## Snooze until later
 
 Choose **Snooze → Custom…** from a thread's menu to pick a date and time in your
