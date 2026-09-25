@@ -21,7 +21,7 @@ describe("getWindowFullscreenState", () => {
     }).pipe(
       Effect.provide(
         Layer.mock(ElectronWindow.ElectronWindow)({
-          currentMainOrFirst: Effect.succeed(Option.some(window)),
+          currentMainOrFirst: Effect.succeedSome(window),
         }),
       ),
     );

@@ -191,16 +191,14 @@ it.effect(
       directory: {
         getBinding: (candidate) =>
           candidate === absent.id
-            ? Effect.succeed(Option.none())
+            ? Effect.succeedNone
             : candidate === corrupt.id
               ? Effect.fail(corruptFailure)
-              : Effect.succeed(
-                  Option.some({
-                    threadId: candidate,
-                    provider: ProviderDriverKind.make("codex"),
-                    providerInstanceId,
-                  }),
-                ),
+              : Effect.succeedSome({
+                  threadId: candidate,
+                  provider: ProviderDriverKind.make("codex"),
+                  providerInstanceId,
+                }),
         upsert: () => Effect.fail(writeFailure),
         getProvider: () => Effect.die("unused"),
         listThreadIds: () => Effect.die("unused"),
@@ -237,7 +235,7 @@ it.effect("retries failed projections and continues after a persistent failure",
   return runReconciliation({
     threads: [transient, persistent, later],
     directory: {
-      getBinding: () => Effect.succeed(Option.none()),
+      getBinding: () => Effect.succeedNone,
       upsert: () => Effect.void,
       getProvider: () => Effect.die("unused"),
       listThreadIds: () => Effect.die("unused"),
