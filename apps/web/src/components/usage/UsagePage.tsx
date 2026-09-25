@@ -433,7 +433,7 @@ export function UsagePage({
               </div>
             ) : null}
             {showingLimits ? (
-              <UsageLimitsSection now={limitsNow} />
+              <UsageLimitsSection now={limitsNow} identities={identities} />
             ) : settling ? (
               <>
                 {environments.length > 1 ? (

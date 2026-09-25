@@ -36,7 +36,6 @@ import type {
   UsageEnvironmentIdentities,
   UsageEnvironmentOwner,
 } from "../../zerops/usageEnvironmentIdentities";
-import { useUsageEnvironmentIdentities } from "../../zerops/useUsageEnvironmentIdentities";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { getDriverOption } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -523,9 +522,14 @@ function SourceLimits({ source, now }: { readonly source: LimitsSource; readonly
  * The page advances `now` on explicit refresh rather than ticking: a live
  * clock would repaint the page for no decision-changing gain.
  */
-export function UsageLimitsSection({ now }: { readonly now: number }) {
+export function UsageLimitsSection({
+  now,
+  identities,
+}: {
+  readonly now: number;
+  readonly identities: UsageEnvironmentIdentities;
+}) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const identities = useUsageEnvironmentIdentities();
   const { accounts, notices } = collectLimitAccounts(presentations);
   const sources = collectLimitSources(presentations);
   const tellApart =
