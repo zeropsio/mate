@@ -677,25 +677,19 @@ function turnHeaderId(opener: UserMessageEntry | null, turnId: TurnId | null): s
 function deriveTurnSpans(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   terminalAssistantMessageIds: ReadonlySet<string>;
-  latestTurn: TimelineLatestTurn | null;
   unsettledTurnId: TurnId | null;
   isWorking: boolean;
 }): TurnSpan[] {
   const spansByTurnId = new Map<TurnId, TurnSpan>();
   const spans: TurnSpan[] = [];
-  // User messages no turn has claimed yet. The next new turn takes the last
-  // one sent before it started; an entry of an existing turn arriving after
-  // them makes them messages sent into that turn.
+  // User messages no turn has claimed yet. The next new turn is opened by
+  // the first of them — later ones, sent before it produced anything, were
+  // sent into it. An entry of an existing turn arriving after them makes
+  // them messages sent into that turn. Nothing here reads which turn is the
+  // latest, so a turn keeps its opener once another one starts.
   let unclaimed: Array<{ entry: UserMessageEntry; index: number }> = [];
-  const claimOpener = (turnId: TurnId) => {
-    const startedAtMs =
-      input.latestTurn?.turnId === turnId && input.latestTurn.startedAt
-        ? Date.parse(input.latestTurn.startedAt)
-        : Number.NaN;
-    const sentBeforeStart = Number.isFinite(startedAtMs)
-      ? unclaimed.filter((candidate) => Date.parse(candidate.entry.createdAt) <= startedAtMs)
-      : unclaimed;
-    const opener = (sentBeforeStart.length > 0 ? sentBeforeStart : unclaimed).at(-1) ?? null;
+  const claimOpener = () => {
+    const opener = unclaimed[0] ?? null;
     unclaimed = [];
     return opener;
   };
@@ -731,7 +725,7 @@ function deriveTurnSpans(input: {
     if (span) {
       unclaimed = [];
     } else {
-      span = openSpan(turnId, index, claimOpener(turnId));
+      span = openSpan(turnId, index, claimOpener());
     }
     span.entries.push(entry);
     if (entry.kind === "message") {
@@ -750,10 +744,10 @@ function deriveTurnSpans(input: {
   const end = input.timelineEntries.length;
   if (input.unsettledTurnId !== null) {
     if (!spansByTurnId.has(input.unsettledTurnId)) {
-      openSpan(input.unsettledTurnId, end, claimOpener(input.unsettledTurnId));
+      openSpan(input.unsettledTurnId, end, claimOpener());
     }
   } else if (input.isWorking && unclaimed.length > 0) {
-    openSpan(null, end, unclaimed.at(-1)!);
+    openSpan(null, end, unclaimed[0]!);
   }
   return spans.toSorted((left, right) => left.anchorIndex - right.anchorIndex);
 }
@@ -920,10 +914,12 @@ function turnWindow(input: {
   if (span.turnId === null || span.turnId === input.unsettledTurnId) {
     return { startMs, endMs: Number.POSITIVE_INFINITY };
   }
+  // Only what outlives the turn being the latest: its last entry and its
+  // checkpoint. `latestTurn.completedAt` would close the window later while
+  // the turn is the latest than once the next one starts.
   const lastEntry = span.entries.at(-1);
   const ends = [
     lastEntry?.kind === "message" ? lastEntry.message.updatedAt : lastEntry?.createdAt,
-    isLatestTurn ? latestTurn.completedAt : null,
     input.checkpointCompletedAtByTurnId.get(span.turnId),
   ].flatMap((end) => (end ? [Date.parse(end)] : []));
   return { startMs, endMs: Math.max(startMs, ...ends.filter(Number.isFinite)) };
@@ -1208,7 +1204,6 @@ export function deriveMessagesTimelineRows(input: {
   const turnSpans = deriveTurnSpans({
     timelineEntries,
     terminalAssistantMessageIds,
-    latestTurn: input.latestTurn ?? null,
     unsettledTurnId,
     isWorking: input.isWorking,
   });

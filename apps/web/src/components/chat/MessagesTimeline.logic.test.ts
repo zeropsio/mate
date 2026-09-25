@@ -3438,7 +3438,9 @@ describe("computeStableMessagesTimelineRows", () => {
 
 describe("turn header", () => {
   const T1 = TurnId.make("turn-1");
-  const at = (second: number) => new Date(Date.UTC(2026, 8, 25, 10, 0, second)).toISOString();
+  const T2 = TurnId.make("turn-2");
+  const at = (second: number) =>
+    new Date(Date.UTC(2026, 8, 25, 10, 0, 0) + second * 1000).toISOString();
 
   interface Conversation {
     readonly messages: ReadonlyArray<ChatMessage>;
@@ -3449,6 +3451,7 @@ describe("turn header", () => {
     readonly activeTurnStartedAt: string | null;
     readonly landed?: ReadonlyArray<ChangeLandedEvent>;
     readonly operations?: ReadonlyArray<ZeropsTimelineEntry>;
+    readonly turnDiffSummaries?: ReadonlyArray<TurnDiffSummary>;
   }
 
   const userMessage = (id: string, second: number): ChatMessage => ({
@@ -3518,7 +3521,7 @@ describe("turn header", () => {
       ...(expandedTurnIds === undefined ? {} : { expandedTurnIds }),
       isWorking: conversation.isWorking,
       activeTurnStartedAt: conversation.activeTurnStartedAt,
-      turnDiffSummaries: [],
+      turnDiffSummaries: conversation.turnDiffSummaries ?? [],
       supportsConversationRollback: false,
     });
 
@@ -3774,6 +3777,11 @@ describe("turn header", () => {
       apply: (c) => ({ ...c, latestTurn: started.latestTurn, runningTurnId: T1 }),
     },
     {
+      event: "the user writes again before any output",
+      settles: true,
+      apply: (c) => ({ ...c, messages: [...c.messages, userMessage("u1b", 1.5)] }),
+    },
+    {
       event: "reasoning",
       settles: false,
       apply: (c) => ({ ...c, messages: [...c.messages, reasoningMessage("r1", 2)] }),
@@ -3903,12 +3911,50 @@ describe("turn header", () => {
         runningTurnId: null,
         isWorking: false,
         activeTurnStartedAt: null,
+        turnDiffSummaries: [
+          {
+            turnId: T1,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("checkpoint-1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: MessageId.make("a2"),
+            completedAt: at(21),
+          },
+        ],
       }),
     },
     {
       event: "a change lands after the turn",
       settles: false,
       apply: (c) => ({ ...c, landed: [...(c.landed ?? []), landedChange(3, 30)] }),
+    },
+    {
+      event: "the next message is sent",
+      settles: false,
+      apply: (c) => ({
+        ...c,
+        messages: [...c.messages, userMessage("u3", 31)],
+        isWorking: true,
+        activeTurnStartedAt: at(31),
+      }),
+    },
+    {
+      event: "the next turn starts",
+      settles: false,
+      apply: (c) => ({
+        ...c,
+        latestTurn: { turnId: T2, state: "running", startedAt: at(32), completedAt: null },
+        runningTurnId: T2,
+      }),
+    },
+    {
+      event: "the next turn answers",
+      settles: false,
+      apply: (c) => ({
+        ...c,
+        messages: [...c.messages, assistantMessage("b1", 33, { turnId: T2 })],
+      }),
     },
   ];
   const liveTurnSequence: Array<{ event: string; settles: boolean; conversation: Conversation }> =
@@ -3939,7 +3985,7 @@ describe("turn header", () => {
       "1 browser check 1 with errors",
       "appdev #1 landed",
       "appdev #2 landed",
-      "1 ask",
+      "2 asks",
     ]);
   });
 
@@ -3980,7 +4026,7 @@ describe("turn header", () => {
           runningTurnId: conversation.runningTurnId,
           isWorking: conversation.isWorking,
           activeTurnStartedAt: conversation.activeTurnStartedAt,
-          turnDiffSummaries: [],
+          turnDiffSummaries: conversation.turnDiffSummaries ?? [],
           supportsConversationRollback: false,
         },
         projection,
