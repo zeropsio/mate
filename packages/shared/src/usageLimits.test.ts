@@ -13,6 +13,7 @@ import {
   collectProviderUsageLimits,
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
+  collectLimitAccounts,
   collectLimitSources,
   collectLimitsGroups,
   elapsedShare,
@@ -148,6 +149,232 @@ describe("collectLimitsGroups", () => {
       "Laptop",
       "Desktop",
     ]);
+  });
+});
+
+describe("collectLimitAccounts", () => {
+  const codex = ProviderDriverKind.make("codex");
+  const claude = ProviderDriverKind.make("claudeAgent");
+
+  function read(
+    email: string | undefined,
+    checkedAt: string,
+    usedPercent: number,
+    overrides: Partial<ServerProvider> = {},
+  ): ServerProvider {
+    return provider({
+      driver: claude,
+      instanceId: ProviderInstanceId.make("claude"),
+      auth: email === undefined ? { status: "authenticated" } : { status: "authenticated", email },
+      usageLimits: { checkedAt, windows: [{ ...window, usedPercent }] },
+      ...overrides,
+    });
+  }
+
+  function presentations(
+    ...environments: ReadonlyArray<readonly [string, readonly ServerProvider[]]>
+  ) {
+    return new Map(
+      environments.map(([id, providers]) => [
+        EnvironmentId.make(id),
+        {
+          entry: { target: { label: "node-id-1.runtime.zcp.zerops" } },
+          serverConfig: { providers },
+        },
+      ]),
+    );
+  }
+
+  it("shows one account signed in on three containers by its newest read", () => {
+    const newest = read("me@example.com", "2026-09-03T11:30:00.000Z", 10);
+    const result = collectLimitAccounts(
+      presentations(
+        ["env-a", [read("me@example.com", "2026-09-03T11:00:00.000Z", 12)]],
+        ["env-b", [newest]],
+        ["env-c", [read("me@example.com", "2026-09-03T10:00:00.000Z", 100)]],
+      ),
+    );
+
+    expect(result.notices).toEqual([]);
+    expect(result.accounts).toEqual([
+      {
+        key: "claudeAgent:me@example.com",
+        driver: claude,
+        provider: newest,
+        environmentId: "env-b",
+        environmentIds: ["env-b", "env-a", "env-c"],
+        urgency: 90,
+      },
+    ]);
+  });
+
+  it.each([
+    {
+      name: "different emails are different accounts",
+      environments: [
+        ["env-a", [read("a@example.com", "2026-09-03T11:00:00.000Z", 40)]],
+        ["env-b", [read("b@example.com", "2026-09-03T11:00:00.000Z", 40)]],
+      ] as const,
+      accounts: [
+        { key: "claudeAgent:a@example.com", environmentIds: ["env-a"] },
+        { key: "claudeAgent:b@example.com", environmentIds: ["env-b"] },
+      ],
+    },
+    {
+      name: "a provider without an email is its own account in every environment",
+      environments: [
+        ["env-a", [read(undefined, "2026-09-03T11:00:00.000Z", 40)]],
+        ["env-b", [read(undefined, "2026-09-03T11:00:00.000Z", 40)]],
+      ] as const,
+      accounts: [
+        { key: "env-a:claude", environmentIds: ["env-a"] },
+        { key: "env-b:claude", environmentIds: ["env-b"] },
+      ],
+    },
+    {
+      name: "an email differing only in case and whitespace is the same account",
+      environments: [
+        ["env-a", [read(" Me@Example.COM ", "2026-09-03T11:00:00.000Z", 40)]],
+        ["env-b", [read("me@example.com", "2026-09-03T11:00:00.000Z", 40)]],
+      ] as const,
+      accounts: [{ key: "claudeAgent:me@example.com", environmentIds: ["env-a", "env-b"] }],
+    },
+    {
+      name: "the same email on another driver is another account",
+      environments: [
+        ["env-a", [read("me@example.com", "2026-09-03T11:00:00.000Z", 40)]],
+        ["env-b", [read("me@example.com", "2026-09-03T11:00:00.000Z", 40, { driver: codex })]],
+      ] as const,
+      accounts: [
+        { key: "claudeAgent:me@example.com", environmentIds: ["env-a"] },
+        { key: "codex:me@example.com", environmentIds: ["env-b"] },
+      ],
+    },
+  ])("$name", ({ environments, accounts }) => {
+    const result = collectLimitAccounts(presentations(...environments));
+    expect(result.accounts.map(({ key, environmentIds }) => ({ key, environmentIds }))).toEqual(
+      accounts,
+    );
+  });
+
+  it("lists the account with the least quota left in any window first", () => {
+    const weekly = { ...window, id: "weekly", kind: "weekly", usedPercent: 95 } as const;
+    const result = collectLimitAccounts(
+      presentations(
+        ["env-a", [read("roomy@example.com", "2026-09-03T11:00:00.000Z", 20)]],
+        [
+          "env-b",
+          [
+            read("weekly@example.com", "2026-09-03T11:00:00.000Z", 10, {
+              usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [window, weekly] },
+            }),
+          ],
+        ],
+        ["env-c", [read("session@example.com", "2026-09-03T11:00:00.000Z", 70)]],
+      ),
+    );
+    expect(result.accounts.map(({ key, urgency }) => [key, urgency])).toEqual([
+      ["claudeAgent:weekly@example.com", 5],
+      ["claudeAgent:session@example.com", 30],
+      ["claudeAgent:roomy@example.com", 80],
+    ]);
+  });
+
+  it("collapses the same notice for a driver into one entry naming every environment", () => {
+    const failed = (email: string | undefined, message?: string) =>
+      read(email, "2026-09-03T11:00:00.000Z", 0, {
+        driver: codex,
+        instanceId: ProviderInstanceId.make("codex"),
+        usageLimits: {
+          checkedAt: "2026-09-03T11:00:00.000Z",
+          windows: [],
+          unavailable: { reason: "probeFailed", ...(message ? { message } : {}) },
+        },
+      });
+    const readable = read("me@example.com", "2026-09-03T11:00:00.000Z", 40);
+    const result = collectLimitAccounts(
+      presentations(
+        ["env-a", [failed(undefined), readable]],
+        ["env-b", [failed(undefined)]],
+        ["env-c", [failed("ops@example.com")]],
+        ["env-d", [failed(undefined, "Codex timed out.")]],
+        ["env-e", [failed(undefined)]],
+      ),
+    );
+
+    expect(result.accounts.map(({ key }) => key)).toEqual(["claudeAgent:me@example.com"]);
+    expect(result.notices).toEqual([
+      {
+        driver: codex,
+        notice: "Could not read limits.",
+        environmentIds: ["env-a", "env-b", "env-c", "env-e"],
+      },
+      { driver: codex, notice: "Codex timed out.", environmentIds: ["env-d"] },
+    ]);
+  });
+
+  it("shows an account's newest readable read over a newer failed one", () => {
+    const failed = (checkedAt: string) =>
+      read("me@example.com", checkedAt, 0, {
+        usageLimits: { checkedAt, windows: [], unavailable: { reason: "probeFailed" } },
+      });
+    const readable = read("me@example.com", "2026-09-03T11:00:00.000Z", 40);
+
+    expect(
+      collectLimitAccounts(
+        presentations(
+          ["env-a", [failed("2026-09-03T11:30:00.000Z")]],
+          ["env-b", [readable]],
+          ["env-c", [read("me@example.com", "2026-09-03T10:00:00.000Z", 90)]],
+        ),
+      ),
+    ).toEqual({
+      accounts: [
+        {
+          key: "claudeAgent:me@example.com",
+          driver: claude,
+          provider: readable,
+          environmentId: "env-b",
+          environmentIds: ["env-b", "env-a", "env-c"],
+          urgency: 60,
+        },
+      ],
+      notices: [],
+    });
+  });
+
+  it("lists an account under notices only when none of its reads is readable", () => {
+    expect(
+      collectLimitAccounts(
+        presentations(
+          [
+            "env-a",
+            [
+              read("me@example.com", "2026-09-03T11:00:00.000Z", 0, {
+                usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [] },
+              }),
+            ],
+          ],
+          [
+            "env-b",
+            [
+              read("me@example.com", "2026-09-03T11:30:00.000Z", 0, {
+                usageLimits: {
+                  checkedAt: "2026-09-03T11:30:00.000Z",
+                  windows: [],
+                  unavailable: { reason: "probeFailed" },
+                },
+              }),
+            ],
+          ],
+        ),
+      ),
+    ).toEqual({
+      accounts: [],
+      notices: [
+        { driver: claude, notice: "Could not read limits.", environmentIds: ["env-b", "env-a"] },
+      ],
+    });
   });
 });
 

@@ -72,6 +72,104 @@ export function collectLimitsGroups(
   return groups.length > 1 ? groups : groups.map((group) => ({ ...group, environmentLabel: null }));
 }
 
+export interface LimitAccount {
+  readonly key: string;
+  readonly driver: ServerProvider["driver"];
+  /** The provider whose read is shown: newest readable checkedAt among the account's environments. */
+  readonly provider: ServerProvider;
+  /** Where the shown read comes from; reset credits act on this environment. */
+  readonly environmentId: EnvironmentId;
+  /** Every environment signed in to this account, the shown read's first. */
+  readonly environmentIds: readonly EnvironmentId[];
+  /** The least quota left in any window of the shown read. */
+  readonly urgency: number;
+}
+
+export interface LimitNoticeGroup {
+  readonly driver: ServerProvider["driver"];
+  readonly notice: string;
+  readonly environmentIds: readonly EnvironmentId[];
+}
+
+export interface LimitAccounts {
+  /** Accounts with bars to draw, the one with the least quota left first. */
+  readonly accounts: readonly LimitAccount[];
+  /** Accounts that could not be read, one entry per driver and notice. */
+  readonly notices: readonly LimitNoticeGroup[];
+}
+
+/**
+ * Quota belongs to the subscription account, not to the container it is
+ * signed in on: the same account on several environments is one entry showing
+ * its newest readable read, never a merge of reads taken at different times.
+ * A failed read hides nothing another container read successfully; the account
+ * becomes a notice only when none of its reads is readable. A provider without
+ * an email is an account of its own.
+ */
+export function collectLimitAccounts(
+  presentations: ReadonlyMap<
+    EnvironmentId,
+    { readonly serverConfig: { readonly providers: readonly ServerProvider[] } | null }
+  >,
+): LimitAccounts {
+  const byKey = new Map<
+    string,
+    Array<{
+      readonly environmentId: EnvironmentId;
+      readonly provider: ServerProvider;
+      readonly limits: ServerProviderUsageLimits;
+    }>
+  >();
+  for (const [environmentId, presentation] of presentations) {
+    for (const provider of providersWithLimits(presentation.serverConfig?.providers ?? [])) {
+      if (!provider.usageLimits) continue;
+      const key =
+        accountKey(provider.driver, provider.auth.email) ??
+        `${environmentId}:${provider.instanceId}`;
+      const reads = byKey.get(key) ?? [];
+      reads.push({ environmentId, provider, limits: provider.usageLimits });
+      byKey.set(key, reads);
+    }
+  }
+  const accounts: LimitAccount[] = [];
+  const notices = new Map<string, LimitNoticeGroup>();
+  for (const [key, reads] of byKey) {
+    const readable = reads.filter((read) => limitsNotice(read.limits) === null);
+    const shown = (readable.length > 0 ? readable : reads).reduce((newest, read) =>
+      checkedAtMillis(read.limits) > checkedAtMillis(newest.limits) ? read : newest,
+    );
+    const environmentIds = [
+      ...new Set([shown.environmentId, ...reads.map((read) => read.environmentId)]),
+    ];
+    const notice = limitsNotice(shown.limits);
+    if (notice === null) {
+      accounts.push({
+        key,
+        driver: shown.provider.driver,
+        provider: shown.provider,
+        environmentId: shown.environmentId,
+        environmentIds,
+        urgency: Math.min(...shown.limits.windows.map(remainingPercent)),
+      });
+      continue;
+    }
+    const noticeKey = `${shown.provider.driver}\n${notice}`;
+    const group = notices.get(noticeKey);
+    notices.set(noticeKey, {
+      driver: shown.provider.driver,
+      notice,
+      environmentIds: [...new Set([...(group?.environmentIds ?? []), ...environmentIds])],
+    });
+  }
+  accounts.sort((a, b) => a.urgency - b.urgency);
+  return { accounts, notices: [...notices.values()] };
+}
+
+function checkedAtMillis(limits: ServerProviderUsageLimits): number {
+  const at = Date.parse(limits.checkedAt);
+  return Number.isFinite(at) ? at : Number.NEGATIVE_INFINITY;
+}
+
 /**
  * Every usage-limit source across connected environments, keyed so two
  * environments pointing at the same hub still get their own rows. The label
