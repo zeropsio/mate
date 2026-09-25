@@ -317,6 +317,7 @@ export function UsagePage({
         {showingLimits ? null : (
           <UsageScopeFilters
             scope={scope}
+            identities={identities}
             dimensions={overallDimensions}
             onScopeChange={onScopeChange}
           />
@@ -894,13 +895,19 @@ function UsageScopeChips({
   ));
 }
 
-/** Person and Project pickers, offered only when the window has two of them to choose between. */
+/**
+ * Person and Project pickers, offered only when the window has two of them to
+ * choose between. A scope with no activity in the window stays among the
+ * options, so the picker names what the page is filtered to.
+ */
 function UsageScopeFilters({
   scope,
+  identities,
   dimensions,
   onScopeChange,
 }: {
   readonly scope: UsageScope;
+  readonly identities: UsageEnvironmentIdentities;
   readonly dimensions: UsageDimensions;
   readonly onScopeChange: (scope: UsageScope) => void;
 }) {
@@ -922,6 +929,19 @@ function UsageScopeFilters({
   ];
   return filters.map((filter) => {
     const value = scope[filter.dimension] ?? ALL;
+    const options =
+      value === ALL || filter.options.some((option) => option.value === value)
+        ? filter.options
+        : [
+            ...filter.options,
+            {
+              value,
+              label:
+                filter.dimension === "person"
+                  ? (scopeOwner(identities, value)?.name ?? value)
+                  : value,
+            },
+          ];
     return (
       <Select
         key={filter.dimension}
@@ -941,12 +961,12 @@ function UsageScopeFilters({
           className="w-auto min-w-0"
         >
           <SelectValue>
-            {filter.options.find((option) => option.value === value)?.label ?? filter.all}
+            {options.find((option) => option.value === value)?.label ?? filter.all}
           </SelectValue>
         </SelectTrigger>
         <SelectPopup align="end" alignItemWithTrigger={false}>
           <SelectItem value={ALL}>{filter.all}</SelectItem>
-          {filter.options.map((option) => (
+          {options.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>

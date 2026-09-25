@@ -420,6 +420,51 @@ describe("UsagePage dimensions", () => {
     expect(markup.includes("Can&#x27;t tell whose Mates these are right now.")).toBe(notice);
   });
 
+  it.each([
+    {
+      name: "names a scoped person with no activity in the window",
+      scope: { person: "u3" },
+      dimension: "person",
+      label: "Cyril",
+    },
+    {
+      name: "shows the raw person id when nobody by it is known",
+      scope: { person: "u9" },
+      dimension: "person",
+      label: "u9",
+    },
+    {
+      name: "names a scoped project with no activity in the window",
+      scope: { project: "docs" },
+      dimension: "project",
+      label: "docs",
+    },
+  ])("$name", ({ scope, dimension, label }) => {
+    withEnvironments([
+      {
+        id: "a",
+        costUsd: 10,
+        identity: { mateName: "Lena", projectName: "shop", owner: owner("u1", "Ales", true) },
+      },
+      {
+        id: "b",
+        costUsd: 30,
+        identity: { mateName: "Otto", projectName: "blog", owner: owner("u2", "Bara") },
+      },
+    ]);
+    testState.identities = new Map([
+      ...testState.identities,
+      ["c" as EnvironmentId, { mateName: "Ida", projectName: "docs", owner: owner("u3", "Cyril") }],
+    ]);
+
+    const markup = renderPage(scope);
+    const trigger = markup.match(
+      new RegExp(`aria-label="Usage ${dimension}"[^>]*><div>([^<]*)</div>`),
+    )?.[1];
+
+    expect(trigger).toBe(label);
+  });
+
   it("names a failed environment by its Mate and project", () => {
     withEnvironments([
       {
