@@ -254,10 +254,7 @@ function ResourceItem({
         </span>
       )}
       {trend === undefined ? (
-        <Skeleton
-          className="h-3.5 w-12 self-center rounded-sm"
-          data-zerops-service-graph="pending"
-        />
+        <Skeleton className="h-3.5 w-12 self-center" data-zerops-service-graph="pending" />
       ) : (
         <ResourceGraph id={graphId} trend={trend} />
       )}
