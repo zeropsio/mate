@@ -116,7 +116,7 @@ export function projectAttention(
 
 /**
  * How many changes are merged and not live — the one way it is said, on the stop's verdict, the
- * projects page, the project page and the left menu's *Release*.
+ * projects page, the project page and the left menu's next step.
  */
 export function changesNotLive(count: number): string {
   return count === 1 ? "1 change not live" : `${String(count)} changes not live`;
