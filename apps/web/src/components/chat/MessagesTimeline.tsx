@@ -179,6 +179,7 @@ interface TimelineRowSharedState {
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  onRunShellCommand: ((command: string) => void) | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   /** `anchorKey` is the header row that holds the fold control. */
@@ -267,6 +268,7 @@ interface MessagesTimelineProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   supportsConversationRollback: boolean;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  onRunShellCommand?: (command: string) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
@@ -320,6 +322,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   supportsConversationRollback,
   onRevertToTurnCount,
+  onRunShellCommand,
   isRevertingCheckpoint,
   onImageExpand,
   activeThreadEnvironmentId,
@@ -807,6 +810,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertToTurnCount,
+      onRunShellCommand,
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
@@ -830,6 +834,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertToTurnCount,
+      onRunShellCommand,
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
@@ -1774,6 +1779,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
         skills={ctx.skills}
         headingLevelOffset={MESSAGE_HEADING_LEVEL}
+        onRunShellCommand={ctx.onRunShellCommand}
       />
       <AssistantChangedFilesSection
         turnSummary={row.assistantTurnDiffSummary}
