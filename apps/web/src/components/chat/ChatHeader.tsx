@@ -164,23 +164,26 @@ function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
 /**
  * Starting over in a Mate's conversation: the current one is archived and a
  * fresh thread takes its place, so the Mate still has one conversation and
- * it is empty.
+ * it is empty. A glyph only; its name is the tooltip.
  */
 function StartFreshButton({ onStartFresh }: { readonly onStartFresh: () => void }) {
   return (
-    <Button
-      aria-label="New session"
-      className="ps-[8.5px]"
-      data-zerops-start-fresh
-      onClick={onStartFresh}
-      size="xs"
-      variant="outline"
-    >
-      <SquarePenIcon className="size-3.5 shrink-0" />
-      <span className="hidden @3xl/header-actions:ml-0.5 @3xl/header-actions:inline">
-        New session
-      </span>
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label="New session"
+            data-zerops-start-fresh
+            onClick={onStartFresh}
+            size="icon-xs"
+            variant="outline"
+          />
+        }
+      >
+        <SquarePenIcon />
+      </TooltipTrigger>
+      <TooltipPopup side="top">New session</TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -511,7 +514,9 @@ export const ChatHeader = memo(function ChatHeader({
           rightPanelOpen ? "pr-0" : "pr-16",
         )}
       >
-        {activeProjectScripts && (
+        {/* A Mate's conversation offers no project actions: the Mate runs
+            what the project needs. */}
+        {whoLivesHere.kind === "nobody" && activeProjectScripts && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}
             fileScripts={fileScripts}
