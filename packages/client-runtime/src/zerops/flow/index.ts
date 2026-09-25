@@ -8,3 +8,4 @@ export * from "./groupFlow.ts";
 export * from "./groupFlowReads.ts";
 export * from "./verbs.ts";
 export * from "./release.ts";
+export * from "./stopDetail.ts";
