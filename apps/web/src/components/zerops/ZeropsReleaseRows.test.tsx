@@ -317,7 +317,8 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     const grids = [...html.matchAll(/<li class="([^"]*)"/gu)].map((match) => match[1]);
     expect(grids).toHaveLength(2);
     expect(grids[0]).toBe(grids[1]);
-    expect(grids[0]).toContain("sm:grid-cols-[minmax(11rem,auto)_minmax(0,1fr)_6.5rem_7rem]");
+    // The tag column is fixed, so a long tag truncates rather than pushing its description right.
+    expect(grids[0]).toContain("sm:grid-cols-[11rem_minmax(0,1fr)_6.5rem_7rem]");
     // The Live row has no verb: its dot stays in the status column, the verb's column empty.
     expect(html).toMatch(
       /Live<\/span><\/span><\/span><span class="[^"]*empty:hidden[^"]*"><\/span><\/li>/u,

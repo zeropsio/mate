@@ -257,7 +257,8 @@ function CarriedReleaseRow({
 
 /**
  * A release row on a page that reads what releases carried: the chevron, the
- * tag and its pill; the description in the flexible middle, its byline under
+ * tag and its pill, in a column of one width where a long tag truncates; the
+ * description in the flexible middle, its byline under
  * the tag — or, where there is no description, the release's line alone in
  * that middle; then the status and the verb, each in a column of one width on
  * every row, so the middles, the dots and the verbs run down the list — the
@@ -265,7 +266,7 @@ function CarriedReleaseRow({
  * the middle, its byline and the verb drop under the tag.
  */
 const CARRIED_RELEASE_ROW_CLASS =
-  "grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(11rem,auto)_minmax(0,1fr)_6.5rem_7rem]";
+  "grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[11rem_minmax(0,1fr)_6.5rem_7rem]";
 
 /** One repository's block in a release's expansion, under its hostname where there are several. */
 function ReleaseService({
