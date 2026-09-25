@@ -14,10 +14,12 @@ const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 it.layer(NodeServices.layer)("driverHomes", (it) => {
   describe("claudeHomePath / claudeEnvironment", () => {
-    it.effect("the Claude home path defaults to os.homedir() when unconfigured", () =>
+    it.effect("the Claude home path defaults to ~/.claude when unconfigured", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        expect(yield* claudeHomePath({ homePath: "" })).toBe(path.resolve(NodeOS.homedir()));
+        expect(yield* claudeHomePath({ homePath: "" })).toBe(
+          path.resolve(NodeOS.homedir(), ".claude"),
+        );
       }),
     );
 
