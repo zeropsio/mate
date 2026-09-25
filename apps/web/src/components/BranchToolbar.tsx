@@ -251,6 +251,33 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   );
 });
 
+const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
+const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+
+/**
+ * The width a label takes when shown, clipped parts included.
+ *
+ * Text keeps its full width when its box clips it, so each text run measures
+ * whole. A label can hold more than one run (MiddleTruncate splits a branch
+ * into a head and a tail), so the runs are added. Reading one element's
+ * scrollWidth drops the tail when the label is hidden or squeezed, and the
+ * strip then flips between labels and icons on every measure.
+ *
+ * A shown label never grows past its motion span's max width, so longer text
+ * reserves only that much.
+ */
+function labelTextWidth(label: HTMLElement, range: Range): number {
+  const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+  let width = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    range.selectNodeContents(node);
+    width += range.getBoundingClientRect().width;
+  }
+  const motion = label.querySelector<HTMLElement>("[data-composer-label-motion]");
+  const maxWidth = motion ? Number.parseFloat(getComputedStyle(motion).maxWidth) : Number.NaN;
+  return Number.isFinite(maxWidth) ? Math.min(width, maxWidth) : width;
+}
+
 /**
  * Collapse the strip's labels to icons only when the text no longer fits.
  *
@@ -260,8 +287,6 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
  * the strip compact. A small hysteresis keeps the boundary from flapping.
  */
 const COMPACT_EXPAND_HYSTERESIS_PX = 16;
-const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
-const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const COMPOSER_CONTEXT_CONTROL_SELECTOR = "[data-composer-context-control]";
 
 function useLabelsOverflow(element: HTMLDivElement | null): boolean {
@@ -305,14 +330,9 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
       groups += 1;
     }
     needed += stripGap * Math.max(0, groups - 1);
+    const range = document.createRange();
     for (const label of current.querySelectorAll<HTMLElement>("[data-composer-label]")) {
-      // The clipping can happen below the marker (SelectValue truncates
-      // internally), where the outer span's scrollWidth matches its clipped
-      // box. The text's real width is the largest scrollWidth in the subtree.
-      let textWidth = label.scrollWidth;
-      for (const inner of label.querySelectorAll<HTMLElement>("*")) {
-        textWidth = Math.max(textWidth, inner.scrollWidth);
-      }
+      const textWidth = labelTextWidth(label, range);
       if (compact) {
         // Compact: the label is squeezed to zero width but keeps reporting
         // the full width it would need when expanded.
