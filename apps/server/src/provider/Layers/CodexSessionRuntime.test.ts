@@ -308,7 +308,7 @@ describe("buildTurnStartParams", () => {
     NodeAssert.equal(settings?.model, DEFAULT_MODEL);
     NodeAssert.equal(settings?.reasoning_effort, "medium");
     NodeAssert.ok(
-      params.additionalContext?.t3_code_runtime?.value.includes(`as ${DEFAULT_MODEL} with medium`),
+      params.additionalContext?.mate_runtime?.value.includes(`as ${DEFAULT_MODEL} with medium`),
     );
   });
 
@@ -324,7 +324,7 @@ describe("buildTurnStartParams", () => {
       });
 
       NodeAssert.match(
-        params.additionalContext?.t3_code_runtime?.value ?? "",
+        params.additionalContext?.mate_runtime?.value ?? "",
         /as GPT-5\.3-Codex \(model slug: gpt-5\.3-codex\) with high reasoning effort/,
       );
     }),
@@ -596,12 +596,12 @@ describe("buildCodexDeveloperInstructions", () => {
 describe("buildCodexAdditionalContext", () => {
   const runtime = { model: "gpt-5.3-codex", reasoningEffort: "high" };
   const runtimeValue = (context: ReturnType<typeof buildCodexAdditionalContext>) =>
-    context.t3_code_runtime?.value ?? "";
+    context.mate_runtime?.value ?? "";
 
   it("describes the harness, model, effort, and Markdown media support", () => {
     const context = buildCodexAdditionalContext(runtime);
 
-    NodeAssert.equal(context.t3_code_runtime?.kind, "application");
+    NodeAssert.equal(context.mate_runtime?.kind, "application");
     NodeAssert.match(
       runtimeValue(context),
       /<runtime_info>.*Codex harness, as gpt-5\.3-codex with high reasoning effort.*embed images and videos.*Markdown.*<\/runtime_info>/,
@@ -639,7 +639,7 @@ describe("Codex developer instructions never mention preview tools", () => {
   it("Codex developer instructions never mention preview tools", () => {
     const runtime = { model: "gpt-5.3-codex", reasoningEffort: "medium" };
     const context = buildCodexAdditionalContext(runtime);
-    NodeAssert.deepStrictEqual(Object.keys(context), ["t3_code_runtime"]);
+    NodeAssert.deepStrictEqual(Object.keys(context), ["mate_runtime"]);
     for (const instructions of [
       buildCodexDeveloperInstructions("default"),
       buildCodexDeveloperInstructions("plan"),

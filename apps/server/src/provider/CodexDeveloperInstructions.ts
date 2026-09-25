@@ -159,7 +159,7 @@ export function buildCodexDeveloperInstructions(interactionMode: ProviderInterac
 }
 
 /**
- * T3 Code context for `turn/start.additionalContext`. Codex renders each entry
+ * Mate's context for `turn/start.additionalContext`. Codex renders each entry
  * as a `<key>value</key>` developer message and resends it only when the value
  * changes.
  *
@@ -171,7 +171,7 @@ export function buildCodexAdditionalContext(
   runtime: CodexRuntimeInfo,
 ): Record<string, V2TurnStartParams__AdditionalContextEntry> {
   return {
-    t3_code_runtime: {
+    mate_runtime: {
       kind: "application",
       value: buildRuntimeInstructions({ harness: "Codex", ...runtime }),
     },
