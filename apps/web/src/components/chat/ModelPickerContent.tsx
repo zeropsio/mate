@@ -944,7 +944,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   <ComboboxInput
                     ref={searchInputRef}
                     className="[&_input]:h-6.5 [&_input]:font-sans [&_input]:leading-6.5"
-                    inputClassName="rounded-none bg-transparent text-sm"
                     placeholder="Search models..."
                     showTrigger={false}
                     startAddon={
@@ -1027,7 +1026,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                             value={modelKey}
                             aria-expanded={legacySection.isExpanded}
                             className="group w-full cursor-pointer rounded-md px-2 py-2"
-                            contentClassName="flex w-full items-center gap-3"
                           >
                             <div className="min-w-0 flex-1 text-left">
                               <div className="text-xs font-medium leading-snug">Legacy models</div>
