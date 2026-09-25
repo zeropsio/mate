@@ -645,7 +645,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                 <ComboboxEmpty>No matching refs.</ComboboxEmpty>
                 <ComboboxList className="max-h-64 min-w-0 overflow-x-hidden">
                   <ComboboxItem
-                    className="h-8 w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)] py-0"
+                    className="w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)]"
                     contentClassName="w-full min-w-0 overflow-hidden"
                     value={AUTOMATIC_BASE_REF}
                   >
@@ -658,7 +658,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                     return (
                       <ComboboxItem
                         key={choice.id}
-                        className="h-8 w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)] py-0"
+                        className="w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)]"
                         contentClassName="w-full min-w-0 overflow-hidden"
                         value={item}
                       >
