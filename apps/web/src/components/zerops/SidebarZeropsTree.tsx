@@ -68,7 +68,6 @@ import {
   type GroupFlowProduction,
   type GroupNextStep,
   type GroupRowTone,
-  type ReleaseContentsSummary,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -79,7 +78,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { stopView, type Deployment, type StopView } from "@t3tools/client-runtime/zerops/flow";
+import { stopView, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
@@ -128,8 +127,8 @@ import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
-import { ZeropsRouteMenuItems, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
-import { MenuGroup, MenuGroupLabel, MenuSeparator } from "../ui/menu";
+import { ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
+import { ZeropsStopMenu } from "./ZeropsStopMenu";
 
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
@@ -1545,95 +1544,6 @@ const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null
 const MENU_CHANGES_SHOWN = 8;
 
 /**
- * The stop's own menu — the thing the rows did not have.
- *
- * "Still there is no more menu on prod / stage that would allow me to do
- * stuff" (the owner, 2026-09-19). It holds what a row has no width for: what
- * is actually running, spelled out; every public URL, which is also the
- * keyboard's way to them; and, on a production, the changes that are merged
- * and not live — the list a person opens *Release* to find out about, here
- * before they press it.
- */
-function StopMenu({
-  name,
-  stop,
-  routes,
-  waiting,
-  onOpenProject,
-  onOpenStop,
-}: {
-  readonly name: string;
-  /** What the stop runs, or the line that stands in for it while that is not known. */
-  readonly stop: StopView;
-  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly waiting: ReleaseContentsSummary | undefined;
-  readonly onOpenProject: () => void;
-  readonly onOpenStop: (() => void) | undefined;
-}) {
-  // `v1.4.0 · 77ab0e1 · tagged by ada` — the whole of what one row abbreviates.
-  const version = stop.version;
-  const detail =
-    version?.label === undefined
-      ? stop.line
-      : [
-          version.label,
-          version.name === undefined ? undefined : version.commit,
-          version.taggedBy === undefined ? undefined : `tagged by ${version.taggedBy}`,
-        ]
-          .filter((part) => part !== undefined)
-          .join(" · ");
-  return (
-    <Menu>
-      <MenuTrigger
-        aria-label={`More for ${name}`}
-        className={ROW_ACTION_CLASS}
-        data-zerops-surface="sidebar-stop-more"
-      >
-        <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
-      </MenuTrigger>
-      <MenuPopup align="end" className="max-w-[24rem] min-w-56">
-        <MenuGroup data-zerops-surface="sidebar-stop-running">
-          <MenuGroupLabel>Running</MenuGroupLabel>
-          {/* A fact, not a door: the commit's page in Gitea is a sign-in page
-              for everybody, and the environment's own page is right below. */}
-          <MenuItem disabled>{detail}</MenuItem>
-          {/* The question people actually ask of a version is what came before
-              it, and a commit page answers only for one — and, with no Gitea
-              session in the browser, answers it with a sign-in page. */}
-          {onOpenStop === undefined ? null : (
-            <MenuItem onClick={onOpenStop}>Open this environment</MenuItem>
-          )}
-        </MenuGroup>
-        <MenuSeparator />
-        <MenuItem onClick={onOpenProject}>Open in Zerops</MenuItem>
-        {routes.length === 0 ? null : (
-          <>
-            <MenuSeparator />
-            <ZeropsRouteMenuItems routes={routes} />
-          </>
-        )}
-        {waiting === undefined || waiting.total === 0 ? null : (
-          <>
-            <MenuSeparator />
-            <MenuGroup data-zerops-surface="sidebar-stop-waiting">
-              <MenuGroupLabel>
-                {waiting.total === 1 ? "1 change waiting" : `${waiting.total} changes waiting`}
-              </MenuGroupLabel>
-              {waiting.subjects.map((subject) => (
-                <MenuItem disabled key={subject}>
-                  {subject}
-                </MenuItem>
-              ))}
-              {waiting.more === 0 ? null : <MenuItem disabled>+{waiting.more} more</MenuItem>}
-            </MenuGroup>
-          </>
-        )}
-      </MenuPopup>
-    </Menu>
-  );
-}
-
-/**
  * The project's other stops, drawn as the peers of the Mates above them:
  * production first, then any group stage as its muted side branch —
  * `groupFlow`'s own order (the owner, 2026-09-23), never the tags'. Only the
@@ -1871,12 +1781,13 @@ function EnvironmentRows<T extends RosterCandidate>({
                         label={`Public access of ${item.project.name}`}
                         routes={routes}
                       />
-                      <StopMenu
+                      <ZeropsStopMenu
                         name={name}
                         onOpenStop={openStop}
                         onOpenProject={onOpenProject}
                         routes={routes}
                         stop={stop}
+                        triggerClassName={ROW_ACTION_CLASS}
                         waiting={isProduction ? waitingInMenu : undefined}
                       />
                     </span>
