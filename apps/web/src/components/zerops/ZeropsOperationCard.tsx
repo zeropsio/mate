@@ -30,9 +30,11 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { OperationSubjectLine } from "./operation/OperationSubjectLine";
 import { operationSubject } from "./operation/subject";
+import { versionLabel } from "./operation/version";
 import {
   FlatCard,
   formatStepDuration,
+  MicroLabel,
   ProcessSteps,
   StatusDot,
   type ProcessStep,
@@ -325,10 +327,12 @@ export function ZeropsOperationCard(props: {
   const subject = operationSubject(operation, subjectHost);
 
   const stepsForBody: ReadonlyArray<ProcessStep> = observed?.steps ?? operation.steps;
+  const version = versionLabel(operation.version);
   const hasBody =
     isBrowser ||
     operation.readResult !== undefined ||
     stepsForBody.length > 0 ||
+    version !== undefined ||
     observed !== undefined;
 
   const openBrowserPanel = () => {
@@ -413,6 +417,15 @@ export function ZeropsOperationCard(props: {
                 density="compact"
                 steps={stepsForBody}
               />
+            ) : null}
+            {version !== undefined ? (
+              <p
+                className="flex items-baseline gap-1.5 text-muted-foreground text-xs"
+                data-zerops-operation-version
+              >
+                <MicroLabel>Version</MicroLabel>
+                <span className="font-mono">{version}</span>
+              </p>
             ) : null}
             {observed?.chips !== undefined && observed.chips.length > 0 ? (
               <ProcessSteps aria-label="Other activity" density="compact" steps={observed.chips} />

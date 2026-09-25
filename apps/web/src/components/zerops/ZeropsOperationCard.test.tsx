@@ -1013,3 +1013,59 @@ describe("ZeropsOperationCard — read cards", () => {
     expect(html).toContain("Service &#x27;app&#x27; not found");
   });
 });
+
+describe("ZeropsOperationCard — the version a settled deploy shipped", () => {
+  const deploy = (result?: Record<string, unknown>) =>
+    operationFor(
+      zeropsCall({
+        id: "version-1",
+        toolName: "zerops_deploy",
+        status: result === undefined ? "inProgress" : "completed",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        input: { targetService: "weatherdash" },
+        ...(result === undefined
+          ? {}
+          : { resultText: JSON.stringify(result), settledAt: "2026-09-01T00:00:50.000Z" }),
+      }),
+    );
+  const frozen: ObservedRegion = {
+    steps: [{ id: "build", label: "Build", state: "done", stateLabel: "Done" }],
+    provenance: "",
+  };
+
+  it.each([
+    {
+      name: "a running deploy names no version",
+      operation: deploy(),
+      line: undefined,
+    },
+    {
+      name: "a landed deploy names its short sha after the frozen steps",
+      operation: deploy({
+        status: "DEPLOYED",
+        targetService: "weatherdash",
+        appVersionId: "av-1",
+        versionName: "3f2a9c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+      }),
+      line: "3f2a9c1",
+    },
+    {
+      name: "a landed deploy with no version names none",
+      operation: deploy({ status: "DEPLOYED", targetService: "weatherdash" }),
+      line: undefined,
+    },
+  ])("$name", ({ operation, line }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard now={0} observed={frozen} operation={operation} />,
+    );
+    if (line === undefined) {
+      expect(html).not.toContain("data-zerops-operation-version");
+      return;
+    }
+    expect(html).toContain(line);
+    expect(html).not.toContain("3f2a9c1d");
+    expect(html.indexOf("data-zerops-operation-version")).toBeGreaterThan(
+      html.indexOf('data-zerops-primitive="process-steps"'),
+    );
+  });
+});
