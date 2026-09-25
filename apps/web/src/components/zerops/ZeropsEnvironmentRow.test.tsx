@@ -1,7 +1,23 @@
+import type * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { ZeropsEnvironmentRow, ZeropsRoleTag } from "./ZeropsEnvironmentRow";
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react");
+  return {
+    Link: ({
+      to,
+      params = {},
+      ...props
+    }: React.ComponentProps<"a"> & { to: string; params?: Record<string, string> }) =>
+      createElement("a", {
+        href: to.replace(/\$(\w+)/gu, (_, key: string) => params[key] ?? ""),
+        ...props,
+      }),
+  };
+});
+
+const { stopLinkOf, ZeropsEnvironmentRow, ZeropsRoleTag } = await import("./ZeropsEnvironmentRow");
 
 function row(props: Partial<React.ComponentProps<typeof ZeropsEnvironmentRow>> = {}) {
   return renderToStaticMarkup(
@@ -84,8 +100,41 @@ describe("ZeropsEnvironmentRow", () => {
     expect(name).not.toContain("text-[13px]");
   });
 
+  it("opens its stop from the name alone when it links there; a plain name otherwise", () => {
+    const linked = row({
+      action: <button data-test="verb" type="button" />,
+      link: { groupId: "aaa", projectId: "fixture-stage" },
+      menu: <span data-test="menu" />,
+    });
+    const anchor = linked.slice(linked.indexOf("<a"), linked.indexOf("</a>") + 4);
+    expect(anchor).toContain('href="/group/aaa/fixture-stage"');
+    expect(anchor).toContain('data-zerops-surface="environment-name"');
+    expect(anchor).toContain(">Acme Docs - stage</a>");
+    expect(anchor).toContain("hover:underline");
+    expect(anchor).not.toContain("role-tag");
+    expect(anchor).not.toContain("data-test=");
+    expect(linked.match(/<a /gu)).toHaveLength(1);
+
+    const plain = row();
+    expect(plain).not.toContain("<a");
+    expect(plain).toContain('data-zerops-surface="environment-name">Acme Docs - stage</span>');
+  });
+
   it("says when it is busy", () => {
     expect(row({ busy: true })).toContain('aria-busy="true"');
+  });
+});
+
+describe("stopLinkOf", () => {
+  it.each([
+    ["a production of a group", "aaa", "prod", { groupId: "aaa", projectId: "p1" }],
+    ["a stage of a group", "aaa", "stage", { groupId: "aaa", projectId: "p1" }],
+    ["a dev box of a group", "aaa", "dev", undefined],
+    ["a dev/stage of a group", "aaa", "devstage", undefined],
+    ["an environment with no role", "aaa", undefined, undefined],
+    ["a production no group holds", undefined, "prod", undefined],
+  ] as const)("links %s: %j", (_name, groupId, role, link) => {
+    expect(stopLinkOf(groupId, "p1", role)).toEqual(link);
   });
 });
 

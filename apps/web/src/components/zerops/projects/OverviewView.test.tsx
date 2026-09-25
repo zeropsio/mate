@@ -1,6 +1,22 @@
-import { PRODUCTION_ADDED_HERE } from "@t3tools/client-runtime/zerops";
+import { PRODUCTION_ADDED_HERE, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
+import type * as React from "react";
 import { act } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react");
+  return {
+    Link: ({
+      to,
+      params = {},
+      ...props
+    }: React.ComponentProps<"a"> & { to: string; params?: Record<string, string> }) =>
+      createElement("a", {
+        href: to.replace(/\$(\w+)/gu, (_, key: string) => params[key] ?? ""),
+        ...props,
+      }),
+  };
+});
 
 import {
   born,
@@ -24,7 +40,11 @@ import {
   WREN,
   type Item,
 } from "./flowTestFixtures";
-import { ENVIRONMENT_ROW_GRID_CLASS } from "../ZeropsEnvironmentRow";
+import {
+  ENVIRONMENT_ROW_GRID_CLASS,
+  stopLinkOf,
+  ZeropsEnvironmentRow,
+} from "../ZeropsEnvironmentRow";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
 describe("the Overview", () => {
@@ -148,7 +168,10 @@ describe("the Overview", () => {
     ],
   ])("never holds more than two lines in a cell: %s", (_name, group) => {
     const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={[group]} />);
-    const cells = tree.root.findAll((node) => node.props["data-zerops-cell-lines"] === "true");
+    // Host elements only: a cell whose lines are a link is also its `Link`.
+    const cells = tree.root.findAll(
+      (node) => typeof node.type === "string" && node.props["data-zerops-cell-lines"] === "true",
+    );
     // The project and its four steps.
     expect(cells).toHaveLength(5);
     for (const cell of cells) expect(cell.children.length).toBeLessThanOrEqual(2);
@@ -566,6 +589,48 @@ describe("production and stages in flight on the Overview", () => {
     expect(stage).toContain("↳");
     expect(stage).toContain('data-zerops-status-tone="busy"');
     expect(stage).toContain(">Setting up a stage…<");
+  });
+});
+
+describe("an opened row's environments", () => {
+  it("open their stop's page from the stage's and the production's names, never from another's", () => {
+    const DEV_BOX = item("fixture-box", ["mate:g:aaa", "mate:role:dev"], false);
+    const group = {
+      ...entry([WREN, STAGE, PROD], {
+        pullRequests: [pull()],
+        stops: [STAGE_STOP, PRODUCTION_STOP],
+      }),
+      others: [{ item: DEV_BOX, role: "dev" as const }],
+    };
+    const tree = mount(
+      <ZeropsProjectsFlow<Item>
+        {...FLOW_PROPS}
+        groups={[group]}
+        // The page's row, linked the way the page links it.
+        renderEnvironment={(value, role) => (
+          <ZeropsEnvironmentRow
+            link={stopLinkOf(
+              readZeropsGroupTags(value.project.tagList).groupId,
+              value.project.id,
+              role,
+            )}
+            name={value.project.name}
+            tag={role ?? null}
+          />
+        )}
+      />,
+    );
+    act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
+    const rows = tree.root.findByProps({ "data-zerops-surface": "environment-rows" });
+    const names = rows.findAll(
+      (node) =>
+        typeof node.type === "string" && node.props["data-zerops-surface"] === "environment-name",
+    );
+    expect(names.map((node) => [node.children[0], node.type, node.props.href])).toEqual([
+      ["fixture-box", "span", undefined],
+      ["fixture-stage", "a", "/group/aaa/fixture-stage"],
+      ["fixture-prod", "a", "/group/aaa/fixture-prod"],
+    ]);
   });
 });
 

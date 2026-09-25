@@ -138,7 +138,7 @@ import {
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { MateFace, MicroLabel, StatusDot } from "./primitives";
-import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
+import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
@@ -2493,6 +2493,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           ) : undefined
         }
         busy={busy}
+        // A group's stage or production: its name opens the stop's page.
+        link={stopLinkOf(tags.groupId, candidate.project.id, role)}
         menu={renderEnvironmentMenu(candidate, tags, false)}
         // `Links - stage` under a heading that says `Links`: the group's
         // own page calls it `stage`, and so does the left menu.

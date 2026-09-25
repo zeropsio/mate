@@ -15,6 +15,8 @@
  * Structural: every word about state, the summary and every verb are the
  * caller's (R5).
  */
+import type { ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
+import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -44,6 +46,33 @@ export function ZeropsRoleTag({
   );
 }
 
+/** A stage or a production of a group: the stop page's address. */
+export interface ZeropsStopLink {
+  readonly groupId: string;
+  readonly projectId: string;
+}
+
+/**
+ * Where an environment's name leads: a group's stage or production opens
+ * its stop page; anything else — a dev box, a project no group holds — has
+ * no page of its own.
+ */
+export function stopLinkOf(
+  groupId: string | undefined,
+  projectId: string,
+  role: ZeropsEnvironmentRole | undefined,
+): ZeropsStopLink | undefined {
+  if (groupId === undefined || (role !== "prod" && role !== "stage")) return undefined;
+  return { groupId, projectId };
+}
+
+/**
+ * The way into a stop's page from a thing on the projects page that names
+ * it: no underline at rest, one on hover, the ring on focus.
+ */
+export const STOP_LINK_CLASS =
+  "rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
+
 export interface ZeropsEnvironmentRowProps {
   /** The Zerops project — what the Zerops GUI calls it. */
   readonly name: string;
@@ -59,6 +88,8 @@ export interface ZeropsEnvironmentRowProps {
   /** The one verb — a `ZeropsMateVerb` — when there is one. */
   readonly action?: ReactNode;
   readonly menu?: ReactNode;
+  /** A stop's row: its name opens the stop's page. */
+  readonly link?: ZeropsStopLink | undefined;
   readonly busy?: boolean;
   readonly className?: string;
 }
@@ -79,9 +110,11 @@ export function ZeropsEnvironmentRow({
   status,
   action,
   menu,
+  link,
   busy = false,
   className,
 }: ZeropsEnvironmentRowProps) {
+  const nameClass = "min-w-0 truncate text-sm text-foreground";
   return (
     <li
       aria-busy={busy || undefined}
@@ -89,12 +122,20 @@ export function ZeropsEnvironmentRow({
       data-zerops-environment-row="true"
     >
       <span className="flex min-w-0 items-center gap-2.5">
-        <span
-          className="min-w-0 truncate text-sm text-foreground"
-          data-zerops-surface="environment-name"
-        >
-          {name}
-        </span>
+        {link === undefined ? (
+          <span className={nameClass} data-zerops-surface="environment-name">
+            {name}
+          </span>
+        ) : (
+          <Link
+            className={cn(nameClass, STOP_LINK_CLASS)}
+            data-zerops-surface="environment-name"
+            params={link}
+            to="/group/$groupId/$projectId"
+          >
+            {name}
+          </Link>
+        )}
         {tag === null ? null : <ZeropsRoleTag label={tag} />}
       </span>
       <span

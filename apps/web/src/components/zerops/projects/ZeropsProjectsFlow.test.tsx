@@ -1,4 +1,20 @@
-import { describe, expect, it } from "vite-plus/test";
+import type * as React from "react";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react");
+  return {
+    Link: ({
+      to,
+      params = {},
+      ...props
+    }: React.ComponentProps<"a"> & { to: string; params?: Record<string, string> }) =>
+      createElement("a", {
+        href: to.replace(/\$(\w+)/gu, (_, key: string) => params[key] ?? ""),
+        ...props,
+      }),
+  };
+});
 
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { item, MERGING, renderFlow } from "./flowTestFixtures";

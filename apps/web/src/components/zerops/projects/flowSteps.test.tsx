@@ -1,8 +1,24 @@
+import type * as React from "react";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { GroupFlowStop } from "@t3tools/client-runtime/zerops";
+import type { GroupFlowProduction, GroupFlowStop } from "@t3tools/client-runtime/zerops";
+
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react");
+  return {
+    Link: ({
+      to,
+      params = {},
+      ...props
+    }: React.ComponentProps<"a"> & { to: string; params?: Record<string, string> }) =>
+      createElement("a", {
+        href: to.replace(/\$(\w+)/gu, (_, key: string) => params[key] ?? ""),
+        ...props,
+      }),
+  };
+});
 
 import {
   MainStep,
@@ -14,7 +30,16 @@ import {
   VerbSlot,
   type Density,
 } from "./flowSteps";
-import { brokenProduction, entry, mount, pull, UMA, WREN } from "./flowTestFixtures";
+import {
+  brokenProduction,
+  entry,
+  mount,
+  PROD,
+  PRODUCTION_STOP,
+  pull,
+  UMA,
+  WREN,
+} from "./flowTestFixtures";
 
 describe("an empty step", () => {
   const empty = entry([WREN], { mainHasCode: false });
@@ -72,7 +97,9 @@ describe("a stage line", () => {
   it.each(["line", "box"] as ReadonlyArray<Density>)(
     "reads ↳ Deployed … on one line where the group has one stage, with no name and no route: %s",
     (density) => {
-      const html = renderToStaticMarkup(<StageLines density={density} stages={[stop()]} />);
+      const html = renderToStaticMarkup(
+        <StageLines groupId="aaa" density={density} stages={[stop()]} />,
+      );
       expect(html.match(/data-zerops-surface="flow-stage"/gu)).toHaveLength(1);
       expect(html).toContain("↳");
       expect(html).not.toContain("stage ·");
@@ -82,13 +109,19 @@ describe("a stage line", () => {
   );
 
   it("keeps the state word whole: only the version gives way", () => {
-    const html = renderToStaticMarkup(<StageLines density="line" stages={[stop()]} />);
+    const html = renderToStaticMarkup(
+      <StageLines groupId="aaa" density="line" stages={[stop()]} />,
+    );
     expect(html).toMatch(
       /class="inline-flex min-w-0 items-center gap-1\.5 shrink-0"[^>]*>.*?<span class="min-w-0 truncate">Deployed<\/span>/u,
     );
     expect(html).toContain('<span class="min-w-0 truncate tabular-nums">e014b0e</span>');
     const empty = renderToStaticMarkup(
-      <StageLines density="line" stages={[stop({ state: "empty", version: undefined })]} />,
+      <StageLines
+        groupId="aaa"
+        density="line"
+        stages={[stop({ state: "empty", version: undefined })]}
+      />,
     );
     expect(empty).toContain(">Nothing deployed yet<");
     expect(empty).not.toContain("tabular-nums");
@@ -96,13 +129,18 @@ describe("a stage line", () => {
 
   it("names each stage where there are two, and a row counts the rest", () => {
     const two = [stop({ name: "stage-eu" }), stop({ projectId: "second", name: "stage-us" })];
-    const line = renderToStaticMarkup(<StageLines density="line" stages={two} />);
+    const line = renderToStaticMarkup(<StageLines groupId="aaa" density="line" stages={two} />);
     expect(line).toContain(">stage-eu ·<");
     expect(line).toContain(">Deployed<");
     expect(line).toContain("· +1");
     expect(line).not.toContain("stage-us");
     const box = renderToStaticMarkup(
-      <StageLines density="box" menuFor={(id) => <i data-test-menu={id} />} stages={two} />,
+      <StageLines
+        groupId="aaa"
+        density="box"
+        menuFor={(id) => <i data-test-menu={id} />}
+        stages={two}
+      />,
     );
     expect(box).toContain('data-test-menu="fixture-stage"');
     expect(box).toContain('data-test-menu="second"');
@@ -120,6 +158,7 @@ describe("a stage line", () => {
     ];
     const box = renderToStaticMarkup(
       <StageLines
+        groupId="aaa"
         creating={creating}
         density="box"
         menuFor={(id) => <i data-test-menu={id} />}
@@ -131,12 +170,63 @@ describe("a stage line", () => {
     expect(box).toContain(">Setting up a stage…<");
     expect(box).not.toContain('data-test-menu="stage-new"');
     const line = renderToStaticMarkup(
-      <StageLines creating={creating} density="line" stages={[]} />,
+      <StageLines groupId="aaa" creating={creating} density="line" stages={[]} />,
     );
     expect(line).toContain(">Setting up a stage…<");
     expect(line).toContain('data-zerops-status-tone="busy"');
     expect(line).not.toContain("stage-us ·");
   });
+});
+
+describe("a stage line's way in", () => {
+  const stage = (projectId: string, name: string): GroupFlowStop => ({
+    projectId,
+    name,
+    state: "deployed",
+    version: undefined,
+    source: undefined,
+    route: undefined,
+  });
+  const creating = [
+    {
+      projectId: "stage-new",
+      kind: "stage" as const,
+      name: "stage-us",
+      step: "tags" as const,
+      overdue: false,
+    },
+  ];
+  it.each(["line", "box"] as ReadonlyArray<Density>)(
+    "opens each listed stage's page from its words, never from its menu or a stage being created: %s",
+    (density) => {
+      const html = renderToStaticMarkup(
+        <StageLines
+          creating={creating}
+          density={density}
+          groupId="aaa"
+          menuFor={(id) => <i data-test-menu={id} />}
+          stages={[stage("fixture-stage", "stage-eu"), stage("second", "stage-ap")]}
+        />,
+      );
+      const lines = html.split('data-zerops-surface="flow-stage"').slice(1);
+      const listed = density === "line" ? ["fixture-stage"] : ["fixture-stage", "second"];
+      expect(
+        lines.slice(0, listed.length).map((line) => line.match(/href="([^"]*)"/u)?.[1]),
+      ).toEqual(listed.map((id) => `/group/aaa/${id}`));
+      for (const line of lines.slice(0, listed.length)) {
+        const anchor = line.slice(line.indexOf("<a "), line.indexOf("</a>") + 4);
+        expect(anchor).toContain("↳");
+        expect(anchor).toContain('data-zerops-primitive="status-dot"');
+        expect(anchor).not.toContain("data-test-menu");
+        if (density === "box") expect(line.slice(line.indexOf("</a>"))).toContain("data-test-menu");
+      }
+      if (density === "box") {
+        expect(lines).toHaveLength(3);
+        expect(lines[2]).toContain(">Setting up a stage…<");
+        expect(lines[2]).not.toContain("<a ");
+      }
+    },
+  );
 });
 
 describe("the verb slot", () => {
@@ -280,6 +370,69 @@ describe("a production's state", () => {
     const lines = tree.root.findByProps({ "data-zerops-cell-lines": "true" });
     expect(lines.props.className).toContain("min-w-24");
   });
+});
+
+describe("a production's way in", () => {
+  const stop: GroupFlowStop = {
+    projectId: "fixture-prod",
+    name: "production",
+    state: "deployed",
+    version: undefined,
+    source: undefined,
+    route: undefined,
+  };
+  const creation = {
+    projectId: "prod-new",
+    kind: "production" as const,
+    name: "production",
+    step: "tags" as const,
+    overdue: false,
+  };
+  const candidate = { tag: "v0.1.0", waiting: 1 };
+  const productions: ReadonlyArray<readonly [GroupFlowProduction, boolean]> = [
+    [{ kind: "absent", line: "After the first merge", addable: false }, false],
+    [{ kind: "creating", line: "Setting up production…", creation }, false],
+    [{ kind: "checking", stop, line: "Checking what runs here…" }, true],
+    [{ kind: "empty", stop, line: "Nothing deployed yet" }, true],
+    [{ kind: "deploying", stop, line: "Deploying…" }, true],
+    [{ kind: "live", stop, line: "Live" }, true],
+    [{ kind: "deploy-failed", stop, line: "Deploy failed", candidate }, true],
+    [{ kind: "releasing", stop, line: "Deployed", tag: "v0.1.0" }, true],
+    [{ kind: "ready-to-release", stop, line: "Deployed", candidate }, true],
+  ];
+  const base = entry([WREN, PROD], { stops: [PRODUCTION_STOP] });
+  it.each(
+    productions.flatMap(([production, linked]) =>
+      (["line", "box"] as ReadonlyArray<Density>).map(
+        (density) => [production.kind, density, production, linked] as const,
+      ),
+    ),
+  )(
+    "%s, %s: opens the stop page from its lines, never from its verbs",
+    (_kind, density, production, linked) => {
+      const html = renderToStaticMarkup(
+        <ProductionStep
+          density={density}
+          entry={{ ...base, flow: { ...base.flow, production } }}
+          menu={<i data-test="menu" />}
+          releaseVerb={<button data-test="release" type="button" />}
+          verb={<button data-test="verb" type="button" />}
+        />,
+      );
+      if (!linked) {
+        expect(html).not.toContain("<a");
+        return;
+      }
+      expect(html.match(/<a /gu)).toHaveLength(1);
+      const anchor = html.slice(html.indexOf("<a "), html.indexOf("</a>") + 4);
+      expect(anchor).toContain('href="/group/aaa/fixture-prod"');
+      expect(anchor).toContain('data-zerops-cell-lines="true"');
+      expect(anchor).toContain('data-zerops-primitive="status-dot"');
+      expect(anchor).not.toContain("data-test=");
+      expect(anchor).not.toContain("<button");
+      expect(html.slice(html.indexOf("</a>"))).toContain('data-test="menu"');
+    },
+  );
 });
 
 describe("a row's cell on a medium container", () => {

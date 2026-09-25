@@ -18,12 +18,14 @@ import type {
   GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
 import { STAGE_SETTING_UP } from "@t3tools/client-runtime/zerops";
+import { Link } from "@tanstack/react-router";
 import { Children, Fragment, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { MateFace, StatusDot } from "../primitives";
+import { STOP_LINK_CLASS, type ZeropsStopLink } from "../ZeropsEnvironmentRow";
 import { ZeropsMateCard } from "../ZeropsMateCard";
 import {
   comingMateLine,
@@ -135,20 +137,28 @@ const MEDIUM_VERB_CLASS = "@2xl/flow:@max-5xl/flow:col-start-2 @2xl/flow:@max-5x
 /**
  * A cell: its lines, then its verbs. The lines never go under a word: where a
  * verb leaves them less, the verb wraps to the cell's end on a line of its own.
+ * A cell about a stop is the way into its page: its lines are the link, its
+ * verbs stay beside it, never inside.
  */
 function Cell({
   step,
   density,
   lines,
   verbs,
+  link,
   className,
 }: {
   readonly step: FlowCell;
   readonly density: Density;
   readonly lines: ReactNode;
   readonly verbs?: ReactNode;
+  readonly link?: ZeropsStopLink | undefined;
   readonly className?: string;
 }) {
+  const linesClass = cn(
+    "flex min-w-24 flex-1 flex-col gap-0.5",
+    density === "line" && MEDIUM_LINES_CLASS,
+  );
   const row = (
     <span
       className={cn(
@@ -156,15 +166,20 @@ function Cell({
         density === "line" && MEDIUM_ROW_CLASS,
       )}
     >
-      <span
-        className={cn(
-          "flex min-w-24 flex-1 flex-col gap-0.5",
-          density === "line" && MEDIUM_LINES_CLASS,
-        )}
-        data-zerops-cell-lines="true"
-      >
-        {lines}
-      </span>
+      {link === undefined ? (
+        <span className={linesClass} data-zerops-cell-lines="true">
+          {lines}
+        </span>
+      ) : (
+        <Link
+          className={cn(linesClass, STOP_LINK_CLASS)}
+          data-zerops-cell-lines="true"
+          params={link}
+          to="/group/$groupId/$projectId"
+        >
+          {lines}
+        </Link>
+      )}
       <VerbSlot className={cn("ms-auto", density === "line" && MEDIUM_VERB_CLASS)}>
         {verbs}
       </VerbSlot>
@@ -287,15 +302,19 @@ export function ComingMateCard({
  * each says its own. It says what the stage runs and nothing else — where it
  * lives is its menu's. The state word stays whole; the version gives way. A
  * stage being created is `↳ ● Setting up a stage…`, after the listed ones,
- * with no menu: there is nothing of it to reach yet. A row draws the first and
- * counts the rest; a box draws each, with its menu.
+ * with no menu and no way in: there is nothing of it to reach yet. A listed
+ * stage's words open its page. A row draws the first and counts the rest; a
+ * box draws each, with its menu.
  */
 export function StageLines({
+  groupId,
   stages,
   creating = [],
   density,
   menuFor,
 }: {
+  /** The group the stages are of: where their pages live. */
+  readonly groupId: string;
   readonly stages: ReadonlyArray<GroupFlowStop>;
   /** The stages being created (`GroupFlow.creatingStages`). */
   readonly creating?: ReadonlyArray<GroupFlowPending>;
@@ -318,12 +337,8 @@ export function StageLines({
         ? { word: STAGE_SETTING_UP, version: undefined, tone: "busy" as const }
         : stopLine(stop);
     const menu = stop === undefined ? undefined : menuFor?.(projectId);
-    return (
-      <span
-        className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
-        data-zerops-surface="flow-stage"
-        key={projectId}
-      >
+    const words = (
+      <>
         <span aria-hidden="true">↳</span>
         {lines.length > 1 ? <span className="min-w-0 truncate">{name} ·</span> : null}
         <StatusDot className="shrink-0" label={line.word} sentence tone={line.tone} />
@@ -331,6 +346,25 @@ export function StageLines({
           <span className="min-w-0 truncate tabular-nums">{line.version}</span>
         )}
         {more > 0 ? <span className="shrink-0">· +{more}</span> : null}
+      </>
+    );
+    return (
+      <span
+        className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
+        data-zerops-surface="flow-stage"
+        key={projectId}
+      >
+        {stop === undefined ? (
+          words
+        ) : (
+          <Link
+            className={cn("flex min-w-0 items-center gap-1", STOP_LINK_CLASS)}
+            params={{ groupId, projectId }}
+            to="/group/$groupId/$projectId"
+          >
+            {words}
+          </Link>
+        )}
         {drawn(menu) ? <span className="ms-auto flex shrink-0">{menu}</span> : null}
       </span>
     );
@@ -375,7 +409,12 @@ export function MainStep<T>({
   const stageLine =
     density === "line" && !notLive && staged ? (
       <span className="hidden min-w-0 @2xl/flow:flex">
-        <StageLines creating={creatingStages} density="line" stages={stages} />
+        <StageLines
+          creating={creatingStages}
+          density="line"
+          groupId={entry.group.groupId}
+          stages={stages}
+        />
       </span>
     ) : null;
   const lineTwo =
@@ -397,6 +436,7 @@ export function MainStep<T>({
               <StageLines
                 creating={creatingStages}
                 density="box"
+                groupId={entry.group.groupId}
                 menuFor={menuFor}
                 stages={stages}
               />
@@ -441,10 +481,16 @@ export function ProductionStep<T>({
   readonly menu?: ReactNode;
 }) {
   const cell = productionCell(entry.flow);
+  const { production } = entry.flow;
   const menuSlot = drawn(menu) ? <span className="flex">{menu}</span> : null;
   return (
     <Cell
       density={density}
+      link={
+        "stop" in production
+          ? { groupId: entry.group.groupId, projectId: production.stop.projectId }
+          : undefined
+      }
       lines={
         <>
           {cell.empty ? (
