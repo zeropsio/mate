@@ -63,6 +63,7 @@ export interface BuiltCardFields {
   readonly links: ReadonlyArray<ZeropsOperationLink>;
   readonly detail?: string;
   readonly target?: { readonly hostname: string };
+  readonly batch?: true;
   readonly resultStatus?: string;
   readonly hasResult: boolean;
   readonly version?: ZeropsOperationVersion;

@@ -18,7 +18,7 @@ export type OperationSubject =
  * so the word can stand as the verb. Delete, scale, manage, env and the dev
  * server run as "Working" in the phrase producer — without their voice line
  * nothing would say what the card does — so they keep it, as does every
- * kind that names several services or none.
+ * kind that names several services or none (a batch deploy among them).
  */
 const SUBJECT_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
   "browser",
@@ -44,7 +44,7 @@ export function operationSubject(
   operation: ZeropsOperation,
   subjectHost: string | undefined,
 ): OperationSubject | undefined {
-  if (!SUBJECT_KINDS.has(operation.kind)) {
+  if (!SUBJECT_KINDS.has(operation.kind) || operation.batch === true) {
     return undefined;
   }
   const nameless = { kind: "nameless", text: operation.subject } as const;

@@ -133,6 +133,10 @@ describe("observationTargetFor — building the ObservationTarget from an operat
     expect(target?.running).toBe(false);
   });
 
+  it("a batch deploy has no target: its per-target rows stand from birth to settle", () => {
+    expect(observationTargetFor(operation({ batch: true, subject: "api, web" }))).toBeNull();
+  });
+
   it("a non-observed kind (verify) has no target at all", () => {
     expect(observationTargetFor(operation({ kind: "verify" }))).toBeNull();
   });

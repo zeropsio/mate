@@ -328,6 +328,7 @@ function buildDeployBatchFields(call: ZeropsCall, context: OperationBuildContext
       decoded.card === undefined ? undecodedDetail(call) : undefined,
     ]),
     ...(firstHost !== undefined ? { target: { hostname: firstHost } } : {}),
+    batch: true,
     hasResult: decoded.document !== undefined,
     ...explanation,
     phaseOverride: phase,

@@ -313,6 +313,13 @@ describe("buildDeployFields — zerops_deploy_batch, one entry per service", () 
     }).toEqual(expected);
   });
 
+  it.each([
+    { name: "a batch is marked a batch", call: batchCall(), expected: true },
+    { name: "a single-service deploy is not", call: deployCall({}), expected: undefined },
+  ])("$name", ({ call, expected }) => {
+    expect(buildDeployFields(call, CONTEXT).batch).toBe(expected);
+  });
+
   it("explains the first failed target with its own reason and log", () => {
     const fields = buildDeployFields(
       batchCall({

@@ -637,6 +637,23 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
       expect(header(html)).not.toContain(operation.subject);
     },
   );
+
+  it("a batch deploy names several services: it keeps its voice line, no single subject", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "batch-subject",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy_batch",
+        input: { targets: [{ targetService: "api" }, { targetService: "web" }] },
+        status: "inProgress",
+      }),
+    );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+
+    expect(header(html)).toContain(`data-zerops-voice-source="${operation.voiceSource}"`);
+    expect(header(html)).not.toContain("data-zerops-operation-subject");
+  });
 });
 
 describe("ZeropsOperationCard — a running card's header always says what it is doing", () => {

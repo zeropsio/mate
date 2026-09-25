@@ -68,10 +68,12 @@ function hostnamesFor(operation: ZeropsOperation): ReadonlyArray<string> {
 
 /**
  * `null` for a kind the Observation layer has no attribution rules for
- * (bootstrap, mount, verify, env, error) — those never get a region.
+ * (bootstrap, mount, verify, env, error) — those never get a region — and
+ * for a batch deploy, whose per-target rows are its steps from birth to
+ * settle.
  */
 export function observationTargetFor(operation: ZeropsOperation): ObservationTarget | null {
-  if (!isObservedKind(operation.kind)) {
+  if (!isObservedKind(operation.kind) || operation.batch === true) {
     return null;
   }
   return {

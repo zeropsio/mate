@@ -272,6 +272,7 @@ function buildStandaloneOperation(
     ...(attempts !== undefined ? { attempts } : {}),
     ...(attemptWordText !== undefined ? { attemptWord: attemptWordText } : {}),
     ...(fields.target !== undefined ? { target: fields.target } : {}),
+    ...(fields.batch !== undefined ? { batch: fields.batch } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
     hasResult: fields.hasResult,
     ...(fields.version !== undefined ? { version: fields.version } : {}),
