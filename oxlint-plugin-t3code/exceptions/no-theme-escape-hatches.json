@@ -2168,14 +2168,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/settings/FontFamilyPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative inline-flex min-h-9 w-full min-w-36 cursor-pointer select-none items-center justify-between gap-2 rounded-lg border border-input bg-background px-[calc(--spacing(3)-1px)] text-left text-base text-foreground shadow-xs/5 outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24 sm:min-h-8 sm:text-sm dark:bg-input/32\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in FontFamilyPicker awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"flex size-6 cursor-pointer items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-90\"",

@@ -1997,7 +1997,7 @@ function ReleaseAction({
           setConfirming(true);
         }}
         size={size}
-        variant={variant}
+        {...(variant === undefined ? {} : { variant })}
       >
         {release.releasing
           ? flowVerbLabel("release", true)

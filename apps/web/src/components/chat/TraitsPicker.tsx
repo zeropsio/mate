@@ -16,9 +16,8 @@ import {
   normalizeModelSlug,
 } from "@t3tools/shared/model";
 import { memo, useCallback, useState } from "react";
-import type { VariantProps } from "class-variance-authority";
 import { ZapIcon } from "lucide-react";
-import { buttonVariants } from "../ui/button";
+import type { ButtonVariant } from "../ui/button";
 import {
   Menu,
   MenuGroup,
@@ -269,7 +268,7 @@ export interface TraitsMenuContentProps {
   modelOptions?: ProviderOptions | null | undefined;
   allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
-  triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
+  triggerVariant?: ButtonVariant;
   triggerClassName?: string;
 }
 
