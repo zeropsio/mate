@@ -500,10 +500,13 @@ type SortablePinnedRowBag = Pick<
 
 function SortablePinnedThreadRow(props: {
   id: string;
+  /** A row being renamed is not draggable, so its title text stays selectable. */
+  disabled?: boolean;
   children: (bag: SortablePinnedRowBag) => ReactNode;
 }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.id,
+    disabled: props.disabled ?? false,
     animateLayoutChanges: animatePinnedLayoutChanges,
   });
   // dnd-kit memoizes each field but not the bag, so the memoized row would
@@ -4439,7 +4442,11 @@ export default function Sidebar() {
                               reorderablePinnedKeys.has(threadKey)
                             ) {
                               return (
-                                <SortablePinnedThreadRow key={threadKey} id={threadKey}>
+                                <SortablePinnedThreadRow
+                                  key={threadKey}
+                                  id={threadKey}
+                                  disabled={renamingThreadKey === threadKey}
+                                >
                                   {(bag) => renderThreadRow(thread, sidebarSection, bag)}
                                 </SortablePinnedThreadRow>
                               );
