@@ -692,8 +692,8 @@ describe("ZeropsOperationCard — a running card's header always says what it is
   });
 });
 
-describe("ZeropsOperationCard — attempt count (R8)", () => {
-  it("renders a muted 'attempt 3' in the status cluster for a folded retry chain", () => {
+describe("ZeropsOperationCard — attempt number (R9)", () => {
+  it("renders a muted 'attempt 3' in the status cluster of the third try", () => {
     const failedDeploy = (id: string, createdAt: string) =>
       zeropsCall({
         id,
@@ -712,10 +712,10 @@ describe("ZeropsOperationCard — attempt count (R8)", () => {
       ],
       CONTEXT,
     );
-    const folded = operations[0]!;
-    expect(folded.attempts).toBe(3);
+    const third = operations[2]!;
+    expect(third.attempts).toBe(3);
 
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={folded} />);
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={third} />);
     expect(html).toContain("attempt 3");
   });
 

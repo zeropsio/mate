@@ -242,10 +242,10 @@ export interface ZeropsOperation {
   readonly steps: ReadonlyArray<ZeropsOperationStep>;
   readonly links: ReadonlyArray<ZeropsOperationLink>;
   readonly detail?: string;
-  /** Every call folded into this operation, anchor first. */
+  /** The operation's calls, anchor first: one per per-call kind, a bootstrap session's members and joined imports. */
   readonly callIds: ReadonlyArray<string>;
   /**
-   * The attempt ordinal of the latest call folded in (§2.3 R9, defined at
+   * The call's attempt ordinal (§2.3 R9, defined at
    * `reduceZeropsOperations`): >= 1, fixed once its target is known. Absent
    * while the target is unknown, and for kinds with no single target
    * (bootstrap, error).

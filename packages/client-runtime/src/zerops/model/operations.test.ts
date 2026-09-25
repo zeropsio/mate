@@ -513,10 +513,10 @@ describe("reduceZeropsOperations — bootstrap session identity", () => {
   });
 });
 
-// ---- retries: R8/R9 ----
+// ---- retries: R9 ----
 
-describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
-  it("N failed retries of the same tool+target in one turn fold into one operation with attempts: N", () => {
+describe("reduceZeropsOperations — retries (R9)", () => {
+  it("N failed retries of the same tool+target in one turn are N cards, each with its own attempt", () => {
     const failedDeploy = (id: string, createdAt: string): EntrySpec => ({
       id,
       createdAt,
@@ -530,10 +530,11 @@ describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
       failedDeploy("t1b", "2026-09-01T00:01:00.000Z"),
       failedDeploy("t1c", "2026-09-01T00:02:00.000Z"),
     ]);
-    expect(operations).toHaveLength(1);
-    expect(operations[0]!.attempts).toBe(3);
-    expect(operations[0]!.callIds).toEqual(["t1a", "t1b", "t1c"]);
-    expect(operations[0]!.key).toBe("op:t1a");
+    expect(operations.map((o) => [o.key, o.attempts, o.callIds])).toEqual([
+      ["op:t1a", 1, ["t1a"]],
+      ["op:t1b", 2, ["t1b"]],
+      ["op:t1c", 3, ["t1c"]],
+    ]);
   });
 
   it("a succeeding attempt after failures is its own new operation, numbered as the 2nd attempt (R9)", () => {
@@ -561,7 +562,7 @@ describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
     expect(operations[1]!.attempts).toBe(2);
   });
 
-  it("R9's attempt count spans turns, independent of the R8 same-turn join", () => {
+  it("R9's attempt count spans turns", () => {
     const failedDeploy = (id: string, createdAt: string, turnId: string): EntrySpec => ({
       id,
       createdAt,
@@ -584,49 +585,11 @@ describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
         resultText: JSON.stringify({ status: "DEPLOYED", target: "weatherdash" }),
       },
     ]);
-    // three turns, each failure in its own turn, never join by R8 —
-    // three separate operations, not folded into one.
     expect(operations).toHaveLength(3);
     expect(operations[0]!.attempts).toBe(1);
     expect(operations[1]!.attempts).toBe(2);
     expect(operations[2]!.phase).toBe("done");
     expect(operations[2]!.attempts).toBe(3);
-  });
-
-  it("a bootstrap card between two same-turn failures of one target breaks the R8 join", () => {
-    const { operations } = reduceFrom([
-      {
-        id: "d1",
-        createdAt: "2026-09-01T00:00:00.000Z",
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "failed",
-        resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
-      },
-      {
-        id: "w1",
-        createdAt: "2026-09-01T00:01:00.000Z",
-        toolName: "zerops_workflow",
-        input: { action: "start", workflow: "bootstrap", route: "adopt" },
-        status: "failed",
-        resultText: JSON.stringify({ code: "WORKFLOW_ACTIVE", error: "already running" }),
-      },
-      {
-        id: "d2",
-        createdAt: "2026-09-01T00:02:00.000Z",
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "failed",
-        resultText: JSON.stringify({ code: "API_ERROR", error: "boom again" }),
-      },
-    ]);
-    const deploys = operations.filter((o) => o.kind === "deploy");
-    // d1 and d2 stay two separate deploy operations — the bootstrap attempt
-    // in between (no open session, so it founds its own card) means d2 is
-    // not a retry of d1.
-    expect(deploys).toHaveLength(2);
-    expect(deploys[0]!.callIds).toEqual(["d1"]);
-    expect(deploys[1]!.callIds).toEqual(["d2"]);
   });
 });
 
@@ -947,9 +910,9 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
       expected: { "op:a": 1, "op:b": 2 },
     },
     {
-      name: "repeats after failures fold into one card showing its latest member's number",
+      name: "repeats after failures are cards of their own, never folded into the first",
       entries: [deploy("a", 0, "failed"), deploy("b", 1, "failed"), deploy("c", 2, "completed")],
-      expected: { "op:a": 2, "op:c": 3 },
+      expected: { "op:a": 1, "op:b": 2, "op:c": 3 },
     },
     {
       name: "an interrupted call counts, and the retry in the next turn is attempt 2",
@@ -1055,7 +1018,6 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
           id: "e2",
           createdAt: at(2),
           toolName: "zerops_export",
-          // another host, so the R8 fold keeps it a card of its own
           input: { hostname: "apistage" },
           status: "failed",
           resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
@@ -1080,27 +1042,28 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
   const attemptsByKey = (operations: ReadonlyArray<ZeropsOperation>) =>
     Object.fromEntries(operations.map((o) => [o.key, o.attempts]));
 
-  it("a card's number never changes while the stream grows, unless a retry folds into it", () => {
-    const seen = new Map<string, { readonly callCount: number; readonly attempts: number }>();
+  it("a card is never removed and its number never changes while the stream grows", () => {
+    const seen = new Map<string, number | undefined>();
     for (let length = 1; length <= stream.length; length += 1) {
-      for (const operation of reduceFrom(stream.slice(0, length), "t2").operations) {
+      const operations = reduceFrom(stream.slice(0, length), "t2").operations;
+      const keys = new Set(operations.map((operation) => operation.key));
+      for (const key of seen.keys()) {
+        expect(keys).toContain(key);
+      }
+      for (const operation of operations) {
         const before = seen.get(operation.key);
-        if (before !== undefined && before.callCount === operation.callIds.length) {
-          expect(operation.attempts).toBe(before.attempts);
+        if (before !== undefined) {
+          expect(operation.attempts).toBe(before);
         }
-        if (operation.attempts !== undefined) {
-          seen.set(operation.key, {
-            callCount: operation.callIds.length,
-            attempts: operation.attempts,
-          });
-        }
+        seen.set(operation.key, operation.attempts);
       }
     }
     expect(attemptsByKey(reduceFrom(stream, "t2").operations)).toStrictEqual({
       "op:a": 1,
       "op:b": 2,
-      "op:c": 4,
+      "op:c": 3,
       "op:d": 1,
+      "op:e": 4,
       "op:f": 5,
     });
   });

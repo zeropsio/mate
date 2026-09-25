@@ -4,7 +4,9 @@
  * bootstrap sessions key `bootstrap:<founderCallId>` — a fixed identity
  * (§2.1 principle 1), never re-keyed once a session id decodes. See
  * `mate-session-model-2026-09-05.md` §2.3 R4-R9 and
- * `C-client-domain.md` §1.5.
+ * `C-client-domain.md` §1.5 — except R8: a same-turn retry is never folded
+ * into the card it retries, it is a card of its own with its own attempt
+ * number (R9), so no row leaves the timeline and no older card is rewritten.
  *
  * Pure and deterministic: same calls and context in, same operations out.
  */
@@ -105,12 +107,11 @@ function anchorOf(call: ZeropsCall): { anchorAt: string; anchorActivityId: strin
   return { anchorAt: call.startedAt, anchorActivityId: call.anchorActivityId };
 }
 
-// --- standalone (per-call) groups: the retry fold (R8/R9) --------------------
+// --- standalone (per-call) operations and their attempt ordinal (R9) ---------
 
-interface StandaloneGroup {
+interface StandaloneCall {
   readonly kind: Exclude<ZeropsOperationKind, "bootstrap">;
-  readonly targetKey: string;
-  readonly calls: ZeropsCall[];
+  readonly call: ZeropsCall;
 }
 
 /** The service a call names in its arguments, trimmed and lowercased; `undefined` until named. */
@@ -149,11 +150,6 @@ function browserTarget(input: Record<string, unknown>): string | undefined {
   return `${url.origin}${url.pathname.replace(/\/+$/, "")}${query.length > 0 ? `?${query}` : ""}`;
 }
 
-/** What the R8 retry fold compares — the named service, else the whole arguments. */
-function foldTargetKeyFor(call: ZeropsCall): string {
-  return inputHostname(call.input) ?? JSON.stringify(call.input);
-}
-
 /**
  * The attempt identity (R9): card kind + normalized target. Two calls share
  * one exactly when the second is another go at the first.
@@ -175,40 +171,6 @@ function attemptIdentityFor(
   }
   const target = kind === "browser" ? browserTarget(input) : inputHostname(input);
   return target === undefined ? undefined : `${kind} ${target}`;
-}
-
-/**
- * The most recent call that produced or joined ANY card — bootstrap or
- * standalone — regardless of which typed collection it landed in. R8's join
- * requires "no other card operation lies between them" (C §1.5), so the
- * retry fold must see a bootstrap card that intervened between two same-turn
- * failures of one standalone kind+target, not just the last standalone call.
- */
-interface LastCardTouch {
-  readonly kind: ZeropsOperationKind;
-  readonly targetKey: string | undefined;
-  readonly call: ZeropsCall;
-}
-
-function foldStandalone(
-  call: ZeropsCall,
-  kind: Exclude<ZeropsOperationKind, "bootstrap">,
-  targetKey: string,
-  groups: StandaloneGroup[],
-  lastCard: LastCardTouch | undefined,
-): void {
-  const joinsRetry =
-    call.status === "failed" &&
-    lastCard !== undefined &&
-    lastCard.kind === kind &&
-    lastCard.targetKey === targetKey &&
-    lastCard.call.status === "failed" &&
-    lastCard.call.turnId === call.turnId;
-  if (joinsRetry) {
-    groups[groups.length - 1]!.calls.push(call);
-    return;
-  }
-  groups.push({ kind, targetKey, calls: [call] });
 }
 
 const BUILDER_BY_KIND: Readonly<
@@ -243,22 +205,20 @@ function buildFieldsFor(
 }
 
 function buildStandaloneOperation(
-  group: StandaloneGroup,
+  { kind, call }: StandaloneCall,
   attempts: number | undefined,
   context: OperationBuildContext,
 ): ZeropsOperation {
-  const founder = group.calls[0]!;
-  const latest = group.calls[group.calls.length - 1]!;
-  const fields = buildFieldsFor(group.kind, latest, context);
-  const phase = fields.phaseOverride ?? phaseFor(latest.status);
+  const fields = buildFieldsFor(kind, call, context);
+  const phase = fields.phaseOverride ?? phaseFor(call.status);
   const attemptWordText = attemptWord(attempts);
   return {
-    key: `op:${founder.id}`,
-    kind: group.kind,
+    key: `op:${call.id}`,
+    kind,
     phase,
-    ...anchorOf(founder),
-    ...(phase !== "running" ? { settledAt: latest.settledAt ?? latest.startedAt } : {}),
-    turnId: founder.turnId,
+    ...anchorOf(call),
+    ...(phase !== "running" ? { settledAt: call.settledAt ?? call.startedAt } : {}),
+    turnId: call.turnId,
     subject: fields.subject,
     kicker: fields.kicker,
     voice: fields.voice,
@@ -268,7 +228,7 @@ function buildStandaloneOperation(
     steps: fields.steps,
     links: fields.links,
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
-    callIds: group.calls.map((c) => c.id),
+    callIds: [call.id],
     ...(attempts !== undefined ? { attempts } : {}),
     ...(attemptWordText !== undefined ? { attemptWord: attemptWordText } : {}),
     ...(fields.target !== undefined ? { target: fields.target } : {}),
@@ -467,7 +427,7 @@ export function reduceZeropsOperations(
     open: undefined,
     pendingIntent: undefined,
   };
-  const standaloneGroups: StandaloneGroup[] = [];
+  const standaloneCalls: StandaloneCall[] = [];
   const genericCalls: ZeropsCall[] = [];
 
   // R9, the attempt ordinal: a call's number is 1 + the calls anywhere in the
@@ -480,11 +440,11 @@ export function reduceZeropsOperations(
   // call's, the later one moves up by one — anchor order is what a reload can
   // reproduce, arrival order of arguments is not.) A call with no
   // identity (target unknown yet, or a kind with no single target) has no
-  // number. Independent of the R8 join, which only decides whether same-turn
-  // failures visually merge; a folded card shows its latest member's number.
+  // number. Every call is a card of its own: a retry never merges into an
+  // earlier card, which would remove a row mid-turn and rewrite what an
+  // older card already showed.
   const attemptsSoFar = new Map<string, number>();
   const attemptByCallId = new Map<string, number>();
-  let lastCard: LastCardTouch | undefined;
 
   for (const call of ordered) {
     if (call.agentInternal) {
@@ -510,7 +470,6 @@ export function reduceZeropsOperations(
     if (kind === "bootstrap") {
       foldBootstrap(call, bootstrapState);
       bootstrapState.pendingIntent = undefined;
-      lastCard = { kind, targetKey: undefined, call };
       continue;
     }
     if (
@@ -519,7 +478,6 @@ export function reduceZeropsOperations(
       importJoinsOpenGroup(call, bootstrapState.open)
     ) {
       bootstrapState.open.joinedImports.push({ call, decoded: decodeCall(call) });
-      lastCard = { kind: "bootstrap", targetKey: undefined, call };
       continue;
     }
 
@@ -529,19 +487,14 @@ export function reduceZeropsOperations(
       attemptByCallId.set(call.id, attempt);
       attemptsSoFar.set(identity, attempt);
     }
-
-    const targetKey = foldTargetKeyFor(call);
-
-    foldStandalone(call, kind, targetKey, standaloneGroups, lastCard);
-    lastCard = { kind, targetKey, call };
+    standaloneCalls.push({ kind, call });
   }
 
   const operations = [
     ...bootstrapState.groups.map(buildBootstrapOperation),
-    ...standaloneGroups.map((group) => {
-      const latest = group.calls[group.calls.length - 1]!;
-      return buildStandaloneOperation(group, attemptByCallId.get(latest.id), context);
-    }),
+    ...standaloneCalls.map((standalone) =>
+      buildStandaloneOperation(standalone, attemptByCallId.get(standalone.call.id), context),
+    ),
   ].sort((a, b) => compareAnchors(a, b));
 
   return { operations, genericCalls };
