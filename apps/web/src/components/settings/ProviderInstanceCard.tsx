@@ -776,8 +776,8 @@ export function ProviderInstanceCard({
                               <Button
                                 type="button"
                                 size="icon-xs"
-                                variant="ghost"
-                                className="size-6 shrink-0 rounded-sm p-0 text-muted-foreground hover:text-foreground"
+                                variant="ghost-muted"
+                                className="size-6 shrink-0 rounded-sm p-0"
                                 onClick={() =>
                                   copyToClipboard(updateCommand, {
                                     providerName: displayName,

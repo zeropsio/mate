@@ -875,9 +875,9 @@ function KeybindingTableRow({
               render={
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghost-muted"
                   size="icon-sm"
-                  className="size-7 text-muted-foreground hover:text-foreground sm:size-7"
+                  className="size-7 sm:size-7"
                   disabled={isSaving}
                   aria-label={`Actions for ${commandLabel(row.command)}`}
                 />
@@ -1030,9 +1030,9 @@ function NewKeybindingTableRow({
             render={
               <Button
                 type="button"
-                variant="ghost"
+                variant="ghost-muted"
                 size="icon-sm"
-                className="size-7 text-muted-foreground hover:text-foreground"
+                className="size-7"
                 disabled={isSaving}
                 aria-label="Cancel new keybinding"
                 onClick={onCancel}
