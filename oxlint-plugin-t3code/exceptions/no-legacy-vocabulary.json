@@ -80,14 +80,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/threads/ThreadGitControls.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Turn diffs and worktree changes\"",
-    "owner": "karel",
-    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/threads/git/GitBranchesSheet.tsx",
     "kind": "Literal",
     "fingerprint": "\"Branches & worktrees\"",
