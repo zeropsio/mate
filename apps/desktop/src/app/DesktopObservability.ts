@@ -14,7 +14,7 @@ import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as References from "effect/References";
 import * as Tracer from "effect/Tracer";
-import { OtlpExporter, OtlpLogger, OtlpMetrics, OtlpTracer } from "effect/unstable/observability";
+import { OtlpExporter, OtlpLogger, OtlpTracer } from "effect/unstable/observability";
 
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
@@ -76,7 +76,7 @@ const readPersistedObservabilitySettings: Effect.Effect<
 });
 
 /**
- * Settings is read once for all three signals, so the main process cannot
+ * Settings is read once for every signal, so the main process cannot
  * resolve traces against one revision of the file and logs against another.
  */
 const resolveOtlpEndpoints = Effect.gen(function* () {
@@ -90,9 +90,9 @@ const resolveOtlpEndpoints = Effect.gen(function* () {
 });
 
 /**
- * Logs, traces, and metrics for the main process, assembled together because
- * they share one read of the environment and Settings, and because a process
- * gets exactly one logger set.
+ * Logs and traces for the main process, assembled together because they share
+ * one read of the environment and Settings, and because a process gets exactly
+ * one logger set.
  */
 const telemetryLayer = Layer.unwrap(
   Effect.gen(function* () {
@@ -165,17 +165,12 @@ const telemetryLayer = Layer.unwrap(
       }),
     ).pipe(Layer.provide(OtlpExporter.layerFlusher));
 
-    const metricsLayer =
-      endpoints.metrics === undefined
-        ? Layer.empty
-        : OtlpMetrics.layer({
-            url: endpoints.metrics,
-            exportInterval: `${environment.otlpExportIntervalMs} millis`,
-            headers,
-            resource,
-          }).pipe(Layer.provide(serializationLayer));
-
-    return Layer.mergeAll(loggerLayer, tracerLayer, metricsLayer);
+    // Metrics stay off until the main process records one: `OtlpMetrics`
+    // exports on every interval even when the registry is empty, so wiring it
+    // up would post an empty payload every ten seconds to any collector
+    // configured for the server. Add an `OtlpMetrics.layer` on
+    // `endpoints.metrics` here when a desktop metric exists.
+    return Layer.mergeAll(loggerLayer, tracerLayer);
   }),
 );
 

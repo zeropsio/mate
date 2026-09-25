@@ -523,6 +523,8 @@ The desktop main process is a second producer, assembled in
 Settings entries as the server, and covers work the server cannot see: app startup, window and menu
 handling, connections to remote Mates, and updates. It reports as service `desktop` regardless of
 `T3CODE_OTLP_SERVICE_NAME`, so a collector shows it alongside the server rather than mixed into it.
+It exports traces and logs only; the main process records no metrics, so the metrics endpoint
+applies to the server alone.
 
 ### Env Vars
 
