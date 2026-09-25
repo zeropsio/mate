@@ -125,6 +125,7 @@ import {
   summarizeToolGroup,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
+  type TurnHeaderActivity,
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
 } from "./MessagesTimeline.logic";
@@ -148,6 +149,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
+import { TurnTally } from "./TurnHeader";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -177,7 +179,8 @@ interface TimelineRowSharedState {
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  onToggleTurnFold: (turnId: TurnId) => void;
+  /** `anchorKey` is the header row that holds the fold control. */
+  onToggleTurnFold: (turnId: TurnId, anchorKey: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   /** `anchorKey` is the timeline row that holds the block; a standalone block is its own row. */
   onToggleReasoning: (messageId: string, expanded: boolean, anchorKey?: string) => void;
@@ -417,8 +420,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   const onToggleTurnFold = useCallback(
-    (turnId: TurnId) => {
-      suspendEndScrollMaintenanceForDisclosure(`turn-fold:${turnId}`);
+    (turnId: TurnId, anchorKey: string) => {
+      suspendEndScrollMaintenanceForDisclosure(anchorKey);
       setExpandedTurnIds((existing) => {
         const next = new Set(existing);
         if (next.has(turnId)) {
@@ -1267,7 +1270,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
             : "pb-0"
           : isExpandedToolGroupHeader
             ? "pb-0"
-            : row.kind === "turn-fold" || row.kind === "working"
+            : row.kind === "turn-header"
               ? "pb-1.5"
               : (row.kind === "message" &&
                     row.message.role === "assistant" &&
@@ -1299,7 +1302,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "work-live" ? <LiveWorkEntryTimelineRow row={row} /> : null}
       {row.kind === "activity-group" ? <ActivityGroupTimelineRow row={row} /> : null}
       {row.kind === "work-toggle" ? <WorkGroupToggleTimelineRow row={row} /> : null}
-      {row.kind === "turn-fold" ? <TurnFoldTimelineRow row={row} /> : null}
+      {row.kind === "turn-header" ? <TurnHeaderTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
       {row.kind === "change-landed" ? <ChangeLandedTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
@@ -1313,7 +1316,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
       {row.kind === "operation" ? <OperationTimelineRow row={row} /> : null}
       {row.kind === "generic-call" ? <GenericCallTimelineRow row={row} /> : null}
-      {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
     </div>
   );
@@ -1442,10 +1444,12 @@ function ContextCompactionTimelineRow({
 /**
  * One of this Mate's changes landing.
  *
- * A separator, not a card: nothing the agent did caused it, and the person is
- * reading the work in order — "appdev #1 landed" belongs between the message
- * that asked for it and whatever came next, at the moment it happened. The
- * chip inside the message is what is clicked; this is what is scanned.
+ * A quiet line in the same family as the work rows, not a card: nothing the
+ * agent did caused it, and the person is reading the work in order —
+ * "appdev #1 landed" belongs at the moment it happened. It never splits the
+ * work around it: a run it lands inside stays one row, with this line right
+ * after it. The chip inside the message is what is clicked; this is what is
+ * scanned.
  */
 function ChangeLandedTimelineRow({
   row,
@@ -1458,17 +1462,14 @@ function ChangeLandedTimelineRow({
   // nothing about where it landed.
   const label = `${row.event.repository} #${String(row.event.number)} landed`;
   return (
-    <div
-      role="separator"
-      aria-label={label}
-      className="mx-auto flex w-full max-w-3xl items-center gap-3 py-1 text-muted-foreground text-xs"
-    >
-      <span className="h-px flex-1 bg-border/70" />
-      <span className="flex shrink-0 items-center gap-1.5">
-        <GitPullRequestArrow aria-hidden="true" className="size-3" />
-        {label}
+    <div className="flex min-h-6 min-w-0 items-center gap-1.5 px-0.5 py-0.5 text-secondary-label text-sm leading-relaxed">
+      <span className="flex size-6 shrink-0 items-center justify-center text-icon-muted">
+        <GitPullRequestArrow
+          aria-hidden="true"
+          className="block size-4 shrink-0 stroke-[1.8] opacity-70"
+        />
       </span>
-      <span className="h-px flex-1 bg-border/70" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
     </div>
   );
 }
@@ -1641,29 +1642,93 @@ function TimelineRowTimestamp({
   );
 }
 
-function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-fold" }> }) {
+/**
+ * The turn's receipt, written while the turn runs: "Working · 12s" and what
+ * is happening now while live, "Worked for 1m" with its end time once
+ * settled. One row, one place, from the send until forever — the fold
+ * control lives here once the turn settles.
+ */
+function TurnHeaderTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-header" }> }) {
   const ctx = use(TimelineRowCtx);
-  const Icon = row.expanded ? ChevronDownIcon : ChevronRightIcon;
+  const { isCompacting, workingStepLabel } = use(TimelineRowActivityCtx);
 
+  if (row.state === "live") {
+    const activityLabel = turnHeaderActivityLabel(row.activity, ctx.workspaceRoot);
+    return (
+      <div className="border-b border-border/60 pb-2 pt-1">
+        <div className="flex min-w-0 items-center gap-1.5 px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
+          <span className="shrink-0">
+            {isCompacting ? (
+              <CompactingLabel />
+            ) : row.liveSince ? (
+              <>
+                Working · <WorkingTimer createdAt={row.liveSince} />
+              </>
+            ) : (
+              "Working"
+            )}
+          </span>
+          {activityLabel ? (
+            <span className="min-w-0 truncate text-muted-foreground/55">· {activityLabel}</span>
+          ) : null}
+          {workingStepLabel ? (
+            <span className="min-w-0 truncate text-muted-foreground/55">· {workingStepLabel}</span>
+          ) : null}
+        </div>
+        <TurnTally items={row.tally} />
+      </div>
+    );
+  }
+
+  const fold = row.fold;
+  const turnId = row.turnId;
+  const Icon = fold?.expanded ? ChevronDownIcon : ChevronRightIcon;
   return (
-    <div className="group/timeline-row relative flex items-center gap-1 border-b border-border/60 pb-2 pe-0.5 pt-1">
-      <button
-        type="button"
-        aria-expanded={row.expanded}
-        data-scroll-anchor-ignore
-        onClick={() => ctx.onToggleTurnFold(row.turnId)}
-        className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      >
-        <span>{row.label}</span>
-        <Icon className="size-3.5" />
-      </button>
-      <TimelineRowTimestamp
-        createdAt={row.createdAt}
-        timestampFormat={ctx.timestampFormat}
-        className="ms-auto"
-      />
+    <div className="border-b border-border/60 pb-2 pt-1">
+      <div className="group/timeline-row relative flex items-center gap-1 pe-0.5">
+        {fold && turnId !== null ? (
+          <button
+            type="button"
+            aria-expanded={fold.expanded}
+            data-scroll-anchor-ignore
+            onClick={() => ctx.onToggleTurnFold(turnId, row.id)}
+            className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+          >
+            <span>{row.label}</span>
+            <Icon className="size-3.5" />
+          </button>
+        ) : (
+          <span className="px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
+            {row.label}
+          </span>
+        )}
+        {row.endedAt ? (
+          <TimelineRowTimestamp
+            createdAt={row.endedAt}
+            timestampFormat={ctx.timestampFormat}
+            className="ms-auto"
+          />
+        ) : null}
+      </div>
+      <TurnTally items={row.tally} />
     </div>
   );
+}
+
+function turnHeaderActivityLabel(
+  activity: TurnHeaderActivity | null,
+  workspaceRoot: string | undefined,
+): string | null {
+  switch (activity?.kind) {
+    case undefined:
+      return null;
+    case "thinking":
+      return "Thinking";
+    case "tool":
+      return liveWorkEntryLabel(activity.entry, workspaceRoot);
+    case "operation":
+      return activity.operation.voice;
+  }
 }
 
 /**
@@ -1747,11 +1812,21 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
 
   return (
     <>
-      <div className="relative min-w-0 px-1 py-0.5">
-        <MessageAuthorHeading>
-          {author.kind === "mate" ? author.mate.name : "Assistant"}
-        </MessageAuthorHeading>
+      <div
+        className={cn(
+          "relative min-w-0 py-0.5",
+          // Narration: what the agent says between steps, not its answer —
+          // a quieter voice on a thin rail, under no heading of its own.
+          row.narration ? "border-s-2 border-border/60 ps-3 pe-1" : "px-1",
+        )}
+      >
+        {row.narration ? null : (
+          <MessageAuthorHeading>
+            {author.kind === "mate" ? author.mate.name : "Assistant"}
+          </MessageAuthorHeading>
+        )}
         <ChatMarkdown
+          {...(row.narration ? { className: "text-[13px]" } : {})}
           text={messageText}
           cwd={ctx.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}
@@ -1960,35 +2035,6 @@ const GenericCallTimelineRow = memo(function GenericCallTimelineRow({
   );
 });
 
-function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { isCompacting, workingStepLabel } = use(TimelineRowActivityCtx);
-  return (
-    <div>
-      <div className="border-b border-border/60 pb-2 pt-1">
-        <div className="px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
-          {isCompacting ? (
-            <CompactingLabel />
-          ) : row.createdAt ? (
-            <>
-              Working for <WorkingTimer createdAt={row.createdAt} />
-            </>
-          ) : (
-            "Working..."
-          )}
-          {workingStepLabel ? (
-            <span className="ml-2 text-muted-foreground/55">· {workingStepLabel}</span>
-          ) : null}
-        </div>
-      </div>
-      {row.showThinking ? (
-        <div className="mt-1">
-          <ThinkingActivityRow />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function CompactingLabel() {
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -2003,7 +2049,7 @@ function CompactingLabel() {
 // does not create a React commit every second while a response is streaming.
 // ---------------------------------------------------------------------------
 
-/** Live elapsed time for the "Working for" label. */
+/** Live elapsed time for the live turn header. */
 function WorkingTimer({ createdAt }: { createdAt: string }) {
   const textRef = useRef<HTMLSpanElement>(null);
   const initialText = formatWorkingTimerNow(createdAt);
@@ -2096,10 +2142,6 @@ function LiveActivityRow({
       />
     </div>
   );
-}
-
-function ThinkingActivityRow() {
-  return <LiveActivityRow label="Thinking" />;
 }
 
 function LiveActivityContent({

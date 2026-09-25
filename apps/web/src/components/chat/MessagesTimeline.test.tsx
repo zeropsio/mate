@@ -1120,6 +1120,36 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain('aria-label="Hidden work includes a failure"');
   });
 
+  it.each([
+    { state: "running", narration: true },
+    { state: "completed", narration: false },
+  ] as const)(
+    "renders a $state turn's last assistant message as narration: $narration",
+    ({ state, narration }) => {
+      const turnId = TurnId.make("turn-narration");
+      const assistantEntry = buildAssistantTimelineEntry("Checking the build.");
+      const markup = renderToStaticMarkup(
+        <MessagesTimeline
+          {...buildProps()}
+          isWorking={state === "running"}
+          activeTurnStartedAt={state === "running" ? MESSAGE_CREATED_AT : null}
+          latestTurn={{
+            turnId,
+            state,
+            startedAt: MESSAGE_CREATED_AT,
+            completedAt: state === "running" ? null : MESSAGE_CREATED_AT,
+          }}
+          runningTurnId={state === "running" ? turnId : null}
+          timelineEntries={[{ ...assistantEntry, message: { ...assistantEntry.message, turnId } }]}
+        />,
+      );
+
+      expect(markup.includes("border-s-2 border-border/60")).toBe(narration);
+      expect(markup.includes('<h3 class="sr-only select-none">Assistant</h3>')).toBe(!narration);
+      expect(markup).toContain("Checking the build.");
+    },
+  );
+
   it("shows the animated one-line label for a live tool group", () => {
     const turnId = TurnId.make("turn-live");
     const markup = renderToStaticMarkup(
@@ -1155,7 +1185,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Working for");
+    expect(markup).toContain("Working · ");
     expect(markup).toContain("Running pnpm");
   });
 
@@ -1253,19 +1283,19 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("tool call failed");
   });
 
-  it("aligns the iconless Thinking row with the working timer", () => {
+  it("says the turn is thinking in its header from the moment a message is sent", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
         isWorking
         activeTurnStartedAt={MESSAGE_CREATED_AT}
-        timelineEntries={[]}
+        timelineEntries={[buildUserTimelineEntry("Deploy it")]}
       />,
     );
 
-    expect(markup).toContain("Working for");
-    expect(markup).toContain("Thinking");
-    expect(markup).toContain("gap-1.5 py-0.5 px-1");
+    expect(markup).toContain('data-timeline-row-id="turn-header:message-1"');
+    expect(markup).toContain("Working · ");
+    expect(markup).toContain("· Thinking");
   });
 
   it("renders review comment contexts as structured cards instead of raw tags", () => {
