@@ -17,7 +17,6 @@ import {
   orderItemsByPreferredIds,
   openAddProjectFromSidebar,
   resolveSidebarStageBadgeLabel,
-  resolveThreadRowClassName,
   resolveThreadRowLayoutPresentation,
   resolveThreadProviderIconClassName,
   resolveWorkspaceNewThreadAction,
@@ -1069,28 +1068,6 @@ describe("formatWorkingDurationLabel", () => {
   it("clamps negative and non-finite elapsed values to zero", () => {
     expect(formatWorkingDurationLabel(-5_000)).toBe("0s");
     expect(formatWorkingDurationLabel(Number.NaN)).toBe("0s");
-  });
-});
-
-describe("resolveThreadRowClassName", () => {
-  it("uses the active sidebar surface when a thread is both selected and active", () => {
-    const className = resolveThreadRowClassName({ isActive: true, isSelected: true });
-    expect(className).toContain("bg-sidebar-row-active");
-    expect(className).toContain("text-sidebar-foreground");
-    expect(className).not.toContain("bg-primary");
-  });
-
-  it("uses selected hover colors for selected threads", () => {
-    const className = resolveThreadRowClassName({ isActive: false, isSelected: true });
-    expect(className).toContain("bg-sidebar-row-selected");
-    expect(className).toContain("hover:bg-sidebar-row-active");
-    expect(className).not.toContain("bg-primary");
-  });
-
-  it("uses the active sidebar surface for active-only threads", () => {
-    const className = resolveThreadRowClassName({ isActive: true, isSelected: false });
-    expect(className).toContain("bg-sidebar-row-active");
-    expect(className).toContain("hover:bg-sidebar-row-active");
   });
 });
 

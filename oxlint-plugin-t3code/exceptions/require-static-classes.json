@@ -1,0 +1,34 @@
+[
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "MemberExpression",
+    "fingerprint": "<Alert> in item.className",
+    "owner": "web-intake",
+    "reason": "runtime-built className on a components/ui export that predates the ui-kit pass; upstream has no counterpart call site",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "MemberExpression",
+    "fingerprint": "<AlertAction> in item.actionClassName",
+    "owner": "web-intake",
+    "reason": "runtime-built className on a components/ui export that predates the ui-kit pass; upstream has no counterpart call site",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
+    "kind": "TemplateLiteral",
+    "fingerprint": "<Button> in `${APPROVAL_ACTION_CLASS_NAME} h-auto min-h-7 max-w-full px-2.5 py-1.5${ option.warning ? \" text-warning\" : \"\" }`",
+    "owner": "web-intake",
+    "reason": "runtime-built className on a components/ui export that predates the ui-kit pass; upstream has no counterpart call site",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
+    "kind": "Identifier",
+    "fingerprint": "<MenuTrigger> in triggerClassName",
+    "owner": "web-intake",
+    "reason": "the trigger's look is the caller's surface (sidebar tokens there, page tokens on a page); moves to a trigger variant in its own surface round",
+    "expires": "F6"
+  }
+]

@@ -6,11 +6,11 @@ import { ZeropsMark } from "./ZeropsMark";
 
 describe("ZeropsMark", () => {
   it("renders the shared two-tone brand mark as decorative artwork", () => {
-    const markup = renderToStaticMarkup(<ZeropsMark className="mark" />);
+    const markup = renderToStaticMarkup(<ZeropsMark className="size-4" />);
 
     expect(markup).toContain(`viewBox="${ZEROPS_MARK.viewBox}"`);
     expect(markup).toContain(`aria-hidden="true"`);
-    expect(markup).toContain(`class="mark"`);
+    expect(markup).toContain(`class="size-4"`);
     expect(markup.match(/<path/gu)).toHaveLength(ZEROPS_MARK.paths.length);
     for (const path of ZEROPS_MARK.paths) {
       expect(markup).toContain(`d="${path.d}"`);

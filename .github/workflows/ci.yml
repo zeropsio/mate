@@ -77,6 +77,12 @@ jobs:
       - name: Reconcile no-restyle exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-restyle
 
+      - name: Reconcile no-unknown-classes exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-unknown-classes
+
+      - name: Reconcile require-static-classes exceptions
+        run: node scripts/check-guard-exceptions.ts --rule require-static-classes
+
       - name: Check CSS theme tokens
         run: node scripts/check-css-tokens.ts
 

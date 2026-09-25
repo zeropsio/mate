@@ -29,7 +29,6 @@ describe("ComposerTasksBadge", () => {
     expect(markup).toContain('data-composer-tasks-badge="true"');
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).toContain("chat-composer-shoulder-tab");
-    expect(markup).toContain("chat-composer-tasks-tab");
     expect(markup).toContain("rounded-t-xl");
     expect(markup).toContain("border-b-0");
     expect(markup).toContain("left-4");

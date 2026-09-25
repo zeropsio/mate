@@ -11,7 +11,9 @@ import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-te
 import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
 import noPlatformGlobals from "./rules/no-platform-globals.ts";
 import noRestyle from "./rules/no-restyle.ts";
+import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
+import requireStaticClasses from "./rules/require-static-classes.ts";
 
 export default definePlugin({
   meta: {
@@ -29,6 +31,8 @@ export default definePlugin({
     "no-native-title-tooltip": noNativeTitleTooltip,
     "no-platform-globals": noPlatformGlobals,
     "no-restyle": noRestyle,
+    "no-unknown-classes": noUnknownClasses,
     "no-theme-escape-hatches": noThemeEscapeHatches,
+    "require-static-classes": requireStaticClasses,
   },
 });
