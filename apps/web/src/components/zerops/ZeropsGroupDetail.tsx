@@ -962,16 +962,14 @@ export function ZeropsStopDetailPage({
   // The build behind the deploy that failed — its service's repository, the
   // commit it deployed — read whether or not its row is open: whether its job
   // is known decides the verdict's *Run again*.
-  const failedRun = useZeropsDeployRun(
+  const failedRow =
     failedDeploy === undefined
+      ? undefined
+      : services.find((row) => row.hostname === failedDeploy.service);
+  const failedRun = useZeropsDeployRun(
+    failedDeploy === undefined || failedRow === undefined
       ? null
-      : serviceBuildRequest(
-          {
-            repository: services.find((row) => row.hostname === failedDeploy.service)?.repository,
-            sha: failedDeploy.sha,
-          },
-          forge,
-        ),
+      : serviceBuildRequest({ repository: failedRow.repository, sha: failedDeploy.sha }, forge),
   );
 
   if (flowValue === null || flow === undefined || stop === undefined) {
@@ -1073,13 +1071,13 @@ interface StopBuildForge {
 
 /**
  * The read behind one service's build — that service's repository and commit,
- * never the stop's first service's. `null` where it names neither: nothing to read.
+ * never the stop's first service's. `null` where it names no commit: nothing to read.
  */
 export function serviceBuildRequest(
-  row: { readonly repository: string | undefined; readonly sha: string | undefined },
+  row: Pick<StopServiceRow, "repository" | "sha">,
   forge: StopBuildForge,
 ): ZeropsDeployRunRequest | null {
-  if (row.repository === undefined || row.sha === undefined) return null;
+  if (row.sha === undefined) return null;
   return { ...forge, repo: row.repository, sha: row.sha };
 }
 

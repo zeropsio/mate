@@ -245,7 +245,10 @@ function settledOf(deployment: Shown<Deployment>): SettledDeployment | null {
  * The version a service's row names: what the platform says it runs, the Gitea side's where the
  * platform does not say — never the one a build is deploying, which runs nothing yet.
  */
-function rowVersionOf(settled: SettledDeployment | null, read: DeployedVersion): DeployedVersion {
+function settledVersionOf(
+  settled: SettledDeployment | null,
+  read: DeployedVersion,
+): DeployedVersion {
   if (settled === null) return read;
   return settled.kind === "running" ? settled.version : NO_VERSION;
 }
@@ -308,7 +311,7 @@ export function serviceRows(input: {
     // What the Gitea side read: the version a build deploys, while one runs.
     const read = deployedVersion(state.appVersionName);
     const settled = settledOf(deployment);
-    const version = rowVersionOf(settled, read);
+    const version = settledVersionOf(settled, read);
     // The service's own row: `stopView` reads only its version and tone, which the one service
     // and the environment's statuses decide; the row's name, tier and source go unread.
     const row = environmentRow({

@@ -530,8 +530,7 @@ describe("serviceBuildRequest", () => {
     ]);
   });
 
-  it("reads nothing for a service with nothing deployed or no repository", () => {
+  it("reads nothing for a service with nothing deployed", () => {
     expect(serviceBuildRequest({ repository: "apidev", sha: undefined }, forge)).toBeNull();
-    expect(serviceBuildRequest({ repository: undefined, sha: fullSha("a1") }, forge)).toBeNull();
   });
 });
