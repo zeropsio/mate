@@ -38,6 +38,8 @@ import {
   projectAttention,
   releaseContentsCommits,
   releaseContentsSummary,
+  releasesCarried,
+  type GiteaCommit,
   type ReleaseContentsSummary,
   resolvePrimaryConversation,
   shortCommit,
@@ -113,6 +115,7 @@ import type { ZeropsDeployRun, ZeropsDeployRunRequest } from "~/zerops/useZerops
 import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import {
   useZeropsChangeCommits,
+  useZeropsRepositoriesCommits,
   useZeropsRepositoryCommits,
 } from "~/zerops/useZeropsRepositoryCommits";
 import { cn } from "~/lib/utils";
@@ -918,6 +921,7 @@ export function ZeropsStopDetailPage({
   const repo = withheld === null ? stop?.versionRepository : undefined;
   const deployed = useMemo(() => deployedShas(shown), [shown]);
   const stage = stop?.tier === "stage";
+  const production = stop?.tier === "production";
   const forge = { giteaOrigin: flowValue?.giteaOrigin, owner: flow?.slug };
   // Only a stage draws its deploys: a production moves by release, and its
   // releases are the list it is read by.
@@ -927,6 +931,25 @@ export function ZeropsStopDetailPage({
       : { giteaOrigin: flowValue?.giteaOrigin, owner: flow.slug, repo },
   );
   const readDetail = useZeropsCommitDetailReader({ ...forge, repo });
+  // A production's releases say what each carried: its code services'
+  // repositories, read once when the page opens, never on the clock.
+  const releaseServices = production && withheld === null ? declared?.services : undefined;
+  const repositoryOf =
+    releaseServices === undefined
+      ? NO_REPOSITORIES
+      : new Map(
+          releaseServices.flatMap((entry) =>
+            entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
+          ),
+        );
+  const repositories = [...new Set(repositoryOf.values())];
+  const repositoryReads = useZeropsRepositoriesCommits(
+    production && flow !== undefined && repositories.length > 0
+      ? { giteaOrigin: flowValue?.giteaOrigin, owner: flow.slug, repositories }
+      : null,
+  );
+  const releaseReads =
+    releaseServices === undefined ? undefined : { reads: repositoryReads, repositoryOf };
   const release = useReleaseOffer(groupId);
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
@@ -988,7 +1011,6 @@ export function ZeropsStopDetailPage({
     );
   }
 
-  const production = stop.tier === "production";
   const deployment = flowValue.deployments.get(projectId) ?? UNREAD_DEPLOYMENT;
   const view = stopView({ deployment, row: stop, nowMs });
   const activatedAt =
@@ -1039,6 +1061,7 @@ export function ZeropsStopDetailPage({
       pending={flowValue.pending}
       readDetail={readDetail}
       release={release}
+      releaseReads={releaseReads}
       releases={production ? flow.releases : NO_RELEASES}
       repo={repo}
       routeTrouble={route.trouble}
@@ -1102,6 +1125,14 @@ const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
   production: "prod",
 };
 
+/** A production's code repositories, read for what its releases carried. */
+interface StopReleaseReads {
+  /** `repository → its read`. */
+  readonly reads: ReadonlyMap<string, ZeropsCommitsState>;
+  /** `hostname → repository`, the code services only. */
+  readonly repositoryOf: ReadonlyMap<string, string>;
+}
+
 /** How many releases a production lists before the rest wait behind a quiet verb. */
 const RELEASES_SHOWN = 5;
 
@@ -1138,6 +1169,7 @@ export function ZeropsStopPane({
   pending,
   readDetail,
   release,
+  releaseReads,
   releases,
   repo,
   routeTrouble,
@@ -1181,6 +1213,11 @@ export function ZeropsStopPane({
   readonly onOpenProject: () => void;
   /** A production's releases, newest first; empty for a stage. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
+  /**
+   * What a production's code repositories read, so each release row says what it carried;
+   * `undefined` on a stage, where the rows are their shas.
+   */
+  readonly releaseReads?: StopReleaseReads | undefined;
   /** The flow's verbs under way (`flowVerbKey`). */
   readonly pending: ReadonlySet<string>;
   readonly onRollBack: (tag: string) => void;
@@ -1202,6 +1239,25 @@ export function ZeropsStopPane({
   const production = stop.tier === "production";
   const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
   const listed = allReleases ? releases : releases.slice(0, RELEASES_SHOWN);
+  // Over the whole list, not the rows shown: the last row drawn is measured
+  // against the first one not drawn.
+  const changes = useMemo(
+    () =>
+      releaseReads === undefined
+        ? NO_CHANGES
+        : releasesCarried({
+            releases,
+            repositoryOf: releaseReads.repositoryOf,
+            commits: new Map(
+              [...releaseReads.reads].flatMap(([repository, state]) =>
+                state.kind === "read"
+                  ? [[repository, state.commits] as [string, ReadonlyArray<GiteaCommit>]]
+                  : [],
+              ),
+            ),
+          }),
+    [releaseReads, releases],
+  );
   const verb = verdict.verb;
   return (
     <DetailShell
@@ -1295,6 +1351,17 @@ export function ZeropsStopPane({
           <CardGroup title={stopCardTitle("releases", releases.length)}>
             <ul className="flex flex-col">
               <ZeropsReleaseRows
+                {...(releaseReads === undefined
+                  ? {}
+                  : {
+                      carried: {
+                        changes,
+                        reads: releaseReads.reads,
+                        repositoryOf: releaseReads.repositoryOf,
+                        forge,
+                        names,
+                      },
+                    })}
                 groupId={groupId}
                 onRollBack={onRollBack}
                 pending={pending}
@@ -1826,6 +1893,8 @@ const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null
 const NO_SERVICE_ROWS: ReadonlyArray<StopServiceRow> = [];
 /** What a stage lists in a production's place: it has no releases and waits for none. */
 const NO_RELEASES: ReadonlyArray<FlowReleaseRow> = [];
+const NO_REPOSITORIES: ReadonlyMap<string, string> = new Map();
+const NO_CHANGES: ReturnType<typeof releasesCarried> = new Map();
 const NO_COMMITS: ReadonlyArray<WaitingCommit> = [];
 
 /**

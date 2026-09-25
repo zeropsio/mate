@@ -453,6 +453,48 @@ const BEVIRO_FAILED_RELEASES: ReadonlyArray<FlowRelease> = [
   ...BEVIRO_RELEASES.map((release) => ({ ...release, taggedAt: undefined })),
 ];
 
+/**
+ * Beviro's two repositories as their default branches read, newest first: every commit a release
+ * names, and the ones merged between them. v0.1.14 and every release down to v0.1.10 moved
+ * nextstore alone; v0.1.9 moved both, medusa for the last time.
+ */
+const NEXTSTORE_BRANCH = [
+  commit("Move the checkout to the new payment API", NEXTSTORE_FAILED, 0.5, "mate-p-theo"),
+  commit("Show the size guide on every product page", "8b3a1c07", 3, "ales"),
+  commit("Fix the basket badge on mobile", NEXTSTORE[0], 5, "ales"),
+  commit("Translate the footer into Czech", "2d4e6f80", 8, "mate-p-theo"),
+  commit("Lazy-load the product gallery", NEXTSTORE[1], 20, "mate-p-theo"),
+  commit("Add Apple Pay to the checkout", NEXTSTORE[2], 30, "ales"),
+  commit("Round prices to whole crowns", "3c5e7a91", 34, "ales"),
+  commit("Filter the catalogue by size", NEXTSTORE[3], 50, "mate-p-theo"),
+  commit("Cache the category pages", NEXTSTORE[4], 70, "ales"),
+  commit("Show delivery times at checkout", "5a6b7c8d", 80, "mate-p-theo"),
+  commit("Wire the storefront to the Medusa store API", NEXTSTORE[5], 100, "ales"),
+  commit("Start the storefront", NEXTSTORE[6], 120, "ales"),
+  commit("Initial commit", "1f2e3d4c", 130, "ales"),
+];
+
+const MEDUSA_BRANCH = [
+  commit("Add the Czech VAT rates to the tax provider", MEDUSA, 60, "mate-p-theo"),
+  commit("Send the order confirmation from the new template", "6d7e8f90", 64, "ales"),
+  commit("Seed the Beviro product catalogue", "7e8f9a0b", 90, "ales"),
+  commit("Configure the Medusa backend for Beviro", "1a2b3c4d", 110, "ales"),
+  commit("Initial commit", "0a1b2c3d", 130, "ales"),
+];
+
+/** Both of Beviro's repositories read, as the stop page reads them when it opens. */
+const BEVIRO_READS: ReadonlyMap<string, ZeropsCommitsState> = new Map([
+  ["medusadev", { kind: "read", commits: MEDUSA_BRANCH, releases: new Map() }],
+  ["nextstoredev", { kind: "read", commits: NEXTSTORE_BRANCH, releases: new Map() }],
+]);
+
+/** Each of Beviro's repositories answering the same, for the rows that say nothing more yet. */
+const beviroReads = (state: ZeropsCommitsState): ReadonlyMap<string, ZeropsCommitsState> =>
+  new Map([
+    ["medusadev", state],
+    ["nextstoredev", state],
+  ]);
+
 /** A stage the platform lists, each service running what its deploy named. */
 const STAGE_RUNNING = known({
   kind: "running",
@@ -483,6 +525,8 @@ interface StopFixture {
   readonly commits?: ZeropsCommitsState;
   /** A production's releases, newest first. */
   readonly releases?: ReadonlyArray<FlowRelease>;
+  /** `repository → its read`: what a production's releases carried; the rows are shas without it. */
+  readonly reads?: ReadonlyMap<string, ZeropsCommitsState>;
   /** `{service}@{full sha}` → when its production deploy failed. */
   readonly failedDeploys?: ReadonlyMap<string, string | undefined>;
   readonly releasedAge?: string;
@@ -602,6 +646,12 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     failedDeploy === undefined
       ? undefined
       : { ...failedDeploy, jobKnown: fixture.jobKnown ?? false };
+  // The code services' repositories, as the page maps them.
+  const repositoryOf = new Map(
+    fixture.services.flatMap((entry) =>
+      entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
+    ),
+  );
   return (
     <ZeropsStopPane
       buildOf={(entry) => (entry.tone === "bad" ? BROKEN : BUILT)}
@@ -620,6 +670,11 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       pending={new Set()}
       readDetail={READ_DETAIL}
       release={release}
+      releaseReads={
+        production && fixture.reads !== undefined
+          ? { reads: fixture.reads, repositoryOf }
+          : undefined
+      }
       releases={releases}
       repo={production ? undefined : "appdev"}
       routeTrouble={null}
@@ -763,6 +818,7 @@ function Harness() {
               service("production", "nextstore", undefined, undefined, "success", "nextstoredev"),
             ],
             releases: BEVIRO_RELEASES,
+            reads: BEVIRO_READS,
           }}
         />
       </State>
@@ -843,6 +899,7 @@ function Harness() {
             release: BEVIRO_RELEASING,
             releasing: "v0.1.14",
             releases: BEVIRO_RELEASES,
+            reads: BEVIRO_READS,
           }}
         />
       </State>
@@ -894,6 +951,7 @@ function Harness() {
             deployment: BEVIRO_RUNNING,
             routes: BEVIRO_ROUTES,
             releases: BEVIRO_FAILED_RELEASES,
+            reads: BEVIRO_READS,
             failedDeploys: new Map([
               [`nextstore@${sha(NEXTSTORE_FAILED)}`, new Date(NOW - 360_000).toISOString()],
             ]),
@@ -913,6 +971,7 @@ function Harness() {
             routes: BEVIRO_ROUTES,
             release: BEVIRO_BEHIND,
             releases: BEVIRO_RELEASES,
+            reads: BEVIRO_READS,
           }}
         />
       </State>
@@ -930,6 +989,43 @@ function Harness() {
             deployment: BEVIRO_RUNNING,
             releases: BEVIRO_RELEASES,
             releasedAge: "1h ago",
+            reads: BEVIRO_READS,
+          }}
+        />
+      </State>
+
+      <State
+        label="A production, its repositories being read"
+        note="The releases' commits are not read yet: each row is its shas, and its chevron opens onto the history's reading note."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Beviro",
+            services: BEVIRO_LIVE,
+            routes: BEVIRO_ROUTES,
+            deployment: BEVIRO_RUNNING,
+            releases: BEVIRO_RELEASES,
+            releasedAge: "1h ago",
+            reads: beviroReads({ kind: "reading" }),
+          }}
+        />
+      </State>
+
+      <State
+        label="A production whose repositories Gitea would not read"
+        note="The read failed: each row is its shas, and its chevron opens onto why."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Beviro",
+            services: BEVIRO_LIVE,
+            routes: BEVIRO_ROUTES,
+            deployment: BEVIRO_RUNNING,
+            releases: BEVIRO_RELEASES,
+            releasedAge: "1h ago",
+            reads: beviroReads({ kind: "failed", reason: "Gitea did not answer." }),
           }}
         />
       </State>

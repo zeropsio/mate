@@ -6,6 +6,7 @@ import {
   type EnvironmentRow,
   type EnvironmentServiceState,
   type FlowReleaseRow,
+  type GiteaCommit,
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
@@ -23,6 +24,14 @@ import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import { serviceBuildRequest, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
+import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
+
+/** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
+const NOW = vi.hoisted(() => Date.parse("2026-09-25T12:00:00Z"));
+vi.mock("~/zerops/useNowMs", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useNowMs: () => NOW,
+}));
 
 vi.mock("@tanstack/react-router", async (actual) => {
   const { createElement } = await import("react");
@@ -199,7 +208,6 @@ describe("ZeropsGroupPane", () => {
   });
 });
 
-const NOW = Date.parse("2026-09-25T12:00:00Z");
 const fullSha = (seed: string) => seed.padEnd(40, "0");
 
 /** One service of a stop, as the group's Gitea reads it: what it runs and how its deploy went. */
@@ -235,8 +243,16 @@ const RELEASE_OFF = {
   onRelease: () => {},
 };
 
-/** What a production's releases read, newest first, the newest running there. */
-const releases = (count: number, running: ReadonlyMap<string, string>): Array<FlowReleaseRow> =>
+/**
+ * What a production's releases read, newest first, the newest running there. Every earlier one
+ * lists api at `e{index}`, each service in `moving` at `{its initial}{index}`, and every other
+ * service at what runs.
+ */
+const releases = (
+  count: number,
+  running: ReadonlyMap<string, string>,
+  moving: ReadonlyArray<string> = [],
+): Array<FlowReleaseRow> =>
   Array.from({ length: count }, (_, index) =>
     releaseRow(
       {
@@ -247,13 +263,62 @@ const releases = (count: number, running: ReadonlyMap<string, string>): Array<Fl
         entries:
           index === 0
             ? [...running].map(([service, commit]) => ({ service, commit }))
-            : [{ service: "api", commit: fullSha(`e${String(index)}`) }],
+            : [
+                { service: "api", commit: fullSha(`e${String(index)}`) },
+                ...[...running]
+                  .filter(([service]) => service !== "api")
+                  .map(([service, commit]) => ({
+                    service,
+                    commit: moving.includes(service)
+                      ? fullSha(`${service.slice(0, 1)}${String(index)}`)
+                      : commit,
+                  })),
+              ],
         taggedAt: undefined,
       },
       index,
       { production: running, failed: new Map(), live: index === 0 },
     ),
   );
+
+const FOUR_HOURS_AGO = new Date(NOW - 4 * 3_600_000).toISOString();
+
+const gitCommit = (seed: string, subject: string, author?: string): GiteaCommit => ({
+  sha: fullSha(seed),
+  subject,
+  ...(author === undefined ? {} : { author, at: FOUR_HOURS_AGO }),
+});
+
+/** apidev's default branch, newest first: what api runs, down through every earlier release's. */
+const API_BRANCH: ReadonlyArray<GiteaCommit> = [
+  gitCommit("a1", "Fix the cart total", "ales"),
+  gitCommit("d1", "Tidy the cart"),
+  gitCommit("e1", "Two-step checkout"),
+  gitCommit("e2", "Retry the webhook"),
+  gitCommit("e3", "Fix the VAT table"),
+  gitCommit("e4", "Key the cache on locale", "wren"),
+  gitCommit("d4", "Warm the cache"),
+  gitCommit("e5", "Add the cache"),
+  gitCommit("e6", "Open the shop"),
+];
+
+/** webdev's, the same way for web. */
+const WEB_BRANCH: ReadonlyArray<GiteaCommit> = [
+  gitCommit("b2", "Restyle the basket"),
+  gitCommit("w1", "Add a footer"),
+  gitCommit("w2", "Open the storefront"),
+];
+
+const read = (commits: ReadonlyArray<GiteaCommit>): ZeropsCommitsState => ({
+  kind: "read",
+  commits,
+  releases: new Map(),
+});
+
+const READ_BRANCHES: ReadonlyMap<string, ZeropsCommitsState> = new Map([
+  ["apidev", read(API_BRANCH)],
+  ["webdev", read(WEB_BRANCH)],
+]);
 
 interface StopCase {
   readonly tier: EnvironmentRow["tier"];
@@ -267,6 +332,10 @@ interface StopCase {
   readonly releases?: number;
   readonly atMainHead?: boolean;
   readonly commits?: ZeropsCommitsState;
+  /** The services, besides api, whose commit each earlier release moves. */
+  readonly moving?: ReadonlyArray<string>;
+  /** `repository → its read`, as the page reads a production's code repositories; none unless given. */
+  readonly reads?: ReadonlyMap<string, ZeropsCommitsState> | undefined;
 }
 
 /** A stop's page with every read already done — the producers' words, the pane's drawing. */
@@ -325,7 +394,21 @@ function renderStop(input: StopCase): string {
           ? RELEASE_OFF
           : { ...RELEASE_OFF, offered: true, tag: input.offered, contents: [{ commits: waiting }] }
       }
-      releases={input.tier === "production" ? releases(input.releases ?? 0, running) : []}
+      releaseReads={
+        input.reads === undefined
+          ? undefined
+          : {
+              reads: input.reads,
+              repositoryOf: new Map(
+                input.services.flatMap((entry) =>
+                  entry.repository === undefined ? [] : [[entry.hostname, entry.repository]],
+                ),
+              ),
+            }
+      }
+      releases={
+        input.tier === "production" ? releases(input.releases ?? 0, running, input.moving) : []
+      }
       repo="appdev"
       routes={[]}
       services={rows}
@@ -574,6 +657,129 @@ describe("ZeropsStopPane", () => {
     const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 7 });
     expect(count(markup, "data-zerops-environment-row")).toBe(5);
     expect(markup).toContain("Show 2 earlier releases");
+  });
+
+  describe("says what each release carried", () => {
+    /** The row of `tag`: the item its name stands in. */
+    const releaseRowOf = (markup: string, tag: string) => {
+      const name = markup.indexOf(`data-zerops-surface="environment-name">${tag}</span>`);
+      return markup.slice(markup.lastIndexOf("<li", name), markup.indexOf("</li>", name));
+    };
+
+    it.each<{
+      readonly name: string;
+      readonly input: StopCase;
+      readonly tag: string;
+      readonly contains: ReadonlyArray<string>;
+      readonly lacks?: ReadonlyArray<string>;
+    }>([
+      {
+        name: "a single repository: its newest commit's subject, over who, when and the sha",
+        input: {
+          tier: "production",
+          services: [service("production", "api", "a1", "v0.1.13")],
+          releases: 2,
+          reads: READ_BRANCHES,
+        },
+        tag: "v0.1.13",
+        contains: ["Fix the cart total, +1 more", "ales · 4h · api 0"],
+      },
+      {
+        name: "a split group where one service moved: no service named",
+        input: { tier: "production", services: TWO_LIVE, releases: 2, reads: READ_BRANCHES },
+        tag: "v0.1.13",
+        contains: [">Fix the cart total, +1 more<"],
+        lacks: ["api: ", "Restyle the basket"],
+      },
+      {
+        name: "a split group where two moved: the first service named, and the rest counted",
+        input: {
+          tier: "production",
+          services: TWO_LIVE,
+          releases: 2,
+          moving: ["web"],
+          reads: READ_BRANCHES,
+        },
+        tag: "v0.1.13",
+        contains: [">api: Fix the cart total, +2 more<"],
+      },
+      {
+        // The fifth row shown is measured against the sixth release, which is not shown: read
+        // over the shown rows alone it would be the oldest and carry the rest of the branch.
+        name: "the last row shown: what came after the first release not shown",
+        input: {
+          tier: "production",
+          services: [service("production", "api", "a1", "v0.1.13")],
+          releases: 6,
+          reads: READ_BRANCHES,
+        },
+        tag: "v0.1.9",
+        contains: [">Key the cache on locale, +1 more<", "wren · 4h · api 4"],
+        lacks: ["+3 more"],
+      },
+    ])("$name", ({ input, tag, contains, lacks = [] }) => {
+      const row = releaseRowOf(renderStop(input), tag);
+      for (const text of contains) expect(row).toContain(text);
+      for (const text of lacks) expect(row).not.toContain(text);
+    });
+
+    it.each<{ readonly name: string; readonly reads: ZeropsCommitsState }>([
+      { name: "while its commits are read", reads: { kind: "reading" } },
+      { name: "where the forge would not read them", reads: { kind: "failed", reason: "Gone." } },
+    ])("keeps each row's shas, with a closed chevron, $name", ({ reads }) => {
+      const markup = renderStop({
+        tier: "production",
+        services: TWO_LIVE,
+        releases: 2,
+        reads: new Map([
+          ["apidev", reads],
+          ["webdev", reads],
+        ]),
+      });
+      for (const [tag, line] of [
+        ["v0.1.13", "api 0"],
+        ["v0.1.12", "api 1"],
+      ] as const) {
+        const row = releaseRowOf(markup, tag);
+        expect(row).toContain(`data-zerops-surface="environment-summary">${line}</span>`);
+        expect(row).toContain('aria-expanded="false"');
+      }
+      expect(count(markup, 'aria-expanded="true"')).toBe(0);
+    });
+
+    it("is the row it was where the page reads nothing for it", () => {
+      const running = new Map(
+        TWO_LIVE.map((entry) => [entry.hostname, entry.appVersionName?.split(" ")[0] ?? ""]),
+      );
+      const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 2 });
+      expect(markup).toContain(
+        renderToStaticMarkup(
+          <ZeropsReleaseRows
+            groupId="shop"
+            onRollBack={() => {}}
+            pending={new Set()}
+            releases={releases(2, running)}
+          />,
+        ),
+      );
+      expect(markup).not.toContain("release-carried");
+    });
+
+    it.each<{ readonly name: string; readonly reads?: ReadonlyMap<string, ZeropsCommitsState> }>([
+      { name: "read", reads: READ_BRANCHES },
+      { name: "unread" },
+    ])("keeps the list's own pins with its commits $name", ({ reads }) => {
+      const two = renderStop({ tier: "production", services: TWO_LIVE, releases: 2, reads });
+      expect(count(two, ">Roll back to this</button>")).toBe(1);
+      const seven = renderStop({
+        tier: "production",
+        services: TWO_LIVE,
+        releases: 7,
+        reads,
+      });
+      expect(count(seven, "data-zerops-environment-row")).toBe(5);
+      expect(seven).toContain("Show 2 earlier releases");
+    });
   });
 
   it("writes no Deploys under a production and no Releases under a stage", () => {
