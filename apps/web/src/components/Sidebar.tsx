@@ -3790,11 +3790,10 @@ export default function Sidebar() {
     <>
       <SidebarChromeHeader isElectron={isElectron} />
       <SidebarContent
-        className="gap-0"
         fixedHeader={
           // Lifted above the stage backdrop, whose fade bleeds below the
           // header and would otherwise paint across the search row's outline.
-          <SidebarGroup className="relative z-[1] gap-1 p-[var(--sidebar-content-inset)]">
+          <SidebarGroup className="z-[1] gap-1">
             {rosterOnly ? (
               // Every environment is in the roster: there is no thread list to
               // search and no project to start a thread in. The one thing to
