@@ -409,7 +409,7 @@ function SidebarThreadTooltip({
             </div>
           ) : null}
           {thread.session?.lastError ? (
-            <div className="flex min-w-0 items-center gap-2 text-red-600 dark:text-red-400">
+            <div className="flex min-w-0 items-center gap-2 text-destructive-foreground">
               <CircleAlertIcon className="size-3 shrink-0 stroke-current" />
               <div className="min-w-0 truncate">Error occurred</div>
             </div>
@@ -578,19 +578,14 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         data-testid="sidebar-draft-row"
         className={cn(
           "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left text-sidebar-foreground outline-none select-none",
-          props.isActive
-            ? "bg-sidebar-row-active"
-            : "bg-amber-400/[0.04] hover:bg-amber-400/[0.08]",
+          props.isActive ? "bg-sidebar-row-active" : "bg-warning/4 hover:bg-warning/8",
         )}
         onClick={handleActivate}
         onKeyDown={handleKeyDown}
       >
         <div className="relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
           <div className="flex h-5 min-w-0 items-center gap-1.5">
-            <SquarePenIcon
-              aria-hidden
-              className="size-3 shrink-0 text-amber-600 dark:text-amber-300/80"
-            />
+            <SquarePenIcon aria-hidden className="size-3 shrink-0 text-warning-foreground" />
             <ProjectFavicon
               environmentId={session.environmentId}
               cwd={props.projectCwd ?? ""}
@@ -1289,7 +1284,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
                   // Snoozed rows show when they come BACK, not when they were
                   // last touched — the return ticket is the row's whole story.
-                  <span className="text-xs text-blue-600 tabular-nums dark:text-blue-400">
+                  <span className="text-xs text-info-foreground tabular-nums">
                     {props.snoozeWakeLabelText}
                   </span>
                 ) : isWoke ? (
@@ -1302,7 +1297,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           type="button"
                           aria-label="Dismiss Woke notification"
                           onClick={handleAcknowledgeWokeClick}
-                          className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-amber-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-300"
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <AlarmClockIcon aria-hidden className="size-3" />
                           <span role="status">{topStatus?.label}</span>
@@ -4473,16 +4468,16 @@ export default function Sidebar() {
                           data-testid="sidebar-snoozed-shelf-toggle"
                           className="mb-1 mt-3 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
                         >
-                          <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                          <span className="text-xs font-medium text-info-foreground">
                             {snoozedShelfExpanded
                               ? "Snoozed"
                               : `Snoozed (${snoozedThreads.length})`}
                           </span>
-                          <span className="h-px flex-1 bg-blue-500/20 dark:bg-blue-400/15" />
+                          <span className="h-px flex-1 bg-info/20" />
                           <ChevronDownIcon
                             aria-hidden
                             className={cn(
-                              "size-3 text-blue-600 transition-transform dark:text-blue-400",
+                              "size-3 text-info-foreground transition-transform",
                               snoozedShelfExpanded && "rotate-180",
                             )}
                           />
