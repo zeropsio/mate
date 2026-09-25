@@ -254,15 +254,6 @@ export interface ZeropsOperation {
   readonly detail?: string;
   /** The operation's calls, anchor first: one per per-call kind, a bootstrap session's members and joined imports. */
   readonly callIds: ReadonlyArray<string>;
-  /**
-   * The call's attempt ordinal (§2.3 R9, defined at
-   * `reduceZeropsOperations`): >= 1, fixed once its target is known. Absent
-   * while the target is unknown, and for kinds with no single target
-   * (bootstrap, error).
-   */
-  readonly attempts?: number;
-  /** "attempt 3" — `phrases.ts`' `attemptWord(attempts)`; absent at 1 or with no number. */
-  readonly attemptWord?: string;
   readonly target?: { readonly hostname: string };
   /** `deploy` only: a `zerops_deploy_batch` — one step per target, no single service to observe or name. */
   readonly batch?: true;
@@ -317,7 +308,7 @@ export type ZeropsTimelineEntry =
  */
 export interface ZeropsWorkAttempt {
   readonly success: boolean;
-  /** zcp's per-work-session, per-host count — not the thread-wide `ZeropsOperation.attempts`. */
+  /** zcp's per-work-session, per-host count. */
   readonly iteration: number;
   readonly reason?: string;
   /** zcp's coarse failure class, e.g. `build`, `start`, `credential`. */

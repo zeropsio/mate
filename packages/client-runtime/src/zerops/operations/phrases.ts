@@ -63,11 +63,6 @@ export function statusWord(raw: string): string {
   return sentenceCase(raw);
 }
 
-/** "attempt 3" for an attempt ordinal (R9) — `undefined` for the first or an unnumbered one, never rendered. */
-export function attemptWord(attempt: number | undefined): string | undefined {
-  return attempt !== undefined && attempt > 1 ? `attempt ${attempt}` : undefined;
-}
-
 const UPPERCASE_TOKENS: ReadonlySet<string> = new Set(["http", "https", "url", "ssh", "db"]);
 
 /** `service_running` → `"Service running"`, `http_root` → `"HTTP root"`. */

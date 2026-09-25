@@ -880,49 +880,33 @@ describe("ZeropsOperationCard — a running card's header always says what it is
   });
 });
 
-describe("ZeropsOperationCard — attempt number (R9)", () => {
-  it("renders a muted 'attempt 3' in the status cluster of the third try", () => {
-    const failedDeploy = (id: string, createdAt: string) =>
-      zeropsCall({
-        id,
-        startedAt: createdAt,
-        turnId: "t1",
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "failed",
-        resultText: JSON.stringify({ code: "API_ERROR", error: "zerops.yml not found" }),
-      });
+describe("ZeropsOperationCard — repeated calls on one target", () => {
+  it.each([
+    { toolName: "zerops_deploy", input: { targetService: "weatherdash" } },
+    { toolName: "zerops_verify", input: { serviceHostname: "weatherdash" } },
+    { toolName: "zerops_browser", input: { url: "https://weatherdash.example/" } },
+  ])("$toolName: no card carries an attempt number", ({ toolName, input }) => {
     const { operations } = reduceZeropsOperations(
-      [
-        failedDeploy("r1", "2026-09-01T00:00:00.000Z"),
-        failedDeploy("r2", "2026-09-01T00:01:00.000Z"),
-        failedDeploy("r3", "2026-09-01T00:02:00.000Z"),
-      ],
+      ["2026-09-01T00:00:00.000Z", "2026-09-01T00:01:00.000Z", "2026-09-01T00:02:00.000Z"].map(
+        (startedAt, index) =>
+          zeropsCall({
+            id: `${toolName}-${index}`,
+            startedAt,
+            turnId: "t1",
+            toolName,
+            input,
+            status: "failed",
+            resultText: JSON.stringify({ code: "API_ERROR", error: "zerops.yml not found" }),
+          }),
+      ),
       CONTEXT,
     );
-    const third = operations[2]!;
-    expect(third.attempts).toBe(3);
 
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={third} />);
-    expect(html).toContain("attempt 3");
-  });
-
-  it("renders no attempt word for a single call", () => {
-    const single = operationFor(
-      zeropsCall({
-        id: "single1",
-        startedAt: "2026-09-01T00:00:00.000Z",
-        turnId: "t1",
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "completed",
-        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
-      }),
-    );
-    expect(single.attempts).toBe(1);
-
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={single} />);
-    expect(html).not.toContain("attempt");
+    expect(operations).toHaveLength(3);
+    for (const operation of operations) {
+      const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+      expect(html).not.toMatch(/attempt/i);
+    }
   });
 });
 

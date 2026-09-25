@@ -51,7 +51,7 @@ export interface OperationBuildContext {
 /**
  * What a per-kind builder returns: everything about a `ZeropsOperation` that
  * depends on the tool's own shape. `operations.ts` fills in the rest (key,
- * kind, phase, anchor, callIds, attempts) — the same fields for every kind.
+ * kind, phase, anchor, callIds) — the same fields for every kind.
  */
 export interface BuiltCardFields {
   readonly subject: string;

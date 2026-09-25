@@ -1551,7 +1551,6 @@ describe("MessagesTimeline", () => {
       steps: [],
       links: [],
       callIds: ["deploy-operation"],
-      attempts: 1,
       target: { hostname: "kanbandev" },
       hasResult: true,
     };

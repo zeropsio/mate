@@ -61,14 +61,10 @@ function activityFor(entry: EntrySpec): OrchestrationThreadActivity {
   } as unknown as OrchestrationThreadActivity;
 }
 
-function reduceFrom(
-  entries: ReadonlyArray<EntrySpec>,
-  runningTurnId: string | null = "t1",
-  historyComplete = true,
-) {
+function reduceFrom(entries: ReadonlyArray<EntrySpec>, runningTurnId: string | null = "t1") {
   const activities = entries.map(activityFor);
   const calls = collectZeropsCalls(activities, runningTurnId);
-  return reduceZeropsOperations(calls, CONTEXT, { historyComplete });
+  return reduceZeropsOperations(calls, CONTEXT);
 }
 
 function planResult(overrides: Record<string, unknown>): string {
@@ -517,10 +513,10 @@ describe("reduceZeropsOperations — bootstrap session identity", () => {
   });
 });
 
-// ---- retries: R9 ----
+// ---- retries ----
 
-describe("reduceZeropsOperations — retries (R9)", () => {
-  it("N failed retries of the same tool+target in one turn are N cards, each with its own attempt", () => {
+describe("reduceZeropsOperations — retries", () => {
+  it("N failed retries of the same tool+target in one turn are N cards", () => {
     const failedDeploy = (id: string, createdAt: string): EntrySpec => ({
       id,
       createdAt,
@@ -534,14 +530,14 @@ describe("reduceZeropsOperations — retries (R9)", () => {
       failedDeploy("t1b", "2026-09-01T00:01:00.000Z"),
       failedDeploy("t1c", "2026-09-01T00:02:00.000Z"),
     ]);
-    expect(operations.map((o) => [o.key, o.attempts, o.callIds])).toEqual([
-      ["op:t1a", 1, ["t1a"]],
-      ["op:t1b", 2, ["t1b"]],
-      ["op:t1c", 3, ["t1c"]],
+    expect(operations.map((o) => [o.key, o.callIds])).toEqual([
+      ["op:t1a", ["t1a"]],
+      ["op:t1b", ["t1b"]],
+      ["op:t1c", ["t1c"]],
     ]);
   });
 
-  it("a succeeding attempt after failures is its own new operation, numbered as the 2nd attempt (R9)", () => {
+  it("a succeeding retry after a failure is its own card, and the failed one stays failed", () => {
     const { operations } = reduceFrom([
       {
         id: "s1",
@@ -560,40 +556,10 @@ describe("reduceZeropsOperations — retries (R9)", () => {
         resultText: JSON.stringify({ status: "DEPLOYED", target: "weatherdash" }),
       },
     ]);
-    expect(operations).toHaveLength(2);
-    expect(operations[0]!.attempts).toBe(1);
-    expect(operations[1]!.phase).toBe("done");
-    expect(operations[1]!.attempts).toBe(2);
-  });
-
-  it("R9's attempt count spans turns", () => {
-    const failedDeploy = (id: string, createdAt: string, turnId: string): EntrySpec => ({
-      id,
-      createdAt,
-      turnId,
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "failed",
-      resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
-    });
-    const { operations } = reduceFrom([
-      failedDeploy("d1", "2026-09-01T00:00:00.000Z", "t1"),
-      failedDeploy("d2", "2026-09-01T00:01:00.000Z", "t2"),
-      {
-        id: "d3",
-        createdAt: "2026-09-01T00:02:00.000Z",
-        turnId: "t3",
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "completed",
-        resultText: JSON.stringify({ status: "DEPLOYED", target: "weatherdash" }),
-      },
+    expect(operations.map((o) => [o.key, o.phase])).toEqual([
+      ["op:s1", "failed"],
+      ["op:s2", "done"],
     ]);
-    expect(operations).toHaveLength(3);
-    expect(operations[0]!.attempts).toBe(1);
-    expect(operations[1]!.attempts).toBe(2);
-    expect(operations[2]!.phase).toBe("done");
-    expect(operations[2]!.attempts).toBe(3);
   });
 });
 
@@ -914,9 +880,9 @@ describe("a verify whose checks failed", () => {
   });
 });
 
-// ---- the attempt ordinal ----
+// ---- a growing stream ----
 
-describe("reduceZeropsOperations — the attempt ordinal", () => {
+describe("reduceZeropsOperations — a growing stream", () => {
   const at = (minute: number) => `2026-09-01T00:${String(minute).padStart(2, "0")}:00.000Z`;
   const deploy = (
     id: string,
@@ -935,202 +901,6 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
       ? { resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }) }
       : {}),
   });
-  const browser = (id: string, minute: number, url: string): EntrySpec => ({
-    id,
-    createdAt: at(minute),
-    toolName: "zerops_browser",
-    input: { url },
-    status: "completed",
-  });
-
-  interface OrdinalCase {
-    readonly name: string;
-    readonly entries: ReadonlyArray<EntrySpec>;
-    readonly runningTurnId?: string | null;
-    /** `false` while older turns of the thread are not loaded. */
-    readonly historyComplete?: boolean;
-    /** Operation key → its attempt ordinal (`undefined` = no number). */
-    readonly expected: Readonly<Record<string, number | undefined>>;
-  }
-
-  const cases: ReadonlyArray<OrdinalCase> = [
-    {
-      name: "two concurrent in-flight calls on one target get distinct ordinals by anchor",
-      entries: [deploy("a", 0, "inProgress"), deploy("b", 1, "inProgress")],
-      expected: { "op:a": 1, "op:b": 2 },
-    },
-    {
-      name: "a call whose target has not streamed in yet has no number",
-      entries: [
-        deploy("p", 0, "completed"),
-        { ...deploy("x-start", 1, "inProgress", {}), toolCallId: "x" },
-      ],
-      expected: { "op:p": 1, "op:x": undefined },
-    },
-    {
-      name: "a target arriving late gives the call its number by anchor",
-      entries: [
-        deploy("p", 0, "completed"),
-        { ...deploy("x-start", 1, "inProgress", {}), toolCallId: "x" },
-        { ...deploy("x-done", 2, "completed"), toolCallId: "x" },
-      ],
-      expected: { "op:p": 1, "op:x": 2 },
-    },
-    {
-      name: "a call behind a same-kind call whose target has not streamed in has no number yet",
-      entries: [
-        { ...deploy("a-start", 0, "inProgress", {}), toolCallId: "a" },
-        deploy("b", 1, "inProgress"),
-      ],
-      expected: { "op:a": undefined, "op:b": undefined },
-    },
-    {
-      name: "once the earlier target streams in, both are numbered by anchor",
-      entries: [
-        { ...deploy("a-start", 0, "inProgress", {}), toolCallId: "a" },
-        deploy("b", 1, "inProgress"),
-        { ...deploy("a-args", 2, "inProgress"), toolCallId: "a" },
-      ],
-      expected: { "op:a": 1, "op:b": 2 },
-    },
-    {
-      name: "an earlier call that settled without naming a target holds nothing back",
-      entries: [deploy("a", 0, "failed", {}), deploy("b", 1, "completed")],
-      expected: { "op:a": undefined, "op:b": 1 },
-    },
-    {
-      name: "no card is numbered while older turns of the thread are not loaded",
-      entries: [deploy("a", 0, "completed"), deploy("b", 1, "completed")],
-      historyComplete: false,
-      expected: { "op:a": undefined, "op:b": undefined },
-    },
-    {
-      name: "a first call is attempt 1",
-      entries: [deploy("a", 0, "completed")],
-      expected: { "op:a": 1 },
-    },
-    {
-      name: "a repeat after a success is attempt 2",
-      entries: [deploy("a", 0, "completed"), deploy("b", 1, "completed")],
-      expected: { "op:a": 1, "op:b": 2 },
-    },
-    {
-      name: "repeats after failures are cards of their own, never folded into the first",
-      entries: [deploy("a", 0, "failed"), deploy("b", 1, "failed"), deploy("c", 2, "completed")],
-      expected: { "op:a": 1, "op:b": 2, "op:c": 3 },
-    },
-    {
-      name: "an interrupted call counts, and the retry in the next turn is attempt 2",
-      entries: [
-        deploy("a", 0, "inProgress", undefined, "t1"),
-        deploy("b", 1, "completed", undefined, "t2"),
-      ],
-      runningTurnId: "t2",
-      expected: { "op:a": 1, "op:b": 2 },
-    },
-    {
-      name: "declined and stopped calls count",
-      entries: [deploy("a", 0, "declined"), deploy("b", 1, "stopped"), deploy("c", 2, "completed")],
-      expected: { "op:a": 1, "op:b": 2, "op:c": 3 },
-    },
-    {
-      name: "two hosts interleaved count independently",
-      entries: [
-        deploy("a", 0, "completed", { targetService: "appdev" }),
-        deploy("b", 1, "completed", { targetService: "apistage" }),
-        deploy("c", 2, "completed", { targetService: "appdev" }),
-        deploy("d", 3, "completed", { targetService: "apistage" }),
-      ],
-      expected: { "op:a": 1, "op:b": 1, "op:c": 2, "op:d": 2 },
-    },
-    {
-      name: "a hostname is trimmed and lowercased",
-      entries: [
-        deploy("a", 0, "completed", { targetService: "appdev" }),
-        deploy("b", 1, "completed", { targetService: " AppDev " }),
-      ],
-      expected: { "op:a": 1, "op:b": 2 },
-    },
-    {
-      name: "one host, different kinds: deploy and verify count independently",
-      entries: [
-        deploy("a", 0, "completed"),
-        {
-          id: "v",
-          createdAt: at(1),
-          toolName: "zerops_verify",
-          input: { serviceHostname: "appdev" },
-          status: "completed",
-        },
-        deploy("b", 2, "completed"),
-      ],
-      expected: { "op:a": 1, "op:v": 1, "op:b": 2 },
-    },
-    {
-      name: "the count continues across turns",
-      entries: [
-        deploy("a", 0, "completed", undefined, "t1"),
-        deploy("b", 1, "completed", undefined, "t2"),
-        deploy("c", 2, "completed", undefined, "t3"),
-      ],
-      runningTurnId: null,
-      expected: { "op:a": 1, "op:b": 2, "op:c": 3 },
-    },
-    {
-      name: "a browser check is one target up to host case, trailing slash, query order and fragment",
-      entries: [
-        browser("b1", 0, "https://App.example.com/board/?b=2&a=1"),
-        browser("b2", 1, "https://app.example.com/board?a=1&b=2#top"),
-        browser("b3", 2, "https://app.example.com/board?a=1&b=2"),
-        browser("b4", 3, "https://app.example.com/other"),
-        browser("b5", 4, "https://app.example.com/board?a=1"),
-      ],
-      expected: { "op:b1": 1, "op:b2": 2, "op:b3": 3, "op:b4": 1, "op:b5": 1 },
-    },
-    {
-      name: "a browser check at the root is one target with or without the slash",
-      entries: [
-        browser("b1", 0, "https://app.example.com"),
-        browser("b2", 1, "https://app.example.com/"),
-      ],
-      expected: { "op:b1": 1, "op:b2": 2 },
-    },
-    {
-      name: "a browser check with no parseable URL has no number",
-      entries: [browser("b1", 0, "not a url"), browser("b2", 1, "not a url")],
-      expected: { "op:b1": undefined, "op:b2": undefined },
-    },
-    {
-      name: "a bootstrap session and a failed generic tool (error) have no number",
-      entries: [
-        {
-          id: "w",
-          createdAt: at(0),
-          toolName: "zerops_workflow",
-          input: { action: "start", workflow: "bootstrap", route: "classic" },
-          status: "completed",
-          resultText: planResult({}),
-        },
-        {
-          id: "e1",
-          createdAt: at(1),
-          toolName: "zerops_knowledge",
-          input: { hostname: "appdev" },
-          status: "failed",
-          resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
-        },
-        {
-          id: "e2",
-          createdAt: at(2),
-          toolName: "zerops_export",
-          input: { hostname: "apistage" },
-          status: "failed",
-          resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
-        },
-      ],
-      expected: { "bootstrap:w": undefined, "op:e1": undefined, "op:e2": undefined },
-    },
-  ];
 
   // A live stream, row by row in arrival order: turn t1 settles, turn t2 is
   // still running when the page reloads.
@@ -1144,56 +914,34 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
     deploy("e", 6, "failed", undefined, "t2"),
     deploy("f", 7, "inProgress", undefined, "t2"),
   ];
-  const attemptsByKey = (operations: ReadonlyArray<ZeropsOperation>) =>
-    Object.fromEntries(operations.map((o) => [o.key, o.attempts]));
+  const keysOf = (operations: ReadonlyArray<ZeropsOperation>) =>
+    operations.map((operation) => operation.key);
 
-  it("a card is never removed and its number never changes while the stream grows", () => {
-    const seen = new Map<string, number | undefined>();
+  it("a card is never removed while the stream grows", () => {
+    const seen = new Set<string>();
     for (let length = 1; length <= stream.length; length += 1) {
-      const operations = reduceFrom(stream.slice(0, length), "t2").operations;
-      const keys = new Set(operations.map((operation) => operation.key));
-      for (const key of seen.keys()) {
+      const keys = new Set(keysOf(reduceFrom(stream.slice(0, length), "t2").operations));
+      for (const key of seen) {
         expect(keys).toContain(key);
       }
-      for (const operation of operations) {
-        const before = seen.get(operation.key);
-        if (before !== undefined) {
-          expect(operation.attempts).toBe(before);
-        }
-        seen.set(operation.key, operation.attempts);
+      for (const key of keys) {
+        seen.add(key);
       }
     }
-    expect(attemptsByKey(reduceFrom(stream, "t2").operations)).toStrictEqual({
-      "op:a": 1,
-      "op:b": 2,
-      "op:c": 3,
-      "op:d": 1,
-      "op:e": 4,
-      "op:f": 5,
-    });
+    expect(keysOf(reduceFrom(stream, "t2").operations)).toStrictEqual([
+      "op:a",
+      "op:b",
+      "op:d",
+      "op:c",
+      "op:e",
+      "op:f",
+    ]);
   });
 
-  it("a reload — rows in any order, the turn no longer running — gives the same numbers", () => {
-    const live = attemptsByKey(reduceFrom(stream, "t2").operations);
-    const reloaded = attemptsByKey(reduceFrom(stream.toReversed(), null).operations);
+  it("a reload — rows in any order, the turn no longer running — gives the same cards", () => {
+    const live = keysOf(reduceFrom(stream, "t2").operations);
+    const reloaded = keysOf(reduceFrom(stream.toReversed(), null).operations);
     expect(reloaded).toStrictEqual(live);
-  });
-
-  it.each(cases)("$name", ({ entries, runningTurnId, historyComplete, expected }) => {
-    const { operations } = reduceFrom(
-      entries,
-      runningTurnId === undefined ? "t1" : runningTurnId,
-      historyComplete,
-    );
-    const actual = Object.fromEntries(operations.map((o) => [o.key, o.attempts]));
-    expect(actual).toStrictEqual(expected);
-    for (const operation of operations) {
-      expect(operation.attemptWord).toBe(
-        operation.attempts !== undefined && operation.attempts > 1
-          ? `attempt ${operation.attempts}`
-          : undefined,
-      );
-    }
   });
 });
 
@@ -1253,28 +1001,6 @@ describe("reduceZeropsOperations — read tools", () => {
         phase: "done",
         readResult: { kind, pending: false },
       });
-    });
-
-    it(`${toolName} read again is never "attempt 2"`, () => {
-      const { operations } = reduceFrom([
-        {
-          id: "c1",
-          createdAt: "2026-09-01T00:00:00.000Z",
-          toolName,
-          input,
-          status: "completed",
-          resultText: JSON.stringify(result),
-        },
-        {
-          id: "c2",
-          createdAt: "2026-09-01T00:00:05.000Z",
-          toolName,
-          input,
-          status: "completed",
-          resultText: JSON.stringify(result),
-        },
-      ]);
-      expect(operations.map((operation) => operation.attemptWord)).toEqual([undefined, undefined]);
     });
   }
 

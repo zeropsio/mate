@@ -2413,9 +2413,6 @@ export default function ChatView(props: ChatViewProps) {
   );
   const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
   const nowMs = useNowMs();
-  // Attempt numbers count the whole thread; a window of it would renumber
-  // cards once older turns load, so they wait until nothing older remains.
-  const zeropsHistoryComplete = routeKind !== "server" || !threadHasOlderTurns(routeThreadState);
   const zeropsThreadModel = useMemo(
     () =>
       deriveZeropsThreadModel({
@@ -2423,9 +2420,8 @@ export default function ChatView(props: ChatViewProps) {
         lifecycle: activeZeropsLifecycle,
         runningTurnId: activeRunningTurnId,
         nowMs,
-        historyComplete: zeropsHistoryComplete,
       }),
-    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, nowMs, zeropsHistoryComplete],
+    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, nowMs],
   );
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),

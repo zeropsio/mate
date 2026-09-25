@@ -80,7 +80,6 @@ function operation(overrides: Partial<ZeropsOperation> = {}): ZeropsOperation {
     steps: [],
     links: [],
     callIds: ["e1"],
-    attempts: 1,
     target: { hostname: "weatherdash" },
     hasResult: false,
     ...overrides,

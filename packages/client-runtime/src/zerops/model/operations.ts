@@ -4,13 +4,12 @@
  * bootstrap sessions key `bootstrap:<founderCallId>` — a fixed identity
  * (§2.1 principle 1), never re-keyed once a session id decodes. See
  * `mate-session-model-2026-09-05.md` §2.3 R4-R9 and
- * `C-client-domain.md` §1.5 — except R8: a same-turn retry is never folded
- * into the card it retries, it is a card of its own with its own attempt
- * number (R9), so no row leaves the timeline and no older card is rewritten.
+ * `C-client-domain.md` §1.5 — except R8 and R9: a same-turn retry is never
+ * folded into the card it retries, it is a card of its own, so no row leaves
+ * the timeline and no older card is rewritten; and no card is numbered.
  *
  * Pure and deterministic: same calls and context in, same operations out.
  */
-import { attemptWord } from "../operations/phrases.ts";
 import {
   classifyZeropsCall,
   isBootstrapRouteMenuStart,
@@ -75,9 +74,8 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
 };
 
 /**
- * The read tools' kinds: reading the same thing twice is not a retry, so they
- * never count an "attempt N"; and a read is how the agent looked, not an
- * outcome, so its card folds with the turn's work once the turn settles.
+ * The read tools' kinds: a read is how the agent looked, not an outcome, so
+ * its card folds with the turn's work once the turn settles.
  */
 const READ_KINDS: ReadonlySet<ZeropsOperationKind> = new Set([
   "logs",
@@ -115,74 +113,11 @@ function anchorOf(call: ZeropsCall): { anchorAt: string; anchorActivityId: strin
   return { anchorAt: call.startedAt, anchorActivityId: call.anchorActivityId };
 }
 
-// --- standalone (per-call) operations and their attempt ordinal (R9) ---------
+// --- standalone (per-call) operations ----------------------------------------
 
 interface StandaloneCall {
   readonly kind: Exclude<ZeropsOperationKind, "bootstrap">;
   readonly call: ZeropsCall;
-}
-
-/** The service a call names in its arguments, trimmed and lowercased; `undefined` until named. */
-function inputHostname(input: Record<string, unknown>): string | undefined {
-  const raw =
-    readInputString(input, "targetService") ??
-    readInputString(input, "serviceHostname") ??
-    readInputString(input, "hostname");
-  const normalized = raw?.trim().toLowerCase();
-  return normalized === undefined || normalized.length === 0 ? undefined : normalized;
-}
-
-const compareStrings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-
-/**
- * The page a browser check opens: origin (lowercase host) + pathname without
- * a trailing slash + the query sorted by name then value; the fragment is
- * dropped. `undefined` until a parseable URL has streamed in.
- */
-function browserTarget(input: Record<string, unknown>): string | undefined {
-  const raw = readInputString(input, "url")?.trim();
-  if (raw === undefined) {
-    return undefined;
-  }
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return undefined;
-  }
-  const params = [...url.searchParams].sort(
-    ([nameA, valueA], [nameB, valueB]) =>
-      compareStrings(nameA, nameB) || compareStrings(valueA, valueB),
-  );
-  const query = new URLSearchParams(params).toString();
-  return `${url.origin}${url.pathname.replace(/\/+$/, "")}${query.length > 0 ? `?${query}` : ""}`;
-}
-
-/**
- * The attempt identity (R9): card kind + normalized target. Two calls share
- * one exactly when the second is another go at the first.
- *
- * - Service-targeted kinds: the named hostname, trimmed and lowercased.
- * - `browser`: the normalized page URL (`browserTarget`).
- * - `error` (a failed call of a tool with no card of its own) has no single
- *   meaningful target — no identity, like bootstrap and generic rows.
- * - A read kind (`READ_KINDS`) is never another go at anything — no identity.
- * - `undefined` while the target is unknown (arguments not streamed in yet):
- *   an empty input never becomes an identity.
- */
-function hasAttemptIdentity(kind: Exclude<ZeropsOperationKind, "bootstrap">): boolean {
-  return kind !== "error" && !isReadOperationKind(kind);
-}
-
-function attemptIdentityFor(
-  kind: Exclude<ZeropsOperationKind, "bootstrap">,
-  input: Record<string, unknown>,
-): string | undefined {
-  if (!hasAttemptIdentity(kind)) {
-    return undefined;
-  }
-  const target = kind === "browser" ? browserTarget(input) : inputHostname(input);
-  return target === undefined ? undefined : `${kind} ${target}`;
 }
 
 const BUILDER_BY_KIND: Readonly<
@@ -218,12 +153,10 @@ function buildFieldsFor(
 
 function buildStandaloneOperation(
   { kind, call }: StandaloneCall,
-  attempts: number | undefined,
   context: OperationBuildContext,
 ): ZeropsOperation {
   const fields = buildFieldsFor(kind, call, context);
   const phase = fields.phaseOverride ?? phaseFor(call.status);
-  const attemptWordText = attemptWord(attempts);
   return {
     key: `op:${call.id}`,
     kind,
@@ -241,8 +174,6 @@ function buildStandaloneOperation(
     links: fields.links,
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
     callIds: [call.id],
-    ...(attempts !== undefined ? { attempts } : {}),
-    ...(attemptWordText !== undefined ? { attemptWord: attemptWordText } : {}),
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     ...(fields.batch !== undefined ? { batch: fields.batch } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
@@ -428,20 +359,10 @@ export interface ZeropsOperationsReduction {
   readonly genericCalls: ReadonlyArray<ZeropsCall>;
 }
 
-export interface ZeropsReductionOptions {
-  /**
-   * `false` while the client holds only a window of the thread (older turns
-   * not loaded, or not known yet): an ordinal counted over a window would
-   * change once earlier turns load, so no card is numbered until then.
-   */
-  readonly historyComplete?: boolean;
-}
-
 /** `reduceZeropsOperations` in anchor order — one object per thing done to the project. */
 export function reduceZeropsOperations(
   calls: ReadonlyArray<ZeropsCall>,
   context: OperationBuildContext,
-  { historyComplete = true }: ZeropsReductionOptions = {},
 ): ZeropsOperationsReduction {
   const ordered = [...calls].sort((a, b) => compareAnchors(anchorOf(a), anchorOf(b)));
 
@@ -453,24 +374,9 @@ export function reduceZeropsOperations(
   const standaloneCalls: StandaloneCall[] = [];
   const genericCalls: ZeropsCall[] = [];
 
-  // R9, the attempt ordinal: a call's number is 1 + the calls anywhere in the
-  // thread (any turn) with the same attempt identity (`attemptIdentityFor`)
-  // anchored before it, whatever their outcome — done, failed, interrupted,
-  // declined, stopped or still running. Counted in anchor order, so a later
-  // call never changes an earlier one's number, and the count is a pure
-  // function of the persisted calls: identical after a reload. A number is
-  // only shown once it can no longer change: a call with no identity (target
-  // unknown yet, or a kind with no single target) has none, nor does a call
-  // anchored after a still-running call of the same kind whose target has not
-  // streamed in (that one may turn out to be an earlier attempt at the same
-  // target), nor any call while the thread's older turns are not loaded
-  // (`historyComplete`). Every call is a card of its own: a retry never
-  // merges into an earlier card, which would remove a row mid-turn and
-  // rewrite what an older card already showed.
-  const attemptsSoFar = new Map<string, number>();
-  const attemptByCallId = new Map<string, number>();
-  const kindsAwaitingTarget = new Set<ZeropsOperationKind>();
-
+  // Every call is a card of its own: a retry never merges into an earlier
+  // card, which would remove a row mid-turn and rewrite what an older card
+  // already showed.
   for (const call of ordered) {
     if (call.agentInternal) {
       continue;
@@ -506,24 +412,12 @@ export function reduceZeropsOperations(
       continue;
     }
 
-    const identity = attemptIdentityFor(kind, call.input);
-    if (identity !== undefined) {
-      const attempt = (attemptsSoFar.get(identity) ?? 0) + 1;
-      attemptsSoFar.set(identity, attempt);
-      if (historyComplete && !kindsAwaitingTarget.has(kind)) {
-        attemptByCallId.set(call.id, attempt);
-      }
-    } else if (call.status === "inProgress" && hasAttemptIdentity(kind)) {
-      kindsAwaitingTarget.add(kind);
-    }
     standaloneCalls.push({ kind, call });
   }
 
   const operations = [
     ...bootstrapState.groups.map(buildBootstrapOperation),
-    ...standaloneCalls.map((standalone) =>
-      buildStandaloneOperation(standalone, attemptByCallId.get(standalone.call.id), context),
-    ),
+    ...standaloneCalls.map((standalone) => buildStandaloneOperation(standalone, context)),
   ].sort((a, b) => compareAnchors(a, b));
 
   return { operations, genericCalls };

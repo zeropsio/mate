@@ -2830,7 +2830,6 @@ describe("deriveTimelineEntries — Zerops model entries", () => {
     steps: [],
     links: [],
     callIds: ["call-deploy-1"],
-    attempts: 1,
     hasResult: true,
   };
 

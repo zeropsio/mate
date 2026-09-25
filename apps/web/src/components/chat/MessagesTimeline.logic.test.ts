@@ -1093,7 +1093,6 @@ describe("deriveMessagesTimelineRows", () => {
     steps: [],
     links: [],
     callIds: ["op-1"],
-    attempts: 1,
     hasResult: true,
     ...overrides,
   });
@@ -3359,7 +3358,6 @@ describe("computeStableMessagesTimelineRows", () => {
       steps: [],
       links: [],
       callIds: ["op-stable"],
-      attempts: 1,
       hasResult: true,
       ...overrides,
     });
@@ -3420,7 +3418,6 @@ describe("computeStableMessagesTimelineRows", () => {
       ],
       links: [],
       callIds: ["op-steps"],
-      attempts: 1,
       hasResult: false,
       ...overrides,
     });
@@ -3444,7 +3441,7 @@ describe("computeStableMessagesTimelineRows", () => {
     const firstRows = createRows(operation());
     const initial = computeStableMessagesTimelineRows(firstRows, { byId: new Map(), result: [] });
 
-    // Same phase, same attempts/settledAt/hasResult, same step COUNT — only
+    // Same phase, same settledAt/hasResult, same step COUNT — only
     // the middle step's own `state` (and `stateLabel`) advances.
     const secondRows = createRows(
       operation({
@@ -3832,7 +3829,6 @@ describe("turn header", () => {
         steps: settled?.failedStep ? [failedStep] : [],
         links: [],
         callIds: [key],
-        attempts: 1,
         ...(kind === "import" ? {} : { target: { hostname: subject } }),
         hasResult: settled !== undefined,
         ...(kind === "browser" && settled?.failedStep

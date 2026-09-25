@@ -38,7 +38,6 @@ const bootstrapOperation = (overrides: Partial<ZeropsOperation>): ZeropsOperatio
     steps: [],
     links: [],
     callIds: ["f1"],
-    attempts: 1,
     hasResult: true,
     session: { sessionIds: ["sess1"], completed: 1, total: 3 },
     ...overrides,

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  attemptWord,
   browserFiguresLine,
   browserLiveCaption,
   humanizeCheckName,
@@ -98,17 +97,6 @@ describe("processActionWord — a platform process's action, in words", () => {
     { actionName: "serviceStackRestart", word: "Service stack restart" },
   ])("$actionName → $word", ({ actionName, word }) => {
     expect(processActionWord(actionName)).toBe(word);
-  });
-});
-
-describe("attemptWord — the R9 attempt ordinal", () => {
-  it.each([
-    { attempt: undefined, word: undefined },
-    { attempt: 1, word: undefined },
-    { attempt: 2, word: "attempt 2" },
-    { attempt: 3, word: "attempt 3" },
-  ])("attempt $attempt reads $word", ({ attempt, word }) => {
-    expect(attemptWord(attempt)).toBe(word);
   });
 });
 

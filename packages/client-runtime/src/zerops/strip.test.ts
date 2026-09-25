@@ -23,7 +23,6 @@ const runningOperation = (kicker: string): ZeropsOperation =>
     steps: [],
     links: [],
     callIds: ["1"],
-    attempts: 1,
     hasResult: false,
   }) as unknown as ZeropsOperation;
 

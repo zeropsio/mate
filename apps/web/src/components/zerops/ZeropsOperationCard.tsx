@@ -8,7 +8,7 @@
  * Every card heads with one compact row: a kind glyph, then either the
  * status word as the verb label beside the subject (a card that names one
  * service or page, `operationSubject`) or the voice line with the status
- * word at the right; the attempt and the clock close the row. Under it, one
+ * word at the right; the clock closes the row. Under it, one
  * dense body per kind — a browser check's thumbnail beside its figures, a
  * deploy's pipeline as one segmented row, a verify's checks as one row of
  * chips — then one quiet row with the result, the version and the links.
@@ -123,33 +123,20 @@ function headerDurationText(operation: ZeropsOperation, now: number): string | u
     : undefined;
 }
 
-/** The attempt count and the clock after the status word — each led by a middle dot unless it opens the cluster. */
+/** The clock after the status word — led by a middle dot unless it opens the cluster. */
 function HeaderMeta({
-  attemptWord,
   durationText,
   led,
 }: {
-  readonly attemptWord: string | undefined;
   readonly durationText: string | undefined;
   readonly led: boolean;
 }) {
-  const durationLed = led || attemptWord !== undefined;
-  return (
-    <>
-      {attemptWord !== undefined ? (
-        <span data-zerops-operation-attempt>
-          {led ? "· " : ""}
-          {attemptWord}
-        </span>
-      ) : null}
-      {durationText !== undefined ? (
-        <span className="tabular-nums" data-zerops-operation-duration>
-          {durationLed ? "· " : ""}
-          {durationText}
-        </span>
-      ) : null}
-    </>
-  );
+  return durationText !== undefined ? (
+    <span className="tabular-nums" data-zerops-operation-duration>
+      {led ? "· " : ""}
+      {durationText}
+    </span>
+  ) : null;
 }
 
 /**
@@ -185,7 +172,7 @@ function CardHeader({
           <OperationSubjectLine running={operation.phase === "running"} subject={subject} />
         </div>
         <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs">
-          <HeaderMeta attemptWord={operation.attemptWord} durationText={durationText} led={false} />
+          <HeaderMeta durationText={durationText} led={false} />
         </span>
       </header>
     );
@@ -204,7 +191,7 @@ function CardHeader({
         role="status"
       >
         <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
-        <HeaderMeta attemptWord={operation.attemptWord} durationText={durationText} led />
+        <HeaderMeta durationText={durationText} led />
       </span>
     </header>
   );
