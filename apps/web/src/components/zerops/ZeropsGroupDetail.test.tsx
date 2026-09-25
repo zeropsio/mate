@@ -417,9 +417,6 @@ function renderStop(input: StopCase): string {
       verdict={verdict}
       view={view}
       waiting={waiting}
-      menuWaiting={
-        input.tier === "production" ? releaseContentsSummary([{ commits: waiting }], 8) : undefined
-      }
     />,
   );
 }

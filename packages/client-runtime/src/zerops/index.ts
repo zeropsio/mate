@@ -391,6 +391,23 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
+  changeTitles,
+  productionDistance,
+  runName,
+  stageDistance,
+  stageMarks,
+  stageStandings,
+  stopRowLine,
+  type ServiceChanges,
+  type StageMark,
+  type StageStandings,
+  type StopChange,
+  type StopDistance,
+  type StopRowChange,
+  type StopRowLine,
+  type StopWordKind,
+} from "./stopDistance.ts";
+export {
   changesNotLive,
   PROJECT_ALL_CLEAR,
   projectAttention,
@@ -451,8 +468,6 @@ export {
   releaseContentsCommits,
   releaseContentsSummary,
   sidebarChangeLabel,
-  stopAttention,
-  type StopAttention,
   type FlowPullRequest,
   type FlowPullRequestKind,
   type FlowVerb,

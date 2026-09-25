@@ -59,11 +59,9 @@ const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
  * The verb's count used to take a separate `urgent` flag, which one call site
  * set and never unset — so *Release* counted what it would ship in the same
  * amber a change that cannot land wears. A verb says one thing, so its count
- * says it too, and the bubble a folded project wears in its place says the
- * same thing again: folded and unfolded were two different colours for one
- * set of changes (the owner, 2026-09-19: "the collapsed version should match").
+ * says it too.
  */
-export const COUNT_TONE_CLASS: Record<ServiceStatusToneId, string> = {
+const COUNT_TONE_CLASS: Record<ServiceStatusToneId, string> = {
   ok: "bg-[var(--zerops-status-ok)]/20 text-[var(--zerops-status-ok-text)]",
   busy: "bg-[var(--zerops-status-busy)]/20 text-[var(--zerops-status-busy-text)]",
   attention: "bg-[var(--zerops-status-attention)]/20 text-[var(--zerops-status-attention-text)]",

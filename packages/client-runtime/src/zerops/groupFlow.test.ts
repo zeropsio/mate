@@ -351,26 +351,25 @@ describe("groupFlow", () => {
       },
     },
     {
-      // A stage is never what a release, or anything else, waits behind
-      // (D28): its own failure stays on its own row and never becomes the
-      // one next step.
-      case: "a failed stage never becomes the next step, and does not outrank the merge",
+      // A failed stage is a failed stop like production's (owner,
+      // 2026-09-25): the heading's one step is fixing it, ahead of a merge.
+      case: "a failed stage is the deploy to fix, ahead of the merge",
       input: STAGE_FAILED,
       step: {
-        kind: "merge",
-        text: "Pull request #1 waits for your merge",
-        verb: "Merge",
-        target: { kind: "change", repository: "app", number: 1 },
+        kind: "fix-deploy",
+        text: "The last deploy to stage failed",
+        verb: "See the build",
+        target: { kind: "stop", projectId: "p-stage" },
       },
     },
     {
-      case: "a failed stage does not hide a release either (D28)",
+      case: "a failed stage is the deploy to fix, ahead of a release",
       input: STAGE_FAILED_WITH_RELEASE,
       step: {
-        kind: "release",
-        text: "1 change not live",
-        verb: "Release v0.1.0",
-        target: { kind: "release", tag: "v0.1.0" },
+        kind: "fix-deploy",
+        text: "The last deploy to stage failed",
+        verb: "See the build",
+        target: { kind: "stop", projectId: "p-stage" },
       },
     },
     {
@@ -567,7 +566,7 @@ describe("groupFlow", () => {
     expect(flow.nextStep.kind).not.toBe("release");
   });
 
-  it("still ranks a failed production above the release, unlike a failed stage", () => {
+  it("still ranks a failed production above the release", () => {
     const flow = groupFlow({
       ...FSADFDASFSA,
       stops: [
@@ -593,6 +592,32 @@ describe("groupFlow", () => {
     expect(flow.production).toMatchObject({
       kind: "deploy-failed",
       candidate: { tag: "v0.1.0", waiting: 1 },
+    });
+  });
+
+  it("names production's failure before a stage's, and keeps the release a failed stage does not block", () => {
+    const [production] = FSADFDASFSA.stops;
+    const flow = groupFlow({
+      ...STAGE_FAILED_WITH_RELEASE,
+      stops: [
+        ...STAGE_FAILED_WITH_RELEASE.stops.filter((stop) => stop.tier === "stage"),
+        {
+          ...production!,
+          row: declared({
+            projectId: "p-prod",
+            name: "production",
+            tier: "production",
+            appVersionName: MAIN_SHA,
+            status: "failure",
+          }),
+          deployment: runs(MAIN_SHA),
+        },
+      ],
+    });
+    expect(flow.nextStep.target).toEqual({ kind: "stop", projectId: "p-prod" });
+    // D28: the stage's failure takes the heading's step, never the release.
+    expect(groupFlow(STAGE_FAILED_WITH_RELEASE).production).toMatchObject({
+      kind: "ready-to-release",
     });
   });
 

@@ -1,4 +1,4 @@
-import type { ReleaseContentsSummary, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -39,7 +39,6 @@ const menu = (
   props: Partial<{
     stop: StopView;
     routes: ReadonlyArray<ZeropsPublicRoute>;
-    waiting: ReleaseContentsSummary | undefined;
     onOpenStop: (() => void) | undefined;
   }> = {},
 ) =>
@@ -51,7 +50,6 @@ const menu = (
       routes={props.routes ?? []}
       stop={props.stop ?? STOP}
       triggerClassName="the-callers-hand"
-      waiting={props.waiting}
     />,
   );
 
@@ -120,26 +118,5 @@ describe("ZeropsStopMenu", () => {
     expect(html).toContain("app-26a7.prg1.zerops.app");
     expect(html).toContain("api-26a7-3000.prg1.zerops.app");
     expect(menu()).not.toContain('data-zerops-surface="public-routes"');
-  });
-
-  it.each([
-    [
-      "several, the rest counted",
-      { subjects: ["Add a cart", "Fix the footer"], more: 1, total: 3 },
-      ["3 changes waiting", "Add a cart", "Fix the footer", "+1 more"],
-    ],
-    ["one, in the singular", { subjects: ["Add a cart"], more: 0, total: 1 }, ["1 change waiting"]],
-  ] as const)("lists the changes waiting: %s", (_case, waiting, words) => {
-    const html = menu({ waiting });
-    expect(html).toContain('data-zerops-surface="stop-menu-waiting"');
-    for (const word of words) expect(html).toContain(word);
-    expect(html.includes("more</div>")).toBe(waiting.more > 0);
-  });
-
-  it.each([
-    ["on a stage", undefined],
-    ["on a production nothing waits on", { subjects: [], more: 0, total: 0 }],
-  ] as const)("lists no changes waiting %s", (_case, waiting) => {
-    expect(menu({ waiting })).not.toContain('data-zerops-surface="stop-menu-waiting"');
   });
 });

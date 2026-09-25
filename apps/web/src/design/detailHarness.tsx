@@ -664,7 +664,6 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       forge={{ giteaOrigin: undefined, owner: group.toLowerCase() }}
       groupId={group.toLowerCase()}
       groupName={group}
-      menuWaiting={production ? releaseContentsSummary(release.contents, 8) : undefined}
       names={NAMES}
       onEnableRoute={() => {}}
       onOpenProject={() => {}}

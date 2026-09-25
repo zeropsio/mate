@@ -66,6 +66,7 @@ function projectFlow(over: Partial<ZeropsProjectFlow> = {}): ZeropsProjectFlow {
     declarations: [],
     environments: [],
     environmentInputs: [],
+    mainHeads: new Map(),
     missing: [],
     pullRequests: [],
     merged: [],

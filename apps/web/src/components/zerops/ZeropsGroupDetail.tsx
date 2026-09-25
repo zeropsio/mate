@@ -1029,9 +1029,6 @@ export function ZeropsStopDetailPage({
       frameActions={frameActions}
       groupId={groupId}
       groupName={stopGroupName}
-      menuWaiting={
-        production ? releaseContentsSummary(flow.release.contents, MENU_CHANGES_SHOWN) : undefined
-      }
       names={names}
       onEnableRoute={(serviceId) => {
         void route.enable(projectId, serviceId);
@@ -1160,9 +1157,6 @@ interface StopReleaseReads {
 /** How many releases a production lists before the rest wait behind a quiet verb. */
 const RELEASES_SHOWN = 5;
 
-/** How many waiting changes a stop's menu lists before it counts the rest — the left menu's. */
-const MENU_CHANGES_SHOWN = 8;
-
 /**
  * One stop, drawn — every read already done and handed in.
  *
@@ -1185,7 +1179,6 @@ export function ZeropsStopPane({
   frameActions,
   groupId,
   groupName,
-  menuWaiting,
   names,
   onEnableRoute,
   onOpenProject,
@@ -1230,8 +1223,6 @@ export function ZeropsStopPane({
   readonly runAgain?: StopRunAgain | undefined;
   /** What `main` has that this production does not; empty for a stage. */
   readonly waiting: ReadonlyArray<WaitingCommit>;
-  /** The menu's list of waiting changes; a production's only. */
-  readonly menuWaiting: ReleaseContentsSummary | undefined;
   /** Every public address of the stop, for its menu; each service row lists its own. */
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly onOpenProject: () => void;
@@ -1293,7 +1284,6 @@ export function ZeropsStopPane({
           routes={routes}
           stop={view}
           triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-          waiting={menuWaiting}
         />
       }
       crumbs={crumbs}

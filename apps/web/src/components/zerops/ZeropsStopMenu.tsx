@@ -1,4 +1,4 @@
-import type { ReleaseContentsSummary, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
 import { MoreHorizontalIcon } from "lucide-react";
 
@@ -18,10 +18,9 @@ import { ZeropsRouteMenuItems } from "./ZeropsPublicRoutes";
  *
  * "Still there is no more menu on prod / stage that would allow me to do
  * stuff" (the owner, 2026-09-19). It holds what a row has no width for: what
- * is actually running, spelled out; every public URL, which is also the
- * keyboard's way to them; and, on a production, the changes that are merged
- * and not live — the list a person opens *Release* to find out about, here
- * before they press it.
+ * is actually running, spelled out, and every public URL, which is also the
+ * keyboard's way to them. The changes a stop does not run yet are its
+ * distance's to list, opened on the left menu's row itself.
  *
  * One menu wherever a stop is drawn: the left menu's row and the stop's own
  * page open the same one, each trigger in its own surface's hand.
@@ -30,7 +29,6 @@ export function ZeropsStopMenu({
   name,
   stop,
   routes,
-  waiting,
   onOpenProject,
   onOpenStop,
   triggerClassName,
@@ -39,7 +37,6 @@ export function ZeropsStopMenu({
   /** What the stop runs, or the line that stands in for it while that is not known. */
   readonly stop: StopView;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly waiting: ReleaseContentsSummary | undefined;
   readonly onOpenProject: () => void;
   readonly onOpenStop: (() => void) | undefined;
   /** The trigger's look, which is the surface's: sidebar tokens there, page tokens on a page. */
@@ -85,22 +82,6 @@ export function ZeropsStopMenu({
           <>
             <MenuSeparator />
             <ZeropsRouteMenuItems routes={routes} />
-          </>
-        )}
-        {waiting === undefined || waiting.total === 0 ? null : (
-          <>
-            <MenuSeparator />
-            <MenuGroup data-zerops-surface="stop-menu-waiting">
-              <MenuGroupLabel>
-                {waiting.total === 1 ? "1 change waiting" : `${waiting.total} changes waiting`}
-              </MenuGroupLabel>
-              {waiting.subjects.map((subject) => (
-                <MenuItem disabled key={subject}>
-                  {subject}
-                </MenuItem>
-              ))}
-              {waiting.more === 0 ? null : <MenuItem disabled>+{waiting.more} more</MenuItem>}
-            </MenuGroup>
           </>
         )}
       </MenuPopup>
