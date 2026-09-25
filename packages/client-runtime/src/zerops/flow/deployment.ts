@@ -566,16 +566,16 @@ const sameVersion = (left: DeployedVersion, right: DeployedVersion): boolean =>
 
 /**
  * A stop that runs something: the platform's answer names it, and the deploy half's row colours
- * it only when the row read that same version. The row names it only where nothing else does.
+ * it only when the row read that same version. The row names it where nothing else does, and
+ * where it read the deploy the platform names under a name of its own — the release every service
+ * of the stop runs (`nameStopByRelease`), where the platform names one service's.
  */
 function runningView(runs: DeployedVersion | undefined, row: EnvironmentRow | undefined): StopView {
   const named = runs?.label === undefined ? undefined : runs;
   const read = row?.version.label === undefined ? undefined : row;
-  const version = named ?? read?.version;
-  const tone =
-    read !== undefined && (named === undefined || sameVersion(named, read.version))
-      ? read.tone
-      : "neutral";
+  const same = read !== undefined && named !== undefined && sameVersion(named, read.version);
+  const version = same && read.version.name !== undefined ? read.version : (named ?? read?.version);
+  const tone = read !== undefined && (named === undefined || same) ? read.tone : "neutral";
   return {
     tone,
     word: deployWord(tone) ?? RUNNING_WORD,

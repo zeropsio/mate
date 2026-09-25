@@ -155,6 +155,84 @@ describe("joinProjectFlows", () => {
     expect(tagsStale.get("g1")?.releases.map((release) => release.tag)).toEqual(["v0.1.0"]);
   });
 
+  // Beviro production (2026-09-25): medusa has run v0.1.9's commit since, nextstore moved with
+  // every release after it. The stop is the newest release both run, not its first service's tag.
+  it.each([
+    {
+      name: "a production running several releases is named by the newest one all its services run",
+      tier: "production" as const,
+      nextstore: "5".repeat(40),
+      label: "v0.1.13",
+    },
+    {
+      name: "a production no release matches keeps its first labelled service's name",
+      tier: "production" as const,
+      nextstore: "f".repeat(40),
+      label: "v0.1.9",
+    },
+    {
+      name: "a stage keeps its first labelled service's name",
+      tier: "stage" as const,
+      nextstore: "5".repeat(40),
+      label: "v0.1.9",
+    },
+  ])("$name", ({ tier, nextstore, label }) => {
+    const MEDUSA = "a".repeat(40);
+    const release = (patch: number) => ({
+      tag: `v0.1.${String(patch)}`,
+      verdict: "approved" as const,
+      detail: undefined,
+      line: "",
+      entries: [
+        { service: "medusa", commit: MEDUSA },
+        { service: "nextstore", commit: String(patch - 8).repeat(40) },
+      ],
+      taggedAt: undefined,
+    });
+    const flow = joinProjectFlows({
+      groups: GROUPS,
+      deploys: new Map([
+        [
+          "g1",
+          {
+            ...deployState(),
+            environments: [
+              {
+                projectId: "env-1",
+                name: `beviro ${tier}`,
+                tier,
+                sources: tier === "production" ? ("release" as const) : ["main"],
+                environment: tier,
+                services: [
+                  { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 broker` },
+                  { hostname: "nextstore", appVersionName: `${nextstore} v0.1.13 broker` },
+                ],
+              },
+            ],
+          },
+        ],
+      ]),
+      forges: new Map([
+        [
+          "g1",
+          {
+            ...forgeState(),
+            released: {
+              releases: [13, 12, 11, 10, 9].map(release),
+              tags: ["v0.1.9", "v0.1.10", "v0.1.11", "v0.1.12", "v0.1.13"],
+            },
+          },
+        ],
+      ]),
+      mayRelease: true,
+      nowMs: NOW,
+      withheld: NOTHING_WITHHELD,
+      failures: NO_FAILURES,
+    }).get("g1");
+    expect(flow?.environments.map(({ version }) => version.label)).toEqual([label]);
+    expect(flow?.environments[0]?.version.sha).toBe(MEDUSA);
+  });
+
   // DESIGN §3.4: a production the grant withholds shows nothing it runs, so nothing measured
   // against what it runs either — neither what a release would carry nor the offer to make one.
   const RUNNING = "1".repeat(40);

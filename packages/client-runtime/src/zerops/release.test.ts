@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
+import { environmentRow, type EnvironmentRow } from "./groupRows.ts";
 import {
   compareForRelease,
   isReleaseTag,
   liveRelease,
+  nameStopByRelease,
   newestReleaseTag,
   planReleaseReads,
   readReleaseMessage,
@@ -13,6 +15,7 @@ import {
   releaseInFlight,
   releaseInFlightReason,
   releaseMessage,
+  releaseNamingStop,
   releaseOffer,
   releaseRow,
   releaseStatusContext,
@@ -580,6 +583,94 @@ describe("a release's row", () => {
     );
     expect(refused!.line).toBe("ada is not a releaser");
     expect(live!.line).toBe("api 3f9c1b2 · web 77ab0e1");
+  });
+});
+
+describe("the release a stop is named by", () => {
+  // Beviro production (2026-09-25): medusa has run one commit since v0.1.9, nextstore moved in
+  // every release after it. The first labelled service, medusa, named the stop v0.1.9.
+  const MEDUSA = "a".repeat(40);
+  const NEXT = (n: number) => String(n).repeat(40);
+  const beviro = [13, 12, 11, 10, 9].map((patch) => ({
+    tag: `v0.1.${String(patch)}`,
+    verdict: "approved" as const,
+    entries: [
+      { service: "medusa", commit: MEDUSA },
+      { service: "nextstore", commit: NEXT(patch - 8) },
+    ],
+  }));
+  const running = (entries: ReadonlyArray<readonly [string, string]>) => new Map(entries);
+
+  it.each([
+    {
+      name: "Beviro: medusa unchanged since v0.1.9, nextstore on v0.1.13's commit → v0.1.13",
+      releases: beviro,
+      running: running([
+        ["medusa", MEDUSA],
+        ["nextstore", NEXT(5)],
+      ]),
+      expected: "v0.1.13",
+    },
+    {
+      name: "the stop runs an older release whole → that release",
+      releases: beviro,
+      running: running([
+        ["medusa", MEDUSA],
+        ["nextstore", NEXT(2)],
+      ]),
+      expected: "v0.1.10",
+    },
+    {
+      name: "no release lists what the stop runs → none",
+      releases: beviro,
+      running: running([
+        ["medusa", MEDUSA],
+        ["nextstore", "f".repeat(40)],
+      ]),
+      expected: undefined,
+    },
+    {
+      name: "a release that lists nothing is skipped",
+      releases: [{ tag: "v0.1.14", verdict: "approved" as const, entries: [] }, ...beviro],
+      running: running([
+        ["medusa", MEDUSA],
+        ["nextstore", NEXT(5)],
+      ]),
+      expected: "v0.1.13",
+    },
+    {
+      name: "a service the release lists that the stop does not run → no match",
+      releases: beviro,
+      running: running([["medusa", MEDUSA]]),
+      expected: undefined,
+    },
+  ])("$name", ({ releases, running, expected }) => {
+    expect(releaseNamingStop(releases, running)).toBe(expected);
+  });
+
+  it("names the stop by the tag and keeps the first labelled service's commit, which compares", () => {
+    const row: EnvironmentRow = environmentRow({
+      projectId: "p-prod",
+      name: "production",
+      tier: "production",
+      sources: "release",
+      environment: "production",
+      services: [
+        { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 broker` },
+        { hostname: "nextstore", appVersionName: `${NEXT(5)} v0.1.13 broker` },
+      ],
+    });
+    const named = nameStopByRelease(row, "v0.1.13");
+    expect(named.version).toEqual({
+      name: "v0.1.13",
+      label: "v0.1.13",
+      commit: shortCommit(MEDUSA),
+      sha: MEDUSA,
+      taggedBy: "broker",
+    });
+    expect(named.commit).toBe(shortCommit(MEDUSA));
+    expect(named.line).toBe("release · v0.1.13");
+    expect(named.tone).toBe(row.tone);
   });
 });
 

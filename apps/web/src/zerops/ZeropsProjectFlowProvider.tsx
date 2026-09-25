@@ -18,13 +18,16 @@
  */
 import {
   botDisplayName,
+  deployedCommit,
   environmentRow,
   flowVerbKey,
   liveRelease,
+  nameStopByRelease,
   readZeropsGroupTags,
   releaseDeploys,
   releaseInFlight,
   releaseMessage,
+  releaseNamingStop,
   releaseOffer,
   releaseRow,
   releaseTagName,
@@ -32,7 +35,10 @@ import {
   summarizeEnvironmentServices,
   GiteaApiError,
   GROUP_REPOSITORY,
+  type EnvironmentRow,
   type FlowPullRequest,
+  type FlowRelease,
+  type GroupEnvironmentRowInput,
   type FlowVerb,
   type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
@@ -229,6 +235,25 @@ export function joinProjectFlows(input: {
   return flows;
 }
 
+/**
+ * A stop's row. A production is named by the newest release all its services run, where one
+ * does; a stage, and a production no release matches, keep the first labelled service's name.
+ */
+function stopRow(
+  entry: GroupEnvironmentRowInput,
+  releases: ReadonlyArray<FlowRelease>,
+): EnvironmentRow {
+  const row = environmentRow(entry);
+  if (entry.tier !== "production") return row;
+  const running = new Map<string, string>();
+  for (const service of entry.services) {
+    const sha = deployedCommit(service.appVersionName);
+    if (sha !== undefined) running.set(service.hostname, sha);
+  }
+  const tag = releaseNamingStop(releases, running);
+  return tag === undefined ? row : nameStopByRelease(row, tag);
+}
+
 /** Where one half stands for the release: failing, answered, or not yet. */
 function half(answered: boolean, failure: string | undefined): FlowHalf {
   if (failure !== undefined) return { failed: failure };
@@ -285,7 +310,7 @@ function projectFlow(
     groupId: group.groupId,
     slug: group.slug,
     declarations: deployed?.declarations ?? [],
-    environments: environmentInputs.map((entry) => environmentRow(entry)),
+    environments: environmentInputs.map((entry) => stopRow(entry, releaseList)),
     environmentInputs,
     missing: deployed?.missing ?? [],
     pullRequests: forge?.pullRequests ?? [],

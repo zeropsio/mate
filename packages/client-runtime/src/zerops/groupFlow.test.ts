@@ -8,8 +8,9 @@ import {
   type GroupFlowPending,
   type GroupFlowStopInput,
 } from "./groupFlow.ts";
-import { deployedVersion, environmentRow } from "./groupRows.ts";
+import { deployedVersion, environmentRow, type EnvironmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
+import { nameStopByRelease } from "./release.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 
 const MAIN_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
@@ -55,7 +56,7 @@ function declared(input: {
   readonly tier: "stage" | "production";
   readonly appVersionName?: string;
   readonly status?: "success" | "failure" | "pending";
-}): GroupFlowStopInput["row"] {
+}): EnvironmentRow {
   const environment = input.tier;
   return environmentRow({
     projectId: input.projectId,
@@ -452,6 +453,27 @@ describe("groupFlow", () => {
         deployment: runs(MAIN_SHA),
       }),
       expected: { kind: "live", line: "v0.1.0", stop: { state: "deployed" } },
+    },
+    {
+      case: "live under the release every service runs, over the first service's own tag",
+      production: productionOf({
+        row: nameStopByRelease(
+          declared({
+            projectId: "p-prod",
+            name: "production",
+            tier: "production",
+            appVersionName: released,
+            status: "success",
+          }),
+          "v0.1.4",
+        ),
+        deployment: runs(MAIN_SHA),
+      }),
+      expected: {
+        kind: "live",
+        line: "v0.1.4",
+        stop: { state: "deployed", version: { label: "v0.1.4", commit: MAIN_SHA.slice(0, 7) } },
+      },
     },
     {
       case: "deploy-failed: the broker's status on the release failed, whatever is waiting",

@@ -53,6 +53,7 @@
  */
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
+import type { EnvironmentRow } from "./groupRows.ts";
 
 /** The group repo, whose pull requests are recipe changes and whose tags are the releases. */
 export const GROUP_REPOSITORY = "group";
@@ -456,23 +457,69 @@ export interface FlowReleaseRow extends FlowRelease {
   readonly rollBack: boolean;
 }
 
+/** A release as far as telling what runs it needs. */
+type ReleaseListing = Pick<FlowRelease, "tag" | "entries" | "verdict">;
+
 /**
- * The release production runs: the newest whose every commit production runs, or `undefined`.
- *
- * The newest, because a roll-back re-tags an earlier message verbatim ({@link rollbackTo}) and two
- * tags then list the same commits; only the later one is what production was last moved to. A
- * refused release never deployed, and one that lists nothing names nothing it could run.
+ * The newest release every commit of which `running` runs, full commit to full commit. A refused
+ * release never deployed, and one that lists nothing names nothing it could run.
  */
-export function liveRelease(
-  releases: ReadonlyArray<Pick<FlowRelease, "tag" | "entries" | "verdict">>,
-  production: ReadonlyMap<string, string>,
+function newestRunning(
+  releases: ReadonlyArray<ReleaseListing>,
+  running: ReadonlyMap<string, string>,
 ): string | undefined {
   return releases.find(
     (release) =>
       release.verdict !== "refused" &&
       release.entries.length > 0 &&
-      release.entries.every((entry) => production.get(entry.service) === entry.commit),
+      release.entries.every((entry) => running.get(entry.service) === entry.commit),
   )?.tag;
+}
+
+/**
+ * The release production runs: the newest whose every commit production runs, or `undefined`.
+ *
+ * The newest, because a roll-back re-tags an earlier message verbatim ({@link rollbackTo}) and two
+ * tags then list the same commits; only the later one is what production was last moved to.
+ */
+export function liveRelease(
+  releases: ReadonlyArray<ReleaseListing>,
+  production: ReadonlyMap<string, string>,
+): string | undefined {
+  return newestRunning(releases, production);
+}
+
+/**
+ * The release a stop is named by: the newest whose every commit the stop's own services run, or
+ * `undefined`, where the stop keeps its first labelled service's name.
+ *
+ * A release lists every service, and one that moved only some of them leaves the others running
+ * a commit an earlier tag named first: Beviro's production ran medusa's commit from v0.1.9 through
+ * v0.1.13, and read v0.1.9 because medusa was its first labelled service.
+ *
+ * `running` is `{hostname: full sha}` over that stop's services (`deployedCommit`).
+ */
+export function releaseNamingStop(
+  releases: ReadonlyArray<ReleaseListing>,
+  running: ReadonlyMap<string, string>,
+): string | undefined {
+  return newestRunning(releases, running);
+}
+
+/**
+ * The stop's row named by `tag` ({@link releaseNamingStop}): its version's name and label, and the
+ * line that spells them.
+ *
+ * The version keeps the first labelled service's commit (`sha`, `commit`, `taggedBy`) — the rule
+ * the row was built by. That commit is what `sameVersion` compares against the platform's answer,
+ * so the release name rides on the row only while the platform names the same deploy.
+ */
+export function nameStopByRelease(row: EnvironmentRow, tag: string): EnvironmentRow {
+  return {
+    ...row,
+    version: { ...row.version, name: tag, label: tag },
+    line: `${row.source} · ${tag}`,
+  };
 }
 
 /**

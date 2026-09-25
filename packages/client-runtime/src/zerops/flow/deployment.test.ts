@@ -185,6 +185,37 @@ describe("stopView", () => {
     });
   });
 
+  it.each([
+    {
+      name: "the row named by a release on the commit the platform names draws the release",
+      row: row({ ...RUNNING.version, name: "v1.6.0", label: "v1.6.0" }, "good"),
+      expected: { tone: "good", word: "Deployed", line: "v1.6.0" },
+    },
+    {
+      name: "the row's release, uncoloured by Gitea, still names it",
+      row: row({ ...RUNNING.version, name: "v1.6.0", label: "v1.6.0" }, "neutral"),
+      expected: { tone: "neutral", word: "Deployed", line: "v1.6.0" },
+    },
+    {
+      name: "a row naming another commit leaves the platform's name standing",
+      row: row(
+        {
+          name: "v1.6.0",
+          commit: "9d8e7f6",
+          sha: "9d8e7f6000000000000000000000000000000000",
+          taggedBy: undefined,
+          label: "v1.6.0",
+        },
+        "good",
+      ),
+      expected: { tone: "neutral", word: "Deployed", line: "v1.4.0" },
+    },
+  ])("$name", ({ row: read, expected }) => {
+    const view = stopView({ deployment: known(RUNNING), row: read, nowMs: NOW });
+    expect(view).toMatchObject(expected);
+    expect(view.version?.label).toBe(expected.line);
+  });
+
   it("never names or colours a stop by a version the deploy half read that does not run there", () => {
     // userData moved to a build that then failed; the service still runs RUNNING (A11, A14).
     const failedBuild = "9d8e7f6000000000000000000000000000000000";
