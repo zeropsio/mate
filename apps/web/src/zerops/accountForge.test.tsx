@@ -350,6 +350,133 @@ describe("the account's project flow in the web", () => {
     expect(rig.stopDemands).toEqual([]);
   });
 
+  it("a stop's page reads each of its services and what it runs, demanded while it is drawn", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStopServices } = await import("./accountForge");
+    const rig = stage();
+    const unbind = bindAccountFlow(rig.stage);
+    const services: ReadonlyArray<StopService> = [
+      {
+        service: APPSTAGE,
+        hostname: "appstage",
+        deployment: { state: "unread", waitingFor: null },
+      },
+    ];
+    const answers: Array<Shown<ReadonlyArray<StopService>>> = [];
+
+    function Page({ project }: { readonly project: ProjectRef | null }) {
+      answers.push(useStopServices(project));
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      root.render(<Page project={PROJECT} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      rig.holdStop("p-stage", known(services));
+      await vi.waitFor(() =>
+        expect(answers.at(-1)).toMatchObject({ state: "known", value: services }),
+      );
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+  });
+
+  it("a stop's page answers one snapshot per store version, and a new one once the store moves", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStopServices } = await import("./accountForge");
+    const rig = stage();
+    const unbind = bindAccountFlow(rig.stage);
+    const answers: Array<Shown<ReadonlyArray<StopService>>> = [];
+
+    function Page({ project }: { readonly project: ProjectRef }) {
+      answers.push(useStopServices(project));
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      root.render(<Page project={PROJECT} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      const before = answers.at(-1);
+      const rendered = answers.length;
+      // The same stop as a new object, with the store unmoved, is the same snapshot.
+      root.render(<Page project={{ ...PROJECT }} />);
+      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
+      expect(answers.at(-1)).toBe(before);
+      expect(rig.stopDemandCalls()).toBe(1);
+
+      rig.holdStop("p-stage", known([]));
+      await vi.waitFor(() => expect(answers.at(-1)).not.toBe(before));
+      expect(answers.at(-1)?.state).toBe("known");
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+  });
+
+  it("a stop's page lets its stop go when it moves to another stop, and at unmount", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStopServices } = await import("./accountForge");
+    const rig = stage();
+    const unbind = bindAccountFlow(rig.stage);
+    const production = { ...PROJECT, projectId: "p-prod" } as ProjectRef;
+
+    function Page({ project }: { readonly project: ProjectRef }) {
+      useStopServices(project);
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      root.render(<Page project={PROJECT} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      root.render(<Page project={production} />);
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+    expect(rig.stopDemands).toEqual([]);
+  });
+
+  it.each([
+    { name: "no stop named", bound: true, project: null },
+    { name: "no flow bound yet", bound: false, project: PROJECT },
+  ])("a stop's page with $name reads nothing and demands nothing", async ({ bound, project }) => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStopServices } = await import("./accountForge");
+    const rig = stage();
+    const unbind = bound ? bindAccountFlow(rig.stage) : () => undefined;
+    const answers: Array<Shown<ReadonlyArray<StopService>>> = [];
+
+    function Page() {
+      answers.push(useStopServices(project));
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      root.render(<Page />);
+      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(0));
+      await nextMacrotask();
+      expect(answers.at(-1)).toEqual({ state: "unread", waitingFor: "access-grant" });
+      expect(rig.stopDemandCalls()).toBe(0);
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+  });
+
   it("a group's flow demands what it reads as it learns more, and lets it all go at unmount", async () => {
     const document = installTestDom();
     const { createRoot } = await import("react-dom/client");

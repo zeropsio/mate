@@ -31,6 +31,7 @@ import {
   type ForgeRepository,
   type GroupFlow,
   type GroupFlowSource,
+  type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
 import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { ForgeFact, ForgePriority } from "@t3tools/client-runtime/zerops/forge";
@@ -329,6 +330,48 @@ export function useStopDeployments(
   }, [flow, stopKeys]);
 
   return stops;
+}
+
+/**
+ * What one stop runs service by service (§4.7), unreduced: its runtime services, each with its own
+ * deployment. Demands the stop for as long as the calling surface draws it, whoever else does, and
+ * reads it again once per task however often the store publishes. `null` reads nothing.
+ */
+export function useStopServices(project: ProjectRef | null): Shown<ReadonlyArray<StopService>> {
+  const flow = useAccountFlow();
+  const projectKey = project === null ? null : JSON.stringify(project);
+
+  // Subscribed before the stop is demanded, so what a demand publishes at once is heard.
+  const subscribe = useFlowSubscription(flow);
+  const snapshot = useMemo(() => stopServicesSnapshot(flow, projectKey), [flow, projectKey]);
+  const services = useSyncExternalStore(subscribe, snapshot, snapshot);
+
+  useEffect(() => {
+    if (flow === null || projectKey === null) return;
+    return flow.deployments.demand(JSON.parse(projectKey) as ProjectRef);
+  }, [flow, projectKey]);
+
+  return services;
+}
+
+/** One stop's services as of the stores' counter: one answer per counter value. */
+function stopServicesSnapshot(
+  flow: AccountFlow | null,
+  projectKey: string | null,
+): () => Shown<ReadonlyArray<StopService>> {
+  if (flow === null || projectKey === null) return () => UNBOUND;
+  const project = JSON.parse(projectKey) as ProjectRef;
+  let read: {
+    readonly version: number;
+    readonly services: Shown<ReadonlyArray<StopService>>;
+  } | null = null;
+  return () => {
+    const version = flowVersionOf(flow);
+    if (read === null || read.version !== version) {
+      read = { version, services: flow.deployments.stop(project) };
+    }
+    return read.services;
+  };
 }
 
 /**
