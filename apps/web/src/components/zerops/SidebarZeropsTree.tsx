@@ -36,6 +36,7 @@
  * where you work; that is where you manage.
  */
 import {
+  changesNotLive,
   checkDotTone,
   assignCandidateMateTints,
   botDisplayName,
@@ -1454,9 +1455,7 @@ function ReleaseVerb({
           className="flex max-w-72 flex-col gap-0.5 wrap-anywhere"
           data-zerops-surface="sidebar-release-contents"
         >
-          <span className="font-medium">
-            {summary.total === 1 ? "Going live:" : `Going live — ${summary.total} changes:`}
-          </span>
+          <span className="font-medium">{`${changesNotLive(summary.total)}:`}</span>
           {summary.subjects.map((subject) => (
             <span key={subject}>{subject}</span>
           ))}

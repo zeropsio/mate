@@ -13,6 +13,7 @@
 
 import {
   botDisplayName,
+  changesNotLive,
   deployWord,
   environmentNameUnderGroup,
   hasMate,
@@ -322,9 +323,7 @@ export function mainCell(flow: GroupFlow, lastMerged: FlowPullRequest | undefine
     main.head === undefined && title === undefined && main.notLive === 0 && main.hasCode !== true;
   const state =
     main.notLive > 0
-      ? main.notLive === 1
-        ? "1 change not live"
-        : `${String(main.notLive)} changes not live`
+      ? changesNotLive(main.notLive)
       : empty
         ? "Nothing merged"
         : "Nothing waiting to release";

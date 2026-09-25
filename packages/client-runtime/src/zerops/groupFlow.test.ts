@@ -212,7 +212,7 @@ describe("groupFlow", () => {
     expect(flow.main).toEqual({ head: "055a7e8", hasCode: true, notLive: 1 });
     expect(flow.nextStep).toEqual({
       kind: "release",
-      text: "1 change is merged and not live",
+      text: "1 change not live",
       verb: "Release v0.1.0",
       target: { kind: "release", tag: "v0.1.0" },
     });
@@ -368,7 +368,7 @@ describe("groupFlow", () => {
       input: STAGE_FAILED_WITH_RELEASE,
       step: {
         kind: "release",
-        text: "1 change is merged and not live",
+        text: "1 change not live",
         verb: "Release v0.1.0",
         target: { kind: "release", tag: "v0.1.0" },
       },
@@ -417,7 +417,7 @@ describe("groupFlow", () => {
       },
       step: {
         kind: "release",
-        text: "1 change is merged and not live",
+        text: "1 change not live",
         verb: "Release v0.1.0",
         target: { kind: "release", tag: "v0.1.0" },
       },

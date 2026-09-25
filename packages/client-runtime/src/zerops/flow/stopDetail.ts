@@ -18,6 +18,7 @@ import {
   type GroupRowTone,
 } from "../groupRows.ts";
 import type { Shown } from "../knowledge/known.ts";
+import { changesNotLive } from "../projectAttention.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
 import {
   releaseInFlightReason,
@@ -130,7 +131,7 @@ export function stopVerdict(input: {
   if (input.waiting > 0)
     return {
       tone: "busy",
-      text: `${plural(input.waiting, "change", "changes")} not live.`,
+      text: `${changesNotLive(input.waiting)}.`,
       detail: `Production runs ${label}`,
       verb: releaseVerb,
     };

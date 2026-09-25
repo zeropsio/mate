@@ -89,8 +89,8 @@ describe("projectAttention", () => {
   });
 
   it.each([
-    [1, "1 change is merged and not live"],
-    [4, "4 changes are merged and not live"],
+    [1, "1 change not live"],
+    [4, "4 changes not live"],
   ])("counts %i as %s", (notLive, text) => {
     const [item] = projectAttention({ ...EMPTY, notLive, canRelease: true });
     expect(item?.text).toBe(text);

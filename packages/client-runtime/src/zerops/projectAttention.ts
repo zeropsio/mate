@@ -105,7 +105,7 @@ export function projectAttention(
   if (input.notLive > 0 && input.canRelease) {
     items.push({
       kind: "not-live",
-      text: notLiveText(input.notLive),
+      text: changesNotLive(input.notLive),
       verb: "Release",
       target: undefined,
     });
@@ -114,11 +114,12 @@ export function projectAttention(
   return items;
 }
 
-/** How many changes are merged and not live, said as a person would. */
-function notLiveText(count: number): string {
-  return count === 1
-    ? "1 change is merged and not live"
-    : `${String(count)} changes are merged and not live`;
+/**
+ * How many changes are merged and not live — the one way it is said, on the stop's verdict, the
+ * projects page, the project page and the left menu's *Release*.
+ */
+export function changesNotLive(count: number): string {
+  return count === 1 ? "1 change not live" : `${String(count)} changes not live`;
 }
 
 /**

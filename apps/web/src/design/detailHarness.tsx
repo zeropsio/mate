@@ -84,7 +84,7 @@ const ATTENTION = [
   },
   {
     kind: "not-live" as const,
-    text: "3 changes are merged and not live",
+    text: "3 changes not live",
     verb: "Release",
     target: undefined,
   },
