@@ -35,7 +35,7 @@ type VerdictPanelProps = Omit<React.ComponentProps<"div">, "children"> & {
   readonly tone: ServiceStatusToneId;
   /**
    * What stands behind the answer — the version, how long ago — said muted after the sentence on
-   * its line, and under it where the line is too narrow for both.
+   * its line; on a phone on its own line under it, set in by the dot so it starts under the text.
    */
   readonly detail?: string | undefined;
   /** The verb — or verbs — that act on that sentence. */
@@ -63,10 +63,13 @@ function VerdictPanel({ children, className, detail, text, tone, ...props }: Ver
       className={cn(VERDICT_PANEL_CLASS, VERDICT_BORDER_CLASS[tone], className)}
       data-zerops-primitive="verdict-panel"
     >
-      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+      <span className="flex min-w-0 flex-col gap-y-0.5 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
         <StatusDot className="min-w-0 text-foreground" label={text} sentence tone={tone} />
         {detail === undefined ? null : (
-          <span className="min-w-0 text-muted-foreground tabular-nums">{detail}</span>
+          // The dot (8px) and its gap (6px) set the sentence's text 14px in.
+          <span className="min-w-0 ps-3.5 text-muted-foreground tabular-nums sm:ps-0">
+            {detail}
+          </span>
         )}
       </span>
       {children === undefined ? null : (

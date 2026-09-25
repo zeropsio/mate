@@ -45,6 +45,17 @@ describe("VerdictPanel", () => {
     expect(panel.slice(0, detail)).toMatch(/text-muted-foreground[^"]*"[^>]*>$/);
   });
 
+  it("sets its detail on its own line under the sentence's text on a phone, not under the dot", () => {
+    const html = renderToStaticMarkup(
+      <VerdictPanel detail="v0.1.13 · released 1h ago" text="Production runs it." tone="ok" />,
+    );
+    const line = /<span class="([^"]*)"><span[^>]*data-zerops-status-tone/.exec(html)?.[1] ?? "";
+    expect(line.split(" ")).toEqual(expect.arrayContaining(["flex-col", "sm:flex-row"]));
+    const detail = /<span class="([^"]*)">v0\.1\.13 · released 1h ago/.exec(html)?.[1] ?? "";
+    // The dot (8px) and its gap (6px): the sentence's text starts 14px in.
+    expect(detail.split(" ")).toEqual(expect.arrayContaining(["ps-3.5", "sm:ps-0"]));
+  });
+
   it("spends no room on a verb column where there is no verb", () => {
     const html = renderToStaticMarkup(<VerdictPanel text="Merged into main." tone="ok" />);
     expect(html).not.toContain("shrink-0 items-center gap-2");
