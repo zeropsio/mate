@@ -26,6 +26,7 @@ import {
   GitCommandError,
   ReviewDiffPreviewInput,
   type ReviewDiffFileContentsInput,
+  type WorktreeSubmodules,
 } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
 import { gitCommandDuration } from "../observability/Metrics.ts";
@@ -2306,7 +2307,7 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
-    it.effect("honors the t3.json worktreeSubmodules setting", () =>
+    it.effect("resolves the submodule mode from the option, then t3.json", () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const pathService = yield* Path.Path;
@@ -2345,19 +2346,19 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         const worktreesDir = yield* makeTmpDir("git-worktrees-");
 
         const createWithMode = Effect.fn(function* (
-          fileMode: "recursive" | "top-level" | "none",
+          fileMode: WorktreeSubmodules,
           branch: string,
+          submodules: WorktreeSubmodules | null = null,
         ) {
           yield* writeTextFile(cwd, "t3.json", `{ "worktreeSubmodules": "${fileMode}" }`);
           yield* git(cwd, ["add", "t3.json"]);
-          yield* git(cwd, ["commit", "-m", `submodules: ${fileMode}`]);
+          // Consecutive cases may reuse a file mode to test the option alone.
+          yield* git(cwd, ["commit", "--allow-empty", "-m", `submodules: ${fileMode}`]);
           const worktreePath = pathService.join(worktreesDir, branch);
-          yield* driver.createWorktree({
-            cwd,
-            path: worktreePath,
-            refName: initialBranch,
-            newRefName: branch,
-          });
+          yield* driver.createWorktree(
+            { cwd, path: worktreePath, refName: initialBranch, newRefName: branch },
+            { submodules },
+          );
           return {
             inner: yield* fileSystem.exists(pathService.join(worktreePath, "inner", "INNER.md")),
             nested: yield* fileSystem.exists(
@@ -2371,6 +2372,15 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
           nested: true,
         });
         assert.deepEqual(yield* createWithMode("top-level", "top-level"), {
+          inner: true,
+          nested: false,
+        });
+        // A resolved setting outranks the file in both directions.
+        assert.deepEqual(yield* createWithMode("recursive", "setting-none", "none"), {
+          inner: false,
+          nested: false,
+        });
+        assert.deepEqual(yield* createWithMode("none", "setting-wins", "top-level"), {
           inner: true,
           nested: false,
         });

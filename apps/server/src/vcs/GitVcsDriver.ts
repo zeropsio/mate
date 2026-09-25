@@ -30,6 +30,7 @@ import {
   type VcsRemoveWorktreeInput,
   type VcsStatusInput,
   type VcsStatusResult,
+  type WorktreeSubmodules,
 } from "@t3tools/contracts";
 import {
   makeGitVcsDriverCore,
@@ -109,6 +110,14 @@ export interface ExecuteGitProgress {
     exitCode: number | null;
     durationMs: number | null;
   }) => Effect.Effect<void, never>;
+}
+
+export interface CreateWorktreeOptions {
+  /**
+   * The environment's `worktreeSubmodules` setting. Null (or omitted, for
+   * callers without settings access) defers to the checkout's own t3.json.
+   */
+  readonly submodules?: WorktreeSubmodules | null;
 }
 
 export interface GitCommitProgress {
@@ -285,6 +294,7 @@ export class GitVcsDriver extends Context.Service<
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
     readonly createWorktree: (
       input: VcsCreateWorktreeInput,
+      options?: CreateWorktreeOptions,
     ) => Effect.Effect<VcsCreateWorktreeResult, GitCommandError>;
     readonly fetchPullRequestBranch: (
       input: GitFetchPullRequestBranchInput,

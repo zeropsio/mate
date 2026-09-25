@@ -11,6 +11,7 @@ import {
   type ProviderInstanceId,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
+  type WorktreeSubmodules,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -128,6 +129,7 @@ import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ThemeLibrary } from "./ThemeSettings";
+import { WORKTREE_SUBMODULES_LABELS } from "../BranchToolbar.logic";
 import {
   backgroundActivityOverrideSettings,
   backgroundActivitySharedPolicySettings,
@@ -154,6 +156,13 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
+
+const WORKTREE_SUBMODULES_OPTIONS = ["recursive", "top-level", "none"] as const;
+// The select's value for an unset setting, which leaves the choice to t3.json.
+const WORKTREE_SUBMODULES_FROM_PROJECT_FILE = "project-file";
+function isWorktreeSubmodules(value: string | null): value is WorktreeSubmodules {
+  return value !== null && (WORKTREE_SUBMODULES_OPTIONS as readonly string[]).includes(value);
+}
 
 const RESPONSE_STREAMING_MODE_LABELS: Record<ResponseStreamingMode, string> = {
   turn: "Wait for the full response",
@@ -522,6 +531,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.newWorktreesStartFromOrigin !== DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin
         ? ["New worktrees start from origin"]
         : []),
+      ...(worktreesAllowed && settings.worktreeSubmodules !== null ? ["Submodules"] : []),
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
@@ -550,6 +560,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
+      settings.worktreeSubmodules,
       settings.diffIgnoreWhitespace,
       settings.fontFamilyCode,
       settings.fontFamilyComposer,
@@ -662,6 +673,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       providerHealthRefreshInterval: DEFAULT_UNIFIED_SETTINGS.providerHealthRefreshInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
+      worktreeSubmodules: DEFAULT_UNIFIED_SETTINGS.worktreeSubmodules,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
@@ -2453,6 +2465,52 @@ export function GeneralSettingsPanel() {
                 }
                 aria-label="Start new worktrees from origin by default"
               />
+            }
+          />
+        ) : null}
+
+        {worktreesAllowed && effectiveDefaultThreadEnvMode === "worktree" ? (
+          <SettingsRow
+            className="bg-muted/20 sm:pl-9"
+            title={searchableSetting("worktree-submodules").title}
+            description="How new checkouts populate git submodules. Follow t3.json leaves it to the repository."
+            resetAction={
+              settings.worktreeSubmodules !== null ? (
+                <SettingResetButton
+                  label="submodules"
+                  onClick={() => updateSettings({ worktreeSubmodules: null })}
+                />
+              ) : null
+            }
+            control={
+              <Select
+                value={settings.worktreeSubmodules ?? WORKTREE_SUBMODULES_FROM_PROJECT_FILE}
+                onValueChange={(value) => {
+                  if (value === WORKTREE_SUBMODULES_FROM_PROJECT_FILE) {
+                    updateSettings({ worktreeSubmodules: null });
+                  } else if (isWorktreeSubmodules(value)) {
+                    updateSettings({ worktreeSubmodules: value });
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-44" aria-label="Submodules for new checkouts">
+                  <SelectValue>
+                    {settings.worktreeSubmodules === null
+                      ? "Follow t3.json"
+                      : WORKTREE_SUBMODULES_LABELS[settings.worktreeSubmodules]}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem hideIndicator value={WORKTREE_SUBMODULES_FROM_PROJECT_FILE}>
+                    Follow t3.json
+                  </SelectItem>
+                  {WORKTREE_SUBMODULES_OPTIONS.map((option) => (
+                    <SelectItem hideIndicator key={option} value={option}>
+                      {WORKTREE_SUBMODULES_LABELS[option]}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
             }
           />
         ) : null}

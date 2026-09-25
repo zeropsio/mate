@@ -1,4 +1,4 @@
-import type { EnvironmentId, VcsRef, ProjectId } from "@t3tools/contracts";
+import type { EnvironmentId, VcsRef, ProjectId, WorktreeSubmodules } from "@t3tools/contracts";
 import { resolveThreadEnvModeForCapability } from "@t3tools/shared/threadEnvMode";
 import * as Schema from "effect/Schema";
 import { toSortableTimestamp } from "../lib/threadSort";
@@ -62,6 +62,12 @@ export function shouldShowComposerContextStrip(input: {
 }): boolean {
   return input.hasActiveProject && (input.isGitRepo || input.showEnvironmentIndicator);
 }
+
+export const WORKTREE_SUBMODULES_LABELS: Record<WorktreeSubmodules, string> = {
+  recursive: "Recursive",
+  "top-level": "Top level only",
+  none: "Skip",
+};
 
 export function resolveEnvModeLabel(mode: EnvMode): string {
   return mode === "worktree" ? "New worktree" : "Current checkout";

@@ -1191,13 +1191,23 @@ const makeWsRpcLayer = (
                 });
                 worktreeBaseRef = resolvedRemoteBase.commitSha;
               }
-              const worktree = yield* gitWorkflow.createWorktree({
-                cwd: bootstrap.prepareWorktree.projectCwd,
-                refName: worktreeBaseRef,
-                newRefName: bootstrap.prepareWorktree.branch,
-                baseRefName: bootstrap.prepareWorktree.baseBranch,
-                path: null,
-              });
+              // The environment setting, or null so the driver reads the new
+              // checkout's own t3.json (the branch may declare something the
+              // project root does not). Settings that fail to load fall through.
+              const submodules = yield* serverSettings.getSettings.pipe(
+                Effect.map((settings) => settings.worktreeSubmodules),
+                Effect.orElseSucceed(() => null),
+              );
+              const worktree = yield* gitWorkflow.createWorktree(
+                {
+                  cwd: bootstrap.prepareWorktree.projectCwd,
+                  refName: worktreeBaseRef,
+                  newRefName: bootstrap.prepareWorktree.branch,
+                  baseRefName: bootstrap.prepareWorktree.baseBranch,
+                  path: null,
+                },
+                { submodules },
+              );
               targetWorktreePath = worktree.worktree.path;
               yield* dispatchFromClient({
                 type: "thread.meta.update",

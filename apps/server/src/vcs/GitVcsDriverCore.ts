@@ -3037,7 +3037,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
   const createWorktree: GitVcsDriver.GitVcsDriver["Service"]["createWorktree"] = Effect.fn(
     "createWorktree",
-  )(function* (input) {
+  )(function* (input, options) {
     const targetBranch = input.newRefName ?? input.refName;
     const sanitizedBranch = targetBranch.replace(/\//g, "-");
     const repoName = path.basename(input.cwd);
@@ -3056,24 +3056,27 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     // them. Best-effort: the objects are usually already in the parent's
     // `.git/modules`, but a first-ever clone needs the network, and failing to
     // populate a submodule must not roll back the caller's thread. Repos with
-    // hundreds of nested submodules opt out or stop at the top level through
-    // t3.json, read from the checkout that was just created.
+    // hundreds of nested submodules opt out or stop at the top level; the
+    // caller resolves that from settings, or the checkout's t3.json decides.
     const hasSubmodules = yield* fileSystem
       .exists(path.join(worktreePath, ".gitmodules"))
       .pipe(Effect.orElseSucceed(() => false));
-    const submoduleMode = hasSubmodules
-      ? yield* fileSystem.readFileString(path.join(worktreePath, T3_PROJECT_FILE_NAME)).pipe(
-          Effect.flatMap((contents) => {
-            const file = parseT3ProjectFile(contents);
-            return file === null
-              ? Effect.logWarning("t3.json is invalid; initializing submodules recursively", {
-                  worktreePath,
-                }).pipe(Effect.as("recursive" as const))
-              : Effect.succeed(file.worktreeSubmodules ?? "recursive");
-          }),
-          Effect.orElseSucceed(() => "recursive" as const),
-        )
-      : "none";
+    const submoduleSetting = options?.submodules ?? null;
+    const submoduleMode = !hasSubmodules
+      ? "none"
+      : submoduleSetting !== null
+        ? submoduleSetting
+        : yield* fileSystem.readFileString(path.join(worktreePath, T3_PROJECT_FILE_NAME)).pipe(
+            Effect.flatMap((contents) => {
+              const file = parseT3ProjectFile(contents);
+              return file === null
+                ? Effect.logWarning("t3.json is invalid; initializing submodules recursively", {
+                    worktreePath,
+                  }).pipe(Effect.as("recursive" as const))
+                : Effect.succeed(file.worktreeSubmodules ?? "recursive");
+            }),
+            Effect.orElseSucceed(() => "recursive" as const),
+          );
     if (submoduleMode !== "none") {
       yield* runGit(
         "GitVcsDriver.createWorktree.updateSubmodules",
@@ -3551,7 +3554,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     getReviewDiffFileContents,
     readConfigValue,
     listRefs,
-    createWorktree: (input) => withListRefsInvalidation(input.cwd, createWorktree(input)),
+    createWorktree: (input, options) =>
+      withListRefsInvalidation(input.cwd, createWorktree(input, options)),
     fetchPullRequestBranch: (input) =>
       withListRefsInvalidation(input.cwd, fetchPullRequestBranch(input)),
     fetchPullRequestHeadCommit,
