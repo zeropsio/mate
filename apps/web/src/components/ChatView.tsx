@@ -4988,11 +4988,22 @@ export default function ChatView(props: ChatViewProps) {
           aria-hidden="true"
         />
       ),
-      title: working
-        ? liveCount > 0
-          ? `${liveCount} ${liveCount === 1 ? "agent" : "agents"} working`
-          : "Background work"
-        : "Monitoring",
+      // The count is a way into the Agents panel, where each working agent is listed.
+      title: working ? (
+        liveCount > 0 ? (
+          <button
+            type="button"
+            onClick={addAgentsSurface}
+            className="cursor-pointer rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          >
+            {`${liveCount} ${liveCount === 1 ? "agent" : "agents"} working`}
+          </button>
+        ) : (
+          "Background work"
+        )
+      ) : (
+        "Monitoring"
+      ),
       actions: (
         <Button
           size="xs"
@@ -5007,6 +5018,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeBackgroundLiveness,
     activeThread,
+    addAgentsSurface,
     agentPanelModel.liveCount,
     handleStopBackgroundWork,
     isStoppingBackgroundWork,
