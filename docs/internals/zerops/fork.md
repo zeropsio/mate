@@ -90,6 +90,14 @@ keys registered on the platform side: the sign-in hand-over asks for mode `zerop
 (`ZEROPS_HANDOVER_APP_MODE`), the value the platform client's registry serves — a rename there is a
 platform release, not a string sweep.
 
+Copy is the other way round. What an agent is told about where it runs and what a person reads in
+a message names the product Zerops Mate, never "T3 Code" — the owner's call on 2026-09-26.
+`scripts/product-name.test.ts` parses every string, template and JSX text literal in
+`apps/server/src` and the shared packages and fails on the old name, so a port that brings it back
+is reworded in the same slice. Comments and vendor-facing identifiers stay: the Codex originator
+`t3code_desktop`, the Grok OAuth referrer `t3code` and the ACP client names identify the client to
+a vendor, and `t3.json` is the project file's name.
+
 ## 5. How work is done — the zcp loop, transplanted
 
 - **Homes**: design → `../../../../zcp/docs/spec-mate.md`; measured facts → the ledger
