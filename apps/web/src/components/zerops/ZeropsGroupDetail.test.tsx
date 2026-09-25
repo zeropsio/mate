@@ -466,6 +466,20 @@ describe("ZeropsStopPane", () => {
     expect(markup.slice(panel, at)).not.toContain("</div>");
   });
 
+  it("spaces its header, verdict and card by the frame's one gap, adding no margin of their own", () => {
+    const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 1 });
+    const header = /<header(?: class="([^"]*)")?>/.exec(markup);
+    const verdict =
+      /<div(?: class="([^"]*)")?><div class="[^"]*" data-zerops-primitive="verdict-panel"/.exec(
+        markup,
+      );
+    expect(header).not.toBeNull();
+    expect(verdict).not.toBeNull();
+    for (const classes of [header?.[1], verdict?.[1]]) {
+      expect(classes ?? "").not.toMatch(/(^|\s)(m[by]|mt|mb)-/);
+    }
+  });
+
   it("draws the verdict's verb as an outline button, not a filled one", () => {
     const markup = renderStop({
       tier: "production",

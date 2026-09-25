@@ -1223,7 +1223,7 @@ export function ZeropsStopPane({
       title={title}
       titleTag={<ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
     >
-      <div className="mb-6">
+      <div>
         <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
           {verb?.kind === "release" ? (
             <ReleaseAction
@@ -2388,7 +2388,8 @@ function DetailShell({
       }
       width="expanded"
     >
-      <header className="mb-8">
+      {/* The frame's page gap spaces the header from what follows, as on /zerops. */}
+      <header>
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2.5">
