@@ -110,6 +110,9 @@ one in **Settings** → **Keybindings**.
 still offering **Undo** in a notification: a settle, snooze, or archive. Its default
 rule skips text fields and terminals so native undo keeps working there.
 
+`navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
+through the pages you have visited, like a browser's back and forward buttons.
+
 Note that `chat.new` and `chat.newLocal` both create a thread through the same path. A new thread
 inherits the project you were in, along with model and mode selections. Branch, worktree, and
 environment mode always come from your configured defaults, not from the thread you were looking
