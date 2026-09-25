@@ -5,6 +5,47 @@ import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
 import type { RightPanelSurface } from "../rightPanelStore";
 import { Button } from "./ui/button";
 
+const PREVIEW_CACHE_PARAM = "_mate_preview";
+
+/**
+ * The address the frame loads: the service URL with one query parameter
+ * carrying `key`, so a load the panel starts is never answered from a stale
+ * HTTP cache. A static site served with `Last-Modified` and no `Cache-Control`
+ * is heuristically cacheable, and an identical `src` came back as the page
+ * from before a deploy.
+ */
+export function previewSrc(url: string, key: string): string {
+  const src = new URL(url);
+  // Appended to the query as written: re-serialising it through
+  // `searchParams` would rewrite a page's own parameters (`?flag` → `?flag=`).
+  const param = `${PREVIEW_CACHE_PARAM}=${encodeURIComponent(key)}`;
+  src.search = src.search === "" ? param : `${src.search.slice(1)}&${param}`;
+  return src.href;
+}
+
+/**
+ * What tells the version a service runs from the next: when it went live. The
+ * topology carries no version id; a pushed frame names the times but not the
+ * name, so the name is only the fallback — joining both would read one deploy
+ * as two as the frames alternate. Undefined while nothing names a version.
+ */
+export function deployedVersionKey(deploy: ZeropsTopologyService["deploy"]): string | undefined {
+  return deploy?.activatedAt ?? deploy?.name;
+}
+
+/** A frame that names no version keeps the one named last rather than reloading the page. */
+export function nextHeldVersion(
+  held: string | undefined,
+  incoming: string | undefined,
+): string | undefined {
+  return incoming ?? held;
+}
+
+/** The cache key of a load: the deployed version it follows and the manual reload count. */
+export function previewKey(version: string | undefined, revision: number): string {
+  return `${version ?? "none"}.${revision}`;
+}
+
 /**
  * Public websites run in the user's browser, independently of the agent's
  * browser session.
@@ -19,9 +60,22 @@ import { Button } from "./ui/button";
  * hatch it duplicated — so the escape hatch keeps its words and the apology
  * goes.
  */
-export function ServiceBrowserPanel({ service, url }: { service: string; url: string }) {
+export function ServiceBrowserPanel({
+  service,
+  url,
+  deployedVersion,
+}: {
+  service: string;
+  url: string;
+  /** {@link deployedVersionKey} of the service; a change reloads the page. */
+  deployedVersion?: string | undefined;
+}) {
   const [revision, setRevision] = useState(0);
+  const [heldVersion, setHeldVersion] = useState(deployedVersion);
+  const version = nextHeldVersion(heldVersion, deployedVersion);
+  if (version !== heldVersion) setHeldVersion(version);
   if (!isServiceBrowserUrl(url)) return null;
+  const src = previewSrc(url, previewKey(version, revision));
   // Public services need their own origin for storage and API requests. A page on
   // Mate's own origin must remain opaque so its scripts cannot remove the sandbox.
   const sandbox =
@@ -66,9 +120,9 @@ export function ServiceBrowserPanel({ service, url }: { service: string; url: st
         </Button>
       </div>
       <iframe
-        key={revision}
+        key={src}
         title={`${service} live preview`}
-        src={url}
+        src={src}
         className="min-h-0 w-full flex-1 border-0 bg-background"
         sandbox={sandbox}
         referrerPolicy="no-referrer"
@@ -87,14 +141,22 @@ export function ServiceBrowserPanels({
   activeSurfaceId: string | null;
   services: readonly ZeropsTopologyService[] | undefined;
 }) {
-  return surfaces.map((surface) =>
-    surface.kind === "browser" && "url" in surface ? (
+  return surfaces.map((surface) => {
+    if (surface.kind !== "browser" || !("url" in surface)) return null;
+    const owner = serviceForPreview(surface.url, services);
+    return (
       <div
         key={`${surface.id}:${surface.url}`}
         className={surface.id === activeSurfaceId ? "h-full min-h-0" : "hidden"}
       >
-        {serviceForPreview(surface.url, services) ? (
-          <ServiceBrowserPanel service={surface.service} url={surface.url} />
+        {owner ? (
+          <ServiceBrowserPanel
+            service={surface.service}
+            url={surface.url}
+            deployedVersion={deployedVersionKey(
+              services?.find((service) => service.hostname === owner)?.deploy,
+            )}
+          />
         ) : (
           <p className="p-4 text-sm text-muted-foreground">
             Preview is available only for known service domains.{" "}
@@ -104,6 +166,6 @@ export function ServiceBrowserPanels({
           </p>
         )}
       </div>
-    ) : null,
-  );
+    );
+  });
 }
