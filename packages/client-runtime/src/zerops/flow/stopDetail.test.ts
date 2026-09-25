@@ -19,7 +19,9 @@ import {
 } from "./deployment.ts";
 import {
   earlierReleasesLabel,
+  serviceBuildToggleLabel,
   serviceRows,
+  stopCardTitle,
   stopFailedDeploy,
   stopMetaLine,
   stopVerdict,
@@ -270,6 +272,31 @@ describe("stopMetaLine", () => {
     { tier: "stage", source: "", services: 3, expected: "Nothing yet · 3 services" },
   ])("$tier from $source with $services services", ({ expected, ...input }) => {
     expect(stopMetaLine(input)).toBe(expected);
+  });
+});
+
+describe("stopCardTitle", () => {
+  it.each<{
+    group: Parameters<typeof stopCardTitle>[0];
+    count: number | undefined;
+    expected: string;
+  }>([
+    { group: "waiting", count: 3, expected: "Waiting for release · 3" },
+    { group: "services", count: 2, expected: "Services · 2" },
+    { group: "releases", count: 12, expected: "Releases · 12" },
+    { group: "deploys", count: 0, expected: "Deploys · 0" },
+    { group: "deploys", count: undefined, expected: "Deploys" },
+  ])("$group with $count", ({ group, count, expected }) => {
+    expect(stopCardTitle(group, count)).toBe(expected);
+  });
+});
+
+describe("serviceBuildToggleLabel", () => {
+  it.each([
+    { open: false, expected: "Show how api was deployed" },
+    { open: true, expected: "Hide how api was deployed" },
+  ])("open: $open", ({ open, expected }) => {
+    expect(serviceBuildToggleLabel("api", open)).toBe(expected);
   });
 });
 

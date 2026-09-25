@@ -402,12 +402,29 @@ describe("ZeropsStopPane", () => {
           releases: new Map(),
         },
       },
-      contains: ["Stage runs the head of main.", "Running here", "Deploys", "on main"],
+      contains: [
+        "Stage runs the head of main.",
+        "Running here",
+        "Deploys · 1",
+        "on main",
+        "Not public yet",
+      ],
     },
     {
       name: "a stage nothing was ever deployed to",
-      input: { tier: "stage", services: [], deployment: NONE },
-      contains: ["Nothing deployed yet.", "The next merge to main deploys here."],
+      input: {
+        tier: "stage",
+        services: [],
+        deployment: NONE,
+        commits: { kind: "read", commits: [], releases: new Map() },
+      },
+      contains: [
+        "Nothing deployed yet.",
+        "The next merge to main deploys here.",
+        "Deploys · 0",
+        "None yet",
+      ],
+      lacks: ["Nothing has landed on this repository yet."],
     },
     {
       name: "a stop whose deployment is still being read",

@@ -161,6 +161,32 @@ export function stopMetaLine(input: {
   return input.services > 0 ? `${from} · ${plural(input.services, "service", "services")}` : from;
 }
 
+const CARD_GROUPS = {
+  waiting: "Waiting for release",
+  services: "Services",
+  releases: "Releases",
+  deploys: "Deploys",
+} as const;
+
+/** A group of the stop's card, under its label: `Services · 2`; the label alone while uncounted. */
+export function stopCardTitle(group: keyof typeof CARD_GROUPS, count: number | undefined): string {
+  return count === undefined ? CARD_GROUPS[group] : `${CARD_GROUPS[group]} · ${String(count)}`;
+}
+
+/** Said, muted, beside a stage's Deploys: what they are read from. */
+export const DEPLOYS_ASIDE = "on main";
+
+/** A card group with nothing in it. */
+export const NONE_YET = "None yet";
+
+/** A service with no public address and none to offer. */
+export const NOT_PUBLIC_YET = "Not public yet";
+
+/** What a service row's chevron does, for a screen reader. */
+export function serviceBuildToggleLabel(hostname: string, open: boolean): string {
+  return `${open ? "Hide" : "Show"} how ${hostname} was deployed`;
+}
+
 /** The quiet label that shows a production's older releases. */
 export function earlierReleasesLabel(count: number): string {
   return `Show ${plural(count, "earlier release", "earlier releases")}`;

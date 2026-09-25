@@ -57,9 +57,14 @@ import {
   type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
 import {
+  DEPLOYS_ASIDE,
   earlierReleasesLabel,
+  NONE_YET,
+  NOT_PUBLIC_YET,
   NOTHING_DEPLOYED,
+  serviceBuildToggleLabel,
   serviceRows,
+  stopCardTitle,
   stopFailedDeploy,
   stopMetaLine,
   stopVerdict,
@@ -1243,7 +1248,7 @@ export function ZeropsStopPane({
 
       <FlatCard className="flex flex-col divide-y divide-border px-4">
         {waiting.length === 0 ? null : (
-          <CardGroup title={`Waiting for release · ${String(waiting.length)}`}>
+          <CardGroup title={stopCardTitle("waiting", waiting.length)}>
             <ul className="flex flex-col">
               {waiting.map((commit) => (
                 <li
@@ -1260,7 +1265,7 @@ export function ZeropsStopPane({
           </CardGroup>
         )}
 
-        <CardGroup title={`Services · ${String(services.length)}`}>
+        <CardGroup title={stopCardTitle("services", services.length)}>
           <ul className="flex flex-col">
             {services.map((row) => (
               <StopServiceLine
@@ -1278,7 +1283,7 @@ export function ZeropsStopPane({
         </CardGroup>
 
         {!production || releases.length === 0 ? null : (
-          <CardGroup title={`Releases · ${String(releases.length)}`}>
+          <CardGroup title={stopCardTitle("releases", releases.length)}>
             <ul className="flex flex-col">
               <ZeropsReleaseRows
                 groupId={groupId}
@@ -1303,12 +1308,20 @@ export function ZeropsStopPane({
         )}
 
         {production ? null : (
-          <CardGroup aside="on main" title="Deploys">
+          <CardGroup
+            aside={DEPLOYS_ASIDE}
+            title={stopCardTitle(
+              "deploys",
+              repo !== undefined && commits.kind === "read" ? commits.commits.length : undefined,
+            )}
+          >
             {repo === undefined ? (
               <p className="py-2 text-sm text-muted-foreground">
                 No repository is declared for this environment&rsquo;s services, so its history
                 cannot be read.
               </p>
+            ) : commits.kind === "read" && commits.commits.length === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
             ) : (
               <ZeropsHistoryView
                 commits={commits}
@@ -1394,7 +1407,7 @@ function StopServiceLine({
         ) : (
           <button
             aria-expanded={open}
-            aria-label={`${open ? "Hide" : "Show"} how ${row.hostname} was deployed`}
+            aria-label={serviceBuildToggleLabel(row.hostname, open)}
             className="flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             onClick={() => {
               setOpen((current) => !current);
@@ -1439,6 +1452,9 @@ function StopServiceLine({
           )}
         </span>
         <span className="col-span-2 col-start-2 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-5 sm:row-start-1">
+          {row.routes.length === 0 && offers.length === 0 ? (
+            <span className="truncate text-[13px] text-muted-foreground">{NOT_PUBLIC_YET}</span>
+          ) : null}
           {row.routes.map((route) => (
             <a
               className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground underline-offset-2 hover:underline"
