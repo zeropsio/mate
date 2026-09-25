@@ -34,7 +34,9 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 export interface ObservedRegion {
   /** Replaces `operation.steps` for the body while an observation is attached. */
   readonly steps: ReadonlyArray<ZeropsOperationStep & { readonly durationMs?: number }>;
-  /** e.g. "live from Zerops · 2 s ago". */
+  /** The observation's secondary processes (e.g. a subdomain toggle beside a deploy), one compact row each. */
+  readonly chips?: ReadonlyArray<ZeropsOperationStep>;
+  /** e.g. "live from Zerops · 2 s ago"; empty before the first read and on a settled card. */
   readonly provenance: string;
   /** The build log region, when the caller has one. */
   readonly log?: ReactNode;
@@ -338,8 +340,11 @@ export function ZeropsOperationCard(props: {
                 steps={stepsForBody}
               />
             ) : null}
+            {observed?.chips !== undefined && observed.chips.length > 0 ? (
+              <ProcessSteps aria-label="Other activity" density="compact" steps={observed.chips} />
+            ) : null}
             {observed?.log ?? null}
-            {observed !== undefined ? (
+            {observed !== undefined && observed.provenance.length > 0 ? (
               <p className="text-muted-foreground text-xs" data-zerops-operation-provenance>
                 {observed.provenance}
               </p>

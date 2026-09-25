@@ -188,6 +188,38 @@ describe("ZeropsOperationCard — running, with an observed region", () => {
     expect(html).toContain('data-zerops-card-tone="busy"');
   });
 
+  it("renders the observation's secondary processes as compact rows under the steps", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        now={Date.parse("2026-09-01T00:00:42.000Z")}
+        observed={{
+          ...observed,
+          chips: [
+            {
+              id: "p-subdomain",
+              label: "Enable subdomain access",
+              state: "running",
+              stateLabel: "Running",
+            },
+          ],
+        }}
+        operation={running}
+      />,
+    );
+    const chips = html.match(/<ol[^>]*aria-label="Other activity"[\s\S]*?<\/ol>/)?.[0];
+
+    expect(chips).toContain("Enable subdomain access");
+    expect(chips).toContain('data-zerops-process-density="compact"');
+    expect(html.indexOf("Enable subdomain access")).toBeGreaterThan(html.indexOf("38 s"));
+  });
+
+  it("writes no provenance line while the provenance is empty", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard observed={{ ...observed, provenance: "" }} operation={running} />,
+    );
+    expect(html).not.toContain("data-zerops-operation-provenance");
+  });
+
   it("shows a settled m/s-style duration once the operation is done and settledAt is known", () => {
     const done = operationFor(
       zeropsCall({
