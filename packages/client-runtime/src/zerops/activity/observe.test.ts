@@ -44,10 +44,10 @@ describe("observe — the three-state observation layer", () => {
     ).toEqual({ kind: "off", reason: "no-session" });
   });
 
-  it("observing with empty steps/processes before the first read — the elapsed clock only", () => {
+  it("observing with empty steps/chips before the first read — the elapsed clock only", () => {
     expect(observe(baseInput(), NOW + 3_000)).toEqual({
       kind: "observing",
-      observation: { steps: [], processes: [], readAtMs: expect.any(Number) },
+      observation: { steps: [], chips: [], readAtMs: expect.any(Number) },
       elapsedMs: 3_000,
     });
   });
@@ -79,18 +79,18 @@ describe("observe — the three-state observation layer", () => {
     );
     expect(state.kind).toBe("observing");
     expect(state.kind === "observing" && state.observation.steps.length).toBeGreaterThan(0);
-    expect(state.kind === "observing" && state.observation.processes).toEqual([p]);
+    expect(state.kind === "observing" && state.observation.chips).toEqual([]);
     expect(state.kind === "observing" && state.observation.outcome).toBeUndefined();
   });
 
-  it("processes lists the step source first, then the chips", () => {
+  it("chips are the secondary processes only — never the step source", () => {
     const stepSource = process({ id: "p-deploy" });
     const chip = process({ id: "p-subdomain", actionName: "stack.enableSubdomainAccess" });
     const state = observe(
       baseInput({ lastRead: lastReadOf({ stepSource, chips: [chip], projectMismatch: false }) }),
       NOW,
     );
-    expect(state.kind === "observing" && state.observation.processes).toEqual([stepSource, chip]);
+    expect(state.kind === "observing" && state.observation.chips).toEqual([chip]);
   });
 
   it("carries the outcome once the attributed process's pipeline is terminal", () => {

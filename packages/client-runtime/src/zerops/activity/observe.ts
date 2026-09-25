@@ -21,8 +21,8 @@ import type { AttributionResult } from "./attribution.ts";
 export interface Observation {
   /** From the step source's appVersion; `[]` when it has none (or there is no step source). */
   readonly steps: ReadonlyArray<ObservedStep>;
-  /** Every attributed process, step source first. */
-  readonly processes: ReadonlyArray<ActivityProcess>;
+  /** Every attributed process but the step source — a secondary action in the same window (e.g. a subdomain toggle beside a deploy). */
+  readonly chips: ReadonlyArray<ActivityProcess>;
   /** The step source's pipeline outcome, once settled. */
   readonly outcome?: "finished" | "failed" | "cancelled";
   /** When this observation was read, epoch ms. */
@@ -121,13 +121,11 @@ function outcomeFor(process: ActivityProcess): "finished" | "failed" | "cancelle
 
 function observationFor(attribution: AttributionResult, atMs: number, nowMs: number): Observation {
   const stepSource = attribution.stepSource;
-  const processes =
-    stepSource === undefined ? attribution.chips : [stepSource, ...attribution.chips];
   const outcome = stepSource === undefined ? undefined : outcomeFor(stepSource);
   const buildLog = buildLogFor(stepSource);
   return {
     steps: observedSteps(stepSource?.appVersion, nowMs),
-    processes,
+    chips: attribution.chips,
     readAtMs: atMs,
     ...(outcome === undefined ? {} : { outcome }),
     ...(buildLog === undefined ? {} : { buildLog }),
@@ -152,7 +150,7 @@ export function observe(input: ObservationInput, nowMs: number): ObservationStat
   if (input.lastRead === undefined) {
     return {
       kind: "observing",
-      observation: { steps: [], processes: [], readAtMs: nowMs },
+      observation: { steps: [], chips: [], readAtMs: nowMs },
       elapsedMs: Math.max(0, nowMs - input.startedAtMs),
     };
   }

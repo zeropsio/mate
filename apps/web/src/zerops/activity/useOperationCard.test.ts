@@ -94,7 +94,7 @@ function step(overrides: Partial<ObservedStep> = {}): ObservedStep {
 function observation(overrides: Partial<Observation> = {}): Observation {
   return {
     steps: [],
-    processes: [],
+    chips: [],
     readAtMs: NOW,
     ...overrides,
   };
