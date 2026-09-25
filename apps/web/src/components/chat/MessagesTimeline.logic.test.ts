@@ -1114,6 +1114,23 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows[0]).toMatchObject({ fold: { expanded: false } });
   });
 
+  it.each([
+    { kind: "logs" as const, folds: true },
+    { kind: "events" as const, folds: true },
+    { kind: "process" as const, folds: true },
+    { kind: "discover" as const, folds: true },
+    { kind: "deploy" as const, folds: false },
+  ])("a settled turn's $kind card folds away: $folds", ({ kind, folds }) => {
+    const rows = deriveSettledRows([
+      makeAssistantTimelineEntry("assistant-first", "2026-01-01T00:00:01Z"),
+      makeOperationTimelineEntry("read-operation", { kind, anchorAt: "2026-01-01T00:00:02Z" }),
+      makeAssistantTimelineEntry("assistant-final", "2026-01-01T00:00:59Z"),
+    ]);
+
+    expect(rows.some(isFoldingHeader)).toBe(folds);
+    expect(rows.map((row) => row.id).includes("operation:read-operation")).toBe(!folds);
+  });
+
   it("drops the fold row when an operation entry was the turn's only hidden entry", () => {
     const rows = deriveSettledRows([
       makeAssistantTimelineEntry("assistant-first", "2026-01-01T00:00:01Z"),

@@ -10,7 +10,11 @@ export {
   TIMELINE_HIDDEN_TOOL_NAMES,
   type ZeropsCallClass,
 } from "./classify.ts";
-export { reduceZeropsOperations, type ZeropsOperationsReduction } from "./operations.ts";
+export {
+  isReadOperationKind,
+  reduceZeropsOperations,
+  type ZeropsOperationsReduction,
+} from "./operations.ts";
 export { composeSession } from "./session.ts";
 export {
   deriveZeropsThreadModel,

@@ -74,13 +74,21 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_discover: "discover",
 };
 
-/** Reading the same thing twice is not a retry: these kinds never count an "attempt N". */
+/**
+ * The read tools' kinds: reading the same thing twice is not a retry, so they
+ * never count an "attempt N"; and a read is how the agent looked, not an
+ * outcome, so its card folds with the turn's work once the turn settles.
+ */
 const READ_KINDS: ReadonlySet<ZeropsOperationKind> = new Set([
   "logs",
   "events",
   "process",
   "discover",
 ]);
+
+export function isReadOperationKind(kind: ZeropsOperationKind): boolean {
+  return READ_KINDS.has(kind);
+}
 
 /**
  * The operation kind a "card"-classified call becomes — independent of
@@ -163,7 +171,7 @@ function browserTarget(input: Record<string, unknown>): string | undefined {
  *   an empty input never becomes an identity.
  */
 function hasAttemptIdentity(kind: Exclude<ZeropsOperationKind, "bootstrap">): boolean {
-  return kind !== "error" && !READ_KINDS.has(kind);
+  return kind !== "error" && !isReadOperationKind(kind);
 }
 
 function attemptIdentityFor(

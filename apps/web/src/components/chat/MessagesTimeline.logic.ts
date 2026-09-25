@@ -13,7 +13,11 @@ import {
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
-import { plural, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  isReadOperationKind,
+  plural,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
@@ -787,9 +791,10 @@ function deriveTurnFold(span: TurnSpan, unsettledTurnId: TurnId | null): TurnFol
     ) {
       continue;
     }
-    // Operation cards never fold either: they are the durable outcomes a
-    // settled turn needs to leave readable.
-    if (entry.kind === "operation") {
+    // Outcome cards never fold either: they are what a settled turn needs to
+    // leave readable. A read card (logs, events, process, discover) is how
+    // the agent looked, and folds with the rest of the work.
+    if (entry.kind === "operation" && !isReadOperationKind(entry.operation.kind)) {
       continue;
     }
     hiddenEntries.add(entry);
