@@ -468,12 +468,16 @@ function newestRunning(
   releases: ReadonlyArray<ReleaseListing>,
   running: ReadonlyMap<string, string>,
 ): string | undefined {
-  return releases.find(
-    (release) =>
-      release.verdict !== "refused" &&
-      release.entries.length > 0 &&
-      release.entries.every((entry) => running.get(entry.service) === entry.commit),
-  )?.tag;
+  return releases.find((release) => release.verdict !== "refused" && runsAll(release, running))
+    ?.tag;
+}
+
+/** Whether `running` runs every commit the release lists; one that lists nothing names nothing. */
+function runsAll(release: Pick<FlowRelease, "entries">, running: ReadonlyMap<string, string>) {
+  return (
+    release.entries.length > 0 &&
+    release.entries.every((entry) => running.get(entry.service) === entry.commit)
+  );
 }
 
 /**
@@ -551,9 +555,11 @@ function deployFailed(
  *
  * `deploys.live` says whether this is the release {@link liveRelease} names — the caller decides,
  * since only the newest of the releases that match reads Live. The live release offers no roll
- * back: going back to it would be a tag that changes nothing. Nor does the newest, which is what
- * production was last moved to; a release the broker refused was never deployed, so there is
- * nothing to go back to; one still being judged is not yet a state production was ever in.
+ * back: going back to it would be a tag that changes nothing — nor does an older tag listing the
+ * same commits, which a roll-back leaves behind (the live one's message, re-tagged). Nor does the
+ * newest, which is what production was last moved to; a release the broker refused was never
+ * deployed, so there is nothing to go back to; one still being judged is not yet a state
+ * production was ever in.
  */
 export function releaseRow(
   release: FlowRelease,
@@ -580,7 +586,7 @@ export function releaseRow(
     line,
     standing: undefined,
     word: releaseWord(release.verdict),
-    rollBack: index > 0 && release.verdict === "approved",
+    rollBack: index > 0 && release.verdict === "approved" && !runsAll(release, deploys.production),
   };
 }
 

@@ -461,14 +461,14 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a roll-back re-tags an earlier message verbatim: only the newest of the two is Live",
+      name: "a roll-back re-tags an earlier message verbatim: only the newest is Live, neither rolls back",
       releases: [release("v1.4.0"), release("v1.3.0", { api: OLD }), release("v1.2.0")],
       production: runs(API, WEB),
       failed: NONE_FAILED,
       expected: [
         { tag: "v1.4.0", standing: "live", word: "Live", rollBack: false },
         { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: true },
-        { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: true },
+        { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: false },
       ],
     },
     {
