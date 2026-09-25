@@ -51,8 +51,10 @@ function olderCommit(
  * The repositories one release moved, in entry order, each once.
  *
  * A single-repository group lists every service at the same sha: that is one
- * change, named by its first service. A roll back — a release whose sha is
- * older than the one before it — carried nothing new.
+ * change, named by its first service. A service no older release lists is
+ * measured by the older sha of another service on its repository, so one
+ * added to a group carries only what its repository did. A roll back — a
+ * release whose sha is older than the one before it — carried nothing new.
  */
 export function releaseCarried(input: {
   readonly entries: ReadonlyArray<ReleaseEntry>;
@@ -67,7 +69,9 @@ export function releaseCarried(input: {
   for (const entry of input.entries) {
     const repository = input.repositoryOf.get(entry.service);
     if (repository === undefined) continue;
-    const olderSha = olderCommit(input.older, (older) => older.service === entry.service);
+    const olderSha =
+      olderCommit(input.older, (older) => older.service === entry.service) ??
+      olderCommit(input.older, (older) => input.repositoryOf.get(older.service) === repository);
     if (olderSha !== undefined && olderSha.toLowerCase() === entry.commit.toLowerCase()) continue;
     if (changes.some((change) => change.repository === repository)) continue;
     const branch = input.commits.get(repository);

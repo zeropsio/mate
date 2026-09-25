@@ -62,6 +62,22 @@ describe("what a release carried", () => {
       [{ service: "app", repository: "group", commits: ["e", "d"] }],
     ],
     [
+      "a service added to a single repository's group is measured by its repository's older sha",
+      entries(["worker", sha("e")], ["app", sha("e")]),
+      [entries(["app", sha("e")])],
+      SINGLE_REPO,
+      COMMITS,
+      [],
+    ],
+    [
+      "a service added after an unmoved one is measured the same way",
+      entries(["app", sha("e")], ["worker", sha("e")]),
+      [entries(["app", sha("e")])],
+      SINGLE_REPO,
+      COMMITS,
+      [],
+    ],
+    [
       "a split group where one service moved is that service's change alone",
       entries(["api", sha("f")], ["web", sha("9")]),
       [entries(["api", sha("d")], ["web", sha("9")])],
