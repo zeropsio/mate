@@ -306,6 +306,7 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { agentAuthAction, zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import {
@@ -4322,6 +4323,11 @@ export default function ChatView(props: ChatViewProps) {
         // Only an upward wheel is a navigation intent; wheeling down while
         // following either does nothing (at the end) or moves toward it.
         const handleWheel = (event: WheelEvent) => {
+          // A wheel inside a nested scroller (a reasoning trace, a tool
+          // result, a code block) scrolls that, not the timeline.
+          if (event.ctrlKey || !isTimelineScrollTarget(event.target, scrollNode, event.deltaY)) {
+            return;
+          }
           if (event.deltaY < 0 && contentScrollsUp()) {
             handleManualNavigation();
           }
@@ -4355,6 +4361,16 @@ export default function ChatView(props: ChatViewProps) {
         // pointer events entirely; without this the timeline yanks back to
         // the end on the next stream chunk.
         const handleKeyDown = (event: KeyboardEvent) => {
+          if (!["PageUp", "Home", "ArrowUp", "PageDown", "End", "ArrowDown"].includes(event.key)) {
+            return;
+          }
+          const scrollDirection = ["PageUp", "Home", "ArrowUp"].includes(event.key) ? -1 : 1;
+          if (
+            scrollNode.contains(event.target as Node | null) &&
+            !isTimelineScrollTarget(event.target, scrollNode, scrollDirection)
+          ) {
+            return;
+          }
           switch (event.key) {
             case "PageUp":
             case "Home":
