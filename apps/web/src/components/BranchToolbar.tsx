@@ -59,6 +59,7 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import { Separator } from "./ui/separator";
+import { MiddleTruncate } from "./ui/middle-truncate";
 
 export interface BranchToolbarHandle {
   openBranchPicker: () => void;
@@ -221,9 +222,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
                 ) : (
                   <FolderIcon className="size-3" />
                 )}
-                <span className="min-w-0 truncate">
-                  {resolveCurrentWorkspaceLabel(activeWorktreePath)}
-                </span>
+                <MiddleTruncate value={resolveCurrentWorkspaceLabel(activeWorktreePath)} />
               </span>
             </MenuRadioItem>
             {worktreesAllowed ? (
@@ -238,7 +237,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               <MenuRadioItem disabled={envModeLocked} value="previous-worktree" closeOnClick>
                 <span className="flex min-w-0 items-center gap-1.5">
                   <HistoryIcon className="size-3" />
-                  <span className="min-w-0 truncate">{previousWorktreeLabel}</span>
+                  <MiddleTruncate value={previousWorktreeLabel} />
                 </span>
               </MenuRadioItem>
             ) : null}

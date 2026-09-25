@@ -227,6 +227,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { MiddleTruncate } from "./ui/middle-truncate";
 import {
   composerDraftHasUserContent,
   DraftId,
@@ -356,7 +357,7 @@ function SidebarThreadTooltip({
           {thread.branch ? (
             <div className="flex min-w-0 items-center gap-2">
               <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
-              <div className="min-w-0 truncate text-foreground/75">{thread.branch}</div>
+              <MiddleTruncate value={thread.branch} className="flex text-foreground/75" />
             </div>
           ) : null}
           {branchMismatch ? (
@@ -1556,7 +1557,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
-                  <span className="min-w-0 flex-1 truncate whitespace-nowrap">{thread.branch}</span>
+                  <MiddleTruncate value={thread.branch} showTitle={false} className="flex-1" />
                 </>
               ) : (
                 <span className="flex-1" />
