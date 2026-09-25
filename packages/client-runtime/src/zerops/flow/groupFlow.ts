@@ -54,7 +54,7 @@ import { importReadyTier } from "../recipeTier.ts";
 import {
   GROUP_REPOSITORY,
   isReleaseTag,
-  liveRelease,
+  releaseRunBy,
   planReleaseReads,
   readReleaseMessage,
   readSemver,
@@ -630,7 +630,7 @@ function releasesOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowRelea
     return { release, statuses };
   });
   const { production } = releaseSides(inputs);
-  const live = liveRelease(
+  const live = releaseRunBy(
     listed.map(({ release }) => release),
     production,
   );

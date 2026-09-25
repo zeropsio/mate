@@ -21,13 +21,12 @@ import {
   deployedCommit,
   environmentRow,
   flowVerbKey,
-  liveRelease,
+  releaseRunBy,
   nameStopByRelease,
   readZeropsGroupTags,
   releaseDeploys,
   releaseInFlight,
   releaseMessage,
-  releaseNamingStop,
   releaseOffer,
   releaseRow,
   releaseTagName,
@@ -250,7 +249,7 @@ function stopRow(
     const sha = deployedCommit(service.appVersionName);
     if (sha !== undefined) running.set(service.hostname, sha);
   }
-  const tag = releaseNamingStop(releases, running);
+  const tag = releaseRunBy(releases, running);
   return tag === undefined ? row : nameStopByRelease(row, tag);
 }
 
@@ -291,7 +290,7 @@ function projectFlow(
   // means. Holding production until a stage has the commit is said once,
   // explicitly, as `requireOnStage`.
   const releaseList = released?.releases ?? [];
-  const live = liveRelease(releaseList, sides.production);
+  const live = releaseRunBy(releaseList, sides.production);
   const releaseRows = releaseList.map((entry, index) =>
     releaseRow(entry, index, {
       production: sides.production,

@@ -17,10 +17,9 @@ import {
   deployedCommit,
   deployedVersion,
   environmentRow,
-  liveRelease,
+  releaseRunBy,
   nameStopByRelease,
   releaseContentsSummary,
-  releaseNamingStop,
   releaseRow,
   type EnvironmentRow,
   type EnvironmentServiceState,
@@ -395,9 +394,8 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     services: fixture.services,
     environment: name,
   });
-  const naming = production ? releaseNamingStop(listing, running) : undefined;
-  const stop = naming === undefined ? row : nameStopByRelease(row, naming);
-  const live = liveRelease(listing, running);
+  const live = releaseRunBy(listing, running);
+  const stop = production && live !== undefined ? nameStopByRelease(row, live) : row;
   const releases = listing.map((entry, index) =>
     releaseRow(entry, index, {
       production: running,

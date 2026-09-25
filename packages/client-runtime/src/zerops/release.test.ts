@@ -5,7 +5,7 @@ import { environmentRow, type EnvironmentRow } from "./groupRows.ts";
 import {
   compareForRelease,
   isReleaseTag,
-  liveRelease,
+  releaseRunBy,
   nameStopByRelease,
   newestReleaseTag,
   planReleaseReads,
@@ -15,7 +15,6 @@ import {
   releaseInFlight,
   releaseInFlightReason,
   releaseMessage,
-  releaseNamingStop,
   releaseOffer,
   releaseRow,
   releaseStatusContext,
@@ -416,13 +415,13 @@ describe("a release's row", () => {
     ]);
   const NONE_FAILED = new Map<string, string | undefined>();
 
-  /** The newest-first list's rows, each told whether it is the one `liveRelease` names. */
+  /** The newest-first list's rows, each told whether it is the one `releaseRunBy` names. */
   const rows = (
     releases: ReadonlyArray<FlowRelease>,
     production: ReadonlyMap<string, string>,
     failed: ReadonlyMap<string, string | undefined> = NONE_FAILED,
   ) => {
-    const live = liveRelease(releases, production);
+    const live = releaseRunBy(releases, production);
     return releases.map((entry, index) =>
       releaseRow(entry, index, { production, failed, live: entry.tag === live }),
     );
@@ -574,8 +573,8 @@ describe("a release's row", () => {
 
   it("never names a release that lists nothing as Live", () => {
     const empty = release("v1.3.0", { entries: [], line: "" });
-    expect(liveRelease([empty, release("v1.2.0")], runs(API, WEB))).toBe("v1.2.0");
-    expect(liveRelease([empty], runs(API, WEB))).toBeUndefined();
+    expect(releaseRunBy([empty, release("v1.2.0")], runs(API, WEB))).toBe("v1.2.0");
+    expect(releaseRunBy([empty], runs(API, WEB))).toBeUndefined();
   });
 
   it("compares full commits, never the short ones people read", () => {
@@ -585,7 +584,7 @@ describe("a release's row", () => {
         { service: "web", commit: shortCommit(WEB) },
       ],
     });
-    expect(liveRelease([short], runs(API, WEB))).toBeUndefined();
+    expect(releaseRunBy([short], runs(API, WEB))).toBeUndefined();
   });
 
   it("keeps a refusal's reason as the line, and a release's contents otherwise", () => {
@@ -660,7 +659,7 @@ describe("the release a stop is named by", () => {
       expected: undefined,
     },
   ])("$name", ({ releases, running, expected }) => {
-    expect(releaseNamingStop(releases, running)).toBe(expected);
+    expect(releaseRunBy(releases, running)).toBe(expected);
   });
 
   it("names the stop by the tag, keeps the first labelled service's commit, drops its tagger", () => {

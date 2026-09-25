@@ -442,12 +442,12 @@ export interface FlowRelease {
   readonly taggedAt: string | undefined;
 }
 
-/** Where a release stands against production: it runs there, or its deploy failed. */
-export type ReleaseStanding = "live" | "deploy-failed";
-
 export interface FlowReleaseRow extends FlowRelease {
-  /** `undefined` while neither is known: the row says the broker's verdict. */
-  readonly standing: ReleaseStanding | undefined;
+  /**
+   * Where it stands against production: it runs there, or its deploy failed. `undefined` while
+   * neither is known: the row says the broker's verdict.
+   */
+  readonly standing: "live" | "deploy-failed" | undefined;
   /**
    * The word beside the dot — Live, Deploy failed, else the broker's Approved, Refused, Checking;
    * `undefined` before the broker spoke.
@@ -461,10 +461,20 @@ export interface FlowReleaseRow extends FlowRelease {
 type ReleaseListing = Pick<FlowRelease, "tag" | "entries" | "verdict">;
 
 /**
- * The newest release every commit of which `running` runs, full commit to full commit. A refused
- * release never deployed, and one that lists nothing names nothing it could run.
+ * The release `running` runs: the newest every commit of which it runs, full commit to full
+ * commit, or `undefined`. A refused release never deployed, and one that lists nothing names
+ * nothing it could run. `running` is `{hostname: full sha}` (`deployedCommit`).
+ *
+ * Over production, it is the release that reads Live. The newest, because a roll-back re-tags an
+ * earlier message verbatim ({@link rollbackTo}) and two tags then list the same commits; only the
+ * later one is what production was last moved to.
+ *
+ * Over one stop's services, it is the release the stop is named by. A release lists every
+ * service, and one that moved only some of them leaves the others running a commit an earlier tag
+ * named first: Beviro's production ran medusa's commit from v0.1.9 through v0.1.13, and read
+ * v0.1.9 because medusa was its first labelled service.
  */
-function newestRunning(
+export function releaseRunBy(
   releases: ReadonlyArray<ReleaseListing>,
   running: ReadonlyMap<string, string>,
 ): string | undefined {
@@ -481,37 +491,7 @@ function runsAll(release: Pick<FlowRelease, "entries">, running: ReadonlyMap<str
 }
 
 /**
- * The release production runs: the newest whose every commit production runs, or `undefined`.
- *
- * The newest, because a roll-back re-tags an earlier message verbatim ({@link rollbackTo}) and two
- * tags then list the same commits; only the later one is what production was last moved to.
- */
-export function liveRelease(
-  releases: ReadonlyArray<ReleaseListing>,
-  production: ReadonlyMap<string, string>,
-): string | undefined {
-  return newestRunning(releases, production);
-}
-
-/**
- * The release a stop is named by: the newest whose every commit the stop's own services run, or
- * `undefined`, where the stop keeps its first labelled service's name.
- *
- * A release lists every service, and one that moved only some of them leaves the others running
- * a commit an earlier tag named first: Beviro's production ran medusa's commit from v0.1.9 through
- * v0.1.13, and read v0.1.9 because medusa was its first labelled service.
- *
- * `running` is `{hostname: full sha}` over that stop's services (`deployedCommit`).
- */
-export function releaseNamingStop(
-  releases: ReadonlyArray<ReleaseListing>,
-  running: ReadonlyMap<string, string>,
-): string | undefined {
-  return newestRunning(releases, running);
-}
-
-/**
- * The stop's row named by `tag` ({@link releaseNamingStop}): its version's name and label, and the
+ * The stop's row named by `tag` ({@link releaseRunBy}): its version's name and label, and the
  * line that spells them.
  *
  * The version keeps the first labelled service's commit (`sha`, `commit`) — the rule the row was
@@ -555,7 +535,7 @@ function deployFailed(
 /**
  * A release's row, given its place in the newest-first list and what production runs.
  *
- * `deploys.live` says whether this is the release {@link liveRelease} names — the caller decides,
+ * `deploys.live` says whether this is the release {@link releaseRunBy} names over production — the caller decides,
  * since only the newest of the releases that match reads Live. The live release offers no roll
  * back: going back to it would be a tag that changes nothing — nor does an older tag listing the
  * same commits, which a roll-back leaves behind (the live one's message, re-tagged). Nor does the

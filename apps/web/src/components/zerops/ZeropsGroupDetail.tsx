@@ -1086,7 +1086,7 @@ function waitingCommits(
 }
 
 /** Where a service's build is read from: its own repository and the commit it runs. */
-export interface StopBuildForge {
+interface StopBuildForge {
   readonly giteaOrigin: string | undefined;
   readonly owner: string | undefined;
 }
@@ -1110,7 +1110,7 @@ interface WaitingCommit {
 }
 
 /** *Run again* on the verdict: the failed job of the service whose deploy failed. */
-export interface StopRunAgain {
+interface StopRunAgain {
   readonly rerunning: boolean;
   /** Why Gitea refused the last one, until another is pressed. */
   readonly failure: string | null;
