@@ -162,6 +162,35 @@ describe("one pull request in the flow", () => {
     }
   });
 
+  const MERGE_SHA = "9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e";
+  it.each([
+    {
+      case: "a landed one carries the commit it landed as, whole",
+      over: { merged: true, merge_commit_sha: MERGE_SHA },
+      expected: MERGE_SHA,
+    },
+    {
+      case: "a landed one Gitea names no commit for carries none",
+      over: { merged: true, merge_commit_sha: null },
+      expected: undefined,
+    },
+    {
+      // Gitea fills the field on an open one too (its trial merge); that
+      // commit never reaches main, so no stop can be running it.
+      case: "an open one carries none, whatever Gitea sends",
+      over: { merged: false, merge_commit_sha: MERGE_SHA },
+      expected: undefined,
+    },
+  ])("names its merge commit: $case", ({ over, expected }) => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull(over),
+      checks: [],
+    });
+    expect(row.mergeCommit).toBe(expected);
+  });
+
   it("does not count the broker's own deploy statuses as checks", () => {
     const row = flowPullRequest({
       mergeability: "mergeable",
