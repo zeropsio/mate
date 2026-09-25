@@ -1046,7 +1046,7 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
         {
           id: "e1",
           createdAt: at(1),
-          toolName: "zerops_discover",
+          toolName: "zerops_knowledge",
           input: { hostname: "appdev" },
           status: "failed",
           resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
@@ -1054,7 +1054,7 @@ describe("reduceZeropsOperations — the attempt ordinal", () => {
         {
           id: "e2",
           createdAt: at(2),
-          toolName: "zerops_logs",
+          toolName: "zerops_export",
           // another host, so the R8 fold keeps it a card of its own
           input: { hostname: "apistage" },
           status: "failed",
