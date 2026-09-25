@@ -71,6 +71,19 @@ describe("t3code/no-restyle", () => {
   );
 
   webFile.valid(
+    "lets a CollapsibleTrigger take its look from className",
+    `
+      import { CollapsibleTrigger } from "~/components/ui/collapsible";
+
+      export const row = (
+        <CollapsibleTrigger className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
+          Details
+        </CollapsibleTrigger>
+      );
+    `,
+  );
+
+  webFile.valid(
     "leaves elements that are not ui exports alone",
     `export const save = <button className="bg-red-500">Save</button>;`,
   );

@@ -26,7 +26,15 @@ const UI_SOURCE_MARKER = "/apps/web/src/components/ui/";
  */
 export const NO_RESTYLE_OPTIONS = {
   allow: ["layout"],
-  contracts: [] as Array<{ readonly pattern: string; readonly allow: ReadonlyArray<string> }>,
+  contracts: [
+    {
+      // CollapsibleTrigger is a bare button with no styled counterpart (a disclosure row is not
+      // a Button), so its className is the API. Every other trigger has one: style them with
+      // render={<Button …/>}.
+      pattern: "^CollapsibleTrigger$",
+      allow: ["layout", "color", "typography", "spacing", "shape", "effects", "motion"],
+    },
+  ],
 };
 
 const SHADCN_SETTINGS = { shadcn: { ui: "~/components/ui" } };
