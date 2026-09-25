@@ -533,6 +533,16 @@ describe("ZeropsStopPane", () => {
     expect(markup.slice(services)).toContain("None yet");
   });
 
+  it("opens the card's first group 12px under its edge and each later one 24px under its hairline", () => {
+    const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 2 });
+    const groups = [...markup.matchAll(/<section class="([^"]*)"><h2/g)].map((match) =>
+      (match[1] ?? "").split(" "),
+    );
+    expect(groups).toHaveLength(2);
+    for (const classes of groups)
+      expect(classes).toEqual(expect.arrayContaining(["pt-6", "first:pt-3"]));
+  });
+
   it("draws the verdict's verb as an outline button, not a filled one", () => {
     const markup = renderStop({
       tier: "production",

@@ -1363,7 +1363,10 @@ const SERVICE_ROW_CLASS = cn(
   "grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-y-1 sm:grid-cols-[1.25rem_minmax(0,1.1fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
 );
 
-/** One group of the stop's card, under its label. */
+/**
+ * One group of the stop's card, under its label: the first 12px under the
+ * card's edge, each later one 24px under the hairline between them.
+ */
 function CardGroup({
   title,
   aside,
@@ -1375,7 +1378,7 @@ function CardGroup({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="pt-3 pb-2">
+    <section className="pt-6 pb-2 first:pt-3">
       <h2 className="flex items-baseline gap-2 pb-1.5">
         <MicroLabel>{title}</MicroLabel>
         {aside === undefined ? null : (
