@@ -20,6 +20,7 @@ import {
   botDisplayName,
   environmentRow,
   flowVerbKey,
+  liveRelease,
   readZeropsGroupTags,
   releaseDeploys,
   releaseInFlight,
@@ -264,6 +265,15 @@ function projectFlow(
   // tag waits behind, and one mid-deploy must not change what Release
   // means. Holding production until a stage has the commit is said once,
   // explicitly, as `requireOnStage`.
+  const releaseList = released?.releases ?? [];
+  const live = liveRelease(releaseList, sides.production);
+  const releaseRows = releaseList.map((entry, index) =>
+    releaseRow(entry, index, {
+      production: sides.production,
+      failed: sides.failed,
+      live: entry.tag === live,
+    }),
+  );
   const offer = releaseOffer({
     mayRelease: release.mayRelease,
     inFlight: release.inFlight,
@@ -280,7 +290,7 @@ function projectFlow(
     missing: deployed?.missing ?? [],
     pullRequests: forge?.pullRequests ?? [],
     merged: forge?.merged ?? [],
-    releases: (released?.releases ?? []).map((release, index) => releaseRow(release, index)),
+    releases: releaseRows,
     release: {
       ...offer,
       inFlight: release.inFlight,

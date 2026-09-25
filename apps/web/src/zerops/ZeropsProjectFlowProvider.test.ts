@@ -127,7 +127,16 @@ describe("joinProjectFlows", () => {
           {
             ...forgeState(),
             released: {
-              releases: [{ tag: "v0.1.0", verdict: "approved", detail: undefined, line: "" }],
+              releases: [
+                {
+                  tag: "v0.1.0",
+                  verdict: "approved",
+                  detail: undefined,
+                  line: "",
+                  entries: [],
+                  taggedAt: undefined,
+                },
+              ],
               tags: ["v0.1.0"],
               failure: "Gitea did not answer",
             },
@@ -232,7 +241,16 @@ describe("joinProjectFlows", () => {
             {
               ...forgeState(),
               released: {
-                releases: [{ tag: "v0.1.1", verdict: "pending", detail: undefined, line: "" }],
+                releases: [
+                  {
+                    tag: "v0.1.1",
+                    verdict: "pending",
+                    detail: undefined,
+                    line: "",
+                    entries: [{ service: "app", commit: MERGED }],
+                    taggedAt: "2026-09-24T10:00:00Z",
+                  },
+                ],
                 tags: ["v0.1.0", "v0.1.1"],
                 newest: {
                   tag: "v0.1.1",
@@ -287,7 +305,16 @@ describe("joinProjectFlows", () => {
           {
             ...forgeState(),
             released: {
-              releases: [{ tag: "v0.1.1", verdict: "refused", detail: undefined, line: "" }],
+              releases: [
+                {
+                  tag: "v0.1.1",
+                  verdict: "refused",
+                  detail: undefined,
+                  line: "",
+                  entries: [{ service: "app", commit: MERGED }],
+                  taggedAt: "2026-09-24T10:00:00Z",
+                },
+              ],
               tags: ["v0.1.0", "v0.1.1"],
               newest: {
                 tag: "v0.1.1",
@@ -312,14 +339,13 @@ describe("joinProjectFlows", () => {
   // The broker's production deploy of the commit v0.1.1 lists, read through the
   // stage that runs it; production still runs the old commit. Newest first, as
   // Gitea sends a commit's statuses.
-  function releaseWithProductionStatuses(
+  function flowWithProductionStatuses(
     production: ReadonlyArray<{
       readonly state: "pending" | "success" | "failure";
       readonly created_at?: string;
     }>,
+    productionRuns: string = RUNNING,
   ) {
-    const MERGED = "2".repeat(40);
-    const RUNNING = "1".repeat(40);
     return joinProjectFlows({
       groups: GROUPS,
       deploys: new Map([
@@ -354,7 +380,7 @@ describe("joinProjectFlows", () => {
                 tier: "production" as const,
                 sources: "release" as const,
                 environment: "production",
-                services: [{ hostname: "app", appVersionName: RUNNING }],
+                services: [{ hostname: "app", appVersionName: productionRuns }],
               },
             ],
             mainHeads: new Map([["app", MERGED]]),
@@ -367,7 +393,24 @@ describe("joinProjectFlows", () => {
           {
             ...forgeState(),
             released: {
-              releases: [{ tag: "v0.1.1", verdict: "approved", detail: undefined, line: "" }],
+              releases: [
+                {
+                  tag: "v0.1.1",
+                  verdict: "approved",
+                  detail: undefined,
+                  line: "",
+                  entries: [{ service: "app", commit: MERGED }],
+                  taggedAt: "2026-09-24T10:00:00Z",
+                },
+                {
+                  tag: "v0.1.0",
+                  verdict: "approved",
+                  detail: undefined,
+                  line: "",
+                  entries: [{ service: "app", commit: RUNNING }],
+                  taggedAt: undefined,
+                },
+              ],
               tags: ["v0.1.0", "v0.1.1"],
               newest: {
                 tag: "v0.1.1",
@@ -383,8 +426,46 @@ describe("joinProjectFlows", () => {
       nowMs: NOW,
       withheld: NOTHING_WITHHELD,
       failures: NO_FAILURES,
-    }).get("g1")?.release;
+    }).get("g1");
   }
+  const releaseWithProductionStatuses = (
+    production: Parameters<typeof flowWithProductionStatuses>[0],
+  ) => flowWithProductionStatuses(production)?.release;
+
+  const rowsOf = (flow: ReturnType<typeof flowWithProductionStatuses>) =>
+    flow?.releases.map(({ tag, standing, word, rollBack }) => ({ tag, standing, word, rollBack }));
+
+  it.each([
+    {
+      name: "the release production runs reads Live; the newer one is not a state it was in yet",
+      statuses: [{ state: "pending" as const, created_at: "2026-09-24T10:01:00Z" }],
+      runs: RUNNING,
+      rows: [
+        { tag: "v0.1.1", standing: undefined, word: "Approved", rollBack: false },
+        { tag: "v0.1.0", standing: "live", word: "Live", rollBack: false },
+      ],
+    },
+    {
+      name: "the newest's production deploy failed after its tag: it reads Deploy failed",
+      statuses: [{ state: "failure" as const, created_at: "2026-09-24T10:01:00Z" }],
+      runs: RUNNING,
+      rows: [
+        { tag: "v0.1.1", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
+        { tag: "v0.1.0", standing: "live", word: "Live", rollBack: false },
+      ],
+    },
+    {
+      name: "production moved to the newest: it reads Live, the earlier one offers a roll-back",
+      statuses: [{ state: "success" as const, created_at: "2026-09-24T10:01:00Z" }],
+      runs: MERGED,
+      rows: [
+        { tag: "v0.1.1", standing: "live", word: "Live", rollBack: false },
+        { tag: "v0.1.0", standing: undefined, word: "Approved", rollBack: true },
+      ],
+    },
+  ])("$name", ({ statuses, runs, rows }) => {
+    expect(rowsOf(flowWithProductionStatuses(statuses, runs))).toEqual(rows);
+  });
 
   it("an approved tag whose production deploy failed is not in flight; Release is offered again", () => {
     const release = releaseWithProductionStatuses([

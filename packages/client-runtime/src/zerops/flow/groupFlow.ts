@@ -54,6 +54,7 @@ import { importReadyTier } from "../recipeTier.ts";
 import {
   GROUP_REPOSITORY,
   isReleaseTag,
+  liveRelease,
   planReleaseReads,
   readReleaseMessage,
   readSemver,
@@ -603,45 +604,59 @@ export function groupFlowStatusReads(inputs: GroupFlowInputs): ReadonlyArray<Sta
 /**
  * The group's releases, newest first: known once the tags are. Each row is known once the
  * broker's verdict on its commit is; a verdict not read yet holds its own row, never the others,
- * and is never "not judged yet".
+ * and is never "not judged yet". The release production runs, as far as its stops are read, reads
+ * Live; no failed deploy is read here, so none reads Deploy failed.
  */
 function releasesOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowRelease>> {
   const { tags } = inputs;
   if (!isKnown(tags)) return tags as Shown<never>;
+  const listed = releaseTagsOf(tags.value).map((tag) => {
+    const sha = tag.commit?.sha;
+    // A tag naming no commit has nothing the broker could have judged.
+    const statuses: Shown<ReadonlyArray<GiteaCommitStatus>> =
+      sha === undefined
+        ? { ...tags, value: [] }
+        : (inputs.statuses.get(statusKey(GROUP_REPOSITORY, sha)) ?? UNREAD);
+    const { verdict, detail } = releaseVerdict(tag.name, isKnown(statuses) ? statuses.value : []);
+    const entries = readReleaseMessage(tag.message ?? "");
+    const release: FlowRelease = {
+      tag: tag.name,
+      verdict,
+      detail: verdict === "refused" ? detail : undefined,
+      line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
+      entries,
+      taggedAt: undefined,
+    };
+    return { release, statuses };
+  });
+  const { production } = releaseSides(inputs);
+  const live = liveRelease(
+    listed.map(({ release }) => release),
+    production,
+  );
   return {
     ...tags,
-    value: releaseTagsOf(tags.value).map((tag, index): GroupFlowRelease => {
-      const sha = tag.commit?.sha;
-      // A tag naming no commit has nothing the broker could have judged.
-      const statuses: Shown<ReadonlyArray<GiteaCommitStatus>> =
-        sha === undefined
-          ? { ...tags, value: [] }
-          : (inputs.statuses.get(statusKey(GROUP_REPOSITORY, sha)) ?? UNREAD);
+    value: listed.map(({ release, statuses }, index): GroupFlowRelease => {
       const combined = combine([
         { shown: tags, source: "gitea" },
         { shown: statuses, source: "gitea" },
       ]).shown;
       return {
-        tag: tag.name,
-        row: withValue(combined, () => {
-          const { verdict, detail } = releaseVerdict(
-            tag.name,
-            isKnown(statuses) ? statuses.value : [],
-          );
-          const release: FlowRelease = {
-            tag: tag.name,
-            verdict,
-            detail: verdict === "refused" ? detail : undefined,
-            line: readReleaseMessage(tag.message ?? "")
-              .map((entry) => `${entry.service} ${shortCommit(entry.commit)}`)
-              .join(" · "),
-          };
-          return releaseRow(release, index);
-        }),
+        tag: release.tag,
+        row: withValue(combined, () =>
+          releaseRow(release, index, {
+            production,
+            failed: NO_FAILURES,
+            live: release.tag === live,
+          }),
+        ),
       };
     }),
   };
 }
+
+/** No failed deploy is read by the flow: the deploy half's statuses hold them. */
+const NO_FAILURES: ReadonlyMap<string, string | undefined> = new Map();
 
 /**
  * The version a service runs now, a build of it running or not; `null` while it runs none, and

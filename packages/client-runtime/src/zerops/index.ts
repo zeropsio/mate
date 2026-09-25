@@ -298,6 +298,7 @@ export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   compareForRelease,
   isReleaseTag,
+  liveRelease,
   newestReleaseTag,
   readReleaseMessage,
   readSemver,
@@ -320,6 +321,7 @@ export {
   type ReleaseComparison,
   type ReleaseEntry,
   type ReleaseGate,
+  type ReleaseStanding,
   type ReleaseVerdict,
   type Semver,
   GROUP_REPOSITORY,

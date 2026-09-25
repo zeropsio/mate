@@ -435,28 +435,98 @@ export interface FlowRelease {
   readonly detail: string | undefined;
   /** `api 3f9c1b2 · web 77ab0e1` — what the tag lists, short. */
   readonly line: string;
+  /** What the tag lists, full commits ({@link readReleaseMessage}); `[]` for one it cannot read. */
+  readonly entries: ReadonlyArray<ReleaseEntry>;
+  /** When it was tagged; read for the newest release only, `undefined` elsewhere and unread. */
+  readonly taggedAt: string | undefined;
 }
 
+/** Where a release stands against production: it runs there, or its deploy failed. */
+export type ReleaseStanding = "live" | "deploy-failed";
+
 export interface FlowReleaseRow extends FlowRelease {
-  /** The word beside the dot — Approved, Refused, Checking; `undefined` before the broker spoke. */
+  /** `undefined` while neither is known: the row says the broker's verdict. */
+  readonly standing: ReleaseStanding | undefined;
+  /**
+   * The word beside the dot — Live, Deploy failed, else the broker's Approved, Refused, Checking;
+   * `undefined` before the broker spoke.
+   */
   readonly word: string | undefined;
   /** Whether *Roll back to this* is offered. */
   readonly rollBack: boolean;
 }
 
 /**
- * A release's row, given its place in the newest-first list.
+ * The release production runs: the newest whose every commit production runs, or `undefined`.
  *
- * The newest release is what production already runs, so rolling back to it
- * would be a tag that changes nothing; a release the broker refused was never
- * deployed, so there is nothing to go back to; one still being judged is not
- * yet a state production was ever in.
+ * The newest, because a roll-back re-tags an earlier message verbatim ({@link rollbackTo}) and two
+ * tags then list the same commits; only the later one is what production was last moved to. A
+ * refused release never deployed, and one that lists nothing names nothing it could run.
  */
-export function releaseRow(release: FlowRelease, index: number): FlowReleaseRow {
+export function liveRelease(
+  releases: ReadonlyArray<Pick<FlowRelease, "tag" | "entries" | "verdict">>,
+  production: ReadonlyMap<string, string>,
+): string | undefined {
+  return releases.find(
+    (release) =>
+      release.verdict !== "refused" &&
+      release.entries.length > 0 &&
+      release.entries.every((entry) => production.get(entry.service) === entry.commit),
+  )?.tag;
+}
+
+/**
+ * Whether a commit the release lists, and production does not run, failed its production deploy
+ * after the release was tagged. A failure whose time is not read, or posted before the tag,
+ * belongs to an earlier release of the same commit — as {@link releaseInFlight} reads it. With no
+ * tag time to measure against, the failure alone counts.
+ */
+function deployFailed(
+  release: FlowRelease,
+  production: ReadonlyMap<string, string>,
+  failed: ReadonlyMap<string, string | undefined>,
+): boolean {
+  const taggedMs = release.taggedAt === undefined ? Number.NaN : Date.parse(release.taggedAt);
+  return release.entries.some((entry) => {
+    if (production.get(entry.service) === entry.commit) return false;
+    const key = `${entry.service}@${entry.commit}`;
+    if (!failed.has(key)) return false;
+    if (Number.isNaN(taggedMs)) return true;
+    const failedAt = failed.get(key);
+    return failedAt !== undefined && Date.parse(failedAt) >= taggedMs;
+  });
+}
+
+/**
+ * A release's row, given its place in the newest-first list and what production runs.
+ *
+ * `deploys.live` says whether this is the release {@link liveRelease} names — the caller decides,
+ * since only the newest of the releases that match reads Live. The live release offers no roll
+ * back: going back to it would be a tag that changes nothing. Nor does the newest, which is what
+ * production was last moved to; a release the broker refused was never deployed, so there is
+ * nothing to go back to; one still being judged is not yet a state production was ever in.
+ */
+export function releaseRow(
+  release: FlowRelease,
+  index: number,
+  deploys: {
+    /** `{service: full sha}` production runs. */
+    readonly production: ReadonlyMap<string, string>;
+    /** `{service}@{full sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
+    readonly failed: ReadonlyMap<string, string | undefined>;
+    readonly live: boolean;
+  },
+): FlowReleaseRow {
+  const line =
+    release.verdict === "refused" && release.detail !== undefined ? release.detail : release.line;
+  if (deploys.live && release.verdict !== "refused")
+    return { ...release, line, standing: "live", word: "Live", rollBack: false };
+  if (release.verdict !== "refused" && deployFailed(release, deploys.production, deploys.failed))
+    return { ...release, line, standing: "deploy-failed", word: "Deploy failed", rollBack: false };
   return {
     ...release,
-    line:
-      release.verdict === "refused" && release.detail !== undefined ? release.detail : release.line,
+    line,
+    standing: undefined,
     word: releaseWord(release.verdict),
     rollBack: index > 0 && release.verdict === "approved",
   };

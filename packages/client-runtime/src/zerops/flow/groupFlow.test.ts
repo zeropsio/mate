@@ -651,6 +651,56 @@ describe("groupFlow (DESIGN §4.7)", () => {
     expect(flowOf({ tags: READING }).releases.state).toBe("reading");
   });
 
+  it("a release row carries what its tag lists, and the release production runs reads Live", () => {
+    const tag = (name: string, sha: string, appdev: string): GiteaTag => ({
+      name,
+      message: `appdev ${appdev}`,
+      commit: { sha },
+    });
+    const approved = (name: string) =>
+      known([{ context: releaseStatusContext(name), state: "success" as const }]);
+    const flow = groupFlow(
+      inputs({
+        tags: known([
+          tag("v1.2.0", "s2", MAIN_SHA),
+          tag("v1.1.0", "s1", PRODUCTION_SHA),
+          tag("v1.0.0", "s0", MAIN_SHA),
+        ]),
+        statuses: new Map([
+          [statusKey("group", "s2"), approved("v1.2.0")],
+          [statusKey("group", "s1"), approved("v1.1.0")],
+          [statusKey("group", "s0"), approved("v1.0.0")],
+        ]),
+      }),
+      RELEASER,
+      NOW,
+    );
+    expect(flow.releases).toMatchObject({
+      state: "known",
+      value: [
+        {
+          tag: "v1.2.0",
+          row: {
+            value: {
+              entries: [{ service: "appdev", commit: MAIN_SHA }],
+              taggedAt: undefined,
+              standing: undefined,
+              word: "Approved",
+            },
+          },
+        },
+        {
+          tag: "v1.1.0",
+          row: { value: { standing: "live", word: "Live", rollBack: false } },
+        },
+        {
+          tag: "v1.0.0",
+          row: { value: { standing: undefined, word: "Approved", rollBack: true } },
+        },
+      ],
+    });
+  });
+
   it("only the newest releases are listed, and only their verdicts are read (D5)", () => {
     // A long-lived group: forty releases, one status read each if every one were judged.
     const made = 40;

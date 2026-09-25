@@ -394,22 +394,23 @@ async function readReleases(client: GiteaClient, slug: string): Promise<ForgeRel
         ? []
         : await client.listCommitStatuses(slug, GROUP_REPOSITORY, sha).catch(() => []);
     const { verdict, detail } = releaseVerdict(tag.name, statuses);
+    // Only the newest can be in flight; when it was made bounds how long it holds Release, and
+    // tells its own deploy's failure from an earlier release's. A lightweight tag has no tagger
+    // to read, and lists nothing a release deploys. A date that does not answer holds nothing:
+    // Release stays offered.
+    const taggedAt =
+      newest !== undefined || tag.id === undefined || entries.length === 0
+        ? undefined
+        : await client.tagDate(slug, GROUP_REPOSITORY, tag.id).catch(() => undefined);
     releases.push({
       tag: tag.name,
       verdict,
       detail: verdict === "refused" ? detail : undefined,
       line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
+      entries,
+      taggedAt,
     });
-    if (newest === undefined) {
-      // Only the newest can be in flight; when it was made bounds how long it holds Release.
-      // A lightweight tag has no tagger to read, and lists nothing a release deploys.
-      // A date that does not answer holds nothing: Release stays offered.
-      const taggedAt =
-        tag.id === undefined || entries.length === 0
-          ? undefined
-          : await client.tagDate(slug, GROUP_REPOSITORY, tag.id).catch(() => undefined);
-      newest = { tag: tag.name, verdict, entries, taggedAt };
-    }
+    if (newest === undefined) newest = { tag: tag.name, verdict, entries, taggedAt };
   }
   return { releases, tags: releaseTags.map((tag) => tag.name), newest };
 }

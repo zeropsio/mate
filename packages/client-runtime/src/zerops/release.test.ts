@@ -4,6 +4,7 @@ import type { GiteaCommitStatus } from "./giteaClient.ts";
 import {
   compareForRelease,
   isReleaseTag,
+  liveRelease,
   newestReleaseTag,
   planReleaseReads,
   readReleaseMessage,
@@ -24,6 +25,7 @@ import {
   shortCommit,
   suggestReleaseTags,
   type FlowRelease,
+  type FlowReleaseRow,
 } from "./release.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
@@ -385,40 +387,199 @@ describe("shortCommit", () => {
 });
 
 describe("a release's row", () => {
-  const newest: FlowRelease = {
-    tag: "v1.3.0",
-    verdict: "approved",
-    detail: undefined,
-    line: "api 3f9c1b2",
+  const TAGGED = "2026-09-25T07:00:00Z";
+  const release = (
+    tag: string,
+    over: Partial<FlowRelease> & { readonly api?: string; readonly web?: string } = {},
+  ): FlowRelease => {
+    const { api = API, web = WEB, ...rest } = over;
+    return {
+      tag,
+      verdict: "approved",
+      detail: undefined,
+      line: `api ${shortCommit(api)} · web ${shortCommit(web)}`,
+      entries: [
+        { service: "api", commit: api },
+        { service: "web", commit: web },
+      ],
+      taggedAt: undefined,
+      ...rest,
+    };
   };
-  const earlier: FlowRelease = { ...newest, tag: "v1.2.0", line: "api 1111111" };
-  const refused: FlowRelease = {
-    tag: "v1.1.0",
-    verdict: "refused",
-    detail: "ada is not a releaser",
-    line: "api 2222222",
-  };
-  const judged: FlowRelease = { ...newest, tag: "v1.0.0", verdict: "pending", line: "api 3333333" };
+  const runs = (api: string, web: string) =>
+    new Map([
+      ["api", api],
+      ["web", web],
+    ]);
+  const NONE_FAILED = new Map<string, string | undefined>();
 
-  it.each([
-    { release: newest, index: 0, expected: false, why: "the newest is what production runs" },
-    {
-      release: earlier,
-      index: 1,
-      expected: true,
-      why: "an earlier approved one can be gone back to",
-    },
-    { release: refused, index: 2, expected: false, why: "a refused release never deployed" },
-    { release: judged, index: 3, expected: false, why: "a release still being judged" },
-  ])("offers a roll-back: $expected — $why", ({ release, index, expected }) => {
-    expect(releaseRow(release, index).rollBack).toBe(expected);
+  /** The newest-first list's rows, each told whether it is the one `liveRelease` names. */
+  const rows = (
+    releases: ReadonlyArray<FlowRelease>,
+    production: ReadonlyMap<string, string>,
+    failed: ReadonlyMap<string, string | undefined> = NONE_FAILED,
+  ) => {
+    const live = liveRelease(releases, production);
+    return releases.map((entry, index) =>
+      releaseRow(entry, index, { production, failed, live: entry.tag === live }),
+    );
+  };
+  const brief = (row: FlowReleaseRow) => ({
+    tag: row.tag,
+    standing: row.standing,
+    word: row.word,
+    rollBack: row.rollBack,
   });
 
-  it("says the broker's word beside the dot and its refusal as the line", () => {
-    const row = releaseRow(refused, 2);
-    expect(row.word).toBe("Refused");
-    expect(row.line).toBe("ada is not a releaser");
-    expect(releaseRow(newest, 0).line).toBe("api 3f9c1b2");
+  it.each([
+    {
+      name: "the newest runs: it reads Live and offers no roll-back",
+      releases: [release("v1.3.0"), release("v1.2.0", { api: OLD })],
+      production: runs(API, WEB),
+      failed: NONE_FAILED,
+      expected: [
+        { tag: "v1.3.0", standing: "live", word: "Live", rollBack: false },
+        { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: true },
+      ],
+    },
+    {
+      name: "an older one runs: it reads Live, the other approved ones offer a roll-back",
+      releases: [
+        release("v1.3.0", { web: OLD }),
+        release("v1.2.0"),
+        release("v1.1.0", { api: OLD, web: OLD }),
+      ],
+      production: runs(API, WEB),
+      failed: NONE_FAILED,
+      expected: [
+        { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false },
+        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
+        { tag: "v1.1.0", standing: undefined, word: "Approved", rollBack: true },
+      ],
+    },
+    {
+      name: "a roll-back re-tags an earlier message verbatim: only the newest of the two is Live",
+      releases: [release("v1.4.0"), release("v1.3.0", { api: OLD }), release("v1.2.0")],
+      production: runs(API, WEB),
+      failed: NONE_FAILED,
+      expected: [
+        { tag: "v1.4.0", standing: "live", word: "Live", rollBack: false },
+        { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: true },
+        { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: true },
+      ],
+    },
+    {
+      name: "a commit it lists failed its production deploy after the tag: Deploy failed",
+      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      production: runs(API, OLD),
+      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      expected: [
+        { tag: "v1.3.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
+        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
+      ],
+    },
+    {
+      name: "a failure with no tag time to measure it against: Deploy failed",
+      releases: [release("v1.3.0", { verdict: "unknown" }), release("v1.2.0", { web: OLD })],
+      production: runs(API, OLD),
+      failed: new Map([[`web@${WEB}`, undefined]]),
+      expected: [
+        { tag: "v1.3.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
+        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
+      ],
+    },
+    {
+      name: "a failure posted before the tag belongs to an earlier release of the commit",
+      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      production: runs(API, OLD),
+      failed: new Map([[`web@${WEB}`, "2026-09-25T06:55:00Z"]]),
+      expected: [
+        { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false },
+        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
+      ],
+    },
+    {
+      name: "a failure whose time is not read does not outlast a tag whose time is",
+      releases: [release("v1.3.0", { taggedAt: TAGGED })],
+      production: runs(API, OLD),
+      failed: new Map([[`web@${WEB}`, undefined]]),
+      expected: [{ tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false }],
+    },
+    {
+      name: "a failed commit production runs anyway is not what failed",
+      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      production: runs(OLD, WEB),
+      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      expected: [
+        { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false },
+        { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: true },
+      ],
+    },
+    {
+      name: "a refused release never deployed: never Live, never Deploy failed",
+      releases: [
+        release("v1.4.0", { verdict: "refused", detail: "ada is not a releaser" }),
+        release("v1.3.0", { verdict: "refused", web: OLD, detail: "No stage runs it." }),
+        release("v1.2.0"),
+      ],
+      production: runs(API, WEB),
+      failed: new Map([[`web@${OLD}`, undefined]]),
+      expected: [
+        { tag: "v1.4.0", standing: undefined, word: "Refused", rollBack: false },
+        { tag: "v1.3.0", standing: undefined, word: "Refused", rollBack: false },
+        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
+      ],
+    },
+    {
+      name: "one the broker still judges reads Checking and offers no roll-back",
+      releases: [release("v1.3.0", { verdict: "pending", web: OLD }), release("v1.2.0")],
+      production: runs(API, WEB),
+      failed: NONE_FAILED,
+      expected: [
+        { tag: "v1.3.0", standing: undefined, word: "Checking", rollBack: false },
+        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
+      ],
+    },
+    {
+      name: "production runs none of them: every row keeps the broker's word",
+      releases: [release("v1.3.0"), release("v1.2.0", { api: OLD })],
+      production: new Map<string, string>(),
+      failed: NONE_FAILED,
+      expected: [
+        { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false },
+        { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: true },
+      ],
+    },
+  ])("$name", ({ releases, production, failed, expected }) => {
+    expect(rows(releases, production, failed).map(brief)).toEqual(expected);
+  });
+
+  it("never names a release that lists nothing as Live", () => {
+    const empty = release("v1.3.0", { entries: [], line: "" });
+    expect(liveRelease([empty, release("v1.2.0")], runs(API, WEB))).toBe("v1.2.0");
+    expect(liveRelease([empty], runs(API, WEB))).toBeUndefined();
+  });
+
+  it("compares full commits, never the short ones people read", () => {
+    const short = release("v1.3.0", {
+      entries: [
+        { service: "api", commit: shortCommit(API) },
+        { service: "web", commit: shortCommit(WEB) },
+      ],
+    });
+    expect(liveRelease([short], runs(API, WEB))).toBeUndefined();
+  });
+
+  it("keeps a refusal's reason as the line, and a release's contents otherwise", () => {
+    const [refused, live] = rows(
+      [
+        release("v1.3.0", { verdict: "refused", detail: "ada is not a releaser" }),
+        release("v1.2.0"),
+      ],
+      runs(API, WEB),
+    );
+    expect(refused!.line).toBe("ada is not a releaser");
+    expect(live!.line).toBe("api 3f9c1b2 · web 77ab0e1");
   });
 });
 
