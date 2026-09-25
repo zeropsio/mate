@@ -10,6 +10,7 @@ import noLegacyVocabulary from "./rules/no-legacy-vocabulary.ts";
 import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-tests.ts";
 import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
 import noPlatformGlobals from "./rules/no-platform-globals.ts";
+import noRestyle from "./rules/no-restyle.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
 
 export default definePlugin({
@@ -27,6 +28,7 @@ export default definePlugin({
     "no-manual-effect-runtime-in-tests": noManualEffectRuntimeInTests,
     "no-native-title-tooltip": noNativeTitleTooltip,
     "no-platform-globals": noPlatformGlobals,
+    "no-restyle": noRestyle,
     "no-theme-escape-hatches": noThemeEscapeHatches,
   },
 });

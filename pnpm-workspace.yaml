@@ -46,8 +46,8 @@ catalog:
   effect: 4.0.0-rc.115
   jose: 6.2.2
   typescript: 7.0.2
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
-  vite-plus: 0.3.0
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.3
+  vite-plus: 0.3.3
   yaml: ^2.9.0
 
 minimumReleaseAgeExclude:
@@ -77,6 +77,8 @@ minimumReleaseAgeExclude:
   - expo-updates@57.0.19
   - expo@57.0.18
   - expo-widgets@57.0.15
+  - "@shadcn/lint@0.1.5"
+  - cn@0.3.2
 
 overrides:
   # Earlier React Navigation declarations create a circular type alias in TypeScript 7.

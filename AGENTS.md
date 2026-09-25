@@ -188,6 +188,10 @@ Full glossary with file links: `docs/internals/glossary.md`.
 ## Taste
 
 - Complexity belongs at the adapter boundary. Keep orchestration pure and UI dumb.
+- `apps/web/src/components/ui` exports own their look. Pick a `variant` or `size`; do not restyle one
+  with `className`. If none fits, add a variant to the component, not classes at the call site.
+  Layout classes (width, flex, margin, position) belong on the parent. `t3code/no-restyle`
+  (upstream's `shadcn/no-restyle` behind the exception ledger) reports violations.
 - Prefer inferred types. Do not use `any`.
 - Comments describe how something is used and move when the code moves.
 - Avoid continuously repainting animations.
