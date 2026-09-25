@@ -82,13 +82,21 @@ export function stopVerdict(input: {
       verb: jobKnown ? { kind: "run-again" } : null,
     };
   }
+  const releaseVerb =
+    tier === "production" &&
+    input.waiting > 0 &&
+    input.release.offered &&
+    input.release.tag !== undefined
+      ? ({ kind: "release", tag: input.release.tag } as const)
+      : null;
   if (view.version === undefined) {
     if (view.line !== NOTHING_DEPLOYED) return { tone: "off", text: view.line, ...quiet };
+    // An empty production moves by its first release, offered as soon as main has something.
     return {
       tone: "off",
       text: `${NOTHING_DEPLOYED}.`,
       detail: tier === "stage" ? "The next merge to main deploys here." : undefined,
-      verb: null,
+      verb: releaseVerb,
     };
   }
   const label = view.version.label ?? view.line;
@@ -98,15 +106,13 @@ export function stopVerdict(input: {
       text: input.atMainHead ? "Stage runs the head of main." : `Stage runs ${label}.`,
       ...quiet,
     };
-  if (input.waiting > 0) {
-    const { offered, tag } = input.release;
+  if (input.waiting > 0)
     return {
       tone: "busy",
       text: `${plural(input.waiting, "change", "changes")} not live.`,
       detail: `Production runs ${label}`,
-      verb: offered && tag !== undefined ? { kind: "release", tag } : null,
+      verb: releaseVerb,
     };
-  }
   return {
     tone: "ok",
     text: RELEASE_NOTHING_NEW_ON_MAIN,

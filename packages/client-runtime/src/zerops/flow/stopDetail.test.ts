@@ -115,6 +115,16 @@ describe("stopVerdict", () => {
       expected: { tone: "off", text: "Nothing deployed yet.", detail: undefined, verb: null },
     },
     {
+      name: "production with nothing deployed and changes merged offers its first release",
+      input: { view: EMPTY, waiting: 3, release: { offered: true, tag: "v0.1.0" } },
+      expected: {
+        tone: "off",
+        text: "Nothing deployed yet.",
+        detail: undefined,
+        verb: { kind: "release", tag: "v0.1.0" },
+      },
+    },
+    {
       name: "a stage with nothing deployed says what deploys there",
       input: { tier: "stage", view: EMPTY },
       expected: {
