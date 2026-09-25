@@ -74,6 +74,9 @@ jobs:
       - name: Reconcile no-failure-to-empty exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-failure-to-empty
 
+      - name: Reconcile no-restyle exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-restyle
+
       - name: Check CSS theme tokens
         run: node scripts/check-css-tokens.ts
 
