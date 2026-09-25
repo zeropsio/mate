@@ -1224,6 +1224,7 @@ export function ZeropsStopPane({
               label={`${flowVerbLabel("release", false)} ${verb.tag}`}
               release={release}
               size="compact"
+              variant="outline"
             />
           ) : verb?.kind === "run-again" && runAgain !== undefined ? (
             <Button
@@ -1231,6 +1232,7 @@ export function ZeropsStopPane({
               disabled={runAgain.rerunning}
               onClick={runAgain.onRunAgain}
               size="compact"
+              variant="outline"
             >
               {runAgainLabel(runAgain.rerunning)}
             </Button>
@@ -1889,12 +1891,15 @@ function ReleaseAction({
   release,
   label,
   size = "sm",
+  variant,
 }: {
   readonly release: ReleaseOffer;
   /** The verb's words where the caller has them; *Release* otherwise. */
   readonly label?: string;
   /** `compact` where it stands among the projects page's verbs. */
   readonly size?: "sm" | "compact";
+  /** `outline` in a stop's verdict, where a verb stands beside the sentence it acts on. */
+  readonly variant?: "outline";
 }) {
   const [confirming, setConfirming] = useState(false);
   if (!release.offered) return null;
@@ -1907,6 +1912,7 @@ function ReleaseAction({
           setConfirming(true);
         }}
         size={size}
+        variant={variant}
       >
         {release.releasing
           ? flowVerbLabel("release", true)

@@ -437,6 +437,18 @@ describe("ZeropsStopPane", () => {
     for (const text of lacks) expect(markup).not.toContain(text);
   });
 
+  it("draws the verdict's verb as an outline button, not a filled one", () => {
+    const markup = renderStop({
+      tier: "production",
+      services: [service("production", "api", "a1", "v0.1.13")],
+      waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
+      offered: "v0.1.14",
+    });
+    const button = /<button[^>]*>Release v0\.1\.14<\/button>/.exec(markup)?.[0];
+    expect(button).toContain("bg-popover");
+    expect(button).not.toContain("bg-primary");
+  });
+
   it("offers the way back only to an earlier release, never to the one that runs", () => {
     const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 2 });
     expect(count(markup, ">Roll back to this</button>")).toBe(1);
