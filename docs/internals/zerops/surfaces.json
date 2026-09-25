@@ -758,6 +758,10 @@
           "value": "/zerops"
         },
         {
+          "kind": "route",
+          "value": "/group/$groupId/$projectId"
+        },
+        {
           "kind": "inline",
           "value": "Signed-in ZeropsHostedLanding"
         },
@@ -856,6 +860,8 @@
         "apps/web/src/components/zerops/ZeropsPublicRoutes.test.tsx",
         "apps/web/src/components/zerops/ZeropsStopMenu.test.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseRows.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGroupDetail.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeployRun.test.tsx",
         "apps/web/src/zerops/agentActivity.test.ts",
         "packages/client-runtime/src/zerops/mateTints.test.ts",
         "packages/client-runtime/src/zerops/publicRoutes.test.ts",
