@@ -14,7 +14,7 @@ import {
   hasLoadedProjectFavicon,
   markProjectFaviconFailed,
   markProjectFaviconLoaded,
-} from "./projectFaviconCache";
+} from "../lib/projectFaviconRequests";
 
 /* ─── Component ──────────────────────────────────────────────────────── */
 export function ProjectFavicon(props: {
