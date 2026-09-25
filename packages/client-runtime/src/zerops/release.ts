@@ -526,10 +526,12 @@ export function nameStopByRelease(row: EnvironmentRow, tag: string): Environment
  * Whether a commit the release lists, and production does not run, failed its production deploy
  * after the release was tagged. A failure whose time is not read, or posted before the tag,
  * belongs to an earlier release of the same commit — as {@link releaseInFlight} reads it. With no
- * tag time to measure against, the failure alone counts.
+ * tag time to measure against, the failure alone counts for the newest release only: the tag time
+ * is read for the newest alone, and an older tag listing the same commit may have deployed it fine.
  */
 function deployFailed(
   release: FlowRelease,
+  index: number,
   production: ReadonlyMap<string, string>,
   failed: ReadonlyMap<string, string | undefined>,
 ): boolean {
@@ -538,7 +540,7 @@ function deployFailed(
     if (production.get(entry.service) === entry.commit) return false;
     const key = `${entry.service}@${entry.commit}`;
     if (!failed.has(key)) return false;
-    if (Number.isNaN(taggedMs)) return true;
+    if (Number.isNaN(taggedMs)) return index === 0;
     const failedAt = failed.get(key);
     return failedAt !== undefined && Date.parse(failedAt) >= taggedMs;
   });
@@ -568,7 +570,10 @@ export function releaseRow(
     release.verdict === "refused" && release.detail !== undefined ? release.detail : release.line;
   if (deploys.live && release.verdict !== "refused")
     return { ...release, line, standing: "live", word: "Live", rollBack: false };
-  if (release.verdict !== "refused" && deployFailed(release, deploys.production, deploys.failed))
+  if (
+    release.verdict !== "refused" &&
+    deployFailed(release, index, deploys.production, deploys.failed)
+  )
     return { ...release, line, standing: "deploy-failed", word: "Deploy failed", rollBack: false };
   return {
     ...release,

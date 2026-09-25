@@ -492,6 +492,21 @@ describe("a release's row", () => {
       ],
     },
     {
+      name: "an older release with no tag time lists the failed commit: its failure is the newest's",
+      releases: [
+        release("v1.4.0", { taggedAt: TAGGED }),
+        release("v1.3.0", { web: OLD }),
+        release("v1.2.0"),
+      ],
+      production: runs(API, OLD),
+      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      expected: [
+        { tag: "v1.4.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
+        { tag: "v1.3.0", standing: "live", word: "Live", rollBack: false },
+        { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: true },
+      ],
+    },
+    {
       name: "a failure posted before the tag belongs to an earlier release of the commit",
       releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
       production: runs(API, OLD),
