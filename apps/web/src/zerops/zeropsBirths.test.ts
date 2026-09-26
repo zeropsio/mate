@@ -68,8 +68,12 @@ const birth: BirthRecord = {
  * The account's runtime as far as a birth writes tags with it: `updateProjectTags` over the Gitea
  * project's list, each patch applied to the list as it is now.
  */
-function fakeRuntime(calls: Array<string>, onWrite: () => void = () => undefined) {
-  let tagList: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"];
+function fakeRuntime(
+  calls: Array<string>,
+  onWrite: () => void = () => undefined,
+  initial: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"],
+) {
+  let tagList = initial;
   return {
     commands: {
       updateProjectTags: (project: ProjectRef, patch: ProjectTagPatch) =>
@@ -162,6 +166,48 @@ describe("the birth's ports", () => {
         registration: { ...birth.registration!, kind: "stage" },
       }),
     ).toMatchObject({ kind: "failed" });
+  });
+  // A production deleted in the Zerops GUI kept its registry entry, and the creation of the next
+  // one said "This project already has a production." (Beviro, 2026-09-24).
+  it.each([
+    {
+      name: "replaces a production the platform says is deleted",
+      fetchProject: () =>
+        Promise.reject(
+          new ZeropsApiError("Project not found.", "not-found", 400, "projectNotFound"),
+        ),
+      outcome: { kind: "done" },
+      calls: ["refused registry-member on gitea-1", "written registry-member on gitea-1"],
+    },
+    {
+      name: "keeps refusing beside a production the platform still has",
+      fetchProject: async (id: string) => ({ id, name: id, status: "ACTIVE" }),
+      outcome: { kind: "failed", reason: "This project already has a production." },
+      calls: ["refused registry-member on gitea-1"],
+    },
+  ])("$name", async ({ fetchProject, outcome, calls: expected }) => {
+    const calls: Array<string> = [];
+    const inputs = {
+      client: { fetchProject } as unknown as ZeropsApiClient,
+      runtime: fakeRuntime(calls, undefined, [
+        "mate:tool:gitea",
+        "mate:gn:group-1:todo",
+        "mate:gm:group-1:project-dead:production",
+      ]),
+      projectRef,
+    } as unknown as BirthInputs;
+    const ports = webBirthPorts(
+      () => inputs,
+      () => true,
+    );
+
+    expect(
+      await ports.writeTags({
+        ...birth,
+        registration: { ...birth.registration!, kind: "production" },
+      }),
+    ).toEqual(outcome);
+    expect(calls).toEqual(expected);
   });
 });
 

@@ -58,7 +58,7 @@ import {
   currentAccountId,
   onAccountLifetimeClose,
 } from "./accountLifetime";
-import { addGroupEnvironment } from "./addGroupEnvironment";
+import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
 import { grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import { giteaClientFor } from "./accountGiteaSessions";
 import { nextContainerReading } from "./zeropsContainers";
@@ -194,15 +194,15 @@ export function webBirthPorts(
       if (inputs === null) return NOT_BOUND;
       if (registration === null) return DONE;
       try {
-        const written = await projectTagsWrite(inputs, birth.organizationId)(
-          registration.giteaProjectId,
-          {
-            kind: "registry-member",
-            groupId: registration.groupId,
-            projectId: birth.projectId,
-            member: registration.kind,
-          },
-        );
+        // A production deleted outside the app gives its entry up (`writeRegistryMember`).
+        const written = await writeRegistryMember({
+          client: inputs.client,
+          writeTags: projectTagsWrite(inputs, birth.organizationId),
+          giteaProjectId: registration.giteaProjectId,
+          groupId: registration.groupId,
+          projectId: birth.projectId,
+          member: registration.kind,
+        });
         if (written.kind !== "refused") return DONE;
         // A group written a moment ago may not read back yet.
         return written.refusal.code === "group-unknown"

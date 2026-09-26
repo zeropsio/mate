@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { GiteaClient } from "@t3tools/client-runtime/zerops";
+import { ZeropsApiError, type GiteaClient } from "@t3tools/client-runtime/zerops";
 
 import { addGroupEnvironment } from "./addGroupEnvironment";
 import type { ProjectTagsWrite } from "./brokerGrant";
@@ -45,6 +45,8 @@ function apiFake(overrides: Record<string, unknown> = {}) {
     mintIntegrationToken: vi.fn().mockResolvedValue({ id: "t-deploy", token: "the-stage-key" }),
     writeServiceSecret: vi.fn().mockResolvedValue(undefined),
     deleteIntegrationToken: vi.fn().mockResolvedValue(undefined),
+    // Every project asked about still runs.
+    fetchProject: vi.fn(async (id: string) => ({ id, name: id, status: "ACTIVE" })),
     ...overrides,
   };
 }
@@ -395,4 +397,137 @@ describe("an attempt an earlier one left half done", () => {
     expect(gitea.mergePullRequest).toHaveBeenCalledWith("acme", "group", 7, "c0ffee");
     expect(outcome.pullRequest).toEqual({ number: 7, merged: true });
   });
+});
+
+describe("a production deleted outside the app (Beviro, 2026-09-24)", () => {
+  const PRODUCTION = {
+    displayName: "Beviro - production",
+    tier: "production" as const,
+    project: "p-new",
+  };
+  /** The registry as Beviro's was: the production deleted in the Zerops GUI still registered. */
+  const HELD_REGISTRY = [...REGISTRY, "mate:gm:g-1:p-dead:production"];
+  const HELD_DOCUMENT = `version: 1
+environments:
+  beviro-production:
+    tier: production
+    project: p-dead
+    sources: release
+`;
+  /** What `GET /project/{id}` answers for a deleted project (verified 2026-09-20). */
+  const deleted = () =>
+    Promise.reject(
+      new ZeropsApiError(
+        "Project not found.",
+        "not-found",
+        400,
+        "projectNotFound",
+        "Project not found.",
+      ),
+    );
+  const documentOnMain = (content: string) =>
+    vi.fn(async (_owner: string, _repo: string, path: string, ref?: string) =>
+      ref === "main" ? { path, sha: "blob-1", content } : undefined,
+    );
+
+  it("is replaced by the new one in the registry and in the document, its name kept", async () => {
+    const api = apiFake({ fetchProject: vi.fn(deleted) });
+    const registry = tagsFake(HELD_REGISTRY);
+    const gitea = giteaFake({ readFile: documentOnMain(HELD_DOCUMENT) });
+    const outcome = await addGroupEnvironment({
+      ...base(api, gitea, registry.writeTags),
+      environment: PRODUCTION,
+    });
+
+    expect(outcome.failed).toBeUndefined();
+    expect(outcome.done).toEqual([
+      "registry",
+      "broker-grant",
+      "deploy-token",
+      "environments-document",
+    ]);
+    expect(api.fetchProject).toHaveBeenCalledWith("p-dead", undefined);
+    expect(registry.tags()).toContain("mate:gm:g-1:p-new:production");
+    expect(registry.tags()).not.toContain("mate:gm:g-1:p-dead:production");
+    expect(gitea.changeFiles).toHaveBeenCalledWith("acme", "group", {
+      message: "Add the beviro-production production environment",
+      branch: "main",
+      newBranch: "mate-app/env-beviro-production",
+      files: [
+        {
+          operation: "update",
+          path: "environments.yaml",
+          content: HELD_DOCUMENT.replace("project: p-dead", "project: p-new"),
+          sha: "blob-1",
+        },
+      ],
+    });
+  });
+
+  // Only `projectNotFound` says a project is gone: any other answer leaves a production that may
+  // still run where it is, and the new one refused.
+  const NOT_DELETED = [
+    {
+      answer: "the project, which still runs",
+      fetchProject: async (id: string) => ({ id, name: id, status: "ACTIVE" }),
+    },
+    {
+      answer: "403 insufficientPermissions",
+      fetchProject: () =>
+        Promise.reject(
+          new ZeropsApiError(
+            "This Zerops account is not allowed to do that.",
+            "forbidden",
+            403,
+            "insufficientPermissions",
+          ),
+        ),
+    },
+    {
+      answer: "a 500",
+      fetchProject: () =>
+        Promise.reject(new ZeropsApiError("Zerops API request failed (500).", "server", 500)),
+    },
+    {
+      answer: "no answer at all",
+      fetchProject: () => Promise.reject(new TypeError("Failed to fetch")),
+    },
+  ];
+  const HELD = [
+    {
+      where: "the registry",
+      tags: HELD_REGISTRY,
+      document: "",
+      step: "registry",
+      done: [],
+    },
+    {
+      where: "environments.yaml",
+      tags: REGISTRY,
+      document: HELD_DOCUMENT,
+      step: "environments-document",
+      done: ["registry", "broker-grant", "deploy-token"],
+    },
+  ];
+  it.each(HELD.flatMap((held) => NOT_DELETED.map((answer) => ({ ...held, ...answer }))))(
+    "keeps refusing a second production held in $where when the platform answers $answer",
+    async ({ tags, document, fetchProject, step, done }) => {
+      const api = apiFake({ fetchProject: vi.fn(fetchProject) });
+      const registry = tagsFake(tags);
+      const gitea = giteaFake({ readFile: documentOnMain(document) });
+      const outcome = await addGroupEnvironment({
+        ...base(api, gitea, registry.writeTags),
+        environment: PRODUCTION,
+      });
+
+      expect(api.fetchProject).toHaveBeenCalledWith("p-dead", undefined);
+      expect(outcome.failed).toEqual({ step, reason: "This project already has a production." });
+      expect(outcome.done).toEqual(done);
+      expect(registry.tags().includes("mate:gm:g-1:p-new:production")).toBe(step !== "registry");
+      expect(registry.tags().includes("mate:gm:g-1:p-dead:production")).toBe(
+        tags.includes("mate:gm:g-1:p-dead:production"),
+      );
+      expect(gitea.changeFiles).not.toHaveBeenCalled();
+    },
+  );
 });

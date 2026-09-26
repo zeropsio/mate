@@ -38,11 +38,14 @@ import {
   planEnvironmentWrite,
   readGroupEnvironments,
   withGroupEnvironment,
+  ZeropsApiError,
   type GiteaClient,
   type GroupEnvironment,
   type GroupEnvironmentTier,
   type ZeropsApiClient,
 } from "@t3tools/client-runtime/zerops";
+import type { ProjectTagPatch, ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
+import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import { grantBrokerProject, type ProjectTagsWrite } from "./brokerGrant";
 import { ensureDeployToken } from "./deployToken";
@@ -99,11 +102,14 @@ export async function addGroupEnvironment(input: {
 
   let slug: string | undefined;
   try {
-    const written = await input.writeTags(input.giteaProjectId, {
-      kind: "registry-member",
+    const written = await writeRegistryMember({
+      client: input.client,
+      writeTags: input.writeTags,
+      giteaProjectId: input.giteaProjectId,
       groupId: input.groupId,
       projectId: input.environment.project,
       member: input.environment.tier,
+      signal: input.signal,
     });
     if (written.kind === "refused") return stop("registry", written.refusal.reason);
     slug = parseZeropsRegistry(written.project.tagList).groups.find(
@@ -161,20 +167,37 @@ export async function addGroupEnvironment(input: {
       done.push("environments-document");
       return { done, failed: undefined, pullRequest: undefined };
     }
-    // Derived against what the document already declares, so a second stage is
-    // `acme-crm-stage-2` rather than a refusal the person cannot act on.
+    // A production still declared for a project the platform has deleted gives
+    // its entry to this one, under its name — `beviro-production` stays
+    // `beviro-production` — rather than refusing a second production (Beviro,
+    // 2026-09-24).
+    const gone =
+      input.environment.tier === "production"
+        ? await deletedProjects(
+            input.client,
+            declared.filter((entry) => entry.tier === "production").map((entry) => entry.project),
+            input.signal,
+          )
+        : [];
+    const replaced = declared.find(
+      (entry) => entry.tier === input.environment.tier && gone.includes(entry.project),
+    );
+    // Otherwise derived against what the document already declares, so a second
+    // stage is `acme-crm-stage-2` rather than a refusal the person cannot act on.
     const environment: GroupEnvironment = {
-      name: deriveEnvironmentName(
-        input.environment.displayName,
-        input.environment.tier,
-        declared.map((entry) => entry.name),
-      ),
+      name:
+        replaced?.name ??
+        deriveEnvironmentName(
+          input.environment.displayName,
+          input.environment.tier,
+          declared.map((entry) => entry.name),
+        ),
       tier: input.environment.tier,
       project: input.environment.project,
       sources: DEFAULT_STAGE_SOURCES,
       deploy: undefined,
     };
-    const write = withGroupEnvironment(document, environment);
+    const write = withGroupEnvironment(document, environment, { gone });
     if (!write.ok) return stop("environments-document", write.reason);
 
     // An earlier attempt may have got as far as the branch, or the request
@@ -230,6 +253,67 @@ export async function addGroupEnvironment(input: {
   } catch (cause) {
     return stop("environments-document", messageOf(cause));
   }
+}
+
+/**
+ * The registry entry of one project in a group (step 1), as a patch through
+ * `writeTags` — the same write a creation's own registry step makes
+ * (`zeropsBirths.ts`).
+ *
+ * A production deleted outside the app keeps its entry, and the one-production
+ * rule then refused every production after it: Beviro's, deleted in the Zerops
+ * GUI and added again from the app, got no registry entry, no broker grant, no
+ * deploy token and no declaration, and the broker refused its deploys
+ * `424 no_deploy_token` (2026-09-24). So a refusal that names the production in
+ * the way asks the platform about that project, and writes again with it
+ * `gone` only when the platform says it is deleted.
+ */
+export async function writeRegistryMember(input: {
+  readonly client: Pick<ZeropsApiClient, "fetchProject">;
+  readonly writeTags: ProjectTagsWrite;
+  /** The account's Gitea project — where the registry lives. */
+  readonly giteaProjectId: string;
+  readonly groupId: string;
+  readonly projectId: string;
+  readonly member: RoleProjectKind;
+  readonly signal?: AbortSignal | undefined;
+}): Promise<ProjectTagWrite> {
+  const patch: ProjectTagPatch = {
+    kind: "registry-member",
+    groupId: input.groupId,
+    projectId: input.projectId,
+    member: input.member,
+  };
+  const written = await input.writeTags(input.giteaProjectId, patch);
+  if (written.kind !== "refused" || written.refusal.code !== "production-held") return written;
+  const gone = await deletedProjects(input.client, [written.refusal.projectId], input.signal);
+  return gone.length === 0 ? written : input.writeTags(input.giteaProjectId, { ...patch, gone });
+}
+
+/** How `GET /project/{id}` answers for a project that has been deleted. */
+const PROJECT_NOT_FOUND = "projectNotFound";
+
+/**
+ * The projects among `projectIds` the platform says are deleted: its answer
+ * for one is `400 projectNotFound` (verified 2026-09-20). Only that answer
+ * counts — a 403, a 5xx or a request that never landed says nothing about
+ * whether the project still runs, and an environment that may still run is
+ * never replaced.
+ */
+async function deletedProjects(
+  client: Pick<ZeropsApiClient, "fetchProject">,
+  projectIds: ReadonlyArray<string>,
+  signal: AbortSignal | undefined,
+): Promise<ReadonlyArray<string>> {
+  const deleted = await Promise.all(
+    projectIds.map((projectId) =>
+      client.fetchProject(projectId, signal).then(
+        () => false,
+        (cause: unknown) => cause instanceof ZeropsApiError && cause.code === PROJECT_NOT_FOUND,
+      ),
+    ),
+  );
+  return projectIds.filter((_, index) => deleted[index] === true);
 }
 
 function messageOf(cause: unknown): string {
