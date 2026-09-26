@@ -37,6 +37,7 @@ import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
+import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { MicroLabel } from "./primitives";
 
@@ -162,6 +163,16 @@ export function ZeropsPanel({
             error={topology.error}
             liveness={topology.liveness}
             mate={mate}
+            mateUpdate={
+              // The Mate's version and its one verb live with its body: the
+              // same control the project page's menus read, so an update
+              // started here is the update started there.
+              mate === undefined || environmentId === undefined ? undefined : (
+                <ZeropsMateUpdateControl environmentId={environmentId}>
+                  {({ line }) => line}
+                </ZeropsMateUpdateControl>
+              )
+            }
             view={view}
           />
         </ZeropsDataLinkContext>
