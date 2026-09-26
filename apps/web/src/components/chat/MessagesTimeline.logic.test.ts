@@ -823,11 +823,11 @@ describe("deriveMessagesTimelineRows", () => {
     });
     // The failed deploy, the failed background task and the browser checks
     // are the work's own: they stay in the log, and the outcome says what the
-    // turn came to. What happened *to* the conversation stays in view.
+    // turn came to. What happened *to* the conversation stays in view — but
+    // the change that landed once, in the outcome's pill.
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
       "work-line:work-line:msg:m0",
-      "event:event:l1",
       "event:event:w1",
       "error:e1",
       "outcome:outcome:msg:m0",
@@ -1370,6 +1370,23 @@ describe("a stretch's card", () => {
         "working:middle",
         "card-end:bottom",
       ],
+    },
+    {
+      case: "settled, closed, a change landed: the report names it, no line of its own",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), landed("l1", 2), assistant("a1", "t1", 3)],
+        settled: "t1",
+      } satisfies Scene,
+      // The landing's own line said again what the report's pill says.
+      expected: ["message", "work-line:top", "outcome:middle", "card-end:bottom", "message"],
+    },
+    {
+      case: "live, a change landed: its line stands in the card until the report takes it",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), landed("l1", 2), tool("w2", "t1", 3)],
+        live: "t1",
+      } satisfies Scene,
+      expected: ["message", "work-line:top", "event:middle", "working:middle", "card-end:bottom"],
     },
     {
       case: "an answer with no work before it: no card",

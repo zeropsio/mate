@@ -1761,7 +1761,13 @@ export function deriveMessagesTimelineRows(
         open,
       });
 
-    rows.push(...cardRows);
+    // Settled and closed, the report names every change that landed: a line
+    // of its own for each would say it twice.
+    rows.push(
+      ...(turn.live || open
+        ? cardRows
+        : cardRows.filter((row) => !(row.kind === "event" && row.event.type === "landed"))),
+    );
 
     if (last.live && !answeredAlone) {
       // Under the person's answer the Mate at work starts afresh: its own
