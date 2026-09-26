@@ -1,13 +1,12 @@
 /**
  * The one next step a Mate's conversation offers, from the project's flow
- * rather than from what the agent said (the owner, 2026-09-23).
+ * rather than from what the agent said (the owner, 2026-09-23): the merge of
+ * this Mate's own change, which waits on the person.
  *
- * The conversation is where the person asks "put it on production", and the
- * agent's answer can be wrong about how that happens: production is the
- * person's to add and to release, on the projects page, and the Mate's part
- * ends at the pull request and the recipe. So the card beside the
- * conversation answers from the flow: merge this Mate's change, then release
- * what is merged, then add the production that releases go to.
+ * Only what is this Mate's: a release carries every Mate's merges and
+ * production is the project's, so both stay on the left, with the project,
+ * where they read the same from every Mate's conversation (the owner,
+ * 2026-09-26 — "merges could be coming from different mates").
  *
  * The merge keeps the in-chat offer's rule exactly (MB-30): this Mate's own
  * code change, only where Gitea said it merges — the app never guesses a right
@@ -19,7 +18,6 @@
  * @module mateNextStep
  */
 
-import { ADD_PRODUCTION_LABEL, MAIN_WITHOUT_PRODUCTION, type GroupFlow } from "./groupFlow.ts";
 import { flowVerbLabel, type FlowPullRequest } from "./projectFlow.ts";
 
 export type MateNextStep =
@@ -32,81 +30,37 @@ export type MateNextStep =
       /** What the verb reads while it runs. */
       readonly running: string;
     }
-  | {
-      readonly kind: "release";
-      readonly tag: string;
-      /** How many changes the release puts live. */
-      readonly waiting: number;
-      readonly title: string;
-      readonly verb: string;
-      readonly running: string;
-    }
-  | {
-      readonly kind: "add-production";
-      readonly title: string;
-      readonly detail: string;
-      readonly verb: string;
-    }
   | { readonly kind: "none" };
 
 const NONE: MateNextStep = { kind: "none" };
 
 export function mateNextStep(input: {
-  /** The flow of the project this Mate belongs to; `undefined` before it is read. */
-  readonly group: GroupFlow | undefined;
+  /** The project's open changes, as its flow reads them; `undefined` before it is read. */
+  readonly pullRequests: ReadonlyArray<FlowPullRequest> | undefined;
   /** The Zerops project of the Mate whose conversation this is. */
   readonly mateProjectId: string | undefined;
   /** What that Mate is called; the card says its name, never a bot login. */
   readonly mateName: string | undefined;
 }): MateNextStep {
-  const { group, mateProjectId } = input;
-  if (group === undefined || mateProjectId === undefined) return NONE;
+  const { pullRequests, mateProjectId } = input;
+  if (pullRequests === undefined || mateProjectId === undefined) return NONE;
 
   // The newest where a Mate somehow has two, so the card is stable.
-  const pull = group.pullRequests
-    .map((entry) => entry.pull)
+  const pull = pullRequests
     .filter(
       (entry) =>
+        entry.kind === "code" &&
         entry.mateProjectId === mateProjectId &&
         !entry.merged &&
         entry.mergeability === "mergeable",
     )
     .sort((left, right) => right.number - left.number)[0];
-  if (pull !== undefined)
-    return {
-      kind: "merge",
-      pull,
-      title: `${input.mateName ?? "This Mate"} is waiting on you to merge #${String(pull.number)}.`,
-      verb: flowVerbLabel("merge", false),
-      running: flowVerbLabel("merge", true),
-    };
-
-  const production = group.production;
-  // A failed deploy does not hide the release that might clear it (D28): a
-  // broken production still carries a candidate where one is offered.
-  const candidate =
-    production.kind === "ready-to-release" || production.kind === "deploy-failed"
-      ? production.candidate
-      : undefined;
-  if (candidate !== undefined) {
-    const { tag, waiting } = candidate;
-    return {
-      kind: "release",
-      tag,
-      waiting,
-      title: `Release ${tag} to production`,
-      verb: `${flowVerbLabel("release", false)} ${tag}`,
-      running: flowVerbLabel("release", true),
-    };
-  }
-
-  if (production.kind === "absent" && production.addable)
-    return {
-      kind: "add-production",
-      title: MAIN_WITHOUT_PRODUCTION,
-      detail: "Add it from the project's recipe; releases go there.",
-      verb: ADD_PRODUCTION_LABEL,
-    };
-
-  return NONE;
+  if (pull === undefined) return NONE;
+  return {
+    kind: "merge",
+    pull,
+    title: `${input.mateName ?? "This Mate"} is waiting on you to merge #${String(pull.number)}.`,
+    verb: flowVerbLabel("merge", false),
+    running: flowVerbLabel("merge", true),
+  };
 }
