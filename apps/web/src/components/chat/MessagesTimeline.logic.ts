@@ -1419,17 +1419,18 @@ export function deriveMessagesTimelineRows(
         kind: "event",
         id: entry.id,
         createdAt: entry.createdAt,
+        // A command no turn owns ran without one and is over.
         event: {
           type: "command",
           command,
           done:
-            stretch !== undefined &&
-            (!stretch.live ||
-              stretch.entries.some(
-                (candidate) =>
-                  candidate.kind === "work" &&
-                  candidate.entry.sourceActivityKind === "context-compaction",
-              )),
+            stretch === undefined ||
+            !stretch.live ||
+            stretch.entries.some(
+              (candidate) =>
+                candidate.kind === "work" &&
+                candidate.entry.sourceActivityKind === "context-compaction",
+            ),
         },
       };
     }
@@ -1489,10 +1490,15 @@ export function deriveMessagesTimelineRows(
     }
 
     // A /compact is its own event line: it says when the context is condensed,
-    // so its run draws no work line and no second compaction line.
+    // so its run draws no work line and no second compaction line. What the
+    // person sent while it ran is theirs all the same: it stands after the
+    // line, and the run it started is drawn as any other.
     const leadCommand = first.lead ? readSlashCommand(first.lead.message.text) : null;
     if (leadCommand?.name === "compact") {
-      lastEnd = last.endedAt ?? last.startedAt;
+      lastEnd = first.endedAt ?? first.startedAt;
+      const [, next, ...rest] = turn.stretches;
+      if (next !== undefined)
+        emitTurn({ ...turn, stretches: [{ ...next, aside: false }, ...rest] });
       return;
     }
 

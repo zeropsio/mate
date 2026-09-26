@@ -624,6 +624,88 @@ describe("deriveMessagesTimelineRows", () => {
     expect(done[1]).toMatchObject({ event: { done: true } });
   });
 
+  // A /compact the harness ran without a turn of its own was claimed by the
+  // person's next message's turn as its opener: that message became a message
+  // "sent into" the compaction, and the compaction's one line swallowed the
+  // run — two and a half hours of a real conversation drew nothing but three
+  // "Context condensed" lines (the owner, 2026-09-26: "I sent a message and
+  // its completely gone from the chat log").
+  const compacted = tool("c1", "t1", 1, {
+    sourceActivityKind: "context-compaction",
+    label: "Context compacted",
+  });
+  it.each([
+    {
+      name: "a /compact with no turn of its own, then a run",
+      entries: [
+        user("m0", 0, "/compact"),
+        user("m1", 5),
+        reasoning("r1", "t2", 6),
+        tool("w1", "t2", 7),
+      ],
+      live: "t2",
+      settled: undefined,
+      after: ["message:m1", "work-line:work-line:msg:m1", "working:working:msg:m1"],
+    },
+    {
+      name: "a /compact with no turn of its own, then a settled run",
+      entries: [
+        user("m0", 0, "/compact"),
+        user("m1", 5),
+        tool("w1", "t2", 7),
+        assistant("a1", "t2", 8, "Done."),
+      ],
+      live: undefined,
+      settled: "t2",
+      after: ["message:m1", "work-line:work-line:msg:m1", "message:a1"],
+    },
+    {
+      name: "a /compact's own turn, then a run",
+      entries: [
+        user("m0", 0, "/compact"),
+        compacted,
+        user("m1", 5),
+        tool("w1", "t2", 7),
+        assistant("a1", "t2", 8, "Done."),
+      ],
+      live: undefined,
+      settled: "t2",
+      after: ["message:m1", "work-line:work-line:msg:m1", "message:a1"],
+    },
+    {
+      name: "a message sent while the /compact ran",
+      entries: [
+        user("m0", 0, "/compact"),
+        compacted,
+        user("m1", 2),
+        tool("w1", "t1", 3),
+        assistant("a1", "t1", 4, "Done."),
+      ],
+      live: undefined,
+      settled: "t1",
+      after: ["message:m1", "work-line:work-line:msg:m1", "message:a1"],
+    },
+  ])("draws the person's message after $name as theirs, and its run", (scene) => {
+    const list = rows({
+      entries: scene.entries,
+      ...(scene.live ? { live: scene.live } : {}),
+      ...(scene.settled ? { settled: scene.settled } : {}),
+    });
+    const drawn = shape(list).filter((row) => !row.startsWith("seam:"));
+    expect(drawn[0]).toBe("event:m0");
+    expect(list.find((row) => row.id === "m0")).toMatchObject({ event: { done: true } });
+    expect(drawn.slice(1)).toEqual(scene.after);
+    expect(list.find((row) => row.id === "m1")).toMatchObject({ kind: "message", aside: false });
+  });
+
+  it("says a /compact that ran without a turn is done once nothing runs", () => {
+    const list = rows({ entries: [user("m0", 0, "/compact")] });
+    expect(list.find((row) => row.id === "m0")).toMatchObject({
+      kind: "event",
+      event: { done: true },
+    });
+  });
+
   it("draws the server's resume after a usage limit as an event, never the person's bubble", () => {
     const list = rows({
       entries: [user("m0", 0, USAGE_LIMIT_RESUME_PROMPT), tool("w1", "t1", 1)],
