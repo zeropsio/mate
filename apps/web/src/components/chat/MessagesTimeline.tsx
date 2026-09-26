@@ -1623,7 +1623,8 @@ const LOG_COLUMN = "ps-9.5";
  * Its thinking in an opened log: a record to scan, so quieter than the panel
  * that popped it live — muted paragraphs on one hairline, each to three
  * lines, a click opening it in full. A forty-minute stretch opened onto walls
- * of full thoughts.
+ * of full thoughts. In italics, as the panel thinks, so a thought reads as
+ * one live and after.
  */
 function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-reasoning" }> }) {
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
@@ -1646,7 +1647,7 @@ function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log
     });
   return (
     <div className={LOG_COLUMN} data-log-thought>
-      <div className="grid gap-1.5 border-border/70 border-s ps-3">
+      <div className="grid gap-1.5 border-border/70 border-s ps-3 italic">
         {paragraphs.map((thought) => {
           const open = opened.has(thought.key);
           return (

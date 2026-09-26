@@ -124,14 +124,20 @@ function TypingDots({ className }: { readonly className?: string }) {
 }
 
 /**
- * The Mate's thinking and its words as bubbles — the panel's and the opened
- * log's alike, so what it thought and said reads the same live and after. A
- * thought is the same bubble, lighter, in the muted ink.
+ * The Mate's words and its thinking in the stream. Its words to the person
+ * are a bubble, its corner toward the face, in a fill the dark card shows too
+ * (the muted one vanished there) — the panel's and the opened log's alike, so
+ * what it said reads the same live and after. Its thinking is no bubble: text
+ * on a hairline in the muted ink and in italics, as the opened log keeps it —
+ * the letterforms still say "thinking" once age has dimmed a fill to nothing
+ * (a light thought bubble read as an aged note, and an aged note as a
+ * thought). The hairline is drawn, not a border, so a thought keeps a note's
+ * box to the pixel.
  */
 export const MATE_BUBBLE_CLASS: Record<"thought" | "note", string> = {
   thought:
-    "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-muted/45 px-3.5 py-2 text-muted-foreground",
-  note: "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground",
+    "relative w-fit max-w-full origin-bottom-left px-3.5 py-2 text-muted-foreground italic before:absolute before:inset-y-2 before:start-0 before:w-px before:bg-border",
+  note: "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-secondary px-3.5 py-2 text-foreground",
 };
 
 function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
@@ -182,7 +188,7 @@ function StreamActivity({ activity }: { readonly activity: WorkingActivity }) {
     return (
       <div
         aria-label="Thinking"
-        className="flex h-8 w-fit items-center rounded-2xl rounded-es-md bg-muted px-3.5"
+        className="flex h-8 w-fit items-center rounded-2xl rounded-es-md bg-secondary px-3.5"
         data-stream-activity="thinking"
         role="img"
       >
