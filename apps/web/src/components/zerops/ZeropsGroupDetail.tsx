@@ -437,10 +437,7 @@ function useGroupMates(groupId: string): {
             live === undefined || subject === undefined
               ? undefined
               : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
-          update:
-            item.environmentId === undefined
-              ? null
-              : mateUpdateStatus(updates.get(item.environmentId)),
+          update: mateUpdateStatus(updates.of(item)),
         };
       });
   }, [activity, groupId, listing, updates]);

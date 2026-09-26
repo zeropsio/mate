@@ -2585,10 +2585,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // answered on its card, over its subject, until it settles: the menu
     // closes on the click, and the update restarts the Mate, so the card is
     // the one place that stays in view throughout.
-    const updateStatus =
-      candidate.environmentId === undefined
-        ? null
-        : mateUpdateStatus(updates.get(candidate.environmentId));
+    const updateStatus = mateUpdateStatus(updates.of(candidate));
     const line =
       updateStatus === null ? (
         renderMateLine(candidate, presentation, action, live, busy)

@@ -80,6 +80,11 @@ interface MateUpdateEntry {
     | null;
   /** Bumped by every action, so an answer from an abandoned one is dropped. */
   readonly generation: number;
+  /**
+   * The Mate's container, once an update has started: while it restarts into
+   * the update its socket is down, and a list knows it by its container only.
+   */
+  readonly containerKey: TargetKey | null;
 }
 
 const NOTHING: MateUpdateEntry = {
@@ -87,12 +92,40 @@ const NOTHING: MateUpdateEntry = {
   checked: undefined,
   following: null,
   generation: 0,
+  containerKey: null,
 };
+
+/** Every Mate's update state, for a surface that lists several. */
+export interface MateUpdateStates {
+  /**
+   * The state of the Mate at `environmentId` — or, while its socket is down,
+   * restarting into an update, at its container `key`; absent where nothing
+   * was asked of it.
+   */
+  readonly of: (mate: {
+    readonly environmentId?: EnvironmentId | undefined;
+    readonly key: string;
+  }) => MateUpdateState | undefined;
+}
+
+function statesOf(all: ReadonlyMap<EnvironmentId, MateUpdateEntry>): MateUpdateStates {
+  const byEnvironment = new Map<EnvironmentId, MateUpdateState>();
+  const byContainer = new Map<string, MateUpdateState>();
+  for (const [environmentId, entry] of all) {
+    byEnvironment.set(environmentId, entry.state);
+    if (entry.containerKey !== null) byContainer.set(entry.containerKey, entry.state);
+  }
+  return {
+    of: ({ environmentId, key }) =>
+      (environmentId === undefined ? undefined : byEnvironment.get(environmentId)) ??
+      byContainer.get(key),
+  };
+}
 
 // Replaced, never mutated, so a surface listing several Mates reads a new
 // snapshot on every change.
 let entries: ReadonlyMap<EnvironmentId, MateUpdateEntry> = new Map();
-let states: ReadonlyMap<EnvironmentId, MateUpdateState> = new Map();
+let states: MateUpdateStates = statesOf(entries);
 const listeners = new Set<() => void>();
 const timers = new Map<EnvironmentId, ReturnType<typeof setTimeout>>();
 
@@ -102,7 +135,7 @@ function entryFor(environmentId: EnvironmentId): MateUpdateEntry {
 
 function write(environmentId: EnvironmentId, entry: MateUpdateEntry): void {
   entries = new Map(entries).set(environmentId, entry);
-  states = new Map([...entries].map(([id, { state }]) => [id, state]));
+  states = statesOf(entries);
   for (const listener of listeners) listener();
 }
 
@@ -225,6 +258,7 @@ export function useZeropsMateUpdate(
         state: { phase: "updating", to },
         following: null,
         generation,
+        containerKey: container.key ?? current.containerKey,
       });
 
       // The update was accepted, or the socket closed under it: its container
@@ -323,9 +357,8 @@ export function useZeropsMateUpdate(
 
 /**
  * Every Mate's update state, for a surface that lists several — the projects
- * page, a project's page — where a hook per Mate cannot be called. A Mate
- * nothing was asked of is absent.
+ * page, a project's page — where a hook per Mate cannot be called.
  */
-export function useZeropsMateUpdateStates(): ReadonlyMap<EnvironmentId, MateUpdateState> {
+export function useZeropsMateUpdateStates(): MateUpdateStates {
   return useSyncExternalStore(subscribe, () => states);
 }

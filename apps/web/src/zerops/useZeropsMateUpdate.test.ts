@@ -433,7 +433,7 @@ describe("useZeropsMateUpdate", () => {
     await expect(render("0.8.0").check()).resolves.toBeUndefined();
   });
 
-  it("every Mate's state reads as one map, a new one on every change", () => {
+  it("every Mate's state reads as one snapshot, a new one on every change", () => {
     commandSpy.mockReturnValue(new Promise(() => {}));
     reactHookHarness.beginRender();
     const before = useZeropsMateUpdateStates();
@@ -441,6 +441,23 @@ describe("useZeropsMateUpdate", () => {
     reactHookHarness.beginRender();
     const after = useZeropsMateUpdateStates();
     expect(after).not.toBe(before);
-    expect(after.get(ENVIRONMENT_ID)).toEqual({ phase: "updating", to: "0.8.1" });
+    expect(after.of({ environmentId: ENVIRONMENT_ID, key: "elsewhere" })).toEqual({
+      phase: "updating",
+      to: "0.8.1",
+    });
+  });
+
+  // A card whose Mate is restarting into its update has no socket, so no
+  // environment: it still says the update, found by its container.
+  it("while its socket is down, a Mate's update is found by its container", () => {
+    commandSpy.mockReturnValue(new Promise(() => {}));
+    render("0.8.0").update("0.8.1");
+    reactHookHarness.beginRender();
+    const states = useZeropsMateUpdateStates();
+    expect(states.of({ environmentId: undefined, key: "project:service" })).toEqual({
+      phase: "updating",
+      to: "0.8.1",
+    });
+    expect(states.of({ environmentId: undefined, key: "another:service" })).toBeUndefined();
   });
 });
