@@ -9,7 +9,7 @@
  * duration `formatDuration`'s. A running step's glyph is the busy dot, whose
  * only motion is the stepped `status-pulse` (R6).
  */
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import { CheckIcon, CircleAlertIcon, CircleIcon, XIcon, type LucideIcon } from "lucide-react";
 
 import {
@@ -67,12 +67,15 @@ function StepGlyph({ state }: { readonly state: PipelineSpokenState }) {
 }
 
 function Row({
+  beneath,
   duration,
   emphasised,
   id,
   sentence,
   state,
 }: {
+  /** What belongs to this step — the build's log under the build — on its words' edge. */
+  readonly beneath?: ReactNode;
   readonly duration: string | undefined;
   readonly emphasised: boolean;
   readonly id: string;
@@ -89,14 +92,17 @@ function Row({
       <span className="flex h-5 shrink-0 items-center">
         <StepGlyph state={state} />
       </span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 text-sm leading-5",
-          emphasised ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {sentence}
-        <span className="sr-only"> · {STATE_WORD[state]}</span>
+      <span className="min-w-0 flex-1">
+        <span
+          className={cn(
+            "block text-sm leading-5",
+            emphasised ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {sentence}
+          <span className="sr-only"> · {STATE_WORD[state]}</span>
+        </span>
+        {beneath}
       </span>
       {duration !== undefined ? (
         <span className="shrink-0 text-muted-foreground text-xs leading-5 tabular-nums">
@@ -114,14 +120,18 @@ export type PipelineStepRow = Pick<PipelineReadoutStep, "id" | "state" | "senten
 export function PipelineStepList({
   "aria-label": ariaLabel,
   steps,
+  beneath,
 }: {
   readonly "aria-label": string;
   readonly steps: ReadonlyArray<PipelineStepRow>;
+  /** What belongs under a step, by the step's id. */
+  readonly beneath?: Readonly<Partial<Record<string, ReactNode>>> | undefined;
 }): JSX.Element {
   return (
     <ol aria-label={ariaLabel} className="space-y-1" data-zerops-pipeline-steps>
       {steps.map((step) => (
         <Row
+          beneath={beneath?.[step.id]}
           duration={step.durationMs === undefined ? undefined : formatDuration(step.durationMs)}
           emphasised={isInFlight(step.state) || step.state === "failed"}
           id={step.id}

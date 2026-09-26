@@ -320,13 +320,22 @@ function reportedFailedStep(operation: ZeropsOperation): PipelineStepRow | undef
 function DeployPipeline({
   operation,
   pipeline,
+  log,
 }: {
   readonly operation: ZeropsOperation;
   readonly pipeline: PipelineReadout | undefined;
+  /** The build's log, under the step that runs the build (the owner, 2026-09-26: "it should be under the actual step"). */
+  readonly log: ReactNode;
 }) {
   const label = `${operation.kicker} steps`;
   if (pipeline !== undefined && !pipeline.calculating && pipeline.steps.length > 0) {
-    return <PipelineStepList aria-label={label} steps={pipeline.steps} />;
+    return (
+      <PipelineStepList
+        aria-label={label}
+        beneath={log === null || log === undefined ? undefined : { RUN_BUILD_COMMANDS: log }}
+        steps={pipeline.steps}
+      />
+    );
   }
   if (operation.phase === "running") {
     return <PipelineCalculating aria-label={label} />;
@@ -530,6 +539,10 @@ function BrowserCard({
   );
 }
 
+function pipelineListed(pipeline: PipelineReadout | undefined): boolean {
+  return pipeline !== undefined && !pipeline.calculating && pipeline.steps.length > 0;
+}
+
 function isRunningPhase(operation: ZeropsOperation): boolean {
   return operation.phase === "running";
 }
@@ -576,7 +589,7 @@ function StepsBody({
   return (
     <>
       {readsPipeline(operation) ? (
-        <DeployPipeline operation={operation} pipeline={observed?.pipeline} />
+        <DeployPipeline log={observed?.log} operation={operation} pipeline={observed?.pipeline} />
       ) : steps.length === 0 ? null : PIPELINE_KINDS.has(operation.kind) ? (
         <PipelineSegments aria-label={`${operation.kicker} progress`} steps={steps} />
       ) : operation.kind === "verify" ? (
@@ -590,7 +603,10 @@ function StepsBody({
       {observed?.chips !== undefined && observed.chips.length > 0 ? (
         <ProcessSteps aria-label="Other activity" density="compact" steps={observed.chips} />
       ) : null}
-      {observed?.log ?? null}
+      {/* A pipeline draws its log under its build step; without one, here. */}
+      {readsPipeline(operation) && pipelineListed(observed?.pipeline)
+        ? null
+        : (observed?.log ?? null)}
       {observed !== undefined && observed.provenance.length > 0 ? (
         <p className="text-muted-foreground text-xs" data-zerops-operation-provenance>
           {observed.provenance}

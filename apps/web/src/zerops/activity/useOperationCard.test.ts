@@ -804,7 +804,7 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
   });
 });
 
-describe("useOperationCard — a build log opened while live stays open at settle (hook)", () => {
+describe("useOperationCard — the whole build log opens in a dialog, only when asked (hook)", () => {
   const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
   const history = observation({
     pipeline: BUILDING,
@@ -815,45 +815,31 @@ describe("useOperationCard — a build log opened while live stays open at settl
     history,
     buildLog: { status, lines: [] },
   });
+  const logOf = (region: ReturnType<typeof useOperationCard>) =>
+    region.observed?.log as { props: { open: boolean; onToggle: () => void } } | undefined;
 
   beforeEach(() => {
     hooks.reset();
   });
 
-  it("stays open once the deploy settles and the log is no longer live", () => {
-    observationSpy.mockReturnValueOnce(observed("live"));
+  it.each([
+    { name: "a running deploy's live log", phase: "running" as const, status: "live" },
+    { name: "a settled deploy's ended log", phase: "done" as const, status: "ended" },
+  ])("keeps it closed for $name: a dialog never opens by itself", ({ phase, status }) => {
+    observationSpy.mockReturnValueOnce(observed(status));
     hooks.beginRender();
-    const running = useOperationCard(operation({ phase: "running" }), ENVIRONMENT_ID);
-    observationSpy.mockReturnValueOnce(observed("ended"));
-    hooks.beginRender();
-    const settled = useOperationCard(operation({ phase: "done" }), ENVIRONMENT_ID);
-
-    const openOf = (region: typeof running) =>
-      (region.observed?.log as { props: { open: boolean } } | undefined)?.props.open;
-    expect([openOf(running), openOf(settled)]).toEqual([true, true]);
+    const region = useOperationCard(operation({ phase }), ENVIRONMENT_ID);
+    expect(logOf(region)?.props.open).toBe(false);
   });
 
-  it("is open from a running card's first frame, before a line is live, and stays open", () => {
-    observationSpy.mockReturnValueOnce(observed("loading"));
+  it("opens it when asked", () => {
+    observationSpy.mockReturnValue(observed("live"));
     hooks.beginRender();
-    const running = useOperationCard(operation({ phase: "running" }), ENVIRONMENT_ID);
-    observationSpy.mockReturnValueOnce(observed("ended"));
+    logOf(useOperationCard(operation({ phase: "running" }), ENVIRONMENT_ID))?.props.onToggle();
     hooks.beginRender();
-    const settled = useOperationCard(operation({ phase: "failed" }), ENVIRONMENT_ID);
-
-    const openOf = (region: typeof running) =>
-      (region.observed?.log as { props: { open: boolean } } | undefined)?.props.open;
-    expect([openOf(running), openOf(settled)]).toEqual([true, true]);
-  });
-
-  it("a settled card seen only settled keeps its log closed until asked", () => {
-    observationSpy.mockReturnValueOnce(observed("ended"));
-    hooks.beginRender();
-    const settled = useOperationCard(operation({ phase: "done" }), ENVIRONMENT_ID);
-
-    expect((settled.observed?.log as { props: { open: boolean } } | undefined)?.props.open).toBe(
-      false,
-    );
+    const reopened = useOperationCard(operation({ phase: "running" }), ENVIRONMENT_ID);
+    expect(logOf(reopened)?.props.open).toBe(true);
+    observationSpy.mockReset();
   });
 });
 

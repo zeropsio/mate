@@ -288,7 +288,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
       600,
     );
     const sentenceTone = (inner: string) =>
-      inner.includes("flex-1 text-sm leading-5 text-foreground") ? "foreground" : "muted";
+      inner.includes("text-sm leading-5 text-foreground") ? "foreground" : "muted";
 
     expect(
       rowsOf(render(running, observedOf(building))).map((row) => sentenceTone(row.inner)),
