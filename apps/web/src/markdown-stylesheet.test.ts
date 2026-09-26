@@ -137,11 +137,22 @@ function declarationsOf(selector: string): ReadonlyMap<string, string> {
 }
 
 describe("the chat markdown stylesheet", () => {
-  it("sets an answer at 15/24 in the full foreground", () => {
-    const answer = declarationsOf('.chat-markdown[data-variant="answer"]');
+  // One prose size for the conversation (the owner, 2026-09-26: "14px
+  // everywhere was better"): an answer and the person's own words read at
+  // the `--text-prose` token, the answer in the full foreground.
+  it("sets an answer and the person's own words at the one prose size, 14/22.75", () => {
+    const css = NodeFS.readFileSync(new URL("./index.css", import.meta.url), "utf8");
+    const size = Number(/--text-prose:\s*([\d.]+)rem;/.exec(css)?.[1]) * 16;
+    const leading = Number(/--text-prose--line-height:\s*([\d.]+);/.exec(css)?.[1]);
+    expect(size).toBeCloseTo(14);
+    expect(leading * size).toBeCloseTo(22.75);
 
-    expect(answer.get("font-size")).toBe("0.9375rem");
-    expect(Number(answer.get("line-height")) * 15).toBeCloseTo(24);
+    const answer = declarationsOf('.chat-markdown[data-variant="answer"]');
+    const person = declarationsOf('.chat-markdown[data-variant="person"]');
+    for (const reading of [answer, person]) {
+      expect(reading.get("font-size")).toBe("var(--text-prose)");
+      expect(reading.get("line-height")).toBe("var(--text-prose--line-height)");
+    }
     expect(answer.get("color")).toBe("var(--contrast-foreground)");
   });
 
@@ -154,7 +165,7 @@ describe("the chat markdown stylesheet", () => {
     expect((size ?? 0) * body).toBeCloseTo(code, 0);
   });
 
-  // In px at an answer's 15 px body; the log's 14 px scales every figure.
+  // In px at a 15 px body; every figure is in em, so it scales with the body it sits in.
   it.each([
     { tag: "h1", size: 19, line: 26, above: 28, below: 8, ink: "var(--contrast-foreground)" },
     { tag: "h2", size: 19, line: 26, above: 28, below: 8, ink: "var(--contrast-foreground)" },
