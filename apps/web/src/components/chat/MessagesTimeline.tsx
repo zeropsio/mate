@@ -1993,9 +1993,10 @@ function turnHeaderActivityLabel(
     case "operation":
       // A check names the page, never the whole address: the host is the
       // service's, and the working component shows it in its frame.
+      // The voice is a sentence; the line is a phrase, so it drops the full stop.
       return activity.operation.kind === "browser"
         ? `Checking ${browserCheckCaption(activity.operation)}`
-        : activity.operation.voice;
+        : activity.operation.voice.replace(/\.$/, "");
   }
 }
 
