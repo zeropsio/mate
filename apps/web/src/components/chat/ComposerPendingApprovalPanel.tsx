@@ -14,7 +14,7 @@ interface ComposerPendingApprovalPanelProps {
 export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprovalPanel({
   approval,
   pendingCount,
-  waitingLabel = "WAITING FOR YOU",
+  waitingLabel = "Waiting for you",
   className,
 }: ComposerPendingApprovalPanelProps) {
   // An app-access request is a sentence for a person; commands and paths
@@ -58,7 +58,15 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
       role="group"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <StatusDot label={waitingLabel} pulse={false} tone="attention" />
+        {/* Whom it waits on, as a phrase: the product sets no label in
+            capitals, and the amber is the conversation's for who is next. */}
+        <StatusDot
+          className="text-status-attention-text text-xs"
+          label={waitingLabel}
+          pulse={false}
+          sentence
+          tone="attention"
+        />
         <span
           className="text-xs font-medium text-foreground/85"
           data-pending-request-kind={requestKind}

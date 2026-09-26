@@ -30,6 +30,8 @@ type Scene = {
   working?: boolean;
   open?: string[];
   expanded?: string[];
+  /** The minute the latest turn started, when not the conversation's first. */
+  startedAt?: number;
 };
 
 /** The conversation as the list draws it, its cards' frames included. */
@@ -41,13 +43,13 @@ function framed(scene: Scene): MessagesTimelineRow[] {
       ? {
           turnId: turn(latestId),
           state: scene.live ? "running" : "completed",
-          startedAt: at(0),
+          startedAt: at(scene.startedAt ?? 0),
           completedAt: scene.live ? null : at(59),
         }
       : null,
     runningTurnId: scene.live ? turn(scene.live) : null,
     isWorking: scene.working ?? scene.live !== undefined,
-    activeTurnStartedAt: scene.live ? at(0) : null,
+    activeTurnStartedAt: scene.live ? at(scene.startedAt ?? 0) : null,
     turnDiffSummaries: [],
     supportsConversationRollback: false,
     openStretchKeys: new Set(scene.open ?? []),
@@ -188,6 +190,69 @@ describe("deriveMessagesTimelineRows", () => {
         { id: "accent", header: "Accent colour", question: "Which accent colour do you prefer?" },
       ],
     });
+  // "Nova worked for 7m 5s" counted the three minutes its question waited on
+  // the person: the clock says how long the Mate worked, its tooltip the
+  // run's whole span (Nova, 2026-09-26).
+  it.each([
+    { name: "a question", kinds: ["user-input.requested", "user-input.resolved"] as const },
+    { name: "an approval", kinds: ["approval.requested", "approval.resolved"] as const },
+  ])("leaves the time $name waited on the person out of how long the Mate worked", ({ kinds }) => {
+    const waitOn = (id: string, minute: number, kind: (typeof kinds)[number]) =>
+      tool(id, "t1", minute, {
+        tone: "info",
+        label: "Waiting on the person",
+        command: undefined as never,
+        toolCallId: undefined as never,
+        toolLifecycleStatus: undefined as never,
+        sourceActivityKind: kind,
+      });
+    const line = rows({
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "One thing first."),
+        waitOn("q1", 2, kinds[0]),
+        waitOn("q2", 7, kinds[1]),
+        tool("w1", "t1", 8),
+        assistant("a2", "t1", 9, "Done."),
+      ],
+      settled: "t1",
+    }).find((row) => row.kind === "work-line");
+    expect(line).toMatchObject({ waitedMs: 5 * 60_000 });
+  });
+
+  // Live, the clock stops while the question waits and leaves the wait out
+  // once answered, so it never drops as the run settles; a run stopped while
+  // it waited counts the wait as the person's to its end.
+  it.each([
+    { name: "while it waits", live: true, answered: false, waited: 0, since: 2 },
+    { name: "once answered", live: true, answered: true, waited: 5, since: null },
+    { name: "stopped while it waited", live: false, answered: false, waited: 7, since: null },
+  ])("keeps the clock on the Mate's own work $name", ({ live, answered, waited, since }) => {
+    const waitOn = (id: string, minute: number, kind: string) =>
+      tool(id, "t1", minute, {
+        tone: "info",
+        label: "Waiting on the person",
+        command: undefined as never,
+        toolCallId: undefined as never,
+        toolLifecycleStatus: undefined as never,
+        sourceActivityKind: kind as never,
+      });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "One thing first."),
+      waitOn("q1", 2, "user-input.requested"),
+      ...(answered ? [waitOn("q2", 7, "user-input.resolved")] : []),
+      tool("w1", "t1", answered ? 8 : 9, live ? {} : { toolLifecycleStatus: "completed" }),
+    ];
+    const line = rows(live ? { entries, live: "t1" } : { entries, settled: "t1" }).find(
+      (row) => row.kind === "work-line",
+    );
+    expect(line).toMatchObject({
+      waitedMs: waited * 60_000,
+      waitingSince: since === null ? null : at(since),
+    });
+  });
+
   it.each([
     { name: "nothing yet: it thinks", entries: [], activity: { kind: "thinking" } },
     {
@@ -206,9 +271,9 @@ describe("deriveMessagesTimelineRows", () => {
       activity: { kind: "tool" },
     },
     {
-      name: "writing: its words are the activity",
+      name: "writing: the dots, its words held until they are known",
       entries: [assistant("a1", "t1", 1, "Writing this now.", { streaming: true })],
-      activity: null,
+      activity: { kind: "writing" },
     },
     {
       name: "a question asked: it waits for the person",
@@ -237,6 +302,41 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  // Answered, the question and the person's answer stand in the card where
+  // the answer arrived; the Mate at work streams on under them from there.
+  // Streaming what came before the question under the answer put thoughts
+  // from half a minute earlier below the person's reply (Nova, 2026-09-26).
+  it("streams on from the person's answer, and what came before stays above it", () => {
+    const answered = tool("rs", "t1", 3, {
+      tone: "info",
+      label: "User input submitted",
+      command: undefined as never,
+      toolCallId: undefined as never,
+      toolLifecycleStatus: undefined as never,
+      sourceActivityKind: "user-input.resolved",
+      inputRequestId: "req-1",
+      inputAnswers: [{ key: "accent", answer: "Green" }],
+    });
+    const before = [user("m0", 0), assistant("a1", "t1", 1, "One question first."), asked("q1", 2)];
+    const waiting = framed({ entries: before, live: "t1" });
+    const after = framed({
+      entries: [...before, answered, assistant("a2", "t1", 4, "Green it is."), tool("w9", "t1", 5)],
+      live: "t1",
+    });
+    expect(shape(after).slice(-3)).toEqual([
+      "answer:answer:rs",
+      "working:working:msg:m0:rs",
+      "card-end:card-end:msg:m0",
+    ]);
+    const working = after.find((row) => row.kind === "working");
+    expect(working?.kind === "working" ? working.stream.map((item) => item.key) : null).toEqual([
+      "a2",
+    ]);
+    // Everything above the live panel is drawn as it was.
+    const panelAt = waiting.findIndex((row) => row.kind === "working");
+    expect(frame(after).slice(0, panelAt)).toEqual(frame(waiting).slice(0, panelAt));
+  });
+
   it("draws a turn a finished background task woke before its first words", () => {
     const list = rows({
       entries: [user("m0", 0), assistant("a1", "t1", 1, "Started it."), background("b1", 5)],
@@ -248,6 +348,274 @@ describe("deriveMessagesTimelineRows", () => {
       "working:working:turn:t2",
     ]);
     expect(list.at(-1)).toMatchObject({ activity: { kind: "thinking" }, stream: [] });
+  });
+
+  // The question and the person's answer stand in the run as bubbles; its
+  // tool call said again as "Used AskUserQuestion" put an internal name over
+  // its own question (Nova, 2026-09-26).
+  it("says the Mate's question as the question alone, never as its tool", () => {
+    const ask = tool("c1", "t1", 2, {
+      itemType: "dynamic_tool_call",
+      label: "Tool call",
+      command: undefined as never,
+      detail: 'AskUserQuestion: {"questions":[{"question":"Teal or amber?"}]}',
+    });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "One thing first."),
+      ask,
+      tool("w1", "t1", 3),
+      assistant("a2", "t1", 4, "Done."),
+    ];
+    const list = rows({ entries, settled: "t1", open: ["msg:m0"] });
+    const line = list.find((row) => row.kind === "work-line");
+    expect(line?.kind === "work-line" ? line.summary : null).not.toMatch(/AskUserQuestion|tool/);
+    const logged = list.flatMap((row) =>
+      row.kind === "log-activity" ? row.entries.map((entry) => entry.id) : [],
+    );
+    expect(logged).toContain("w1");
+    expect(logged).not.toContain("c1");
+  });
+
+  // Without its tool said, a run that only asked read "Nova thought for 11s":
+  // it asked the person something, which is work.
+  it("says a run that only asked the person something asked a question", () => {
+    const ask = tool("c1", "t1", 2, {
+      itemType: "dynamic_tool_call",
+      label: "Tool call",
+      command: undefined as never,
+      detail: 'AskUserQuestion: {"questions":[{"question":"Teal or amber?"}]}',
+    });
+    const line = rows({
+      entries: [user("m0", 0), ask, assistant("a2", "t1", 4, "Teal it is.")],
+      settled: "t1",
+    }).find((row) => row.kind === "work-line");
+    expect(line).toMatchObject({ summary: "Asked a question", fallback: "Asked a question" });
+  });
+
+  // A result that woke the Mate and was answered in one breath flashed a
+  // card for a frame: drawn live with the whole answer under it, gone as the
+  // run settled 43 ms later, and the answer jumped up (Nova, 2026-09-26).
+  it("draws a run with nothing in its log as its answer alone once the answer is known", () => {
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "The review is done.\n\nFour issues stood out."),
+    ];
+    expect(frame(framed({ entries, live: "t1" }))).toEqual(
+      frame(framed({ entries, settled: "t1" })),
+    );
+  });
+
+  it("keeps the card while the Mate composes, before its answer is known", () => {
+    for (const entries of [
+      [user("m0", 0)],
+      [user("m0", 0), assistant("a1", "t1", 1, "The review is done.")],
+    ]) {
+      const kinds = rows({ entries, live: "t1" }).map((row) => row.kind);
+      expect(kinds).toContain("work-line");
+      expect(kinds).toContain("working");
+    }
+  });
+
+  // Words that cannot be placed yet stream nowhere: the panel says the Mate
+  // is writing, a note pops in whole once it moves on, and an answer streams
+  // under the card once it reads as one — never first in the panel.
+  it("holds the words the Mate is writing until they are known", () => {
+    const before = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Reading the routes."),
+      tool("w1", "t1", 2),
+    ];
+    const streamOf = (list: MessagesTimelineRow[]) => {
+      const working = list.find((row) => row.kind === "working");
+      return working?.kind === "working"
+        ? { keys: working.stream.map((item) => item.key), activity: working.activity }
+        : null;
+    };
+    const writing = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.", { streaming: true })],
+      live: "t1",
+    });
+    expect(streamOf(writing)).toEqual({ keys: ["a1"], activity: { kind: "writing" } });
+    expect(writing.some((row) => row.id === "a2")).toBe(false);
+    // An opened log holds them too: they stream nowhere until known.
+    const opened = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.", { streaming: true })],
+      live: "t1",
+      open: ["msg:m0"],
+    });
+    expect(opened.some((row) => row.id === "log-note:a2")).toBe(false);
+    // Written out, a line is a note, whether or not a step follows yet.
+    const written = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.")],
+      live: "t1",
+    });
+    expect(streamOf(written)?.keys).toEqual(["a1", "a2"]);
+    const movedOn = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next."), tool("w2", "t1", 4)],
+      live: "t1",
+    });
+    expect(streamOf(movedOn)?.keys).toEqual(["a1", "a2"]);
+    const answering = rows({
+      entries: [...before, assistant("a2", "t1", 3, "All three pass.\n\nThe routes:")],
+      live: "t1",
+    });
+    expect(streamOf(answering)?.keys).toEqual(["a1"]);
+    expect(answering.at(-1)?.id).toBe("a2");
+  });
+
+  // A background result wakes the Mate. A helper's review came back after the
+  // run that started it ended, and the run it woke had no line saying why it
+  // began (Nova, 2026-09-26). What finished while the run before still
+  // worked is not what woke the next one: named by where it stood, a task
+  // done ten minutes before was said to wake a run the harness started
+  // (Juno). Work no turn owns, right before the run, draws its own line.
+  // A helper's row stands where it was spawned and takes each report as it
+  // comes: it finished at its last update.
+  const helperDone = (id: string, turnId: string, spawned: number, done: number) =>
+    tool(id, turnId, spawned, {
+      label: `Review ${id}`,
+      toolTitle: `Review ${id}`,
+      taskId: `task-${id}`,
+      agentRole: "general-purpose",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      updatedAt: at(Math.floor(done), Math.round((done % 1) * 60)),
+    });
+  const shellDone = (id: string, turnId: string, minute: number) =>
+    tool(id, turnId, minute, {
+      label: `Smoke test ${id}`,
+      toolTitle: `Smoke test ${id}`,
+      taskId: `task-${id}`,
+      sourceActivityKind: "task.completed",
+      tone: "info",
+    });
+  it.each([
+    {
+      name: "a helper that finished after the run before it ended",
+      during: [helperDone("h1", "t1", 2, 5)],
+      after: [],
+      woke: { entries: [{ id: "h1" }], tasks: 1, failed: 0, helpers: true, title: "Review h1" },
+    },
+    {
+      name: "a background task that finished after the run before it ended",
+      during: [],
+      after: [shellDone("s1", "t1", 5)],
+      woke: {
+        entries: [{ id: "s1" }],
+        tasks: 1,
+        failed: 0,
+        helpers: false,
+        title: "Smoke test s1",
+      },
+    },
+    {
+      name: "two helpers, in the order they finished",
+      during: [helperDone("h1", "t1", 2, 5), helperDone("h2", "t1", 3, 4.5)],
+      after: [],
+      woke: { entries: [{ id: "h2" }, { id: "h1" }], tasks: 2, helpers: true, title: "Review h1" },
+    },
+    {
+      name: "a helper that finished while the run before it still worked",
+      during: [helperDone("h1", "t1", 2, 3)],
+      after: [],
+      woke: null,
+    },
+    {
+      name: "a helper that finished after the run began",
+      during: [helperDone("h1", "t1", 2, 7)],
+      after: [],
+      woke: null,
+    },
+    {
+      name: "helpers gathered in one row, which of them finished unknown",
+      during: [
+        {
+          ...helperDone("h1", "t1", 2, 5),
+          entry: {
+            ...(helperDone("h1", "t1", 2, 5) as Extract<TimelineEntry, { kind: "work" }>).entry,
+            agentSpawn: { workflowId: null, agentTaskIds: ["task-h1", "task-h2"] },
+          },
+        } as TimelineEntry,
+      ],
+      after: [],
+      woke: null,
+    },
+    {
+      name: "work no turn owns, right before it",
+      during: [],
+      after: [background("b1", 5)],
+      woke: null,
+    },
+    // Two shell tasks said in their own line did not wake Juno's run; the
+    // research helper that finished after them did.
+    {
+      name: "a helper that finished after work no turn owns",
+      during: [helperDone("h1", "t1", 2, 5.5)],
+      after: [background("b1", 5)],
+      woke: { entries: [{ id: "h1" }], tasks: 1, helpers: true, title: "Review h1" },
+    },
+    { name: "nothing that finished", during: [], after: [], woke: null },
+  ])("says what woke a run nobody wrote to start: $name", ({ during, after, woke }) => {
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started it."),
+      ...during,
+      assistant("a2", "t1", 4, "It reports back when done."),
+      ...after,
+      assistant("a3", "t2", 6, "It came back clean."),
+    ];
+    const list = rows({ entries, settled: "t2" });
+    const line = list.find((row) => row.id === "woke:turn:t2");
+    if (woke === null) {
+      expect(line).toBeUndefined();
+      return;
+    }
+    // It stands where the person's message would: first in the run.
+    expect(line).toMatchObject({ kind: "background", ...woke });
+    expect(list[list.indexOf(line!) + 1]?.id).toBe("a3");
+    expect(shape(rows({ entries, settled: "t2", expanded: ["woke:turn:t2"] }))).toContain(
+      `work:woke-entry:${woke.entries[0]!.id}`,
+    );
+  });
+
+  it("names only what finished since the run before the woken one ended", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started it."),
+        helperDone("h1", "t1", 2, 3),
+        assistant("a2", "t1", 3, "It came back."),
+        user("m1", 5),
+        assistant("a3", "t2", 6, "Done."),
+        assistant("a4", "t3", 8, "Checking in."),
+      ],
+      settled: "t3",
+    });
+    expect(list.some((row) => row.id.startsWith("woke:"))).toBe(false);
+  });
+
+  it("says what woke a run from its first frame, and the line holds as the run speaks", () => {
+    const before = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started it."),
+      helperDone("h1", "t1", 2, 4),
+      assistant("a2", "t1", 3, "It reports back when done."),
+    ];
+    const waking = framed({ entries: before, live: "t2", startedAt: 5 });
+    const speaking = framed({
+      entries: [...before, assistant("a3", "t2", 5, "It came back clean.")],
+      live: "t2",
+      startedAt: 5,
+    });
+    expect(shape(waking).slice(-4)).toEqual([
+      "background:woke:turn:t2",
+      "work-line:work-line:turn:t2",
+      "working:working:turn:t2",
+      "card-end:card-end:turn:t2",
+    ]);
+    const lineAt = waking.findIndex((row) => row.id === "woke:turn:t2");
+    expect(frame(speaking).slice(0, lineAt + 2)).toEqual(frame(waking).slice(0, lineAt + 2));
   });
 
   const typeCheck = (id: string, minute: number, failed: boolean) =>
@@ -268,6 +636,7 @@ describe("deriveMessagesTimelineRows", () => {
         assistant("a5", "t1", 6, "Five."),
         assistant("a6", "t1", 7, "Six."),
         assistant("a7", "t1", 8, "Seven."),
+        tool("w2", "t1", 9),
       ],
       stream: ["One.", "Two.", "Three.", "Four.", "Five.", "Six.", "Seven."],
     },
@@ -296,6 +665,7 @@ describe("deriveMessagesTimelineRows", () => {
         assistant("a1", "t1", 1, "Type checking."),
         typeCheck("t9", 2, true),
         assistant("a2", "t1", 3, "Fixing the types."),
+        tool("w1", "t1", 4),
       ],
       stream: ["Type checking.", "✗ Run the type check failed", "Fixing the types."],
     },

@@ -6,6 +6,7 @@ import {
   readTimelinePosition,
   rememberTimelinePosition,
   resolveTimelineScrollAnchor,
+  shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
 
 function buildState({
@@ -54,6 +55,70 @@ describe("timeline scroll anchoring", () => {
     });
 
     expect(scrollToEnd).not.toHaveBeenCalled();
+  });
+
+  // A row easing to a new height — the Mate's stream opening for its
+  // question — grows by a few pixels in each late frame. LegendList re-pins
+  // only a measurement that moved a row by more than 5 px, and those frames
+  // left the end 40 px under the composer.
+  it.each([
+    {
+      case: "follows a late frame of a row easing taller",
+      followingEnd: true,
+      withinFollowThreshold: true,
+      previousSize: 412,
+      size: 415,
+      repin: true,
+    },
+    {
+      case: "follows a step LegendList re-pins itself too",
+      followingEnd: true,
+      withinFollowThreshold: true,
+      previousSize: 300,
+      size: 312,
+      repin: true,
+    },
+    {
+      case: "leaves a row settling shorter to the browser's clamp",
+      followingEnd: true,
+      withinFollowThreshold: true,
+      previousSize: 415,
+      size: 410,
+      repin: false,
+    },
+    {
+      case: "ignores a measurement that changed nothing",
+      followingEnd: true,
+      withinFollowThreshold: true,
+      previousSize: 415,
+      size: 415,
+      repin: false,
+    },
+    {
+      case: "holds still while history is read",
+      followingEnd: false,
+      withinFollowThreshold: true,
+      previousSize: 412,
+      size: 415,
+      repin: false,
+    },
+    {
+      case: "holds still with the end more than a viewport away",
+      followingEnd: true,
+      withinFollowThreshold: false,
+      previousSize: 412,
+      size: 415,
+      repin: false,
+    },
+  ])("$case", ({ followingEnd, withinFollowThreshold, previousSize, size, repin }) => {
+    expect(
+      shouldRepinTimelineEndAfterRowResize({
+        followingEnd,
+        withinFollowThreshold,
+        previousSize,
+        size,
+      }),
+    ).toBe(repin);
   });
 
   it("measures row bottoms from LegendList row position and size", () => {

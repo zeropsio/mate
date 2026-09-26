@@ -26,15 +26,16 @@ import {
 
 import { cn } from "~/lib/utils";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
-import { browserCheckDevice } from "./BrowserStrip";
+import { browserCheckDevice, TAKE_ASPECT } from "./BrowserStrip";
 import {
   browserCheckCaption,
-  browserCheckFailed,
+  browserTakeState,
   type OutcomeModel,
   type OutcomeService,
 } from "./conversation.logic";
 import { Pill, StatusDisc, type DiscTone } from "./ConversationPills";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import { useTakeThumbnail } from "./takeThumbnail";
 
 const SERVICE_DISC: Record<OutcomeService["tone"], DiscTone> = {
   ok: "ok",
@@ -110,6 +111,12 @@ function ServicePill({ service }: { readonly service: OutcomeService }) {
   );
 }
 
+/** A take's picture, its content cropped in when the page is mostly empty. */
+function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
+  const thumbnail = useTakeThumbnail(src, aspect);
+  return <img alt="" className="block size-full object-cover object-top" src={thumbnail} />;
+}
+
 function Takes({
   takes,
   onOpenImage,
@@ -132,17 +139,21 @@ function Takes({
       {takes.map((take) => {
         const src = take.screenshot?.src;
         if (src === undefined) return null;
-        const failed = browserCheckFailed(take);
+        const state = browserTakeState(take, takes);
         const device = browserCheckDevice(take);
         const index = shots.findIndex((shot) => shot.key === take.key);
         return (
           <button
             key={take.key}
-            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${failed ? ", failed" : ""}. Open the screenshot`}
+            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : ""}. Open the screenshot`}
             className={cn(
               "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
               TAKE_CLASS[device],
-              failed ? "border-status-failed ring-1 ring-status-failed" : "border-border",
+              state === "failed"
+                ? "border-status-failed ring-1 ring-status-failed"
+                : state === "retried"
+                  ? "border-status-attention"
+                  : "border-border",
             )}
             data-report-take={device}
             onClick={() =>
@@ -150,7 +161,7 @@ function Takes({
             }
             type="button"
           >
-            <img alt="" className="block size-full object-cover object-top" src={src} />
+            <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
           </button>
         );
       })}

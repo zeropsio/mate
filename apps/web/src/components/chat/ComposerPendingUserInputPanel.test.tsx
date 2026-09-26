@@ -60,7 +60,7 @@ describe("ComposerPendingUserInputPanel", () => {
     for (const markup of [questionMarkup, approvalMarkup]) {
       expect(markup).toContain('data-zerops-primitive="status-dot"');
       expect(markup).toContain('data-zerops-status-tone="attention"');
-      expect(markup).toContain("WAITING FOR YOU");
+      expect(markup).toContain("Waiting for you");
     }
     expect(questionMarkup).toContain('data-pending-request-kind="question"');
     expect(questionMarkup).toContain(">Question<");
@@ -78,12 +78,12 @@ describe("ComposerPendingUserInputPanel", () => {
           detail: "vp test run question.test.tsx",
         }}
         pendingCount={1}
-        waitingLabel="WAITING FOR THE OWNER"
+        waitingLabel="Waiting for the owner"
       />,
     );
 
-    expect(markup).toContain("WAITING FOR THE OWNER");
-    expect(markup).not.toContain("WAITING FOR YOU");
+    expect(markup).toContain("Waiting for the owner");
+    expect(markup).not.toContain("Waiting for you");
   });
 
   it("renders the header as a disclosure control for the question body", () => {
@@ -144,7 +144,7 @@ describe("ComposerPendingUserInputPanel — answering affordances", () => {
     const html = render({});
 
     expect(html).toContain("data-pending-user-input-waiting");
-    expect(html).toContain("WAITING FOR YOU");
+    expect(html).toContain("Waiting for you");
   });
 
   /**
@@ -244,13 +244,13 @@ describe("ComposerPendingUserInputReadOnlyPanel", () => {
   const html = renderToStaticMarkup(
     <ComposerPendingUserInputReadOnlyPanel
       pendingUserInputs={[prompt]}
-      waitingLabel="WAITING FOR THE OWNER"
+      waitingLabel="Waiting for the owner"
     />,
   );
 
   it("says whom it waits on instead of the viewer", () => {
-    expect(html).toContain("WAITING FOR THE OWNER");
-    expect(html).not.toContain("WAITING FOR YOU");
+    expect(html).toContain("Waiting for the owner");
+    expect(html).not.toContain("Waiting for you");
   });
 
   it("still shows the question and every option", () => {
@@ -266,6 +266,34 @@ describe("ComposerPendingUserInputReadOnlyPanel", () => {
     expect(html).not.toContain("<kbd");
     expect(html).not.toContain("data-pending-user-input-dismiss");
     expect(html).not.toContain("data-pending-user-input-other");
+  });
+});
+
+/**
+ * No label in the product is set in capitals: whom a question waits on reads
+ * as written, and nothing on the way re-cases it.
+ */
+describe("whom a question waits on", () => {
+  it.each([
+    ["the viewer", () => renderPanel(), "Waiting for you"],
+    [
+      "someone else",
+      () =>
+        renderToStaticMarkup(
+          <ComposerPendingUserInputReadOnlyPanel
+            pendingUserInputs={[prompt]}
+            waitingLabel="Waiting for the owner"
+          />,
+        ),
+      "Waiting for the owner",
+    ],
+  ] as const)("is said in sentence case when it is %s", (_whom, render, words) => {
+    const markup = render();
+
+    expect(markup).toContain(`>${words}</span>`);
+    expect(markup).not.toContain("uppercase");
+    expect(markup).not.toContain("tracking-");
+    expect(markup).not.toContain('data-zerops-primitive="micro-label"');
   });
 });
 

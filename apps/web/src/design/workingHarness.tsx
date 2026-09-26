@@ -10,7 +10,7 @@
  * Fixtures only. Nothing here ships — `design-working.html` is not
  * `index.html`, and no route imports this module.
  */
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -26,6 +26,7 @@ import type { ConversationSpeaker } from "~/components/chat/ConversationRows";
 import { splitBatchDeploy, type OutcomeModel } from "~/components/chat/conversation.logic";
 import type { DockModel } from "~/components/chat/conversationDock.logic";
 import { TurnReport } from "~/components/chat/TurnReport";
+import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import "../index.css";
@@ -34,11 +35,36 @@ const SPEAKER: ConversationSpeaker = { name: "Nova", tint: "sky" };
 const NOW = Date.now();
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
 
+// The bodies read as the app's `NoteWords` and `ThoughtWords` render them: the
+// log's body — its words in the 80 % ink, its thinking in the muted one.
 const note = (key: string, words: string): WorkingBubble => ({
   kind: "note",
   key,
-  body: <p className="text-sm leading-relaxed">{words}</p>,
+  body: <p className="text-foreground/80 text-sm leading-relaxed">{words}</p>,
 });
+
+const thought = (key: string, words: string): WorkingBubble => ({
+  kind: "thought",
+  key,
+  body: <p className="text-muted-foreground text-sm leading-relaxed">{words}</p>,
+});
+
+/** A stretch some way in: it thought, said, thought again — oldest first. */
+const MIXED: ReadonlyArray<WorkingBubble> = [
+  note("m1", "Checking why the readiness check fails."),
+  thought(
+    "m2",
+    "The readiness check asks for /status, but the router only registers /health. Either the route was renamed in the last change and the config never followed, or the config was copied from another service. Nothing else in the app calls /status, so the smaller change is the route, not the config.",
+  ),
+  note("m3", "Found it: the check and the route disagree on the path."),
+  thought("m4", "Renaming the route keeps zerops.yml as it is."),
+  note("m5", "Renaming the route to /status and deploying again."),
+];
+
+const MIXED_THEN_THINKING: ReadonlyArray<WorkingBubble> = [
+  ...MIXED,
+  thought("m6", "If the deploy passes, the check should turn healthy within a minute."),
+];
 
 function deploy(overrides: Partial<ZeropsOperation>): ZeropsOperation {
   return {
@@ -242,6 +268,32 @@ function Working({
   );
 }
 
+/**
+ * The panel some way into a stretch. Drawn at once it opens onto the newest
+ * bubble and a peek of the one before; live, a long paragraph grows the
+ * window — it only grows — and the words after it age in the room it left.
+ * So it is drawn first as that paragraph arrived, and what came after it
+ * arrives a moment later, live.
+ */
+function Later({
+  bubbles,
+  grownBy,
+  activity,
+}: {
+  readonly bubbles: ReadonlyArray<WorkingBubble>;
+  /** The newest bubble when the panel was first drawn: the one that grew the window. */
+  readonly grownBy: string;
+  readonly activity: WorkingActivity | null;
+}) {
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setArrived(true), 300);
+    return () => clearTimeout(timer);
+  }, []);
+  const grown = bubbles.findIndex((bubble) => bubble.key === grownBy) + 1;
+  return <Working activity={activity} bubbles={arrived ? bubbles : bubbles.slice(0, grown)} />;
+}
+
 function State({
   label,
   note: caption,
@@ -281,6 +333,22 @@ function Harness() {
               note("a2", "A small web app with a server; checking the server next."),
             ]}
           />
+        </State>
+        <State
+          label="Thinking and saying, a few steps in"
+          note="A long thought grew the window; the words after it push it up, dimmer each step."
+        >
+          <Later
+            activity={{ kind: "doing", words: "Editing src/routes.ts" }}
+            bubbles={MIXED}
+            grownBy="m2"
+          />
+        </State>
+        <State
+          label="Saying, then thinking again"
+          note="The newest a thought, the note before it fading."
+        >
+          <Later activity={{ kind: "thinking" }} bubbles={MIXED_THEN_THINKING} grownBy="m2" />
         </State>
         <State
           label="Waiting for the person"
@@ -400,11 +468,12 @@ function Standins({ children }: { readonly children: ReactNode }) {
 }
 
 // The app sets the theme on the document element (`themePalette.ts`), so the
-// harness does the same rather than nesting a `.dark` wrapper the tokens never reach.
-document.documentElement.classList.toggle(
-  "dark",
-  new URLSearchParams(location.search).get("theme") === "dark",
-);
+// harness does the same rather than nesting a `.dark` wrapper the tokens never
+// reach — in the Zerops palette a fresh install wears, whose card and muted
+// fill sit closer than the fallback tokens'.
+const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+document.documentElement.classList.toggle("dark", appearance === "dark");
+applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

@@ -407,6 +407,12 @@ export interface ConversationTurn {
   readonly stretches: ReadonlyArray<Stretch>;
   /** The Mate's answer: the turn's last message, once the turn has settled. */
   readonly answer: MessageEntry | null;
+  /**
+   * The words the Mate is writing while it runs that cannot be placed yet:
+   * its last, nothing after them, not reading as its answer. A note if it
+   * moves on, the answer if the run ends — drawn nowhere until then.
+   */
+  readonly writing: MessageEntry | null;
   readonly live: boolean;
   readonly interrupted: boolean;
   /** The usage-limit notice the turn ended on, when it did. */
@@ -439,6 +445,42 @@ export function timelineEntryEnd(entry: TimelineEntry): string {
     default:
       return entry.createdAt;
   }
+}
+
+/**
+ * Whether a settled turn ended on a step rather than a word: the person
+ * stopped it, or it was cut off, mid-work. The server says so only of the
+ * latest turn; read from how the turn ended, every turn says it the same way
+ * once another follows. An error, a plan the Mate proposed, or its own last
+ * word ends a turn. A background task reporting in, a landing, the harness
+ * condensing the context, or a row that only tells — a question waiting on
+ * the person, a warning — is not the Mate's step.
+ */
+function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
+  const last = entries.findLast(
+    (entry) =>
+      entry.kind !== "turn-plan" &&
+      entry.kind !== "change-landed" &&
+      !(entry.kind === "message" && entry.message.text.trim().length === 0) &&
+      !(
+        (entry.kind === "work" || entry.kind === "generic-call") &&
+        (isTaskReport(entry) ||
+          entry.entry.sourceActivityKind === "context-compaction" ||
+          !workLogEntryIsToolLike(entry.entry))
+      ),
+  );
+  if (last === undefined) return false;
+  if (last.kind === "message") return last.message.role === "reasoning";
+  if (last.kind === "proposed-plan") return false;
+  return !(last.kind === "work" && last.entry.tone === "error");
+}
+
+/** A background task or a helper reporting in: the task's word, never the Mate's step. */
+function isTaskReport(entry: TimelineEntry): boolean {
+  return (
+    (entry.kind === "work" || entry.kind === "generic-call") &&
+    entry.entry.sourceActivityKind?.startsWith("task.") === true
+  );
 }
 
 function hasMeaningfulContent(entry: TimelineEntry): boolean {
@@ -552,7 +594,9 @@ export function deriveConversationStructure(input: {
       .filter((entry) => !isUserMessageEntry(entry));
     const firstMember = members[0];
     const isLatestTurn = span.turnId !== null && input.latestTurn?.turnId === span.turnId;
-    const interrupted = !live && isLatestTurn && input.latestTurn?.state === "interrupted";
+    const interrupted =
+      !live &&
+      ((isLatestTurn && input.latestTurn?.state === "interrupted") || endedOnAStep(turnEntries));
 
     // The answer is the turn's last message once it settles. While the turn
     // runs, its last message is the answer already when it reads as one and
@@ -560,12 +604,34 @@ export function deriveConversationStructure(input: {
     // the Mate's panel (the owner, 2026-09-26 — "the last message … first
     // starts rendering in the working panel, then it all turns into the
     // result"). Work after it makes it a note on the way after all.
-    const lastSaid = turnEntries.findLast(hasMeaningfulContent);
+    const lastSaid = turnEntries.findLast(
+      (entry) => hasMeaningfulContent(entry) && !isTaskReport(entry),
+    );
     const answer = !live
       ? span.terminalEntry
       : span.terminalEntry !== null &&
           span.terminalEntry === lastSaid &&
           readsAsAnswer(span.terminalEntry.message.text)
+        ? span.terminalEntry
+        : null;
+    // Words still streaming that cannot be placed yet are drawn nowhere, so
+    // none stream in one place and then move to another: streamed in the
+    // panel first, every answer jumped under the card at its first paragraph
+    // break. Anything after them — a step, a thought — makes them a note, and
+    // so does their end: Codex says nothing of a command until it completes,
+    // so words held until a step came after them hid the whole command long.
+    const lastEntry = turnEntries.findLast(
+      (entry) =>
+        entry.kind !== "turn-plan" &&
+        !isTaskReport(entry) &&
+        !(entry.kind === "message" && entry.message.text.trim().length === 0),
+    );
+    const writing =
+      live &&
+      answer === null &&
+      span.terminalEntry !== null &&
+      lastEntry === span.terminalEntry &&
+      span.terminalEntry.message.streaming === true
         ? span.terminalEntry
         : null;
     // The limit speaks as Claude's own last words, or as the server's error row.
@@ -589,19 +655,16 @@ export function deriveConversationStructure(input: {
       span.opener?.createdAt ??
       turnEntries[0]?.createdAt ??
       (live ? input.activeTurnStartedAt : null);
+    // Settled, a turn ends where the Mate's own entries did — whether it is
+    // the latest or not, so its "worked for" never changes after the fact. A
+    // helper or a background task it left working reports in on the turn,
+    // but that is the task's time, not the Mate's.
     const turnEnd = live
       ? null
-      : ((isLatestTurn && input.latestTurn?.completedAt
-          ? laterIso(
-              input.latestTurn.completedAt,
-              turnEntries.length ? timelineEntryEnd(turnEntries.at(-1)!) : null,
-            )
-          : null) ??
-        turnEntries.reduce<string | null>(
-          (end, entry) => laterIso(end, timelineEntryEnd(entry)),
+      : (turnEntries.reduce<string | null>(
+          (end, entry) => (isTaskReport(entry) ? end : laterIso(end, timelineEntryEnd(entry))),
           null,
-        ) ??
-        turnStart);
+        ) ?? turnStart);
 
     // Split at the person's messages.
     type Draft = { lead: MessageEntry | null; leadIndex: number | null; indexes: number[] };
@@ -668,6 +731,7 @@ export function deriveConversationStructure(input: {
       span,
       stretches,
       answer,
+      writing,
       live,
       interrupted,
       limit,
@@ -1125,9 +1189,14 @@ export function browserCheckFailure(operation: ZeropsOperation): string | null {
   if (!browserCheckFailed(operation)) return null;
   const step = operation.browserSummary?.failedStep;
   if (step) {
-    const words = [step.label, step.note].filter(Boolean).join(": ");
-    if (/timeout|timed out/i.test(words)) return "timed out, the page never loaded";
-    return words.length > 0 ? words : "failed";
+    // The step as a thing the check could not do. The tool's bare class of
+    // error ("Other") tells a person nothing.
+    const note = step.note?.trim() && !/^other$/i.test(step.note.trim()) ? step.note.trim() : null;
+    const label = step.label?.trim() ?? "";
+    if (/timeout|timed out/i.test(`${label} ${note ?? ""}`))
+      return "timed out, the page never loaded";
+    if (label.length === 0) return note ?? "failed";
+    return note === null ? `couldn't ${label}` : `couldn't ${label}: ${note}`;
   }
   if ((operation.browserSummary?.errorCount ?? 0) > 0) {
     const count = operation.browserSummary!.errorCount;
@@ -1158,6 +1227,22 @@ export function unrecoveredCheckFailures(
             browserCheckPage(later) === browserCheckPage(check),
         ),
   );
+}
+
+export type BrowserTakeState = "running" | "passed" | "retried" | "failed";
+
+/**
+ * How a take ended, as its frame tells it — the same reading the heading and
+ * the report count by: a failure a later take of the same page passed is a
+ * retry, never the page's failure.
+ */
+export function browserTakeState(
+  check: ZeropsOperation,
+  checks: ReadonlyArray<ZeropsOperation>,
+): BrowserTakeState {
+  if (check.phase === "running") return "running";
+  if (!browserCheckFailed(check)) return "passed";
+  return unrecoveredCheckFailures(checks).includes(check) ? "failed" : "retried";
 }
 
 /** How many pages the checks looked at. */

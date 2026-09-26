@@ -63,34 +63,53 @@ export function LineMark({
   );
 }
 
-function elapsedSince(since: string): string {
+function elapsedSince(since: string, leftOutMs: number, standingSince: string | null): string {
   const startedMs = Date.parse(since);
-  return formatWorkDuration(Number.isFinite(startedMs) ? Date.now() - startedMs : 0);
+  const nowMs = standingSince === null ? Date.now() : Date.parse(standingSince);
+  return formatWorkDuration(
+    Number.isFinite(startedMs) && Number.isFinite(nowMs)
+      ? Math.max(0, nowMs - startedMs - leftOutMs)
+      : 0,
+  );
 }
 
-/** A duration that counts up by itself: its text node updates, the row never re-renders. */
-export function ElapsedSince({ since }: { readonly since: string }) {
+/**
+ * A duration that counts up by itself: its text node updates, the row never
+ * re-renders. It leaves out `leftOutMs`, and stands still from
+ * `standingSince` — the Mate's clock while it waits on the person.
+ */
+export function ElapsedSince({
+  since,
+  leftOutMs = 0,
+  standingSince = null,
+}: {
+  readonly since: string;
+  readonly leftOutMs?: number;
+  readonly standingSince?: string | null;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const update = () => {
-      if (ref.current) ref.current.textContent = elapsedSince(since);
+      if (ref.current) ref.current.textContent = elapsedSince(since, leftOutMs, standingSince);
     };
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [since]);
+  }, [since, leftOutMs, standingSince]);
   return (
     <span ref={ref} className="tabular-nums">
-      {elapsedSince(since)}
+      {elapsedSince(since, leftOutMs, standingSince)}
     </span>
   );
 }
 
-function spanText(startedAt: string, endedAt: string | null): string {
+function spanText(startedAt: string, endedAt: string | null, waitedMs = 0): string {
   const startMs = Date.parse(startedAt);
   const endMs = endedAt === null ? Date.now() : Date.parse(endedAt);
   return formatWorkDuration(
-    Number.isFinite(startMs) && Number.isFinite(endMs) ? endMs - startMs : 0,
+    Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? Math.max(0, endMs - startMs - waitedMs)
+      : 0,
   );
 }
 
@@ -132,7 +151,19 @@ export function WorkLine({
       <Tooltip>
         <TooltipTrigger render={<span className="shrink-0 tabular-nums" data-work-line-clock />}>
           {speaker.name} {verb}{" "}
-          {live ? <ElapsedSince since={row.startedAt} /> : spanText(row.startedAt, row.endedAt)}
+          {live ? (
+            // The Mate's own time: it stands still while a question waits on
+            // the person, so it never drops as the run settles.
+            <ElapsedSince
+              leftOutMs={row.waitedMs}
+              since={row.startedAt}
+              standingSince={row.waitingSince}
+            />
+          ) : (
+            // How long the Mate worked: the time its questions waited on the
+            // person is theirs. The tooltip keeps the run's whole span.
+            spanText(row.startedAt, row.endedAt, row.waitedMs)
+          )}
         </TooltipTrigger>
         <TooltipPopup>
           {formatChatTimestampTooltip(row.startedAt, timestampFormat)}
@@ -164,7 +195,7 @@ export function WorkLine({
         <button
           type="button"
           aria-expanded={row.open}
-          aria-label={`${speaker.name} ${verb} ${spanText(row.startedAt, row.endedAt)}${summary === null ? "" : `, ${summary.charAt(0).toLowerCase() + summary.slice(1)}`}. ${row.open ? "Hide" : "Show"} what it did`}
+          aria-label={`${speaker.name} ${verb} ${spanText(row.startedAt, row.endedAt, row.waitedMs)}${summary === null ? "" : `, ${summary.charAt(0).toLowerCase() + summary.slice(1)}`}. ${row.open ? "Hide" : "Show"} what it did`}
           className={cn(
             className,
             "cursor-pointer rounded-sm transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",

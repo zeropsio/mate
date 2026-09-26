@@ -2044,7 +2044,7 @@ describe("resolveZeropsConversationReadOnly", () => {
   const token = { flagToken: true };
   const readOnly = {
     notice: "Signed in by another project member — only they can run this agent.",
-    waitingLabel: "WAITING FOR THE AGENT'S OWNER",
+    waitingLabel: "Waiting for the agent's owner",
   };
 
   it.each([

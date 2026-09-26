@@ -524,7 +524,7 @@ export function resolveZeropsConversationReadOnly(input: {
   if (input.ownership !== "someone-else") return null;
   const notice = agentOwnershipComposerNotice(input.ownership);
   if (notice === undefined) return null;
-  return { notice, waitingLabel: "WAITING FOR THE AGENT'S OWNER" };
+  return { notice, waitingLabel: "Waiting for the agent's owner" };
 }
 
 /** Keep restored drafts and every plan control on the selected instance's supported mode. */

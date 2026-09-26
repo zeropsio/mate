@@ -6,6 +6,7 @@ import {
   browserCheckCaption,
   browserCheckFailure,
   browserStrip,
+  browserTakeState,
   deriveConversationStructure,
   deriveOutcome,
   formatWorkDuration,
@@ -359,6 +360,225 @@ describe("deriveConversationStructure", () => {
     expect(only!.interrupted).toBe(true);
   });
 
+  // Words that cannot be placed yet are drawn nowhere: a note if the Mate
+  // moves on, the answer if the run ends. Streamed in the panel first, every
+  // answer jumped under the card at its first paragraph break, a median 133
+  // characters in on the recorded threads.
+  it.each([
+    {
+      name: "a line it is still writing",
+      tail: [assistant("a1", "t1", 1, "Checking the routes.", { streaming: true })],
+      writing: "a1",
+      answer: null,
+    },
+    // Done streaming, a line is a note: Codex says nothing of a command until
+    // it completes, so waiting for a step after the words hid them for the
+    // whole command.
+    {
+      name: "a line it finished writing",
+      tail: [assistant("a1", "t1", 1, "Running the build now; it takes a while.")],
+      writing: null,
+      answer: null,
+    },
+    // A background task reporting in is not the Mate moving on.
+    {
+      name: "a line it is writing as a task reports in",
+      tail: [
+        assistant("a1", "t1", 1, "Checking the routes.", { streaming: true }),
+        tool("t9", "t1", 2, {
+          tone: "info",
+          sourceActivityKind: "task.progress",
+          taskId: "task-9",
+        }),
+      ],
+      writing: "a1",
+      answer: null,
+    },
+    {
+      name: "an answer streaming as a task reports in",
+      tail: [
+        assistant("a1", "t1", 1, "Done.\n\nThe routes are:", { streaming: true }),
+        tool("t9", "t1", 2, {
+          tone: "info",
+          sourceActivityKind: "task.completed",
+          taskId: "task-9",
+        }),
+      ],
+      writing: null,
+      answer: "a1",
+    },
+    {
+      name: "words that read as its answer",
+      tail: [assistant("a1", "t1", 1, "Done.\n\nThe routes are:")],
+      writing: null,
+      answer: "a1",
+    },
+    {
+      name: "a line it moved on from",
+      tail: [assistant("a1", "t1", 1, "Checking the routes."), tool("w1", "t1", 2)],
+      writing: null,
+      answer: null,
+    },
+    {
+      name: "a line it went on thinking after",
+      tail: [assistant("a1", "t1", 1, "Checking the routes."), reasoning("r1", "t1", 2)],
+      writing: null,
+      answer: null,
+    },
+  ])("holds $name until it is known", ({ tail, writing, answer }) => {
+    const [only] = structure([user("m0", 0), ...tail], { live: "t1" }).turns;
+    expect(only!.writing?.id ?? null).toBe(writing);
+    expect(only!.answer?.id ?? null).toBe(answer);
+  });
+
+  it("holds nothing once the run has ended", () => {
+    const [only] = structure([user("m0", 0), assistant("a1", "t1", 1, "Checking the routes.")], {
+      latest: { id: "t1", state: "completed", completed: true },
+    }).turns;
+    expect(only!.writing).toBeNull();
+    expect(only!.answer?.id).toBe("a1");
+  });
+
+  const plan = (id: string, turnId: string, minute: number): TimelineEntry => ({
+    id,
+    kind: "proposed-plan",
+    createdAt: at(minute),
+    proposedPlan: {
+      id: id as Extract<TimelineEntry, { kind: "proposed-plan" }>["proposedPlan"]["id"],
+      turnId: turn(turnId),
+      planMarkdown: "1. Add the route.",
+      implementedAt: null,
+      implementationThreadId: null,
+      createdAt: at(minute),
+      updatedAt: at(minute),
+    },
+  });
+  // Only the latest turn carries the server's word on how it ended: a stopped
+  // turn read "stopped after 40s" until the next one began, then "worked for
+  // 40s" (Nova, 2026-09-26). A turn that ended on a step, not a word, was
+  // cut off — whichever turn is the latest.
+  it.each([
+    { name: "on a step", tail: [tool("w1", "t1", 1)], interrupted: true },
+    {
+      name: "on a thought",
+      tail: [tool("w1", "t1", 1), reasoning("r1", "t1", 2)],
+      interrupted: true,
+    },
+    {
+      name: "on a word after its last step",
+      tail: [tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+      interrupted: false,
+    },
+    {
+      name: "on a step after its words",
+      tail: [assistant("a1", "t1", 1, "Checking."), tool("w1", "t1", 2)],
+      interrupted: true,
+    },
+    {
+      name: "on an error",
+      tail: [tool("w1", "t1", 1, { tone: "error", label: "Runtime error" })],
+      interrupted: false,
+    },
+    // A plan the Mate proposes ends its turn by design; a compaction is the
+    // harness condensing the context, a /compact's whole turn.
+    {
+      name: "on a plan it proposed",
+      tail: [tool("w1", "t1", 1), plan("p1", "t1", 2)],
+      interrupted: false,
+    },
+    // Codex's question to the person is an info row after its words; a
+    // warning the runtime wrote after a stop is none of the Mate's steps.
+    {
+      name: "on a question it asked the person",
+      tail: [
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "Which accent: green or blue?"),
+        tool("q1", "t1", 3, {
+          tone: "info",
+          label: "User input requested",
+          command: undefined as never,
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          sourceActivityKind: "user-input.requested",
+        }),
+      ],
+      interrupted: false,
+    },
+    {
+      name: "on a step, then a warning",
+      tail: [
+        tool("w1", "t1", 1),
+        tool("x1", "t1", 2, {
+          tone: "info",
+          label: "Turn interrupted",
+          command: undefined as never,
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          sourceActivityKind: "runtime.warning",
+        }),
+      ],
+      interrupted: true,
+    },
+    {
+      name: "on a compaction",
+      tail: [
+        tool("c1", "t1", 1, {
+          tone: "info",
+          label: "Compacted context",
+          sourceActivityKind: "context-compaction",
+        }),
+      ],
+      interrupted: false,
+    },
+  ])(
+    "tells a turn that ended $name as stopped or not, before the next one",
+    ({ tail, interrupted }) => {
+      const entries = [user("m0", 0), ...tail, user("m1", 10), assistant("a2", "t2", 11, "Hi.")];
+      const [first] = structure(entries, {
+        latest: { id: "t2", state: "completed", completed: true },
+      }).turns;
+      expect(first!.interrupted).toBe(interrupted);
+    },
+  );
+
+  // A turn's span ends where its entries did — the same while it is the
+  // latest and once another followed; "worked for 1m 16s" read "1m 20s" once
+  // the next turn began, "1m 13s" read "1m 12s".
+  it("ends a settled turn where its entries did, the latest or not", () => {
+    const first = [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 3, "Done.")];
+    const alone = structure(first, { latest: { id: "t1", state: "completed", completed: true } });
+    const followed = structure([...first, user("m1", 30), assistant("a2", "t2", 31, "Hi.")], {
+      latest: { id: "t2", state: "completed", completed: true },
+    });
+    expect(alone.turns[0]!.stretches.at(-1)!.endedAt).toBe(
+      followed.turns[0]!.stretches.at(-1)!.endedAt,
+    );
+  });
+
+  // A helper the Mate left working reports in as its turn's entries: its
+  // progress and its finish are the helper's time, not the Mate's. "Nova
+  // worked for 21s" read "1m 44s", then "2m 19s", while only the helper
+  // worked on (Nova, 2026-09-26).
+  it("ends a settled turn at the Mate's own last entry, not at a helper's report", () => {
+    const mine = [
+      user("m0", 0),
+      tool("w1", "t1", 1),
+      assistant("a1", "t1", 2, "The review runs in the background."),
+    ];
+    const helper = [
+      tool("h1", "t1", 9, { sourceActivityKind: "task.progress", taskId: "task-h", tone: "info" }),
+      tool("h2", "t1", 12, {
+        sourceActivityKind: "task.completed",
+        taskId: "task-h",
+        tone: "info",
+      }),
+    ];
+    const settled = { latest: { id: "t1", state: "completed", completed: true } };
+    const alone = structure(mine, settled).turns[0]!;
+    const reported = structure([...mine, ...helper], settled).turns[0]!;
+    expect(reported.stretches.at(-1)!.endedAt).toBe(alone.stretches.at(-1)!.endedAt);
+  });
+
   it("leaves a message no turn took loose, and places a landing inside the turn it fell in", () => {
     const entries = [
       user("m0", 0),
@@ -533,6 +753,34 @@ describe("browser checks", () => {
     expect(browserCheckCaption(entry.operation)).toBe(caption);
   });
 
+  // "set device iPhone 13: Other" was the tool's step and its error class,
+  // shown in red under a failed take (Nova, 2026-09-26).
+  it.each([
+    {
+      name: "a step the tool gave only a class of error",
+      step: { label: "set device iPhone 13", note: "Other" },
+      words: "couldn't set device iPhone 13",
+    },
+    {
+      name: "a step with the tool's reason",
+      step: { label: "open https://a.dev/", note: "net::ERR_NAME_NOT_RESOLVED" },
+      words: "couldn't open https://a.dev/: net::ERR_NAME_NOT_RESOLVED",
+    },
+    { name: "a step with no reason", step: { label: "click #buy" }, words: "couldn't click #buy" },
+    {
+      name: "a step that timed out",
+      step: { label: "open https://a.dev/", note: "Timeout 30000ms exceeded" },
+      words: "timed out, the page never loaded",
+    },
+  ])("says why a check failed at $name", ({ step, words }) => {
+    const failed = operation("b1", "t1", 1, {
+      kind: "browser",
+      phase: "failed",
+      browserSummary: { failedStep: step } as never,
+    }) as Extract<TimelineEntry, { kind: "operation" }>;
+    expect(browserCheckFailure(failed.operation)).toBe(words);
+  });
+
   it("says why a check failed", () => {
     const timedOut = operation("b1", "t1", 1, {
       kind: "browser",
@@ -571,6 +819,32 @@ describe("browser checks", () => {
       views: 2,
       failures: 0,
     });
+  });
+
+  // A take drawn red with a ✗ under a heading saying "all passed" said two
+  // things at once (Nova, 2026-09-26: iPhone 13 refused, retaken on iPhone 16).
+  it("tells each take how it ended: a failure the same page passed later is a retry", () => {
+    const checks = [
+      operation("b1", "t1", 1, {
+        kind: "browser",
+        subject: "https://a.dev/",
+        phase: "failed",
+        deviceName: "iPhone 13",
+      }),
+      operation("b2", "t1", 2, { kind: "browser", subject: "https://a.dev/" }),
+      operation("b3", "t1", 3, { kind: "browser", subject: "https://a.dev/cart", phase: "failed" }),
+      operation("b4", "t1", 4, {
+        kind: "browser",
+        subject: "https://a.dev/cart",
+        phase: "running",
+      }),
+    ].map((entry) => (entry as Extract<TimelineEntry, { kind: "operation" }>).operation);
+    expect(checks.map((check) => browserTakeState(check, checks))).toEqual([
+      "retried",
+      "passed",
+      "failed",
+      "running",
+    ]);
   });
 
   it("gathers a stretch's checks into one strip", () => {

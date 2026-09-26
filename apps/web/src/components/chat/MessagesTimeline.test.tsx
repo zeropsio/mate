@@ -570,6 +570,72 @@ describe("MessagesTimeline", () => {
     ).not.toContain('data-maintain-scroll-at-end="enabled"');
   });
 
+  it("follows a row easing taller on the next frame, and only while following", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const runFrames = () => {
+      for (const frame of frames.splice(0)) frame(0);
+    };
+    const { LegendList } = await import("@legendapp/list/react");
+    const viewport = { scrollTop: 0, scrollHeight: 2000, clientHeight: 800 };
+    const listRef = {
+      current: {
+        getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
+        getScrollableNode: () => viewport,
+      } as unknown as LegendListRef,
+    };
+    const timeline = (liveFollowEnabled: boolean) => (
+      <MessagesTimeline
+        {...buildProps()}
+        listRef={listRef}
+        liveFollowEnabled={liveFollowEnabled}
+        routeThreadKey="environment-local:thread-follow"
+        timelineEntries={[buildUserTimelineEntry("Ask me first.")]}
+      />
+    );
+    let renderer: ReactTestRenderer | undefined;
+    // A late frame of the Mate's stream easing open: 3 px, under the 5 px a
+    // measurement needs before LegendList re-pins the end itself.
+    const easeTaller = () =>
+      renderer!.root.findByType(LegendList).props.onItemSizeChanged({
+        index: 0,
+        itemKey: "message-1",
+        itemData: undefined,
+        previous: 412,
+        size: 415,
+      });
+    try {
+      await act(() => {
+        renderer = create(timeline(true));
+      });
+      runFrames();
+
+      viewport.scrollTop = 1180;
+      easeTaller();
+      expect(viewport.scrollTop).toBe(1180);
+      runFrames();
+      expect(viewport.scrollTop).toBe(1200);
+
+      // A gesture between the growth and its frame hands the viewport over.
+      viewport.scrollTop = 1180;
+      easeTaller();
+      await act(() => renderer!.update(timeline(false)));
+      runFrames();
+      expect(viewport.scrollTop).toBe(1180);
+
+      // Reading history, growth never pulls the viewport down.
+      easeTaller();
+      runFrames();
+      expect(viewport.scrollTop).toBe(1180);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
   it("sets a user message's time and actions beside its bubble, not under it", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline {...buildProps()} timelineEntries={[buildUserTimelineEntry("Ship it.")]} />,
@@ -1149,8 +1215,11 @@ describe("MessagesTimeline — the conversation", () => {
     );
     // Settled, the line says who worked, how long and what the calls came
     // to — no note preview, no face — and a read message carries no mark.
+    // How long runs to the answer, not to when the server closed the turn:
+    // the same span once another turn follows.
     expect(markup).toContain('data-timeline-row-kind="work-line"');
-    expect(markup).toContain("Assistant worked for 1m 30s");
+    expect(markup).toContain("Assistant worked for 1m");
+    expect(markup).not.toContain("Assistant worked for 1m 30s");
     expect(markup).toContain("· ran 2 commands");
     expect(markup).not.toContain("Building the shop now.");
     expect(markup).not.toContain("1 note");
@@ -1245,6 +1314,7 @@ describe("MessagesTimeline — the conversation", () => {
         },
       },
       assistant("a2", 15, "Fixing the types."),
+      tool("w2", 16),
     ]);
     expect(markup).toContain("data-conversation-working");
     expect(markup.match(/data-stream-bubble="note"/g)).toHaveLength(2);
@@ -1256,6 +1326,17 @@ describe("MessagesTimeline — the conversation", () => {
     const newest = markup.slice(markup.indexOf('data-stream-age="0"'));
     expect(newest).toContain("Fixing the types.");
     expect(newest).not.toContain("Checking the build.");
+  });
+
+  it("says the Mate is writing, and shows none of its words, until they are known", () => {
+    const writing = assistant("a1", 8, "Checking /status next.");
+    const markup = liveTimeline([
+      tool("w1", 5),
+      { ...writing, message: { ...writing.message, streaming: true } },
+    ]);
+    expect(markup).toContain('data-stream-activity="writing"');
+    expect(markup).toContain('aria-label="Writing"');
+    expect(markup).not.toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
@@ -1367,6 +1448,45 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).toContain("Background task finished");
     expect(markup).toContain("Run the smoke tests");
     expect(markup).not.toContain("1 background task ");
+  });
+
+  it("opens a run a helper's result woke with the helper that finished", () => {
+    const woken = TurnId.make("turn-2");
+    const review = tool("h1", 20);
+    const answer = assistant("a2", 60, "The review came back clean.");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={{ ...settled, turnId: woken }}
+        timelineEntries={
+          [
+            buildUserTimelineEntry("Have a helper review it"),
+            assistant("a1", 5, "A helper is reviewing it."),
+            {
+              ...review,
+              entry: {
+                ...review.entry,
+                label: "Review the endpoint",
+                toolTitle: "Review the endpoint",
+                sourceActivityKind: "task.completed",
+                taskId: "task-1",
+                agentRole: "general-purpose",
+                tone: "info",
+                // Spawned mid-run, it finished once the run had ended.
+                updatedAt: at(45),
+              },
+            },
+            assistant("a3", 30, "It reports back when done."),
+            { ...answer, message: { ...answer.message, turnId: woken } },
+          ] as Parameters<typeof MessagesTimeline>[0]["timelineEntries"]
+        }
+      />,
+    );
+    const line = markup.indexOf("Helper finished");
+    expect(line).toBeGreaterThan(markup.indexOf("It reports back when done."));
+    expect(line).toBeLessThan(markup.indexOf("The review came back clean."));
+    expect(markup).toContain("Review the endpoint");
+    expect(markup).not.toContain("Background task finished");
   });
 
   it.each([

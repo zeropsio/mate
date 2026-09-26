@@ -7,7 +7,7 @@ import { ZeropsReadOnlyConversationFooter } from "./ZeropsReadOnlyConversationFo
 
 const readOnly = {
   notice: "Signed in by another project member — only they can run this agent.",
-  waitingLabel: "WAITING FOR THE OWNER",
+  waitingLabel: "Waiting for the owner",
 };
 
 const approval: PendingApproval = {
@@ -65,7 +65,7 @@ describe("ZeropsReadOnlyConversationFooter", () => {
     expect(html).not.toContain("<textarea");
     expect(html).not.toContain("contenteditable");
     expect(html).not.toContain("<form");
-    expect(html).not.toContain("WAITING FOR YOU");
+    expect(html).not.toContain("Waiting for you");
     expect(buttons(html)).toHaveLength(buttonCount);
     expect(buttons(html).at(-1)).toContain("Sign in with your own account");
     expect(html).toContain(readOnly.notice);
@@ -86,7 +86,8 @@ describe("ZeropsReadOnlyConversationFooter", () => {
     const html = render({ pendingApprovals: [approval] });
 
     expect(html).toContain("rm -rf dist");
-    expect(html).toContain("WAITING FOR THE OWNER");
+    expect(html).toContain(">Waiting for the owner</span>");
+    expect(html).not.toContain("uppercase");
     expect(html).not.toContain("Approve");
     expect(html).not.toContain("Decline");
   });
@@ -96,7 +97,8 @@ describe("ZeropsReadOnlyConversationFooter", () => {
 
     expect(html).toContain("Which approach should the migration take?");
     expect(html).toContain("Incremental");
-    expect(html).toContain("WAITING FOR THE OWNER");
+    expect(html).toContain(">Waiting for the owner</span>");
+    expect(html).not.toContain("uppercase");
     expect(html).not.toContain("data-pending-user-input-other");
   });
 });

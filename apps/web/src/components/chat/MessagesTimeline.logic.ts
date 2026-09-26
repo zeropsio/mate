@@ -362,6 +362,8 @@ export function resolveAssistantMessageCopyState({
 /** What the Mate's hands are on right now, beside its face while it works. */
 export type TurnHeaderActivity =
   | { readonly kind: "thinking" }
+  /** It writes words that cannot be placed yet: a note or its answer. */
+  | { readonly kind: "writing" }
   /** It asked the person something and waits for the answer. */
   | { readonly kind: "waiting" }
   | { readonly kind: "tool"; readonly entry: WorkLogEntry }
@@ -405,6 +407,10 @@ type MessagesTimelineRowBody =
       face: WorkLineFace;
       startedAt: string;
       endedAt: string | null;
+      /** How long the run waited on the person — its questions and approvals — which is not the Mate's work. */
+      waitedMs: number;
+      /** Live, when the wait still open began: the clock stands still until the person answers. */
+      waitingSince: string | null;
       /** The latest note (live) or the last one the person saw (frozen), one line. */
       note: string | null;
       /** What stands in for a note when the stretch had none. */
@@ -545,7 +551,10 @@ type MessagesTimelineRowBody =
       createdAt: string;
     }
   | {
-      /** Background work that finished outside any turn, as one quiet line. */
+      /**
+       * Background work as one quiet line: work that finished outside any
+       * turn, or the helpers and tasks whose results woke the run under it.
+       */
       kind: "background";
       id: string;
       createdAt: string;
@@ -553,6 +562,8 @@ type MessagesTimelineRowBody =
       /** How many tasks — a task that reported twice is still one. */
       tasks: number;
       failed: number;
+      /** Every task a helper's: said as helpers, not as background tasks. */
+      helpers: boolean;
       /** The latest task's, in the words it was given. */
       title: string | null;
       expanded: boolean;
@@ -738,9 +749,34 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
   return answered ? null : asked;
 }
 
-/** What the Mate's hands are on: waiting for an answer, the running operation or tool, thinking. */
-function liveActivity(stretch: Stretch): TurnHeaderActivity | null {
+/**
+ * How long a run waited on the person: from each question or approval it
+ * asked to the person's answer. Live, a wait still open is where the clock
+ * stands still; settled, it lasted to the run's end.
+ */
+function waitedOnPerson(turn: ConversationTurn): { waitedMs: number; waitingSince: string | null } {
+  let waitedMs = 0;
+  let since: TimelineEntry | null = null;
+  for (const entry of turn.stretches.flatMap((stretch) => stretch.entries)) {
+    if (entry.kind !== "work") continue;
+    const kind = entry.entry.sourceActivityKind;
+    if (kind === "user-input.requested" || kind === "approval.requested") since ??= entry;
+    else if ((kind === "user-input.resolved" || kind === "approval.resolved") && since !== null) {
+      waitedMs += Math.max(0, Date.parse(entry.createdAt) - Date.parse(since.createdAt)) || 0;
+      since = null;
+    }
+  }
+  if (since === null) return { waitedMs, waitingSince: null };
+  if (turn.live) return { waitedMs, waitingSince: since.createdAt };
+  const end = turn.stretches.at(-1)?.endedAt ?? null;
+  const left = end === null ? 0 : Date.parse(end) - Date.parse(since.createdAt);
+  return { waitedMs: waitedMs + (Math.max(0, left) || 0), waitingSince: null };
+}
+
+/** What the Mate's hands are on: waiting for an answer, the running operation or tool, thinking, writing. */
+function liveActivity(stretch: Stretch, writing: MessageEntry | null): TurnHeaderActivity | null {
   if (pendingQuestion(stretch) !== null) return { kind: "waiting" };
+  if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
     const entry = stretch.entries[index]!;
     if (entry.kind === "operation" && entry.operation.phase === "running") {
@@ -852,13 +888,35 @@ export function thoughtParagraphs(text: string): string[] {
   return paragraphs;
 }
 
-function stretchStream(stretch: Stretch, answer: MessageEntry | null): WorkingStreamItem[] {
+/**
+ * The person's latest answer to a question the Mate asked in this stretch:
+ * it stands in the card where it arrived, with the question over it, and the
+ * Mate at work carries on under it.
+ */
+function latestAnswer(stretch: Stretch): TimelineEntry | null {
+  return (
+    stretch.entries.findLast(
+      (entry) => entry.kind === "work" && entry.entry.inputAnswers !== undefined,
+    ) ?? null
+  );
+}
+
+function stretchStream(
+  stretch: Stretch,
+  answer: MessageEntry | null,
+  writing: MessageEntry | null,
+): WorkingStreamItem[] {
   const items: WorkingStreamItem[] = [];
+  const answered = latestAnswer(stretch);
+  const answeredAt = answered === null ? -1 : stretch.entries.indexOf(answered);
   stretch.entries.forEach((entry, index) => {
+    // What came before the person's answer stands above it.
+    if (index <= answeredAt) return;
     const later = stretch.entries.slice(index + 1);
     if (entry.kind === "message") {
-      // The answer streams where it will stand, under the card.
-      if (entry === answer || entry.message.text.trim().length === 0) return;
+      // The answer streams where it will stand, under the card; words not
+      // placed yet stream nowhere.
+      if (entry === answer || entry === writing || entry.message.text.trim().length === 0) return;
       // Most of a Mate's work is thinking: said nowhere else live, it was
       // minutes of dots (the owner, 2026-09-26: "why aren't there thoughts
       // reflected in the chat?").
@@ -957,6 +1015,8 @@ function stretchStream(stretch: Stretch, answer: MessageEntry | null): WorkingSt
 function stretchContentRows(input: {
   stretch: Stretch;
   answer: MessageEntry | null;
+  /** Words still streaming that cannot be placed yet: an opened log holds them too. */
+  writing: MessageEntry | null;
   open: boolean;
   view: ConversationView;
   pauseRow: MessagesTimelineRow | null;
@@ -1037,7 +1097,11 @@ function stretchContentRows(input: {
   };
 
   for (const entry of stretch.entries) {
-    if (entry === input.answer) continue;
+    if (entry === input.answer || entry === input.writing) continue;
+    // The Mate's question tool: its question and the person's answer stand
+    // in the run as bubbles, so the call itself is never a line of its own.
+    if ((entry.kind === "work" || entry.kind === "generic-call") && isQuestionToolCall(entry.entry))
+      continue;
     if (entry.kind === "message") {
       if (entry.message.role === "reasoning") {
         flushActivity();
@@ -1248,6 +1312,7 @@ function stretchContentRows(input: {
 function backgroundRunSummary(run: ReadonlyArray<WorkLogEntry>): {
   tasks: number;
   failed: number;
+  helpers: boolean;
   title: string | null;
 } {
   const lastByTask = new Map<string, WorkLogEntry>();
@@ -1256,6 +1321,8 @@ function backgroundRunSummary(run: ReadonlyArray<WorkLogEntry>): {
   return {
     tasks: lastByTask.size,
     failed: [...lastByTask.values()].filter(workEntryDisplayIndicatesToolFailure).length,
+    // A helper's task names the helper's role; a shell or a watch loop has none.
+    helpers: run.length > 0 && run.every((entry) => entry.agentRole !== undefined),
     title: last === undefined ? null : normalizeCompactToolLabel(last.toolTitle ?? last.label),
   };
 }
@@ -1465,6 +1532,36 @@ export function deriveMessagesTimelineRows(
       candidate.entry.sourceActivityKind !== "context-compaction"
     );
   };
+  const expandedIds = input.expandedIds ?? new Set<string>();
+  /** When a background task or a helper finished: a helper's row takes each report as it comes. */
+  const finishedAt = (work: WorkLogEntry) => Date.parse(work.updatedAt ?? work.createdAt);
+  /**
+   * What woke a run nobody wrote to start: the helpers and background tasks
+   * that finished after the run before it ended and before it began, for a
+   * result delivered then wakes the Mate. What finished while the run before
+   * still worked was that run's to take in. Rows gathering several helpers
+   * say only the latest report, so which of them finished is not known. Work
+   * no turn owns says itself in its own line, and is never said again here.
+   */
+  const wokeBy = (turn: ConversationTurn): WorkLogEntry[] => {
+    const untilMs = Date.parse(turn.stretches[0]?.startedAt ?? "");
+    const previous = structure.turns[structure.turns.indexOf(turn) - 1];
+    const fromMs =
+      previous === undefined ? -Infinity : Date.parse(previous.stretches.at(-1)?.endedAt ?? "");
+    if (!Number.isFinite(untilMs) || Number.isNaN(fromMs)) return [];
+    return entries
+      .flatMap((entry, index) =>
+        entry.kind === "work" &&
+        entry.entry.sourceActivityKind === "task.completed" &&
+        !structure.looseIndexes.has(index) &&
+        (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1 &&
+        finishedAt(entry.entry) > fromMs &&
+        finishedAt(entry.entry) <= untilMs
+          ? [entry.entry]
+          : [],
+      )
+      .toSorted((left, right) => finishedAt(left) - finishedAt(right));
+  };
   /**
    * One run of the Mate as the conversation draws it — a turn, from the
    * person's message that started it to its answer — as one card, however
@@ -1487,6 +1584,34 @@ export function deriveMessagesTimelineRows(
     seamBefore(first.lead?.createdAt ?? first.startedAt, first.lead?.id ?? first.key);
     if (first.lead !== null && first.leadIndex !== null) {
       rows.push(personRow(first.lead, first.leadIndex, first.aside));
+    } else {
+      // A run nobody wrote to start opens with what woke it, where the
+      // person's message would stand (Nova, 2026-09-26: a helper's review
+      // came back, and the run it woke began with no word of why).
+      const woke = wokeBy(turn);
+      if (woke.length > 0) {
+        const id = `woke:${first.key}`;
+        const expanded = expandedIds.has(id);
+        rows.push({
+          kind: "background",
+          id,
+          createdAt: first.startedAt,
+          entries: woke,
+          ...backgroundRunSummary(woke),
+          expanded,
+        });
+        if (expanded) {
+          for (const work of woke) {
+            rows.push({
+              kind: "work",
+              id: `woke-entry:${work.id}`,
+              createdAt: work.createdAt,
+              groupedEntries: [work],
+              isExpandedToolGroupEntry: true,
+            });
+          }
+        }
+      }
     }
 
     // A /compact is its own event line: it says when the context is condensed,
@@ -1508,7 +1633,9 @@ export function deriveMessagesTimelineRows(
       readUsageLimitNotice(turn.answer.message.text, turn.answer.message.createdAt) === null
         ? turn.answer
         : null;
-    const notes = turn.stretches.flatMap((stretch) => stretchNotes(stretch, turn.answer));
+    const notes = turn.stretches
+      .flatMap((stretch) => stretchNotes(stretch, turn.answer))
+      .filter((note) => note !== turn.writing);
     const lastNote = notes.at(-1) ?? null;
     const open = input.openStretchKeys?.has(first.key) ?? false;
     const pause = pauseByTurnKey.get(turn.key)?.row ?? null;
@@ -1516,7 +1643,8 @@ export function deriveMessagesTimelineRows(
     const activityEntries = turn.stretches.flatMap((stretch) =>
       stretch.entries.flatMap((candidate) =>
         (candidate.kind === "work" || candidate.kind === "generic-call") &&
-        isActivityWork(candidate.entry)
+        isActivityWork(candidate.entry) &&
+        !isQuestionToolCall(candidate.entry)
           ? [candidate.entry]
           : [],
       ),
@@ -1525,7 +1653,21 @@ export function deriveMessagesTimelineRows(
       activityEntries.filter((candidate) => workEntryIsVisibleInGroup(candidate, turn.live)),
       (candidate) => candidate,
     );
-    const summary = shownActivity.length > 0 ? summarizeActivity(shownActivity) : null;
+    // A question the Mate asked is work too: without its tool said, a run
+    // that only asked would read "thought for".
+    const asked = turn.stretches.some((stretch) =>
+      stretch.entries.some(
+        (candidate) =>
+          (candidate.kind === "work" || candidate.kind === "generic-call") &&
+          (isQuestionToolCall(candidate.entry) || candidate.entry.inputQuestions !== undefined),
+      ),
+    );
+    const summary =
+      shownActivity.length > 0
+        ? summarizeActivity(shownActivity)
+        : asked
+          ? "Asked a question"
+          : null;
     const hasLog = turn.stretches.some((stretch) =>
       stretch.entries.some(
         (candidate) =>
@@ -1539,11 +1681,16 @@ export function deriveMessagesTimelineRows(
       ),
     );
     // A settled run with nothing to open has nothing to say: the answer
-    // stands under the message by itself. A live one always has its line, and
-    // so does one the usage limit refused — the person's message is answered
-    // by the reason.
+    // stands under the message by itself. A live one has its line while the
+    // Mate works toward an answer, and so does one the usage limit refused —
+    // the person's message is answered by the reason. A live run with nothing
+    // in its log whose answer is known already is drawn as it will settle:
+    // a result that woke the Mate and was answered in one breath flashed a
+    // card for a frame, and the answer jumped up as it went (Nova,
+    // 2026-09-26).
+    const answeredAlone = turn.live && !hasLog && answer !== null;
     const cardStart = rows.length;
-    if (turn.live || hasLog || pausedHere)
+    if ((turn.live && !answeredAlone) || hasLog || pausedHere)
       rows.push({
         kind: "work-line",
         id: `work-line:${first.key}`,
@@ -1554,6 +1701,7 @@ export function deriveMessagesTimelineRows(
         face: stretchFace({ stretch: last, turn, pausedHere }),
         startedAt: first.startedAt,
         endedAt: last.endedAt,
+        ...waitedOnPerson(turn),
         note: lastNote === null ? null : noteLine(lastNote.message.text),
         fallback: lastNote !== null ? null : pausedHere ? "Stopped by the usage limit" : summary,
         summary,
@@ -1584,6 +1732,7 @@ export function deriveMessagesTimelineRows(
         ...stretchContentRows({
           stretch,
           answer: turn.answer,
+          writing: turn.writing,
           open,
           view: input,
           pauseRow: stretch === last ? pause : null,
@@ -1591,15 +1740,18 @@ export function deriveMessagesTimelineRows(
       );
     });
 
-    if (last.live) {
+    if (last.live && !answeredAlone) {
+      // Under the person's answer the Mate at work starts afresh: its own
+      // panel, so the window of what it said before the question is gone.
+      const answeredBy = latestAnswer(last);
       rows.push({
         kind: "working",
-        id: `working:${last.key}`,
+        id: answeredBy === null ? `working:${last.key}` : `working:${last.key}:${answeredBy.id}`,
         createdAt: last.startedAt,
         stretchKey: last.key,
         turnKey: turn.key,
-        stream: stretchStream(last, turn.answer),
-        activity: liveActivity(last),
+        stream: stretchStream(last, turn.answer, turn.writing),
+        activity: liveActivity(last, turn.writing),
         answering: answer !== null,
         strip: browserStrip(last),
         incidents: stretchIncidents(last),
@@ -1665,7 +1817,6 @@ export function deriveMessagesTimelineRows(
     lastEnd = last.endedAt ?? last.startedAt;
   };
 
-  const expandedIds = input.expandedIds ?? new Set<string>();
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
     if (isLooseActivity(index)) {

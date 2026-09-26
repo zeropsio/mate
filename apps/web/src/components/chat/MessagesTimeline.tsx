@@ -97,6 +97,7 @@ import {
   readTimelinePosition,
   rememberTimelinePosition,
   resolveTimelineScrollAnchor,
+  shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
@@ -426,6 +427,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const disclosureAnchorKeyRef = useRef<string | null>(null);
   const disclosureSettleFrameRef = useRef<number | null>(null);
   const disclosureSettleSecondFrameRef = useRef<number | null>(null);
+  const endRepinFrameRef = useRef<number | null>(null);
   const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
 
   useLayoutEffect(() => {
@@ -445,6 +447,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
       if (disclosureSettleSecondFrameRef.current !== null) {
         cancelAnimationFrame(disclosureSettleSecondFrameRef.current);
+      }
+      if (endRepinFrameRef.current !== null) {
+        cancelAnimationFrame(endRepinFrameRef.current);
       }
     };
   }, []);
@@ -710,6 +715,47 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
     return config ? { ...config, onReady: handleAnchorReady } : undefined;
   }, [anchorMessageId, handleAnchorReady, rows]);
+  // The list holds its end while nothing else holds the viewport: a reading
+  // position coming back, a sent message kept near the top, history being
+  // read, an opened line settling in place.
+  const followingEnd =
+    !restoringReadingPosition &&
+    !anchoredEndSpace &&
+    liveFollowEnabled &&
+    !disclosureToggleSettling;
+  const followingEndRef = useRef(followingEnd);
+  useLayoutEffect(() => {
+    followingEndRef.current = followingEnd;
+  }, [followingEnd]);
+  // LegendList re-pins the end itself only for a measurement that moved a row
+  // by more than 5 px, so a row easing taller is followed here too — on the
+  // next frame, as LegendList does: the scroll range takes the growth once the
+  // list has re-rendered its new size.
+  const onItemSizeChanged = useCallback(
+    ({ previous, size }: { readonly previous: number; readonly size: number }) => {
+      const list = listRef.current;
+      if (
+        endRepinFrameRef.current !== null ||
+        list === null ||
+        !shouldRepinTimelineEndAfterRowResize({
+          followingEnd: followingEndRef.current,
+          withinFollowThreshold: list.getState().isWithinMaintainScrollAtEndThreshold,
+          previousSize: previous,
+          size,
+        })
+      ) {
+        return;
+      }
+      endRepinFrameRef.current = requestAnimationFrame(() => {
+        endRepinFrameRef.current = null;
+        const viewport = listRef.current?.getScrollableNode();
+        // A gesture since the growth handed the viewport to the person.
+        if (!followingEndRef.current || !viewport) return;
+        viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+      });
+    },
+    [listRef],
+  );
 
   const handleScroll = useCallback(() => {
     const state = listRef.current?.getState?.();
@@ -943,14 +989,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
               contentInsetEndAdjustment={contentInsetEndAdjustment}
               maintainScrollAtEndThreshold={TIMELINE_FOLLOW_THRESHOLD}
-              maintainScrollAtEnd={
-                restoringReadingPosition ||
-                anchoredEndSpace ||
-                !liveFollowEnabled ||
-                disclosureToggleSettling
-                  ? false
-                  : TIMELINE_MAINTAIN_SCROLL_AT_END
-              }
+              maintainScrollAtEnd={followingEnd ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
+              onItemSizeChanged={onItemSizeChanged}
               maintainVisibleContentPosition={
                 restoringReadingPosition ? false : maintainVisibleContentPosition
               }
@@ -1623,7 +1663,8 @@ const LOG_COLUMN = "ps-9.5";
  * Its thinking in an opened log: a record to scan, so quieter than the panel
  * that popped it live — muted paragraphs on one hairline, each to three
  * lines, a click opening it in full. A forty-minute stretch opened onto walls
- * of full thoughts.
+ * of full thoughts. In italics, as the panel thinks, so a thought reads as
+ * one live and after.
  */
 function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-reasoning" }> }) {
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
@@ -1646,7 +1687,7 @@ function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log
     });
   return (
     <div className={LOG_COLUMN} data-log-thought>
-      <div className="grid gap-1.5 border-border/70 border-s ps-3">
+      <div className="grid gap-1.5 border-border/70 border-s ps-3 italic">
         {paragraphs.map((thought) => {
           const open = opened.has(thought.key);
           return (
@@ -1772,9 +1813,10 @@ function StripTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "strip" }
 }
 
 /**
- * Background work that finished after its turn: one quiet line saying what
- * finished — a task, or how many — and the latest in its own words, its
- * tasks one click away. The Mate picks it up in the line under it.
+ * Background work that finished after its turn, or that woke the run under
+ * it: one quiet line saying what finished — a helper, a task, or how many —
+ * and the latest in its own words, its tasks one click away. The Mate picks
+ * it up in the line under it.
  */
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -1782,10 +1824,8 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
   const { failed } = row;
   const finished =
     row.tasks === 1
-      ? failed > 0
-        ? "Background task failed"
-        : "Background task finished"
-      : `${row.tasks} background tasks finished`;
+      ? `${row.helpers ? "Helper" : "Background task"} ${failed > 0 ? "failed" : "finished"}`
+      : `${row.tasks} ${row.helpers ? "helpers" : "background tasks"} finished`;
   // The line grammar: its mark on the text edge, its words after it, the
   // chevron right after them.
   return (
@@ -2213,6 +2253,8 @@ function workingActivity(
       return null;
     case "thinking":
       return { kind: "thinking" };
+    case "writing":
+      return { kind: "writing" };
     case "waiting":
       return { kind: "waiting" };
     case "tool":
