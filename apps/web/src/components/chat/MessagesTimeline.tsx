@@ -1704,11 +1704,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     // a hover-only strip in flow would add a blank line under every message.
     // The receipt stays: it is how the person knows the Mate read it.
     <div className="group flex flex-row-reverse items-end gap-2">
+      {/* One bubble for every message: a message sent as a turn ended can
+          become the next turn's opener, and it must not change its size. */}
       <div
-        className={cn(
-          "relative max-w-4/5 rounded-2xl bg-message text-message-foreground",
-          row.aside ? "px-3 py-2" : "p-3",
-        )}
+        className="relative max-w-4/5 rounded-2xl bg-message p-3 text-message-foreground"
         data-message-aside={row.aside ? "true" : undefined}
       >
         <MessageAuthorHeading>You</MessageAuthorHeading>
