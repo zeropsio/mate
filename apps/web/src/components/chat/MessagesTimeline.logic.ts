@@ -409,6 +409,8 @@ type MessagesTimelineRowBody =
       endedAt: string | null;
       /** How long the run waited on the person — its questions and approvals — which is not the Mate's work. */
       waitedMs: number;
+      /** Live, when the wait still open began: the clock stands still until the person answers. */
+      waitingSince: string | null;
       /** The latest note (live) or the last one the person saw (frozen), one line. */
       note: string | null;
       /** What stands in for a note when the stretch had none. */
@@ -749,23 +751,26 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
 
 /**
  * How long a run waited on the person: from each question or approval it
- * asked to the person's answer. A wait still open counts nothing yet.
+ * asked to the person's answer. Live, a wait still open is where the clock
+ * stands still; settled, it lasted to the run's end.
  */
-function waitedOnPerson(turn: ConversationTurn): number {
-  let waited = 0;
-  let since: number | null = null;
+function waitedOnPerson(turn: ConversationTurn): { waitedMs: number; waitingSince: string | null } {
+  let waitedMs = 0;
+  let since: TimelineEntry | null = null;
   for (const entry of turn.stretches.flatMap((stretch) => stretch.entries)) {
     if (entry.kind !== "work") continue;
     const kind = entry.entry.sourceActivityKind;
-    const at = Date.parse(entry.createdAt);
-    if (!Number.isFinite(at)) continue;
-    if (kind === "user-input.requested" || kind === "approval.requested") since ??= at;
+    if (kind === "user-input.requested" || kind === "approval.requested") since ??= entry;
     else if ((kind === "user-input.resolved" || kind === "approval.resolved") && since !== null) {
-      waited += Math.max(0, at - since);
+      waitedMs += Math.max(0, Date.parse(entry.createdAt) - Date.parse(since.createdAt)) || 0;
       since = null;
     }
   }
-  return waited;
+  if (since === null) return { waitedMs, waitingSince: null };
+  if (turn.live) return { waitedMs, waitingSince: since.createdAt };
+  const end = turn.stretches.at(-1)?.endedAt ?? null;
+  const left = end === null ? 0 : Date.parse(end) - Date.parse(since.createdAt);
+  return { waitedMs: waitedMs + (Math.max(0, left) || 0), waitingSince: null };
 }
 
 /** What the Mate's hands are on: waiting for an answer, the running operation or tool, thinking, writing. */
@@ -1676,7 +1681,7 @@ export function deriveMessagesTimelineRows(
         face: stretchFace({ stretch: last, turn, pausedHere }),
         startedAt: first.startedAt,
         endedAt: last.endedAt,
-        waitedMs: waitedOnPerson(turn),
+        ...waitedOnPerson(turn),
         note: lastNote === null ? null : noteLine(lastNote.message.text),
         fallback: lastNote !== null ? null : pausedHere ? "Stopped by the usage limit" : summary,
         summary,

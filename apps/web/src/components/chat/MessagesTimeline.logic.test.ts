@@ -218,6 +218,39 @@ describe("deriveMessagesTimelineRows", () => {
     expect(line).toMatchObject({ waitedMs: 5 * 60_000 });
   });
 
+  // Live, the clock stops while the question waits and leaves the wait out
+  // once answered, so it never drops as the run settles; a run stopped while
+  // it waited counts the wait as the person's to its end.
+  it.each([
+    { name: "while it waits", live: true, answered: false, waited: 0, since: 2 },
+    { name: "once answered", live: true, answered: true, waited: 5, since: null },
+    { name: "stopped while it waited", live: false, answered: false, waited: 7, since: null },
+  ])("keeps the clock on the Mate's own work $name", ({ live, answered, waited, since }) => {
+    const waitOn = (id: string, minute: number, kind: string) =>
+      tool(id, "t1", minute, {
+        tone: "info",
+        label: "Waiting on the person",
+        command: undefined as never,
+        toolCallId: undefined as never,
+        toolLifecycleStatus: undefined as never,
+        sourceActivityKind: kind as never,
+      });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "One thing first."),
+      waitOn("q1", 2, "user-input.requested"),
+      ...(answered ? [waitOn("q2", 7, "user-input.resolved")] : []),
+      tool("w1", "t1", answered ? 8 : 9, live ? {} : { toolLifecycleStatus: "completed" }),
+    ];
+    const line = rows(live ? { entries, live: "t1" } : { entries, settled: "t1" }).find(
+      (row) => row.kind === "work-line",
+    );
+    expect(line).toMatchObject({
+      waitedMs: waited * 60_000,
+      waitingSince: since === null ? null : at(since),
+    });
+  });
+
   it.each([
     { name: "nothing yet: it thinks", entries: [], activity: { kind: "thinking" } },
     {

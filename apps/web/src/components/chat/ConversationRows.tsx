@@ -63,25 +63,42 @@ export function LineMark({
   );
 }
 
-function elapsedSince(since: string): string {
+function elapsedSince(since: string, leftOutMs: number, standingSince: string | null): string {
   const startedMs = Date.parse(since);
-  return formatWorkDuration(Number.isFinite(startedMs) ? Date.now() - startedMs : 0);
+  const nowMs = standingSince === null ? Date.now() : Date.parse(standingSince);
+  return formatWorkDuration(
+    Number.isFinite(startedMs) && Number.isFinite(nowMs)
+      ? Math.max(0, nowMs - startedMs - leftOutMs)
+      : 0,
+  );
 }
 
-/** A duration that counts up by itself: its text node updates, the row never re-renders. */
-export function ElapsedSince({ since }: { readonly since: string }) {
+/**
+ * A duration that counts up by itself: its text node updates, the row never
+ * re-renders. It leaves out `leftOutMs`, and stands still from
+ * `standingSince` — the Mate's clock while it waits on the person.
+ */
+export function ElapsedSince({
+  since,
+  leftOutMs = 0,
+  standingSince = null,
+}: {
+  readonly since: string;
+  readonly leftOutMs?: number;
+  readonly standingSince?: string | null;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const update = () => {
-      if (ref.current) ref.current.textContent = elapsedSince(since);
+      if (ref.current) ref.current.textContent = elapsedSince(since, leftOutMs, standingSince);
     };
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [since]);
+  }, [since, leftOutMs, standingSince]);
   return (
     <span ref={ref} className="tabular-nums">
-      {elapsedSince(since)}
+      {elapsedSince(since, leftOutMs, standingSince)}
     </span>
   );
 }
@@ -135,7 +152,13 @@ export function WorkLine({
         <TooltipTrigger render={<span className="shrink-0 tabular-nums" data-work-line-clock />}>
           {speaker.name} {verb}{" "}
           {live ? (
-            <ElapsedSince since={row.startedAt} />
+            // The Mate's own time: it stands still while a question waits on
+            // the person, so it never drops as the run settles.
+            <ElapsedSince
+              leftOutMs={row.waitedMs}
+              since={row.startedAt}
+              standingSince={row.waitingSince}
+            />
           ) : (
             // How long the Mate worked: the time its questions waited on the
             // person is theirs. The tooltip keeps the run's whole span.
