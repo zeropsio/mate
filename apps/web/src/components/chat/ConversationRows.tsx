@@ -41,7 +41,7 @@ export interface ConversationSpeaker {
 }
 
 /** A row's mark, hung in the gutter left of the column's text edge. */
-function GutterMark({
+export function GutterMark({
   children,
   className,
 }: {
@@ -434,6 +434,14 @@ export function ErrorLine({
   );
 }
 
+/** A moment as a sentence says it: "at 10:25 PM", "yesterday at 10:25 PM", "on Sep 24 at 9:14 PM". */
+function spokenMoment(iso: string, timestampFormat: TimestampFormat): string {
+  const stamp = formatDayAwareTimestamp(iso, timestampFormat);
+  if (stamp.startsWith("Yesterday ")) return `yesterday at ${stamp.slice("Yesterday ".length)}`;
+  const dated = stamp.match(/^([A-Z][a-z]{2} \d{1,2}(?:, \d{4})?) (.+)$/);
+  return dated ? `on ${dated[1]} at ${dated[2]}` : `at ${stamp}`;
+}
+
 function untilText(resetsAt: string, nowMs: number): string {
   const minutes = Math.max(0, Math.ceil((Date.parse(resetsAt) - nowMs) / 60_000));
   if (minutes < 60) return minutes <= 1 ? "in a minute" : `in ${minutes} minutes`;
@@ -474,7 +482,7 @@ export function PauseBlock({
   const passed = reset !== null && reset <= nowMs;
   const autoResume = serverPause?.autoResume ?? false;
   const detail = resumed
-    ? `${speaker.name} picked up again at ${formatDayAwareTimestamp(row.resumedAt!, timestampFormat)}.`
+    ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
     : resetsAt === null
       ? "The limit resets later; the work continues from where it stopped."
       : passed
@@ -487,9 +495,11 @@ export function PauseBlock({
   return (
     <div
       className={cn(
+        // Resumed, the same block goes quiet — history, not a state to act
+        // on — and keeps its height: newer rows may already sit under it.
         "grid gap-1 rounded-xl border px-3.5 py-2.5",
         resumed
-          ? "border-border bg-card"
+          ? "border-transparent text-muted-foreground"
           : "border-status-attention/40 bg-status-attention-surface",
       )}
       data-conversation-pause={resumed ? "resumed" : "paused"}
@@ -504,7 +514,10 @@ export function PauseBlock({
           )}
         />
         <span
-          className={cn("font-medium", resumed ? "text-foreground" : "text-status-attention-text")}
+          className={cn(
+            "font-medium",
+            resumed ? "text-muted-foreground" : "text-status-attention-text",
+          )}
         >
           Paused
         </span>

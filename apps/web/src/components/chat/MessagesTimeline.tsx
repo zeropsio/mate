@@ -145,13 +145,14 @@ import {
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
-import { formatWorkDuration } from "./conversation.logic";
+import { browserCheckCaption, formatWorkDuration } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationWorking } from "./ConversationWorking";
 import type { DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
   EventLine,
+  GutterMark,
   IncidentLine,
   MateSpeech,
   MessageReceipt,
@@ -1557,38 +1558,53 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
     : null;
   const count = row.entries.length;
   const failed = row.entries.filter(workEntryDisplayIndicatesToolFailure).length;
+  // The line grammar: its mark in the gutter, its words on the text edge,
+  // the chevron right after them.
   return (
-    <button
-      type="button"
-      aria-expanded={row.expanded}
-      className="flex min-h-7 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      data-scroll-anchor-ignore
-      onClick={() => ctx.onToggleLogItem(row.id, row.id)}
-    >
+    <div className="relative flex min-h-7 min-w-0 items-center">
       {failed > 0 ? (
-        <span role="img" aria-label="Tool call failed" className="flex shrink-0">
-          <XIcon aria-hidden="true" className="size-3.5 opacity-70" />
+        // A failed background task is a step on the way: marked, and muted.
+        <span
+          aria-label="Tool call failed"
+          className="absolute -start-5 flex w-5 justify-center"
+          role="img"
+        >
+          <XIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
         </span>
       ) : (
-        <LayersIcon aria-hidden="true" className="size-3.5 shrink-0 opacity-70" />
+        <GutterMark>
+          <LayersIcon className="size-3.5 text-muted-foreground" />
+        </GutterMark>
       )}
-      <span className="shrink-0 text-foreground/85">
-        {count === 1 ? "1 background task" : `${count} background tasks`}
-        {failed > 0 ? ` · ${failed} failed` : ""}
-      </span>
-      {lastLabel ? (
-        <span className="min-w-0 flex-1 truncate">· last: {lastLabel}</span>
-      ) : (
-        <span className="flex-1" />
-      )}
-      <ChevronRightIcon
-        aria-hidden="true"
-        className={cn(
-          "size-3 shrink-0 opacity-70 transition-transform duration-150",
-          row.expanded && "rotate-90",
-        )}
-      />
-    </button>
+      <button
+        type="button"
+        aria-expanded={row.expanded}
+        aria-label={`${count === 1 ? "1 background task" : `${count} background tasks`}${failed > 0 ? `, ${failed} failed` : ""}. ${row.expanded ? "Hide" : "Show"} them`}
+        className="inline-flex min-h-7 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-left text-line text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+        data-scroll-anchor-ignore
+        onClick={() => ctx.onToggleLogItem(row.id, row.id)}
+      >
+        <span className="shrink-0">
+          {count === 1 ? "1 background task" : `${count} background tasks`}
+          {failed > 0 ? ` · ${failed} failed` : ""}
+        </span>
+        {lastLabel ? (
+          <>
+            <span aria-hidden="true" className="shrink-0 opacity-60">
+              ·
+            </span>
+            <span className="min-w-0 truncate">{lastLabel}</span>
+          </>
+        ) : null}
+        <ChevronRightIcon
+          aria-hidden="true"
+          className={cn(
+            "size-3.5 shrink-0 opacity-70 transition-transform duration-150",
+            row.expanded && "rotate-90",
+          )}
+        />
+      </button>
+    </div>
   );
 }
 
@@ -1941,7 +1957,11 @@ function turnHeaderActivityLabel(
     case "tool":
       return liveWorkEntryLabel(activity.entry, workspaceRoot);
     case "operation":
-      return activity.operation.voice;
+      // A check names the page, never the whole address: the host is the
+      // service's, and the working component shows it in its frame.
+      return activity.operation.kind === "browser"
+        ? `Checking ${browserCheckCaption(activity.operation)}`
+        : activity.operation.voice;
   }
 }
 
