@@ -1,25 +1,32 @@
 /**
  * The update line plus the one verb (spec-mate.md §2.9, MU-2), for a
  * connected environment: self-contained, so it can sit inside a list row
- * (the Mate card) or the thread header without the caller managing a hook
+ * (the Mate card) or the Mate's home card without the caller managing a hook
  * per candidate. Reads the live descriptor off `useEnvironment` — the same
  * subscription `serverConfig` already rides — never a version comparison
  * of its own (MU-1).
  *
  * A hook cannot live inside a plain menu-building function, so the same
- * update state that draws the line also supplies the Mate card's "Update to
- * x.y.z" menu item: `children` is a render prop over both, kept in one
- * place so a click from either surface drives the identical confirm/update
- * flow (MU-2).
+ * update state that draws the line also supplies the Mate menus' *Check for
+ * updates* and *Update to x.y.z*: `children` is a render prop over both, kept
+ * in one place so a click from any surface is the same update (MU-2).
+ *
+ * Wherever the verb is pressed, the person is asked in the app's confirm
+ * dialog, which every route mounts. A question drawn on the line was seen
+ * only where the line was, and the Mate menus draw none: their *Update to
+ * x.y.z* armed a question nobody could see (the owner, 2026-09-26). A check
+ * that finds a newer version asks the same question at once — whoever asked
+ * "is there an update?" is one answer away from it.
  */
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import { requestConfirmDialog } from "../../confirmDialog";
 import { useEnvironment } from "../../state/environments";
-import { mateUpdateLine } from "../../zerops/mateUpdate";
+import { mateUpdateLine, mateUpdateQuestion, mateUpdateStatus } from "../../zerops/mateUpdate";
 import { useZeropsMateUpdate } from "../../zerops/useZeropsMateUpdate";
-import { MateUpdateLine } from "./MateUpdateLine";
+import { MateUpdateLine, MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 
@@ -32,22 +39,41 @@ export interface ZeropsMateUpdateView {
 
 export function ZeropsMateUpdateControl({
   environmentId,
+  mateName,
   children,
 }: {
   readonly environmentId: EnvironmentId;
+  /** Who the confirm dialog asks about; "this Mate" where the surface does not know. */
+  readonly mateName?: string | undefined;
   readonly children: (view: ZeropsMateUpdateView) => ReactNode;
 }) {
   const environment = useEnvironment(environmentId)?.serverConfig?.environment;
   const mateUpdate = useZeropsMateUpdate(environmentId, environment?.serverVersion);
+  const { check, update } = mateUpdate;
+  const capable = environment?.capabilities.mateUpdate === true;
+
+  const ask = useCallback(
+    (latest: string) => {
+      void requestConfirmDialog(mateUpdateQuestion(mateName, latest))?.then((yes) => {
+        if (yes) update(latest);
+      });
+    },
+    [mateName, update],
+  );
+  const checkThenAsk = useCallback(() => {
+    void check().then((answer) => {
+      if (capable && answer?.available === true) ask(answer.latest);
+    });
+  }, [ask, capable, check]);
 
   if (environment === undefined) return children({ line: null, menuActions: [] });
-  // The RPC's on-demand answer, once one has run this mount; otherwise the
-  // descriptor's own field. Either way this is the server's answer, relayed
-  // as-is — MU-1: nothing here compares versions.
+  // The RPC's on-demand answer, once one has run; otherwise the descriptor's
+  // own field. Either way this is the server's answer, relayed as-is — MU-1:
+  // nothing here compares versions.
   const effectiveUpdate = mateUpdate.checked ?? environment.update;
   const line = mateUpdateLine(effectiveUpdate, environment.serverVersion);
-  const capable = environment.capabilities.mateUpdate === true;
-  const checkingNow = mateUpdate.state.phase === "checking";
+  const { state } = mateUpdate;
+  const running = state.phase === "checking" || state.phase === "updating";
 
   // The check has its own capability: a server that offers `mateUpdate` but
   // predates `zerops.mate.checkUpdate` would answer the check with an
@@ -57,9 +83,9 @@ export function ZeropsMateUpdateControl({
       ? [
           {
             id: "check-for-updates",
-            label: checkingNow ? "Checking…" : "Check for updates",
-            onSelect: mateUpdate.check,
-            disabled: checkingNow,
+            label: state.phase === "checking" ? "Checking…" : "Check for updates",
+            onSelect: checkThenAsk,
+            disabled: running,
           },
         ]
       : [];
@@ -68,52 +94,20 @@ export function ZeropsMateUpdateControl({
     return children({ line: <MateUpdateLine line={line} />, menuActions: [] });
   }
 
-  const offerVerb = effectiveUpdate?.available === true;
-
-  if (!offerVerb) {
-    return children({
-      line: <MateUpdateLine line={line} />,
-      menuActions: checkActions,
-    });
-  }
-
-  const state = mateUpdate.state;
+  const latest = effectiveUpdate?.available === true ? effectiveUpdate.latest : null;
+  // What was asked is answered where the verb stands; a failure keeps the
+  // verb, to try again, and says why under the line.
+  const status = mateUpdateStatus(state);
   const verb =
-    state.phase === "idle" || state.phase === "failed" ? (
-      <ZeropsMateVerb label="Update" onClick={mateUpdate.request} />
-    ) : state.phase === "confirm" ? (
-      <span
-        className="inline-flex shrink-0 items-center gap-1.5"
-        data-zerops-surface="mate-update-confirm"
-      >
-        <span className="text-muted-foreground">Running threads stop. Update now?</span>
-        <ZeropsMateVerb label="Update" onClick={mateUpdate.confirm} />
-        <button
-          type="button"
-          className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-          onClick={mateUpdate.cancel}
-        >
-          Keep running
-        </button>
-      </span>
-    ) : state.phase === "updating" ? (
-      <span className="text-muted-foreground">Updating…</span>
-    ) : state.phase === "checking" ? (
-      <ZeropsMateVerb label="Update" onClick={mateUpdate.request} />
-    ) : state.phase === "already-current" ? (
-      <span className="text-muted-foreground">Already up to date</span>
-    ) : (
-      <span className="text-muted-foreground">Updated to {state.to}</span>
+    status !== null && state.phase !== "failed" ? (
+      <MateUpdateStatusText className="text-muted-foreground" status={status} />
+    ) : latest === null ? undefined : (
+      <ZeropsMateVerb label="Update" onClick={() => ask(latest)} />
     );
-
   const updateAction: ZeropsMenuAction | null =
-    state.phase === "idle" || state.phase === "failed"
-      ? {
-          id: "update",
-          label: `Update to ${effectiveUpdate?.latest ?? ""}`,
-          onSelect: mateUpdate.request,
-        }
-      : null;
+    latest === null || running
+      ? null
+      : { id: "update", label: `Update to ${latest}`, onSelect: () => ask(latest) };
 
   return children({
     line: (

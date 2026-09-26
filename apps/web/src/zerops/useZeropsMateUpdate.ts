@@ -8,11 +8,17 @@
  * the organization's inventory) is followed by its own `serverVersion`
  * instead, within the same budget.
  *
- * `idle → confirm → updating → updated/already-current → idle`, or
- * `→ failed` from an `exec:operate` refusal, the RPC's own
- * `ZeropsMateUpdateResult.error`, or an update past its budget.
- * `already-current`/`updated` settle back to `idle` on their own after a few
- * seconds — nothing here is dismissable, nothing is stored (MU-1).
+ * `idle → updating → updated/already-current → idle`, or `→ failed` from an
+ * `exec:operate` refusal, the RPC's own `ZeropsMateUpdateResult.error`, or an
+ * update past its budget. `already-current`/`updated` settle back to `idle`
+ * on their own after a few seconds — nothing here is dismissable, nothing is
+ * stored (MU-1).
+ *
+ * **The person is asked before the call, in the app's confirm dialog** —
+ * never in a state of its own here. A confirmation drawn on the line lived
+ * only where the line was drawn, and the Mate menus that offer *Update to
+ * x.y.z* draw no line: the click armed a question nobody could see, and
+ * nothing ever updated (the owner, 2026-09-26).
  *
  * **An update belongs to the Mate it was started on.** The verb's state lives
  * in a map keyed by environment rather than in the component, because the
@@ -35,24 +41,15 @@ import { CONTAINER_CAPS_MS, type TargetKey } from "@t3tools/client-runtime/zerop
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { zeropsCommands } from "../state/zeropsCommands";
 import { useAtomCommand } from "../state/use-atom-command";
+import type { MateUpdateState } from "./mateUpdate";
 import { intendContainer, useEnvironmentContainer } from "./zeropsContainers";
 
 const SETTLE_DISPLAY_MS = 4_000;
 
-export type MateUpdateState =
-  | { readonly phase: "idle" }
-  | { readonly phase: "confirm" }
-  | { readonly phase: "updating" }
-  | { readonly phase: "checking" }
-  | { readonly phase: "already-current" }
-  | { readonly phase: "updated"; readonly to: string }
-  | { readonly phase: "failed"; readonly message: string };
-
 export interface MateUpdate {
   readonly state: MateUpdateState;
-  readonly request: () => void;
-  readonly confirm: () => void;
-  readonly cancel: () => void;
+  /** Updates this Mate to `to` now; the caller asked the person first. */
+  readonly update: (to: string) => void;
   /**
    * The last `zerops.mate.checkUpdate` answer for this Mate (spec-mate.md
    * §2.9, "on demand" — MU-1 still holds: nothing here compares versions, it
@@ -60,7 +57,11 @@ export interface MateUpdate {
    * `null` when a check ran and found nothing to report.
    */
   readonly checked: ExecutionEnvironmentUpdate | null | undefined;
-  readonly check: () => void;
+  /**
+   * Asks the server again, past its caches. Resolves with its answer, or to
+   * nothing when the check failed or another action overtook it.
+   */
+  readonly check: () => Promise<ExecutionEnvironmentUpdate | null | undefined>;
 }
 
 interface MateUpdateEntry {
@@ -79,6 +80,11 @@ interface MateUpdateEntry {
     | null;
   /** Bumped by every action, so an answer from an abandoned one is dropped. */
   readonly generation: number;
+  /**
+   * The Mate's container, once an update has started: while it restarts into
+   * the update its socket is down, and a list knows it by its container only.
+   */
+  readonly containerKey: TargetKey | null;
 }
 
 const NOTHING: MateUpdateEntry = {
@@ -86,9 +92,40 @@ const NOTHING: MateUpdateEntry = {
   checked: undefined,
   following: null,
   generation: 0,
+  containerKey: null,
 };
 
-const entries = new Map<EnvironmentId, MateUpdateEntry>();
+/** Every Mate's update state, for a surface that lists several. */
+export interface MateUpdateStates {
+  /**
+   * The state of the Mate at `environmentId` — or, while its socket is down,
+   * restarting into an update, at its container `key`; absent where nothing
+   * was asked of it.
+   */
+  readonly of: (mate: {
+    readonly environmentId?: EnvironmentId | undefined;
+    readonly key: string;
+  }) => MateUpdateState | undefined;
+}
+
+function statesOf(all: ReadonlyMap<EnvironmentId, MateUpdateEntry>): MateUpdateStates {
+  const byEnvironment = new Map<EnvironmentId, MateUpdateState>();
+  const byContainer = new Map<string, MateUpdateState>();
+  for (const [environmentId, entry] of all) {
+    byEnvironment.set(environmentId, entry.state);
+    if (entry.containerKey !== null) byContainer.set(entry.containerKey, entry.state);
+  }
+  return {
+    of: ({ environmentId, key }) =>
+      (environmentId === undefined ? undefined : byEnvironment.get(environmentId)) ??
+      byContainer.get(key),
+  };
+}
+
+// Replaced, never mutated, so a surface listing several Mates reads a new
+// snapshot on every change.
+let entries: ReadonlyMap<EnvironmentId, MateUpdateEntry> = new Map();
+let states: MateUpdateStates = statesOf(entries);
 const listeners = new Set<() => void>();
 const timers = new Map<EnvironmentId, ReturnType<typeof setTimeout>>();
 
@@ -97,7 +134,8 @@ function entryFor(environmentId: EnvironmentId): MateUpdateEntry {
 }
 
 function write(environmentId: EnvironmentId, entry: MateUpdateEntry): void {
-  entries.set(environmentId, entry);
+  entries = new Map(entries).set(environmentId, entry);
+  states = statesOf(entries);
   for (const listener of listeners) listener();
 }
 
@@ -208,132 +246,119 @@ export function useZeropsMateUpdate(
     settleToIdleAfter(environmentId, current.generation);
   }, [container.key, environmentId, overdue, serverVersion, updating]);
 
-  const request = useCallback(() => {
-    const current = entryFor(environmentId);
-    const phase = current.state.phase;
-    if (
-      phase !== "idle" &&
-      phase !== "failed" &&
-      phase !== "already-current" &&
-      phase !== "updated"
-    ) {
-      return;
-    }
-    clearTimer(environmentId);
-    write(environmentId, {
-      ...current,
-      state: { phase: "confirm" },
-      following: null,
-      generation: current.generation + 1,
-    });
-  }, [environmentId]);
-
-  const cancel = useCallback(() => {
-    const current = entryFor(environmentId);
-    if (current.state.phase !== "confirm") return;
-    write(environmentId, {
-      ...current,
-      state: { phase: "idle" },
-      following: null,
-      generation: current.generation + 1,
-    });
-  }, [environmentId]);
-
-  const confirm = useCallback(() => {
-    const current = entryFor(environmentId);
-    if (current.state.phase !== "confirm") return;
-    const generation = current.generation + 1;
-    write(environmentId, { ...current, state: { phase: "updating" }, following: null, generation });
-
-    // The update was accepted, or the socket closed under it: its container
-    // follows it from here, from the version it was started on.
-    const follow = () => {
-      const accepted = entryFor(environmentId);
-      if (accepted.generation !== generation) return;
-      const key = container.key;
-      if (key !== null && intendContainer(key, { kind: "update", from: serverVersion ?? null })) {
-        write(environmentId, { ...accepted, following: { kind: "container", key } });
-        return;
-      }
-      if (serverVersion === undefined) {
-        settle(environmentId, generation, {
-          phase: "failed",
-          message: "This Mate cannot be followed from here. Check the connection again.",
-        });
-        return;
-      }
-      write(environmentId, { ...accepted, following: { kind: "version", from: serverVersion } });
-      schedule(environmentId, CONTAINER_CAPS_MS.updating, () => {
-        const waited = entryFor(environmentId);
-        if (waited.generation !== generation || waited.state.phase !== "updating") return;
-        write(environmentId, { ...waited, state: { phase: "failed", message: NOT_BACK } });
+  const update = useCallback(
+    (to: string) => {
+      const current = entryFor(environmentId);
+      const phase = current.state.phase;
+      if (phase === "checking" || phase === "updating") return;
+      const generation = current.generation + 1;
+      clearTimer(environmentId);
+      write(environmentId, {
+        ...current,
+        state: { phase: "updating", to },
+        following: null,
+        generation,
+        containerKey: container.key ?? current.containerKey,
       });
-    };
 
-    void (async () => {
-      const result = await runUpdate({ environmentId, input: {} });
-      if (entryFor(environmentId).generation !== generation) return;
-      if (result._tag === "Failure") {
-        const message = describeFailure(
-          squashAtomCommandFailure(result),
-          "The update could not be started.",
-        );
-        // The update restarts the server, so the connection closing is the
-        // thing working, not failing.
-        if (message === null) {
-          follow();
+      // The update was accepted, or the socket closed under it: its container
+      // follows it from here, from the version it was started on.
+      const follow = () => {
+        const accepted = entryFor(environmentId);
+        if (accepted.generation !== generation) return;
+        const key = container.key;
+        if (key !== null && intendContainer(key, { kind: "update", from: serverVersion ?? null })) {
+          write(environmentId, { ...accepted, following: { kind: "container", key } });
           return;
         }
-        settle(environmentId, generation, { phase: "failed", message });
-        return;
-      }
-      const value = result.value;
-      if (value.error) {
-        settle(environmentId, generation, { phase: "failed", message: value.error });
-        return;
-      }
-      // An update the RPC answers as already current creates no intent (§4.5).
-      if (value.action === "none") {
-        settle(environmentId, generation, { phase: "already-current" });
-        return;
-      }
-      follow();
-    })();
-  }, [container.key, environmentId, runUpdate, serverVersion]);
+        if (serverVersion === undefined) {
+          settle(environmentId, generation, {
+            phase: "failed",
+            message: "This Mate cannot be followed from here. Check the connection again.",
+          });
+          return;
+        }
+        write(environmentId, { ...accepted, following: { kind: "version", from: serverVersion } });
+        schedule(environmentId, CONTAINER_CAPS_MS.updating, () => {
+          const waited = entryFor(environmentId);
+          if (waited.generation !== generation || waited.state.phase !== "updating") return;
+          write(environmentId, { ...waited, state: { phase: "failed", message: NOT_BACK } });
+        });
+      };
 
-  const check = useCallback(() => {
+      void (async () => {
+        const result = await runUpdate({ environmentId, input: {} });
+        if (entryFor(environmentId).generation !== generation) return;
+        if (result._tag === "Failure") {
+          const message = describeFailure(
+            squashAtomCommandFailure(result),
+            "The update could not be started.",
+          );
+          // The update restarts the server, so the connection closing is the
+          // thing working, not failing.
+          if (message === null) {
+            follow();
+            return;
+          }
+          settle(environmentId, generation, { phase: "failed", message });
+          return;
+        }
+        const value = result.value;
+        if (value.error) {
+          settle(environmentId, generation, { phase: "failed", message: value.error });
+          return;
+        }
+        // An update the RPC answers as already current creates no intent (§4.5).
+        if (value.action === "none") {
+          settle(environmentId, generation, { phase: "already-current" });
+          return;
+        }
+        follow();
+      })();
+    },
+    [container.key, environmentId, runUpdate, serverVersion],
+  );
+
+  const check = useCallback(async () => {
     const current = entryFor(environmentId);
     const phase = current.state.phase;
-    if (phase !== "idle" && phase !== "failed" && phase !== "already-current") return;
+    if (phase !== "idle" && phase !== "failed" && phase !== "already-current") return undefined;
     const generation = current.generation + 1;
     clearTimer(environmentId);
     write(environmentId, { ...current, state: { phase: "checking" }, following: null, generation });
 
-    void (async () => {
-      const result = await runCheckUpdate({ environmentId, input: {} });
-      const answered = entryFor(environmentId);
-      if (answered.generation !== generation) return;
-      if (result._tag === "Failure") {
-        const message = describeFailure(
-          squashAtomCommandFailure(result),
-          "The check could not be started.",
-        );
-        // Nothing was asked of the Mate that a closed connection could have
-        // half-done, so unlike an update this says so and stops.
-        settle(environmentId, generation, {
-          phase: "failed",
-          message: message ?? "This Mate is not reachable right now.",
-        });
-        return;
-      }
-      write(environmentId, { ...answered, checked: result.value });
-      settle(
-        environmentId,
-        generation,
-        result.value?.available === true ? { phase: "idle" } : { phase: "already-current" },
+    const result = await runCheckUpdate({ environmentId, input: {} });
+    const answered = entryFor(environmentId);
+    if (answered.generation !== generation) return undefined;
+    if (result._tag === "Failure") {
+      const message = describeFailure(
+        squashAtomCommandFailure(result),
+        "The check could not be started.",
       );
-    })();
+      // Nothing was asked of the Mate that a closed connection could have
+      // half-done, so unlike an update this says so and stops.
+      settle(environmentId, generation, {
+        phase: "failed",
+        message: message ?? "This Mate is not reachable right now.",
+      });
+      return undefined;
+    }
+    write(environmentId, { ...answered, checked: result.value });
+    settle(
+      environmentId,
+      generation,
+      result.value?.available === true ? { phase: "idle" } : { phase: "already-current" },
+    );
+    return result.value;
   }, [environmentId, runCheckUpdate]);
 
-  return { state: entry.state, request, confirm, cancel, checked: entry.checked, check };
+  return { state: entry.state, update, checked: entry.checked, check };
+}
+
+/**
+ * Every Mate's update state, for a surface that lists several — the projects
+ * page, a project's page — where a hook per Mate cannot be called.
+ */
+export function useZeropsMateUpdateStates(): MateUpdateStates {
+  return useSyncExternalStore(subscribe, () => states);
 }

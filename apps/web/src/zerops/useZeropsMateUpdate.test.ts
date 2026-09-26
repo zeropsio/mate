@@ -57,7 +57,7 @@ vi.mock("./zeropsContainers", () => ({
   },
 }));
 
-const { useZeropsMateUpdate } = await import("./useZeropsMateUpdate");
+const { useZeropsMateUpdate, useZeropsMateUpdateStates } = await import("./useZeropsMateUpdate");
 
 let environments = 0;
 let ENVIRONMENT_ID = EnvironmentId.make("environment-0");
@@ -84,18 +84,19 @@ afterEach(() => {
 });
 
 describe("useZeropsMateUpdate", () => {
-  it("idle → confirm → cancel → idle, without ever calling the RPC", () => {
+  it("update starts at once — the person was asked in the app's dialog before the call", () => {
+    commandSpy.mockReturnValue(new Promise(() => {}));
     let hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "idle" });
 
-    hook.request();
+    hook.update("0.8.1");
     hook = render("0.8.0");
-    expect(hook.state).toEqual({ phase: "confirm" });
+    expect(hook.state).toEqual({ phase: "updating", to: "0.8.1" });
+    expect(commandSpy).toHaveBeenCalledTimes(1);
 
-    hook.cancel();
-    hook = render("0.8.0");
-    expect(hook.state).toEqual({ phase: "idle" });
-    expect(commandSpy).not.toHaveBeenCalled();
+    // A second press while it runs is not a second update.
+    hook.update("0.8.1");
+    expect(commandSpy).toHaveBeenCalledTimes(1);
   });
 
   it("action 'none': already-current, then idle again on its own", async () => {
@@ -110,9 +111,7 @@ describe("useZeropsMateUpdate", () => {
       },
     });
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     hook = render("0.8.0");
     expect(hook.state).toMatchObject({ phase: "updating" });
 
@@ -140,9 +139,7 @@ describe("useZeropsMateUpdate", () => {
     });
     let version = "0.8.0";
     let hook = render(version);
-    hook.request();
-    hook = render(version);
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
     hook = render(version);
     expect(hook.state).toMatchObject({ phase: "updating" });
@@ -179,9 +176,7 @@ describe("useZeropsMateUpdate", () => {
       },
     });
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
 
     container.verdict = { level: "updating", overdue: true };
@@ -203,12 +198,10 @@ describe("useZeropsMateUpdate", () => {
       },
     });
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
-    expect(hook.state).toEqual({ phase: "updating" });
+    expect(hook.state).toEqual({ phase: "updating", to: "0.8.1" });
 
     // Past the update's budget with the version unchanged, it says the server has not come back.
     await vi.advanceTimersByTimeAsync(120_000);
@@ -234,9 +227,7 @@ describe("useZeropsMateUpdate", () => {
       },
     });
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "failed", message: "zcp mate update exited 1" });
@@ -248,9 +239,7 @@ describe("useZeropsMateUpdate", () => {
       cause: Cause.die(new Error("exec:operate required")),
     });
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "failed", message: "exec:operate required" });
@@ -311,9 +300,7 @@ describe("useZeropsMateUpdate", () => {
     });
     const other = EnvironmentId.make(`${ENVIRONMENT_ID}-other`);
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
 
     // The screen that carries this control is one component reused across
@@ -350,9 +337,7 @@ describe("useZeropsMateUpdate", () => {
       cause: Cause.die(new Error("RpcClientError: SocketCloseError: 1006")),
     });
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
     expect(hook.state).toMatchObject({ phase: "updating" });
@@ -373,9 +358,7 @@ describe("useZeropsMateUpdate", () => {
       cause: Cause.die(new Error("SocketCloseError: connection reset")),
     });
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
 
     container.verdict = { level: "updating", overdue: true };
@@ -390,9 +373,7 @@ describe("useZeropsMateUpdate", () => {
       cause: Cause.die(new Error("SocketCloseError: connection reset")),
     });
     let hook = render("0.8.0");
-    hook.request();
-    hook = render("0.8.0");
-    hook.confirm();
+    hook.update("0.8.1");
     await vi.advanceTimersByTimeAsync(0);
 
     container.verdict = { level: "updating", overdue: true };
@@ -432,5 +413,51 @@ describe("useZeropsMateUpdate", () => {
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "failed", message: "read scope required" });
+  });
+  it("check resolves with the server's answer, so the caller can offer what it found", async () => {
+    const answer = {
+      installed: "0.8.0",
+      latest: "0.8.1",
+      available: true,
+      checkedAt: "2026-09-09T00:00:00Z",
+    };
+    checkCommandSpy.mockResolvedValue({ _tag: "Success", value: answer });
+    await expect(render("0.8.0").check()).resolves.toEqual(answer);
+  });
+
+  it("check resolves to nothing when it failed, so nothing is offered off it", async () => {
+    checkCommandSpy.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.die(new Error("read scope required")),
+    });
+    await expect(render("0.8.0").check()).resolves.toBeUndefined();
+  });
+
+  it("every Mate's state reads as one snapshot, a new one on every change", () => {
+    commandSpy.mockReturnValue(new Promise(() => {}));
+    reactHookHarness.beginRender();
+    const before = useZeropsMateUpdateStates();
+    render("0.8.0").update("0.8.1");
+    reactHookHarness.beginRender();
+    const after = useZeropsMateUpdateStates();
+    expect(after).not.toBe(before);
+    expect(after.of({ environmentId: ENVIRONMENT_ID, key: "elsewhere" })).toEqual({
+      phase: "updating",
+      to: "0.8.1",
+    });
+  });
+
+  // A card whose Mate is restarting into its update has no socket, so no
+  // environment: it still says the update, found by its container.
+  it("while its socket is down, a Mate's update is found by its container", () => {
+    commandSpy.mockReturnValue(new Promise(() => {}));
+    render("0.8.0").update("0.8.1");
+    reactHookHarness.beginRender();
+    const states = useZeropsMateUpdateStates();
+    expect(states.of({ environmentId: undefined, key: "project:service" })).toEqual({
+      phase: "updating",
+      to: "0.8.1",
+    });
+    expect(states.of({ environmentId: undefined, key: "another:service" })).toBeUndefined();
   });
 });

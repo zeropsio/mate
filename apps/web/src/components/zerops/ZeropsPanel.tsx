@@ -168,7 +168,7 @@ export function ZeropsPanel({
               // same control the project page's menus read, so an update
               // started here is the update started there.
               mate === undefined || environmentId === undefined ? undefined : (
-                <ZeropsMateUpdateControl environmentId={environmentId}>
+                <ZeropsMateUpdateControl environmentId={environmentId} mateName={mate.name}>
                   {({ line }) => line}
                 </ZeropsMateUpdateControl>
               )
