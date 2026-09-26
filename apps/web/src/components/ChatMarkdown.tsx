@@ -156,7 +156,14 @@ interface ChatMarkdownProps {
       text nests under the heading that introduces it, such as a chat message's
       author. Rendered tags and their styling are unchanged. */
   headingLevelOffset?: number | undefined;
+  /** How the text reads. `"answer"` is a reply set to be read: 15/24 in the
+      full foreground, from the stylesheet. `"log"` — narration, tool output,
+      anything around the answers — keeps the smaller muted body. Headings,
+      lists, tables and code scale with whichever body they sit in. */
+  variant?: ChatMarkdownVariant | undefined;
 }
+
+export type ChatMarkdownVariant = "answer" | "log";
 
 export function canUseMarkdownFileShellActions(
   environmentId: EnvironmentId | null,
@@ -1638,7 +1645,10 @@ function areMarkdownFileLinkPropsEqual(
   );
 }
 
-type ChatMarkdownStateProps = Omit<ChatMarkdownProps, "className" | "lineBreaks" | "parseRawHtml">;
+type ChatMarkdownStateProps = Omit<
+  ChatMarkdownProps,
+  "className" | "lineBreaks" | "parseRawHtml" | "variant"
+>;
 
 function useChatMarkdownState({
   text,
@@ -2253,6 +2263,7 @@ function ChatMarkdown({
   className,
   lineBreaks = false,
   parseRawHtml = true,
+  variant = "log",
   ...props
 }: ChatMarkdownProps) {
   const { componentState, handleCopy, markdownUrlTransform } = useChatMarkdownState({
@@ -2274,9 +2285,14 @@ function ChatMarkdown({
   return (
     <div
       className={cn(
-        "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)] [overflow-wrap:anywhere] [word-break:break-word]",
+        "chat-markdown w-full min-w-0 [overflow-wrap:anywhere] [word-break:break-word]",
+        // The log's body is these utilities. An answer's is the stylesheet's
+        // `[data-variant="answer"]` rule, which no utility can override.
+        variant === "log" &&
+          "text-sm leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)]",
         className,
       )}
+      data-variant={variant}
       // Gates the fade-in for blocks that arrive while the response streams.
       data-streaming={componentState.isStreaming ? "" : undefined}
       onCopy={handleCopy}

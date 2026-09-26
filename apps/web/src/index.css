@@ -1928,6 +1928,16 @@ code {
 
 /* Chat markdown rendering */
 
+/* Two readings of one renderer. The log (narration, tool output, the person's
+   own words) takes its 14 px body from the root's utility classes; an answer
+   is set to be read, 15/24 in the full foreground. The type below is sized in
+   em, so it follows whichever body it sits in. */
+.chat-markdown[data-variant="answer"] {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--contrast-foreground);
+}
+
 .chat-markdown > :first-child {
   margin-top: 0;
 }
@@ -2092,7 +2102,8 @@ code {
   background: var(--muted);
   padding: 0.1rem 0.35rem;
   color: var(--contrast-foreground);
-  font-size: 0.75rem;
+  /* 12 px in the log's 14, 13 in an answer's 15: a step below its sentence. */
+  font-size: 0.86em;
 }
 
 .chat-markdown .chat-markdown-file-link,

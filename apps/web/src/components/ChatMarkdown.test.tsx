@@ -62,6 +62,15 @@ import ChatMarkdown, {
   hasMarkdownFilePrimaryAction,
 } from "./ChatMarkdown";
 
+/** The rendered root: its class list and the reading it declares. */
+function markdownRoot(html: string): { classes: ReadonlyArray<string>; variant: string | null } {
+  const tag = /^<div [^>]*>/.exec(html)?.[0] ?? "";
+  return {
+    classes: (/ class="([^"]*)"/.exec(tag)?.[1] ?? "").split(/\s+/).filter(Boolean),
+    variant: / data-variant="([^"]*)"/.exec(tag)?.[1] ?? null,
+  };
+}
+
 function codeButton(renderer: ReactTestRenderer, label: string) {
   const button = renderer.root
     .findAllByType(Button)
@@ -482,6 +491,39 @@ describe("ChatMarkdown brand link icons", () => {
     );
     expect(markup).not.toContain("google.com/s2/favicons");
     expect(markup).toContain("<svg");
+  });
+});
+
+describe("ChatMarkdown variants", () => {
+  const LOG_CLASSES = ["text-sm", "leading-relaxed"];
+
+  it.each([
+    { variant: undefined, reading: "log" },
+    { variant: "log", reading: "log" },
+    { variant: "answer", reading: "answer" },
+  ] as const)("reads variant=$variant as the $reading", ({ variant, reading }) => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text="Body" {...(variant ? { variant } : {})} />,
+    );
+    const root = markdownRoot(html);
+
+    expect(root.variant).toBe(reading);
+    // The log keeps today's 14 px from its utility classes; an answer takes its
+    // size and ink from the stylesheet, which a utility would otherwise fight.
+    for (const className of LOG_CLASSES) {
+      expect(root.classes.includes(className)).toBe(reading === "log");
+    }
+  });
+
+  it("lets a log's caller still set its ink", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text="Body" className="text-foreground" />,
+    );
+
+    expect(markdownRoot(html).classes).toContain("text-foreground");
+    expect(markdownRoot(html).classes.some((name) => name.startsWith("text-foreground/"))).toBe(
+      false,
+    );
   });
 });
 
