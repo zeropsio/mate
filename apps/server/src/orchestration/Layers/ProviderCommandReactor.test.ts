@@ -12,6 +12,7 @@ import {
   ProviderSetupError,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import {
   ApprovalRequestId,
   CommandId,
@@ -2495,6 +2496,116 @@ describe("ProviderCommandReactor", () => {
     const readModel = await harness.readModel();
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.title).toBe("Reconnect spinner resume bug");
+  });
+
+  const firstAskImage = {
+    type: "image" as const,
+    id: "first-ask-shot",
+    name: "shot.png",
+    mimeType: "image/png",
+    sizeBytes: 5,
+  };
+  const dispatchUserTurns = async (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    messages: ReadonlyArray<{
+      readonly text: string;
+      readonly attachments?: ReadonlyArray<typeof firstAskImage>;
+      readonly titleSeed: string;
+    }>,
+  ) => {
+    for (const [index, message] of messages.entries()) {
+      await harness.runEffect(
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make(`cmd-first-ask-${index}`),
+          threadId: ThreadId.make("thread-1"),
+          message: {
+            messageId: asMessageId(`user-first-ask-${index}`),
+            role: "user",
+            text: message.text,
+            attachments: [...(message.attachments ?? [])],
+          },
+          titleSeed: message.titleSeed,
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: `2026-01-01T00:00:0${index}.000Z`,
+        }),
+      );
+      await harness.drain();
+    }
+  };
+
+  it.each([
+    {
+      name: "a slash command",
+      initialTitle: "/compact",
+      messages: [
+        { text: "/compact", titleSeed: "/compact" },
+        { text: "Fix the login page", titleSeed: "Fix the login page" },
+      ],
+      expected: { message: "Fix the login page" },
+    },
+    {
+      name: "a slash command with arguments",
+      initialTitle: "/model opus",
+      messages: [
+        { text: "/model opus", titleSeed: "/model opus" },
+        { text: "Fix the login page", titleSeed: "Fix the login page" },
+      ],
+      expected: { message: "Fix the login page" },
+    },
+    {
+      name: "images without words, titled from the images and never the placeholder",
+      initialTitle: "Image: shot.png",
+      messages: [
+        {
+          text: IMAGE_ONLY_BOOTSTRAP_PROMPT,
+          attachments: [firstAskImage],
+          titleSeed: "Image: shot.png",
+        },
+      ],
+      expected: { message: "", attachments: [firstAskImage] },
+    },
+  ])(
+    "titles the thread from the first real ask after $name",
+    async ({ initialTitle, messages, expected }) => {
+      const harness = await createHarness({ initialTitle });
+      harness.generateThreadTitle.mockReturnValue(Effect.succeed({ title: "Generated title" }));
+
+      await dispatchUserTurns(harness, messages);
+
+      await waitFor(async () => {
+        const readModel = await harness.readModel();
+        return (
+          readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"))?.title ===
+          "Generated title"
+        );
+      });
+      expect(harness.generateThreadTitle).toHaveBeenCalledTimes(1);
+      expect(harness.generateThreadTitle.mock.calls[0]?.[0]).toMatchObject(expected);
+    },
+  );
+
+  it.each([
+    { name: "a slash command", text: "/model opus" },
+    { name: "the usage-limit resume", text: USAGE_LIMIT_RESUME_PROMPT },
+  ])("never titles the thread or names its branch from $name", async ({ text }) => {
+    const harness = await createHarness({ initialTitle: "New thread" });
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-first-ask-branch"),
+        threadId: ThreadId.make("thread-1"),
+        branch: "t3code/1234abcd",
+        worktreePath: "/tmp/provider-project-worktree",
+      }),
+    );
+
+    await dispatchUserTurns(harness, [{ text, titleSeed: "New thread" }]);
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.generateThreadTitle).not.toHaveBeenCalled();
+    expect(harness.generateBranchName).not.toHaveBeenCalled();
   });
 
   it("generates a worktree branch name for the first turn", async () => {

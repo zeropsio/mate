@@ -6,8 +6,8 @@ import {
 } from "../../lib/terminalContext";
 import { appendReviewCommentsToPrompt, buildFileReviewComment } from "../../reviewCommentContext";
 import { buildPlanImplementationPrompt } from "../../proposedPlan";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import {
-  IMAGE_ONLY_BOOTSTRAP_PROMPT,
   buildComposerPromptHistoryEntries,
   recallableComposerPrompt,
   stepComposerPromptHistory,
@@ -104,6 +104,7 @@ describe("recallableComposerPrompt", () => {
   it("returns an empty string for app-composed sends", () => {
     expect(recallableComposerPrompt("   ")).toBe("");
     expect(recallableComposerPrompt(IMAGE_ONLY_BOOTSTRAP_PROMPT)).toBe("");
+    expect(recallableComposerPrompt(USAGE_LIMIT_RESUME_PROMPT)).toBe("");
     expect(recallableComposerPrompt(buildPlanImplementationPrompt("# Plan\n1. do it"))).toBe("");
   });
 });

@@ -10,6 +10,7 @@ import {
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -671,7 +672,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             updatedAt: createdAt,
             attachments,
           },
-          hasOtherUserMessages: false,
+          hasOtherAsks: false,
         }),
       );
       assert.equal(
@@ -698,7 +699,9 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
     ),
   );
 
-  it.effect("keeps compaction and queued-message eligibility in the turn-start query", () =>
+  // Only an ask titles a thread: slash commands and the server's resume prompt
+  // are not one, attachments without words are (@t3tools/shared/userAsk).
+  it.effect("counts only other asks, queued ones included, in the turn-start query", () =>
     Effect.gen(function* () {
       const query = yield* ProjectionSnapshotQuery;
       const sql = yield* SqlClient.SqlClient;
@@ -717,22 +720,22 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           '2026-09-05T00:00:01.000Z', '2026-09-05T00:00:01.000Z')
       `;
 
-      for (const { text, attachments, hasOtherUserMessages } of [
-        { text: "/compact", attachments: null, hasOtherUserMessages: false },
-        {
-          text: "\t\n\r /CoMpAcT\u00a0\u2028\ufeff",
-          attachments: "[ ]",
-          hasOtherUserMessages: false,
-        },
-        { text: "/compact keep recent errors", attachments: "[]", hasOtherUserMessages: true },
-        { text: "", attachments: null, hasOtherUserMessages: true },
-        { text: "Queued prompt", attachments: null, hasOtherUserMessages: true },
-        {
-          text: "/compact",
-          attachments:
-            '[{"type":"file","id":"notes","name":"notes.txt","mimeType":"text/plain","sizeBytes":8}]',
-          hasOtherUserMessages: true,
-        },
+      const notes =
+        '[{"type":"file","id":"notes","name":"notes.txt","mimeType":"text/plain","sizeBytes":8}]';
+      const screenshot =
+        '[{"type":"image","id":"shot","name":"shot.png","mimeType":"image/png","sizeBytes":8}]';
+      for (const { text, attachments, hasOtherAsks } of [
+        { text: "/compact", attachments: null, hasOtherAsks: false },
+        { text: "\t\n\r /CoMpAcT\u00a0\u2028\ufeff", attachments: "[ ]", hasOtherAsks: false },
+        { text: "/compact keep recent errors", attachments: "[]", hasOtherAsks: false },
+        { text: "/model opus", attachments: null, hasOtherAsks: false },
+        { text: "/compact", attachments: notes, hasOtherAsks: false },
+        { text: USAGE_LIMIT_RESUME_PROMPT, attachments: null, hasOtherAsks: false },
+        { text: "", attachments: null, hasOtherAsks: false },
+        { text: "Queued prompt", attachments: null, hasOtherAsks: true },
+        { text: "/var/www/app fails to build", attachments: null, hasOtherAsks: true },
+        { text: IMAGE_ONLY_BOOTSTRAP_PROMPT, attachments: screenshot, hasOtherAsks: true },
+        { text: "", attachments: notes, hasOtherAsks: true },
       ]) {
         yield* sql`
           UPDATE projection_thread_messages SET text = ${text}, attachments_json = ${attachments}
@@ -741,7 +744,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         const context = yield* query.getTurnStartMessage({ threadId, messageId });
         assert.equal(context._tag, "Some");
         if (context._tag === "Some") {
-          assert.equal(context.value.hasOtherUserMessages, hasOtherUserMessages);
+          assert.equal(context.value.hasOtherAsks, hasOtherAsks, `other message "${text}"`);
         }
       }
     }),

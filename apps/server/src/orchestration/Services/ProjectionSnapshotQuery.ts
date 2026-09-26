@@ -204,8 +204,10 @@ export interface ProjectionSnapshotQueryShape {
   >;
 
   /**
-   * Read one requested message and whether another non-compaction user message exists.
-   * Newer queued messages count too, preserving first-turn title eligibility.
+   * Read one requested message and whether another user message of the thread
+   * asks something (`@t3tools/shared/userAsk`): slash commands and the
+   * server's usage-limit resume do not. Newer queued messages count too,
+   * preserving first-turn title eligibility.
    */
   readonly getTurnStartMessage: (input: {
     readonly threadId: ThreadId;
@@ -213,7 +215,7 @@ export interface ProjectionSnapshotQueryShape {
   }) => Effect.Effect<
     Option.Option<{
       readonly message: OrchestrationMessage;
-      readonly hasOtherUserMessages: boolean;
+      readonly hasOtherAsks: boolean;
     }>,
     ProjectionRepositoryError
   >;

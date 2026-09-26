@@ -62,6 +62,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
 import {
   getTerminalLabel,
   nextTerminalId,
@@ -448,7 +449,6 @@ import {
 } from "./ui/alert-dialog";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useAssetUrls } from "../assets/assetUrls";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT } from "./chat/composerPromptHistory";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -6499,7 +6499,9 @@ export default function ChatView(props: ChatViewProps) {
         firstComposerImageName = firstComposerImage.name;
       }
     }
-    let titleSeed = trimmed;
+    // A slash command is an instruction to the harness, not the thread's
+    // subject: the title waits for the first real ask.
+    let titleSeed = isSlashCommand(trimmed) ? "" : trimmed;
     if (!titleSeed) {
       if (firstComposerImageName) {
         titleSeed = `Image: ${firstComposerImageName}`;

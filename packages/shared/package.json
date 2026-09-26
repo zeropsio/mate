@@ -31,6 +31,10 @@
       "types": "./src/messagePreview.ts",
       "import": "./src/messagePreview.ts"
     },
+    "./userAsk": {
+      "types": "./src/userAsk.ts",
+      "import": "./src/userAsk.ts"
+    },
     "./model": {
       "types": "./src/model.ts",
       "import": "./src/model.ts"

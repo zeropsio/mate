@@ -14,6 +14,7 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
+import { userAskOf } from "@t3tools/shared/userAsk";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
@@ -1036,7 +1037,11 @@ const make = Effect.gen(function* () {
     )
       return;
     const detail = yield* resolveThreadDetail(threadId);
-    if (!detail || detail.messages.filter((message) => message.role === "user").length !== 1)
+    if (
+      !detail ||
+      detail.messages.filter((message) => message.role === "user" && userAskOf(message) !== null)
+        .length !== 1
+    )
       return;
     yield* orchestrationEngine.dispatch({
       type: "thread.title.refine",
@@ -1243,7 +1248,7 @@ const make = Effect.gen(function* () {
       });
       return;
     }
-    const { message, hasOtherUserMessages } = turnStart.value;
+    const { message, hasOtherAsks } = turnStart.value;
     const appendTurnStartFailure = (summary: string, detail: string) =>
       appendProviderFailureActivity({
         threadId: event.payload.threadId,
@@ -1342,7 +1347,11 @@ const make = Effect.gen(function* () {
     yield* ensureThreadWorktree(thread);
 
     const isCompactCommand = isCompactCommandMessage(message);
-    if (!hasOtherUserMessages && !isCompactCommand) {
+    // Only the first real ask titles the thread and names its branch: a slash
+    // command or the usage-limit resume asks nothing, and attachments without
+    // words are read from the attachments, never from the client's placeholder.
+    const ask = userAskOf(message);
+    if (!hasOtherAsks && ask !== null) {
       const project = yield* resolveProject(thread.projectId);
       const generationCwd =
         resolveThreadWorkspaceCwd({
@@ -1350,7 +1359,7 @@ const make = Effect.gen(function* () {
           projects: project ? [project] : [],
         }) ?? process.cwd();
       const generationInput = {
-        messageText: message.text,
+        messageText: ask.kind === "text" ? message.text : "",
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
         ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
       };
@@ -1418,7 +1427,7 @@ const make = Effect.gen(function* () {
         ),
       );
     if (isCompactCommand) {
-      if (!hasOtherUserMessages) {
+      if (!hasOtherAsks) {
         return yield* appendTurnStartFailure(
           "Context compaction failed",
           "Context compaction requires an existing conversation.",

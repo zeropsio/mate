@@ -7,12 +7,14 @@ import {
   type ProviderInteractionMode,
   type RuntimeMode,
 } from "@t3tools/contracts";
+import { isSlashCommand } from "@t3tools/shared/userAsk";
 
 import type { UploadedMobileAttachment } from "./attachmentUpload";
 
 export function deriveThreadTitleFromPrompt(value: string): string {
   const trimmed = value.trim();
-  if (trimmed.length === 0) {
+  // A slash command is an instruction to the harness, not the thread's subject.
+  if (trimmed.length === 0 || isSlashCommand(trimmed)) {
     return "New thread";
   }
 

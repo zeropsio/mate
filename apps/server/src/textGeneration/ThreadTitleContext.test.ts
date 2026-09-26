@@ -1,3 +1,4 @@
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "vite-plus/test";
 import { formatThreadTitleContext, limitTitleMessage } from "./ThreadTitleContext.ts";
 
@@ -30,6 +31,41 @@ describe("thread title context", () => {
     expect(result.message).toContain("ASSISTANT:\nFound the cause.");
     expect(result.message).not.toContain("System instructions");
     expect(result.message.match(/USER:/g)).toHaveLength(1);
+  });
+
+  const shot = {
+    type: "image" as const,
+    id: "title-context-shot",
+    name: "shot.png",
+    mimeType: "image/png",
+    sizeBytes: 5,
+  };
+
+  it.each([
+    {
+      name: "a slash command",
+      message: { role: "user" as const, text: "/model opus" },
+      expected: "USER:\nFix pairing\n\nASSISTANT:\nThe QR token expired.",
+    },
+    {
+      name: "the usage-limit resume",
+      message: { role: "user" as const, text: USAGE_LIMIT_RESUME_PROMPT },
+      expected: "USER:\nFix pairing\n\nASSISTANT:\nThe QR token expired.",
+    },
+    {
+      name: "the image-only placeholder, keeping the attachments",
+      message: { role: "user" as const, text: IMAGE_ONLY_BOOTSTRAP_PROMPT, attachments: [shot] },
+      expected:
+        "USER:\nFix pairing\n\nASSISTANT:\nThe QR token expired.\n\nUSER:\n[Attachments: shot.png]",
+    },
+  ])("leaves out $name", ({ message, expected }) => {
+    expect(
+      formatThreadTitleContext([
+        { role: "user", text: "Fix pairing" },
+        { role: "assistant", text: "The QR token expired." },
+        message,
+      ]).message,
+    ).toBe(expected);
   });
 
   it("preserves short conversations unchanged and handles tiny budgets", () => {

@@ -1,3 +1,5 @@
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isUsageLimitResumePrompt } from "@t3tools/shared/userAsk";
+
 import { extractTrailingTerminalContexts } from "../../lib/terminalContext";
 import { PLAN_IMPLEMENTATION_PROMPT_PREFIX } from "../../proposedPlan";
 
@@ -12,10 +14,6 @@ import { PLAN_IMPLEMENTATION_PROMPT_PREFIX } from "../../proposedPlan";
 
 const CLAUDE_ULTRATHINK_PREFIX = "Ultrathink:\n";
 const REVIEW_COMMENT_BLOCK_PATTERN = /<review_comment\b[^>]*>[\s\S]*?<\/review_comment>/g;
-
-/** Text sent in place of an empty prompt when a message is images only. */
-export const IMAGE_ONLY_BOOTSTRAP_PROMPT =
-  "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
 
 export interface ComposerPromptHistoryMessage {
   readonly id: string;
@@ -135,10 +133,12 @@ export function recallableComposerPrompt(messageText: string): string {
     break;
   }
 
-  // App-composed sends are not text the user typed, so they are not history.
+  // App-composed sends are not text the user typed, so they are not history;
+  // neither is the server's resume after a usage limit.
   const trimmed = prompt.trim();
   if (
     trimmed === IMAGE_ONLY_BOOTSTRAP_PROMPT ||
+    isUsageLimitResumePrompt(trimmed) ||
     trimmed.startsWith(PLAN_IMPLEMENTATION_PROMPT_PREFIX)
   ) {
     return "";
