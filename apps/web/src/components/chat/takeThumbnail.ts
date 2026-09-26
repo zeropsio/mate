@@ -85,7 +85,24 @@ export function sparseCropBox(
 /** The sample a picture is read at: its content is found on this many pixels across. */
 const SAMPLE_WIDTH = 160;
 
+/** How many thumbnails are kept: a page of takes, never every take the tab has seen. */
+const KEPT = 64;
 const thumbnails = new Map<string, string>();
+
+/**
+ * A picture's place among the kept thumbnails. A take's picture is a data
+ * URL hundreds of kilobytes long: its length and its last characters tell
+ * it apart without keeping a second copy of it as the key.
+ */
+export function thumbnailKey(src: string, aspect: number): string {
+  return `${aspect}:${src.length}:${src.slice(-48)}`;
+}
+
+function keep(key: string, thumbnail: string) {
+  thumbnails.delete(key);
+  thumbnails.set(key, thumbnail);
+  if (thumbnails.size > KEPT) thumbnails.delete(thumbnails.keys().next().value!);
+}
 
 async function cropSparse(src: string, aspect: number): Promise<string> {
   const image = new Image();
@@ -132,18 +149,18 @@ async function cropSparse(src: string, aspect: number): Promise<string> {
  * for a mostly empty page — its content cropped. Read once per picture.
  */
 export function useTakeThumbnail(src: string | undefined, aspect: number): string | undefined {
-  const key = src === undefined ? undefined : `${aspect}:${src}`;
+  const key = src === undefined ? undefined : thumbnailKey(src, aspect);
   const [cropped, setCropped] = useState<{ key: string; src: string } | null>(null);
   useEffect(() => {
     if (key === undefined || src === undefined || thumbnails.has(key)) return;
     let current = true;
     cropSparse(src, aspect).then(
       (thumbnail) => {
-        thumbnails.set(key, thumbnail);
+        keep(key, thumbnail);
         if (current) setCropped({ key, src: thumbnail });
       },
       // An image the browser cannot read is shown as it is.
-      () => thumbnails.set(key, src),
+      () => keep(key, src),
     );
     return () => {
       current = false;

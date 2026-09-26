@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { sparseCropBox } from "./takeThumbnail";
+import { sparseCropBox, thumbnailKey } from "./takeThumbnail";
 
 type Rect = readonly [x: number, y: number, width: number, height: number];
 
@@ -63,5 +63,15 @@ describe("sparseCropBox", () => {
     { name: "an empty page", pixels: picture(160, 72, 255, 30, []), box: null },
   ])("crops $name", ({ pixels, box }) => {
     expect(sparseCropBox(pixels, 160, 72, 1.6)).toEqual(box);
+  });
+});
+
+describe("thumbnailKey", () => {
+  it("tells pictures apart without keeping the picture as the key", () => {
+    const one = `data:image/png;base64,${"A".repeat(200_000)}xyz`;
+    const other = `data:image/png;base64,${"A".repeat(200_000)}xyw`;
+    expect(thumbnailKey(one, 1.6)).not.toBe(thumbnailKey(other, 1.6));
+    expect(thumbnailKey(one, 1.6)).not.toBe(thumbnailKey(one, 0.45));
+    expect(thumbnailKey(one, 1.6).length).toBeLessThan(80);
   });
 });
