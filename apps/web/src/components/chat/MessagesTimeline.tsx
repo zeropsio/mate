@@ -22,6 +22,7 @@ import {
 
 const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
+const NOOP_STOP_BACKGROUND_WORK = () => {};
 const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
@@ -147,7 +148,7 @@ import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
 import { browserCheckCaption, formatWorkDuration } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
-import { ConversationWorking } from "./ConversationWorking";
+import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
 import type { DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
@@ -210,6 +211,8 @@ interface TimelineRowSharedState {
   agentPanelModel: AgentPanelModel;
   expandedSpawnEntryIds: ReadonlySet<string>;
   onOpenAgents: () => void;
+  /** Stops the work that outlived the turn. */
+  onStopBackgroundWork: () => void;
   onSteerQueuedMessage: (id: string) => void;
   steerQueuedMessageShortcutLabel: string | null;
   onRemoveQueuedMessage: (id: string) => void;
@@ -222,6 +225,8 @@ interface TimelineRowActivityState {
   latestTurnId: TurnId | null;
   /** Current plan step label for the working row, when the turn has a plan. */
   workingStepLabel: string | null;
+  /** A stop of the work that outlived the turn is on its way. */
+  stoppingBackgroundWork: boolean;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -283,8 +288,12 @@ const TIMELINE_FOLLOW_THRESHOLD = 1;
 interface MessagesTimelineProps {
   agentPanelModel?: AgentPanelModel;
   onOpenAgents?: () => void;
-  /** What runs now in the live turn: deploys, helpers, the task list. */
+  /** What runs now in the live turn: deploys, helpers, the task list, background tasks. */
   working?: DockModel | null;
+  /** The server's word on work that outlived the turn, while it runs on. */
+  afterTurnWork?: "working" | "monitoring" | null;
+  onStopBackgroundWork?: () => void;
+  stoppingBackgroundWork?: boolean;
   isWorking: boolean;
   workingStepLabel?: string | null;
   isCompacting?: boolean;
@@ -347,6 +356,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   agentPanelModel,
   onOpenAgents = NOOP_OPEN_AGENTS,
   working = null,
+  afterTurnWork = null,
+  onStopBackgroundWork = NOOP_STOP_BACKGROUND_WORK,
+  stoppingBackgroundWork = false,
   listRef,
   timelineEntries,
   latestTurn,
@@ -531,6 +543,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         turnDiffSummaries,
         supportsConversationRollback,
         queuedMessages,
+        afterTurnWork,
       }),
     [
       newSince,
@@ -544,6 +557,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       turnDiffSummaries,
       supportsConversationRollback,
       queuedMessages,
+      afterTurnWork,
     ],
   );
   const rows = useStableRows(rawRows);
@@ -826,6 +840,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       expandedSpawnEntryIds,
       onOpenAgents,
+      onStopBackgroundWork,
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
@@ -854,6 +869,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       agentPanelModel,
       expandedSpawnEntryIds,
       onOpenAgents,
+      onStopBackgroundWork,
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
@@ -866,8 +882,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
       workingStepLabel,
+      stoppingBackgroundWork,
     }),
-    [isCompacting, isRevertingCheckpoint, isWorking, latestTurn?.turnId, workingStepLabel],
+    [
+      isCompacting,
+      isRevertingCheckpoint,
+      isWorking,
+      latestTurn?.turnId,
+      workingStepLabel,
+      stoppingBackgroundWork,
+    ],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -1347,6 +1371,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       ) : null}
       {row.kind === "work-line" ? <WorkLineTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
+      {row.kind === "after-work" ? <AfterWorkTimelineRow row={row} /> : null}
       {row.kind === "speech" ? <SpeechTimelineRow row={row} /> : null}
       {row.kind === "log-note" ? <LogNoteTimelineRow row={row} /> : null}
       {row.kind === "log-activity" ? <LogActivityTimelineRow row={row} /> : null}
@@ -1454,6 +1479,25 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
       incidents={row.incidents}
       onOpenAgents={ctx.onOpenAgents}
       speaker={ctx.speaker}
+      threadRef={ctx.threadRef}
+    />
+  );
+}
+
+/** Work that outlived the turn: the Mate at work, smaller, until it ends. */
+function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "after-work" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const { stoppingBackgroundWork } = use(TimelineRowActivityCtx);
+  const dock = use(TimelineWorkingCtx);
+  return (
+    <ConversationAfterWork
+      dock={dock}
+      environmentId={ctx.activeThreadEnvironmentId}
+      onOpenAgents={ctx.onOpenAgents}
+      onStop={ctx.onStopBackgroundWork}
+      speaker={ctx.speaker}
+      state={row.state}
+      stopping={stoppingBackgroundWork}
       threadRef={ctx.threadRef}
     />
   );

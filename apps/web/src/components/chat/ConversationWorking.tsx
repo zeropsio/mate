@@ -7,14 +7,15 @@
  * step that failed on the way streams as a red bubble where it failed, and
  * turns amber once a later attempt came back. Under the stream, a status bar
  * for each thing that runs — a deploy stepping through its pipeline in the
- * Zerops GUI's words, a service in trouble, the task list, the helpers —
- * each opening its detail in place. While the Mate checks pages, the browser
- * slides out from under the panel.
+ * Zerops GUI's words, a service in trouble, the task list, the helpers, the
+ * background tasks — each opening its detail in place. While the Mate checks
+ * pages, the browser slides out from under the panel.
  *
  * It is the conversation's bottom, so it may change shape; while live it only
  * grows — a click that closes a detail is the one way it shrinks — so a
  * shorter bubble never pulls the conversation down. Settling turns it into
- * the turn's report, made of the same parts.
+ * the turn's report, made of the same parts; work that outlives the turn
+ * keeps it at the bottom, smaller, until the work ends.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { PipelineSpokenState } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
@@ -27,6 +28,7 @@ import {
   ChevronDownIcon,
   CircleDotIcon,
   CircleIcon,
+  LayersIcon,
   ListTodoIcon,
   RocketIcon,
   RotateCcwIcon,
@@ -36,11 +38,12 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
+import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
 import { StatusBar, StatusDisc, type BarTone, type DiscTone } from "./ConversationPills";
-import type { DockModel } from "./conversationDock.logic";
+import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import type { WorkingFailure } from "./MessagesTimeline.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 
@@ -482,6 +485,23 @@ function useGrowOnlyHeight() {
   return { contentRef, minHeight, remeasure };
 }
 
+const TASK_BAR: Record<DockBackgroundTask["state"], BarTone> = {
+  running: "running",
+  done: "done",
+  failed: "failed",
+  stopped: "waiting",
+};
+
+const TASK_STATE: Record<
+  DockBackgroundTask["state"],
+  { readonly tone: ServiceStatusToneId; readonly word: string }
+> = {
+  running: { tone: "busy", word: "Running" },
+  done: { tone: "ok", word: "Done" },
+  failed: { tone: "failed", word: "Failed" },
+  stopped: { tone: "off", word: "Stopped" },
+};
+
 function spanOf(startedAt: string, endedAt: string | null): ReactNode {
   return endedAt === null ? (
     <ElapsedSince since={startedAt} />
@@ -492,7 +512,8 @@ function spanOf(startedAt: string, endedAt: string | null): ReactNode {
 
 /**
  * A status bar for each thing that runs — the deploys, a service in trouble,
- * the task list, the helpers — each opening its detail under it.
+ * the task list, the helpers, the background tasks — each opening its detail
+ * under it.
  */
 function Instruments({
   dock,
@@ -514,9 +535,17 @@ function Instruments({
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;
   const tasks = dock?.tasks ?? null;
-  if (operations.length === 0 && incidents.length === 0 && tasks === null && helpers === null) {
+  const background = dock?.background ?? null;
+  if (
+    operations.length === 0 &&
+    incidents.length === 0 &&
+    tasks === null &&
+    helpers === null &&
+    background === null
+  ) {
     return null;
   }
+  const runningTask = background?.tasks.findLast((task) => task.state === "running");
   return (
     <ul className="grid border-border/60 border-t p-2" data-working-instruments>
       {operations.map((operation) => (
@@ -655,6 +684,59 @@ function Instruments({
           ) : null}
         </Arriving>
       ) : null}
+      {background !== null ? (
+        <Arriving>
+          <Instrument
+            bar={background.tasks.map((task) => ({ key: task.id, tone: TASK_BAR[task.state] }))}
+            failed={background.running === 0 && background.failed > 0}
+            figure={
+              background.tasks.length > 1
+                ? `${background.done}/${background.tasks.length}`
+                : runningTask !== undefined
+                  ? spanOf(runningTask.startedAt, null)
+                  : null
+            }
+            icon={<LayersIcon aria-hidden="true" className="size-3.5" />}
+            label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed. ${open === "background" ? "Hide" : "Show"} each one`}
+            onToggle={() => onToggle("background")}
+            open={open === "background"}
+            subject="Background"
+            tone={background.running > 0 ? "busy" : background.failed > 0 ? "failed" : "ok"}
+            words={
+              runningTask?.title ??
+              (background.failed > 0
+                ? background.failed === 1
+                  ? "1 failed"
+                  : `${background.failed} failed`
+                : "All done")
+            }
+          />
+          {open === "background" ? (
+            <ul className="grid gap-px px-2 pt-1 pb-2" data-working-detail="background">
+              {background.tasks.map((task) => (
+                <li
+                  key={task.id}
+                  className="flex min-h-6 min-w-0 items-center gap-2 ps-10 text-line"
+                >
+                  <span
+                    className={cn(
+                      "size-1.5 shrink-0 rounded-full",
+                      TONE_DOT[TASK_STATE[task.state].tone],
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-foreground">{task.title}</span>
+                  <span className="shrink-0 text-muted-foreground text-xs">
+                    {TASK_STATE[task.state].word}
+                  </span>
+                  <span className="w-14 shrink-0 text-right text-muted-foreground text-xs tabular-nums">
+                    {spanOf(task.startedAt, task.endedAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Arriving>
+      ) : null}
     </ul>
   );
 }
@@ -725,3 +807,66 @@ export function ConversationWorking({
     </div>
   );
 }
+
+/**
+ * The Mate at work once its turn is over and work runs on — a helper still at
+ * it, a background task, a watch loop: the same panel, smaller, at the
+ * conversation's bottom, with its face, what still runs and a way to stop it.
+ * When the work ends it leaves, and what the work did lands in the
+ * conversation as its own quiet line.
+ */
+export function ConversationAfterWork({
+  speaker,
+  state,
+  dock,
+  stopping,
+  onStop,
+  environmentId,
+  threadRef,
+  onOpenAgents,
+}: {
+  readonly speaker: ConversationSpeaker;
+  readonly state: "working" | "monitoring";
+  readonly dock: DockModel | null;
+  readonly stopping: boolean;
+  readonly onStop: () => void;
+  readonly environmentId: EnvironmentId | null;
+  readonly threadRef: ScopedThreadRef | null;
+  readonly onOpenAgents: () => void;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+  const toggle = (key: string) => setOpen((current) => (current === key ? null : key));
+  // The server says "monitoring" for any shell; only a watch loop watches.
+  const running = dock?.background?.tasks.filter((task) => task.state === "running") ?? [];
+  const watching =
+    (dock?.helpers ?? null) === null &&
+    (running.length > 0 ? running.every((task) => task.watch) : state === "monitoring");
+  return (
+    <section
+      aria-label={`${speaker.name} at work in the background`}
+      className="@container/panel animate-panel-in rounded-3xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60 motion-reduce:animate-none"
+      data-conversation-after-work={state}
+    >
+      <div className="flex min-h-12 min-w-0 items-center gap-2.5 px-4 py-2">
+        <MateFace size="md" state="working" tint={speaker.tint} />
+        <span className="min-w-0 flex-1 truncate text-line text-foreground">
+          {watching ? "Watching in the background" : "Still working in the background"}
+        </span>
+        <Button disabled={stopping} onClick={onStop} size="xs" variant="ghost">
+          {stopping ? "Stopping…" : "Stop"}
+        </Button>
+      </div>
+      <Instruments
+        dock={dock}
+        environmentId={environmentId}
+        incidents={EMPTY_INCIDENTS}
+        onOpenAgents={onOpenAgents}
+        onToggle={toggle}
+        open={open}
+        threadRef={threadRef}
+      />
+    </section>
+  );
+}
+
+const EMPTY_INCIDENTS: ReadonlyArray<IncidentModel> = [];

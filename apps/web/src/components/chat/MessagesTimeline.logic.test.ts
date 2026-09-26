@@ -601,6 +601,34 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  it.each([
+    { afterTurnWork: "working" as const, last: "after-work:after-work" },
+    { afterTurnWork: "monitoring" as const, last: "after-work:after-work" },
+    { afterTurnWork: null, last: "message:a1" },
+  ])(
+    "keeps the Mate at work at the bottom after its answer while work runs on ($afterTurnWork)",
+    ({ afterTurnWork, last }) => {
+      const list = deriveMessagesTimelineRows({
+        timelineEntries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+        latestTurn: {
+          turnId: turn("t1"),
+          state: "completed",
+          startedAt: at(0),
+          completedAt: at(3),
+        },
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+        afterTurnWork,
+      });
+      expect(shape(list).at(-1)).toBe(last);
+      if (afterTurnWork !== null) {
+        expect(list.at(-1)).toMatchObject({ state: afterTurnWork, gap: "block" });
+      }
+    },
+  );
+
   it("puts queued messages last", () => {
     const list = deriveMessagesTimelineRows({
       timelineEntries: [user("m0", 0)],

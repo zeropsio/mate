@@ -432,6 +432,17 @@ type MessagesTimelineRowBody =
     }
   | {
       /**
+       * Work that outlived the turn — a helper still at it, a watch loop: the
+       * Mate at work stays at the conversation's bottom, smaller, with a way
+       * to stop it, until the work ends.
+       */
+      kind: "after-work";
+      id: string;
+      createdAt: string;
+      state: "working" | "monitoring";
+    }
+  | {
+      /**
        * The Mate's words the person answered: the last note of a stretch the
        * person's message closed, frozen beside its face where it was said. A
        * stretch that ends in an answer has none — the answer is the Mate's
@@ -1131,6 +1142,8 @@ export function deriveMessagesTimelineRows(
     queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
     /** When the person last saw this conversation, if something came since. */
     newSince?: string | null;
+    /** The server's word on work that outlived the turn, while it runs on. */
+    afterTurnWork?: "working" | "monitoring" | null;
   } & ConversationView,
 ): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
@@ -1537,6 +1550,14 @@ export function deriveMessagesTimelineRows(
     lastEnd = stretch.endedAt ?? stretch.startedAt;
   }
 
+  if (!input.isWorking && input.afterTurnWork) {
+    rows.push({
+      kind: "after-work",
+      id: "after-work",
+      createdAt: rows.at(-1)?.createdAt ?? "",
+      state: input.afterTurnWork,
+    });
+  }
   input.queuedMessages?.forEach((queuedMessage, index) => {
     rows.push({
       kind: "queued-message",

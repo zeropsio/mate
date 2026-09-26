@@ -1263,6 +1263,56 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain('data-stream-bubble="note"');
   });
 
+  it.each([
+    { watch: true, words: "Watching in the background", title: "Watch the pull request" },
+    { watch: false, words: "Still working in the background", title: "Typecheck appdev" },
+  ])(
+    "keeps the Mate at work at the bottom after its answer while work runs on, with a stop ($words)",
+    ({ watch, words, title }) => {
+      const markup = renderToStaticMarkup(
+        <MessagesTimeline
+          {...buildProps()}
+          latestTurn={settled}
+          afterTurnWork="monitoring"
+          working={{
+            operations: [],
+            helpers: null,
+            tasks: null,
+            background: {
+              tasks: [
+                {
+                  id: "b1",
+                  title,
+                  state: "running",
+                  watch,
+                  turnId: "turn-1",
+                  startedAt: at(20),
+                  endedAt: null,
+                },
+              ],
+              running: 1,
+              done: 0,
+              failed: 0,
+            },
+            afterTurn: "monitoring",
+            pause: null,
+          }}
+          timelineEntries={[
+            buildUserTimelineEntry("Keep an eye on it"),
+            tool("w1", 5),
+            assistant("a1", 10, "On it."),
+          ]}
+        />,
+      );
+      expect(markup).toContain('data-conversation-after-work="monitoring"');
+      expect(markup).toContain(words);
+      expect(markup).toContain(title);
+      expect(markup).toContain(">Stop<");
+      // The answer stays where it was: the panel comes after it.
+      expect(markup.indexOf("On it.")).toBeLessThan(markup.indexOf(words));
+    },
+  );
+
   it("draws a usage limit as one pause, however many attempts hit it", () => {
     const limit = "You've hit your session limit · resets 9:20pm (UTC)";
     const background = (id: string, second: number) => ({

@@ -349,7 +349,7 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
-import { deriveDock, latestUsagePause } from "./chat/conversationDock.logic";
+import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./chat/conversationDock.logic";
 import {
   environmentConnectionBannerItem,
   environmentRetryFailureToast,
@@ -2440,6 +2440,7 @@ export default function ChatView(props: ChatViewProps) {
     [threadActivities, zeropsThreadModel.zeropsActivityIds],
   );
   const turnPlans = useMemo(() => deriveTurnPlans(threadActivities), [threadActivities]);
+  const backgroundTasks = useMemo(() => foldBackgroundTasks(threadActivities), [threadActivities]);
   // Native subagent fold: memoized by activity-list identity, shared by the
   // Agents surface, live strip, and workflow cards. v2Projection is null
   // until orchestration-v2 lands (source precedence lives in the derive).
@@ -4978,10 +4979,11 @@ export default function ChatView(props: ChatViewProps) {
     updateThreadMetadata,
   ]);
   // Background work (subagent fleets, workflow runs, watch loops) can outlive
-  // the turn; once it settles, the composer stop button is gone, so this
-  // banner is the only visible stop affordance. Stop routes through the
-  // stop-everything interrupt: it kills every live background task before
-  // interrupting, and works by session, so no active turn is needed.
+  // the turn; once it settles, the composer stop button is gone, so the Mate
+  // at work stays at the conversation's bottom with the only stop. Stop
+  // routes through the stop-everything interrupt: it kills every live
+  // background task before interrupting, and works by session, so no active
+  // turn is needed.
   const activeBackgroundLiveness =
     !isWorking && activeThread ? (activeThreadShell?.backgroundLiveness ?? null) : null;
   const [isStoppingBackgroundWork, setIsStoppingBackgroundWork] = useState(false);
@@ -5018,56 +5020,9 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
   }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
-  const backgroundLivenessBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    if (activeBackgroundLiveness === null || !activeThread) {
-      return null;
-    }
-    const working = activeBackgroundLiveness === "working";
-    const liveCount = agentPanelModel.liveCount;
-    return {
-      id: `background-liveness:${activeThread.id}`,
-      variant: "default",
-      icon: (
-        <span
-          className={cn("size-1.5 rounded-full bg-foreground", working && "animate-status-pulse")}
-          aria-hidden="true"
-        />
-      ),
-      // The count is a way into the Agents panel, where each working agent is listed.
-      title: working ? (
-        liveCount > 0 ? (
-          <button
-            type="button"
-            onClick={addAgentsSurface}
-            className="cursor-pointer rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          >
-            {`${liveCount} ${liveCount === 1 ? "agent" : "agents"} working`}
-          </button>
-        ) : (
-          "Background work"
-        )
-      ) : (
-        "Monitoring"
-      ),
-      actions: (
-        <Button
-          size="xs"
-          variant="ghost"
-          disabled={isStoppingBackgroundWork}
-          onClick={() => void handleStopBackgroundWork()}
-        >
-          {isStoppingBackgroundWork ? "Stopping..." : "Stop"}
-        </Button>
-      ),
-    };
-  }, [
-    activeBackgroundLiveness,
-    activeThread,
-    addAgentsSurface,
-    agentPanelModel.liveCount,
-    handleStopBackgroundWork,
-    isStoppingBackgroundWork,
-  ]);
+  const stopBackgroundWork = useCallback(() => {
+    void handleStopBackgroundWork();
+  }, [handleStopBackgroundWork]);
   // A woken thread announces itself in the open view, not just the sidebar
   // pill. Dismissing marks the wake as seen (same acknowledgment as the
   // pill); sending a message clears it as a side effect of the send path.
@@ -5297,6 +5252,8 @@ export default function ChatView(props: ChatViewProps) {
         turnStartedAt: activeWorkStartedAt,
         agentPanelModel,
         plan: activePlan ?? null,
+        backgroundTasks,
+        backgroundLiveness: activeBackgroundLiveness,
         // The server's own pause when it keeps one; the thread's last words otherwise.
         pause: activeThreadShell?.usagePause
           ? { resetsAt: activeThreadShell.usagePause.resetsAt }
@@ -5309,6 +5266,8 @@ export default function ChatView(props: ChatViewProps) {
       activeWorkStartedAt,
       agentPanelModel,
       activePlan,
+      backgroundTasks,
+      activeBackgroundLiveness,
       activeThreadShell?.usagePause,
     ],
   );
@@ -5341,8 +5300,6 @@ export default function ChatView(props: ChatViewProps) {
     ];
     const mateNextStepItems = mateNextStepBannerItem === null ? [] : [mateNextStepBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
-    const backgroundLivenessItems =
-      backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
     const resumeCompactionItems =
       resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
@@ -5357,7 +5314,6 @@ export default function ChatView(props: ChatViewProps) {
         ...mateNextStepItems,
         ...feedbackBannerItems,
         ...projectCloneItems,
-        ...backgroundLivenessItems,
         ...calmSystemItems,
         ...resumeCompactionItems,
         ...wokeThreadItems,
@@ -5370,7 +5326,6 @@ export default function ChatView(props: ChatViewProps) {
       ...mateNextStepItems,
       ...feedbackBannerItems,
       ...projectCloneItems,
-      ...backgroundLivenessItems,
       ...calmSystemItems,
       ...resumeCompactionItems,
       ...wokeThreadItems,
@@ -5418,7 +5373,6 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeBranchMismatchKey,
     agentOwnershipBannerItem,
-    backgroundLivenessBannerItem,
     feedbackBannerItems,
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
@@ -7899,6 +7853,9 @@ export default function ChatView(props: ChatViewProps) {
                 agentPanelModel={agentPanelModel}
                 onOpenAgents={addAgentsSurface}
                 working={dockModel}
+                afterTurnWork={activeBackgroundLiveness}
+                onStopBackgroundWork={stopBackgroundWork}
+                stoppingBackgroundWork={isStoppingBackgroundWork}
                 key={activeThread.id}
                 isWorking={isWorking}
                 workingStepLabel={workingStepLabel}

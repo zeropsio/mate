@@ -3,11 +3,16 @@ import type {
   RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
-import { TurnId } from "@t3tools/contracts";
+import { EventId, TurnId, type OrchestrationThreadActivity } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { assistant, at, operation, tool, user } from "./conversationFixtures";
-import { deriveDock, dockHelpers, latestUsagePause } from "./conversationDock.logic";
+import {
+  deriveDock,
+  dockHelpers,
+  foldBackgroundTasks,
+  latestUsagePause,
+} from "./conversationDock.logic";
 
 function agent(id: string, status: RuntimeSubagent["status"], title: string): RuntimeSubagent {
   return {
@@ -83,6 +88,85 @@ describe("dockHelpers", () => {
   });
 });
 
+function task(
+  kind: "task.started" | "task.progress" | "task.completed",
+  taskId: string,
+  minute: number,
+  payload: Record<string, unknown> = {},
+  turnId: string | null = "t1",
+): OrchestrationThreadActivity {
+  return {
+    id: EventId.make(`${kind}:${taskId}:${minute}`),
+    tone: payload.status === "failed" ? "error" : "info",
+    kind,
+    summary: kind,
+    payload: { taskId, agentKind: "background", taskType: "local_bash", ...payload },
+    turnId: turnId === null ? null : TurnId.make(turnId),
+    createdAt: at(minute),
+  };
+}
+
+describe("foldBackgroundTasks", () => {
+  it.each([
+    {
+      name: "a shell running in the background, by what it was asked to do",
+      activities: [task("task.started", "b1", 1, { detail: "Typecheck the server" })],
+      tasks: [{ id: "b1", title: "Typecheck the server", state: "running", endedAt: null }],
+    },
+    {
+      name: "one that finished, failed or was stopped says so, when it ended",
+      activities: [
+        task("task.started", "b1", 1, { detail: "Typecheck" }),
+        task("task.started", "b2", 1, { detail: "Run the tests" }),
+        task("task.started", "b3", 1, { detail: "Tail the log" }),
+        task("task.completed", "b1", 2, { status: "completed", title: "Typecheck" }),
+        task("task.completed", "b2", 3, { status: "failed", title: "Run the tests" }),
+        task("task.completed", "b3", 4, { status: "stopped" }),
+      ],
+      tasks: [
+        { id: "b1", title: "Typecheck", state: "done", endedAt: at(2) },
+        { id: "b2", title: "Run the tests", state: "failed", endedAt: at(3) },
+        { id: "b3", title: "Tail the log", state: "stopped", endedAt: at(4) },
+      ],
+    },
+    {
+      name: "helpers and a helper's own shells are the helpers panel's, plan bookkeeping no one's",
+      activities: [
+        task("task.started", "a1", 1, { agentKind: "agent", taskType: "subagent" }),
+        task("task.started", "a2", 1, { agentId: "helper-1" }),
+        task("task.started", "p1", 1, { taskType: "plan" }),
+      ],
+      tasks: [],
+    },
+    {
+      name: "a watch loop watches; a shell runs once",
+      activities: [
+        task("task.started", "m1", 1, { detail: "Watch the PR", taskType: "monitor" }),
+        task("task.started", "b1", 1, { detail: "Typecheck" }),
+      ],
+      tasks: [
+        { id: "m1", title: "Watch the PR", state: "running", endedAt: null, watch: true },
+        { id: "b1", title: "Typecheck", state: "running", endedAt: null, watch: false },
+      ],
+    },
+    {
+      name: "a task seen only at its end still counts, named by its title",
+      activities: [task("task.completed", "b1", 2, { status: "completed", title: "Build" })],
+      tasks: [{ id: "b1", title: "Build", state: "done", endedAt: at(2) }],
+    },
+  ])("$name", ({ activities, tasks }) => {
+    expect(
+      foldBackgroundTasks(activities).map(({ id, title, state, endedAt, watch }) => ({
+        id,
+        title,
+        state,
+        endedAt,
+        ...(tasks.some((expected) => "watch" in expected) ? { watch } : {}),
+      })),
+    ).toEqual(tasks);
+  });
+});
+
 describe("deriveDock", () => {
   const base = {
     timelineEntries: [],
@@ -92,6 +176,46 @@ describe("deriveDock", () => {
     plan: null,
     pause: null,
   };
+
+  it("holds the running turn's background tasks, and any still running from before", () => {
+    const dock = deriveDock({
+      ...base,
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "old-done", 0, { detail: "Old" }, "t0"),
+        task("task.completed", "old-done", 1, { status: "completed" }, "t0"),
+        task("task.started", "old-running", 0, { detail: "Watch" }, "t0"),
+        task("task.started", "b1", 2, { detail: "Typecheck" }),
+        task("task.completed", "b1", 3, { status: "failed" }),
+        task("task.started", "b2", 4, { detail: "Test" }),
+      ]),
+    });
+    expect(dock?.background).toMatchObject({ running: 2, done: 0, failed: 1 });
+    expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["old-running", "b1", "b2"]);
+    expect(dock?.afterTurn).toBeNull();
+  });
+
+  it("stays after the turn while work runs on in the background: what still runs, and nothing else", () => {
+    const dock = deriveDock({
+      ...base,
+      isWorking: false,
+      runningTurnId: null,
+      backgroundLiveness: "working",
+      agentPanelModel: panel([agent("h1", "running", "Long work"), agent("h2", "completed", "b")]),
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Typecheck" }),
+        task("task.completed", "b1", 3, { status: "completed" }),
+        task("task.started", "b2", 4, { detail: "Watch the PR", taskType: "monitor" }),
+      ]),
+    });
+    expect(dock).toMatchObject({
+      afterTurn: "working",
+      operations: [],
+      tasks: null,
+      helpers: { working: 1, done: 0 },
+      background: { running: 1, done: 0, failed: 0 },
+    });
+    expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["b2"]);
+  });
 
   it("holds the running turn's pipelines, finished ones too, not quick calls or older turns", () => {
     const dock = deriveDock({
@@ -142,6 +266,8 @@ describe("deriveDock", () => {
       operations: [],
       helpers: null,
       tasks: null,
+      background: null,
+      afterTurn: null,
       pause: { resetsAt: at(20) },
     });
   });
