@@ -17,8 +17,6 @@ import type {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   emptyAgentPanelModel,
-  formatSubagentModelLabel,
-  formatSubagentTokenCount,
   isActiveSubagentStatus,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 
@@ -48,7 +46,6 @@ import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import {
   createMessageAttachmentPreviewProjector,
   deriveTimelineEntries,
-  formatDuration,
   selectMessageImageResources,
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
@@ -3111,50 +3108,38 @@ const AgentSpawnRow = memo(function AgentSpawnRow(props: { workEntry: TimelineWo
 });
 
 const AGENT_MEMBER_STATUS_LABEL: Record<RuntimeSubagent["status"], string> = {
-  pending: "Working",
+  pending: "Starting",
   running: "Working",
-  waiting: "Working",
+  waiting: "Waiting for you",
   idle: "Idle",
-  completed: "Completed",
+  completed: "Done",
   failed: "Failed",
   cancelled: "Stopped",
-  interrupted: "Stopped",
+  interrupted: "Cut off",
 };
 
+/**
+ * One helper in a spawn row: its task in the words it was given, its state
+ * and how long it ran — never the model or the harness's role name, which are
+ * the machinery, not the work.
+ */
 function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
   const [open, setOpen] = useState(false);
   const activeStatus = isActiveSubagentStatus(agent.status);
   const activity = activeStatus
-    ? (agent.progress ?? (agent.lastToolName ? `▸ ${agent.lastToolName}` : null))
+    ? (agent.progress ?? null)
     : (agent.error ?? agent.result ?? agent.progress ?? null);
   const durationMs =
     agent.startedAt && agent.completedAt
       ? Date.parse(agent.completedAt) - Date.parse(agent.startedAt)
       : null;
-  const meta = [
-    durationMs !== null && durationMs >= 0 ? formatDuration(durationMs) : null,
-    agent.usage && agent.usage.totalTokens > 0
-      ? `${formatSubagentTokenCount(agent.usage.totalTokens)} tok`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  // Settled members show their metrics; anything other than success keeps
-  // the status word so the outcome remains explicit.
+  // A helper that never ran has no duration worth a number ("Stopped · 1ms").
   const statusLabel =
-    activeStatus || !meta
-      ? AGENT_MEMBER_STATUS_LABEL[agent.status]
-      : agent.status === "completed"
-        ? meta
-        : `${AGENT_MEMBER_STATUS_LABEL[agent.status]} · ${meta}`;
-  const role =
-    agent.role && agent.role.trim().toLowerCase() !== agent.title.trim().toLowerCase()
-      ? agent.role
-      : null;
+    !activeStatus && durationMs !== null && durationMs >= 1000
+      ? `${AGENT_MEMBER_STATUS_LABEL[agent.status]} · ${formatWorkDuration(durationMs)}`
+      : AGENT_MEMBER_STATUS_LABEL[agent.status];
   const firstLine = activity?.split("\n").find((line) => line.trim().length > 0) ?? null;
-  const body = [activity?.trim() || null, formatSubagentModelLabel(agent.model, agent.effort)]
-    .filter(Boolean)
-    .join("\n\n");
+  const body = activity?.trim() ?? "";
   const canExpand = body.length > 0;
   const toggleOpen = () => setOpen((value) => !value);
 
@@ -3191,15 +3176,8 @@ function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
           >
             {agent.title}
           </span>
-          {role ? (
-            <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-3xs text-muted-foreground">
-              {role}
-            </span>
-          ) : null}
         </p>
-        <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
-          {statusLabel}
-        </span>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{statusLabel}</span>
       </div>
       {!open && firstLine ? (
         <p className="truncate text-xs text-muted-foreground">{firstLine}</p>
