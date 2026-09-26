@@ -361,6 +361,12 @@ export interface GiteaClient {
   listBranches(owner: string, repo: string): Promise<ReadonlyArray<GiteaBranch>>;
   /** `undefined` when the branch is not there — a group repo with no `main` yet. */
   getBranch(owner: string, repo: string, branch: string): Promise<GiteaBranch | undefined>;
+  /**
+   * Deletes a branch; one that is not there is already what was asked for. A leftover
+   * `mate-app/env-*` that declares another project goes this way before the declaration is
+   * written afresh (`addGroupEnvironment.ts`, 2026-09-24).
+   */
+  deleteBranch(owner: string, repo: string, branch: string): Promise<void>;
 
   /** `undefined` when the path is not in that ref — an empty group repo, say. */
   readFile(
@@ -674,6 +680,19 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       optional<GiteaBranch>(
         { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/branches/${enc(branch)}` },
         "read the branch",
+      ),
+
+    deleteBranch: (owner, repo, branch) =>
+      send(
+        { method: "DELETE", path: `/repos/${enc(owner)}/${enc(repo)}/branches/${enc(branch)}` },
+        async (response) => {
+          // Not there is what a delete asks for; read to its end, as `optional` does.
+          if (response.status === 404) {
+            await response.arrayBuffer().catch(() => undefined);
+            return;
+          }
+          if (!response.ok) await fail(response, "delete the branch");
+        },
       ),
 
     readFile: async (owner, repo, path, ref) => {

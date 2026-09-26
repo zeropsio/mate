@@ -42,7 +42,10 @@ function fake(answers: ReadonlyArray<{ status?: number; body?: unknown; text?: s
       });
       const answer = answers[index++] ?? { body: {} };
       if (answer.text !== undefined) {
-        return Promise.resolve(new Response(answer.text, { status: answer.status ?? 200 }));
+        // An empty text is no body at all, which is what a `204` must carry.
+        return Promise.resolve(
+          new Response(answer.text === "" ? null : answer.text, { status: answer.status ?? 200 }),
+        );
       }
       return Promise.resolve(
         new Response(JSON.stringify(answer.body ?? {}), {
@@ -249,6 +252,31 @@ describe("GiteaClient request shapes", () => {
         },
       ],
     });
+  });
+
+  it.each([
+    { what: "one that is there", status: 204 },
+    { what: "one that is already gone, which is what was asked", status: 404 },
+  ])("deletes a branch by its name: $what", async ({ status }) => {
+    const { client, calls } = fake([{ status, text: "" }]);
+    await expect(
+      client.deleteBranch("acme", "group", "mate-app/env-production"),
+    ).resolves.toBeUndefined();
+    expect(calls[0]?.method).toBe("DELETE");
+    expect(calls[0]?.url).toBe(
+      `${ORIGIN}/api/v1/repos/acme/group/branches/mate-app%2Fenv-production`,
+    );
+  });
+
+  it("throws Gitea's refusal to delete a branch", async () => {
+    const { client } = fake([{ status: 403, body: { message: "branch is protected" } }]);
+    const failure = await client
+      .deleteBranch("acme", "group", "main")
+      .catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(GiteaApiError);
+    expect((failure as GiteaApiError).message).toBe(
+      "Gitea refused to delete the branch. branch is protected",
+    );
   });
 
   it("merge sends the shown head and squash, so `main` is one commit per task", async () => {
