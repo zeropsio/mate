@@ -5,6 +5,7 @@
  * over the timeline's bottom, so nothing in it ever moves a message.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { PipelineSpokenState } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
@@ -53,7 +54,7 @@ function DockRow({
   label,
 }: {
   readonly icon: LucideIcon;
-  readonly iconClassName?: string;
+  readonly iconClassName?: string | undefined;
   readonly open: boolean;
   readonly onToggle: (() => void) | null;
   readonly children: ReactNode;
@@ -97,7 +98,20 @@ function DockRow({
   );
 }
 
-/** A running deploy: its current step in one line, the full pipeline one click away. */
+const PIPELINE_SEGMENT: Record<PipelineSpokenState, string> = {
+  finished: "bg-status-ok",
+  running: "bg-status-busy",
+  activating: "bg-status-busy",
+  failed: "bg-status-failed",
+  waiting: "bg-muted-foreground/25",
+  cancelled: "bg-muted-foreground/25",
+};
+
+/**
+ * A pipeline in one line: its word, the service, a segment per step, the step
+ * running now in the Zerops GUI's own sentence, and how long — the full
+ * pipeline, step by step with the build log, one click away.
+ */
 function DockOperation({
   operation,
   environmentId,
@@ -112,15 +126,42 @@ function DockOperation({
   readonly onToggle: () => void;
 }) {
   const regions = useOperationCard(operation, environmentId);
+  const pipeline = regions.observed?.pipeline;
   const steps = regions.observed?.steps ?? operation.steps;
-  const current =
+  const running = operation.phase === "running";
+  const pipelineStep =
+    pipeline === undefined
+      ? undefined
+      : (pipeline.steps.find((step) => step.id === pipeline.currentStepId) ??
+        pipeline.steps.at(-1));
+  const fallbackStep =
     steps.find((step) => step.state === "running") ??
     steps.find((step) => step.state === "failed") ??
     steps.findLast((step) => step.state === "done");
+  const words = pipeline?.calculating
+    ? "Calculating steps from zerops.yml"
+    : pipelineStep !== undefined
+      ? pipelineStep.sentence
+      : fallbackStep !== undefined
+        ? `${fallbackStep.label}${fallbackStep.stateLabel ? ` · ${fallbackStep.stateLabel.toLowerCase()}` : ""}`
+        : running
+          ? "Starting"
+          : (operation.closing ?? "");
+  const settledMs =
+    operation.settledAt === undefined
+      ? null
+      : Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
   return (
-    <div data-dock-operation={operation.kind}>
+    <div data-dock-operation={operation.kind} data-dock-operation-phase={operation.phase}>
       <DockRow
         icon={RocketIcon}
+        iconClassName={
+          operation.phase === "failed"
+            ? "text-status-failed"
+            : operation.phase === "done"
+              ? "text-status-ok"
+              : undefined
+        }
         label={`${operation.statusWord} ${operation.subject}. ${open ? "Hide" : "Show"} the pipeline`}
         onToggle={onToggle}
         open={open}
@@ -129,7 +170,16 @@ function DockOperation({
         <span className="shrink-0 rounded-md bg-accent px-1.5 text-foreground text-xs leading-5">
           {operation.subject}
         </span>
-        {steps.length > 1 ? (
+        {pipeline !== undefined && pipeline.steps.length > 1 ? (
+          <span aria-hidden="true" className="flex w-16 shrink-0 items-center gap-0.5">
+            {pipeline.steps.map((step) => (
+              <span
+                key={step.id}
+                className={cn("h-1 min-w-0 flex-1 rounded-full", PIPELINE_SEGMENT[step.state])}
+              />
+            ))}
+          </span>
+        ) : steps.length > 1 ? (
           <span aria-hidden="true" className="flex w-16 shrink-0 items-center gap-0.5">
             {steps.map((step) => (
               <span
@@ -142,13 +192,13 @@ function DockOperation({
             ))}
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-          {current
-            ? `${current.label}${current.stateLabel ? ` · ${current.stateLabel.toLowerCase()}` : ""}`
-            : "Starting"}
-        </span>
-        <span className="shrink-0 text-muted-foreground text-xs">
-          <ElapsedSince since={operation.anchorAt} />
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">{words}</span>
+        <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+          {running ? (
+            <ElapsedSince since={operation.anchorAt} />
+          ) : settledMs !== null && Number.isFinite(settledMs) ? (
+            formatWorkDuration(settledMs)
+          ) : null}
         </span>
       </DockRow>
       {open ? (
