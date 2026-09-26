@@ -146,10 +146,19 @@ import {
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
-import { browserCheckCaption, formatWorkDuration } from "./conversation.logic";
+import {
+  formatWorkDuration,
+  isQuestionToolCall,
+  namedToolCall,
+  toolCallWords,
+} from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
-import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
-import type { DockModel } from "./conversationDock.logic";
+import {
+  ConversationAfterWork,
+  ConversationWorking,
+  type WorkingActivity,
+} from "./ConversationWorking";
+import { DOCKED_KINDS, type DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
   EventLine,
@@ -1411,11 +1420,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
 
 function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
   const ctx = use(TimelineRowCtx);
-  const { isCompacting } = use(TimelineRowActivityCtx);
   return (
     <WorkLine
-      activityLabel={row.live ? turnHeaderActivityLabel(row.activity, ctx.workspaceRoot) : null}
-      compacting={row.live && isCompacting}
       onToggle={() => ctx.onToggleStretch(row.stretchKey, row.id)}
       row={row}
       timestampFormat={ctx.timestampFormat}
@@ -1452,12 +1458,18 @@ const watchedTurnKeys = new Set<string>();
 /** The Mate at work: its words streaming, what runs, the browser while it checks. */
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const ctx = use(TimelineRowCtx);
+  const { isCompacting } = use(TimelineRowActivityCtx);
   const dock = use(TimelineWorkingCtx);
   useEffect(() => {
     watchedTurnKeys.add(row.turnKey);
   }, [row.turnKey]);
   return (
     <ConversationWorking
+      activity={
+        isCompacting
+          ? { kind: "doing", words: "Condensing the context" }
+          : workingActivity(row.activity, ctx.workspaceRoot)
+      }
       browser={
         row.strip === null ? null : (
           <BrowserStrip
@@ -1512,9 +1524,14 @@ function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech"
   );
 }
 
+/**
+ * A note in an opened log, on the log's one text edge: the marks of the rows
+ * around it (thinking, a run of calls, an operation) hang in a column before
+ * that edge, and a note has none.
+ */
 function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-note" }> }) {
   return (
-    <div className="min-w-0 py-0.5 text-foreground/90" data-log-note>
+    <div className="min-w-0 py-0.5 ps-6.5 text-foreground/90" data-log-note>
       <NoteWords message={row.message} />
     </div>
   );
@@ -1596,15 +1613,21 @@ function StripTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "strip" }
   );
 }
 
-/** Background work that finished outside any turn: one quiet line, its tasks one click away. */
+/**
+ * Background work that finished after its turn: one quiet line saying what
+ * finished — a task, or how many — and the latest in its own words, its
+ * tasks one click away. The Mate picks it up in the line under it.
+ */
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
   const ctx = use(TimelineRowCtx);
-  const last = row.entries.at(-1);
-  const lastLabel = last
-    ? capitalizePhrase(normalizeCompactToolLabel(last.toolTitle ?? last.label))
-    : null;
-  const count = row.entries.length;
-  const failed = row.entries.filter(workEntryDisplayIndicatesToolFailure).length;
+  const lastLabel = row.title ? capitalizePhrase(row.title) : null;
+  const { failed } = row;
+  const finished =
+    row.tasks === 1
+      ? failed > 0
+        ? "Background task failed"
+        : "Background task finished"
+      : `${row.tasks} background tasks finished`;
   // The line grammar: its mark in the gutter, its words on the text edge,
   // the chevron right after them.
   return (
@@ -1626,14 +1649,14 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
       <button
         type="button"
         aria-expanded={row.expanded}
-        aria-label={`${count === 1 ? "1 background task" : `${count} background tasks`}${failed > 0 ? `, ${failed} failed` : ""}. ${row.expanded ? "Hide" : "Show"} them`}
+        aria-label={`${finished}${row.tasks > 1 && failed > 0 ? `, ${failed} failed` : ""}${lastLabel ? `: ${lastLabel}` : ""}. ${row.expanded ? "Hide" : "Show"} ${row.tasks === 1 ? "it" : "them"}`}
         className="inline-flex min-h-7 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-left text-line text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
         data-scroll-anchor-ignore
         onClick={() => ctx.onToggleLogItem(row.id, row.id)}
       >
         <span className="shrink-0">
-          {count === 1 ? "1 background task" : `${count} background tasks`}
-          {failed > 0 ? ` · ${failed} failed` : ""}
+          {finished}
+          {row.tasks > 1 && failed > 0 ? ` · ${failed} failed` : ""}
         </span>
         {lastLabel ? (
           <>
@@ -1713,21 +1736,29 @@ function formatWorkDurationBetween(startIso: string, endIso: string): string | n
 }
 
 /**
- * The person's answer to the Mate's question: their words in their own
- * bubble, each under what was asked.
+ * A question the Mate asked and the person's answer, each in its speaker's
+ * place: the question in the Mate's bubble beside its face, the answer in
+ * the person's own bubble on their side.
  */
 function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer" }> }) {
+  const ctx = use(TimelineRowCtx);
   return (
-    <div className="flex flex-col items-end gap-1" data-person-answer>
+    <div className="grid gap-3" data-person-answer>
       {row.pairs.map((pair) => (
-        <div
-          key={pair.key}
-          className="max-w-4/5 rounded-2xl bg-message px-4 py-2 text-message-foreground"
-        >
-          <MessageAuthorHeading>You</MessageAuthorHeading>
-          <p className="text-message-foreground/70 text-xs">{pair.asked}</p>
-          <p className="whitespace-pre-wrap">{pair.answer}</p>
-        </div>
+        <Fragment key={pair.key}>
+          <div className="ps-5">
+            <MateSpeech speaker={ctx.speaker}>
+              <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{pair.question}</p>
+            </MateSpeech>
+          </div>
+          <div className="flex justify-end">
+            <div className="max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground">
+              <MessageAuthorHeading>You</MessageAuthorHeading>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{pair.answer}</p>
+            </div>
+          </div>
+        </Fragment>
       ))}
     </div>
   );
@@ -2015,27 +2046,33 @@ function TimelineRowTimestamp({
   );
 }
 
-function turnHeaderActivityLabel(
+/**
+ * What the Mate at work shows under its newest words. A deploy's bar and the
+ * browser's drawer already say what they do, so an operation that has one is
+ * shown there alone; the question tool waits on the person, whatever its
+ * arguments.
+ */
+function workingActivity(
   activity: TurnHeaderActivity | null,
   workspaceRoot: string | undefined,
-): string | null {
+): WorkingActivity | null {
   switch (activity?.kind) {
     case undefined:
       return null;
     case "thinking":
-      return "Thinking";
+      return { kind: "thinking" };
+    case "waiting":
+      return { kind: "waiting" };
     case "tool":
-      // The question tool waits on the person: say so, never its arguments.
-      return /^AskUserQuestion\b/.test(activity.entry.toolTitle ?? activity.entry.label)
-        ? "Waiting for your answer"
-        : liveWorkEntryLabel(activity.entry, workspaceRoot);
-    case "operation":
-      // A check names the page, never the whole address: the host is the
-      // service's, and the working component shows it in its frame.
-      // The voice is a sentence; the line is a phrase, so it drops the full stop.
-      return activity.operation.kind === "browser"
-        ? `Checking ${browserCheckCaption(activity.operation)}`
-        : activity.operation.voice.replace(/\.$/, "");
+      return isQuestionToolCall(activity.entry)
+        ? { kind: "waiting" }
+        : { kind: "doing", words: liveWorkEntryLabel(activity.entry, workspaceRoot) };
+    case "operation": {
+      const { operation } = activity;
+      if (operation.kind === "browser" || DOCKED_KINDS.has(operation.kind)) return null;
+      // The voice is a sentence; beside the face it is a phrase, so it drops the full stop.
+      return { kind: "doing", words: operation.voice.replace(/\.$/, "") };
+    }
   }
 }
 
@@ -2351,7 +2388,7 @@ function ReasoningTraceBlock({
           type="button"
           aria-expanded={expanded}
           onClick={() => ctx.onToggleReasoning(first.id, !expanded, anchorKey)}
-          className="flex cursor-pointer select-none items-center gap-2 rounded-sm px-0.5 py-px text-start text-[13px] leading-5 transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+          className="flex cursor-pointer select-none items-center gap-2 rounded-sm px-1 py-px text-start text-line transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
         >
           <span className="flex w-3.5 shrink-0 items-center justify-center text-icon-muted">
             <BrainIcon aria-hidden className="block size-3.5 shrink-0 stroke-[1.8] opacity-70" />
@@ -2368,7 +2405,7 @@ function ReasoningTraceBlock({
         </button>
       ) : null}
       {expanded ? (
-        <div className="ms-5.5 flex max-h-96 flex-col gap-3 overflow-auto px-0.5 py-1 select-text">
+        <div className="ms-5.5 flex max-h-96 flex-col gap-3 overflow-auto px-1 py-1 select-text">
           {messages.map((message) => (
             <ChatMarkdown
               key={message.id}
@@ -3035,6 +3072,10 @@ function liveWorkEntryLabel(
     if (program) return `Running ${program}`;
     return "Running command";
   }
+  // A call known only as a "Tool call" carries its name and arguments in its
+  // detail: say the name in words, never the arguments.
+  const named = namedToolCall(workEntry);
+  if (named !== null) return toolCallWords(named, workEntry.detail);
 
   return workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
 }

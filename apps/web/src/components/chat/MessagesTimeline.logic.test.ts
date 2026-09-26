@@ -54,6 +54,17 @@ function rows(scene: Scene): MessagesTimelineRow[] {
 
 const shape = (list: MessagesTimelineRow[]) => list.map((row) => `${row.kind}:${row.id}`);
 
+/** Background work that finished after its turn: no turn owns it. */
+const background = (id: string, minute: number, overrides: Partial<WorkLogEntry> = {}) => {
+  const entry = tool(id, "t1", minute, {
+    label: `Task ${id}`,
+    taskId: `task-${id}`,
+    sourceActivityKind: "task.completed",
+    ...overrides,
+  }) as Extract<TimelineEntry, { kind: "work" }>;
+  return { ...entry, entry: { ...entry.entry, turnId: null } };
+};
+
 describe("deriveMessagesTimelineRows", () => {
   it("draws a settled turn as the message, one work line and the answer", () => {
     const list = rows({
@@ -139,16 +150,92 @@ describe("deriveMessagesTimelineRows", () => {
       face: "working",
       note: "Checking the build.",
       endedAt: null,
-      activity: { kind: "tool" },
     });
-    // The Mate at work is the stretch's tail: its words stream there, in full.
+    // The Mate at work is the stretch's tail: its words stream there, in
+    // full, and what its hands are on right now is beside its face.
     expect(list[3]).toMatchObject({
       kind: "working",
       turnKey: "msg:m0",
       stream: [{ kind: "note", key: "a1", message: expect.objectContaining({ id: "a1" }) }],
+      activity: { kind: "tool" },
       strip: null,
       incidents: [],
     });
+  });
+
+  const asked = (id: string, minute: number) =>
+    tool(id, "t1", minute, {
+      tone: "info",
+      label: "User input requested",
+      command: undefined as never,
+      toolCallId: undefined as never,
+      toolLifecycleStatus: undefined as never,
+      sourceActivityKind: "user-input.requested",
+      inputRequestId: "req-1",
+      inputQuestions: [
+        { id: "accent", header: "Accent colour", question: "Which accent colour do you prefer?" },
+      ],
+    });
+  it.each([
+    { name: "nothing yet: it thinks", entries: [], activity: { kind: "thinking" } },
+    {
+      name: "thinking after its words: it thinks again",
+      entries: [assistant("a1", "t1", 1, "Looking."), reasoning("r1", "t1", 2)],
+      activity: { kind: "thinking" },
+    },
+    {
+      name: "a call running: its hands are on it",
+      entries: [
+        tool("w1", "t1", 1, {
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+      ],
+      activity: { kind: "tool" },
+    },
+    {
+      name: "writing: its words are the activity",
+      entries: [assistant("a1", "t1", 1, "Writing this now.", { streaming: true })],
+      activity: null,
+    },
+    {
+      name: "a question asked: it waits for the person",
+      entries: [assistant("a1", "t1", 1, "One question first."), asked("q1", 2)],
+      activity: { kind: "waiting" },
+    },
+  ])("the Mate at work says what it is on: $name", ({ entries, activity }) => {
+    const working = rows({ entries: [user("m0", 0), ...entries], live: "t1" }).find(
+      (row) => row.kind === "working",
+    );
+    expect(working).toMatchObject({ activity });
+  });
+
+  it("streams a question the Mate asked as its newest bubble while it waits", () => {
+    const working = rows({
+      entries: [user("m0", 0), assistant("a1", "t1", 1, "One question first."), asked("q1", 2)],
+      live: "t1",
+    }).find((row) => row.kind === "working");
+    expect(working?.kind === "working" ? working.stream.map((item) => item.kind) : null).toEqual([
+      "note",
+      "question",
+    ]);
+    expect(working?.kind === "working" ? working.stream.at(-1) : null).toMatchObject({
+      key: "question:q1",
+      questions: ["Which accent colour do you prefer?"],
+    });
+  });
+
+  it("draws a turn a finished background task woke before its first words", () => {
+    const list = rows({
+      entries: [user("m0", 0), assistant("a1", "t1", 1, "Started it."), background("b1", 5)],
+      live: "t2",
+    });
+    expect(shape(list).slice(-3)).toEqual([
+      "background:background:b1",
+      "work-line:work-line:turn:t2",
+      "working:working:turn:t2",
+    ]);
+    expect(list.at(-1)).toMatchObject({ activity: { kind: "thinking" }, stream: [] });
   });
 
   const typeCheck = (id: string, minute: number, failed: boolean) =>
@@ -159,7 +246,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
   it.each([
     {
-      name: "the Mate's words stream oldest first, the last few of them",
+      name: "the Mate's words stream oldest first, every one of them, to scroll back through",
       entries: [
         assistant("a1", "t1", 1, "One."),
         tool("w1", "t1", 2),
@@ -170,7 +257,7 @@ describe("deriveMessagesTimelineRows", () => {
         assistant("a6", "t1", 7, "Six."),
         assistant("a7", "t1", 8, "Seven."),
       ],
-      stream: ["Two.", "Three.", "Four.", "Five.", "Six.", "Seven."],
+      stream: ["One.", "Two.", "Three.", "Four.", "Five.", "Six.", "Seven."],
     },
     {
       name: "a step that failed on the way streams where it failed",
@@ -214,7 +301,9 @@ describe("deriveMessagesTimelineRows", () => {
         ? working.stream.map((item) =>
             item.kind === "note"
               ? item.message.text
-              : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
+              : item.kind === "question"
+                ? `? ${item.questions.join(" ")}`
+                : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
           )
         : null,
     ).toEqual(stream);
@@ -376,7 +465,7 @@ describe("deriveMessagesTimelineRows", () => {
       expect(answers).toEqual([
         expect.objectContaining({
           id: "answer:rs",
-          pairs: [{ key: "accent", asked: "Accent color", answer: "Green" }],
+          pairs: [{ key: "accent", question: "Which accent colour?", answer: "Green" }],
         }),
       ]);
       // The request and the submission are not rows of their own.
@@ -567,13 +656,6 @@ describe("deriveMessagesTimelineRows", () => {
   });
 
   it("gathers background work no turn owns into one line", () => {
-    const background = (id: string, minute: number) => {
-      const entry = tool(id, "t1", minute, { label: `Task ${id}` }) as Extract<
-        TimelineEntry,
-        { kind: "work" }
-      >;
-      return { ...entry, entry: { ...entry.entry, turnId: null } };
-    };
     const scene: Scene = {
       entries: [
         user("m0", 0),
@@ -592,12 +674,56 @@ describe("deriveMessagesTimelineRows", () => {
       "background:background:b1",
       "message:m1",
     ]);
-    expect(rows(scene)[3]).toMatchObject({ entries: [{ id: "b1" }, { id: "b2" }, { id: "b3" }] });
+    expect(rows(scene)[3]).toMatchObject({
+      entries: [{ id: "b1" }, { id: "b2" }, { id: "b3" }],
+      tasks: 3,
+      failed: 0,
+      title: "Task b3",
+    });
     expect(shape(rows({ ...scene, expanded: ["background:b1"] })).slice(3, 7)).toEqual([
       "background:background:b1",
       "work:log-entry:b1",
       "work:log-entry:b2",
       "work:log-entry:b3",
+    ]);
+  });
+
+  it("counts a background run by its tasks, not by what each one reported", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started."),
+        background("p1", 5, { taskId: "task-1", sourceActivityKind: "task.progress" }),
+        background("p2", 6, { taskId: "task-1", sourceActivityKind: "task.progress" }),
+        background("c1", 7, { taskId: "task-1", label: "Watch the logs" }),
+        background("c2", 8, { taskId: "task-2", label: "Run the tests", tone: "error" }),
+      ],
+      settled: "t1",
+    });
+    expect(list.find((row) => row.kind === "background")).toMatchObject({
+      tasks: 2,
+      failed: 1,
+      title: "Run the tests",
+    });
+  });
+
+  it("says the words the person answered once: in the opened log, else in the speech", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "Deploying now."),
+        user("m1", 3, "and the footer"),
+      ],
+      live: "t1",
+      open: ["msg:m0"],
+    });
+    expect(shape(list).slice(1, 6)).toEqual([
+      "message:m0",
+      "work-line:work-line:msg:m0",
+      "log-activity:log-activity:w1",
+      "log-note:log-note:a1",
+      "message:m1",
     ]);
   });
 

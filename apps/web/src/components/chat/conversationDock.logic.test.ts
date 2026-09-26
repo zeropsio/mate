@@ -230,6 +230,33 @@ describe("deriveDock", () => {
     expect(dock?.operations.map((op) => op.key)).toEqual(["op:d0", "op:d1"]);
   });
 
+  it("gives each service of a batch deploy its own status bar", () => {
+    const dock = deriveDock({
+      ...base,
+      timelineEntries: [
+        operation("d1", "t1", 1, {
+          kind: "deploy",
+          batch: true,
+          phase: "running",
+          subject: "apistage, webstage",
+          steps: [
+            { id: "apistage", label: "apistage", state: "running", stateLabel: "Running" },
+            {
+              id: "webstage",
+              label: "webstage",
+              state: "queued",
+              stateLabel: "Waiting",
+            },
+          ],
+        }),
+      ],
+    });
+    expect(dock?.operations.map((op) => [op.key, op.subject])).toEqual([
+      ["op:d1:apistage", "apistage"],
+      ["op:d1:webstage", "webstage"],
+    ]);
+  });
+
   it("counts helpers by state", () => {
     const dock = deriveDock({
       ...base,

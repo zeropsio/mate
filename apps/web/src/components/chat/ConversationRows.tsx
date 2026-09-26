@@ -91,23 +91,18 @@ function spanText(startedAt: string, endedAt: string | null): string {
 }
 
 /**
- * The line for one stretch of the Mate's work. Settled, it is one quiet
- * phrase — "Worked for 2m 57s", "Thought for 16s" — and a chevron; one click
- * opens everything the stretch did under it, thinking included. Live, a dot
- * in the gutter and what the Mate is on right now; its words are the speech
- * at the stretch's end. The line never changes height.
+ * The line for one stretch of the Mate's work: how long, and one click to
+ * everything the stretch did under it, thinking included — "Working for
+ * 1m 12s" while it runs, "Worked for 2m 57s", "Thought for 16s" once done.
+ * What the Mate is on right now is the Mate at work's to say, beside its
+ * face, never the line's. The line never changes height.
  */
 export function WorkLine({
   row,
-  activityLabel,
-  compacting,
   timestampFormat,
   onToggle,
 }: {
   readonly row: WorkLineRow;
-  /** Live: what runs right now, in words. */
-  readonly activityLabel: string | null;
-  readonly compacting: boolean;
   readonly timestampFormat: TimestampFormat;
   readonly onToggle: () => void;
 }) {
@@ -121,12 +116,6 @@ export function WorkLine({
       : thoughtOnly
         ? "Thought for"
         : "Worked for";
-  // Live, the line names what runs; the Mate's words are its speech's.
-  const now = live
-    ? compacting
-      ? "Condensing the context"
-      : (activityLabel ?? (row.note === null ? "Reading your message" : null))
-    : null;
   const words = (
     <>
       <Tooltip>
@@ -139,16 +128,6 @@ export function WorkLine({
           {row.endedAt ? ` – ${formatDayAwareTimestamp(row.endedAt, timestampFormat)}` : ""}
         </TooltipPopup>
       </Tooltip>
-      {now !== null ? (
-        <>
-          <span aria-hidden="true" className="shrink-0 opacity-60">
-            ·
-          </span>
-          <span className="min-w-0 truncate" data-work-line-note>
-            {now}
-          </span>
-        </>
-      ) : null}
       {row.hasLog ? (
         <ChevronRightIcon
           aria-hidden="true"
@@ -164,16 +143,11 @@ export function WorkLine({
     "inline-flex min-h-7 max-w-full min-w-0 items-center gap-1.5 text-left text-line text-muted-foreground";
   return (
     <div className="relative flex min-h-7 min-w-0 items-center" data-work-line={row.face}>
-      {live ? (
-        <GutterMark>
-          <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
-        </GutterMark>
-      ) : null}
       {row.hasLog ? (
         <button
           type="button"
           aria-expanded={row.open}
-          aria-label={`${verb} ${spanText(row.startedAt, row.endedAt)}${now ? `: ${now}` : ""}. ${row.open ? "Hide" : "Show"} what it did`}
+          aria-label={`${verb} ${spanText(row.startedAt, row.endedAt)}. ${row.open ? "Hide" : "Show"} what it did`}
           className={cn(
             className,
             "cursor-pointer rounded-sm transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",

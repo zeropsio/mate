@@ -10,8 +10,11 @@ import {
   deriveOutcome,
   formatWorkDuration,
   messageReceipt,
+  namedToolCall,
   noteLine,
   readSlashCommand,
+  splitBatchDeploy,
+  toolCallWords,
   readUsageLimitNotice,
   stretchFace,
   stretchIncidents,
@@ -233,6 +236,33 @@ describe("deriveConversationStructure", () => {
     ]);
   });
 
+  it("keeps a turn live whose words arrive before the session names it", () => {
+    // A finished background task wakes the Mate: the thread works, the
+    // session names no running turn yet and the latest turn is the one that
+    // finished — but the new turn's first words already carry its id.
+    const result = structure(
+      [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started it."),
+        assistant("a2", "t2", 70, "It printed done."),
+      ],
+      { latest: { id: "t1", state: "completed", completed: true }, working: true },
+    );
+    const last = result.turns.at(-1)!;
+    expect(last).toMatchObject({ turnId: turn("t2"), live: true, answer: null });
+    expect(result.turns[0]).toMatchObject({ live: false });
+
+    // Working right after the person wrote is their message's turn, never the
+    // one that finished before it.
+    const sent = structure([user("m0", 0), assistant("a1", "t1", 1, "Done."), user("m1", 70)], {
+      latest: { id: "t0", state: "completed", completed: true },
+      working: true,
+    });
+    expect(sent.turns.find((candidate) => candidate.turnId === turn("t1"))).toMatchObject({
+      live: false,
+    });
+  });
+
   it("reads a turn a usage limit refused as limit-only, with its reset", () => {
     const entries = [
       user("m0", 0),
@@ -375,7 +405,7 @@ describe("stretchFace", () => {
 describe("browser checks", () => {
   it.each([
     ["https://shop.example.com/cz/products/%C5%A1umava?q=1.5&res=.5", "/cz/products/šumava"],
-    ["https://shop.example.com/", "shop.example.com"],
+    ["https://shop.example.com/", "/"],
     ["shop.example.com/cart", "/cart"],
     ["the checkout page", "the checkout page"],
   ])("captions %j as %j", (subject, caption) => {
@@ -393,6 +423,37 @@ describe("browser checks", () => {
       closing: "Navigation timeout of 30000 ms exceeded.",
     }) as Extract<TimelineEntry, { kind: "operation" }>;
     expect(browserCheckFailure(timedOut.operation)).toBe("timed out, the page never loaded");
+  });
+
+  it("counts a check that failed and then passed on the same page as passed", () => {
+    // The Mate asked for a device agent-browser does not know, then took the
+    // same page on one it does: the page never failed.
+    const entries = [
+      user("m0", 0),
+      operation("b1", "t1", 1, {
+        kind: "browser",
+        subject: "https://a.dev/",
+        phase: "failed",
+        deviceName: "iPhone 13",
+      }),
+      operation("b2", "t1", 2, {
+        kind: "browser",
+        subject: "https://a.dev/",
+        deviceName: "iPhone 16",
+      }),
+      operation("b3", "t1", 3, { kind: "browser", subject: "https://b.dev/" }),
+      assistant("a1", "t1", 4),
+    ];
+    const [only] = structure(entries, {
+      latest: { id: "t1", state: "completed", completed: true },
+    }).turns;
+    // Two hosts' front pages are two pages, both captioned "/".
+    expect(browserStrip(only!.stretches[0]!)).toMatchObject({ views: 2, failures: 0 });
+    expect(deriveOutcome({ turn: only!, landed: [], diff: null })?.checks).toMatchObject({
+      count: 3,
+      views: 2,
+      failures: 0,
+    });
   });
 
   it("gathers a stretch's checks into one strip", () => {
@@ -586,6 +647,39 @@ describe("deriveOutcome", () => {
     });
   });
 
+  it("reports each service a batch deployed, in its own state", () => {
+    const entries = [
+      user("m0", 0),
+      operation("d1", "t1", 1, {
+        kind: "deploy",
+        batch: true,
+        subject: "apistage, webstage",
+        phase: "failed",
+        statusWord: "Failed",
+        steps: [
+          { id: "apistage", label: "apistage", state: "done", stateLabel: "Done" },
+          {
+            id: "webstage",
+            label: "webstage",
+            state: "failed",
+            stateLabel: "Failed",
+            note: "Build failed",
+          },
+        ],
+      }),
+      assistant("a1", "t1", 2),
+    ];
+    const outcome = deriveOutcome({
+      turn: structure(entries, settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live).toEqual([
+      expect.objectContaining({ hostname: "apistage", tone: "ok", word: "Deployed" }),
+      expect.objectContaining({ hostname: "webstage", tone: "failed", word: "Failed" }),
+    ]);
+  });
+
   it("names what could not be done", () => {
     const entries = [
       user("m0", 0),
@@ -605,5 +699,123 @@ describe("deriveOutcome", () => {
       diff: null,
     });
     expect(outcome?.notDone).toEqual(["Importing gitea: Gitea isn't connected yet"]);
+  });
+});
+
+describe("splitBatchDeploy", () => {
+  const step = (host: string, state: "queued" | "running" | "done" | "failed", note?: string) => ({
+    id: host,
+    label: host,
+    state,
+    stateLabel: state,
+    ...(note === undefined ? {} : { note }),
+  });
+  const deploy = (overrides: Parameters<typeof operation>[3]) =>
+    (operation("d1", "t1", 1, overrides) as Extract<TimelineEntry, { kind: "operation" }>)
+      .operation;
+
+  it.each([
+    {
+      name: "one deploy per service while the batch runs, each in its own state",
+      batch: deploy({
+        kind: "deploy",
+        batch: true,
+        subject: "apistage, webstage",
+        phase: "running",
+        statusWord: "Deploying",
+        settledAt: undefined as never,
+        steps: [step("apistage", "running"), step("webstage", "queued")],
+      }),
+      services: [
+        ["op:d1:apistage", "apistage", "running", "Deploying"],
+        ["op:d1:webstage", "webstage", "running", "Waiting"],
+      ],
+    },
+    {
+      name: "settled: the one that deployed, and the one that failed with its reason",
+      batch: deploy({
+        kind: "deploy",
+        batch: true,
+        subject: "apistage, webstage",
+        phase: "failed",
+        statusWord: "Failed",
+        steps: [step("apistage", "done"), step("webstage", "failed", "Build failed")],
+      }),
+      services: [
+        ["op:d1:apistage", "apistage", "done", "Deployed"],
+        ["op:d1:webstage", "webstage", "failed", "Failed"],
+      ],
+    },
+    {
+      name: "a deploy of one service is itself",
+      batch: deploy({ kind: "deploy", subject: "appdev" }),
+      services: [["op:d1", "appdev", "done", "Deployed"]],
+    },
+  ])("$name", ({ batch, services }) => {
+    const split = splitBatchDeploy(batch);
+    expect(split.map((op) => [op.key, op.subject, op.phase, op.statusWord])).toEqual(services);
+    // Each is a service's own deploy: named by it, observed by its hostname.
+    for (const op of split) {
+      expect(op.batch).toBeUndefined();
+      expect(op.target).toEqual({ hostname: op.subject });
+    }
+    const failed = split.find((op) => op.phase === "failed");
+    if (failed !== undefined) expect(failed.explanation).toEqual({ reason: "Build failed" });
+  });
+});
+
+describe("tool calls in words", () => {
+  it.each([
+    [
+      { itemType: "dynamic_tool_call", label: "Tool call", detail: 'AskUserQuestion: {"q":1}' },
+      "AskUserQuestion",
+    ],
+    [{ itemType: "dynamic_tool_call", label: "Tool call", detail: "WebFetch: {}" }, "WebFetch"],
+    [{ itemType: "dynamic_tool_call", label: "Tool call", detail: "no name here" }, null],
+    [{ itemType: "command_execution", label: "Ran command", detail: "Foo: {}" }, null],
+  ] as const)("names the tool a generic call ran: %j → %s", (entry, name) => {
+    expect(namedToolCall(entry)).toBe(name);
+  });
+
+  it.each([
+    ['Read: {"file_path":"/var/www/appdev/package.json"}', "Reading package.json"],
+    ['Edit: {"file_path":"/var/www/appdev/src/status.ts","old_string":"a"', "Editing status.ts"],
+    ['Write: {"file_path":"/var/www/appdev/README.md"}', "Writing README.md"],
+    ['Grep: {"pattern":"TODO"}', "Searching the code"],
+    ['Glob: {"pattern":"**/*.ts"}', "Looking for files"],
+  ])("says a file call by its file: %s → %j", (detail, words) => {
+    const name = namedToolCall({ itemType: "dynamic_tool_call", label: "Tool call", detail })!;
+    expect(toolCallWords(name, detail)).toBe(words);
+  });
+
+  it("counts the calls a runtime names only in their details by what they did", () => {
+    const call = (name: string, args: string) => ({
+      id: name,
+      createdAt: at(1),
+      label: "Tool call",
+      tone: "tool" as const,
+      itemType: "dynamic_tool_call" as const,
+      detail: `${name}: ${args}`,
+    });
+    expect(
+      summarizeActivity([
+        call("Read", '{"file_path":"/a/package.json"}'),
+        call("Read", '{"file_path":"/a/README.md"}'),
+        call("Grep", '{"pattern":"x"}'),
+      ]),
+    ).toBe("Read 2 files · searched the code once");
+  });
+
+  it.each([
+    ["AskUserQuestion", "Waiting for your answer"],
+    ["WebFetch", "Reading a web page"],
+    ["WebSearch", "Searching the web"],
+    ["Task", "Starting a helper"],
+    ["Agent", "Starting a helper"],
+    ["Skill", "Using a skill"],
+    ["ToolSearch", "Looking up a tool"],
+    ["SomeNewTool", "Using some new tool"],
+  ])("says %s as %j, never its arguments", (name, words) => {
+    expect(toolCallWords(name)).toBe(words);
   });
 });
