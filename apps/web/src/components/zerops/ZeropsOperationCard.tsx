@@ -8,16 +8,20 @@
  * Every card heads with one compact row: a kind glyph, then either the
  * status word as the verb label beside the subject (a card that names one
  * service or page, `operationSubject`) or the voice line with the status
- * word at the right; the clock closes the row. Under it, one
- * dense body per kind — a browser check's thumbnail beside its figures, a
- * deploy's pipeline as one segmented row, a verify's checks as one row of
+ * word at the right; the clock closes the row. A deploy's header reads its
+ * pipeline instead, in sentence case: the pipeline's word, the service, and
+ * the overall line ("Running for 1m 12s") where the clock would be. Under
+ * it, one dense body per kind — a browser check's thumbnail beside its
+ * figures, a deploy's pipeline as one row per step in the Zerops GUI's
+ * words, an import's as one segmented row, a verify's checks as one row of
  * chips — then one quiet row with the result, the version and the links.
  *
  * A card is born with its kind's final structure and only fills in: the
  * subject line is held by a placeholder until the input names the target; a
- * browser check reserves its frame; a deploy's five pipeline slots arrive
- * with the reducer. What a result adds late — why it failed, the version it
- * shipped — appends at the end, so nothing already drawn moves.
+ * browser check reserves its frame; a deploy says it is calculating its
+ * steps until the platform has read them from zerops.yml. What a result adds
+ * late — why it failed, the version it shipped — appends at the end, so
+ * nothing already drawn moves.
  *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
@@ -34,12 +38,20 @@ import {
 
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import {
+  type PipelineReadout,
+  type PipelineStepId,
+  type PipelineTone,
+  formatDuration,
+  pipelineStepSentence,
+} from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
+import {
   browserLiveCaption,
   operationTone,
   type ZeropsOperation,
   type ZeropsOperationKind,
   type ZeropsOperationStep,
 } from "@t3tools/client-runtime/zerops/model";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import { useRightPanelStore } from "../../rightPanelStore";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
@@ -48,6 +60,11 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
 import { ZeropsMark } from "../ZeropsMark";
 import { ExplanationBlock } from "./operation/ExplanationBlock";
 import { CheckChips, PipelineSegments } from "./operation/OperationStepRow";
+import {
+  PipelineCalculating,
+  PipelineStepList,
+  type PipelineStepRow,
+} from "./operation/PipelineStepList";
 import { OperationSubjectLine } from "./operation/OperationSubjectLine";
 import { operationSubject, type OperationSubject } from "./operation/subject";
 import { versionLabel } from "./operation/version";
@@ -64,17 +81,19 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadResultBody } from "./ZeropsToolResultCards";
 
 export interface ObservedRegion {
-  /** Replaces `operation.steps` for the body while an observation is attached. */
+  /** Replaces `operation.steps` for the body while an observation is attached; a deploy's is empty. */
   readonly steps: ReadonlyArray<ZeropsOperationStep & { readonly durationMs?: number }>;
+  /** `deploy` only: its pipeline as the Zerops GUI reads it — the body's steps and the header's words. */
+  readonly pipeline?: PipelineReadout;
   /** The observation's secondary processes (e.g. a subdomain toggle beside a deploy), one compact row each. */
   readonly chips?: ReadonlyArray<ZeropsOperationStep>;
-  /** e.g. "live from Zerops · 2 s ago", frozen as "as last read from Zerops" once the card settles. */
+  /** Empty while the feed observes; "Zerops isn't answering · last update 2m ago" once it is not. */
   readonly provenance: string;
   /** The build log region, when the caller has one. */
   readonly log?: ReactNode;
 }
 
-/** The kinds whose steps are a pipeline: one segmented row, the slots reserved from birth. */
+/** The kinds whose steps are one segmented row, the slots reserved from birth: an import, a batch deploy. */
 const PIPELINE_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
   "deploy",
   "import",
@@ -88,7 +107,7 @@ const KIND_GLYPH: Partial<Record<ZeropsOperationKind, LucideIcon>> = {
   verify: ShieldCheckIcon,
 };
 
-function KindGlyph({ kind }: { readonly kind: ZeropsOperationKind }) {
+export function KindGlyph({ kind }: { readonly kind: ZeropsOperationKind }) {
   const Icon = KIND_GLYPH[kind];
   return Icon === undefined ? (
     <ZeropsMark className="size-3.5 shrink-0" />
@@ -139,22 +158,32 @@ function HeaderMeta({
   ) : null;
 }
 
+/** The header's status word when it is not the operation's own: a deploy's, in sentence case. */
+interface HeaderStatus {
+  readonly word: string;
+  readonly tone: ServiceStatusToneId;
+}
+
 /**
  * The one header row. A card that names its subject reads verb label +
  * subject, the status dot carrying the verb as its word; any other card
- * reads its voice line with the status word at the right.
+ * reads its voice line with the status word at the right. A `status` given
+ * for it is written in sentence case instead of the label.
  */
 function CardHeader({
   durationText,
   operation,
+  status,
   subject,
 }: {
   readonly durationText: string | undefined;
   readonly operation: ZeropsOperation;
+  readonly status: HeaderStatus | undefined;
   readonly subject: OperationSubject | undefined;
 }) {
   const tone = operationTone(operation);
   if (subject !== undefined) {
+    const dotTone = status?.tone ?? tone;
     return (
       <header className="flex items-start justify-between gap-3">
         <div
@@ -164,10 +193,11 @@ function CardHeader({
         >
           <KindGlyph kind={operation.kind} />
           <StatusDot
-            className="shrink-0 text-muted-foreground"
-            label={operation.statusWord}
-            pulse={tone === "busy"}
-            tone={tone}
+            className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-xs")}
+            label={status?.word ?? operation.statusWord}
+            pulse={dotTone === "busy"}
+            sentence={status !== undefined}
+            tone={dotTone}
           />
           <OperationSubjectLine running={operation.phase === "running"} subject={subject} />
         </div>
@@ -197,6 +227,114 @@ function CardHeader({
   );
 }
 
+/** A deploy card reads its pipeline; a batch deploy keeps one segment per target. */
+function readsPipeline(operation: ZeropsOperation): boolean {
+  return operation.kind === "deploy" && operation.batch !== true;
+}
+
+const PIPELINE_DOT_TONE: Readonly<Record<PipelineTone, ServiceStatusToneId>> = {
+  waiting: "off",
+  running: "busy",
+  finished: "ok",
+  failed: "failed",
+  cancelled: "off",
+};
+
+/** The operation's own time in the card's one format: to now while it runs, else to its result. */
+function operationDurationText(operation: ZeropsOperation, now: number): string | undefined {
+  const startedAtMs = Date.parse(operation.anchorAt);
+  const endedAtMs =
+    operation.phase === "running"
+      ? now
+      : operation.settledAt === undefined
+        ? Number.NaN
+        : Date.parse(operation.settledAt);
+  return formatDuration(endedAtMs - startedAtMs);
+}
+
+/**
+ * A deploy's header: the pipeline's word and overall line while the deploy
+ * runs, and once the pipeline itself has ended; a settled card whose last
+ * reading stopped mid-way, or that never read one, keeps the result's word
+ * and the operation's own time.
+ */
+function deployHeader(
+  operation: ZeropsOperation,
+  pipeline: PipelineReadout | undefined,
+  now: number,
+): { readonly status: HeaderStatus; readonly durationText: string | undefined } {
+  const pipelineSpeaks =
+    pipeline !== undefined &&
+    (operation.phase === "running" ||
+      (pipeline.status.tone !== "waiting" && pipeline.status.tone !== "running"));
+  if (!pipelineSpeaks) {
+    return {
+      status: { word: operation.statusWord, tone: operationTone(operation) },
+      durationText: operationDurationText(operation, now),
+    };
+  }
+  const overall = pipeline.overall;
+  const overallTime = overall === undefined ? undefined : formatDuration(overall.durationMs);
+  return {
+    status: { word: pipeline.status.word, tone: PIPELINE_DOT_TONE[pipeline.status.tone] },
+    durationText:
+      overall === undefined || overallTime === undefined
+        ? operationDurationText(operation, now)
+        : `${overall.label} ${overallTime}`,
+  };
+}
+
+const PIPELINE_STEP_IDS: ReadonlySet<string> = new Set<PipelineStepId>([
+  "INIT_BUILD_CONTAINER",
+  "RUN_BUILD_COMMANDS",
+  "INIT_PREPARE_CONTAINER",
+  "RUN_PREPARE_COMMANDS",
+  "DEPLOY",
+]);
+
+const isPipelineStepId = (id: string): id is PipelineStepId => PIPELINE_STEP_IDS.has(id);
+
+/**
+ * A settled deploy the card never observed (a reload, a second tab): the one
+ * step its result names as failed, in the GUI's words — never the steps it
+ * cannot know it had.
+ */
+function reportedFailedStep(operation: ZeropsOperation): PipelineStepRow | undefined {
+  const failed = operation.steps.filter((step) => step.state === "failed");
+  const only = failed[0];
+  if (failed.length !== 1 || only === undefined || !isPipelineStepId(only.id)) {
+    return undefined;
+  }
+  return {
+    id: only.id,
+    state: "failed",
+    sentence: pipelineStepSentence(only.id, "failed", {
+      versionName: operation.version?.name,
+      serviceName: operation.target?.hostname,
+      serviceType: undefined,
+    }),
+  };
+}
+
+/** A deploy's body: its pipeline's steps, "calculating" before they are known. */
+function DeployPipeline({
+  operation,
+  pipeline,
+}: {
+  readonly operation: ZeropsOperation;
+  readonly pipeline: PipelineReadout | undefined;
+}) {
+  const label = `${operation.kicker} steps`;
+  if (pipeline !== undefined && !pipeline.calculating && pipeline.steps.length > 0) {
+    return <PipelineStepList aria-label={label} steps={pipeline.steps} />;
+  }
+  if (operation.phase === "running") {
+    return <PipelineCalculating aria-label={label} />;
+  }
+  const failed = reportedFailedStep(operation);
+  return failed === undefined ? null : <PipelineStepList aria-label={label} steps={[failed]} />;
+}
+
 function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
   return (
     <ServiceBrowserLink
@@ -210,20 +348,6 @@ function UrlChip({ label, url }: { readonly label: string; readonly url: string 
       <GlobeIcon aria-hidden="true" className="size-3 text-success-foreground" />
       <span>{label}</span>
     </ServiceBrowserLink>
-  );
-}
-
-/** The quiet Details disclosure — the result's full text, collapsed. */
-function DetailDisclosure({ detail }: { readonly detail: string }) {
-  return (
-    <details className="text-muted-foreground text-xs">
-      <summary className="w-fit cursor-pointer list-none select-none text-xs hover:text-foreground [&::-webkit-details-marker]:hidden">
-        Details
-      </summary>
-      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/60 p-2 text-[11px]">
-        {detail}
-      </pre>
-    </details>
   );
 }
 
@@ -392,7 +516,6 @@ function BrowserCard({
         {operation.explanation !== undefined ? (
           <ExplanationBlock explanation={operation.explanation} />
         ) : null}
-        {operation.detail !== undefined ? <DetailDisclosure detail={operation.detail} /> : null}
       </div>
       {expanded && image !== undefined
         ? createPortal(
@@ -452,7 +575,9 @@ function StepsBody({
     operation.kind === "verify" ? steps.filter((step) => step.state === "failed") : [];
   return (
     <>
-      {steps.length === 0 ? null : PIPELINE_KINDS.has(operation.kind) ? (
+      {readsPipeline(operation) ? (
+        <DeployPipeline operation={operation} pipeline={observed?.pipeline} />
+      ) : steps.length === 0 ? null : PIPELINE_KINDS.has(operation.kind) ? (
         <PipelineSegments aria-label={`${operation.kicker} progress`} steps={steps} />
       ) : operation.kind === "verify" ? (
         <CheckChips aria-label={`${operation.kicker} progress`} steps={steps} />
@@ -525,9 +650,20 @@ export function ZeropsOperationCard(props: {
   const isRunning = isRunningPhase(operation);
   const tickNow = useSecondsNowMs(props.now === undefined && isRunning);
   const now = props.now ?? tickNow;
-  const durationText = headerDurationText(operation, now);
+  const deploy = readsPipeline(operation)
+    ? deployHeader(operation, observed?.pipeline, now)
+    : undefined;
+  const durationText =
+    deploy === undefined ? headerDurationText(operation, now) : deploy.durationText;
   const subject = operationSubject(operation, subjectHost);
-  const header = <CardHeader durationText={durationText} operation={operation} subject={subject} />;
+  const header = (
+    <CardHeader
+      durationText={durationText}
+      operation={operation}
+      status={deploy?.status}
+      subject={subject}
+    />
+  );
 
   const openBrowserPanel = () => {
     if (threadRef !== undefined && threadRef !== null) {
@@ -607,7 +743,6 @@ export function ZeropsOperationCard(props: {
               ) : null}
             </div>
           ) : null}
-          {operation.detail !== undefined ? <DetailDisclosure detail={operation.detail} /> : null}
         </>
       )}
     </FlatCard>

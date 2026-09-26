@@ -54,6 +54,12 @@
  *   `get_usage`); the event is an incremental update on top, and no owned reader
  *   existed. `thread.state.changed` gains optional `beforeTokens`/`afterTokens`
  *   (context compaction, `c5ba51d62`), additive.
+ * - 2.4 (2026-09-26): `account.rate-limits.updated` gains an optional typed
+ *   `blocked: ProviderUsageLimitBlock` (`{ window, resetsAt }`) — the window
+ *   that now refuses new requests and when it reopens, emitted whether or not
+ *   a turn runs, with `limits.windows` possibly empty. The orchestration usage
+ *   pause (`orchestration/Layers/ThreadUsagePauseReactor.ts`) is its first
+ *   reader; Claude emits it, the other drivers do not yet. Additive.
  *
  * @module providerRuntimeSpi
  */
@@ -67,7 +73,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.3";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.4";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

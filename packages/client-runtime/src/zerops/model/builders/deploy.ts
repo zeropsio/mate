@@ -1,7 +1,7 @@
 import {
   PIPELINE_SLOTS,
   failedPipelineSlots,
-  pipelineStepSlots,
+  queuedPipelineSlots,
 } from "../../activity/observedSteps.ts";
 import type { PipelineState } from "../../activity/pipelineState.ts";
 import { readRecordArray, readString } from "../../cards/decode.ts";
@@ -29,7 +29,6 @@ import {
   UNREPORTED_STEP_STATUS,
   buildStep,
   decodeCall,
-  detailField,
   errorInfoFor,
   explanationField,
   failedCallReason,
@@ -39,8 +38,6 @@ import {
   phaseFor,
   pickFirst,
   readInputString,
-  readRecord,
-  undecodedDetail,
   urlHost,
 } from "./shared.ts";
 
@@ -95,7 +92,7 @@ function deploySlots(
   failedPhase: string | undefined,
 ): ReadonlyArray<ZeropsOperationStep> {
   if (phase === "running") {
-    return pipelineStepSlots([]);
+    return queuedPipelineSlots();
   }
   const failedAt = failedPhase === undefined ? undefined : FAILED_PHASE_SLOT[failedPhase];
   if (failedAt !== undefined) {
@@ -115,7 +112,10 @@ export function buildDeployFields(
   const errorInfo = errorInfoFor(call, decoded);
   const card = decoded.card?.kind === "deploy" ? decoded.card : undefined;
   const resultStatus = card?.status;
-  const phase = deployPhase(call, resultStatus, context.nowMs);
+  // A result that reports its own failure is a failed deploy however cleanly
+  // the call returned — the batch reads its entries the same way.
+  const failedByResult = card !== undefined && reportsFailure(card);
+  const phase = failedByResult ? "failed" : deployPhase(call, resultStatus, context.nowMs);
   const subject =
     pickFirst(readInputString(call.input, "targetService"), card?.target) ?? "the service";
   const { voice, voiceSource } = mateVoiceFor("deploy", subject);
@@ -125,10 +125,6 @@ export function buildDeployFields(
   // needs naming, so a failed call's document is read as a deploy result here.
   const result =
     card ?? (decoded.document !== undefined ? decodeDeployResult(decoded.document) : undefined);
-  const failureClassification =
-    phase === "failed" && decoded.document !== undefined
-      ? readRecord(decoded.document.failureClassification)
-      : undefined;
   const steps = deploySlots(phase, result?.failedPhase);
 
   const links = deployLinks(phase, card?.subdomainUrl, context.projectId);
@@ -138,7 +134,12 @@ export function buildDeployFields(
       ? undefined
       : phase === "failed"
         ? operationClosing("deploy", "failed", {
-            errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
+            errorFirstLine:
+              errorInfo !== undefined
+                ? firstLine(errorInfo.message)
+                : card?.message !== undefined
+                  ? firstLine(card.message)
+                  : undefined,
           })
         : phase === "done" && card !== undefined
           ? operationClosing("deploy", "done", { host: subject })
@@ -163,16 +164,6 @@ export function buildDeployFields(
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links,
-    ...detailField([
-      result?.nextActions,
-      decoded.document !== undefined ? readString(decoded.document.verification) : undefined,
-      failureClassification !== undefined
-        ? readString(failureClassification.likelyCause)
-        : undefined,
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     target: { hostname: subject },
     ...(resultStatus !== undefined ? { resultStatus } : {}),
     hasResult: decoded.document !== undefined,
@@ -322,11 +313,6 @@ function buildDeployBatchFields(call: ZeropsCall, context: OperationBuildContext
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
-    ...detailField([
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     ...(firstHost !== undefined ? { target: { hostname: firstHost } } : {}),
     batch: true,
     hasResult: decoded.document !== undefined,

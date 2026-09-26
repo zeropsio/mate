@@ -216,70 +216,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> dark:bg-[color-mix(in_srgb,var(--contrast-foreground)_2.5%,var(--background))] in \"sticky top-2 z-10 mb-2 bg-secondary dark:bg-[color-mix(in_srgb,var(--contrast-foreground)_2.5%,var(--background))]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"inline-flex max-w-48 items-center gap-1 rounded-md border border-border/70 bg-background/45 px-1.5 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"break-words px-2 py-1 text-[11px] text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"flex min-w-0 font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"ml-1 hidden min-w-0 flex-1 truncate text-[11px] text-muted-foreground group-hover:text-foreground/80 @[24rem]/changed-files:inline\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"space-y-1 break-words px-2 py-1 text-[11px]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/ChatComposer.tsx",
     "kind": "Literal",
     "fingerprint": "<> rounded-[20px] in \"rounded-[20px] transition-[background-color] duration-200\"",
@@ -474,22 +410,6 @@
   {
     "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"px-0.5 pb-0.5 font-medium text-secondary-label text-[11px]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"w-3.5 shrink-0 text-center font-mono text-[11px] leading-none text-muted-foreground/70\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[12px] in \"flex items-baseline gap-2 text-[12px] leading-5\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
@@ -514,22 +434,6 @@
   {
     "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"flex min-w-0 flex-1 items-baseline gap-2 py-px text-[13px] leading-5 text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"flex min-w-0 items-baseline gap-2 py-px text-[13px] leading-5 text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"flex min-w-0 w-full items-baseline gap-1.5 text-[13px] leading-5\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
@@ -539,14 +443,6 @@
     "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"w-fit max-w-full min-w-0 overflow-hidden rounded-md text-[13px] leading-5\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-update-role,var(--foreground))] in \"text-[var(--zerops-update-role,var(--foreground))]\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -1248,30 +1144,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11.5px] in \"max-h-56 overflow-auto whitespace-pre rounded-md bg-background/60 p-2 font-mono text-[11.5px] leading-relaxed\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"flex w-full items-center justify-between gap-2 text-[11px] text-muted-foreground uppercase tracking-wide\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed)] in \"text-[var(--zerops-status-failed)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
     "kind": "Literal",
     "fingerprint": "<> bg-[var(--zerops-rail)] in \"h-2 w-px bg-[var(--zerops-rail)]\"",
@@ -1707,14 +1579,6 @@
     "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
     "kind": "Literal",
     "fingerprint": "<> border-[var(--zerops-status-failed)]/35 in \"border-[var(--zerops-status-failed)]/35\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/60 p-2 text-[11px]\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

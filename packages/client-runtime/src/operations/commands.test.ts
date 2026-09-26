@@ -26,6 +26,7 @@ import {
   createProject,
   revertThreadCheckpoint,
   reorderActiveThread,
+  setThreadUsageAutoResume,
   settleThread,
   stopThreadSession,
   unsettleThread,
@@ -192,6 +193,26 @@ describe("environment commands", () => {
           commandId: "unsettle-command",
           threadId: "thread-1",
           reason: "user",
+        },
+      ]);
+    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
+  );
+
+  it.effect.each([true, false])("sets a thread's usage auto-resume to %s", (enabled) =>
+    Effect.gen(function* () {
+      const dispatched: ClientOrchestrationCommand[] = [];
+      const supervisor = yield* makeSupervisor(dispatched);
+      yield* setThreadUsageAutoResume({
+        commandId: CommandId.make("auto-resume-command"),
+        threadId: ThreadId.make("thread-1"),
+        enabled,
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+      expect(dispatched).toEqual([
+        {
+          type: "thread.usage-auto-resume.set",
+          commandId: "auto-resume-command",
+          threadId: "thread-1",
+          enabled,
         },
       ]);
     }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),

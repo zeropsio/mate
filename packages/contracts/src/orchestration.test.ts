@@ -1191,6 +1191,118 @@ it.effect("project favicon overrides accept only supported image files", () =>
   }),
 );
 
+const usagePauseShell = {
+  id: "thread-1",
+  projectId: "project-1",
+  title: "Paused thread",
+  modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5" },
+  runtimeMode: "full-access",
+  branch: null,
+  worktreePath: null,
+  latestTurn: null,
+  createdAt: "2026-09-26T08:00:00.000Z",
+  updatedAt: "2026-09-26T08:00:00.000Z",
+  session: null,
+  latestUserMessageAt: null,
+  hasPendingApprovals: false,
+  hasPendingUserInput: false,
+  hasActionableProposedPlan: false,
+};
+const usagePause = {
+  resetsAt: "2026-09-26T13:00:00.000Z",
+  window: "5-hour",
+  held: 3,
+  pausedAt: "2026-09-26T09:12:00.000Z",
+};
+
+it.effect.each([
+  { name: "a shell from an older server", extra: {}, expected: undefined },
+  { name: "a shell that is not paused", extra: { usagePause: null }, expected: null },
+  {
+    name: "a paused shell",
+    extra: { usagePause: { ...usagePause, autoResume: true } },
+    expected: { ...usagePause, autoResume: true },
+  },
+])("decodes the usage pause of $name", ({ extra, expected }) =>
+  Effect.gen(function* () {
+    const shell = yield* decodeOrchestrationThreadShell({ ...usagePauseShell, ...extra });
+    assert.deepStrictEqual(shell.usagePause, expected);
+  }),
+);
+
+it.effect("rejects a usage pause with a negative held count or no window", () =>
+  Effect.gen(function* () {
+    for (const broken of [
+      { ...usagePause, held: -1, autoResume: true },
+      { ...usagePause, window: " ", autoResume: true },
+      { ...usagePause },
+    ]) {
+      const exit = yield* Effect.exit(
+        decodeOrchestrationThreadShell({ ...usagePauseShell, usagePause: broken }),
+      );
+      assert.isTrue(Exit.isFailure(exit));
+    }
+  }),
+);
+
+it.effect("the auto-resume switch is a client command; the pause itself is set by the server", () =>
+  Effect.gen(function* () {
+    const autoResume = {
+      type: "thread.usage-auto-resume.set",
+      commandId: "cmd-usage-auto-resume",
+      threadId: "thread-1",
+      enabled: false,
+    };
+    for (const decoded of [
+      yield* decodeClientOrchestrationCommand(autoResume),
+      yield* decodeOrchestrationCommand(autoResume),
+    ]) {
+      assert.strictEqual(decoded.type, "thread.usage-auto-resume.set");
+    }
+
+    const pause = {
+      type: "thread.usage-pause.set",
+      commandId: "server:usage-pause:1",
+      threadId: "thread-1",
+      usagePause,
+      createdAt: "2026-09-26T09:12:00.000Z",
+    };
+    const command = yield* decodeOrchestrationCommand(pause);
+    assert.strictEqual(command.type, "thread.usage-pause.set");
+    const cleared = yield* decodeOrchestrationCommand({ ...pause, usagePause: null });
+    assert.strictEqual(cleared.type === "thread.usage-pause.set" && cleared.usagePause, null);
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(decodeClientOrchestrationCommand(pause))));
+  }),
+);
+
+it.effect.each([
+  ["thread.usage-pause-set", { threadId: "thread-1", usagePause }],
+  ["thread.usage-pause-set", { threadId: "thread-1", usagePause: null }],
+  [
+    "thread.usage-auto-resume-set",
+    { threadId: "thread-1", usageAutoResumeDisabledAt: "2026-09-26T09:20:00.000Z" },
+  ],
+  ["thread.usage-auto-resume-set", { threadId: "thread-1", usageAutoResumeDisabledAt: null }],
+] as const)("decodes a %s event", ([type, payload]) =>
+  Effect.gen(function* () {
+    const event = yield* decodeOrchestrationEvent({
+      type,
+      sequence: 1,
+      eventId: `event-${type}`,
+      aggregateKind: "thread",
+      aggregateId: "thread-1",
+      occurredAt: "2026-09-26T09:20:00.000Z",
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      payload,
+    });
+    assert.strictEqual(event.type, type);
+    assert.deepStrictEqual<unknown>(event.payload, payload);
+  }),
+);
+
 it("isProviderSendTurnSupportedImageMimeType accepts raster formats and rejects svg", () => {
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("image/png"), true);
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("IMAGE/JPEG"), true);

@@ -31,7 +31,10 @@ import {
   ThreadMessagePreview,
   ThreadTitleState,
   ThreadId,
+  ThreadUsagePauseState,
+  type ThreadUsagePause,
 } from "@t3tools/contracts";
+import { userAskOf } from "@t3tools/shared/userAsk";
 import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -84,9 +87,6 @@ const THREAD_DETAIL_ACTIVITY_LIMIT = 500;
 // Snapshot payloads are decoded and projected in small sequential batches so
 // one client read does not retain the raw payloads for the full activity window.
 const THREAD_DETAIL_ACTIVITY_PAYLOAD_BATCH_SIZE = 25;
-// SQLite trim defaults to spaces. Match the whitespace removed by String.trim.
-const MESSAGE_TRIM_WHITESPACE =
-  "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff";
 const ProjectionProjectDbRowSchema = ProjectionProject.mapFields(
   Struct.assign({
     defaultModelSelection: Schema.NullOr(Schema.fromJsonString(ModelSelection)),
@@ -99,8 +99,21 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
     attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
   }),
 );
+// The thread's other user messages, oldest first, as far as `userAskOf` needs
+// to read them: a command's first token, a placeholder, the attachment kinds.
+const TURN_START_OTHER_USER_MESSAGE_LIMIT = 64;
+const TURN_START_OTHER_USER_TEXT_CHARS = 512;
 const ProjectionTurnStartMessageDbRowSchema = ProjectionThreadMessageDbRowSchema.mapFields(
-  Struct.assign({ hasOtherUserMessages: Schema.Number }),
+  Struct.assign({
+    otherUserMessages: Schema.fromJsonString(
+      Schema.Array(
+        Schema.Struct({
+          text: Schema.String,
+          attachments: Schema.Array(Schema.Struct({ type: Schema.String })),
+        }),
+      ),
+    ),
+  }),
 );
 const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan;
 const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
@@ -110,8 +123,19 @@ const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
     latestMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
     latestUserMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
+    usagePause: Schema.NullOr(Schema.fromJsonString(ThreadUsagePauseState)),
+    usageAutoResumeDisabledAt: Schema.NullOr(IsoDateTime),
   }),
 );
+// The pause as clients read it: the thread's switch folded in (on by default).
+function mapUsagePause(row: {
+  readonly usagePause: ThreadUsagePauseState | null;
+  readonly usageAutoResumeDisabledAt: string | null;
+}): ThreadUsagePause | null {
+  return row.usagePause === null
+    ? null
+    : { ...row.usagePause, autoResume: row.usageAutoResumeDisabledAt === null };
+}
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
   Struct.assign({
     payload: Schema.fromJsonString(Schema.Unknown),
@@ -515,6 +539,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         ORDER BY created_at ASC, thread_id ASC
@@ -558,6 +584,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE deleted_at IS NULL
@@ -603,6 +631,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE deleted_at IS NULL
@@ -1071,6 +1101,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE thread_id = ${threadId}
@@ -1130,17 +1162,28 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         is_streaming AS "isStreaming",
         created_at AS "createdAt",
         updated_at AS "updatedAt",
-        EXISTS (
-          SELECT 1
-          FROM projection_thread_messages AS other
-          WHERE other.thread_id = ${threadId}
-            AND other.message_id != ${messageId}
-            AND other.role = 'user'
-            AND (
-              LOWER(TRIM(other.text, ${MESSAGE_TRIM_WHITESPACE})) != '/compact'
-              OR COALESCE(json_array_length(other.attachments_json), 0) > 0
+        (
+          SELECT json_group_array(
+            json_object(
+              'text', substr(other.text, 1, ${TURN_START_OTHER_USER_TEXT_CHARS}),
+              'attachments', CASE
+                WHEN json_valid(other.attachments_json)
+                  AND json_type(other.attachments_json) = 'array'
+                THEN json(other.attachments_json)
+                ELSE json('[]')
+              END
             )
-        ) AS "hasOtherUserMessages"
+          )
+          FROM (
+            SELECT text, attachments_json
+            FROM projection_thread_messages
+            WHERE thread_id = ${threadId}
+              AND message_id != ${messageId}
+              AND role = 'user'
+            ORDER BY created_at ASC, message_id ASC
+            LIMIT ${TURN_START_OTHER_USER_MESSAGE_LIMIT}
+          ) AS other
+        ) AS "otherUserMessages"
       FROM projection_thread_messages
       WHERE thread_id = ${threadId} AND message_id = ${messageId}
       LIMIT 1
@@ -2441,6 +2484,7 @@ pending_approval_requests AS (
                         row.threadId,
                       ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                      usagePause: mapUsagePause(row),
                     } satisfies OrchestrationThreadShell)
                   : Result.failVoid,
               ),
@@ -2598,6 +2642,7 @@ pending_approval_requests AS (
                   row.threadId,
                 ),
                 planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                usagePause: mapUsagePause(row),
               })),
               updatedAt: updatedAt ?? "1970-01-01T00:00:00.000Z",
             };
@@ -2900,6 +2945,7 @@ pending_approval_requests AS (
           threadRow.value.threadId,
         ),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
+        usagePause: mapUsagePause(threadRow.value),
       } satisfies OrchestrationThreadShell);
     });
 
@@ -2943,7 +2989,7 @@ pending_approval_requests AS (
         updatedAt: row.updatedAt,
         ...(row.attachments !== null ? { attachments: row.attachments } : {}),
       },
-      hasOtherUserMessages: row.hasOtherUserMessages === 1,
+      hasOtherAsks: row.otherUserMessages.some((other) => userAskOf(other) !== null),
     }));
   });
 

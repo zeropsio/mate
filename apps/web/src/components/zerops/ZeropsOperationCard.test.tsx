@@ -13,6 +13,7 @@ import {
   weatherdashFirstDeploy,
   type ZeropsShowcaseThread,
 } from "@t3tools/client-runtime/zerops/operations/fixtures";
+import { readPipeline } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
@@ -120,7 +121,9 @@ describe("ZeropsOperationCard — fixture operations", () => {
     expect(html).toContain("data-zerops-card");
     expect(html).toContain(`data-zerops-card-kind="${operation.kind}"`);
     expect(html).toContain(`data-zerops-operation-key="${operation.key}"`);
-    expect(html).toContain(operation.kicker);
+    if (html.includes("<ol")) {
+      expect(html).toContain(operation.kicker);
+    }
     if (operation.kind === "deploy" || operation.kind === "verify") {
       // A card that names one service reads verb + hostname chip, not the voice sentence.
       expect(html).toMatch(
@@ -158,99 +161,299 @@ describe("ZeropsOperationCard — fixture operations", () => {
   });
 });
 
-describe("ZeropsOperationCard — running, with an observed region", () => {
-  const running = operationFor(
-    zeropsCall({
-      id: "e1",
-      startedAt: "2026-09-01T00:00:00.000Z",
-      turnId: "t1",
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "inProgress",
-    }),
-  );
-
-  const observed: ObservedRegion = {
-    steps: [
-      { id: "build", label: "Build", state: "done", stateLabel: "Done", durationMs: 4_000 },
-      {
-        id: "deploy",
-        label: "Deploy",
-        state: "running",
-        stateLabel: "Running",
-        durationMs: 38_000,
-      },
-    ],
-    provenance: "live from Zerops · 2 s ago",
-    log: <div data-testid="build-log-tail">log tail</div>,
-  };
-
-  it("shows the running elapsed clock, step durations, provenance and the log region", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsOperationCard
-        now={Date.parse("2026-09-01T00:00:42.000Z")}
-        observed={observed}
-        operation={running}
-      />,
-    );
-
-    expect(html).toContain("0:42");
-    expect(html).toContain("4 s");
-    expect(html).toContain("38 s");
-    expect(html).toContain("live from Zerops · 2 s ago");
-    expect(html).toContain("build-log-tail");
-    expect(html).toContain('data-zerops-card-tone="busy"');
-  });
-
-  it("renders the observation's secondary processes as compact rows under the steps", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsOperationCard
-        now={Date.parse("2026-09-01T00:00:42.000Z")}
-        observed={{
-          ...observed,
-          chips: [
-            {
-              id: "p-subdomain",
-              label: "Enable subdomain access",
-              state: "running",
-              stateLabel: "Running",
-            },
-          ],
-        }}
-        operation={running}
-      />,
-    );
-    const chips = html.match(/<ol[^>]*aria-label="Other activity"[\s\S]*?<\/ol>/)?.[0];
-
-    expect(chips).toContain("Enable subdomain access");
-    expect(chips).toContain('data-zerops-process-density="compact"');
-    expect(html.indexOf("Enable subdomain access")).toBeGreaterThan(html.indexOf("38 s"));
-  });
-
-  it("writes no provenance line while the provenance is empty", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsOperationCard observed={{ ...observed, provenance: "" }} operation={running} />,
-    );
-    expect(html).not.toContain("data-zerops-operation-provenance");
-  });
-
-  it("shows a settled m/s-style duration once the operation is done and settledAt is known", () => {
-    const done = operationFor(
+describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () => {
+  const SHA = "3f2a9c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39";
+  const at = (seconds: number) => new Date(Date.UTC(2026, 8, 1, 0, 0, seconds)).toISOString();
+  const NOW_MS = Date.parse(at(74));
+  const deploy = (overrides: Partial<Parameters<typeof zeropsCall>[0]> = {}) =>
+    operationFor(
       zeropsCall({
-        id: "e2",
-        startedAt: "2026-09-01T00:00:00.000Z",
+        id: "deploy-readout",
+        startedAt: at(0),
         turnId: "t1",
         toolName: "zerops_deploy",
         input: { targetService: "weatherdash" },
-        status: "completed",
-        settledAt: "2026-09-01T00:01:12.000Z",
-        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+        status: "inProgress",
+        ...overrides,
       }),
     );
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={done} />);
-
-    expect(html).toContain("1m 12s");
+  const running = deploy();
+  const readout = (
+    appVersion: Parameters<typeof readPipeline>[0],
+    nowSeconds = 74,
+  ): ObservedRegion["pipeline"] =>
+    readPipeline(appVersion, {
+      nowMs: Date.parse(at(nowSeconds)),
+      serviceName: "weatherdash",
+      serviceType: "Node.js",
+    });
+  const building = readout({
+    name: SHA,
+    status: "BUILDING",
+    build: { pipelineStart: at(5), startDate: at(13) },
   });
+  const observedOf = (pipeline: ObservedRegion["pipeline"]): ObservedRegion => ({
+    steps: [],
+    ...(pipeline === undefined ? {} : { pipeline }),
+    provenance: "",
+    log: <div data-testid="build-log-tail">log tail</div>,
+  });
+  const render = (operation: ZeropsOperation, observed?: ObservedRegion) =>
+    renderToStaticMarkup(
+      <ZeropsOperationCard
+        now={NOW_MS}
+        operation={operation}
+        {...(observed === undefined ? {} : { observed })}
+      />,
+    );
+  const rowsOf = (html: string) =>
+    [
+      ...html.matchAll(
+        /<li[^>]*data-zerops-pipeline-step="([^"]+)" data-zerops-pipeline-state="([a-z]+)"[^>]*>([\s\S]*?)<\/li>/g,
+      ),
+    ].map(([, id, state, inner]) => ({ id, state, inner: inner! }));
+  const headerOf = (html: string) => html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+  const durationOf = (html: string) =>
+    html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
+
+  it("one row per step the pipeline has: its sentence and its duration, in the card's one format", () => {
+    const rows = rowsOf(render(running, observedOf(building)));
+
+    expect(rows.map(({ id, state }) => [id, state])).toEqual([
+      ["INIT_BUILD_CONTAINER", "finished"],
+      ["RUN_BUILD_COMMANDS", "running"],
+      ["DEPLOY", "waiting"],
+    ]);
+    expect(rows[0]?.inner).toContain("Initialized build container");
+    expect(rows[0]?.inner).toContain(">8s<");
+    expect(rows[1]?.inner).toContain("Running build commands from zerops.yml");
+    expect(rows[1]?.inner).toContain(">1m 1s<");
+    expect(rows[2]?.inner).toContain(
+      "Create app version 3f2a9c1 and upgrade Node.js service weatherdash",
+    );
+    expect(rows[2]?.inner).not.toContain("tabular-nums");
+  });
+
+  it.each([
+    { state: "finished", shows: ["lucide-check", "text-success-foreground"] },
+    { state: "running", shows: ['data-zerops-status-tone="busy"', "animate-status-pulse"] },
+    { state: "waiting", shows: ["lucide-circle", "text-muted-foreground"] },
+  ])("a $state step's glyph", ({ state, shows }) => {
+    const row = rowsOf(render(running, observedOf(building))).find(
+      (entry) => entry.state === state,
+    );
+    const glyph = row?.inner.match(
+      /<(svg|span)[^>]*data-zerops-pipeline-glyph="[a-z]+"[\s\S]*?<\/\1>/,
+    )?.[0];
+    for (const text of shows) expect(glyph ?? "").toContain(text);
+  });
+
+  it.each([
+    {
+      name: "failed",
+      pipeline: readout(
+        {
+          name: SHA,
+          status: "BUILD_FAILED",
+          build: { pipelineStart: at(5), startDate: at(13), pipelineFailed: at(70) },
+        },
+        600,
+      ),
+      state: "failed",
+      shows: ["lucide-circle-alert", "text-destructive-foreground"],
+    },
+    {
+      name: "cancelled",
+      pipeline: readout(
+        { name: SHA, status: "CANCELLED", build: { pipelineStart: at(5), pipelineFailed: at(9) } },
+        600,
+      ),
+      state: "cancelled",
+      shows: ["lucide-x", "text-muted-foreground"],
+    },
+  ])("a $name step's glyph", ({ pipeline, state, shows }) => {
+    const row = rowsOf(render(deploy({ status: "failed" }), observedOf(pipeline))).find(
+      (entry) => entry.state === state,
+    );
+    for (const text of shows) expect(row?.inner).toContain(text);
+  });
+
+  it("the running and the failed step read in the foreground, every other one muted", () => {
+    const failed = readout(
+      {
+        name: SHA,
+        status: "BUILD_FAILED",
+        build: { pipelineStart: at(5), startDate: at(13), pipelineFailed: at(70) },
+      },
+      600,
+    );
+    const sentenceTone = (inner: string) =>
+      inner.includes("flex-1 text-sm leading-5 text-foreground") ? "foreground" : "muted";
+
+    expect(
+      rowsOf(render(running, observedOf(building))).map((row) => sentenceTone(row.inner)),
+    ).toEqual(["muted", "foreground", "muted"]);
+    expect(
+      rowsOf(render(deploy({ status: "failed" }), observedOf(failed))).map((row) =>
+        sentenceTone(row.inner),
+      ),
+    ).toEqual(["muted", "foreground", "muted"]);
+  });
+
+  it("a running deploy's note follows its sentence", () => {
+    const deploying = readPipeline(
+      {
+        name: SHA,
+        status: "DEPLOYING",
+        build: { pipelineStart: at(5), startDate: at(13), endDate: at(60) },
+      },
+      { nowMs: NOW_MS, serviceName: "weatherdash", hadContainers: true },
+    );
+    const row = rowsOf(render(running, observedOf(deploying))).find(
+      (entry) => entry.id === "DEPLOY",
+    );
+    expect(row?.inner).toContain(
+      "Creating app version 3f2a9c1 and upgrading weatherdash · Preparing upgrade…",
+    );
+  });
+
+  it("the header reads the pipeline's word, the service and the overall line — never a clock", () => {
+    const header = headerOf(render(running, observedOf(building)));
+
+    expect(header).toMatch(/data-zerops-primitive="status-dot"[^>]*>[\s\S]*?>Running</);
+    expect(header).not.toContain('data-zerops-primitive="micro-label"');
+    expect(header).toMatch(/data-zerops-subject-chip[^>]*>weatherdash</);
+    expect(durationOf(header)).toBe("Running for 1m 9s");
+    expect(header).not.toMatch(/\d:\d\d/);
+  });
+
+  it.each([
+    { name: "nothing observed yet", observed: undefined },
+    {
+      name: "the platform still calculating",
+      observed: observedOf(readout({ status: "WAITING_TO_BUILD", build: {} })),
+    },
+  ])("before the steps are known — $name: one row says it is calculating them", ({ observed }) => {
+    const html = render(running, observed);
+    const rows = rowsOf(html);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.inner).toContain("Calculating steps from zerops.yml");
+    expect(rows[0]?.inner).toContain('data-zerops-status-tone="busy"');
+    expect(durationOf(headerOf(html))).toBe("1m 14s");
+  });
+
+  it("the provenance is one quiet line, only once the feed is not answering", () => {
+    const quiet = render(running, observedOf(building));
+    const silent = render(running, {
+      ...observedOf(building),
+      provenance: "Zerops isn't answering · last update 2m ago",
+    });
+
+    expect(quiet).not.toContain("data-zerops-operation-provenance");
+    expect(silent).toMatch(
+      /data-zerops-operation-provenance[^>]*>Zerops isn&#x27;t answering · last update 2m ago</,
+    );
+  });
+
+  it("renders the observation's secondary processes as compact rows under the steps", () => {
+    const html = render(running, {
+      ...observedOf(building),
+      chips: [
+        {
+          id: "p-subdomain",
+          label: "Enable subdomain access",
+          state: "running",
+          stateLabel: "Running",
+        },
+      ],
+    });
+    const chips = html.match(/<ol[^>]*aria-label="Other activity"[\s\S]*?<\/ol>/)?.[0];
+
+    expect(chips).toContain("Enable subdomain access");
+    expect(html.indexOf("Enable subdomain access")).toBeGreaterThan(
+      html.indexOf("data-zerops-pipeline-steps"),
+    );
+    expect(html).toContain("build-log-tail");
+  });
+
+  it("a settled deploy whose pipeline ended reads the pipeline's word and overall line", () => {
+    const active = readout(
+      {
+        name: SHA,
+        status: "ACTIVE",
+        build: {
+          pipelineStart: at(5),
+          startDate: at(13),
+          endDate: at(60),
+          pipelineFinish: at(100),
+        },
+        activationDate: at(100),
+      },
+      600,
+    );
+    const done = deploy({
+      status: "completed",
+      settledAt: at(110),
+      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+    });
+    const header = headerOf(render(done, observedOf(active)));
+
+    expect(header).toMatch(/>Finished</);
+    expect(durationOf(header)).toBe("Finished in 1m 35s");
+  });
+
+  it("a settled deploy whose readout stopped mid-way keeps the result's own word and time", () => {
+    const done = deploy({
+      status: "completed",
+      settledAt: at(72),
+      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+    });
+    const header = headerOf(render(done, observedOf(building)));
+
+    expect(header).toMatch(/>Deployed</);
+    expect(durationOf(header)).toBe("1m 12s");
+  });
+
+  it.each([
+    {
+      name: "failed in its build",
+      result: {
+        status: "BUILD_FAILED",
+        targetService: "weatherdash",
+        failedPhase: "build",
+        versionName: SHA,
+      },
+      rows: [["RUN_BUILD_COMMANDS", "Build commands from zerops.yml failed"]],
+    },
+    {
+      name: "failed starting its new container",
+      result: {
+        status: "DEPLOY_FAILED",
+        targetService: "weatherdash",
+        failedPhase: "init",
+        versionName: SHA,
+      },
+      rows: [["DEPLOY", "Failed while creating app version 3f2a9c1 or upgrading weatherdash"]],
+    },
+    {
+      name: "landed",
+      result: { status: "DEPLOYED", targetService: "weatherdash" },
+      rows: [],
+    },
+  ])(
+    "a settled deploy the card never observed, $name: only the step its result names as failed",
+    ({ result, rows }) => {
+      const html = render(
+        deploy({ status: "completed", settledAt: at(72), resultText: JSON.stringify(result) }),
+      );
+
+      expect(
+        rowsOf(html).map(({ id, inner }) => [id, inner.match(/leading-5[^"]*">([^<]*)</)?.[1]]),
+      ).toEqual(rows);
+      expect(durationOf(headerOf(html))).toBe("1m 12s");
+    },
+  );
 });
 
 describe("ZeropsOperationCard — the pipeline row", () => {
@@ -259,8 +462,8 @@ describe("ZeropsOperationCard — the pipeline row", () => {
       id: "seg",
       startedAt: "2026-09-01T00:00:00.000Z",
       turnId: "t1",
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
+      toolName: "zerops_import",
+      input: { content: "services:\n  - hostname: weatherdash\n" },
       status: "inProgress",
     }),
   );
@@ -736,7 +939,7 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
   const header = (html: string) => html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
   const verbOf = (html: string) =>
     header(html).match(
-      /data-zerops-primitive="status-dot"[\s\S]*?data-zerops-primitive="micro-label">([^<]*)</,
+      /data-zerops-primitive="status-dot"[\s\S]*?(?:data-zerops-primitive="micro-label"|class="min-w-0 truncate")>([^<]*)</,
     )?.[1];
   const chipOf = (html: string) =>
     header(html).match(/data-zerops-subject-chip[^>]*>([^<]*)</)?.[1];
@@ -750,7 +953,8 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
       subjectHost: "kanbandev",
       verb: "Checking",
       chip: "kanbandev",
-      path: "/cz/products/vltava?lang=cs",
+      // The page as the person names it: its path, never the query.
+      path: "/cz/products/vltava",
     },
     {
       name: "a settled browser check on a host no service answers",
@@ -758,7 +962,8 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
       subjectHost: undefined,
       verb: "Checked",
       chip: "kanbandev-26a7.prg1.zerops.app",
-      path: "/cz/products/vltava?lang=cs",
+      // The page as the person names it: its path, never the query.
+      path: "/cz/products/vltava",
     },
     {
       name: "a deploy",
@@ -869,7 +1074,7 @@ describe("ZeropsOperationCard — a running card's header always says what it is
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
     const verb = header.match(
-      /data-zerops-primitive="status-dot"[\s\S]*?data-zerops-primitive="micro-label">([^<]*)</,
+      /data-zerops-primitive="status-dot"[\s\S]*?(?:data-zerops-primitive="micro-label"|class="min-w-0 truncate")>([^<]*)</,
     )?.[1];
 
     expect(verb).toBe(word);
@@ -928,7 +1133,7 @@ describe("ZeropsOperationCard — empty body", () => {
     expect(html).not.toContain('data-zerops-primitive="process-steps"');
   });
 
-  it("a deploy with no observed region still draws its five pipeline slots", () => {
+  it("a running deploy with no observed region says it is calculating its steps", () => {
     const operation = operationFor(
       zeropsCall({
         id: "e3",
@@ -939,41 +1144,79 @@ describe("ZeropsOperationCard — empty body", () => {
         status: "inProgress",
       }),
     );
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const html = renderToStaticMarkup(<ZeropsOperationCard now={0} operation={operation} />);
+    const list = html.match(/<ol[^>]*data-zerops-pipeline-steps[\s\S]*?<\/ol>/)?.[0];
 
-    const row = html.match(/<ol[^>]*data-zerops-pipeline-segments[\s\S]*?<\/ol>/)?.[0];
-    expect(row).toContain("grid-template-columns:repeat(5, minmax(0, 1fr))");
-    expect(row?.match(/data-zerops-process-state=/g)?.length ?? 0).toBe(5);
+    expect(list?.match(/<li/g)?.length).toBe(1);
+    expect(list).toContain("Calculating steps from zerops.yml");
+    expect(html).not.toContain("data-zerops-pipeline-segments");
   });
 });
 
-describe("ZeropsOperationCard — footer detail disclosure", () => {
-  it("shows a quiet Details disclosure with the detail text in a scrollable pre block, never a chip", () => {
+describe("ZeropsOperationCard — what zcp writes for the agent stays off the card", () => {
+  it.each([
+    {
+      name: "a deploy's next actions",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "completed" as const,
+      resultText: JSON.stringify({
+        status: "DEPLOYED",
+        targetService: "weatherdash",
+        nextActions: "Run zerops_verify on weatherdash.",
+        verification: "Tell the person that link.",
+      }),
+      agentText: ["Run zerops_verify on weatherdash.", "Tell the person that link."],
+    },
+    {
+      name: "a failed call's diagnostic and suggestion",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "failed" as const,
+      resultText: JSON.stringify({
+        code: "DEPLOY_FAILED",
+        error: "zcli push failed",
+        diagnostic: "exit status 1",
+        suggestion: "Run zerops_discover to check the service.",
+      }),
+      agentText: ["exit status 1", "Run zerops_discover to check the service."],
+    },
+    {
+      name: "a verify's check hints",
+      toolName: "zerops_verify",
+      input: { serviceHostname: "weatherdash" },
+      status: "completed" as const,
+      resultText: JSON.stringify({
+        hostname: "weatherdash",
+        status: "healthy",
+        checks: [{ name: "service_running", status: "pass", detail: "Read zerops_logs next." }],
+      }),
+      agentText: ["Read zerops_logs next."],
+    },
+    {
+      name: "a result the card cannot read",
+      toolName: "zerops_subdomain",
+      input: { serviceHostname: "weatherdash", action: "enable" },
+      status: "completed" as const,
+      resultText: "subdomain: ok (raw tool output)",
+      agentText: ["subdomain: ok (raw tool output)"],
+    },
+  ])("$name", ({ toolName, input, status, resultText, agentText }) => {
     const operation = operationFor(
       zeropsCall({
-        id: "e4",
+        id: `agent-${toolName}`,
         startedAt: "2026-09-01T00:00:00.000Z",
-        turnId: null,
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "completed",
-        resultText: JSON.stringify({
-          status: "DEPLOYED",
-          targetService: "weatherdash",
-          nextActions: "Check the logs for anything unusual.",
-        }),
+        toolName,
+        input,
+        status,
+        resultText,
+        settledAt: "2026-09-01T00:00:05.000Z",
       }),
     );
-    expect(operation.detail).toBeDefined();
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const html = renderToStaticMarkup(<ZeropsOperationCard now={0} operation={operation} />);
 
-    expect(html).toContain("<details");
-    expect(html).toContain("<summary");
-    expect(html).toContain("Details");
-    expect(html).toContain("<pre");
-    expect(html).toContain("max-h-40");
-    expect(html).toContain(operation.detail!);
-    expect(html).not.toContain(`data-zerops-chip-kind="detail"`);
+    expect(html).not.toMatch(/<summary[^>]*>Details</);
+    for (const text of agentText) expect(html).not.toContain(text);
   });
 });
 
@@ -983,13 +1226,13 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
   const verify = weatherdash.find((o) => o.kind === "verify")!;
   const bootstrap = weatherdash.find((o) => o.kind === "bootstrap")!;
 
-  it("the deploy operation's settledAt - anchorAt is ~75.9s and the card shows 1m 16s", () => {
+  it("the deploy operation's settledAt - anchorAt is ~75.9s and the card shows 1m 15s", () => {
     const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.anchorAt);
     expect(elapsedMs).toBeGreaterThan(75_000);
     expect(elapsedMs).toBeLessThan(77_000);
 
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={deploy} />);
-    expect(html).toContain("1m 16s");
+    expect(html).toContain("1m 15s");
     expect(html).not.toContain("0 s");
   });
 
@@ -1023,11 +1266,11 @@ describe("ZeropsOperationCard — the duration renders outside the status word",
       /data-zerops-primitive="status-dot"[\s\S]*?<\/span><\/span>/,
     )?.[0];
     expect(statusDotSpan).toBeDefined();
-    expect(statusDotSpan).not.toContain("0:42");
+    expect(statusDotSpan).not.toContain("42s");
 
     const durationSpan = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</);
     expect(durationSpan).toBeDefined();
-    expect(durationSpan![1]).toContain("0:42");
+    expect(durationSpan![1]).toBe("42s");
   });
 
   it("renders the settled duration in the body font, normal case, tabular-nums, separate from the status word", () => {
@@ -1098,7 +1341,7 @@ function dropSupersededToolUpdatedActivitiesForTest(
 }
 
 describe("ZeropsOperationCard - the deploy duration renders identically live and after a reload", () => {
-  it("shows 1m 16s for both the full activity list and the reloaded (superseded-updates-dropped) one", () => {
+  it("shows 1m 15s for both the full activity list and the reloaded (superseded-updates-dropped) one", () => {
     const fullDeploy = operationsFor(weatherdashFirstDeploy).find((o) => o.kind === "deploy")!;
     const reloadedDeploy = operationsFor({
       ...weatherdashFirstDeploy,
@@ -1111,8 +1354,8 @@ describe("ZeropsOperationCard - the deploy duration renders identically live and
 
     const liveHtml = renderToStaticMarkup(<ZeropsOperationCard operation={fullDeploy} />);
     const reloadedHtml = renderToStaticMarkup(<ZeropsOperationCard operation={reloadedDeploy} />);
-    expect(liveHtml).toContain("1m 16s");
-    expect(reloadedHtml).toContain("1m 16s");
+    expect(liveHtml).toContain("1m 15s");
+    expect(reloadedHtml).toContain("1m 15s");
     expect(liveHtml).not.toContain("0 s");
     expect(reloadedHtml).not.toContain("0 s");
   });
@@ -1144,7 +1387,9 @@ describe("ZeropsOperationCard — one quiet surface", () => {
     // card reads its status in sentence form, never a label.
     expect(header).not.toContain(operation.kicker);
     expect(microLabels).toEqual(
-      header.includes("data-zerops-operation-subject") ? [operation.statusWord] : [],
+      header.includes("data-zerops-operation-subject") && operation.kind !== "deploy"
+        ? [operation.statusWord]
+        : [],
     );
     expect(html).not.toContain("border-t");
   });
@@ -1281,7 +1526,20 @@ describe("ZeropsOperationCard — the version a settled deploy shipped", () => {
       }),
     );
   const frozen: ObservedRegion = {
-    steps: [{ id: "build", label: "Build", state: "done", stateLabel: "Done" }],
+    steps: [],
+    pipeline: readPipeline(
+      {
+        status: "ACTIVE",
+        build: {
+          pipelineStart: "2026-09-01T00:00:01.000Z",
+          startDate: "2026-09-01T00:00:05.000Z",
+          endDate: "2026-09-01T00:00:40.000Z",
+          pipelineFinish: "2026-09-01T00:00:48.000Z",
+        },
+        activationDate: "2026-09-01T00:00:48.000Z",
+      },
+      { nowMs: Date.parse("2026-09-01T00:00:50.000Z"), serviceName: "weatherdash" },
+    ),
     provenance: "",
   };
 
@@ -1316,8 +1574,9 @@ describe("ZeropsOperationCard — the version a settled deploy shipped", () => {
     }
     expect(html).toContain(line);
     expect(html).not.toContain("3f2a9c1d");
+    expect(html.indexOf("data-zerops-pipeline-steps")).toBeGreaterThan(-1);
     expect(html.indexOf("data-zerops-operation-version")).toBeGreaterThan(
-      html.indexOf("data-zerops-pipeline-segments"),
+      html.indexOf("data-zerops-pipeline-steps"),
     );
   });
 
@@ -1333,7 +1592,7 @@ describe("ZeropsOperationCard — the version a settled deploy shipped", () => {
         observed={{
           ...frozen,
           chips: [{ id: "sub", label: "Subdomain", state: "running", stateLabel: "Running" }],
-          provenance: "live from Zerops · 2 s ago",
+          provenance: "Zerops isn't answering · last update 12s ago",
           log: <div data-testid="build-log-tail">log tail</div>,
         }}
         operation={triggered}
@@ -1449,7 +1708,7 @@ describe("ZeropsOperationCard — why a card failed or timed out", () => {
     expect(html).not.toContain("data-zerops-operation-explanation");
   });
 
-  it("keeps a failed call's closing line and Details beside the explanation", () => {
+  it("keeps a failed call's closing line beside the explanation", () => {
     const html = renderToStaticMarkup(
       <ZeropsOperationCard
         now={0}
@@ -1462,6 +1721,6 @@ describe("ZeropsOperationCard — why a card failed or timed out", () => {
       />,
     );
     expect(html).toContain('data-zerops-card-outcome="true"');
-    expect(html).toContain("Details");
+    expect(html).toContain("GIT_TOKEN missing");
   });
 });

@@ -5,7 +5,6 @@ import {
   KIND_LABEL,
   buildStep,
   decodeCall,
-  detailField,
   errorInfoFor,
   firstLine,
   gatedStatusWord,
@@ -13,7 +12,6 @@ import {
   phaseFor,
   pickFirst,
   readInputString,
-  undecodedDetail,
   urlHost,
 } from "./shared.ts";
 
@@ -61,11 +59,6 @@ export function buildSubdomainFields(call: ZeropsCall): BuiltCardFields {
       ),
     ],
     links,
-    ...detailField([
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
   };

@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import * as settingsModule from "../hooks/useSettings";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { Button } from "./ui/button";
 import { setMarkdownTaskChecked } from "./files/filePreviewMode";
@@ -61,6 +62,15 @@ import ChatMarkdown, {
   canUseMarkdownFileShellActions,
   hasMarkdownFilePrimaryAction,
 } from "./ChatMarkdown";
+
+/** The rendered root: its class list and the reading it declares. */
+function markdownRoot(html: string): { classes: ReadonlyArray<string>; variant: string | null } {
+  const tag = /^<div [^>]*>/.exec(html)?.[0] ?? "";
+  return {
+    classes: (/ class="([^"]*)"/.exec(tag)?.[1] ?? "").split(/\s+/).filter(Boolean),
+    variant: / data-variant="([^"]*)"/.exec(tag)?.[1] ?? null,
+  };
+}
 
 function codeButton(renderer: ReactTestRenderer, label: string) {
   const button = renderer.root
@@ -483,6 +493,237 @@ describe("ChatMarkdown brand link icons", () => {
     expect(markup).not.toContain("google.com/s2/favicons");
     expect(markup).toContain("<svg");
   });
+});
+
+describe("ChatMarkdown variants", () => {
+  const LOG_CLASSES = ["text-sm", "leading-relaxed"];
+
+  it.each([
+    { variant: undefined, reading: "log" },
+    { variant: "log", reading: "log" },
+    { variant: "answer", reading: "answer" },
+  ] as const)("reads variant=$variant as the $reading", ({ variant, reading }) => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text="Body" {...(variant ? { variant } : {})} />,
+    );
+    const root = markdownRoot(html);
+
+    expect(root.variant).toBe(reading);
+    // The log keeps today's 14 px from its utility classes; an answer takes its
+    // size and ink from the stylesheet, which a utility would otherwise fight.
+    for (const className of LOG_CLASSES) {
+      expect(root.classes.includes(className)).toBe(reading === "log");
+    }
+  });
+
+  it("lets a log's caller still set its ink", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text="Body" className="text-foreground" />,
+    );
+
+    expect(markdownRoot(html).classes).toContain("text-foreground");
+    expect(markdownRoot(html).classes.some((name) => name.startsWith("text-foreground/"))).toBe(
+      false,
+    );
+  });
+});
+
+describe("ChatMarkdown wrapping", () => {
+  it("leaves breaking anywhere to long tokens, not the whole text", () => {
+    const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text="Body" />);
+
+    for (const className of markdownRoot(html).classes) {
+      expect(className).not.toMatch(/overflow-wrap|word-break|wrap-anywhere/);
+    }
+  });
+
+  it.each([
+    ["a link's own words", "[the Medusa recipe](https://github.com/zerops-recipe-apps/medusa-dtc)"],
+    ["a pasted address", "https://github.com/zeropsio/mate/pull/12"],
+  ])("breaks %s at word boundaries, not after every letter", (_name, text) => {
+    const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={text} />);
+
+    expect(html).not.toContain("<wbr");
+    // The favicon holds on to the first letter, so it never ends a line alone.
+    expect(html).toMatch(/<span class="whitespace-nowrap"><span[^>]*aria-hidden="true"/);
+  });
+});
+
+describe("ChatMarkdown bare addresses", () => {
+  /** The first link's tag and its visible words, without its favicon or destination hint. */
+  function firstLink(html: string): { tag: string; words: string } {
+    const [, tag = "", inner = ""] = /(<a [^>]*>)([\s\S]*?)<\/a>/.exec(html) ?? [];
+    return {
+      tag,
+      words: inner.replace(/<span[^>]*data-link-indicator[\s\S]*$/, "").replace(/<[^>]+>/g, ""),
+    };
+  }
+
+  it.each([
+    {
+      text: "The PR: https://github.com/zeropsio/mate/pull/12",
+      address: "https://github.com/zeropsio/mate/pull/12",
+      words: "github.com/zeropsio/mate/pull/12",
+    },
+    {
+      text: "It's in <https://git-4c1a-3000.prg1.zerops.app/garden/group/src/branch/main/environments.yaml>",
+      address:
+        "https://git-4c1a-3000.prg1.zerops.app/garden/group/src/branch/main/environments.yaml",
+      words: "git-4c1a-3000.prg1.zerops.app/…/environments.yaml",
+    },
+    {
+      text: "[https://garden-5b2d-9000.prg1.zerops.app/app](https://garden-5b2d-9000.prg1.zerops.app/app)",
+      address: "https://garden-5b2d-9000.prg1.zerops.app/app",
+      words: "garden-5b2d-9000.prg1.zerops.app/app",
+    },
+    {
+      text: "Scripted: https://orbitstage-6e3f-3000.prg1.zerops.app/?view=orbit#hud.",
+      address: "https://orbitstage-6e3f-3000.prg1.zerops.app/?view=orbit#hud",
+      words: "orbitstage-6e3f-3000.prg1.zerops.app",
+    },
+  ])("shows $address as $words, keeping the whole of it to follow and copy", (link) => {
+    const { tag, words } = firstLink(
+      renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={link.text} />),
+    );
+
+    expect(words).toBe(link.words);
+    expect(tag).toContain(`href="${link.address}"`);
+    expect(tag).toContain(`data-markdown-copy="${link.address}"`);
+  });
+
+  it.each([
+    {
+      text: "Notes are in [the tier folder](https://github.com/fxck/noola/tree/main/.zerops-recipe).",
+      words: "the tier folder",
+    },
+    { text: "The email is admin@example.com.", words: "admin@example.com" },
+  ])("keeps a link's own words: $words", (link) => {
+    const { tag, words } = firstLink(
+      renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={link.text} />),
+    );
+
+    expect(words).toBe(link.words);
+    expect(tag).not.toContain("data-markdown-copy");
+  });
+});
+
+describe("ChatMarkdown callouts", () => {
+  /** The callout's opening tag, its label paragraph and the markup after the label. */
+  function callout(html: string) {
+    const [, open = "", label = "", body = ""] =
+      /(<blockquote[^>]*>)(<p class="chat-markdown-callout-label"[^>]*>[\s\S]*?<\/p>)([\s\S]*)<\/blockquote>/.exec(
+        html,
+      ) ?? [];
+    return { open, label, body };
+  }
+
+  it.each([
+    { marker: "[!NOTE]", kind: "note", word: "Note" },
+    { marker: "[!TIP]", kind: "tip", word: "Tip" },
+    { marker: "[!IMPORTANT]", kind: "important", word: "Important" },
+    { marker: "[!WARNING]", kind: "warning", word: "Warning" },
+    { marker: "[!CAUTION]", kind: "caution", word: "Caution" },
+    { marker: "[!caution]", kind: "caution", word: "Caution" },
+  ])("renders > $marker as a $word callout", ({ marker, kind, word }) => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text={`> ${marker}\n> Stripe is empty.`} />,
+    );
+    const { open, label, body } = callout(html);
+
+    expect(open).toContain(`data-alert="${kind}"`);
+    expect(open).toContain('role="note"');
+    expect(open).toContain("chat-markdown-callout");
+    // A small label: the glyph and the word, then the content without its marker line.
+    expect(label).toMatch(new RegExp(`<svg[\\s\\S]*</svg>${word}</p>$`));
+    expect(body.trim()).toBe("<p>Stripe is empty.</p>");
+    expect(html.replace(/<[^>]+>/g, "")).not.toContain("[!");
+    // Copying gives back the alert it was written as.
+    expect(label).toContain(`data-markdown-copy="[!${kind.toUpperCase()}]\n"`);
+  });
+
+  it("keeps lists and code in a callout's body, in order", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown
+        cwd="/tmp/project"
+        text={[
+          "> [!WARNING]",
+          "> Before Medusa ever comes up:",
+          ">",
+          "> - set `JWT_SECRET`;",
+          "> - set `COOKIE_SECRET`.",
+          ">",
+          "> ```bash",
+          "> openssl rand -hex 32",
+          "> ```",
+        ].join("\n")}
+      />,
+    );
+    const { body } = callout(html);
+    const order = [
+      "<p>Before Medusa ever comes up:</p>",
+      "<ul>",
+      "COOKIE_SECRET",
+      "chat-markdown-codeblock",
+    ].map((part) => body.indexOf(part));
+
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual(order.toSorted((left, right) => left - right));
+    // Highlighted or not yet, the command reads whole.
+    expect(body.replace(/<[^>]+>/g, "")).toContain("openssl rand -hex 32");
+  });
+
+  it.each([
+    ["a plain quote", "> Just a quote."],
+    ["a marker sharing its line", "> [!NOTE] an ordinary quote"],
+    ["an unknown kind", "> [!DANGER]\n> Not one of GitHub's."],
+  ])("leaves %s a quote", (_name, text) => {
+    const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={text} />);
+
+    expect(html).toMatch(/<blockquote>\s*<p>/);
+    expect(html).not.toContain("chat-markdown-callout");
+    expect(html).not.toContain('role="note"');
+  });
+
+  it("does not take a raw alert attribute outside the five kinds for one", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown
+        cwd="/tmp/project"
+        text={'<blockquote data-alert="constructor">Hi</blockquote>'}
+      />,
+    );
+
+    expect(html).not.toContain("chat-markdown-callout");
+    expect(html).toContain("Hi");
+  });
+});
+
+describe("ChatMarkdown tables", () => {
+  const TABLE = [
+    "| Service | Where it runs | What changed |",
+    "| --- | --- | --- |",
+    "| api | the dev container | the health check waits for the database; a slow start no longer fails the deploy |",
+  ].join("\n");
+
+  it.each([true, false])(
+    "wraps its cells with no truncated reading to toggle (word wrap %s)",
+    (wordWrap) => {
+      vi.spyOn(settingsModule, "getClientSettings").mockReturnValue({
+        ...settingsModule.getClientSettings(),
+        wordWrap,
+      });
+      try {
+        const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={TABLE} />);
+
+        expect(html).toContain("chat-markdown-table-container");
+        expect(html).not.toContain("data-expanded");
+        expect(html).not.toContain("table cells");
+        expect(html).toContain('aria-label="Copy table"');
+        expect(html).toContain("a slow start no longer fails the deploy");
+      } finally {
+        vi.restoreAllMocks();
+      }
+    },
+  );
 });
 
 describe("ChatMarkdown heading levels", () => {

@@ -12,20 +12,31 @@
  * decision (`useOperationObservation.ts` §6) — this layer only ever answers
  * "what does the platform currently say".
  */
-import type { ActivityProcess } from "./dto.ts";
+import type { ActivityAppVersion, ActivityProcess } from "./dto.ts";
 import { type BuildLogQuery } from "./buildLog.ts";
-import { type ObservedStep, observedSteps } from "./observedSteps.ts";
-import { getPipelineState, pipelineTerminalOutcome } from "./pipelineState.ts";
+import { type PipelineState, getPipelineState, pipelineTerminalOutcome } from "./pipelineState.ts";
 import type { AttributionResult } from "./attribution.ts";
 
+/**
+ * The step source's pipeline as the platform last stated it. Its steps are
+ * read where they are drawn, against that render's clock — a running step's
+ * duration counts on between reads, and a quiet build goes minutes without
+ * one.
+ */
+export interface ObservedPipeline {
+  readonly appVersion: ActivityAppVersion;
+  /** When the step source's process started — a deploy-only pipeline's deploy step starts there. */
+  readonly startedAt?: string;
+}
+
 export interface Observation {
-  /** From the step source's appVersion; `[]` when it has none (or there is no step source). */
-  readonly steps: ReadonlyArray<ObservedStep>;
+  /** Absent without a step source, or while its pipeline has no step to show. */
+  readonly pipeline?: ObservedPipeline;
   /** Every attributed process but the step source — a secondary action in the same window (e.g. a subdomain toggle beside a deploy). */
   readonly chips: ReadonlyArray<ActivityProcess>;
   /** The step source's pipeline outcome, once settled. */
   readonly outcome?: "finished" | "failed" | "cancelled";
-  /** When this observation was read, epoch ms. */
+  /** When what this observation holds was last known current, epoch ms. */
   readonly readAtMs: number;
   /** Present once the step source's appVersion carries both an id and `build.serviceStackId`. */
   readonly buildLog?: BuildLogQuery;
@@ -72,6 +83,11 @@ export interface ObservationInput {
   readonly unavailableReason?: ObservationOffReason;
   readonly lastRead?: {
     readonly attribution: AttributionResult;
+    /**
+     * When the attribution was last known current: the caller's now while the
+     * feed observes (it pushes every change, so silence is news too), else
+     * the last read — the age that turns an observation stale, then off.
+     */
     readonly atMs: number;
   };
 }
@@ -119,12 +135,37 @@ function outcomeFor(process: ActivityProcess): "finished" | "failed" | "cancelle
   return undefined;
 }
 
-function observationFor(attribution: AttributionResult, atMs: number, nowMs: number): Observation {
+const PIPELINE_STEP_IDS: ReadonlyArray<keyof PipelineState> = [
+  "INIT_BUILD_CONTAINER",
+  "RUN_BUILD_COMMANDS",
+  "INIT_PREPARE_CONTAINER",
+  "RUN_PREPARE_COMMANDS",
+  "DEPLOY",
+];
+
+/** A pipeline the platform reads as all `noop` (a status it has no step for) has nothing to show yet. */
+function pipelineFor(stepSource: ActivityProcess | undefined): ObservedPipeline | undefined {
+  const appVersion = stepSource?.appVersion;
+  if (appVersion === undefined) {
+    return undefined;
+  }
+  const state = getPipelineState(appVersion);
+  if (PIPELINE_STEP_IDS.every((id) => state[id] === "noop")) {
+    return undefined;
+  }
+  return {
+    appVersion,
+    ...(stepSource?.started === undefined ? {} : { startedAt: stepSource.started }),
+  };
+}
+
+function observationFor(attribution: AttributionResult, atMs: number): Observation {
   const stepSource = attribution.stepSource;
+  const pipeline = pipelineFor(stepSource);
   const outcome = stepSource === undefined ? undefined : outcomeFor(stepSource);
   const buildLog = buildLogFor(stepSource);
   return {
-    steps: observedSteps(stepSource?.appVersion, nowMs),
+    ...(pipeline === undefined ? {} : { pipeline }),
     chips: attribution.chips,
     readAtMs: atMs,
     ...(outcome === undefined ? {} : { outcome }),
@@ -150,13 +191,13 @@ export function observe(input: ObservationInput, nowMs: number): ObservationStat
   if (input.lastRead === undefined) {
     return {
       kind: "observing",
-      observation: { steps: [], chips: [], readAtMs: nowMs },
+      observation: { chips: [], readAtMs: nowMs },
       elapsedMs: Math.max(0, nowMs - input.startedAtMs),
     };
   }
 
   const { attribution, atMs } = input.lastRead;
-  const observation = observationFor(attribution, atMs, nowMs);
+  const observation = observationFor(attribution, atMs);
   const elapsedMs = Math.max(0, nowMs - input.startedAtMs);
 
   // A settled pipeline never goes stale — the poller has already stopped

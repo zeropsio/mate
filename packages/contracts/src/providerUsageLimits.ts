@@ -72,6 +72,18 @@ export const ProviderUsageLimitsUpdate = Schema.Struct({
 export type ProviderUsageLimitsUpdate = typeof ProviderUsageLimitsUpdate.Type;
 
 /**
+ * A usage window that refuses new requests until it resets: the account is
+ * out of that window's quota and has no overage to spend. `window` names it
+ * the way a person reads it ("5-hour", "7-day", "7-day Opus"). Reported only
+ * when the provider gives a credible time the window reopens.
+ */
+export const ProviderUsageLimitBlock = Schema.Struct({
+  window: TrimmedNonEmptyString,
+  resetsAt: IsoDateTime,
+});
+export type ProviderUsageLimitBlock = typeof ProviderUsageLimitBlock.Type;
+
+/**
  * One account a usage-limit source reports on. `driver` is the provider the
  * account belongs to, for the icon and colour clients already have; the
  * account itself is not something this environment can run turns on.

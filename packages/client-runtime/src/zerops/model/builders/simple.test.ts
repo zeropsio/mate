@@ -87,15 +87,4 @@ describe("buildSimpleFields — why a delete / scale / manage / env failed or ti
   ])("$name", ({ kind, call, expected }) => {
     expect(buildSimpleFields(kind, call).explanation).toEqual(expected);
   });
-
-  it("carries zcp's next actions into the detail", () => {
-    const fields = buildSimpleFields(
-      "manage",
-      simpleCall("zerops_manage", "completed", {
-        ...proc("FINISHED"),
-        nextActions: "Verify apidev next.",
-      }),
-    );
-    expect(fields.detail).toContain("Verify apidev next.");
-  });
 });

@@ -1,14 +1,22 @@
 /**
- * The build-log tail inside a running/settled deploy card's observed region —
+ * The build log inside a deploy card's observed region —
  * `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
+ * A tail of its last eight rows, the height held from the first frame so a
+ * line arriving never moves the card. Each row is one line cut with an
+ * ellipsis — the whole line in its tooltip, never a sideways scroll — or a
+ * run of lines alike but for one package, folded into its newest line with
+ * a count (`foldBuildLogLines`).
+ *
  * Presentational only (R2): the caller (`useOperationCard.ts`) owns fetching
- * the lines and the open/closed state; this renders them and reports scroll
- * intent back.
+ * the lines and the open/closed state.
  */
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
-import { useRef, type JSX, type UIEvent } from "react";
+import type { JSX } from "react";
+
+import { foldBuildLogLines } from "@t3tools/client-runtime/zerops/activity/buildLog";
 
 import { cn } from "~/lib/utils";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 export interface ZeropsBuildLogLine {
   readonly id: string;
@@ -29,8 +37,11 @@ export interface ZeropsBuildLogProps {
 /** zcp's `mapSeverityToNumeric`: 0 (emergency) through 3 (error) are the tones worth flagging red. */
 const FAILED_SEVERITY_MAX = 3;
 
-/** How close to the bottom (px) still counts as "pinned" after a scroll. */
-const PINNED_THRESHOLD_PX = 24;
+/** The tail's rows — its box is this many lines tall from the first frame. */
+const TAIL_ROWS = 8;
+
+const lineCount = (count: number): string | undefined =>
+  count === 0 ? undefined : `${count.toLocaleString("en-US")} ${count === 1 ? "line" : "lines"}`;
 
 export function ZeropsBuildLog({
   lines,
@@ -38,33 +49,24 @@ export function ZeropsBuildLog({
   open,
   status,
 }: ZeropsBuildLogProps): JSX.Element {
-  const pinnedRef = useRef(true);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-
-  function handleBodyRef(node: HTMLDivElement | null): void {
-    bodyRef.current = node;
-    if (node !== null && status === "live" && pinnedRef.current) {
-      node.scrollTop = node.scrollHeight;
-    }
-  }
-
-  function handleScroll(event: UIEvent<HTMLDivElement>): void {
-    const el = event.currentTarget;
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PINNED_THRESHOLD_PX;
-  }
-
+  const count = lineCount(lines.length);
+  const rows = open ? foldBuildLogLines(lines).slice(-TAIL_ROWS) : [];
   return (
     <div data-zerops-build-log data-zerops-build-log-status={status}>
       <button
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 text-[11px] text-muted-foreground uppercase tracking-wide"
+        className="flex w-full items-center justify-between gap-2 text-muted-foreground text-xs"
         data-zerops-build-log-toggle
         onClick={onToggle}
         type="button"
       >
         <span className="flex items-center gap-1.5">
-          <span>Build log</span>
-          <span data-zerops-build-log-count>{lines.length}</span>
+          <span className="text-foreground">Build log</span>
+          {count !== undefined ? (
+            <span className="tabular-nums" data-zerops-build-log-count>
+              {count}
+            </span>
+          ) : null}
         </span>
         {open ? (
           <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0" />
@@ -73,25 +75,37 @@ export function ZeropsBuildLog({
         )}
       </button>
       {open ? (
-        <div
-          className="max-h-56 overflow-auto whitespace-pre rounded-md bg-background/60 p-2 font-mono text-[11.5px] leading-relaxed"
+        <ol
+          aria-label="Build log tail"
+          className="mt-1 box-content h-40 overflow-hidden rounded-md bg-muted/60 px-2 py-1.5 font-mono text-xs leading-5"
           data-zerops-build-log-body
-          onScroll={handleScroll}
-          ref={handleBodyRef}
         >
-          {lines.map((line) => (
-            <div
+          {rows.map((row) => (
+            <li
               className={cn(
-                line.severity <= FAILED_SEVERITY_MAX && "text-[var(--zerops-status-failed)]",
+                "flex min-w-0 gap-1.5",
+                row.severity <= FAILED_SEVERITY_MAX && "text-destructive-foreground",
               )}
               data-zerops-build-log-line
-              data-zerops-build-log-severity={line.severity}
-              key={line.id}
+              data-zerops-build-log-severity={row.severity}
+              key={row.id}
             >
-              {line.text}
-            </div>
+              <Tooltip>
+                <TooltipTrigger render={<span className="min-w-0 truncate" />}>
+                  {row.text}
+                </TooltipTrigger>
+                <TooltipPopup side="top" variant="code">
+                  {row.text}
+                </TooltipPopup>
+              </Tooltip>
+              {row.count > 1 ? (
+                <span className="shrink-0 text-muted-foreground" data-zerops-build-log-repeat>
+                  ×{row.count}
+                </span>
+              ) : null}
+            </li>
           ))}
-        </div>
+        </ol>
       ) : null}
     </div>
   );

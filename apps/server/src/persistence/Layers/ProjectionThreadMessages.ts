@@ -28,6 +28,12 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
   }),
 );
 const ProjectionThreadMessageExistsDbRowSchema = Schema.Struct({ exists: Schema.Number });
+const ProjectionThreadMessagePreviewSourceDbRowSchema =
+  ProjectionThreadMessagePreviewSource.mapFields(
+    Struct.assign({
+      attachments: Schema.fromJsonString(ProjectionThreadMessagePreviewSource.fields.attachments),
+    }),
+  );
 
 function toProjectionThreadMessage(
   row: Schema.Schema.Type<typeof ProjectionThreadMessageDbRowSchema>,
@@ -215,21 +221,40 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
     `,
   });
 
-  const getLatestPreviewSourceRow = SqlSchema.findOneOption({
+  // Attachment kinds only, and only from well-formed JSON: a preview never
+  // decodes attachment metadata, and one bad row must not blank the shell.
+  const listLatestPreviewSourceRows = SqlSchema.findAll({
     Request: LatestProjectionThreadMessagePreviewSourceInput,
-    Result: ProjectionThreadMessagePreviewSource,
-    execute: ({ threadId, role }) => sql`
+    Result: ProjectionThreadMessagePreviewSourceDbRowSchema,
+    execute: ({ threadId, role, limit }) => sql`
       SELECT
         role,
         substr(text, 1, 1000) AS text,
+        CASE
+          WHEN json_valid(attachments_json) AND json_type(attachments_json) = 'array'
+          THEN (
+            SELECT json_group_array(
+              json_object('type', COALESCE(json_extract(attachment.value, '$.type'), 'file'))
+            )
+            FROM json_each(attachments_json) AS attachment
+          )
+          ELSE '[]'
+        END AS attachments,
         created_at AS "createdAt"
       FROM projection_thread_messages
       WHERE thread_id = ${threadId}
         AND role IN ('user', 'assistant')
         AND (${role ?? null} IS NULL OR role = ${role ?? null})
-        AND length(trim(text)) > 0
+        AND (
+          length(trim(text)) > 0
+          OR (
+            json_valid(attachments_json)
+            AND json_type(attachments_json) = 'array'
+            AND json_array_length(attachments_json) > 0
+          )
+        )
       ORDER BY created_at DESC, message_id DESC
-      LIMIT 1
+      LIMIT ${limit}
     `,
   });
 
@@ -291,15 +316,13 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
       Effect.map((row) => row.latestUserMessageAt),
     );
 
-  const getLatestPreviewSource: ProjectionThreadMessageRepositoryShape["getLatestPreviewSource"] = (
-    input,
-  ) =>
-    getLatestPreviewSourceRow(input).pipe(
-      Effect.mapError(
-        toPersistenceSqlError("ProjectionThreadMessageRepository.getLatestPreviewSource:query"),
-      ),
-      Effect.map(Option.getOrNull),
-    );
+  const listLatestPreviewSources: ProjectionThreadMessageRepositoryShape["listLatestPreviewSources"] =
+    (input) =>
+      listLatestPreviewSourceRows(input).pipe(
+        Effect.mapError(
+          toPersistenceSqlError("ProjectionThreadMessageRepository.listLatestPreviewSources:query"),
+        ),
+      );
 
   const deleteByThreadId: ProjectionThreadMessageRepositoryShape["deleteByThreadId"] = (input) =>
     deleteProjectionThreadMessageRows(input).pipe(
@@ -315,7 +338,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
     hasAssistantMessageForTurn,
     listByThreadId,
     getLatestUserMessageAt,
-    getLatestPreviewSource,
+    listLatestPreviewSources,
     deleteByThreadId,
   } satisfies ProjectionThreadMessageRepositoryShape;
 });

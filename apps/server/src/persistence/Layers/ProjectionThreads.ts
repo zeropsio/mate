@@ -17,6 +17,7 @@ import {
   ThreadLinkedPullRequest,
   ThreadMessagePreview,
   ThreadTitleState,
+  ThreadUsagePauseState,
 } from "@t3tools/contracts";
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
@@ -26,6 +27,7 @@ const ProjectionThreadDbRow = ProjectionThread.mapFields(
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
     latestMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
     latestUserMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
+    usagePause: Schema.NullOr(Schema.fromJsonString(ThreadUsagePauseState)),
   }),
 );
 
@@ -68,6 +70,8 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pending_approval_count,
           pending_user_input_count,
           has_actionable_proposed_plan,
+          usage_pause_json,
+          usage_auto_resume_disabled_at,
           deleted_at
         )
         VALUES (
@@ -102,6 +106,8 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.pendingApprovalCount},
           ${row.pendingUserInputCount},
           ${row.hasActionableProposedPlan},
+          ${row.usagePause === undefined || row.usagePause === null ? null : JSON.stringify(row.usagePause)},
+          ${row.usageAutoResumeDisabledAt ?? null},
           ${row.deletedAt}
         )
         ON CONFLICT (thread_id)
@@ -136,6 +142,8 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pending_approval_count = excluded.pending_approval_count,
           pending_user_input_count = excluded.pending_user_input_count,
           has_actionable_proposed_plan = excluded.has_actionable_proposed_plan,
+          usage_pause_json = excluded.usage_pause_json,
+          usage_auto_resume_disabled_at = excluded.usage_auto_resume_disabled_at,
           deleted_at = excluded.deleted_at
       `,
   });
@@ -177,6 +185,8 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE thread_id = ${threadId}

@@ -25,6 +25,7 @@ import { createModelSelection } from "@t3tools/shared/model";
 import { assert, describe, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -37,6 +38,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { CONTENT_CONTRACT } from "../../contentContract.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   SYNTHETIC_CLAUDE_CAPABLE_MODEL,
@@ -468,8 +470,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.systemPrompt, {
         type: "preset",
         preset: "claude_code",
-        append:
-          "<runtime_info>In case you're asked: you are running in Zerops Mate through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>",
+        append: `<runtime_info>In case you're asked: you are running in Zerops Mate through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n${CONTENT_CONTRACT}`,
       });
       assert.equal(createInput?.options.permissionMode, "bypassPermissions");
       assert.equal(createInput?.options.allowDangerouslySkipPermissions, true);
@@ -4931,6 +4932,194 @@ describe("ClaudeAdapterLive", () => {
           "Claude usage limit reached. This turn is paused until the 7-day limit resets.",
         ],
       );
+
+      runtimeEventsFiber.interruptUnsafe();
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  const hour = 60 * 60;
+  it.effect.each([
+    {
+      name: "between turns",
+      inTurn: false,
+      info: { status: "rejected", rateLimitType: "five_hour", offsetSeconds: 2 * hour },
+      expected: { window: "5-hour", offsetSeconds: 2 * hour },
+    },
+    {
+      name: "in a turn, beside its utilization",
+      inTurn: true,
+      info: {
+        status: "rejected",
+        rateLimitType: "seven_day",
+        utilization: 1,
+        offsetSeconds: 48 * hour,
+      },
+      expected: { window: "7-day", offsetSeconds: 48 * hour },
+    },
+    {
+      name: "not at all without a credible reset",
+      inTurn: false,
+      info: { status: "rejected", rateLimitType: "five_hour", offsetSeconds: 1e12 },
+      expected: undefined,
+    },
+    {
+      name: "not at all while overage carries the requests",
+      inTurn: true,
+      info: {
+        status: "rejected",
+        rateLimitType: "five_hour",
+        utilization: 1,
+        overageStatus: "allowed",
+        offsetSeconds: 2 * hour,
+      },
+      expected: undefined,
+    },
+    {
+      name: "not at all while the window allows requests",
+      inTurn: false,
+      info: {
+        status: "allowed",
+        rateLimitType: "five_hour",
+        utilization: 0.5,
+        offsetSeconds: hour,
+      },
+      expected: undefined,
+    },
+  ])("reports a closed Claude usage window $name", ({ inTurn, info, expected }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const { runtimeEvents, runtimeEventsFiber, drainSdkMessages } =
+        yield* observeUsageLimitEvents(adapter, harness.query);
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      if (inTurn) {
+        yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+      }
+
+      const nowSeconds = Math.floor((yield* Clock.currentTimeMillis) / 1000);
+      const { offsetSeconds, ...rateLimitInfo } = info;
+      harness.query.emit({
+        type: "rate_limit_event",
+        rate_limit_info: { ...rateLimitInfo, resetsAt: nowSeconds + offsetSeconds },
+        session_id: "sdk-session-blocked",
+        uuid: "rate-limit-blocked",
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+
+      const blocked = runtimeEvents.flatMap((event) =>
+        event.type === "account.rate-limits.updated" && event.payload.blocked
+          ? [event.payload.blocked]
+          : [],
+      );
+      assert.deepEqual(
+        blocked,
+        expected === undefined
+          ? []
+          : [
+              {
+                window: expected.window,
+                resetsAt: DateTime.formatIso(
+                  DateTime.makeUnsafe((nowSeconds + expected.offsetSeconds) * 1000),
+                ),
+              },
+            ],
+      );
+
+      runtimeEventsFiber.interruptUnsafe();
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  // Claude Code starts a turn by itself whenever a background task finishes,
+  // to hand the model its result. Against a closed window that turn fails at
+  // the first request with a synthetic "You've hit your session limit" message
+  // and a result; one real thread collected eleven such empty turns. The
+  // result stays in Claude's conversation for the resume, so no turn opens.
+  const limitedWake = [
+    {
+      type: "assistant",
+      session_id: "sdk-session-wake",
+      uuid: "assistant-limit-wake",
+      parent_tool_use_id: null,
+      error: "rate_limit",
+      message: {
+        id: "assistant-message-limit-wake",
+        model: "<synthetic>",
+        content: [{ type: "text", text: "You've hit your session limit · resets 3pm" }],
+      },
+    },
+    {
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      terminal_reason: "api_error",
+      session_id: "sdk-session-wake",
+      uuid: "result-limit-wake",
+    },
+  ];
+
+  it.effect.each([
+    { name: "no turn while the window is closed", before: ["rejected"], opensTurn: false },
+    { name: "a turn when no closed window was reported", before: [], opensTurn: true },
+    {
+      name: "a turn once the window reopened",
+      before: ["rejected", "allowed"],
+      opensTurn: true,
+    },
+  ])("a background wake that hits the Claude limit opens $name", ({ before, opensTurn }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const { runtimeEvents, runtimeEventsFiber, drainSdkMessages } =
+        yield* observeUsageLimitEvents(adapter, harness.query);
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      const nowSeconds = Math.floor((yield* Clock.currentTimeMillis) / 1000);
+      for (const status of before) {
+        harness.query.emit({
+          type: "rate_limit_event",
+          rate_limit_info: { status, rateLimitType: "five_hour", resetsAt: nowSeconds + hour },
+          session_id: "sdk-session-wake",
+          uuid: `rate-limit-${status}`,
+        } as unknown as SDKMessage);
+      }
+      for (const message of limitedWake) {
+        harness.query.emit(message as unknown as SDKMessage);
+      }
+      yield* drainSdkMessages;
+
+      const lifecycle = runtimeEvents
+        .map((event) => event.type)
+        .filter((type) => type === "turn.started" || type === "turn.completed");
+      assert.deepEqual(lifecycle, opensTurn ? ["turn.started", "turn.completed"] : []);
+      if (!opensTurn) {
+        assert.deepEqual(
+          runtimeEvents.filter(
+            (event) => event.type === "runtime.error" || event.type === "content.delta",
+          ),
+          [],
+        );
+        // The wake's result sits before this message in Claude's conversation;
+        // a resumed session must keep it.
+        const [session] = yield* adapter.listSessions();
+        assert.equal(
+          (session?.resumeCursor as { resumeSessionAt?: string } | undefined)?.resumeSessionAt,
+          "assistant-limit-wake",
+        );
+      }
 
       runtimeEventsFiber.interruptUnsafe();
     }).pipe(

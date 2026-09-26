@@ -8,9 +8,7 @@ import {
   GlobeIcon,
   InfoIcon,
   LightbulbIcon,
-  Maximize2Icon,
   MessageSquareWarningIcon,
-  Minimize2Icon,
   OctagonAlertIcon,
   PlayIcon,
   TriangleAlertIcon,
@@ -60,6 +58,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { bareUrlLabel } from "../markdown-bare-urls";
 import { remarkGithubAlerts } from "../markdown-github-alerts";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
@@ -156,7 +155,14 @@ interface ChatMarkdownProps {
       text nests under the heading that introduces it, such as a chat message's
       author. Rendered tags and their styling are unchanged. */
   headingLevelOffset?: number | undefined;
+  /** How the text reads. `"answer"` is a reply set to be read: 15/24 in the
+      full foreground, from the stylesheet. `"log"` — narration, tool output,
+      anything around the answers — keeps the smaller muted body. Headings,
+      lists, tables and code scale with whichever body they sit in. */
+  variant?: ChatMarkdownVariant | undefined;
 }
+
+export type ChatMarkdownVariant = "answer" | "log";
 
 export function canUseMarkdownFileShellActions(
   environmentId: EnvironmentId | null,
@@ -298,42 +304,18 @@ const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
-/** GitHub's own five alert kinds, in its colors: the glyph names the urgency, the title says it. */
-const GITHUB_ALERT_PRESENTATIONS: Record<
-  string,
-  { label: string; Icon: typeof InfoIcon; borderClassName: string; titleClassName: string }
-> = {
-  note: {
-    label: "Note",
-    Icon: InfoIcon,
-    borderClassName: "border-blue-500/70",
-    titleClassName: "text-blue-600 dark:text-blue-400",
-  },
-  tip: {
-    label: "Tip",
-    Icon: LightbulbIcon,
-    borderClassName: "border-emerald-500/70",
-    titleClassName: "text-emerald-600 dark:text-emerald-400",
-  },
-  important: {
-    label: "Important",
-    Icon: MessageSquareWarningIcon,
-    borderClassName: "border-purple-500/70",
-    titleClassName: "text-purple-600 dark:text-purple-400",
-  },
-  warning: {
-    label: "Warning",
-    Icon: TriangleAlertIcon,
-    borderClassName: "border-amber-500/70",
-    titleClassName: "text-amber-600 dark:text-amber-500",
-  },
-  caution: {
-    label: "Caution",
-    Icon: OctagonAlertIcon,
-    borderClassName: "border-red-500/70",
-    titleClassName: "text-red-600 dark:text-red-400",
-  },
-};
+/**
+ * GitHub's five alert kinds, drawn as callouts: the glyph names the urgency,
+ * the word says it. Their tones are the product's status grammar and live in
+ * the stylesheet (`.chat-markdown-callout[data-alert]`).
+ */
+const CALLOUTS = new Map<string, { label: string; Icon: typeof InfoIcon }>([
+  ["note", { label: "Note", Icon: InfoIcon }],
+  ["tip", { label: "Tip", Icon: LightbulbIcon }],
+  ["important", { label: "Important", Icon: MessageSquareWarningIcon }],
+  ["warning", { label: "Warning", Icon: TriangleAlertIcon }],
+  ["caution", { label: "Caution", Icon: OctagonAlertIcon }],
+]);
 
 function extractFenceLanguage(className: string | undefined): string {
   const match = className?.match(CODE_FENCE_LANGUAGE_REGEX);
@@ -503,38 +485,15 @@ function readInitialWordWrapSetting(): boolean {
   return getClientSettings().wordWrap;
 }
 
+/**
+ * Cells wrap at word boundaries, so a table is as wide as the column unless its
+ * words alone are wider; only then does it scroll sideways.
+ */
 function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const tableRef = useRef<HTMLTableElement | null>(null);
-  const [expanded, setExpanded] = useState(readInitialWordWrapSetting);
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const expandLabel = expanded ? "Collapse table cells" : "Expand table cells";
   const copyLabel = copied ? "Copied" : "Copy table";
-
-  function toggleExpanded() {
-    const table = tableRef.current;
-    if (!table) return;
-
-    if (!expanded) {
-      const rows = [...table.rows];
-      const columnWidths = rows.reduce<number[]>((widths, row) => {
-        [...row.cells].forEach((cell, columnIndex) => {
-          widths[columnIndex] = Math.max(
-            widths[columnIndex] ?? 0,
-            cell.getBoundingClientRect().width,
-          );
-        });
-        return widths;
-      }, []);
-
-      [...(table.tHead?.rows[0]?.cells ?? [])].forEach((cell, columnIndex) => {
-        cell.style.minWidth = `${columnWidths[columnIndex] ?? cell.getBoundingClientRect().width}px`;
-      });
-    }
-
-    setExpanded((value) => !value);
-  }
 
   const handleCopy = useCallback((format: "markdown" | "csv") => {
     const table = containerRef.current?.querySelector("table");
@@ -573,11 +532,7 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
   );
 
   return (
-    <div
-      ref={containerRef}
-      className="chat-markdown-table-container"
-      data-expanded={expanded ? "true" : "false"}
-    >
+    <div ref={containerRef} className="chat-markdown-table-container">
       <ScrollArea
         radius="none"
         chainVerticalScroll
@@ -585,28 +540,9 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
         hideScrollbars
         className="w-full max-w-full"
       >
-        <table ref={tableRef} {...props}>
-          {children}
-        </table>
+        <table {...props}>{children}</table>
       </ScrollArea>
-      <div className="mt-0.5 flex items-center justify-between select-none">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                type="button"
-                variant={expanded ? "secondary" : "ghost-muted"}
-                size="icon-xs"
-                aria-pressed={expanded}
-                onClick={toggleExpanded}
-                aria-label={expandLabel}
-              />
-            }
-          >
-            {expanded ? <Minimize2Icon className="size-3" /> : <Maximize2Icon className="size-3" />}
-          </TooltipTrigger>
-          <TooltipPopup side="top">{expandLabel}</TooltipPopup>
-        </Tooltip>
+      <div className="mt-0.5 flex items-center justify-end select-none">
         <Menu>
           <Tooltip>
             <TooltipTrigger
@@ -1178,21 +1114,6 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
   );
 });
 
-function leadingExternalLinkTextLength(text: string): number {
-  const protocol = /^(?:https?:\/\/)/i.exec(text)?.[0];
-  if (protocol) return protocol.length;
-  return Math.min(text.length, 1);
-}
-
-function breakableExternalLinkText(text: string): ReactNode[] {
-  return Array.from(text, (character, index) => (
-    <React.Fragment key={`${index}:${character}`}>
-      {character}
-      <wbr />
-    </React.Fragment>
-  ));
-}
-
 function plainHastText(node: unknown): string | null {
   if (!node || typeof node !== "object" || !("children" in node) || !Array.isArray(node.children)) {
     return null;
@@ -1292,41 +1213,24 @@ function handleMarkdownFragmentClick(event: ReactMouseEvent<HTMLAnchorElement>, 
   target.scrollIntoView({ block: "nearest" });
 }
 
-function MarkdownExternalLinkContent({
-  host,
-  plainText,
-  children,
-}: {
-  host: string;
-  plainText: string | null;
-  children: ReactNode;
-}) {
-  if (plainText) {
-    const leadingLength = leadingExternalLinkTextLength(plainText);
-    return (
-      <>
-        <span className="whitespace-nowrap">
-          <MarkdownLinkFavicon host={host} />
-          {plainText.slice(0, leadingLength)}
-        </span>
-        {breakableExternalLinkText(plainText.slice(leadingLength))}
-      </>
-    );
-  }
-
-  const childNodes = Children.toArray(children);
-  const firstChild = childNodes[0];
+/**
+ * The favicon holds on to the link's first letter, so it never ends a line
+ * alone. The rest wraps as text does: at word boundaries, and inside a token
+ * only when the token cannot fit a line (the stylesheet's `anywhere` on links).
+ */
+function MarkdownExternalLinkContent({ host, children }: { host: string; children: ReactNode }) {
+  const [firstChild, ...rest] = Children.toArray(children);
 
   if (typeof firstChild === "string" && firstChild.length > 0) {
-    const leadingLength = leadingExternalLinkTextLength(firstChild);
+    const [firstLetter = ""] = firstChild;
     return (
       <>
         <span className="whitespace-nowrap">
           <MarkdownLinkFavicon host={host} />
-          {firstChild.slice(0, leadingLength)}
+          {firstLetter}
         </span>
-        {breakableExternalLinkText(firstChild.slice(leadingLength))}
-        {childNodes.slice(1)}
+        {firstChild.slice(firstLetter.length)}
+        {rest}
       </>
     );
   }
@@ -1337,7 +1241,7 @@ function MarkdownExternalLinkContent({
         <MarkdownLinkFavicon host={host} />
         {firstChild}
       </span>
-      {childNodes.slice(1)}
+      {rest}
     </>
   );
 }
@@ -1638,7 +1542,10 @@ function areMarkdownFileLinkPropsEqual(
   );
 }
 
-type ChatMarkdownStateProps = Omit<ChatMarkdownProps, "className" | "lineBreaks" | "parseRawHtml">;
+type ChatMarkdownStateProps = Omit<
+  ChatMarkdownProps,
+  "className" | "lineBreaks" | "parseRawHtml" | "variant"
+>;
 
 function useChatMarkdownState({
   text,
@@ -1981,21 +1888,24 @@ const CHAT_MARKDOWN_COMPONENTS = {
     return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
-    const alert =
-      GITHUB_ALERT_PRESENTATIONS[String((props as Record<string, unknown>)["data-alert"] ?? "")];
-    if (!alert) {
+    const kind = String((props as Record<string, unknown>)["data-alert"] ?? "");
+    const callout = CALLOUTS.get(kind);
+    if (!callout) {
       return <blockquote {...props}>{children}</blockquote>;
     }
-    // Not a <blockquote>: the stylesheet mutes those, and an alert's body is ordinary
-    // text under a colored title — which is how the host renders it.
+    // Still a quote underneath, so copying it out gives back `> [!KIND]` and
+    // its lines: the label copies as the marker it replaced.
     return (
-      <div role="note" className={cn("my-1 border-l-2 pl-3", alert.borderClassName)}>
-        <p className={cn("flex items-center gap-1.5 font-medium", alert.titleClassName)}>
-          <alert.Icon aria-hidden className="size-3.5 shrink-0" />
-          {alert.label}
+      <blockquote {...props} role="note" className="chat-markdown-callout">
+        <p
+          className="chat-markdown-callout-label"
+          data-markdown-copy={`[!${kind.toUpperCase()}]\n`}
+        >
+          <callout.Icon aria-hidden className="size-3.5 shrink-0" />
+          {callout.label}
         </p>
         {children}
-      </div>
+      </blockquote>
     );
   },
   ol: function MarkdownOrderedList({ node, start, style, ...props }) {
@@ -2065,9 +1975,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const faviconHost = resolveExternalWebLinkHost(href);
       const isSameDocumentLink = href?.startsWith("#") ?? false;
       const onClick = props.onClick;
+      const plainText = plainHastText(node);
+      // A pasted address shows where it goes; its href, tooltip and copy keep all of it.
+      const bareUrl = href && plainText !== null ? bareUrlLabel(plainText, href) : null;
       const link = (
         <ServiceBrowserLink
           {...props}
+          data-markdown-copy={bareUrl === null ? undefined : href}
           href={href}
           target={isSameDocumentLink ? undefined : "_blank"}
           rel={isSameDocumentLink ? undefined : "noopener noreferrer"}
@@ -2125,8 +2039,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
           }}
         >
           {faviconHost && hastHasText(node) ? (
-            <MarkdownExternalLinkContent host={faviconHost} plainText={plainHastText(node)}>
-              {children}
+            <MarkdownExternalLinkContent host={faviconHost}>
+              {bareUrl ?? plainText ?? children}
             </MarkdownExternalLinkContent>
           ) : (
             children
@@ -2253,6 +2167,7 @@ function ChatMarkdown({
   className,
   lineBreaks = false,
   parseRawHtml = true,
+  variant = "log",
   ...props
 }: ChatMarkdownProps) {
   const { componentState, handleCopy, markdownUrlTransform } = useChatMarkdownState({
@@ -2274,9 +2189,14 @@ function ChatMarkdown({
   return (
     <div
       className={cn(
-        "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)] [overflow-wrap:anywhere] [word-break:break-word]",
+        "chat-markdown w-full min-w-0",
+        // The log's body is these utilities. An answer's is the stylesheet's
+        // `[data-variant="answer"]` rule, which no utility can override.
+        variant === "log" &&
+          "text-sm leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)]",
         className,
       )}
+      data-variant={variant}
       // Gates the fade-in for blocks that arrive while the response streams.
       data-streaming={componentState.isStreaming ? "" : undefined}
       onCopy={handleCopy}

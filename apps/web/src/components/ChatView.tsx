@@ -62,6 +62,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
 import {
   getTerminalLabel,
   nextTerminalId,
@@ -348,6 +349,8 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import { ConversationDock } from "./chat/ConversationDock";
+import { deriveDock, latestUsagePause } from "./chat/conversationDock.logic";
 import {
   environmentConnectionBannerItem,
   environmentRetryFailureToast,
@@ -446,7 +449,6 @@ import {
 } from "./ui/alert-dialog";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useAssetUrls } from "../assets/assetUrls";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT } from "./chat/composerPromptHistory";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -5285,6 +5287,45 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [feedbackSubmissions, routeThreadKey],
   );
+  // What changes size while the Mate works lives in the dock above the
+  // composer, never in the conversation: running deploys, helpers, the task
+  // list, a pause's countdown.
+  const dockModel = useMemo(
+    () =>
+      deriveDock({
+        timelineEntries: displayedTimeline.entries,
+        isWorking,
+        runningTurnId: activeRunningTurnId,
+        agentPanelModel,
+        plan: activePlan ?? null,
+        // The server's own pause when it keeps one; the thread's last words otherwise.
+        pause: activeThreadShell?.usagePause
+          ? { resetsAt: activeThreadShell.usagePause.resetsAt }
+          : latestUsagePause(displayedTimeline.entries),
+      }),
+    [
+      displayedTimeline.entries,
+      isWorking,
+      activeRunningTurnId,
+      agentPanelModel,
+      activePlan,
+      activeThreadShell?.usagePause,
+    ],
+  );
+  const setUsageAutoResume = useAtomCommand(threadEnvironment.setUsageAutoResume, {
+    reportFailure: false,
+  });
+  const onUsageAutoResumeChange = useMemo(
+    () =>
+      activeThread && activeThreadShell?.usagePause
+        ? (enabled: boolean) =>
+            void setUsageAutoResume({
+              environmentId: activeThread.environmentId,
+              input: { threadId: activeThread.id, enabled },
+            })
+        : null,
+    [activeThread, activeThreadShell?.usagePause, setUsageAutoResume],
+  );
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     // Someone else's conversation is read, not run: every other banner offers
     // a step on this Mate (add production, release, stop, compact, restore),
@@ -6482,7 +6523,9 @@ export default function ChatView(props: ChatViewProps) {
         firstComposerImageName = firstComposerImage.name;
       }
     }
-    let titleSeed = trimmed;
+    // A slash command is an instruction to the harness, not the thread's
+    // subject: the title waits for the first real ask.
+    let titleSeed = isSlashCommand(trimmed) ? "" : trimmed;
     if (!titleSeed) {
       if (firstComposerImageName) {
         titleSeed = `Image: ${firstComposerImageName}`;
@@ -7891,6 +7934,8 @@ export default function ChatView(props: ChatViewProps) {
                 cancelPositionRestoreRef={cancelPositionRestoreRef}
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 queuedMessages={queuedMessages}
+                usagePause={activeThreadShell?.usagePause ?? null}
+                onUsageAutoResumeChange={onUsageAutoResumeChange}
                 onSteerQueuedMessage={onSteerQueuedMessage}
                 steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
                   keybindings,
@@ -7962,11 +8007,22 @@ export default function ChatView(props: ChatViewProps) {
                       />
                     </div>
                   ) : (
-                    <ComposerBannerStack
-                      className="relative z-0"
-                      items={composerBannerItems}
-                      stackRef={setComposerBannerStackElement}
-                    />
+                    <>
+                      <ComposerBannerStack
+                        className="relative z-0"
+                        items={composerBannerItems}
+                        stackRef={setComposerBannerStackElement}
+                      />
+                      {dockModel !== null && activeThread ? (
+                        <ConversationDock
+                          environmentId={activeThread.environmentId}
+                          model={dockModel}
+                          onOpenAgents={addAgentsSurface}
+                          threadRef={routeKind === "server" ? routeThreadRef : null}
+                          timestampFormat={timestampFormat}
+                        />
+                      ) : null}
+                    </>
                   )}
                   {shownThreadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={shownThreadSyncPhase} />

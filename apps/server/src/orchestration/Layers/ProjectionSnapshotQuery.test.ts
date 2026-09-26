@@ -5,11 +5,13 @@ import {
   MessageId,
   ProjectId,
   ThreadId,
+  ThreadUsagePauseState,
   TurnId,
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -35,6 +37,7 @@ const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(val
 const encodeChatAttachments = Schema.encodeEffect(
   Schema.fromJsonString(Schema.Array(ChatAttachment)),
 );
+const encodeUsagePause = Schema.encodeEffect(Schema.fromJsonString(ThreadUsagePauseState));
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
@@ -492,6 +495,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           hasActionableProposedPlan: false,
           backgroundLiveness: null,
           planProgress: null,
+          usagePause: null,
         },
       ]);
 
@@ -671,7 +675,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             updatedAt: createdAt,
             attachments,
           },
-          hasOtherUserMessages: false,
+          hasOtherAsks: false,
         }),
       );
       assert.equal(
@@ -698,7 +702,9 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
     ),
   );
 
-  it.effect("keeps compaction and queued-message eligibility in the turn-start query", () =>
+  // Only an ask titles a thread: slash commands and the server's resume prompt
+  // are not one, attachments without words are (@t3tools/shared/userAsk).
+  it.effect("counts only other asks, queued ones included, in the turn-start query", () =>
     Effect.gen(function* () {
       const query = yield* ProjectionSnapshotQuery;
       const sql = yield* SqlClient.SqlClient;
@@ -717,22 +723,22 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           '2026-09-05T00:00:01.000Z', '2026-09-05T00:00:01.000Z')
       `;
 
-      for (const { text, attachments, hasOtherUserMessages } of [
-        { text: "/compact", attachments: null, hasOtherUserMessages: false },
-        {
-          text: "\t\n\r /CoMpAcT\u00a0\u2028\ufeff",
-          attachments: "[ ]",
-          hasOtherUserMessages: false,
-        },
-        { text: "/compact keep recent errors", attachments: "[]", hasOtherUserMessages: true },
-        { text: "", attachments: null, hasOtherUserMessages: true },
-        { text: "Queued prompt", attachments: null, hasOtherUserMessages: true },
-        {
-          text: "/compact",
-          attachments:
-            '[{"type":"file","id":"notes","name":"notes.txt","mimeType":"text/plain","sizeBytes":8}]',
-          hasOtherUserMessages: true,
-        },
+      const notes =
+        '[{"type":"file","id":"notes","name":"notes.txt","mimeType":"text/plain","sizeBytes":8}]';
+      const screenshot =
+        '[{"type":"image","id":"shot","name":"shot.png","mimeType":"image/png","sizeBytes":8}]';
+      for (const { text, attachments, hasOtherAsks } of [
+        { text: "/compact", attachments: null, hasOtherAsks: false },
+        { text: "\t\n\r /CoMpAcT\u00a0\u2028\ufeff", attachments: "[ ]", hasOtherAsks: false },
+        { text: "/compact keep recent errors", attachments: "[]", hasOtherAsks: false },
+        { text: "/model opus", attachments: null, hasOtherAsks: false },
+        { text: "/compact", attachments: notes, hasOtherAsks: false },
+        { text: USAGE_LIMIT_RESUME_PROMPT, attachments: null, hasOtherAsks: false },
+        { text: "", attachments: null, hasOtherAsks: false },
+        { text: "Queued prompt", attachments: null, hasOtherAsks: true },
+        { text: "/var/www/app fails to build", attachments: null, hasOtherAsks: true },
+        { text: IMAGE_ONLY_BOOTSTRAP_PROMPT, attachments: screenshot, hasOtherAsks: true },
+        { text: "", attachments: notes, hasOtherAsks: true },
       ]) {
         yield* sql`
           UPDATE projection_thread_messages SET text = ${text}, attachments_json = ${attachments}
@@ -741,7 +747,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         const context = yield* query.getTurnStartMessage({ threadId, messageId });
         assert.equal(context._tag, "Some");
         if (context._tag === "Some") {
-          assert.equal(context.value.hasOtherUserMessages, hasOtherUserMessages);
+          assert.equal(context.value.hasOtherAsks, hasOtherAsks, `other message "${text}"`);
         }
       }
     }),
@@ -880,6 +886,72 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         (yield* snapshotQuery.getThreadRuntimeContext(ThreadId.make("thread-active")))._tag,
         "None",
       );
+    }),
+  );
+
+  it.effect("reads the usage pause onto every shell, with the thread's auto-resume switch", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, default_model_selection_json, scripts_json,
+          created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-usage-pause', 'Usage Pause', '/tmp/usage-pause',
+          '{"provider":"claudeAgent","model":"opus"}', '[]',
+          '2026-09-26T00:00:00.000Z', '2026-09-26T00:00:00.000Z', NULL
+        )
+      `;
+      const pause = {
+        resetsAt: "2026-09-26T13:00:00.000Z",
+        window: "5-hour",
+        held: 2,
+        pausedAt: "2026-09-26T08:30:00.000Z",
+      };
+      const pauseJson = yield* encodeUsagePause(pause);
+      const rows = [
+        { id: "thread-not-paused", pause: null, disabledAt: null, expected: null },
+        {
+          id: "thread-paused",
+          pause: pauseJson,
+          disabledAt: null,
+          expected: { ...pause, autoResume: true },
+        },
+        {
+          id: "thread-paused-manual",
+          pause: pauseJson,
+          disabledAt: "2026-09-26T09:00:00.000Z",
+          expected: { ...pause, autoResume: false },
+        },
+      ];
+      for (const row of rows) {
+        yield* sql`
+          INSERT INTO projection_threads (
+            thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+            latest_user_message_at, pending_approval_count, pending_user_input_count,
+            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at,
+            usage_pause_json, usage_auto_resume_disabled_at
+          ) VALUES (
+            ${row.id}, 'project-usage-pause', ${row.id},
+            '{"provider":"claudeAgent","model":"opus"}', 'full-access', 'default',
+            NULL, 0, 0, 0, '2026-09-26T08:00:00.000Z', '2026-09-26T08:00:00.000Z', NULL, NULL,
+            ${row.pause}, ${row.disabledAt}
+          )
+        `;
+      }
+
+      const snapshot = yield* snapshotQuery.getShellSnapshot();
+      for (const row of rows) {
+        const fromSnapshot = snapshot.threads.find((thread) => thread.id === row.id);
+        assert.deepEqual(fromSnapshot?.usagePause, row.expected, `snapshot ${row.id}`);
+        const shell = yield* snapshotQuery.getThreadShellById(ThreadId.make(row.id));
+        assert.deepEqual(Option.getOrUndefined(shell)?.usagePause, row.expected, `shell ${row.id}`);
+      }
     }),
   );
 

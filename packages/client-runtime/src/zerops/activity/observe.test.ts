@@ -44,10 +44,10 @@ describe("observe — the three-state observation layer", () => {
     ).toEqual({ kind: "off", reason: "no-session" });
   });
 
-  it("observing with empty steps/chips before the first read — the elapsed clock only", () => {
+  it("observing with no pipeline or chips before the first read — the elapsed clock only", () => {
     expect(observe(baseInput(), NOW + 3_000)).toEqual({
       kind: "observing",
-      observation: { steps: [], chips: [], readAtMs: expect.any(Number) },
+      observation: { chips: [], readAtMs: NOW + 3_000 },
       elapsedMs: 3_000,
     });
   });
@@ -71,16 +71,47 @@ describe("observe — the three-state observation layer", () => {
     });
   });
 
-  it("observing once a live process is attributed — steps come from the step source", () => {
-    const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
+  it("observing once a live process is attributed — the step source's pipeline rides on it", () => {
+    const appVersion = { status: "BUILDING", build: { pipelineStart: "t1" } };
+    const p = process({ started: "2026-09-02T10:00:01.000Z", appVersion });
     const state = observe(
       baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
       NOW,
     );
     expect(state.kind).toBe("observing");
-    expect(state.kind === "observing" && state.observation.steps.length).toBeGreaterThan(0);
+    expect(state.kind === "observing" && state.observation.pipeline).toEqual({
+      appVersion,
+      startedAt: "2026-09-02T10:00:01.000Z",
+    });
     expect(state.kind === "observing" && state.observation.chips).toEqual([]);
     expect(state.kind === "observing" && state.observation.outcome).toBeUndefined();
+  });
+
+  /**
+   * The steps are read off the pipeline where the card renders, against its
+   * clock: an observation that carried them would freeze a running step's
+   * duration at the moment of the read, and a quiet build changes nothing
+   * for minutes.
+   */
+  it.each([
+    { name: "no step source", stepSource: undefined },
+    { name: "a step source with no appVersion", stepSource: process({ status: "RUNNING" }) },
+    {
+      name: "a status the pipeline has no step for",
+      stepSource: process({ appVersion: { status: "UPLOADING" } }),
+    },
+  ])("carries no pipeline for $name", ({ stepSource }) => {
+    const state = observe(
+      baseInput({
+        lastRead: lastReadOf({
+          ...(stepSource === undefined ? {} : { stepSource }),
+          chips: [],
+          projectMismatch: false,
+        }),
+      }),
+      NOW,
+    );
+    expect(state.kind === "observing" && state.observation).not.toHaveProperty("pipeline");
   });
 
   it("chips are the secondary processes only — never the step source", () => {

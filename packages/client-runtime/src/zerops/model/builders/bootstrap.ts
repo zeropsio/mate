@@ -12,13 +12,11 @@ import {
   type BuiltCardFields,
   type DecodedEntry,
   buildStep,
-  detailField,
   errorInfoFor,
   firstLine,
   firstParagraph,
   gatedStatusWord,
   readInputString,
-  undecodedDetail,
 } from "./shared.ts";
 import { readImport } from "./importCard.ts";
 
@@ -299,12 +297,6 @@ export function buildBootstrapFields(
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
-    ...detailField([
-      plan !== undefined ? readString(plan.document.nextActions) : undefined,
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      founder.decoded.card === undefined ? undecodedDetail(founder.call) : undefined,
-    ]),
     ...(targetHostnames[0] !== undefined ? { target: { hostname: targetHostnames[0] } } : {}),
     hasResult: plan !== undefined,
   };

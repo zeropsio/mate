@@ -7,7 +7,7 @@
 import type { ZeropsOperation, ZeropsOperationKind } from "@t3tools/client-runtime/zerops/model";
 
 export type OperationSubject =
-  /** `path` is the page's path + query, absent at the site root. */
+  /** `path` is the page's decoded path — never its query — absent at the site root. */
   | { readonly kind: "named"; readonly host: string; readonly path?: string }
   /** The input has not named the target yet; `text` is the reducer's own fallback phrase. */
   | { readonly kind: "nameless"; readonly text: string };
@@ -40,6 +40,14 @@ export function browserPageUrl(operation: ZeropsOperation): URL | undefined {
   return new URL(operation.subject);
 }
 
+function decodedPath(url: URL): string {
+  try {
+    return decodeURIComponent(url.pathname);
+  } catch {
+    return url.pathname;
+  }
+}
+
 /**
  * `undefined` for a kind that keeps its voice line. A hostname never holds
  * whitespace and every fallback phrase the reducer writes before the input
@@ -59,7 +67,10 @@ export function operationSubject(
     if (url === undefined) {
       return nameless;
     }
-    const path = `${url.pathname}${url.search}`;
+    // The page as the person names it: its path, decoded. A query string
+    // (`q=1.5&res=.5&step=.25…`, once a whole reset token) is the check's
+    // machinery, and its steps still hold it.
+    const path = decodedPath(url);
     return { kind: "named", host: subjectHost ?? url.host, ...(path === "/" ? {} : { path }) };
   }
   // Only a deploy (and a log read) carries `target`; every other kind's

@@ -19,7 +19,7 @@ vi.mock("../../zerops/useZeropsLandedChange", () => ({
 }));
 
 // The test DOM draws no SVG; the icon says nothing the text does not.
-vi.mock("lucide-react", () => ({ GitPullRequestArrow: () => null }));
+vi.mock("lucide-react", () => ({ GitPullRequestArrow: () => null, GitMergeIcon: () => null }));
 
 const ORIGIN = "https://gitea.example.test";
 const HREF = `${ORIGIN}/zit/zitdev/pulls/31`;
@@ -48,6 +48,8 @@ function installTestDom(): TestNode {
   vi.stubGlobal("document", document);
   vi.stubGlobal("window", {
     document,
+    Element: TestNode,
+    HTMLElement: TestNode,
     HTMLIFrameElement: TestNode,
     setTimeout: globalThis.setTimeout,
     clearTimeout: globalThis.clearTimeout,
@@ -55,6 +57,9 @@ function installTestDom(): TestNode {
     removeEventListener() {},
   });
   vi.stubGlobal("HTMLIFrameElement", TestNode);
+  // The state's words are a tooltip's, and the tooltip asks what an Element is.
+  vi.stubGlobal("Element", TestNode);
+  vi.stubGlobal("HTMLElement", TestNode);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   return document;
 }
@@ -91,7 +96,7 @@ describe("ZeropsChangeLinkChip", () => {
     {
       name: "an owner the registry comes to name gives the chip its word",
       renders: [{ slugs: [] }, { slugs: [["g1", "zit"]], answer: { kind: "read", pull: LANDED } }],
-      text: "Cache the link previewsLanded",
+      text: "Cache the link previews, Landed",
       asked: ["zit"],
     },
     {
@@ -103,7 +108,7 @@ describe("ZeropsChangeLinkChip", () => {
     {
       name: "an owner the registry names is not asked for",
       renders: [{ slugs: [["g1", "zit"]], answer: { kind: "read", pull: LANDED } }],
-      text: "Cache the link previewsLanded",
+      text: "Cache the link previews, Landed",
       asked: [],
     },
     {
@@ -136,6 +141,43 @@ describe("ZeropsChangeLinkChip", () => {
       }
       expect(container.textContent).toBe(text);
       expect(askForOwner.mock.calls.map(([owner]) => owner)).toEqual(asked);
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
+
+  it.each([
+    [
+      "landed after the message was written",
+      "2026-09-20T10:00:00.000Z",
+      ", Landed, landed since this message",
+    ],
+    ["landed before it", "2026-09-20T12:00:00.000Z", ", Landed"],
+  ])("marks a change that %s", async (_label, writtenAt, tail) => {
+    const document = installTestDom();
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
+    const { ChangeChipMomentContext, ZeropsChangeLinkChip } =
+      await import("./ZeropsChangeLinkChip");
+    forge.answer = {
+      kind: "read",
+      pull: { ...LANDED, mergedAt: "2026-09-20T11:00:00.000Z" } as FlowPullRequest,
+    };
+    const container = document.createElement("div");
+    const root = createRoot(container as unknown as Element);
+    const value = flowValue([["g1", "zit"]], () => {});
+    try {
+      await act(async () =>
+        root.render(
+          <ZeropsProjectFlowContext.Provider value={value}>
+            <ChangeChipMomentContext value={writtenAt}>
+              <ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>
+            </ChangeChipMomentContext>
+          </ZeropsProjectFlowContext.Provider>,
+        ),
+      );
+      expect(container.textContent).toBe(`Cache the link previews${tail}`);
     } finally {
       await act(async () => root.unmount());
     }

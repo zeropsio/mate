@@ -22,8 +22,13 @@ import type {
 import {
   type ObservedStep,
   observedProcessStep,
-  pipelineStepSlots,
+  observedSteps,
 } from "@t3tools/client-runtime/zerops/activity/observedSteps";
+import {
+  type PipelineReadout,
+  formatDuration,
+  readPipeline,
+} from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type {
@@ -148,35 +153,95 @@ function toCardStep(step: ObservedStep): CardStep {
   };
 }
 
-function secondsAgo(readAtMs: number, nowMs: number): number {
-  return Math.max(0, Math.round((nowMs - readAtMs) / 1000));
-}
-
 export interface ObservedStepsRegion {
+  /** Empty for a deploy, whose body is its `pipeline`. */
   readonly steps: ReadonlyArray<CardStep>;
+  /** `deploy` only: its pipeline as the Zerops GUI reads it, against the render clock. */
+  readonly pipeline?: PipelineReadout;
   /** The observation's secondary processes, one compact row each. */
   readonly chips: ReadonlyArray<CardStep>;
+  /** Empty while the feed observes; one quiet line once it is not answering. */
   readonly provenance: string;
   /** Present iff the observation names a build to show a log for. */
   readonly buildLogQuery?: BuildLogQuery;
 }
 
-/** A settled card's provenance: what it last read, no longer counting seconds. */
-const SETTLED_PROVENANCE = "as last read from Zerops";
+/** The feed has gone silent, or failed — not a card that stopped looking (the ceiling, a settled result). */
+function feedNotObserving(state: ObservationState): boolean {
+  return (
+    state.kind === "stale" ||
+    (state.kind === "off" && (state.reason === "stale-timeout" || state.reason === "feed-error"))
+  );
+}
+
+/** Nothing while the feed observes: a live card needs no word that it is live. */
+function provenanceFor(state: ObservationState, source: Observation, nowMs: number): string {
+  if (!feedNotObserving(state)) {
+    return "";
+  }
+  const age = formatDuration(nowMs - source.readAtMs);
+  return age === undefined
+    ? "Zerops isn't answering"
+    : `Zerops isn't answering · last update ${age} ago`;
+}
+
+/** The deployed service as a deploy step's sentence names it; any of it may not be known yet. */
+export interface PipelineService {
+  readonly name: string | undefined;
+  /** The platform's name for the type, e.g. `Node.js`. */
+  readonly type: string | undefined;
+  /** Known only once the service states the deploy it runs: then it ran containers before this one. */
+  readonly hadContainers: boolean | undefined;
+}
+
+const UNKNOWN_SERVICE: PipelineService = {
+  name: undefined,
+  type: undefined,
+  hadContainers: undefined,
+};
+
+/** The operation's service, looked up by hostname in the client's own topology view. */
+export function pipelineServiceFor(
+  operation: ZeropsOperation,
+  topology: ZeropsTopologyView | undefined,
+): PipelineService {
+  const name = operation.target?.hostname;
+  const service =
+    name === undefined ? undefined : topology?.services.find((entry) => entry.hostname === name);
+  return {
+    name,
+    type: service?.typeName,
+    hadContainers: service?.deploy === undefined ? undefined : true,
+  };
+}
+
+function readoutOf(
+  pipeline: NonNullable<Observation["pipeline"]>,
+  service: PipelineService,
+  nowMs: number,
+): PipelineReadout {
+  return readPipeline(pipeline.appVersion, {
+    nowMs,
+    ...(service.name === undefined ? {} : { serviceName: service.name }),
+    ...(service.type === undefined ? {} : { serviceType: service.type }),
+    ...(service.hadContainers === undefined ? {} : { hadContainers: service.hadContainers }),
+    ...(pipeline.startedAt === undefined ? {} : { actionStartedAt: pipeline.startedAt }),
+  });
+}
 
 /**
  * Pure: `(operation kind, phase, current state, remembered history, now) → region`.
  * A settled operation (`phase !== "running"`) always prefers its history —
- * the observed steps it last saw while running, frozen under the result's
- * verdict with its provenance line and build log kept in place — over
- * whatever the current `state` happens to compute, per the concept's "the
- * result is the verdict" rule (§3). While running, `state`
- * drives the region once a read has produced steps or secondary processes;
- * until then — and whenever the feed goes quiet or off — the history holds
- * what was already shown (steps, secondary processes, build log), so nothing
- * once on the card leaves it. A deploy's observed steps fill the same five
- * pipeline slots (`pipelineStepSlots`) the operation itself holds from birth
- * to settle, so they fill in place instead of appearing.
+ * the steps it last saw while running, kept under the result's verdict with
+ * its build log in place — over whatever the current `state` happens to
+ * compute, per the concept's "the result is the verdict" rule (§3). While
+ * running, `state` drives the region once a read has produced a pipeline or
+ * secondary processes; until then — and whenever the feed goes quiet or off
+ * — the history holds what was already shown (steps, secondary processes,
+ * build log), so nothing once on the card leaves it. The steps are read off
+ * the pipeline against `nowMs`, the render clock, so a running step counts on
+ * between reads. A deploy reads its pipeline the way the Zerops GUI does
+ * (`readPipeline`), naming `service`; every other kind lists the steps.
  */
 export function deriveObservedStepsRegion(
   kind: ZeropsOperationKind,
@@ -184,33 +249,43 @@ export function deriveObservedStepsRegion(
   state: ObservationState,
   history: Observation | undefined,
   nowMs: number,
+  service: PipelineService = UNKNOWN_SERVICE,
 ): ObservedStepsRegion | undefined {
-  const regionOf = (observation: Observation, provenance: string): ObservedStepsRegion => ({
-    steps: (kind === "deploy" ? pipelineStepSlots(observation.steps) : observation.steps).map(
-      toCardStep,
-    ),
-    chips: observation.chips.map(observedProcessStep),
-    provenance,
-    ...(observation.buildLog === undefined ? {} : { buildLogQuery: observation.buildLog }),
-  });
+  const regionOf = (observation: Observation, provenance: string): ObservedStepsRegion => {
+    const pipeline = observation.pipeline;
+    const common = {
+      chips: observation.chips.map(observedProcessStep),
+      provenance,
+      ...(observation.buildLog === undefined ? {} : { buildLogQuery: observation.buildLog }),
+    };
+    if (kind === "deploy") {
+      return {
+        steps: [],
+        ...(pipeline === undefined ? {} : { pipeline: readoutOf(pipeline, service, nowMs) }),
+        ...common,
+      };
+    }
+    return {
+      steps:
+        pipeline === undefined ? [] : observedSteps(pipeline.appVersion, nowMs).map(toCardStep),
+      ...common,
+    };
+  };
 
   if (phase !== "running") {
-    return history === undefined ? undefined : regionOf(history, SETTLED_PROVENANCE);
+    return history === undefined ? undefined : regionOf(history, "");
   }
 
   const current =
     state.kind === "off" ||
-    (state.observation.steps.length === 0 && state.observation.chips.length === 0)
+    (state.observation.pipeline === undefined && state.observation.chips.length === 0)
       ? undefined
       : state.observation;
   const source = current ?? history;
   if (source === undefined) {
     return undefined;
   }
-
-  const provenanceLabel =
-    current === undefined || state.kind === "stale" ? "last read" : "live from Zerops ·";
-  return regionOf(source, `${provenanceLabel} ${secondsAgo(source.readAtMs, nowMs)} s ago`);
+  return regionOf(source, provenanceFor(state, source, nowMs));
 }
 
 /** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
@@ -287,15 +362,17 @@ export function useOperationCard(
   environmentId: EnvironmentId | null,
 ): OperationCardRegions {
   const target = observationTargetFor(operation);
-  const { state, history, buildLog } = useOperationObservation(target, environmentId);
+  const nowMs = useSecondsNowMs(operation.phase === "running");
+  const { state, history, buildLog } = useOperationObservation(target, environmentId, nowMs);
   const topology = useZeropsTopology(environmentId);
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
-  // A log that opened itself while live stays open once it ends: closing it
-  // at settle would shrink the card under the reader.
-  const [wasLive, setWasLive] = useState(false);
-  const logEverLive = wasLive || buildLog.status === "live";
-  if (logEverLive && !wasLive) {
-    setWasLive(true);
+  // The log is open from a running card's first frame, its tail's height
+  // held before a line arrives, and stays open once the deploy ends: closing
+  // it at settle would shrink the card under the reader.
+  const [heldOpen, setHeldOpen] = useState(false);
+  const openByDefault = heldOpen || operation.phase === "running" || buildLog.status === "live";
+  if (openByDefault && !heldOpen) {
+    setHeldOpen(true);
   }
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
@@ -311,27 +388,33 @@ export function useOperationCard(
       : {}),
   };
 
-  const nowMs = useSecondsNowMs(operation.phase === "running");
-  const region = deriveObservedStepsRegion(operation.kind, operation.phase, state, history, nowMs);
+  const region = deriveObservedStepsRegion(
+    operation.kind,
+    operation.phase,
+    state,
+    history,
+    nowMs,
+    pipelineServiceFor(operation, topology),
+  );
   if (region === undefined) {
     return fields;
   }
+  const observed = {
+    steps: region.steps,
+    chips: region.chips,
+    provenance: region.provenance,
+    ...(region.pipeline === undefined ? {} : { pipeline: region.pipeline }),
+  };
   if (region.buildLogQuery === undefined) {
-    return {
-      observed: { steps: region.steps, chips: region.chips, provenance: region.provenance },
-      ...fields,
-    };
+    return { observed, ...fields };
   }
 
-  const open = manualOpen ?? logEverLive;
+  const open = manualOpen ?? openByDefault;
   const log: ReactElement = createElement(ZeropsBuildLog, {
     lines: buildLog.lines,
     onToggle: () => setManualOpen(!open),
     open,
     status: buildLog.status,
   });
-  return {
-    observed: { steps: region.steps, chips: region.chips, provenance: region.provenance, log },
-    ...fields,
-  };
+  return { observed: { ...observed, log }, ...fields };
 }

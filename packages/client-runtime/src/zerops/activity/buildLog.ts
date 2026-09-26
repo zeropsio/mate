@@ -287,3 +287,147 @@ export function mergeBoundedBuildLogLines(
     droppedNewer,
   };
 }
+
+/** One row of a build log's tail: a line, or a run of lines alike but for one package. */
+export interface FoldedBuildLogLine {
+  /** The run's first line's id — the row keeps it while the run grows. */
+  readonly id: string;
+  /** The run's newest line. */
+  readonly text: string;
+  readonly severity: number;
+  /** How many consecutive lines the row stands for. */
+  readonly count: number;
+}
+
+/** zcp's `mapSeverityToNumeric`: 0 (emergency) through 3 (error) — a line never folded away. */
+const ERROR_SEVERITY_MAX = 3;
+
+/** The punctuation a log line wraps a token in: `(v6.3.4):` names the version `v6.3.4`. */
+const WRAPPING = /^[("'`[{<]+|[)"'`\]}>:;,.]+$/gu;
+const VERSION = /^v?\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.-]+)?$/u;
+const LETTER = /[A-Za-z]/u;
+
+const core = (token: string): string => token.replace(WRAPPING, "");
+
+const isVersionToken = (token: string): boolean => VERSION.test(core(token));
+
+/** A package or a version: `name@1.2.3`, `vendor/name`, `name==1.2`, `name-1.2.3-….zip`, `v1.2.3`. */
+function isPackageToken(token: string): boolean {
+  const text = core(token);
+  return (
+    VERSION.test(text) ||
+    /[0-9A-Za-z]@[0-9A-Za-z^~<>=*]/u.test(text) ||
+    (LETTER.test(text) && /[0-9A-Za-z]\/[0-9A-Za-z@]/u.test(text)) ||
+    /[A-Za-z][\w.]*(?:[-_]|==|>=|<=|~=)v?\d+\.\d+/u.test(text)
+  );
+}
+
+/** A package's name as a line spells it before its version: `serde`, `react-dom`, `symfony/console`. */
+const isPackageName = (token: string): boolean => {
+  const text = core(token);
+  return LETTER.test(text) && /^[\w@./+=~-]+$/u.test(text);
+};
+
+interface LineShape {
+  readonly indent: string;
+  readonly tokens: ReadonlyArray<string>;
+}
+
+function shapeOf(text: string): LineShape {
+  const indent = /^\s*/u.exec(text)?.[0] ?? "";
+  const body = text.slice(indent.length).trimEnd();
+  return { indent, tokens: body.length === 0 ? [] : body.split(/\s+/u) };
+}
+
+/** Where a run varies: one token that is a package, or a name and the version after it. */
+interface Span {
+  readonly start: number;
+  readonly width: 1 | 2;
+}
+
+function spanFits(span: Span, tokens: ReadonlyArray<string>): boolean {
+  const first = tokens[span.start];
+  const second = tokens[span.start + 1];
+  if (first === undefined) {
+    return false;
+  }
+  return span.width === 1
+    ? isPackageToken(first)
+    : second !== undefined && isPackageName(first) && isVersionToken(second);
+}
+
+interface Run {
+  readonly id: string;
+  readonly severity: number;
+  text: string;
+  count: number;
+  shape: LineShape;
+  span: Span | undefined;
+}
+
+/** The span a line of `severity` and `shape` folds into `run` with — `undefined` for a verbatim repeat — or `null`. */
+function foldSpan(run: Run, severity: number, shape: LineShape): Span | undefined | null {
+  if (severity !== run.severity || severity <= ERROR_SEVERITY_MAX) {
+    return null;
+  }
+  const previous = run.shape;
+  if (shape.indent !== previous.indent || shape.tokens.length !== previous.tokens.length) {
+    return null;
+  }
+  const diff = shape.tokens.flatMap((token, index) =>
+    token === previous.tokens[index] ? [] : [index],
+  );
+  if (diff.length === 0) {
+    return run.span;
+  }
+  const first = diff[0]!;
+  const span: Span | null =
+    run.span ??
+    (diff.length === 1
+      ? { start: first, width: 1 }
+      : diff.length === 2 && diff[1] === first + 1
+        ? { start: first, width: 2 }
+        : null);
+  if (
+    span === null ||
+    diff.some((index) => index < span.start || index >= span.start + span.width)
+  ) {
+    return null;
+  }
+  return spanFits(span, previous.tokens) && spanFits(span, shape.tokens) ? span : null;
+}
+
+/**
+ * The tail's rows: a run of consecutive lines that differ only in one
+ * package — a token like `cssesc@npm:3.0.0`, `symfony/console` or `v1.9.1`,
+ * or a name and the version after it (`serde v1.0.193`) — is one row, read
+ * as its newest line and counted. The rule is conservative: every other token
+ * must match, as must the indent and the severity; a line repeated verbatim
+ * folds too; an error line never does.
+ */
+export function foldBuildLogLines(
+  lines: ReadonlyArray<BuildLogLine>,
+): ReadonlyArray<FoldedBuildLogLine> {
+  const runs: Array<Run> = [];
+  for (const line of lines) {
+    const shape = shapeOf(line.text);
+    const run = runs.at(-1);
+    const span = run === undefined ? null : foldSpan(run, line.severity, shape);
+    if (run !== undefined && span !== null) {
+      run.text = line.text;
+      run.count += 1;
+      run.shape = shape;
+      run.span = span;
+      continue;
+    }
+    runs.push({
+      id: line.id,
+      severity: line.severity,
+      text: line.text,
+      count: 1,
+      shape,
+      span: undefined,
+    });
+  }
+  return runs.map(({ id, text, severity, count }) => ({ id, text, severity, count }));
+}

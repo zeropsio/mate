@@ -580,6 +580,46 @@ export const ThreadMessagePreview = Schema.Struct({
 });
 export type ThreadMessagePreview = typeof ThreadMessagePreview.Type;
 
+/**
+ * A usage limit that paused a thread, as the server keeps it: the thread's
+ * provider refuses new requests until `resetsAt`. While paused, background
+ * results (a subagent's, a background command's) do not each open a turn that
+ * fails at once — they are counted in `held`, and the provider's own
+ * conversation keeps them for the resume. A pause is only ever kept for a
+ * reset in the future.
+ */
+export const ThreadUsagePauseState = Schema.Struct({
+  /** When the exhausted window reopens. */
+  resetsAt: IsoDateTime,
+  /** The exhausted window as a person reads it: "5-hour", "7-day", "7-day Opus". */
+  window: TrimmedNonEmptyString,
+  /** Background results that arrived while paused; the resume delivers them. */
+  held: NonNegativeInt,
+  /** When the thread paused. */
+  pausedAt: IsoDateTime,
+});
+export type ThreadUsagePauseState = typeof ThreadUsagePauseState.Type;
+
+/**
+ * A usage limit that paused a thread, as clients read it
+ * (`OrchestrationThreadShell.usagePause`): set while paused, cleared at the
+ * reset or when a turn completes because the limit lifted early.
+ *
+ * `autoResume` is the thread's switch, on by default: at `resetsAt` the server
+ * resumes the thread's work itself by sending `USAGE_LIMIT_RESUME_PROMPT`
+ * (`@t3tools/shared/userAsk`) as a user message — clients recognise it with
+ * `isUsageLimitResumePrompt` and render it as an event, never as the person's
+ * bubble. `thread.usage-auto-resume.set` turns it off (a server that reports a
+ * pause accepts that command). A message the person sends while paused goes
+ * to the provider as always; its reply waits for the reset, and the resume
+ * picks it up.
+ */
+export const ThreadUsagePause = Schema.Struct({
+  ...ThreadUsagePauseState.fields,
+  autoResume: Schema.Boolean,
+});
+export type ThreadUsagePause = typeof ThreadUsagePause.Type;
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -727,6 +767,11 @@ export const OrchestrationThreadShell = Schema.Struct({
       }),
     ),
   ),
+  /**
+   * The usage limit pausing the thread, while it does (see ThreadUsagePause).
+   * Optional so old servers/clients interop; absent or null = not paused.
+   */
+  usagePause: Schema.optional(Schema.NullOr(ThreadUsagePause)),
 });
 export type OrchestrationThreadShell = typeof OrchestrationThreadShell.Type;
 
@@ -1007,6 +1052,15 @@ const ThreadAutoSettleSetCommand = Schema.Struct({
   enabled: Schema.Boolean,
 });
 
+const ThreadUsageAutoResumeSetCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-auto-resume.set"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  // false: after a usage limit resets the thread waits for the person; true
+  // (the default): the server resumes its work at the reset.
+  enabled: Schema.Boolean,
+});
+
 const ThreadActiveReorderCommand = Schema.Struct({
   type: Schema.Literal("thread.active.reorder"),
   commandId: CommandId,
@@ -1218,6 +1272,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadUnpinCommand,
   ThreadPinReorderCommand,
   ThreadAutoSettleSetCommand,
+  ThreadUsageAutoResumeSetCommand,
   ThreadActiveReorderCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
@@ -1250,6 +1305,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadUnpinCommand,
   ThreadPinReorderCommand,
   ThreadAutoSettleSetCommand,
+  ThreadUsageAutoResumeSetCommand,
   ThreadActiveReorderCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
@@ -1375,6 +1431,16 @@ const ThreadTitleRegenerationCompleteCommand = Schema.Struct({
   title: Schema.optional(TrimmedNonEmptyString),
 });
 
+// Sets (or, with null, clears) the thread's usage pause. The server's alone:
+// it follows the provider's usage limit, not a person's intent.
+const ThreadUsagePauseSetCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-pause.set"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  usagePause: Schema.NullOr(ThreadUsagePauseState),
+  createdAt: IsoDateTime,
+});
+
 const InternalOrchestrationCommand = Schema.Union([
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
@@ -1388,6 +1454,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadTitleRegenerationCompleteCommand,
   ThreadTitleGenerateCompleteCommand,
   ThreadTitleRefineCommand,
+  ThreadUsagePauseSetCommand,
 ]);
 export type InternalOrchestrationCommand = typeof InternalOrchestrationCommand.Type;
 
@@ -1413,6 +1480,8 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.unpinned",
   "thread.pin-reordered",
   "thread.auto-settle-set",
+  "thread.usage-auto-resume-set",
+  "thread.usage-pause-set",
   "thread.meta-updated",
   "thread.runtime-mode-set",
   "thread.interaction-mode-set",
@@ -1550,6 +1619,19 @@ export const ThreadAutoSettleSetPayload = Schema.Struct({
   // Null re-enables automatic settlement.
   autoSettleDisabledAt: Schema.NullOr(IsoDateTime),
   updatedAt: IsoDateTime,
+});
+
+export const ThreadUsageAutoResumeSetPayload = Schema.Struct({
+  threadId: ThreadId,
+  // Set while the person has turned the resume after a usage limit off for
+  // this thread; null (the default) resumes by itself.
+  usageAutoResumeDisabledAt: Schema.NullOr(IsoDateTime),
+});
+
+export const ThreadUsagePauseSetPayload = Schema.Struct({
+  threadId: ThreadId,
+  // Null clears the pause.
+  usagePause: Schema.NullOr(ThreadUsagePauseState),
 });
 
 export const ThreadMetaUpdatedPayload = Schema.Struct({
@@ -1788,6 +1870,16 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.auto-settle-set"),
     payload: ThreadAutoSettleSetPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.usage-auto-resume-set"),
+    payload: ThreadUsageAutoResumeSetPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.usage-pause-set"),
+    payload: ThreadUsagePauseSetPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

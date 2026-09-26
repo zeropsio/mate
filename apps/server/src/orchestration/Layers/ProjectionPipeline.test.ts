@@ -12,10 +12,12 @@ import {
   TurnId,
   ProviderInstanceId,
   ThreadMessagePreview,
+  ThreadUsagePauseState,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as FileSystem from "effect/FileSystem";
@@ -49,6 +51,7 @@ import { ServerConfig } from "../../config.ts";
 // The shell's previews, read back off the row for the assertions below.
 const decodeCheckpointHistory = Schema.decodeUnknownSync(Schema.fromJsonString(CheckpointHistory));
 const decodePreview = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadMessagePreview));
+const decodeUsagePause = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadUsagePauseState));
 function parsePreview(preview: string | null): ThreadMessagePreview | null {
   return preview === null ? null : decodePreview(preview);
 }
@@ -3128,6 +3131,244 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
             },
           ],
         );
+      }
+    }),
+  );
+
+  // A slash command and the server's usage-limit resume ask nothing, so the
+  // previews stay at the last real ask; attachments without words read as
+  // their count. The fold and the refresh agree at every step.
+  it.effect("previews only what a person asked, attachments as their count", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-preview-asks");
+      let sequence = 0;
+      const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+        eventStore
+          .append(event)
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+      const base = (at: string) => {
+        sequence += 1;
+        return {
+          eventId: EventId.make(`evt-preview-asks-${sequence}`),
+          aggregateKind: "thread" as const,
+          aggregateId: threadId,
+          occurredAt: at,
+          commandId: CommandId.make(`cmd-preview-asks-${sequence}`),
+          causationEventId: null,
+          correlationId: CorrelationId.make(`cmd-preview-asks-${sequence}`),
+          metadata: {},
+        };
+      };
+      yield* appendAndProject({
+        ...base("2026-03-02T08:00:00.000Z"),
+        type: "thread.created",
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-preview-asks"),
+          title: "Previews",
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-03-02T08:00:00.000Z",
+          updatedAt: "2026-03-02T08:00:00.000Z",
+        },
+      });
+      const readPreviews = sql<{
+        readonly latestMessagePreview: string | null;
+        readonly latestUserMessagePreview: string | null;
+      }>`
+        SELECT
+          latest_message_preview_json AS "latestMessagePreview",
+          latest_user_message_preview_json AS "latestUserMessagePreview"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+      `.pipe(
+        Effect.map((rows) =>
+          rows.map((row) => ({
+            latest: parsePreview(row.latestMessagePreview),
+            user: parsePreview(row.latestUserMessagePreview),
+          })),
+        ),
+      );
+      const image = {
+        type: "image" as const,
+        id: "preview-shot",
+        name: "shot.png",
+        mimeType: "image/png",
+        sizeBytes: 5,
+      };
+      const preview = (role: "user" | "assistant", text: string, second: number) => ({
+        role,
+        text,
+        createdAt: `2026-03-02T08:00:${String(second).padStart(2, "0")}.000Z`,
+      });
+      const steps = [
+        { role: "user", text: "Fix the login page", latest: 1, user: 1 },
+        { role: "assistant", text: "Fixed the login page.", latest: 2, user: 1 },
+        { role: "user", text: "/compact", latest: 2, user: 1 },
+        { role: "user", text: "/model opus", latest: 2, user: 1 },
+        { role: "user", text: USAGE_LIMIT_RESUME_PROMPT, latest: 2, user: 1 },
+        {
+          role: "user",
+          text: IMAGE_ONLY_BOOTSTRAP_PROMPT,
+          attachments: [image],
+          latest: 6,
+          user: 6,
+          previewText: "1 image",
+        },
+        {
+          role: "user",
+          text: "",
+          attachments: [image, image, image],
+          latest: 7,
+          user: 7,
+          previewText: "3 images",
+        },
+      ] as const;
+      const previewAt = (second: number) => {
+        const step = steps[second - 1]!;
+        const text = "previewText" in step ? step.previewText : step.text;
+        return preview(step.role, text, second);
+      };
+
+      for (const [index, step] of steps.entries()) {
+        const second = index + 1;
+        const at = preview("user", "", second).createdAt;
+        yield* appendAndProject({
+          ...base(at),
+          type: "thread.message-sent",
+          payload: {
+            threadId,
+            messageId: MessageId.make(`message-preview-asks-${second}`),
+            role: step.role,
+            text: step.text,
+            ...("attachments" in step ? { attachments: [...step.attachments] } : {}),
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        const expected = [{ latest: previewAt(step.latest), user: previewAt(step.user) }];
+        assert.deepEqual(yield* readPreviews, expected, `after step ${second}`);
+
+        yield* appendAndProject({
+          ...base(at),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "approval-required",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: at,
+            },
+          },
+        });
+        assert.deepEqual(yield* readPreviews, expected, `refreshed after step ${second}`);
+      }
+    }),
+  );
+
+  it.effect("keeps a thread's usage pause and its auto-resume switch on the thread row", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-usage-pause");
+      let sequence = 0;
+      const project = (event: Record<string, unknown>) => {
+        sequence += 1;
+        return eventStore
+          .append({
+            eventId: EventId.make(`evt-usage-pause-${sequence}`),
+            aggregateKind: "thread",
+            aggregateId: threadId,
+            occurredAt: "2026-09-26T09:00:00.000Z",
+            commandId: CommandId.make(`cmd-usage-pause-${sequence}`),
+            causationEventId: null,
+            correlationId: null,
+            metadata: {},
+            ...event,
+          } as Parameters<typeof eventStore.append>[0])
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+      };
+      yield* project({
+        type: "thread.created",
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-usage-pause"),
+          title: "Paused",
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-09-26T08:00:00.000Z",
+          updatedAt: "2026-09-26T08:00:00.000Z",
+        },
+      });
+      const readRow = sql<{
+        readonly usagePause: string | null;
+        readonly usageAutoResumeDisabledAt: string | null;
+        readonly updatedAt: string;
+      }>`
+        SELECT
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
+          updated_at AS "updatedAt"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+      `.pipe(
+        Effect.map((rows) =>
+          rows.map((row) => ({
+            ...row,
+            usagePause: row.usagePause === null ? null : decodeUsagePause(row.usagePause),
+          })),
+        ),
+      );
+      const pause = {
+        resetsAt: "2026-09-26T13:00:00.000Z",
+        window: "5-hour",
+        held: 1,
+        pausedAt: "2026-09-26T08:30:00.000Z",
+      };
+
+      for (const { event, expected } of [
+        {
+          event: { type: "thread.usage-pause-set", payload: { threadId, usagePause: pause } },
+          expected: { usagePause: pause, usageAutoResumeDisabledAt: null },
+        },
+        {
+          event: {
+            type: "thread.usage-auto-resume-set",
+            payload: { threadId, usageAutoResumeDisabledAt: "2026-09-26T09:00:00.000Z" },
+          },
+          expected: { usagePause: pause, usageAutoResumeDisabledAt: "2026-09-26T09:00:00.000Z" },
+        },
+        {
+          event: { type: "thread.usage-pause-set", payload: { threadId, usagePause: null } },
+          expected: { usagePause: null, usageAutoResumeDisabledAt: "2026-09-26T09:00:00.000Z" },
+        },
+        {
+          event: {
+            type: "thread.usage-auto-resume-set",
+            payload: { threadId, usageAutoResumeDisabledAt: null },
+          },
+          expected: { usagePause: null, usageAutoResumeDisabledAt: null },
+        },
+      ]) {
+        yield* project(event);
+        // The pause is an overlay: it never moves the thread in a list.
+        assert.deepEqual(yield* readRow, [{ ...expected, updatedAt: "2026-09-26T08:00:00.000Z" }]);
       }
     }),
   );

@@ -6,15 +6,14 @@ import {
   KIND_LABEL,
   buildStep,
   decodeCall,
-  detailField,
   errorInfoFor,
+  explanationField,
   firstLine,
   gatedStatusWord,
   mateVoiceFor,
   phaseFor,
   pickFirst,
   readInputString,
-  undecodedDetail,
 } from "./shared.ts";
 
 /** Humanizes `reason` (e.g. `health_probe_timeout`) into "Health probe timeout". */
@@ -103,17 +102,22 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
       },
     ),
     ...(closing !== undefined ? { closing } : {}),
+    // A server that did not come up says what its log said: the person reads
+    // the crash, not a hint to the agent.
+    ...(card !== undefined && !devServerStepSucceeded(card.action, card.running)
+      ? explanationField(
+          devServerStepNote(card) ?? `${card.hostname} did not come up`,
+          card.logTail
+            ?.split("\n")
+            .map((line) => line.trimEnd())
+            .filter((line) => line.length > 0),
+        )
+      : {}),
     steps,
     // The subdomain URL is not part of this result — it comes from the
     // client's own topology view as a prop the timeline supplies, never
     // baked into the operation here.
     links: [],
-    ...detailField([
-      card?.logTail,
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
   };

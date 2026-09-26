@@ -37,6 +37,8 @@ describe("checkpoint review coverage", () => {
     expect(checkpointHistoryNotice({ coverage: "partial" })).toBe(
       "History is incomplete. Recorded file counts cover available snapshots only.",
     );
+    // Complete history needs no caveat: the diff says what changed.
+    expect(checkpointHistoryNotice({ coverage: "complete" })).toBeNull();
   });
 });
 

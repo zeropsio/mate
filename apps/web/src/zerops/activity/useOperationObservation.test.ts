@@ -37,7 +37,20 @@ function target(overrides: Partial<ObservationTarget> = {}): ObservationTarget {
   };
 }
 
-const EMPTY_SNAPSHOT: ProjectActivitySnapshot = { processes: undefined, atMs: undefined };
+const EMPTY_SNAPSHOT: ProjectActivitySnapshot = {
+  processes: undefined,
+  atMs: undefined,
+  live: false,
+};
+
+/** What the feed holds, and whether it is observing — a quiet feed's records keep their old stamps. */
+function snapshotOf(
+  processes: ReadonlyArray<ActivityProcess>,
+  atMs: number,
+  live = false,
+): ProjectActivitySnapshot {
+  return { processes, atMs, live };
+}
 
 function baseInput(
   overrides: Partial<DeriveOperationObservationInput> = {},
@@ -70,21 +83,15 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
 
   it("observing after the first read lands, folding the snapshot into an attribution", () => {
     const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
-    const snapshot: ProjectActivitySnapshot = { processes: [p], atMs: NOW };
-    const result = deriveOperationObservation(baseInput({ snapshot }), NOW);
+    const result = deriveOperationObservation(baseInput({ snapshot: snapshotOf([p], NOW) }), NOW);
     expect(result.state.kind).toBe("observing");
-    expect(
-      result.state.kind === "observing" && result.state.observation.steps.length,
-    ).toBeGreaterThan(0);
+    expect(result.state.kind === "observing" && result.state.observation.pipeline).toBeDefined();
     expect(result.lastRead?.atMs).toBe(NOW);
   });
 
   it("remembers the last read across calls when the snapshot goes stale (no fresh processes)", () => {
     const p = process({ appVersion: { status: "BUILDING" } });
-    const first = deriveOperationObservation(
-      baseInput({ snapshot: { processes: [p], atMs: NOW } }),
-      NOW,
-    );
+    const first = deriveOperationObservation(baseInput({ snapshot: snapshotOf([p], NOW) }), NOW);
     const second = deriveOperationObservation(
       baseInput({ snapshot: EMPTY_SNAPSHOT, previousLastRead: first.lastRead }),
       NOW + 11_000,
@@ -106,15 +113,9 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
    */
   it("does not refresh lastRead on a successful poll that attributes nothing for this target", () => {
     const p = process({ appVersion: { status: "BUILDING" } });
-    const first = deriveOperationObservation(
-      baseInput({ snapshot: { processes: [p], atMs: NOW } }),
-      NOW,
-    );
+    const first = deriveOperationObservation(baseInput({ snapshot: snapshotOf([p], NOW) }), NOW);
     const second = deriveOperationObservation(
-      baseInput({
-        snapshot: { processes: [], atMs: NOW + 5_000 },
-        previousLastRead: first.lastRead,
-      }),
+      baseInput({ snapshot: snapshotOf([], NOW + 5_000), previousLastRead: first.lastRead }),
       NOW + 11_000,
     );
     expect(second.state.kind).toBe("stale");
@@ -123,11 +124,8 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
 
   it("history is kept once running flips false — the last non-empty-steps observation persists", () => {
     const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
-    const running = deriveOperationObservation(
-      baseInput({ snapshot: { processes: [p], atMs: NOW } }),
-      NOW,
-    );
-    expect(running.history?.steps.length).toBeGreaterThan(0);
+    const running = deriveOperationObservation(baseInput({ snapshot: snapshotOf([p], NOW) }), NOW);
+    expect(running.history?.pipeline).toBeDefined();
 
     const stopped = deriveOperationObservation(
       baseInput({
@@ -141,10 +139,10 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(stopped.wantsPoll).toBe(false);
   });
 
-  it("does not overwrite history with an empty-steps observation", () => {
+  it("does not overwrite history with an observation that has no pipeline", () => {
     const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
     const withSteps = deriveOperationObservation(
-      baseInput({ snapshot: { processes: [p], atMs: NOW } }),
+      baseInput({ snapshot: snapshotOf([p], NOW) }),
       NOW,
     );
 
@@ -158,7 +156,7 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
   it("stops polling once the pipeline outcome settles, even while the operation is still running", () => {
     const settled = process({ appVersion: { status: "ACTIVE" } });
     const result = deriveOperationObservation(
-      baseInput({ snapshot: { processes: [settled], atMs: NOW } }),
+      baseInput({ snapshot: snapshotOf([settled], NOW) }),
       NOW,
     );
     expect(result.state.kind === "observing" && result.state.observation.outcome).toBe("finished");
@@ -200,14 +198,14 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
   it("off: project-mismatch when the snapshot's processes belong to a different project, and stops polling", () => {
     const wrong = process({ projectId: "proj-other" });
     const result = deriveOperationObservation(
-      baseInput({ snapshot: { processes: [wrong], atMs: NOW } }),
+      baseInput({ snapshot: snapshotOf([wrong], NOW) }),
       NOW,
     );
     expect(result.state).toEqual({ kind: "off", reason: "project-mismatch" });
     expect(result.wantsPoll).toBe(false);
   });
 
-  it("stops polling for every off reason, not just project-mismatch and ceiling", () => {
+  it("stops polling for an off reason the feed will not recover from", () => {
     const noSession = deriveOperationObservation(
       baseInput({ attributable: false, notAttributableReason: "no-session" }),
       NOW,
@@ -216,7 +214,7 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
 
     const feedError = deriveOperationObservation(
       baseInput({
-        snapshot: { processes: undefined, atMs: undefined, unavailableReason: "server" },
+        snapshot: { ...EMPTY_SNAPSHOT, unavailableReason: "server" },
       }),
       NOW,
     );
@@ -234,7 +232,7 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     for (const pollerReason of ["expired-session", "forbidden"]) {
       const result = deriveOperationObservation(
         baseInput({
-          snapshot: { processes: undefined, atMs: undefined, unavailableReason: pollerReason },
+          snapshot: { ...EMPTY_SNAPSHOT, unavailableReason: pollerReason },
         }),
         NOW,
       );
@@ -245,7 +243,7 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
   it("maps the poller's not-found straight through", () => {
     const result = deriveOperationObservation(
       baseInput({
-        snapshot: { processes: undefined, atMs: undefined, unavailableReason: "not-found" },
+        snapshot: { ...EMPTY_SNAPSHOT, unavailableReason: "not-found" },
       }),
       NOW,
     );
@@ -255,7 +253,7 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
   it("maps any other poller reason to feed-error", () => {
     const result = deriveOperationObservation(
       baseInput({
-        snapshot: { processes: undefined, atMs: undefined, unavailableReason: "server" },
+        snapshot: { ...EMPTY_SNAPSHOT, unavailableReason: "server" },
       }),
       NOW,
     );
@@ -264,12 +262,84 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
 
   it("carries an explicit previousHistory forward with no observation at all yet", () => {
     const history: Observation = {
-      steps: [{ id: "DEPLOY", label: "Deploy", state: "running", stateLabel: "Running" }],
+      pipeline: { appVersion: { status: "DEPLOYING" } },
       chips: [],
       readAtMs: NOW,
     };
     const result = deriveOperationObservation(baseInput({ previousHistory: history }), NOW);
     expect(result.history).toEqual(history);
+  });
+});
+
+/**
+ * The feed is pushed: while it observes, a build step that changes nothing
+ * for minutes is still being watched, and the platform's silence is the
+ * news. Only a feed that is not observing makes what the card holds old.
+ */
+describe("deriveOperationObservation — freshness is the feed's, not a record's", () => {
+  const building = process({
+    appVersion: {
+      status: "BUILDING",
+      build: { pipelineStart: "2026-09-02T10:00:01.000Z", startDate: "2026-09-02T10:00:09.000Z" },
+    },
+  });
+  /** The last moment the feed was seen observing. */
+  const liveAt = (atMs: number) =>
+    deriveOperationObservation(baseInput({ snapshot: snapshotOf([building], NOW, true) }), atMs);
+
+  it("a live feed keeps a quiet build current for minutes without a changed record", () => {
+    const result = liveAt(NOW + 120_000);
+
+    expect(result.state.kind).toBe("observing");
+    expect(result.lastRead?.atMs).toBe(NOW + 120_000);
+    expect(result.wantsPoll).toBe(true);
+  });
+
+  it.each([
+    { name: "stale once it has not observed for 10 s", after: 15_000, kind: "stale" },
+    { name: "off once it has not observed for a minute", after: 70_000, kind: "off" },
+  ])("a feed that stops observing ages from its last live moment: $name", ({ after, kind }) => {
+    const before = liveAt(NOW + 5_000);
+    const result = deriveOperationObservation(
+      baseInput({ snapshot: snapshotOf([building], NOW), previousLastRead: before.lastRead }),
+      NOW + 5_000 + after,
+    );
+
+    expect(result.state.kind).toBe(kind);
+    expect(result.lastRead?.atMs).toBe(NOW + 5_000);
+  });
+
+  it("holds its lease through a minute's silence, so the feed can come back to it", () => {
+    const before = liveAt(NOW + 5_000);
+    const silent = deriveOperationObservation(
+      baseInput({ snapshot: snapshotOf([building], NOW), previousLastRead: before.lastRead }),
+      NOW + 75_000,
+    );
+    const back = deriveOperationObservation(
+      baseInput({
+        snapshot: snapshotOf([building], NOW, true),
+        previousLastRead: silent.lastRead,
+      }),
+      NOW + 80_000,
+    );
+
+    expect(silent.state).toEqual({ kind: "off", reason: "stale-timeout" });
+    expect(silent.wantsPoll).toBe(true);
+    expect(back.state.kind).toBe("observing");
+  });
+
+  it("a feed that is not observing still takes a read newer than its last live moment", () => {
+    const before = liveAt(NOW + 5_000);
+    const result = deriveOperationObservation(
+      baseInput({
+        snapshot: snapshotOf([building], NOW + 30_000),
+        previousLastRead: before.lastRead,
+      }),
+      NOW + 32_000,
+    );
+
+    expect(result.lastRead?.atMs).toBe(NOW + 30_000);
+    expect(result.state.kind).toBe("observing");
   });
 });
 
@@ -292,7 +362,7 @@ describe("deriveOperationObservation — a result's own ids pin the attributed p
     const result = deriveOperationObservation(
       baseInput({
         target: target(exact === undefined ? {} : { exact }),
-        snapshot: { processes: [own, later], atMs: NOW },
+        snapshot: snapshotOf([own, later], NOW),
       }),
       NOW,
     );
@@ -303,7 +373,7 @@ describe("deriveOperationObservation — a result's own ids pin the attributed p
 describe("deriveOperationObservation — the build log a card keeps showing", () => {
   const query = { buildServiceStackId: "svc-build", appVersionId: "av-1" };
   const history: Observation = {
-    steps: [{ id: "DEPLOY", label: "Deploy", state: "running", stateLabel: "Running" }],
+    pipeline: { appVersion: { status: "DEPLOYING" } },
     chips: [],
     readAtMs: NOW,
     buildLog: query,

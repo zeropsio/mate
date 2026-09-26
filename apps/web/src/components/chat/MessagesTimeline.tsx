@@ -17,8 +17,6 @@ import type {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   emptyAgentPanelModel,
-  formatSubagentModelLabel,
-  formatSubagentTokenCount,
   isActiveSubagentStatus,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 
@@ -48,7 +46,6 @@ import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import {
   createMessageAttachmentPreviewProjector,
   deriveTimelineEntries,
-  formatDuration,
   selectMessageImageResources,
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
@@ -83,8 +80,8 @@ import {
   EyeIcon,
   GlobeIcon,
   HammerIcon,
+  LayersIcon,
   MessageCircleIcon,
-  Minimize2Icon,
   SearchIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -97,8 +94,6 @@ import { Button } from "../ui/button";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
-import { ChangedFilesCard } from "./ChangedFilesTree";
-import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
 import {
   keepTimelineEndVisibleAfterOverlayGrowth,
   readTimelinePosition,
@@ -108,8 +103,7 @@ import {
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
-  deriveMessagesTimelineRowsWithState,
-  type MessagesTimelineRowsProjection,
+  deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
@@ -123,8 +117,6 @@ import {
   shouldPreserveAssistantLineBreaks,
   toolGroupAction,
   workEntryIsVisibleInGroup,
-  omitSupersededLifecycleMarkers,
-  summarizeToolGroup,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
   type TurnHeaderActivity,
@@ -151,8 +143,22 @@ import {
 } from "./userMessageTerminalContexts";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
-import { TurnHeaderCard } from "./TurnHeader";
-import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
+import { BrowserStrip } from "./BrowserStrip";
+import { formatWorkDuration } from "./conversation.logic";
+import { OutcomeCard } from "./OutcomeCard";
+import {
+  ErrorLine,
+  EventLine,
+  IncidentLine,
+  MessageReceipt,
+  PauseBlock,
+  Seam,
+  WorkLine,
+  type ConversationSpeaker,
+  type ServerUsagePause,
+} from "./ConversationRows";
+import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
+import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
@@ -182,9 +188,19 @@ interface TimelineRowSharedState {
   onRunShellCommand: ((command: string) => void) | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  /** `anchorKey` is the header row that holds the fold control. */
-  onToggleTurnFold: (turnId: TurnId, anchorKey: string) => void;
-  onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
+  /** Opens or closes a work line's log; `anchorKey` is the line's row, which stays where it is. */
+  onToggleStretch: (stretchKey: string, anchorKey: string) => void;
+  /** Opens or closes one line of an opened log in place: a run of tool calls, an operation. */
+  onToggleLogItem: (id: string, anchorKey: string) => void;
+  onToggleShowReasoning: (anchorKey: string) => void;
+  /** Whether opened logs show the Mate's thinking between its notes. */
+  showReasoning: boolean;
+  /** Who the conversation is with: the Mate's name and colour. */
+  speaker: ConversationSpeaker;
+  /** The pause row that holds the thread now, and the server's reading of it. */
+  livePauseId: string | null;
+  usagePause: ServerUsagePause | null;
+  onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
   /** `anchorKey` is the timeline row that holds the block; a standalone block is its own row. */
   onToggleReasoning: (messageId: string, expanded: boolean, anchorKey?: string) => void;
   expandedReasoningMessageIds: ReadonlySet<string>;
@@ -297,6 +313,9 @@ interface MessagesTimelineProps {
   loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
   /** Messages sent during the running turn. They render as ghost bubbles after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  /** The server's pause on this thread, when a usage limit holds it now. */
+  usagePause?: ServerUsagePause | null;
+  onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   onRemoveQueuedMessage?: (id: string) => void;
@@ -342,6 +361,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   topFadeEnabled = false,
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
+  usagePause = null,
+  onUsageAutoResumeChange = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
@@ -349,11 +370,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The timeline mounts once per thread; a thread left mid-read comes back at
   // the same row with the same disclosures open.
   const rememberedPosition = useMemo(() => readTimelinePosition(routeThreadKey), [routeThreadKey]);
-  const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(
-    () => rememberedPosition?.disclosures?.turns ?? new Set(),
+  const [openStretchKeys, setOpenStretchKeys] = useState<ReadonlySet<string>>(
+    () => rememberedPosition?.disclosures?.stretches ?? new Set(),
   );
-  const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(
-    () => rememberedPosition?.disclosures?.workGroups ?? new Set(),
+  const [expandedLogItemIds, setExpandedLogItemIds] = useState<ReadonlySet<string>>(
+    () => rememberedPosition?.disclosures?.logItems ?? new Set(),
+  );
+  const [showReasoning, setShowReasoning] = useState(
+    () => rememberedPosition?.disclosures?.showReasoning ?? false,
   );
   // Preserve member disclosure state across virtualization.
   const [expandedSpawnEntryIds, setExpandedSpawnEntryIds] = useState<ReadonlySet<string>>(
@@ -424,18 +448,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [shouldRestoreVisibleContentPosition],
   );
 
-  const onToggleTurnFold = useCallback(
-    (turnId: TurnId, anchorKey: string) => {
+  const onToggleStretch = useCallback(
+    (stretchKey: string, anchorKey: string) => {
       suspendEndScrollMaintenanceForDisclosure(anchorKey);
-      setExpandedTurnIds((existing) => {
-        const next = new Set(existing);
-        if (next.has(turnId)) {
-          next.delete(turnId);
-        } else {
-          next.add(turnId);
-        }
-        return next;
-      });
+      setOpenStretchKeys((existing) => toggledSet(existing, stretchKey));
+    },
+    [suspendEndScrollMaintenanceForDisclosure],
+  );
+  const onToggleShowReasoning = useCallback(
+    (anchorKey: string) => {
+      suspendEndScrollMaintenanceForDisclosure(anchorKey);
+      setShowReasoning((current) => !current);
     },
     [suspendEndScrollMaintenanceForDisclosure],
   );
@@ -457,18 +480,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [suspendEndScrollMaintenanceForDisclosure],
   );
-  const onToggleWorkGroup = useCallback(
-    (groupId: string, anchorKey: string) => {
+  const onToggleLogItem = useCallback(
+    (id: string, anchorKey: string) => {
       suspendEndScrollMaintenanceForDisclosure(anchorKey);
-      setExpandedWorkGroupIds((existing) => {
-        const next = new Set(existing);
-        if (next.has(groupId)) {
-          next.delete(groupId);
-        } else {
-          next.add(groupId);
-        }
-        return next;
-      });
+      setExpandedLogItemIds((existing) => toggledSet(existing, id));
     },
     [suspendEndScrollMaintenanceForDisclosure],
   );
@@ -487,77 +502,52 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [suspendEndScrollMaintenanceForDisclosure],
   );
 
-  // An in-session interrupt leaves its turn expanded so the user keeps their
-  // place; the next turn (or a reload, since this is local state) folds it.
-  const previousLatestTurnRef = useRef(latestTurn);
-  useEffect(() => {
-    const previous = previousLatestTurnRef.current;
-    previousLatestTurnRef.current = latestTurn;
-    if (!latestTurn || previous?.turnId === undefined) {
-      return;
-    }
-    if (latestTurn.turnId === previous.turnId) {
-      if (previous.state === "running" && latestTurn.state === "interrupted") {
-        setExpandedTurnIds((existing) => {
-          const next = new Set(existing);
-          next.add(latestTurn.turnId);
-          return next;
-        });
-      }
-      return;
-    }
-    setExpandedTurnIds((existing) => {
-      if (!existing.has(previous.turnId)) {
-        return existing;
-      }
-      const next = new Set(existing);
-      next.delete(previous.turnId);
-      return next;
-    });
-  }, [latestTurn]);
-
-  const rowsProjectionRef = useRef<{
-    threadKey: string;
-    workspaceRoot: string | undefined;
-    projection: MessagesTimelineRowsProjection;
-  } | null>(null);
-  const rawRows = useMemo(() => {
-    const previous = rowsProjectionRef.current;
-    const projection = deriveMessagesTimelineRowsWithState(
-      {
+  // Where the person left off: the last visit this conversation remembers,
+  // read once as it opens — only when something came since — so the line
+  // marks what is new and never follows the reader around.
+  const [newSince] = useState(() => {
+    const visitedAt = useUiStateStore.getState().threadLastVisitedAtById[routeThreadKey];
+    const completedAt = latestTurn?.completedAt;
+    return visitedAt && completedAt && Date.parse(completedAt) > Date.parse(visitedAt)
+      ? visitedAt
+      : null;
+  });
+  const rawRows = useMemo(
+    () =>
+      deriveMessagesTimelineRows({
+        newSince,
         timelineEntries,
         latestTurn,
         runningTurnId,
-        expandedTurnIds,
-        expandedWorkGroupIds,
+        openStretchKeys,
+        expandedIds: expandedLogItemIds,
+        showReasoning,
         isWorking,
         activeTurnStartedAt,
         turnDiffSummaries,
         supportsConversationRollback,
         queuedMessages,
-      },
-      previous?.threadKey === routeThreadKey && previous.workspaceRoot === workspaceRoot
-        ? previous.projection
-        : null,
-    );
-    rowsProjectionRef.current = { threadKey: routeThreadKey, workspaceRoot, projection };
-    return projection.rows;
-  }, [
-    rowsProjectionRef,
-    routeThreadKey,
-    workspaceRoot,
-    timelineEntries,
-    latestTurn,
-    runningTurnId,
-    expandedTurnIds,
-    expandedWorkGroupIds,
-    isWorking,
-    activeTurnStartedAt,
-    turnDiffSummaries,
-    supportsConversationRollback,
-    queuedMessages,
-  ]);
+      }),
+    [
+      newSince,
+      timelineEntries,
+      latestTurn,
+      runningTurnId,
+      openStretchKeys,
+      expandedLogItemIds,
+      showReasoning,
+      isWorking,
+      activeTurnStartedAt,
+      turnDiffSummaries,
+      supportsConversationRollback,
+      queuedMessages,
+    ],
+  );
   const rows = useStableRows(rawRows);
+  const livePauseId = useMemo(
+    () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
+    [rows],
+  );
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const restoreRowIndex =
     restoringReadingPosition && rememberedPosition
@@ -711,9 +701,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           scrollOffset: element.scrollTop,
           atEnd: isAtEnd,
           disclosures: {
-            turns: expandedTurnIds,
-            workGroups: expandedWorkGroupIds,
+            stretches: openStretchKeys,
+            logItems: expandedLogItemIds,
             spawnEntries: expandedSpawnEntryIds,
+            showReasoning,
           },
         });
       }
@@ -758,8 +749,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [
     contentInsetEndAdjustment,
     expandedSpawnEntryIds,
-    expandedTurnIds,
-    expandedWorkGroupIds,
+    openStretchKeys,
+    expandedLogItemIds,
+    showReasoning,
     listRef,
     minimapItems,
     minimapStripMap,
@@ -799,6 +791,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [timelineViewportElement, rows.length]);
 
+  const mate = useZeropsMate(activeThreadEnvironmentId);
+  const speaker = useMemo<ConversationSpeaker>(
+    () =>
+      mate.kind === "mate"
+        ? { name: mate.mate.name, tint: mate.mate.tint }
+        : { name: "Assistant", tint: "slate" },
+    [mate],
+  );
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -813,8 +813,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRunShellCommand,
       onImageExpand,
       onOpenTurnDiff,
-      onToggleTurnFold,
-      onToggleWorkGroup,
+      onToggleStretch,
+      onToggleLogItem,
+      onToggleShowReasoning,
+      showReasoning,
+      speaker,
+      livePauseId,
+      usagePause,
+      onUsageAutoResumeChange,
       onToggleReasoning,
       expandedReasoningMessageIds,
       onToggleSpawnRow,
@@ -837,8 +843,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRunShellCommand,
       onImageExpand,
       onOpenTurnDiff,
-      onToggleTurnFold,
-      onToggleWorkGroup,
+      onToggleStretch,
+      onToggleLogItem,
+      onToggleShowReasoning,
+      showReasoning,
+      speaker,
+      livePauseId,
+      usagePause,
+      onUsageAutoResumeChange,
       onToggleReasoning,
       expandedReasoningMessageIds,
       onToggleSpawnRow,
@@ -954,6 +966,13 @@ function keyExtractor(item: MessagesTimelineRow) {
   return item.id;
 }
 
+function toggledSet<T>(set: ReadonlySet<T>, value: T): ReadonlySet<T> {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+}
+
 function getItemType(item: MessagesTimelineRow) {
   return item.kind === "message" ? `message:${item.message.role}` : item.kind;
 }
@@ -979,6 +998,13 @@ function resolveTimelineRowHeight(state: TimelinePositionState, rowIndex: number
 function timelineMinimapEventTargetsPreview(target: EventTarget): boolean {
   return target instanceof Element && target.closest("[data-minimap-preview]") !== null;
 }
+
+const MINIMAP_TONE_CLASS: Record<TimelineMinimapItem["tone"], string | null> = {
+  quiet: null,
+  produced: "bg-status-ok data-[in-view=true]:bg-status-ok",
+  failed: "bg-status-failed data-[in-view=true]:bg-status-failed",
+  paused: "bg-status-attention data-[in-view=true]:bg-status-attention",
+};
 
 function TimelineMinimap({
   hasPersistentGutter,
@@ -1153,6 +1179,12 @@ function TimelineMinimap({
                         : activeDistance === 2
                           ? "w-2.5"
                           : "w-2",
+                    // The turn map: a stretch's outcome in its colour, its
+                    // length in the mark's weight, a message sent into a
+                    // running turn as a dot.
+                    MINIMAP_TONE_CLASS[item.tone],
+                    item.weight === 1 ? "h-1" : item.weight === 2 ? "h-1.5" : null,
+                    item.aside && activeDistance !== 0 ? "w-1" : null,
                   )}
                   data-in-view="false"
                   data-minimap-strip
@@ -1182,7 +1214,7 @@ function TimelineMinimap({
                   <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
                     {activeItem.userText ?? "User message"}
                   </span>
-                  {activeItem.assistantText ? (
+                  {(activeItem.assistantText ?? activeItem.note) ? (
                     <span
                       className="mt-1 max-h-[3.75rem] overflow-hidden text-muted-foreground text-sm leading-5"
                       style={{
@@ -1191,7 +1223,7 @@ function TimelineMinimap({
                         WebkitLineClamp: 3,
                       }}
                     >
-                      {activeItem.assistantText}
+                      {activeItem.assistantText ?? activeItem.note}
                     </span>
                   ) : null}
                 </span>
@@ -1259,43 +1291,51 @@ function TimelineMinimapNavigationButton({
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-/**
- * The trace tier: everything the agent does on the way to its answer — work,
- * thinking, narration, a change landing. Consecutive trace rows share one
- * rail (the border spans each row's padding), so a run reads as one spine
- * between the conversation's bubbles and answers.
- */
-function isTraceRow(row: TimelineRow): boolean {
+/** Rows that belong to an opened log: they sit on its rail, under the line's words. */
+function isLogRow(row: TimelineRow): boolean {
   switch (row.kind) {
-    case "work":
-    case "work-live":
-    case "work-toggle":
-    case "activity-group":
-    case "generic-call":
-    case "change-landed":
+    case "log-note":
+    case "log-activity":
+    case "log-reasoning":
+    case "log-operation":
       return true;
-    case "message":
-      return (
-        row.message.role === "reasoning" || (row.message.role === "assistant" && row.narration)
-      );
+    case "work":
+      return row.isExpandedToolGroupEntry || row.id.startsWith("log-entry:");
     default:
       return false;
   }
 }
 
+/** The vertical rhythm: a message opens a stretch, its line hugs it, what it produced follows. */
+function rowSpacing(row: TimelineRow): string {
+  switch (row.kind) {
+    case "message":
+      return row.message.role === "user" ? "pt-4 pb-1" : "pt-2 pb-2";
+    case "work-line":
+      return "pb-0.5";
+    case "seam":
+      return "pt-5 pb-1";
+    case "outcome":
+      return "pt-1 pb-3";
+    case "strip":
+    case "operation":
+    case "pause":
+    case "proposed-plan":
+      return "py-1";
+    case "queued-message":
+      return "pt-3 pb-1";
+    default:
+      return isLogRow(row) ? "py-0.5" : "py-0.5";
+  }
+}
+
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
+  const log = isLogRow(row);
   return (
     <div
       className={cn(
-        isTraceRow(row)
-          ? "ms-1.5 border-s-2 border-border ps-3 py-0.5"
-          : row.kind === "turn-header"
-            ? "pb-3"
-            : row.kind === "turn-plan" || row.kind === "operation"
-              ? "pt-1 pb-2"
-              : row.kind === "message" && row.message.role === "assistant"
-                ? "pt-1.5 pb-3"
-                : "pb-3",
+        rowSpacing(row),
+        log && "ms-3 border-s border-border ps-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
       )}
       data-timeline-row-id={row.id}
@@ -1303,33 +1343,253 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       data-message-id={row.kind === "message" ? row.message.id : undefined}
       data-message-role={row.kind === "message" ? row.message.role : undefined}
     >
+      {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
+      {row.kind === "message" && row.message.role === "assistant" ? (
+        <AssistantTimelineRow row={row} />
+      ) : null}
+      {row.kind === "work-line" ? <WorkLineTimelineRow row={row} /> : null}
+      {row.kind === "log-note" ? <LogNoteTimelineRow row={row} /> : null}
+      {row.kind === "log-activity" ? <LogActivityTimelineRow row={row} /> : null}
+      {row.kind === "log-reasoning" ? (
+        <ReasoningTraceBlock
+          anchorKey={row.id}
+          messages={row.messages}
+          live={row.live}
+          showHeader
+        />
+      ) : null}
+      {row.kind === "log-operation" ? <LogOperationTimelineRow row={row} /> : null}
       {row.kind === "work" ? (
         <WorkGroupSection
           groupedEntries={row.groupedEntries}
           isExpandedToolGroupEntry={row.isExpandedToolGroupEntry}
         />
       ) : null}
-      {row.kind === "work-live" ? <LiveWorkEntryTimelineRow row={row} /> : null}
-      {row.kind === "activity-group" ? <ActivityGroupTimelineRow row={row} /> : null}
-      {row.kind === "work-toggle" ? <WorkGroupToggleTimelineRow row={row} /> : null}
-      {row.kind === "turn-header" ? <TurnHeaderTimelineRow row={row} /> : null}
-      {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
-      {row.kind === "change-landed" ? <ChangeLandedTimelineRow row={row} /> : null}
-      {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
-      {row.kind === "message" && row.message.role === "assistant" ? (
-        <AssistantTimelineRow row={row} />
+      {row.kind === "operation" ? <OperationTimelineRow row={row} /> : null}
+      {row.kind === "strip" ? <StripTimelineRow row={row} /> : null}
+      {row.kind === "incident" ? <IncidentLine incident={row.incident} /> : null}
+      {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
+      {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
+      {row.kind === "error" ? (
+        <ErrorLine label={row.entry.label} detail={row.entry.detail} />
       ) : null}
-      {row.kind === "message" && row.message.role === "reasoning" ? (
-        <ReasoningTimelineRow row={row} />
-      ) : null}
+      {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
+      {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
+      {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
-      {row.kind === "operation" ? <OperationTimelineRow row={row} /> : null}
-      {row.kind === "generic-call" ? <GenericCallTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
     </div>
   );
 });
+
+function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const { isCompacting } = use(TimelineRowActivityCtx);
+  return (
+    <WorkLine
+      activityLabel={row.live ? turnHeaderActivityLabel(row.activity, ctx.workspaceRoot) : null}
+      compacting={row.live && isCompacting}
+      onToggle={() => ctx.onToggleStretch(row.stretchKey, row.id)}
+      onToggleReasoning={() => ctx.onToggleShowReasoning(row.id)}
+      row={row}
+      showReasoning={ctx.showReasoning}
+      speaker={ctx.speaker}
+      timestampFormat={ctx.timestampFormat}
+    />
+  );
+}
+
+function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-note" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 py-0.5 text-foreground/90" data-log-note>
+      <ChangeChipMomentContext value={row.message.createdAt}>
+        <ChatMarkdown
+          text={row.message.text}
+          cwd={ctx.markdownCwd}
+          threadRef={ctx.threadRef ?? undefined}
+          isStreaming={Boolean(row.message.streaming)}
+          lineBreaks={shouldPreserveAssistantLineBreaks(row.message.text)}
+          skills={ctx.skills}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          onRunShellCommand={ctx.onRunShellCommand}
+        />
+      </ChangeChipMomentContext>
+    </div>
+  );
+}
+
+function LogActivityTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-activity" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const last = row.entries.at(-1);
+  const iconName = row.failed ? "x" : last ? workEntryIconName(last) : "hammer";
+  return (
+    <button
+      type="button"
+      aria-expanded={row.expanded}
+      aria-label={row.failed ? `${row.summary}, the last call failed` : undefined}
+      className="flex min-h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      data-scroll-anchor-ignore
+      onClick={() => ctx.onToggleLogItem(row.id, row.id)}
+    >
+      <WorkEntryIconSvg name={iconName} className="size-3.5 shrink-0 opacity-70" />
+      <span className="min-w-0 flex-1 truncate">{row.summary}</span>
+      <ChevronRightIcon
+        aria-hidden="true"
+        className={cn(
+          "size-3 shrink-0 opacity-70 transition-transform duration-150",
+          row.expanded && "rotate-90",
+        )}
+      />
+    </button>
+  );
+}
+
+function LogOperationTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "log-operation" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { operation } = row;
+  const running = operation.phase === "running";
+  return (
+    <button
+      type="button"
+      aria-expanded={row.expanded}
+      className="flex min-h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      data-log-operation={operation.kind}
+      data-scroll-anchor-ignore
+      onClick={() => ctx.onToggleLogItem(row.id, row.id)}
+    >
+      <KindGlyph kind={operation.kind} />
+      <span className={cn("shrink-0", running ? "text-foreground" : "text-foreground/85")}>
+        {operation.statusWord}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{operation.subject}</span>
+      {operation.settledAt ? (
+        <span className="shrink-0 text-xs tabular-nums">
+          {formatWorkDurationBetween(operation.anchorAt, operation.settledAt)}
+        </span>
+      ) : null}
+      <ChevronRightIcon
+        aria-hidden="true"
+        className={cn(
+          "size-3 shrink-0 opacity-70 transition-transform duration-150",
+          row.expanded && "rotate-90",
+        )}
+      />
+    </button>
+  );
+}
+
+function StripTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "strip" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <BrowserStrip
+      environmentId={ctx.activeThreadEnvironmentId}
+      onOpenImage={ctx.onImageExpand}
+      strip={row.strip}
+      threadRef={ctx.threadRef}
+    />
+  );
+}
+
+/** Background work that finished outside any turn: one quiet line, its tasks one click away. */
+function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const last = row.entries.at(-1);
+  const lastLabel = last
+    ? capitalizePhrase(normalizeCompactToolLabel(last.toolTitle ?? last.label))
+    : null;
+  const count = row.entries.length;
+  const failed = row.entries.filter(workEntryDisplayIndicatesToolFailure).length;
+  return (
+    <button
+      type="button"
+      aria-expanded={row.expanded}
+      className="flex min-h-7 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      data-scroll-anchor-ignore
+      onClick={() => ctx.onToggleLogItem(row.id, row.id)}
+    >
+      {failed > 0 ? (
+        <span role="img" aria-label="Tool call failed" className="flex shrink-0">
+          <XIcon aria-hidden="true" className="size-3.5 opacity-70" />
+        </span>
+      ) : (
+        <LayersIcon aria-hidden="true" className="size-3.5 shrink-0 opacity-70" />
+      )}
+      <span className="shrink-0 text-foreground/85">
+        {count === 1 ? "1 background task" : `${count} background tasks`}
+        {failed > 0 ? ` · ${failed} failed` : ""}
+      </span>
+      {lastLabel ? (
+        <span className="min-w-0 flex-1 truncate">· last: {lastLabel}</span>
+      ) : (
+        <span className="flex-1" />
+      )}
+      <ChevronRightIcon
+        aria-hidden="true"
+        className={cn(
+          "size-3 shrink-0 opacity-70 transition-transform duration-150",
+          row.expanded && "rotate-90",
+        )}
+      />
+    </button>
+  );
+}
+
+function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <EventLine
+      at={row.createdAt}
+      event={row.event}
+      speaker={ctx.speaker}
+      timestampFormat={ctx.timestampFormat}
+    />
+  );
+}
+
+/** The pause's countdown reads the clock once a minute: words change, the block never moves. */
+function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const waiting = row.resumedAt === null && row.resetsAt !== null;
+  useEffect(() => {
+    if (!waiting) return;
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [waiting]);
+  return (
+    <PauseBlock
+      nowMs={nowMs}
+      onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
+      row={row}
+      serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
+      speaker={ctx.speaker}
+      timestampFormat={ctx.timestampFormat}
+    />
+  );
+}
+
+function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcome" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <OutcomeCard onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)} outcome={row.outcome} />
+  );
+}
+
+function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return <Seam row={row} timestampFormat={ctx.timestampFormat} />;
+}
+
+function formatWorkDurationBetween(startIso: string, endIso: string): string | null {
+  const ms = Date.parse(endIso) - Date.parse(startIso);
+  return Number.isFinite(ms) ? formatWorkDuration(ms) : null;
+}
 
 /**
  * A message waiting for the running turn: a dashed user bubble with icon
@@ -1433,61 +1693,6 @@ function QueuedMessageTimelineRow({
   );
 }
 
-function ContextCompactionTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "context-compaction" }>;
-}) {
-  return (
-    <div
-      role="separator"
-      aria-label={row.label}
-      className="mx-auto flex w-full max-w-3xl items-center gap-3 py-1 text-muted-foreground text-xs"
-    >
-      <span className="h-px flex-1 bg-border/70" />
-      <span className="flex shrink-0 items-center gap-1.5">
-        <Minimize2Icon aria-hidden="true" className="size-3" />
-        {row.label}
-      </span>
-      <span className="h-px flex-1 bg-border/70" />
-    </div>
-  );
-}
-
-/**
- * One of this Mate's changes landing.
- *
- * A quiet line in the same family as the work rows, not a card: nothing the
- * agent did caused it, and the person is reading the work in order —
- * "appdev #1 landed" belongs at the moment it happened. It never splits the
- * work around it: a run it lands inside stays one row, with this line right
- * after it. The chip inside the message is what is clicked; this is what is
- * scanned.
- */
-function ChangeLandedTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "change-landed" }>;
-}) {
-  // Named by repository here, never by `line`: a recipe change's line is just
-  // `#2`, because the row it was written for already wears the group's tag.
-  // A timeline has no tag, and "#2 landed" beside "appdev #1 landed" says
-  // nothing about where it landed.
-  const label = `${row.event.repository} #${String(row.event.number)} landed`;
-  return (
-    <div className="flex min-w-0 items-baseline gap-2 py-px text-[13px] leading-5 text-muted-foreground">
-      <TraceGlyph className="text-[var(--zerops-update-role,var(--foreground))]">
-        {"\u25c6"}
-      </TraceGlyph>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </div>
-  );
-}
-
-// Screen readers skim a transcript by heading, so every message announces its
-// author as one. The thread title in ChatHeader is an <h2>; headings written
-// inside a message are exposed below this level. Visually hidden and excluded
-// from selection so sighted users and copied text are unaffected.
 const MESSAGE_HEADING_LEVEL = 3;
 
 function MessageAuthorHeading({ children }: { children: string }) {
@@ -1512,15 +1717,24 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     return projectPreviews(row.message, (attachment) => urlsById.get(attachment.id));
   }, [previewUrls, projectPreviews, resources, row.message]);
   const userImages = (messageWithPreviews.attachments ?? []).filter(isImageAttachment);
-  const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
+  // The client's own placeholder for an image-only message is nothing the person wrote.
+  const displayedUserMessage = deriveDisplayedUserMessageState(
+    row.imageOnly ? "" : row.message.text,
+  );
   const terminalContexts = displayedUserMessage.contexts;
   const revertTurnCount = row.revertTurnCount;
 
   return (
     // The time and actions sit beside the bubble's foot rather than under it:
     // a hover-only strip in flow would add a blank line under every message.
+    // The receipt stays: it is how the person knows the Mate read it.
     <div className="group flex flex-row-reverse items-end gap-2">
-      <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
+      {/* One bubble for every message: a message sent as a turn ended can
+          become the next turn's opener, and it must not change its size. */}
+      <div
+        className="relative max-w-4/5 rounded-2xl bg-message p-3 text-message-foreground"
+        data-message-aside={row.aside ? "true" : undefined}
+      >
         <MessageAuthorHeading>You</MessageAuthorHeading>
         {userImages.length > 0 && (
           <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
@@ -1562,6 +1776,11 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           markdownCwd={ctx.markdownCwd}
         />
       </div>
+      {row.receipt ? (
+        <span className="flex shrink-0 pb-1.5">
+          <MessageReceipt receipt={row.receipt} speaker={ctx.speaker} />
+        </span>
+      ) : null}
       <div className="flex shrink-0 items-center pb-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
         <div className="flex shrink-0 items-center gap-2">
           <Tooltip>
@@ -1654,40 +1873,6 @@ function TimelineRowTimestamp({
   );
 }
 
-/**
- * The turn's receipt, written while the turn runs: "Working · 12s" and what
- * is happening now while live, "Worked for 1m" with its end time once
- * settled. One row, one place, from the send until forever — the fold
- * control lives here once the turn settles.
- */
-function TurnHeaderTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-header" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const { isCompacting, workingStepLabel } = use(TimelineRowActivityCtx);
-  const live = row.state === "live";
-  const turnId = row.turnId;
-  return (
-    <TurnHeaderCard
-      row={row}
-      clock={
-        !live ? null : isCompacting ? (
-          <CompactingLabel />
-        ) : row.liveSince ? (
-          <WorkingTimer createdAt={row.liveSince} />
-        ) : null
-      }
-      activityLabel={
-        live
-          ? [turnHeaderActivityLabel(row.activity, ctx.workspaceRoot), workingStepLabel]
-              .filter(Boolean)
-              .join(" · ") || null
-          : null
-      }
-      timestamp={row.endedAt ? formatDayAwareTimestamp(row.endedAt, ctx.timestampFormat) : null}
-      onToggleFold={row.fold && turnId !== null ? () => ctx.onToggleTurnFold(turnId, row.id) : null}
-    />
-  );
-}
-
 function turnHeaderActivityLabel(
   activity: TurnHeaderActivity | null,
   workspaceRoot: string | undefined,
@@ -1704,121 +1889,39 @@ function turnHeaderActivityLabel(
   }
 }
 
-/**
- * A provider's thinking trace. Collapsed by default: reasoning is context for
- * the answer, not the answer. The open/closed flag lives on the list so it
- * survives row recycling in the virtualizer.
- */
-const ReasoningTimelineRow = memo(function ReasoningTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "message" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const { isWorking, latestTurnId } = use(TimelineRowActivityCtx);
-  const { message } = row;
-  // A block left open by a crashed provider or a restarted server never gets
-  // its completion. Only the live turn may claim to still be thinking.
-  const streaming =
-    Boolean(message.streaming) &&
-    isWorking &&
-    message.turnId !== null &&
-    message.turnId === latestTurnId;
-  const expanded = ctx.expandedReasoningMessageIds.has(message.id);
-  const { onToggleReasoning } = ctx;
-  const toggle = useCallback(() => {
-    onToggleReasoning(message.id, !expanded);
-  }, [expanded, message.id, onToggleReasoning]);
-  const label = streaming ? "Thinking" : "Thought";
-
-  if (message.text.trim().length === 0 && !streaming) {
-    return null;
-  }
-
-  return (
-    <div className={cn("flex flex-col", expanded && "mb-1")}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={toggle}
-        className="flex cursor-pointer select-none rounded-sm text-start transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      >
-        <TraceLine label={label} />
-      </button>
-      {expanded ? (
-        <div className="mt-0.5 ms-5.5 max-h-96 overflow-auto rounded-md bg-muted/40 px-3 py-2 text-secondary-label select-text">
-          <ChatMarkdown
-            text={message.text}
-            cwd={ctx.markdownCwd}
-            threadRef={ctx.threadRef ?? undefined}
-            isStreaming={streaming}
-            lineBreaks
-            skills={ctx.skills}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-});
-
+/** The Mate's answer to a settled turn, set for reading. */
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
-  // Named for its Mate once the list says one lives here; "Assistant" holds
-  // true either way until then.
-  const author = useZeropsMate(ctx.activeThreadEnvironmentId);
-
-  const body = (
-    <>
-      <ChatMarkdown
-        {...(row.narration ? { className: "text-foreground" } : {})}
-        text={messageText}
-        cwd={ctx.markdownCwd}
-        threadRef={ctx.threadRef ?? undefined}
-        isStreaming={Boolean(row.message.streaming)}
-        lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
-        skills={ctx.skills}
-        headingLevelOffset={MESSAGE_HEADING_LEVEL}
-        onRunShellCommand={ctx.onRunShellCommand}
-      />
-      <AssistantChangedFilesSection
-        turnSummary={row.assistantTurnDiffSummary}
-        routeThreadKey={ctx.routeThreadKey}
-        resolvedTheme={ctx.resolvedTheme}
-        onOpenTurnDiff={ctx.onOpenTurnDiff}
-      />
+  return (
+    <div className="relative min-w-0 px-1 py-0.5">
+      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
+      <ChangeChipMomentContext value={row.message.createdAt}>
+        <ChatMarkdown
+          variant="answer"
+          text={messageText}
+          cwd={ctx.markdownCwd}
+          threadRef={ctx.threadRef ?? undefined}
+          isStreaming={Boolean(row.message.streaming)}
+          lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
+          skills={ctx.skills}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          onRunShellCommand={ctx.onRunShellCommand}
+        />
+      </ChangeChipMomentContext>
       {row.showAssistantMeta ? (
         <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">
           <AssistantCopyButton row={row} />
-          {!row.message.streaming && (
-            <Tooltip>
-              <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-                {formatDayAwareTimestamp(row.message.updatedAt, ctx.timestampFormat)}
-              </TooltipTrigger>
-              <TooltipPopup>
-                {formatChatTimestampTooltip(row.message.updatedAt, ctx.timestampFormat)}
-              </TooltipPopup>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+              {formatDayAwareTimestamp(row.message.updatedAt, ctx.timestampFormat)}
+            </TooltipTrigger>
+            <TooltipPopup>
+              {formatChatTimestampTooltip(row.message.updatedAt, ctx.timestampFormat)}
+            </TooltipPopup>
+          </Tooltip>
         </div>
       ) : null}
-    </>
-  );
-
-  return row.narration ? (
-    // Narration: what the agent says between steps, not its answer — on
-    // the trace rail under a ¶, in full markdown at the body's colour,
-    // under no heading of its own.
-    <div className="relative flex min-w-0 items-baseline gap-2">
-      <TraceGlyph>{"\u00b6"}</TraceGlyph>
-      <div className="min-w-0 flex-1">{body}</div>
-    </div>
-  ) : (
-    <div className="relative min-w-0 px-1 py-0.5">
-      <MessageAuthorHeading>
-        {author.kind === "mate" ? author.mate.name : "Assistant"}
-      </MessageAuthorHeading>
-      {body}
     </div>
   );
 }
@@ -1826,8 +1929,8 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
 function AssistantCopyButton({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const assistantCopyState = resolveAssistantMessageCopyState({
     text: row.message.text ?? null,
-    showCopyButton: row.showAssistantCopyButton,
-    streaming: row.assistantCopyStreaming,
+    showCopyButton: row.showAssistantMeta,
+    streaming: Boolean(row.message.streaming),
   });
 
   if (!assistantCopyState.visible) {
@@ -1972,65 +2075,10 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
   );
 });
 
-/**
- * A Zerops call the model classified "generic" (never a card) — rendered
- * through the ordinary generic tool row, same as any other non-Zerops
- * tool call. Never grouped with an adjacent "work" run (its own row kind
- * ends that run, same as an "operation" row does).
- */
-const GenericCallTimelineRow = memo(function GenericCallTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "generic-call" }>;
-}) {
-  const { workspaceRoot } = use(TimelineRowCtx);
-  return (
-    <div className="-mx-1 space-y-0.5 px-1 py-0.5">
-      <SimpleWorkEntryRow
-        isExpandedToolGroupEntry={false}
-        workEntry={row.entry}
-        workspaceRoot={workspaceRoot}
-      />
-    </div>
-  );
-});
-
-function CompactingLabel() {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <Minimize2Icon aria-hidden="true" className="size-3" />
-      Compacting…
-    </span>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Self-ticking labels — update their own text nodes so elapsed-time display
 // does not create a React commit every second while a response is streaming.
 // ---------------------------------------------------------------------------
-
-/** Live elapsed time for the live turn header. */
-function WorkingTimer({ createdAt }: { createdAt: string }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  const initialText = formatWorkingTimerNow(createdAt);
-
-  useEffect(() => {
-    const updateText = () => {
-      if (textRef.current) {
-        textRef.current.textContent = formatWorkingTimerNow(createdAt);
-      }
-    };
-    updateText();
-    const id = setInterval(updateText, 1000);
-    return () => clearInterval(id);
-  }, [createdAt]);
-
-  return (
-    <span ref={textRef} className="tabular-nums">
-      {initialText}
-    </span>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Extracted row sections — own their state / store subscriptions so changes
@@ -2052,11 +2100,13 @@ const WorkGroupSection = memo(function WorkGroupSection({
     [groupedEntries, isExpandedToolGroupEntry],
   );
   const onlyToolEntries = nonEmptyEntries.every((entry) => workLogEntryIsToolLike(entry));
+  // Named for assistive technology only: a visible "Work Log" heading over
+  // every run of entries was the system describing itself to the person.
   const groupLabel = onlyToolEntries
     ? nonEmptyEntries.length === 1
       ? "1 tool call"
       : `${nonEmptyEntries.length} tool calls`
-    : "Work Log";
+    : "What the Mate did";
   const GroupContainer = isExpandedToolGroupEntry ? "div" : "section";
 
   if (nonEmptyEntries.length === 0) return null;
@@ -2066,9 +2116,6 @@ const WorkGroupSection = memo(function WorkGroupSection({
       className={cn("-mx-1 px-1", isExpandedToolGroupEntry ? "py-0" : "space-y-0.5 py-0.5")}
       aria-label={isExpandedToolGroupEntry ? undefined : groupLabel}
     >
-      {!onlyToolEntries && (
-        <p className="px-0.5 pb-0.5 font-medium text-secondary-label text-[11px]">{groupLabel}</p>
-      )}
       <div className="space-y-px">
         {nonEmptyEntries.map((workEntry) => (
           <SimpleWorkEntryRow
@@ -2082,215 +2129,6 @@ const WorkGroupSection = memo(function WorkGroupSection({
     </GroupContainer>
   );
 });
-
-/** The rail's glyph column: › work, ¶ narration, ◆ the platform. */
-function TraceGlyph({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "w-3.5 shrink-0 text-center font-mono text-[11px] leading-none text-muted-foreground/70",
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-/** One line on the rail: a glyph and a muted 13px label. */
-function TraceLine({
-  label,
-  failed = false,
-  children,
-}: {
-  label: ReactNode;
-  failed?: boolean;
-  children?: ReactNode;
-}) {
-  return (
-    <span className="flex min-w-0 flex-1 items-baseline gap-2 py-px text-[13px] leading-5 text-muted-foreground">
-      {failed ? (
-        <span
-          role="img"
-          aria-label="Tool call failed"
-          className="flex w-3.5 shrink-0 justify-center self-center text-muted-foreground/70"
-        >
-          <XIcon aria-hidden className="size-3" />
-        </span>
-      ) : (
-        <TraceGlyph>{"\u203a"}</TraceGlyph>
-      )}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {children}
-    </span>
-  );
-}
-
-function LiveActivityRow({
-  label,
-  iconName,
-  failed = false,
-}: {
-  label: string;
-  iconName?: WorkEntryIconName;
-  failed?: boolean;
-}) {
-  return (
-    <div className="w-fit max-w-full min-w-0 overflow-hidden rounded-md text-[13px] leading-5">
-      <LiveActivityContent
-        label={label}
-        iconName={iconName}
-        failed={failed}
-        announceFailure={failed}
-      />
-    </div>
-  );
-}
-
-function LiveActivityContent({
-  label,
-  iconName,
-  failed = false,
-  announceFailure = false,
-}: {
-  label: string;
-  iconName: WorkEntryIconName | undefined;
-  failed?: boolean;
-  announceFailure?: boolean;
-}) {
-  const resolvedIconName = failed ? "x" : iconName;
-
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-2 py-px",
-        resolvedIconName ? "px-0.5" : "px-1",
-        "text-muted-foreground",
-      )}
-    >
-      {resolvedIconName ? (
-        <span
-          className="flex w-3.5 shrink-0 items-center justify-center text-icon-muted"
-          role={announceFailure ? "img" : undefined}
-          aria-label={announceFailure ? "Tool call failed" : undefined}
-        >
-          <WorkEntryIconSvg
-            name={resolvedIconName}
-            className="block size-3.5 shrink-0 stroke-[1.8] opacity-70"
-          />
-        </span>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </div>
-  );
-}
-
-function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-live" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const label = liveWorkEntryLabel(row.entry, ctx.workspaceRoot);
-  const failed = workEntryDisplayIndicatesToolFailure(row.entry);
-
-  return (
-    <button
-      type="button"
-      className="flex w-full max-w-full cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      aria-label={failed ? `${label}, tool call failed` : undefined}
-      aria-expanded={row.expanded}
-      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
-    >
-      <TraceLine label={label} failed={failed} />
-    </button>
-  );
-}
-
-/**
- * Thinking and the tool calls around it, as one line. While the turn runs the
- * line names the running tool, or "Thinking" between calls; once settled it
- * summarizes the calls, or reads "Thought" when there were none. Expanding it
- * lists the calls and the thinking in order.
- */
-function ActivityGroupTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "activity-group" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const visibleWork = (entries: ReadonlyArray<(typeof row.entries)[number]>) =>
-    omitSupersededLifecycleMarkers(
-      entries.flatMap((entry) =>
-        entry.kind === "work" && workEntryIsVisibleInGroup(entry.entry, row.active)
-          ? [entry.entry]
-          : [],
-      ),
-      (entry) => entry,
-    );
-  const work = visibleWork(row.entries);
-  const thoughtCount = row.entries.filter((entry) => entry.kind === "message").length;
-  const lastThoughtIndex = row.entries.findLastIndex((entry) => entry.kind === "message");
-  const trailingWork = visibleWork(row.entries.slice(lastThoughtIndex + 1));
-  const liveWork =
-    trailingWork.findLast((entry) => entry.toolLifecycleStatus === "inProgress") ??
-    trailingWork.at(-1);
-  const iconWork = row.active ? liveWork : work.at(-1);
-  const failed = iconWork !== undefined && workEntryDisplayIndicatesToolFailure(iconWork);
-  const label = row.active
-    ? liveWork
-      ? liveWorkEntryLabel(liveWork, ctx.workspaceRoot)
-      : "Thinking"
-    : work.length > 0
-      ? summarizeToolGroup(work)
-      : `Thought${thoughtCount > 1 ? ` (×${thoughtCount})` : ""}`;
-  const details: ReactNode[] = [];
-  if (row.expanded) {
-    for (let index = 0; index < row.entries.length; index += 1) {
-      const entry = row.entries[index]!;
-      if (entry.kind === "work") {
-        const entries = [entry.entry];
-        while (row.entries[index + 1]?.kind === "work") {
-          const next = row.entries[++index]!;
-          if (next.kind === "work") entries.push(next.entry);
-        }
-        details.push(
-          <WorkGroupSection
-            key={entry.id}
-            groupedEntries={omitSupersededLifecycleMarkers(entries, (workEntry) => workEntry)}
-            isExpandedToolGroupEntry
-          />,
-        );
-      } else {
-        const messages = [entry.message];
-        while (row.entries[index + 1]?.kind === "message") {
-          const next = row.entries[++index]!;
-          if (next.kind === "message") messages.push(next.message);
-        }
-        details.push(
-          <ReasoningTraceBlock
-            key={entry.id}
-            anchorKey={row.id}
-            messages={messages}
-            live={row.active && index === row.entries.length - 1}
-            showHeader={work.length > 0}
-          />,
-        );
-      }
-    }
-  }
-  return (
-    <div>
-      <button
-        type="button"
-        className="flex w-full max-w-full cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-        aria-label={failed ? `${label}, tool call failed` : undefined}
-        aria-expanded={row.expanded}
-        onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
-      >
-        <TraceLine label={label} failed={failed} />
-      </button>
-      {row.expanded ? <div className="mt-0.5">{details}</div> : null}
-    </div>
-  );
-}
 
 function remarkThoughtPreview(fallback: string) {
   return (tree: Root) => {
@@ -2395,158 +2233,6 @@ function ReasoningTraceBlock({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function toolGroupSummaryIconName(
-  kind: Extract<TimelineRow, { kind: "work-toggle" }>["summaryKind"],
-): WorkEntryIconName {
-  switch (kind) {
-    case "read":
-      return "eye";
-    case "edit":
-      return "square-pen";
-    case "command":
-      return "terminal";
-    case "search":
-      return "globe";
-    case "code-search":
-      return "search";
-    case "other":
-      return "wrench";
-    case "dynamic-tool":
-      return "hammer";
-    case "agent-tool":
-      return "bot";
-    case "tone-tool":
-      return "zap";
-    case "mixed":
-    case null:
-      return "hammer";
-  }
-}
-
-function WorkGroupToggleTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "work-toggle" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  if (row.onlyToolEntries && row.summary) {
-    return (
-      <button
-        type="button"
-        className="group/tool-group group/timeline-row relative flex w-full cursor-pointer rounded-sm text-left transition-colors duration-150 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-        aria-label={row.hasFailure ? `${row.summary}, tool call failed` : undefined}
-        aria-expanded={row.expanded}
-        onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
-      >
-        <TraceLine label={row.summary}>
-          <TimelineRowTimestamp createdAt={row.createdAt} timestampFormat={ctx.timestampFormat} />
-        </TraceLine>
-      </button>
-    );
-  }
-  const labelNoun = row.onlyToolEntries
-    ? row.hiddenCount === 1
-      ? "tool call"
-      : "tool calls"
-    : row.hiddenCount === 1
-      ? "log entry"
-      : "log entries";
-  return (
-    <button
-      type="button"
-      className="flex w-full cursor-pointer rounded-sm text-left transition-colors duration-150 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      aria-label={
-        row.hasFailure && !row.expanded
-          ? `+${row.hiddenCount} previous ${labelNoun}, includes a failure`
-          : undefined
-      }
-      aria-expanded={row.expanded}
-      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
-    >
-      <TraceLine
-        label={
-          row.expanded
-            ? `Show fewer ${row.onlyToolEntries ? "tool calls" : "log entries"}`
-            : `+${row.hiddenCount} previous ${labelNoun}`
-        }
-      />
-    </button>
-  );
-}
-
-/** Subscribes directly to the UI state store for expand/collapse state,
- *  so toggling re-renders only this component — not the entire list. */
-const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection({
-  turnSummary,
-  routeThreadKey,
-  resolvedTheme,
-  onOpenTurnDiff,
-}: {
-  turnSummary: TurnDiffSummary | undefined;
-  routeThreadKey: string;
-  resolvedTheme: "light" | "dark";
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-}) {
-  if (!turnSummary) return null;
-  const checkpointFiles = turnSummary.files;
-  if (checkpointFiles.length === 0) return null;
-
-  return (
-    <AssistantChangedFilesSectionInner
-      turnSummary={turnSummary}
-      checkpointFiles={checkpointFiles}
-      routeThreadKey={routeThreadKey}
-      resolvedTheme={resolvedTheme}
-      onOpenTurnDiff={onOpenTurnDiff}
-    />
-  );
-});
-
-/** Inner component that only mounts when there are actual changed files,
- *  so the store subscription is unconditional (no hooks after early return). */
-function AssistantChangedFilesSectionInner({
-  turnSummary,
-  checkpointFiles,
-  routeThreadKey,
-  resolvedTheme,
-  onOpenTurnDiff,
-}: {
-  turnSummary: TurnDiffSummary;
-  checkpointFiles: TurnDiffSummary["files"];
-  routeThreadKey: string;
-  resolvedTheme: "light" | "dark";
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-}) {
-  const activity = use(TimelineRowActivityCtx);
-  const isLatestTurn = activity.latestTurnId === turnSummary.turnId;
-  const persistedExpanded = useUiStateStore(
-    (store) => store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId],
-  );
-  const setExpanded = useUiStateStore((store) => store.setThreadChangedFilesExpanded);
-  const [autoExpanded] = useState(() =>
-    shouldAutoExpandChangedFiles(checkpointFiles, isLatestTurn),
-  );
-  const [allDirectoriesExpanded, setAllDirectoriesExpanded] = useState(autoExpanded);
-  const expanded = persistedExpanded ?? (isLatestTurn && autoExpanded);
-
-  return (
-    <ChangedFilesCard
-      turnId={turnSummary.turnId}
-      history={turnSummary.history}
-      files={checkpointFiles}
-      expanded={expanded}
-      showCompactPreview={isLatestTurn}
-      allDirectoriesExpanded={allDirectoriesExpanded}
-      resolvedTheme={resolvedTheme}
-      onExpandedChange={(nextExpanded) =>
-        setExpanded(routeThreadKey, turnSummary.turnId, nextExpanded)
-      }
-      onToggleAllDirectories={() => setAllDirectoriesExpanded((current) => !current)}
-      onOpenTurnDiff={onOpenTurnDiff}
-    />
   );
 }
 
@@ -2909,25 +2595,6 @@ function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
 // Pure helpers
 // ---------------------------------------------------------------------------
 
-function formatWorkingTimer(startIso: string, endIso: string): string | null {
-  const startedAtMs = Date.parse(startIso);
-  const endedAtMs = Date.parse(endIso);
-  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
-    return null;
-  }
-
-  const elapsedSeconds = Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1000));
-  if (elapsedSeconds < 60) {
-    return `${elapsedSeconds}s`;
-  }
-
-  return formatDuration(elapsedSeconds * 1_000);
-}
-
-function formatWorkingTimerNow(startIso: string): string {
-  return formatWorkingTimer(startIso, new Date().toISOString()) ?? "0s";
-}
-
 type WorkEntryIconName =
   | "bot"
   | "brain"
@@ -3258,6 +2925,17 @@ function buildToolCallExpandedBody(
 const toolCallExpandedBodyClassName =
   "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
 
+const TOOL_ACTION_ICON: Record<
+  Exclude<ReturnType<typeof toolGroupAction>, "other">,
+  WorkEntryIconName
+> = {
+  read: "eye",
+  edit: "square-pen",
+  command: "terminal",
+  search: "globe",
+  "code-search": "search",
+};
+
 function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   if (
     workEntry.sourceActivityKind === "user-input.requested" ||
@@ -3266,7 +2944,7 @@ function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
     return "message-circle";
   }
   const action = toolGroupAction(workEntry);
-  if (action !== "other") return toolGroupSummaryIconName(action);
+  if (action !== "other") return TOOL_ACTION_ICON[action];
 
   switch (workEntry.itemType) {
     case "mcp_tool_call":
@@ -3320,6 +2998,65 @@ const stopRowToggleWhileSelectingText = (e: MouseEvent<HTMLElement>) => {
  * lists the members with their results, and the Agents panel stays one click
  * away.
  */
+function LiveActivityRow({
+  label,
+  iconName,
+  failed = false,
+}: {
+  label: string;
+  iconName?: WorkEntryIconName;
+  failed?: boolean;
+}) {
+  return (
+    <div className="w-fit max-w-full min-w-0 overflow-hidden rounded-md text-[13px] leading-5">
+      <LiveActivityContent
+        label={label}
+        iconName={iconName}
+        failed={failed}
+        announceFailure={failed}
+      />
+    </div>
+  );
+}
+
+function LiveActivityContent({
+  label,
+  iconName,
+  failed = false,
+  announceFailure = false,
+}: {
+  label: string;
+  iconName: WorkEntryIconName | undefined;
+  failed?: boolean;
+  announceFailure?: boolean;
+}) {
+  const resolvedIconName = failed ? "x" : iconName;
+
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-2 py-px",
+        resolvedIconName ? "px-0.5" : "px-1",
+        "text-muted-foreground",
+      )}
+    >
+      {resolvedIconName ? (
+        <span
+          className="flex w-3.5 shrink-0 items-center justify-center text-icon-muted"
+          role={announceFailure ? "img" : undefined}
+          aria-label={announceFailure ? "Tool call failed" : undefined}
+        >
+          <WorkEntryIconSvg
+            name={resolvedIconName}
+            className="block size-3.5 shrink-0 stroke-[1.8] opacity-70"
+          />
+        </span>
+      ) : null}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </div>
+  );
+}
+
 const AgentSpawnRow = memo(function AgentSpawnRow(props: { workEntry: TimelineWorkEntry }) {
   const { workEntry } = props;
   const { agentPanelModel, expandedSpawnEntryIds, onToggleSpawnRow, onOpenAgents } =
@@ -3384,50 +3121,38 @@ const AgentSpawnRow = memo(function AgentSpawnRow(props: { workEntry: TimelineWo
 });
 
 const AGENT_MEMBER_STATUS_LABEL: Record<RuntimeSubagent["status"], string> = {
-  pending: "Working",
+  pending: "Starting",
   running: "Working",
-  waiting: "Working",
+  waiting: "Waiting for you",
   idle: "Idle",
-  completed: "Completed",
+  completed: "Done",
   failed: "Failed",
   cancelled: "Stopped",
-  interrupted: "Stopped",
+  interrupted: "Cut off",
 };
 
+/**
+ * One helper in a spawn row: its task in the words it was given, its state
+ * and how long it ran — never the model or the harness's role name, which are
+ * the machinery, not the work.
+ */
 function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
   const [open, setOpen] = useState(false);
   const activeStatus = isActiveSubagentStatus(agent.status);
   const activity = activeStatus
-    ? (agent.progress ?? (agent.lastToolName ? `▸ ${agent.lastToolName}` : null))
+    ? (agent.progress ?? null)
     : (agent.error ?? agent.result ?? agent.progress ?? null);
   const durationMs =
     agent.startedAt && agent.completedAt
       ? Date.parse(agent.completedAt) - Date.parse(agent.startedAt)
       : null;
-  const meta = [
-    durationMs !== null && durationMs >= 0 ? formatDuration(durationMs) : null,
-    agent.usage && agent.usage.totalTokens > 0
-      ? `${formatSubagentTokenCount(agent.usage.totalTokens)} tok`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  // Settled members show their metrics; anything other than success keeps
-  // the status word so the outcome remains explicit.
+  // A helper that never ran has no duration worth a number ("Stopped · 1ms").
   const statusLabel =
-    activeStatus || !meta
-      ? AGENT_MEMBER_STATUS_LABEL[agent.status]
-      : agent.status === "completed"
-        ? meta
-        : `${AGENT_MEMBER_STATUS_LABEL[agent.status]} · ${meta}`;
-  const role =
-    agent.role && agent.role.trim().toLowerCase() !== agent.title.trim().toLowerCase()
-      ? agent.role
-      : null;
+    !activeStatus && durationMs !== null && durationMs >= 1000
+      ? `${AGENT_MEMBER_STATUS_LABEL[agent.status]} · ${formatWorkDuration(durationMs)}`
+      : AGENT_MEMBER_STATUS_LABEL[agent.status];
   const firstLine = activity?.split("\n").find((line) => line.trim().length > 0) ?? null;
-  const body = [activity?.trim() || null, formatSubagentModelLabel(agent.model, agent.effort)]
-    .filter(Boolean)
-    .join("\n\n");
+  const body = activity?.trim() ?? "";
   const canExpand = body.length > 0;
   const toggleOpen = () => setOpen((value) => !value);
 
@@ -3464,15 +3189,8 @@ function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
           >
             {agent.title}
           </span>
-          {role ? (
-            <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-3xs text-muted-foreground">
-              {role}
-            </span>
-          ) : null}
         </p>
-        <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
-          {statusLabel}
-        </span>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{statusLabel}</span>
       </div>
       {!open && firstLine ? (
         <p className="truncate text-xs text-muted-foreground">{firstLine}</p>

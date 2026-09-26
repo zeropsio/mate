@@ -169,18 +169,18 @@ describe("formatDayAwareTimestamp", () => {
     expect(formatDayAwareTimestamp(messageAt, "12-hour", now)).toBe(time(messageAt));
   });
 
-  it("labels the previous calendar day as yesterday even when under 24h old", () => {
+  it("labels the previous calendar day Yesterday even when under 24h old", () => {
     const messageAt = iso(2026, 7, 13, 23, 30);
     const justPastMidnight = new Date(2026, 7, 14, 0, 30).getTime();
     expect(formatDayAwareTimestamp(messageAt, "12-hour", justPastMidnight)).toBe(
-      `yesterday at ${time(messageAt)}`,
+      `Yesterday ${time(messageAt)}`,
     );
   });
 
-  it("prefixes older same-year messages with the numeric date", () => {
+  it("names the month and day for older same-year messages", () => {
     const messageAt = iso(2026, 7, 12, 12, 34);
     const datePart = new Intl.DateTimeFormat(undefined, {
-      month: "numeric",
+      month: "short",
       day: "numeric",
     }).format(new Date(messageAt));
     expect(formatDayAwareTimestamp(messageAt, "12-hour", now)).toBe(
@@ -191,7 +191,7 @@ describe("formatDayAwareTimestamp", () => {
   it("includes the year once the calendar year differs", () => {
     const messageAt = iso(2025, 11, 31, 18, 0);
     const datePart = new Intl.DateTimeFormat(undefined, {
-      month: "numeric",
+      month: "short",
       day: "numeric",
       year: "numeric",
     }).format(new Date(messageAt));
@@ -200,7 +200,7 @@ describe("formatDayAwareTimestamp", () => {
     );
   });
 
-  it("uses the host locale for both the numeric date and wall-clock time", async () => {
+  it("uses the host locale for both the date and the wall-clock time", async () => {
     vi.stubGlobal("window", {
       desktopBridge: { getSystemLocale: () => "en-GB" },
     });
@@ -209,7 +209,7 @@ describe("formatDayAwareTimestamp", () => {
     const { formatDayAwareTimestamp: formatWithHostLocale } = await import("./timestampFormat");
     const messageAt = iso(2026, 7, 12, 15, 44);
 
-    expect(formatWithHostLocale(messageAt, "locale", now)).toBe("12/08 15:44");
+    expect(formatWithHostLocale(messageAt, "locale", now)).toBe("12 Aug 15:44");
 
     vi.unstubAllGlobals();
   });

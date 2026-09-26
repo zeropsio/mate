@@ -161,6 +161,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --text-2xs--line-height: calc(1 / 0.6875);
   --text-3xs: 0.625rem;
   --text-3xs--line-height: calc(0.875 / 0.625);
+  /* 13px on a 20px line: the conversation's quiet voice — a work line, a
+     message sent into a running turn, an event, a log step's activity. */
+  --text-line: 0.8125rem;
+  --text-line--line-height: calc(1.25 / 0.8125);
   /* Motion. drawer is the decelerating curve for surfaces that slide or pop in
      (composer context, pills). */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -220,6 +224,22 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-message-action: var(--message-action);
   --color-message-action-foreground: var(--message-action-foreground);
   --color-message-action-hover: var(--message-action-hover);
+  /* The status grammar's tones as utilities: the conversation's faces, lines,
+     strips and outcome rows speak in the same five tones as StatusDot. */
+  --color-status-ok: var(--zerops-status-ok);
+  --color-status-ok-surface: var(--zerops-status-ok-surface);
+  --color-status-ok-text: var(--zerops-status-ok-text);
+  --color-status-busy: var(--zerops-status-busy);
+  --color-status-busy-surface: var(--zerops-status-busy-surface);
+  --color-status-busy-text: var(--zerops-status-busy-text);
+  --color-status-attention: var(--zerops-status-attention);
+  --color-status-attention-surface: var(--zerops-status-attention-surface);
+  --color-status-attention-text: var(--zerops-status-attention-text);
+  --color-status-failed: var(--zerops-status-failed);
+  --color-status-failed-surface: var(--zerops-status-failed-surface);
+  --color-status-failed-text: var(--zerops-status-failed-text);
+  --color-status-off: var(--zerops-status-off);
+  --color-status-off-surface: var(--zerops-status-off-surface);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--contrast-sidebar-foreground);
   --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
@@ -1097,6 +1117,15 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 /* Safe-area inset utilities for surfaces that opt into edge-to-edge rendering.
    Insets resolve to 0 when the browser already constrains the layout viewport
    to the safe area. */
+/* A strip that scrolls sideways under a pointer or a swipe but draws no bar:
+   the browser strip's filmstrip keeps its newest frame in view by itself. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @utility pt-safe {
   padding-top: max(env(safe-area-inset-top), 0px);
 }
@@ -1899,6 +1928,30 @@ code {
 
 /* Chat markdown rendering */
 
+/* Two readings of one renderer. The log (narration, tool output, the person's
+   own words) takes its 14 px body from the root's utility classes; an answer
+   is set to be read, 15/24 in the full foreground. The type below is sized in
+   em, so it follows whichever body it sits in. */
+.chat-markdown[data-variant="answer"] {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--contrast-foreground);
+}
+
+/* A word breaks only when it cannot fit a line by itself. Unlike `anywhere`,
+   this leaves min-content whole-word, so a short label never splits mid-word
+   ("Tit / an") and a table column never shrinks to a letter. */
+.chat-markdown {
+  overflow-wrap: break-word;
+}
+
+/* Long tokens (addresses, paths, hashes) are what cannot fit: they alone break
+   anywhere, and only once they are wider than the line. */
+.chat-markdown a,
+.chat-markdown :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
 .chat-markdown > :first-child {
   margin-top: 0;
 }
@@ -1907,47 +1960,50 @@ code {
   margin-bottom: 0;
 }
 
-.chat-markdown p,
-.chat-markdown ul,
-.chat-markdown ol,
-.chat-markdown blockquote,
-.chat-markdown pre,
-.chat-markdown .chat-markdown-table-container {
+/* The blocks' rhythm, at the lowest specificity so any rule below can adjust it. */
+.chat-markdown :where(p, ul, ol, blockquote, pre, .chat-markdown-table-container) {
   margin: 0.65rem 0;
 }
 
+/* The heading scale, set against an answer's 15 px body: h1 and h2 19/26 with
+   28 px above and 8 below, h3 16.5/24 with 20 and 6, h4 to h6 the body's own
+   size and line in the muted ink with 16 and 4. A heading is never smaller
+   than the text under it, or it reads as one more bold lead-in. Margins are in
+   the heading's own em. */
 .chat-markdown h1,
 .chat-markdown h2,
 .chat-markdown h3,
 .chat-markdown h4,
 .chat-markdown h5,
 .chat-markdown h6 {
-  margin: 1.25rem 0 0.5rem;
   font-weight: 600;
-  line-height: 1.3;
   color: var(--contrast-foreground);
 }
 
-.chat-markdown h1 {
-  font-size: 1.25rem;
-}
-
+.chat-markdown h1,
 .chat-markdown h2 {
-  font-size: 1.125rem;
+  margin: calc(28em / 19) 0 calc(8em / 19);
+  font-size: calc(19em / 15);
+  line-height: calc(26 / 19);
 }
 
 .chat-markdown h3 {
-  font-size: 1rem;
+  margin: calc(20em / 16.5) 0 calc(6em / 16.5);
+  font-size: calc(16.5em / 15);
+  line-height: calc(24 / 16.5);
 }
 
 .chat-markdown h4,
 .chat-markdown h5,
 .chat-markdown h6 {
-  font-size: 0.875rem;
+  margin: calc(16em / 15) 0 calc(4em / 15);
+  font-size: 1em;
+  color: var(--contrast-muted-foreground);
 }
 
-.chat-markdown h6 {
-  color: var(--contrast-muted-foreground);
+/* A heading owns the gap under it; the block that follows adds none. */
+.chat-markdown :is(h1, h2, h3, h4, h5, h6) + * {
+  margin-top: 0;
 }
 
 .chat-markdown ul {
@@ -1970,6 +2026,11 @@ code {
   list-style-type: decimal;
 }
 
+/* Markers stay quiet: the words carry the item, the marker only says one began. */
+.chat-markdown li::marker {
+  color: var(--contrast-muted-foreground);
+}
+
 .chat-markdown ol > li::marker {
   font-variant-numeric: tabular-nums;
 }
@@ -1978,20 +2039,29 @@ code {
   list-style-type: circle;
 }
 
-.chat-markdown ul ul ul {
-  list-style-type: square;
-}
-
 .chat-markdown ol ol {
   list-style-type: lower-alpha;
 }
 
-.chat-markdown ol ol ol {
-  list-style-type: lower-roman;
+/* 6 px between items at a 15 px body. */
+.chat-markdown li + li {
+  margin-top: calc(6em / 15);
 }
 
-.chat-markdown li + li {
-  margin-top: 0.25rem;
+/* A nested list hangs from a hairline under its parent's text, one item gap
+   below it. The line is a faint cut of the markers' ink, which holds on the
+   canvas where the border token disappears. */
+.chat-markdown li > :is(ul, ol) {
+  margin: calc(6em / 15) 0 0;
+  border-left: 1px solid color-mix(in srgb, var(--contrast-muted-foreground) 30%, transparent);
+}
+
+/* A third level (and any deeper) reads as the second: the same marker, on the
+   second level's guide and indent, so an outline cannot staircase off the
+   column. */
+.chat-markdown li li > :is(ul, ol) {
+  border-left: none;
+  padding-left: 0;
 }
 
 /* GitHub-style task lists: the checkbox replaces the list marker. */
@@ -2029,6 +2099,66 @@ code {
   color: var(--contrast-muted-foreground);
 }
 
+/* GitHub's alerts (`> [!NOTE]` to `> [!CAUTION]`) as callouts in the status
+   grammar: a 3 px edge and a faint tint in the tone, a small label in its ink,
+   then ordinary text in the body's. A note is neutral, a tip the ok green, the
+   important thing the blue of what the person can act on, a warning the
+   attention amber, a caution the failure red. */
+.chat-markdown .chat-markdown-callout {
+  border-left: 3px solid var(--callout-tone);
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: color-mix(in srgb, var(--callout-tone) 8%, transparent);
+  padding: 0.6em 0.9em;
+  color: inherit;
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="note"] {
+  --callout-tone: var(--zerops-status-off);
+  --callout-ink: var(--contrast-muted-foreground);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="tip"] {
+  --callout-tone: var(--zerops-status-ok);
+  --callout-ink: var(--zerops-status-ok-text);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="important"] {
+  --callout-tone: var(--message-action);
+  --callout-ink: var(--message-action);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="warning"] {
+  --callout-tone: var(--zerops-status-attention);
+  --callout-ink: var(--zerops-status-attention-text);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="caution"] {
+  --callout-tone: var(--zerops-status-failed);
+  --callout-ink: var(--zerops-status-failed-text);
+}
+
+/* The label's ink is its tone's pulled a quarter toward the text: the status
+   inks are set for white cards, and on the canvas, under the tint, a 13 px
+   label needs the extra contrast in both themes. */
+.chat-markdown .chat-markdown-callout-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0 0 0.25em;
+  color: color-mix(in oklab, var(--callout-ink) 75%, var(--contrast-foreground));
+  font-size: calc(13em / 15);
+  font-weight: 600;
+  line-height: calc(20 / 13);
+}
+
+.chat-markdown .chat-markdown-callout-label + * {
+  margin-top: 0;
+}
+
+.chat-markdown .chat-markdown-callout > :last-child {
+  margin-bottom: 0;
+}
+
 .chat-markdown section[data-footnotes] {
   margin-top: 1.25rem;
   border-top: 1px solid var(--contrast-border);
@@ -2063,7 +2193,8 @@ code {
   background: var(--muted);
   padding: 0.1rem 0.35rem;
   color: var(--contrast-foreground);
-  font-size: 0.75rem;
+  /* 12 px in the log's 14, 13 in an answer's 15: a step below its sentence. */
+  font-size: 0.86em;
 }
 
 .chat-markdown .chat-markdown-file-link,
@@ -2139,50 +2270,34 @@ code {
   }
 }
 
-/* Diagnostics-style tables: row separators only, uppercase headers, and a
-   scroll-fade container for horizontal overflow. The root chat-markdown
-   wrapping rules (overflow-wrap: anywhere) would let columns shrink to single
-   characters and defeat the overflow — restore word-boundary wrapping so the
-   min column width is the longest word. */
+/* Tables: row separators only, a step below the body (13/20 at an answer's
+   15 px), headers in the muted ink and the case they were written in. Cells
+   wrap at word boundaries (the root's break-word keeps each column's
+   min-content whole-word), so a table is as wide as the column unless its
+   words alone are wider; only then does its container scroll sideways. */
 .chat-markdown table {
   width: 100%;
-  min-width: max-content;
   border-collapse: collapse;
-  overflow-wrap: normal;
-  word-break: normal;
-  font-size: 0.75rem;
+  font-size: calc(13em / 15);
+  line-height: calc(20 / 13);
 }
 
 .chat-markdown th,
 .chat-markdown td {
   padding: 0.45rem 0.75rem;
   text-align: left;
+  vertical-align: top;
 }
 
 .chat-markdown thead th {
   border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
   padding-block: 0.55rem;
   font-weight: 600;
-  white-space: nowrap;
+  color: var(--contrast-muted-foreground);
 }
 
 .chat-markdown tbody td {
   border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
-}
-
-/* Collapsed (default): single-line cells truncate so arbitrary chat content
-   cannot blow the column out; the footer toggle expands cells to wrap. */
-.chat-markdown .chat-markdown-table-container[data-expanded="false"] th,
-.chat-markdown .chat-markdown-table-container[data-expanded="false"] td {
-  overflow: hidden;
-  max-width: 24rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-markdown .chat-markdown-table-container[data-expanded="true"] td {
-  max-width: 24rem;
-  overflow-wrap: anywhere;
 }
 
 :root {

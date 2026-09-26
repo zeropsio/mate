@@ -11,7 +11,6 @@ import {
   KIND_LABEL,
   buildStep,
   decodeCall,
-  detailField,
   errorInfoFor,
   explanationField,
   failedCallReason,
@@ -21,7 +20,6 @@ import {
   mateVoiceFor,
   phaseFor,
   readInputString,
-  undecodedDetail,
 } from "./shared.ts";
 
 const SIMPLE_VOICE_SOURCE_FIELDS = ["hostname", "serviceHostname", "targetService"] as const;
@@ -72,7 +70,6 @@ export function buildSimpleFields(
         : phase === "done"
           ? operationClosing(kind, "done", { message: messageFirstParagraph, summary })
           : operationClosing(kind, phase, {});
-  const messageUsedAsClosing = phase === "done" && rawMessage !== undefined;
 
   return {
     subject,
@@ -94,13 +91,6 @@ export function buildSimpleFields(
       ),
     ],
     links: [],
-    ...detailField([
-      !messageUsedAsClosing ? rawMessage : undefined,
-      outcome?.nextActions,
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.document === undefined ? undecodedDetail(call) : undefined,
-    ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
     ...(errorInfo !== undefined

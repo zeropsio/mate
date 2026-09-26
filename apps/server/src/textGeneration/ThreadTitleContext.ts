@@ -1,4 +1,5 @@
 import type { ChatAttachment } from "@t3tools/contracts";
+import { userAskOf } from "@t3tools/shared/userAsk";
 
 export type ThreadTitleMessage = {
   readonly role: "user" | "assistant" | "system" | "reasoning";
@@ -21,18 +22,26 @@ export function limitTitleMessage(text: string, budget: number): string {
   return `${text.slice(0, head)}${TRUNCATED}${tail > 0 ? text.slice(-tail) : ""}`;
 }
 
+/**
+ * What a message contributes to a title: a user message only when it asks
+ * something (`@t3tools/shared/userAsk`), and attachments without words by
+ * their names alone, never by the placeholder a client sent the agent.
+ */
+function titleText(message: ThreadTitleMessage): string | null {
+  if (message.role !== "user") return message.text;
+  const ask = userAskOf(message);
+  return ask === null ? null : ask.kind === "text" ? message.text : "";
+}
+
 /** Reserve space for user intent before adding assistant findings, in conversation order. */
 export function formatThreadTitleContext(messages: ReadonlyArray<ThreadTitleMessage>) {
   const sections = messages.flatMap((message, index) => {
     // Thinking traces are working notes, not what the thread is about, and they
     // dwarf the answer they precede. Titling on them would be worse and costlier.
-    if (
-      message.role === "system" ||
-      message.role === "reasoning" ||
-      (!message.text.trim() && !message.attachments?.length)
-    )
-      return [];
-    return [{ index, message, prefix: `${message.role.toUpperCase()}:\n` }];
+    if (message.role === "system" || message.role === "reasoning") return [];
+    const text = titleText(message);
+    if (text === null || (!text.trim() && !message.attachments?.length)) return [];
+    return [{ index, message: { ...message, text }, prefix: `${message.role.toUpperCase()}:\n` }];
   });
   const formatted = new Map<number, string>();
   const contentsFor = (section: (typeof sections)[number]) => {

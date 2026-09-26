@@ -146,7 +146,13 @@ export function deriveOperationObservation(
       // (`processes` is `[]`, not `undefined`, once the runtime has established
       // the query) must not refresh the staleness clock; only a read that
       // actually found something for this target counts as fresh knowledge.
-      lastRead = { attribution, atMs: input.snapshot.atMs };
+      // A live feed pushes every change, so what it holds is current now; one
+      // that is not observing is as old as the later of its newest record and
+      // the last moment it was seen live.
+      const atMs = input.snapshot.live
+        ? nowMs
+        : Math.max(input.snapshot.atMs, lastRead?.atMs ?? Number.NEGATIVE_INFINITY);
+      lastRead = { attribution, atMs };
     }
   }
 
@@ -168,18 +174,18 @@ export function deriveOperationObservation(
   );
 
   const observationNow = state.kind === "off" ? undefined : state.observation;
-  const history =
-    observationNow !== undefined && observationNow.steps.length > 0
-      ? observationNow
-      : input.previousHistory;
+  const history = observationNow?.pipeline !== undefined ? observationNow : input.previousHistory;
 
   // `state.kind === "off"` already covers every stop condition but
   // `running`/outcome — not attributable, the ceiling, and any feed
   // problem the activity feed or attribution itself reports (including a
   // project mismatch: no process for the right project is ever going to
-  // arrive from a read that is not even reading that project).
+  // arrive from a read that is not even reading that project). A feed that
+  // has only been silent past its timeout keeps the lease: it recovers only
+  // while somebody still wants it.
   const outcomeSettled = observationNow?.outcome !== undefined;
-  const wantsPoll = target.running && state.kind !== "off" && !outcomeSettled;
+  const feedStopped = state.kind === "off" && state.reason !== "stale-timeout";
+  const wantsPoll = target.running && !feedStopped && !outcomeSettled;
   const buildLogQuery = observationNow?.buildLog ?? history?.buildLog;
 
   return {
@@ -208,9 +214,14 @@ function serviceIdsFor(
   return [...ids];
 }
 
+/**
+ * `nowMs` is the card's render clock (`useSecondsNowMs`): a live feed's
+ * observation is current as of it, and a silent one ages against it.
+ */
 export function useOperationObservation(
   target: ObservationTarget | null,
   environmentId: EnvironmentId | null,
+  nowMs: number,
 ): OperationObservation {
   const session = useZeropsSessionOptional();
   const topology = useZeropsTopology(environmentId);
@@ -261,7 +272,7 @@ export function useOperationObservation(
       previousLastRead: lastReadRef.current,
       previousHistory,
     },
-    Date.now(),
+    nowMs,
   );
 
   lastReadRef.current = result.lastRead;

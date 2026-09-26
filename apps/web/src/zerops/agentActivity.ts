@@ -19,6 +19,11 @@
  * Knowable only for an environment Mate is connected to: an environment with
  * no thread shells has no entry, and the caller draws it asleep.
  */
+import {
+  IMAGE_ONLY_BOOTSTRAP_PROMPT,
+  isSlashCommand,
+  isUsageLimitResumePrompt,
+} from "@t3tools/shared/userAsk";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
@@ -111,14 +116,25 @@ export function agentActivitySubject(
     const step = thread.planProgress?.step.trim();
     if (step !== undefined && step.length > 0) return step;
   }
-  // The last task, as the person put it.
+  // The last task, as the person put it — never a command to the harness or
+  // the client's own placeholder for an image-only message, which a server
+  // from before it knew better may still hand over as the latest words.
   const asked = thread.latestUserMessagePreview;
-  if (asked !== undefined && asked !== null) return asked.text;
+  if (asked !== undefined && asked !== null && isPersonsWords(asked.text)) return asked.text;
   // A conversation nobody has spoken into has a placeholder for a title, not
   // a subject: a Mate that was never asked anything has nothing it is about.
   if (thread.latestUserMessageAt === null) return undefined;
   const title = thread.title.trim();
-  return title.length > 0 ? title : undefined;
+  return title.length > 0 && isPersonsWords(title) ? title : undefined;
+}
+
+function isPersonsWords(text: string): boolean {
+  const trimmed = text.trim();
+  return (
+    !isSlashCommand(trimmed) &&
+    !isUsageLimitResumePrompt(trimmed) &&
+    trimmed !== IMAGE_ONLY_BOOTSTRAP_PROMPT
+  );
 }
 
 export function deriveZeropsAgentActivity(
