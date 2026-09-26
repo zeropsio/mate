@@ -4,15 +4,7 @@ import {
   operationStatusWord,
 } from "../../operations/phrases.ts";
 import type { ZeropsCall } from "../types.ts";
-import {
-  type BuiltCardFields,
-  decodeCall,
-  detailField,
-  errorInfoFor,
-  firstLine,
-  phaseFor,
-  undecodedDetail,
-} from "./shared.ts";
+import { type BuiltCardFields, decodeCall, errorInfoFor, firstLine, phaseFor } from "./shared.ts";
 
 /** A failed call whose tool is otherwise hidden/generic-shaped — always kind `error`. */
 export function buildErrorFields(call: ZeropsCall): BuiltCardFields {
@@ -33,11 +25,6 @@ export function buildErrorFields(call: ZeropsCall): BuiltCardFields {
     }),
     steps: [],
     links: [],
-    ...detailField([
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     hasResult: decoded.document !== undefined,
     phaseOverride: "failed",
   };

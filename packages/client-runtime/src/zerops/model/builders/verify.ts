@@ -6,14 +6,12 @@ import {
   KIND_LABEL,
   buildStep,
   decodeCall,
-  detailField,
   errorInfoFor,
   firstLine,
   gatedStatusWord,
   mateVoiceFor,
   phaseFor,
   readInputString,
-  undecodedDetail,
 } from "./shared.ts";
 
 export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
@@ -53,12 +51,6 @@ export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
    */
   const phase = callPhase === "done" && failedCount > 0 ? "failed" : callPhase;
 
-  const checkHints = isAllServices
-    ? []
-    : (card?.checks ?? []).flatMap((check) =>
-        check.detail !== undefined ? [`${check.name}: ${check.detail}`] : [],
-      );
-
   const closing =
     phase === "running"
       ? undefined
@@ -89,12 +81,6 @@ export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
-    ...detailField([
-      ...checkHints,
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
     ...(phase === callPhase ? {} : { phaseOverride: phase }),

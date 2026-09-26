@@ -213,20 +213,6 @@ function UrlChip({ label, url }: { readonly label: string; readonly url: string 
   );
 }
 
-/** The quiet Details disclosure — the result's full text, collapsed. */
-function DetailDisclosure({ detail }: { readonly detail: string }) {
-  return (
-    <details className="text-muted-foreground text-xs">
-      <summary className="w-fit cursor-pointer list-none select-none text-xs hover:text-foreground [&::-webkit-details-marker]:hidden">
-        Details
-      </summary>
-      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/60 p-2 text-[11px]">
-        {detail}
-      </pre>
-    </details>
-  );
-}
-
 export interface BrowserScreenshot {
   readonly src: string;
   readonly width?: number;
@@ -392,7 +378,6 @@ function BrowserCard({
         {operation.explanation !== undefined ? (
           <ExplanationBlock explanation={operation.explanation} />
         ) : null}
-        {operation.detail !== undefined ? <DetailDisclosure detail={operation.detail} /> : null}
       </div>
       {expanded && image !== undefined
         ? createPortal(
@@ -607,7 +592,6 @@ export function ZeropsOperationCard(props: {
               ) : null}
             </div>
           ) : null}
-          {operation.detail !== undefined ? <DetailDisclosure detail={operation.detail} /> : null}
         </>
       )}
     </FlatCard>

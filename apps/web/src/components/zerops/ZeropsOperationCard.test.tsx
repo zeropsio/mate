@@ -947,33 +947,70 @@ describe("ZeropsOperationCard — empty body", () => {
   });
 });
 
-describe("ZeropsOperationCard — footer detail disclosure", () => {
-  it("shows a quiet Details disclosure with the detail text in a scrollable pre block, never a chip", () => {
+describe("ZeropsOperationCard — what zcp writes for the agent stays off the card", () => {
+  it.each([
+    {
+      name: "a deploy's next actions",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "completed" as const,
+      resultText: JSON.stringify({
+        status: "DEPLOYED",
+        targetService: "weatherdash",
+        nextActions: "Run zerops_verify on weatherdash.",
+        verification: "Tell the person that link.",
+      }),
+      agentText: ["Run zerops_verify on weatherdash.", "Tell the person that link."],
+    },
+    {
+      name: "a failed call's diagnostic and suggestion",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "failed" as const,
+      resultText: JSON.stringify({
+        code: "DEPLOY_FAILED",
+        error: "zcli push failed",
+        diagnostic: "exit status 1",
+        suggestion: "Run zerops_discover to check the service.",
+      }),
+      agentText: ["exit status 1", "Run zerops_discover to check the service."],
+    },
+    {
+      name: "a verify's check hints",
+      toolName: "zerops_verify",
+      input: { serviceHostname: "weatherdash" },
+      status: "completed" as const,
+      resultText: JSON.stringify({
+        hostname: "weatherdash",
+        status: "healthy",
+        checks: [{ name: "service_running", status: "pass", detail: "Read zerops_logs next." }],
+      }),
+      agentText: ["Read zerops_logs next."],
+    },
+    {
+      name: "a result the card cannot read",
+      toolName: "zerops_subdomain",
+      input: { serviceHostname: "weatherdash", action: "enable" },
+      status: "completed" as const,
+      resultText: "subdomain: ok (raw tool output)",
+      agentText: ["subdomain: ok (raw tool output)"],
+    },
+  ])("$name", ({ toolName, input, status, resultText, agentText }) => {
     const operation = operationFor(
       zeropsCall({
-        id: "e4",
+        id: `agent-${toolName}`,
         startedAt: "2026-09-01T00:00:00.000Z",
-        turnId: null,
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "completed",
-        resultText: JSON.stringify({
-          status: "DEPLOYED",
-          targetService: "weatherdash",
-          nextActions: "Check the logs for anything unusual.",
-        }),
+        toolName,
+        input,
+        status,
+        resultText,
+        settledAt: "2026-09-01T00:00:05.000Z",
       }),
     );
-    expect(operation.detail).toBeDefined();
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const html = renderToStaticMarkup(<ZeropsOperationCard now={0} operation={operation} />);
 
-    expect(html).toContain("<details");
-    expect(html).toContain("<summary");
-    expect(html).toContain("Details");
-    expect(html).toContain("<pre");
-    expect(html).toContain("max-h-40");
-    expect(html).toContain(operation.detail!);
-    expect(html).not.toContain(`data-zerops-chip-kind="detail"`);
+    expect(html).not.toMatch(/<summary[^>]*>Details</);
+    for (const text of agentText) expect(html).not.toContain(text);
   });
 });
 
@@ -1449,7 +1486,7 @@ describe("ZeropsOperationCard — why a card failed or timed out", () => {
     expect(html).not.toContain("data-zerops-operation-explanation");
   });
 
-  it("keeps a failed call's closing line and Details beside the explanation", () => {
+  it("keeps a failed call's closing line beside the explanation", () => {
     const html = renderToStaticMarkup(
       <ZeropsOperationCard
         now={0}
@@ -1462,6 +1499,6 @@ describe("ZeropsOperationCard — why a card failed or timed out", () => {
       />,
     );
     expect(html).toContain('data-zerops-card-outcome="true"');
-    expect(html).toContain("Details");
+    expect(html).toContain("GIT_TOKEN missing");
   });
 });

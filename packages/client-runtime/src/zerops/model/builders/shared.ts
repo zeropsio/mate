@@ -62,7 +62,6 @@ export interface BuiltCardFields {
   readonly closing?: string;
   readonly steps: ReadonlyArray<ZeropsOperationStep>;
   readonly links: ReadonlyArray<ZeropsOperationLink>;
-  readonly detail?: string;
   readonly target?: { readonly hostname: string };
   readonly batch?: true;
   readonly resultStatus?: string;
@@ -180,8 +179,6 @@ export function decodeCall(call: ZeropsCall): DecodedEntry {
 
 export interface ErrorInfo {
   readonly message: string;
-  readonly diagnostic?: string;
-  readonly suggestion?: string;
 }
 
 export function errorInfoFor(call: ZeropsCall, decoded: DecodedEntry): ErrorInfo | undefined {
@@ -189,13 +186,7 @@ export function errorInfoFor(call: ZeropsCall, decoded: DecodedEntry): ErrorInfo
     return undefined;
   }
   if (decoded.card?.kind === "error") {
-    return {
-      message: decoded.card.message,
-      ...(decoded.card.suggestion !== undefined ? { suggestion: decoded.card.suggestion } : {}),
-      ...(readString(decoded.document?.diagnostic) !== undefined
-        ? { diagnostic: readString(decoded.document?.diagnostic)! }
-        : {}),
-    };
+    return { message: decoded.card.message };
   }
   const rawMessage = readString(decoded.document?.error) ?? call.resultText;
   return { message: rawMessage ?? "Failed." };
@@ -274,26 +265,6 @@ export function mateVoiceFor(
   subject: string,
 ): { voice: string; voiceSource: "agent" | "mate" } {
   return { voice: operationVoice(kind, subject), voiceSource: "mate" };
-}
-
-export function undecodedDetail(call: ZeropsCall): string | undefined {
-  if (call.truncated) {
-    return "Result too large to show.";
-  }
-  return call.resultText;
-}
-
-function buildDetail(parts: ReadonlyArray<string | undefined>): string | undefined {
-  const present = parts.filter((p): p is string => p !== undefined && p.trim().length > 0);
-  return present.length > 0 ? present.join("\n\n") : undefined;
-}
-
-/** `{ detail }` when any part is present, else `{}` — spread directly into the built operation. */
-export function detailField(
-  parts: ReadonlyArray<string | undefined>,
-): { detail: string } | Record<string, never> {
-  const detail = buildDetail(parts);
-  return detail !== undefined ? { detail } : {};
 }
 
 /** How many of a failure's log lines a card carries — the end of the log, where the failure is. */

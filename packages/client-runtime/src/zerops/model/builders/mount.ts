@@ -5,13 +5,11 @@ import {
   KIND_LABEL,
   buildStep,
   decodeCall,
-  detailField,
   errorInfoFor,
   firstLine,
   gatedStatusWord,
   mateVoiceFor,
   phaseFor,
-  undecodedDetail,
 } from "./shared.ts";
 
 export function buildMountFields(call: ZeropsCall): BuiltCardFields {
@@ -50,11 +48,6 @@ export function buildMountFields(call: ZeropsCall): BuiltCardFields {
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
-    ...detailField([
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     ...(hostnames[0] !== undefined ? { target: { hostname: hostnames[0] } } : {}),
     hasResult: decoded.document !== undefined,
   };

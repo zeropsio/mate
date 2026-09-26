@@ -10,7 +10,6 @@ import {
   KIND_LABEL,
   buildStep,
   decodeCall,
-  detailField,
   errorInfoFor,
   firstLine,
   gatedStatusWord,
@@ -18,7 +17,6 @@ import {
   phaseFor,
   pickFirst,
   readInputString,
-  undecodedDetail,
 } from "./shared.ts";
 
 function browserStepNote(step: {
@@ -183,12 +181,6 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
     ...(viewport !== undefined ? { viewport } : {}),
     steps,
     links: [],
-    ...detailField([
-      card?.message,
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     hasResult: decoded.document !== undefined,
   };
 }

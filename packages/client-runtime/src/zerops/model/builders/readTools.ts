@@ -27,12 +27,10 @@ import {
   KIND_LABEL,
   buildStep,
   decodeCall,
-  detailField,
   gatedStatusWord,
   mateVoiceFor,
   phaseFor,
   readInputString,
-  undecodedDetail,
 } from "./shared.ts";
 
 type ReadKind = "logs" | "events" | "process" | "discover";
@@ -102,7 +100,6 @@ function buildReadFields<K extends ReadKind>(
     ...(closing === undefined ? {} : { closing }),
     steps: outcome?.steps ?? [],
     links: [],
-    ...detailField([decoded.card === undefined ? undecodedDetail(call) : undefined]),
     ...target,
     hasResult: decoded.document !== undefined,
     ...(readResult === undefined ? {} : { readResult }),

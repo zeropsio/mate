@@ -6,7 +6,6 @@ import {
   KIND_LABEL,
   buildStep,
   decodeCall,
-  detailField,
   errorInfoFor,
   firstLine,
   gatedStatusWord,
@@ -14,7 +13,6 @@ import {
   phaseFor,
   pickFirst,
   readInputString,
-  undecodedDetail,
 } from "./shared.ts";
 
 /** Humanizes `reason` (e.g. `health_probe_timeout`) into "Health probe timeout". */
@@ -108,12 +106,6 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
     // client's own topology view as a prop the timeline supplies, never
     // baked into the operation here.
     links: [],
-    ...detailField([
-      card?.logTail,
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
   };

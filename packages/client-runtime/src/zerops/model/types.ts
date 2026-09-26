@@ -251,7 +251,6 @@ export interface ZeropsOperation {
   readonly closing?: string;
   readonly steps: ReadonlyArray<ZeropsOperationStep>;
   readonly links: ReadonlyArray<ZeropsOperationLink>;
-  readonly detail?: string;
   /** The operation's calls, anchor first: one per per-call kind, a bootstrap session's members and joined imports. */
   readonly callIds: ReadonlyArray<string>;
   readonly target?: { readonly hostname: string };

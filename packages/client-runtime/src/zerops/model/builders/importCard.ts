@@ -7,7 +7,6 @@ import {
   buildStep,
   decodeCall,
   type DecodedEntry,
-  detailField,
   errorInfoFor,
   explanationField,
   failedCallReason,
@@ -15,7 +14,6 @@ import {
   gatedStatusWord,
   mateVoiceFor,
   phaseFor,
-  undecodedDetail,
 } from "./shared.ts";
 import { readString } from "../../cards/decode.ts";
 
@@ -134,12 +132,6 @@ export function buildImportFields(call: ZeropsCall): BuiltCardFields {
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
-    ...detailField([
-      card?.nextActions,
-      errorInfo?.diagnostic,
-      errorInfo?.suggestion,
-      decoded.card === undefined ? undecodedDetail(call) : undefined,
-    ]),
     ...(target !== undefined ? { target: { hostname: target } } : {}),
     hasResult: read.document !== undefined,
     ...(processIds.length > 0 ? { processIds } : {}),

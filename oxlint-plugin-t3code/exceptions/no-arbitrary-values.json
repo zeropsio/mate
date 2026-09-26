@@ -1714,14 +1714,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/60 p-2 text-[11px]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"min-w-0 text-[13px] text-muted-foreground\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
