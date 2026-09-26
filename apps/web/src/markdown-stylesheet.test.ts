@@ -119,6 +119,13 @@ function amount(value: string | undefined, unit: "em" | "" = "em"): number | nul
   return quotient ? Number(quotient[1]) / Number(quotient[2]) : null;
 }
 
+/** A box shorthand (`margin: a b c d`, one to four values) as its four sides. */
+function sides(value: string | undefined): ReadonlyArray<string | undefined> {
+  const parts = (value ?? "").match(/calc\([^)]*\)|\S+/g) ?? [];
+  const [top, right = top, bottom = top, left = right] = parts;
+  return [top, right, bottom, left];
+}
+
 /** Every declaration the stylesheet gives one exact selector, the later rule winning. */
 function declarationsOf(selector: string): ReadonlyMap<string, string> {
   const merged = new Map<string, string>();
@@ -145,6 +152,60 @@ describe("the chat markdown stylesheet", () => {
     const size = amount(declarationsOf(".chat-markdown :not(pre) > code").get("font-size"));
 
     expect((size ?? 0) * body).toBeCloseTo(code, 0);
+  });
+
+  // In px at an answer's 15 px body; the log's 14 px scales every figure.
+  it.each([
+    { tag: "h1", size: 19, line: 26, above: 28, below: 8, ink: "var(--contrast-foreground)" },
+    { tag: "h2", size: 19, line: 26, above: 28, below: 8, ink: "var(--contrast-foreground)" },
+    { tag: "h3", size: 16.5, line: 24, above: 20, below: 6, ink: "var(--contrast-foreground)" },
+    {
+      tag: "h4",
+      size: 15,
+      line: null,
+      above: 16,
+      below: 4,
+      ink: "var(--contrast-muted-foreground)",
+    },
+    {
+      tag: "h5",
+      size: 15,
+      line: null,
+      above: 16,
+      below: 4,
+      ink: "var(--contrast-muted-foreground)",
+    },
+    {
+      tag: "h6",
+      size: 15,
+      line: null,
+      above: 16,
+      below: 4,
+      ink: "var(--contrast-muted-foreground)",
+    },
+  ])("sets $tag at $size px, $above px above and $below below", (heading) => {
+    const rule = declarationsOf(`.chat-markdown ${heading.tag}`);
+    const size = amount(rule.get("font-size")) ?? 0;
+    const [above, , below] = sides(rule.get("margin")).map((side) => amount(side) ?? 0);
+
+    // Never below the body: a heading the size of its text reads as a bold lead-in.
+    expect(size).toBeGreaterThanOrEqual(1);
+    expect(size * 15).toBeCloseTo(heading.size);
+    expect(rule.get("font-weight")).toBe("600");
+    expect(rule.get("color")).toBe(heading.ink);
+    expect((above ?? 0) * size * 15).toBeCloseTo(heading.above);
+    expect((below ?? 0) * size * 15).toBeCloseTo(heading.below);
+    // Without a line of its own, a heading keeps the body's.
+    const line = amount(rule.get("line-height"), "");
+    if (heading.line === null) expect(line).toBeNull();
+    else expect((line ?? 0) * heading.size).toBeCloseTo(heading.line);
+  });
+
+  it("lets a heading own the gap under it, and none above when it opens the text", () => {
+    expect(declarationsOf(".chat-markdown :is(h1, h2, h3, h4, h5, h6) + *").get("margin-top")).toBe(
+      "0",
+    );
+    expect(declarationsOf(".chat-markdown > :first-child").get("margin-top")).toBe("0");
   });
 
   it("finds the chat markdown rules it pins", () => {

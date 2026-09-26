@@ -1946,47 +1946,50 @@ code {
   margin-bottom: 0;
 }
 
-.chat-markdown p,
-.chat-markdown ul,
-.chat-markdown ol,
-.chat-markdown blockquote,
-.chat-markdown pre,
-.chat-markdown .chat-markdown-table-container {
+/* The blocks' rhythm, at the lowest specificity so any rule below can adjust it. */
+.chat-markdown :where(p, ul, ol, blockquote, pre, .chat-markdown-table-container) {
   margin: 0.65rem 0;
 }
 
+/* The heading scale, set against an answer's 15 px body: h1 and h2 19/26 with
+   28 px above and 8 below, h3 16.5/24 with 20 and 6, h4 to h6 the body's own
+   size and line in the muted ink with 16 and 4. A heading is never smaller
+   than the text under it, or it reads as one more bold lead-in. Margins are in
+   the heading's own em. */
 .chat-markdown h1,
 .chat-markdown h2,
 .chat-markdown h3,
 .chat-markdown h4,
 .chat-markdown h5,
 .chat-markdown h6 {
-  margin: 1.25rem 0 0.5rem;
   font-weight: 600;
-  line-height: 1.3;
   color: var(--contrast-foreground);
 }
 
-.chat-markdown h1 {
-  font-size: 1.25rem;
-}
-
+.chat-markdown h1,
 .chat-markdown h2 {
-  font-size: 1.125rem;
+  margin: calc(28em / 19) 0 calc(8em / 19);
+  font-size: calc(19em / 15);
+  line-height: calc(26 / 19);
 }
 
 .chat-markdown h3 {
-  font-size: 1rem;
+  margin: calc(20em / 16.5) 0 calc(6em / 16.5);
+  font-size: calc(16.5em / 15);
+  line-height: calc(24 / 16.5);
 }
 
 .chat-markdown h4,
 .chat-markdown h5,
 .chat-markdown h6 {
-  font-size: 0.875rem;
+  margin: calc(16em / 15) 0 calc(4em / 15);
+  font-size: 1em;
+  color: var(--contrast-muted-foreground);
 }
 
-.chat-markdown h6 {
-  color: var(--contrast-muted-foreground);
+/* A heading owns the gap under it; the block that follows adds none. */
+.chat-markdown :is(h1, h2, h3, h4, h5, h6) + * {
+  margin-top: 0;
 }
 
 .chat-markdown ul {
