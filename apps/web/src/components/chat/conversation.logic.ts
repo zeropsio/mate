@@ -636,12 +636,18 @@ export function deriveConversationStructure(input: {
       span.opener?.createdAt ??
       turnEntries[0]?.createdAt ??
       (live ? input.activeTurnStartedAt : null);
-    // Settled, a turn ends where its entries did — whether it is the latest
-    // or not, so its "worked for" never changes after the fact.
+    // Settled, a turn ends where the Mate's own entries did — whether it is
+    // the latest or not, so its "worked for" never changes after the fact. A
+    // helper or a background task it left working reports in on the turn,
+    // but that is the task's time, not the Mate's.
     const turnEnd = live
       ? null
       : (turnEntries.reduce<string | null>(
-          (end, entry) => laterIso(end, timelineEntryEnd(entry)),
+          (end, entry) =>
+            (entry.kind === "work" || entry.kind === "generic-call") &&
+            entry.entry.sourceActivityKind?.startsWith("task.") === true
+              ? end
+              : laterIso(end, timelineEntryEnd(entry)),
           null,
         ) ?? turnStart);
 

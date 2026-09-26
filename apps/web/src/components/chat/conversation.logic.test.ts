@@ -486,6 +486,30 @@ describe("deriveConversationStructure", () => {
     );
   });
 
+  // A helper the Mate left working reports in as its turn's entries: its
+  // progress and its finish are the helper's time, not the Mate's. "Nova
+  // worked for 21s" read "1m 44s", then "2m 19s", while only the helper
+  // worked on (Nova, 2026-09-26).
+  it("ends a settled turn at the Mate's own last entry, not at a helper's report", () => {
+    const mine = [
+      user("m0", 0),
+      tool("w1", "t1", 1),
+      assistant("a1", "t1", 2, "The review runs in the background."),
+    ];
+    const helper = [
+      tool("h1", "t1", 9, { sourceActivityKind: "task.progress", taskId: "task-h", tone: "info" }),
+      tool("h2", "t1", 12, {
+        sourceActivityKind: "task.completed",
+        taskId: "task-h",
+        tone: "info",
+      }),
+    ];
+    const settled = { latest: { id: "t1", state: "completed", completed: true } };
+    const alone = structure(mine, settled).turns[0]!;
+    const reported = structure([...mine, ...helper], settled).turns[0]!;
+    expect(reported.stretches.at(-1)!.endedAt).toBe(alone.stretches.at(-1)!.endedAt);
+  });
+
   it("leaves a message no turn took loose, and places a landing inside the turn it fell in", () => {
     const entries = [
       user("m0", 0),
