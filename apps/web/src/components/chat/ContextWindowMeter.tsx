@@ -24,9 +24,12 @@ export function ContextWindowMeter(props: {
   const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
-  const radius = 9.75;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - normalizedPercentage / 100);
+  // A pie, never a ring: a ring's growing arc reads as a spinner beside Send.
+  // The share used is a wedge drawn as one wide stroke on a half-radius circle.
+  const radius = 9.25;
+  const wedgeRadius = radius / 2;
+  const wedgeCircumference = 2 * Math.PI * wedgeRadius;
+  const wedgeLength = wedgeCircumference * (normalizedPercentage / 100);
   const totalProcessedTokens = usage.totalProcessedTokens ?? null;
   const showTotalProcessed = totalProcessedTokens !== null && totalProcessedTokens > 0;
   const isOverloaded = normalizedPercentage > 90;
@@ -62,20 +65,18 @@ export function ContextWindowMeter(props: {
                   cy="12"
                   r={radius}
                   fill="none"
-                  className="stroke-muted-foreground/24"
-                  strokeWidth="3"
+                  className="stroke-muted-foreground/40"
+                  strokeWidth="1.5"
                 />
                 <circle
                   cx="12"
                   cy="12"
-                  r={radius}
+                  r={wedgeRadius}
                   fill="none"
                   stroke={usageColor}
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={dashOffset}
-                  className="transition-[stroke-dashoffset,stroke] duration-500 ease-out motion-reduce:transition-none"
+                  strokeWidth={radius}
+                  strokeDasharray={`${wedgeLength} ${wedgeCircumference}`}
+                  className="transition-[stroke-dasharray,stroke] duration-500 ease-out motion-reduce:transition-none"
                 />
               </svg>
             </span>

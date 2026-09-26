@@ -2671,7 +2671,12 @@ export default function ChatView(props: ChatViewProps) {
     compactRequestIsActive &&
     !compactionSettled;
   const isWorking =
-    phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint || isCompacting;
+    phase === "running" ||
+    phase === "connecting" ||
+    isSendBusy ||
+    isConnecting ||
+    isRevertingCheckpoint ||
+    isCompacting;
   const activeWorkStartedAt = deriveActiveWorkStartedAt(
     activeLatestTurn,
     activeThread?.session ?? null,
@@ -6807,7 +6812,9 @@ export default function ChatView(props: ChatViewProps) {
   // turn is running, the same as archiving from the sidebar.
   const startFreshConversation = async () => {
     if (!activeThreadRef) return;
-    const result = await archiveThread(activeThreadRef);
+    const result = await archiveThread(activeThreadRef, {
+      toast: { title: "Started a new session", description: "The last one is under Archived." },
+    });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       const blocked = Schema.is(ThreadArchiveBlockedError)(error);
@@ -7943,15 +7950,18 @@ export default function ChatView(props: ChatViewProps) {
                 <div className="pointer-events-auto relative z-10">
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
+                      {/* The banners float from a zero-height anchor, so the
+                          headline keeps their measured height clear above them. */}
                       <div
                         className="pb-8"
-                        style={
-                          forceExpandedMobileComposer
-                            ? {
-                                viewTransitionName: MOBILE_DRAFT_HEADLINE_VIEW_TRANSITION_NAME,
-                              }
-                            : undefined
-                        }
+                        style={{
+                          ...(forceExpandedMobileComposer
+                            ? { viewTransitionName: MOBILE_DRAFT_HEADLINE_VIEW_TRANSITION_NAME }
+                            : {}),
+                          ...(composerBannerStackElement
+                            ? { marginBottom: composerBannerStackHeight }
+                            : {}),
+                        }}
                       >
                         <DraftHeroHeadline
                           activeProjectRef={activeProjectRef}
@@ -8028,9 +8038,16 @@ export default function ChatView(props: ChatViewProps) {
                                 isLocalDraftThread && activeProject === null
                               }
                               connectedPlaceholder={connectedComposerPlaceholder}
+                              {...(zeropsChrome.panel === "available"
+                                ? { idlePlaceholder: connectedComposerPlaceholder }
+                                : {})}
                               phase={phase}
                               isConnecting={isConnecting}
-                              isSendBusy={isSendBusy}
+                              // A session starting for the message just sent
+                              // is the send still under way: the button keeps
+                              // its spinner until the turn runs and it turns
+                              // into Stop, never the arrow in between.
+                              isSendBusy={isSendBusy || phase === "connecting"}
                               sendDisabledReason={
                                 feedbackUploading
                                   ? "Sending feedback"

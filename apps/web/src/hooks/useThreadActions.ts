@@ -267,7 +267,14 @@ export function useThreadActions() {
   );
 
   const archiveThread = useCallback(
-    async (target: ScopedThreadRef, opts: { onArchived?: () => void } = {}) => {
+    async (
+      target: ScopedThreadRef,
+      opts: {
+        onArchived?: () => void;
+        /** What the undo toast says, where archiving is a step of something else. */
+        toast?: { readonly title: string; readonly description: string };
+      } = {},
+    ) => {
       const resolved = resolveThreadTarget(target);
       if (!resolved) return AsyncResult.success(undefined);
       const { thread, threadRef } = resolved;
@@ -302,8 +309,8 @@ export function useThreadActions() {
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       opts.onArchived?.();
       showUndoToast({
-        title: "Thread archived",
-        description: thread.title,
+        title: opts.toast?.title ?? "Thread archived",
+        description: opts.toast?.description ?? thread.title,
         claim: action,
         // Undo also brings the reader back when archiving moved them to a draft.
         undo: () => unarchiveThread(threadRef, { navigate: shouldNavigateToDraft }),
