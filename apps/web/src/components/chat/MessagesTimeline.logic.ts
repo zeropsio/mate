@@ -19,6 +19,7 @@ import {
   deriveOutcome,
   isActivityWork,
   isImageOnlyPlaceholder,
+  isResumePrompt,
   isUsageLimitError,
   isUserMessageEntry,
   messageReceipt,
@@ -364,7 +365,9 @@ export type TurnHeaderActivity =
 export type ConversationEvent =
   | { readonly type: "landed"; readonly event: ChangeLandedEvent }
   | { readonly type: "compaction"; readonly label: string }
-  | { readonly type: "command"; readonly command: SlashCommand; readonly done: boolean };
+  | { readonly type: "command"; readonly command: SlashCommand; readonly done: boolean }
+  /** The server resumed the thread itself after a usage limit reset. */
+  | { readonly type: "resumed" };
 
 export type MessagesTimelineRow =
   | {
@@ -999,6 +1002,14 @@ export function deriveMessagesTimelineRows(
     }
   };
   const personRow = (entry: MessageEntry, index: number, aside: boolean): MessagesTimelineRow => {
+    if (isResumePrompt(entry.message.text)) {
+      return {
+        kind: "event",
+        id: entry.id,
+        createdAt: entry.createdAt,
+        event: { type: "resumed" },
+      };
+    }
     const command = readSlashCommand(entry.message.text);
     if (command !== null && (entry.message.attachments?.length ?? 0) === 0) {
       const stretch = structure.stretchByIndex.get(index);

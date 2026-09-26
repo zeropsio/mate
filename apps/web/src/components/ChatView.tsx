@@ -5298,9 +5298,33 @@ export default function ChatView(props: ChatViewProps) {
         runningTurnId: activeRunningTurnId,
         agentPanelModel,
         plan: activePlan ?? null,
-        pause: latestUsagePause(displayedTimeline.entries),
+        // The server's own pause when it keeps one; the thread's last words otherwise.
+        pause: activeThreadShell?.usagePause
+          ? { resetsAt: activeThreadShell.usagePause.resetsAt }
+          : latestUsagePause(displayedTimeline.entries),
       }),
-    [displayedTimeline.entries, isWorking, activeRunningTurnId, agentPanelModel, activePlan],
+    [
+      displayedTimeline.entries,
+      isWorking,
+      activeRunningTurnId,
+      agentPanelModel,
+      activePlan,
+      activeThreadShell?.usagePause,
+    ],
+  );
+  const setUsageAutoResume = useAtomCommand(threadEnvironment.setUsageAutoResume, {
+    reportFailure: false,
+  });
+  const onUsageAutoResumeChange = useMemo(
+    () =>
+      activeThread && activeThreadShell?.usagePause
+        ? (enabled: boolean) =>
+            void setUsageAutoResume({
+              environmentId: activeThread.environmentId,
+              input: { threadId: activeThread.id, enabled },
+            })
+        : null,
+    [activeThread, activeThreadShell?.usagePause, setUsageAutoResume],
   );
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     // Someone else's conversation is read, not run: every other banner offers
@@ -7910,6 +7934,8 @@ export default function ChatView(props: ChatViewProps) {
                 cancelPositionRestoreRef={cancelPositionRestoreRef}
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 queuedMessages={queuedMessages}
+                usagePause={activeThreadShell?.usagePause ?? null}
+                onUsageAutoResumeChange={onUsageAutoResumeChange}
                 onSteerQueuedMessage={onSteerQueuedMessage}
                 steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
                   keybindings,

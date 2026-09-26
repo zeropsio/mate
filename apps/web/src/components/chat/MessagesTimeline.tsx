@@ -155,6 +155,7 @@ import {
   Seam,
   WorkLine,
   type ConversationSpeaker,
+  type ServerUsagePause,
 } from "./ConversationRows";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
@@ -195,6 +196,10 @@ interface TimelineRowSharedState {
   showReasoning: boolean;
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
+  /** The pause row that holds the thread now, and the server's reading of it. */
+  livePauseId: string | null;
+  usagePause: ServerUsagePause | null;
+  onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
   /** `anchorKey` is the timeline row that holds the block; a standalone block is its own row. */
   onToggleReasoning: (messageId: string, expanded: boolean, anchorKey?: string) => void;
   expandedReasoningMessageIds: ReadonlySet<string>;
@@ -307,6 +312,9 @@ interface MessagesTimelineProps {
   loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
   /** Messages sent during the running turn. They render as ghost bubbles after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  /** The server's pause on this thread, when a usage limit holds it now. */
+  usagePause?: ServerUsagePause | null;
+  onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   onRemoveQueuedMessage?: (id: string) => void;
@@ -352,6 +360,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   topFadeEnabled = false,
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
+  usagePause = null,
+  onUsageAutoResumeChange = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
@@ -533,6 +543,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
   const rows = useStableRows(rawRows);
+  const livePauseId = useMemo(
+    () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
+    [rows],
+  );
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const restoreRowIndex =
     restoringReadingPosition && rememberedPosition
@@ -803,6 +817,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onToggleShowReasoning,
       showReasoning,
       speaker,
+      livePauseId,
+      usagePause,
+      onUsageAutoResumeChange,
       onToggleReasoning,
       expandedReasoningMessageIds,
       onToggleSpawnRow,
@@ -830,6 +847,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onToggleShowReasoning,
       showReasoning,
       speaker,
+      livePauseId,
+      usagePause,
+      onUsageAutoResumeChange,
       onToggleReasoning,
       expandedReasoningMessageIds,
       onToggleSpawnRow,
@@ -1542,7 +1562,9 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
   return (
     <PauseBlock
       nowMs={nowMs}
+      onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
       row={row}
+      serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
       speaker={ctx.speaker}
       timestampFormat={ctx.timestampFormat}
     />

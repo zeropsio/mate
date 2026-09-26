@@ -17,7 +17,11 @@ import { isReadOperationKind, type ZeropsOperation } from "@t3tools/client-runti
 
 import { workLogEntryIsToolLike, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import type { ChatMessage, TurnDiffSummary } from "../../types";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT } from "./composerPromptHistory";
+import {
+  IMAGE_ONLY_BOOTSTRAP_PROMPT,
+  isSlashCommand,
+  isUsageLimitResumePrompt,
+} from "@t3tools/shared/userAsk";
 
 export type MessageEntry = Extract<TimelineEntry, { kind: "message" }>;
 export type WorkEntry = Extract<TimelineEntry, { kind: "work" }>;
@@ -82,11 +86,21 @@ export interface SlashCommand {
   readonly args: string;
 }
 
-/** `/compact`, `/model opus` — a command to the harness, never the person's words to the Mate. */
+/**
+ * `/compact`, `/model opus` — a command to the harness, never the person's
+ * words to the Mate. What counts as one is the shared rule every surface reads
+ * (`@t3tools/shared/userAsk`); this only splits it into its name and words.
+ */
 export function readSlashCommand(text: string): SlashCommand | null {
-  const match = /^\/([a-z][\w:-]*)(?:\s+([\s\S]*))?$/i.exec(text.trim());
-  if (!match) return null;
-  return { name: match[1]!.toLowerCase(), args: (match[2] ?? "").trim() };
+  const trimmed = text.trim();
+  if (!isSlashCommand(trimmed)) return null;
+  const [head = "", ...rest] = trimmed.slice(1).split(/\s+/);
+  return { name: head.toLowerCase(), args: rest.join(" ").trim() };
+}
+
+/** The server's own message resuming a thread after a usage limit reset — never the person's. */
+export function isResumePrompt(text: string): boolean {
+  return isUsageLimitResumePrompt(text);
 }
 
 /** The client's own placeholder for an image-only message: nothing the person wrote. */

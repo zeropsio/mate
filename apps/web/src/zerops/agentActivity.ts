@@ -19,6 +19,11 @@
  * Knowable only for an environment Mate is connected to: an environment with
  * no thread shells has no entry, and the caller draws it asleep.
  */
+import {
+  IMAGE_ONLY_BOOTSTRAP_PROMPT,
+  isSlashCommand,
+  isUsageLimitResumePrompt,
+} from "@t3tools/shared/userAsk";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
@@ -123,12 +128,13 @@ export function agentActivitySubject(
   return title.length > 0 && isPersonsWords(title) ? title : undefined;
 }
 
-const SLASH_COMMAND = /^\/[a-z][\w:-]*(?:\s|$)/i;
-const IMAGE_ONLY_PLACEHOLDER = "[User attached one or more images without additional text.";
-
 function isPersonsWords(text: string): boolean {
   const trimmed = text.trim();
-  return !SLASH_COMMAND.test(trimmed) && !trimmed.startsWith(IMAGE_ONLY_PLACEHOLDER);
+  return (
+    !isSlashCommand(trimmed) &&
+    !isUsageLimitResumePrompt(trimmed) &&
+    trimmed !== IMAGE_ONLY_BOOTSTRAP_PROMPT
+  );
 }
 
 export function deriveZeropsAgentActivity(

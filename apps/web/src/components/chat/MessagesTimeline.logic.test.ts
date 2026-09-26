@@ -9,7 +9,7 @@ import {
   shouldPreserveAssistantLineBreaks,
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT } from "./composerPromptHistory";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import {
   assistant,
   at,
@@ -315,6 +315,14 @@ describe("deriveMessagesTimelineRows", () => {
     const done = rows({ entries: [user("m0", 0, "/compact"), compaction], settled: "t1" });
     expect(shape(done).slice(1)).toEqual(["event:m0"]);
     expect(done[1]).toMatchObject({ event: { done: true } });
+  });
+
+  it("draws the server's resume after a usage limit as an event, never the person's bubble", () => {
+    const list = rows({
+      entries: [user("m0", 0, USAGE_LIMIT_RESUME_PROMPT), tool("w1", "t1", 1)],
+      settled: "t1",
+    });
+    expect(list[1]).toMatchObject({ kind: "event", id: "m0", event: { type: "resumed" } });
   });
 
   it("shows an image-only message's images without the placeholder", () => {

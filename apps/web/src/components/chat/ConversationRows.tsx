@@ -27,6 +27,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { MateFace } from "../zerops/primitives";
+import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration, type IncidentModel, type WorkLineFace } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
@@ -417,6 +418,16 @@ export function EventLine({
           Context condensed — {speaker.name} kept a summary of the conversation so far
         </EventShell>
       );
+    case "resumed":
+      return (
+        <EventShell
+          at={at}
+          icon={<PauseIcon className="size-3.5 text-status-attention" />}
+          timestampFormat={timestampFormat}
+        >
+          The usage limit reset — {speaker.name} picked up where the work stopped
+        </EventShell>
+      );
     case "command": {
       const { command } = event;
       const words =
@@ -479,27 +490,44 @@ function untilText(resetsAt: string, nowMs: number): string {
  * A usage limit as one pause — amber while it holds, quiet once the Mate
  * picked up again — however many attempts the limit refused.
  */
+/** The server's own reading of a pause, when it keeps one: the reset and the thread's switch. */
+export interface ServerUsagePause {
+  readonly resetsAt: string;
+  readonly autoResume: boolean;
+}
+
 export function PauseBlock({
   row,
   speaker,
   nowMs,
   timestampFormat,
+  serverPause,
+  onAutoResumeChange,
 }: {
   readonly row: Extract<MessagesTimelineRow, { kind: "pause" }>;
   readonly speaker: ConversationSpeaker;
   readonly nowMs: number;
   readonly timestampFormat: TimestampFormat;
+  /** Present only on the pause that holds the thread now, on a server that keeps one. */
+  readonly serverPause: ServerUsagePause | null;
+  readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
 }) {
   const resumed = row.resumedAt !== null;
-  const reset = row.resetsAt === null ? null : Date.parse(row.resetsAt);
+  const resetsAt = serverPause?.resetsAt ?? row.resetsAt;
+  const reset = resetsAt === null ? null : Date.parse(resetsAt);
   const passed = reset !== null && reset <= nowMs;
+  const autoResume = serverPause?.autoResume ?? false;
   const detail = resumed
     ? `${speaker.name} picked up again at ${formatDayAwareTimestamp(row.resumedAt!, timestampFormat)}.`
-    : row.resetsAt === null
+    : resetsAt === null
       ? "The limit resets later; the work continues from where it stopped."
       : passed
-        ? `The limit reset at ${formatDayAwareTimestamp(row.resetsAt, timestampFormat)}. Send a message to pick up where it stopped.`
-        : `Resets at ${formatDayAwareTimestamp(row.resetsAt, timestampFormat)}, ${untilText(row.resetsAt, nowMs)}. The work continues from where it stopped.`;
+        ? autoResume
+          ? `The limit reset at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}; ${speaker.name} is picking up where the work stopped.`
+          : `The limit reset at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Send a message to pick up where the work stopped.`
+        : autoResume
+          ? `Resets at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}, ${untilText(resetsAt, nowMs)}; ${speaker.name} picks up where the work stopped by itself.`
+          : `Resets at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}, ${untilText(resetsAt, nowMs)}. Send a message then to pick up where the work stopped.`;
   return (
     <div
       className={cn(
@@ -536,6 +564,15 @@ export function PauseBlock({
         ) : null}
       </div>
       <p className="ps-7 text-line text-muted-foreground">{detail}</p>
+      {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
+        <label className="flex w-fit cursor-pointer items-center gap-2 ps-7 text-line text-foreground">
+          <Switch
+            checked={serverPause.autoResume}
+            onCheckedChange={(checked) => onAutoResumeChange(checked)}
+          />
+          Resume by itself at the reset
+        </label>
+      ) : null}
     </div>
   );
 }
