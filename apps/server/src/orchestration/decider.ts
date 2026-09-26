@@ -890,6 +890,51 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.usage-auto-resume.set": {
+      yield* requireThreadNotArchived({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const occurredAt = yield* nowIso;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.usage-auto-resume-set",
+        payload: {
+          threadId: command.threadId,
+          usageAutoResumeDisabledAt: command.enabled ? null : occurredAt,
+        },
+      };
+    }
+
+    case "thread.usage-pause.set": {
+      // The provider's limit holds whatever the person did with the thread,
+      // so an archived thread is paused and resumed like any other.
+      yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.usage-pause-set",
+        payload: {
+          threadId: command.threadId,
+          usagePause: command.usagePause,
+        },
+      };
+    }
+
     case "thread.active.reorder": {
       const thread = yield* requireThreadNotArchived({
         readModel,

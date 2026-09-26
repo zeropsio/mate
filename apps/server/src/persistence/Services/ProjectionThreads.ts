@@ -18,6 +18,7 @@ import {
   ThreadMessagePreview,
   ThreadTitleState,
   ThreadId,
+  ThreadUsagePauseState,
   TurnId,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -59,6 +60,8 @@ export const ProjectionThread = Schema.Struct({
   pendingApprovalCount: NonNegativeInt,
   pendingUserInputCount: NonNegativeInt,
   hasActionableProposedPlan: NonNegativeInt,
+  usagePause: Schema.optional(Schema.NullOr(ThreadUsagePauseState)),
+  usageAutoResumeDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   deletedAt: Schema.NullOr(IsoDateTime),
 });
 export type ProjectionThread = typeof ProjectionThread.Type;

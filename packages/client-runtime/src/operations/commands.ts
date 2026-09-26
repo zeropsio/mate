@@ -43,6 +43,7 @@ export type PinThreadInput = CommandInput<"thread.pin">;
 export type UnpinThreadInput = CommandInput<"thread.unpin">;
 export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
 export type SetThreadAutoSettleInput = CommandInput<"thread.auto-settle.set">;
+export type SetThreadUsageAutoResumeInput = CommandInput<"thread.usage-auto-resume.set">;
 export type ReorderActiveThreadInput = CommandInput<"thread.active.reorder">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type SetThreadRuntimeModeInput = CommandInput<"thread.runtime-mode.set">;
@@ -234,6 +235,16 @@ export const setThreadAutoSettle: (input: SetThreadAutoSettleInput) => CommandEf
     commandId: yield* commandId(input),
   });
 });
+
+/** The thread's switch for resuming by itself when a usage limit resets (`usagePause.autoResume`). */
+export const setThreadUsageAutoResume: (input: SetThreadUsageAutoResumeInput) => CommandEffect =
+  Effect.fn("EnvironmentCommands.setThreadUsageAutoResume")(function* (input) {
+    return yield* dispatch({
+      ...input,
+      type: "thread.usage-auto-resume.set",
+      commandId: yield* commandId(input),
+    });
+  });
 
 export const reorderPinnedThread: (input: ReorderPinnedThreadInput) => CommandEffect = Effect.fn(
   "EnvironmentCommands.reorderPinnedThread",

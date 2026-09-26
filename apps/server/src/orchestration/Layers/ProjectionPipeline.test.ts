@@ -12,6 +12,7 @@ import {
   TurnId,
   ProviderInstanceId,
   ThreadMessagePreview,
+  ThreadUsagePauseState,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -50,6 +51,7 @@ import { ServerConfig } from "../../config.ts";
 // The shell's previews, read back off the row for the assertions below.
 const decodeCheckpointHistory = Schema.decodeUnknownSync(Schema.fromJsonString(CheckpointHistory));
 const decodePreview = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadMessagePreview));
+const decodeUsagePause = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadUsagePauseState));
 function parsePreview(preview: string | null): ThreadMessagePreview | null {
   return preview === null ? null : decodePreview(preview);
 }
@@ -3272,6 +3274,101 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           },
         });
         assert.deepEqual(yield* readPreviews, expected, `refreshed after step ${second}`);
+      }
+    }),
+  );
+
+  it.effect("keeps a thread's usage pause and its auto-resume switch on the thread row", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-usage-pause");
+      let sequence = 0;
+      const project = (event: Record<string, unknown>) => {
+        sequence += 1;
+        return eventStore
+          .append({
+            eventId: EventId.make(`evt-usage-pause-${sequence}`),
+            aggregateKind: "thread",
+            aggregateId: threadId,
+            occurredAt: "2026-09-26T09:00:00.000Z",
+            commandId: CommandId.make(`cmd-usage-pause-${sequence}`),
+            causationEventId: null,
+            correlationId: null,
+            metadata: {},
+            ...event,
+          } as Parameters<typeof eventStore.append>[0])
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+      };
+      yield* project({
+        type: "thread.created",
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-usage-pause"),
+          title: "Paused",
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-09-26T08:00:00.000Z",
+          updatedAt: "2026-09-26T08:00:00.000Z",
+        },
+      });
+      const readRow = sql<{
+        readonly usagePause: string | null;
+        readonly usageAutoResumeDisabledAt: string | null;
+        readonly updatedAt: string;
+      }>`
+        SELECT
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
+          updated_at AS "updatedAt"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+      `.pipe(
+        Effect.map((rows) =>
+          rows.map((row) => ({
+            ...row,
+            usagePause: row.usagePause === null ? null : decodeUsagePause(row.usagePause),
+          })),
+        ),
+      );
+      const pause = {
+        resetsAt: "2026-09-26T13:00:00.000Z",
+        window: "5-hour",
+        held: 1,
+        pausedAt: "2026-09-26T08:30:00.000Z",
+      };
+
+      for (const { event, expected } of [
+        {
+          event: { type: "thread.usage-pause-set", payload: { threadId, usagePause: pause } },
+          expected: { usagePause: pause, usageAutoResumeDisabledAt: null },
+        },
+        {
+          event: {
+            type: "thread.usage-auto-resume-set",
+            payload: { threadId, usageAutoResumeDisabledAt: "2026-09-26T09:00:00.000Z" },
+          },
+          expected: { usagePause: pause, usageAutoResumeDisabledAt: "2026-09-26T09:00:00.000Z" },
+        },
+        {
+          event: { type: "thread.usage-pause-set", payload: { threadId, usagePause: null } },
+          expected: { usagePause: null, usageAutoResumeDisabledAt: "2026-09-26T09:00:00.000Z" },
+        },
+        {
+          event: {
+            type: "thread.usage-auto-resume-set",
+            payload: { threadId, usageAutoResumeDisabledAt: null },
+          },
+          expected: { usagePause: null, usageAutoResumeDisabledAt: null },
+        },
+      ]) {
+        yield* project(event);
+        // The pause is an overlay: it never moves the thread in a list.
+        assert.deepEqual(yield* readRow, [{ ...expected, updatedAt: "2026-09-26T08:00:00.000Z" }]);
       }
     }),
   );

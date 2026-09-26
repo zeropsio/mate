@@ -5,6 +5,7 @@ import {
   MessageId,
   ProjectId,
   ThreadId,
+  ThreadUsagePauseState,
   TurnId,
   ProviderInstanceId,
 } from "@t3tools/contracts";
@@ -36,6 +37,7 @@ const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(val
 const encodeChatAttachments = Schema.encodeEffect(
   Schema.fromJsonString(Schema.Array(ChatAttachment)),
 );
+const encodeUsagePause = Schema.encodeEffect(Schema.fromJsonString(ThreadUsagePauseState));
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
@@ -493,6 +495,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           hasActionableProposedPlan: false,
           backgroundLiveness: null,
           planProgress: null,
+          usagePause: null,
         },
       ]);
 
@@ -883,6 +886,72 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         (yield* snapshotQuery.getThreadRuntimeContext(ThreadId.make("thread-active")))._tag,
         "None",
       );
+    }),
+  );
+
+  it.effect("reads the usage pause onto every shell, with the thread's auto-resume switch", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, default_model_selection_json, scripts_json,
+          created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-usage-pause', 'Usage Pause', '/tmp/usage-pause',
+          '{"provider":"claudeAgent","model":"opus"}', '[]',
+          '2026-09-26T00:00:00.000Z', '2026-09-26T00:00:00.000Z', NULL
+        )
+      `;
+      const pause = {
+        resetsAt: "2026-09-26T13:00:00.000Z",
+        window: "5-hour",
+        held: 2,
+        pausedAt: "2026-09-26T08:30:00.000Z",
+      };
+      const pauseJson = yield* encodeUsagePause(pause);
+      const rows = [
+        { id: "thread-not-paused", pause: null, disabledAt: null, expected: null },
+        {
+          id: "thread-paused",
+          pause: pauseJson,
+          disabledAt: null,
+          expected: { ...pause, autoResume: true },
+        },
+        {
+          id: "thread-paused-manual",
+          pause: pauseJson,
+          disabledAt: "2026-09-26T09:00:00.000Z",
+          expected: { ...pause, autoResume: false },
+        },
+      ];
+      for (const row of rows) {
+        yield* sql`
+          INSERT INTO projection_threads (
+            thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+            latest_user_message_at, pending_approval_count, pending_user_input_count,
+            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at,
+            usage_pause_json, usage_auto_resume_disabled_at
+          ) VALUES (
+            ${row.id}, 'project-usage-pause', ${row.id},
+            '{"provider":"claudeAgent","model":"opus"}', 'full-access', 'default',
+            NULL, 0, 0, 0, '2026-09-26T08:00:00.000Z', '2026-09-26T08:00:00.000Z', NULL, NULL,
+            ${row.pause}, ${row.disabledAt}
+          )
+        `;
+      }
+
+      const snapshot = yield* snapshotQuery.getShellSnapshot();
+      for (const row of rows) {
+        const fromSnapshot = snapshot.threads.find((thread) => thread.id === row.id);
+        assert.deepEqual(fromSnapshot?.usagePause, row.expected, `snapshot ${row.id}`);
+        const shell = yield* snapshotQuery.getThreadShellById(ThreadId.make(row.id));
+        assert.deepEqual(Option.getOrUndefined(shell)?.usagePause, row.expected, `shell ${row.id}`);
+      }
     }),
   );
 

@@ -31,6 +31,8 @@ import {
   ThreadMessagePreview,
   ThreadTitleState,
   ThreadId,
+  ThreadUsagePauseState,
+  type ThreadUsagePause,
 } from "@t3tools/contracts";
 import { userAskOf } from "@t3tools/shared/userAsk";
 import * as Arr from "effect/Array";
@@ -121,8 +123,19 @@ const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
     latestMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
     latestUserMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
+    usagePause: Schema.NullOr(Schema.fromJsonString(ThreadUsagePauseState)),
+    usageAutoResumeDisabledAt: Schema.NullOr(IsoDateTime),
   }),
 );
+// The pause as clients read it: the thread's switch folded in (on by default).
+function mapUsagePause(row: {
+  readonly usagePause: ThreadUsagePauseState | null;
+  readonly usageAutoResumeDisabledAt: string | null;
+}): ThreadUsagePause | null {
+  return row.usagePause === null
+    ? null
+    : { ...row.usagePause, autoResume: row.usageAutoResumeDisabledAt === null };
+}
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
   Struct.assign({
     payload: Schema.fromJsonString(Schema.Unknown),
@@ -526,6 +539,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         ORDER BY created_at ASC, thread_id ASC
@@ -569,6 +584,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE deleted_at IS NULL
@@ -614,6 +631,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE deleted_at IS NULL
@@ -1082,6 +1101,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          usage_pause_json AS "usagePause",
+          usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE thread_id = ${threadId}
@@ -2463,6 +2484,7 @@ pending_approval_requests AS (
                         row.threadId,
                       ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                      usagePause: mapUsagePause(row),
                     } satisfies OrchestrationThreadShell)
                   : Result.failVoid,
               ),
@@ -2620,6 +2642,7 @@ pending_approval_requests AS (
                   row.threadId,
                 ),
                 planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                usagePause: mapUsagePause(row),
               })),
               updatedAt: updatedAt ?? "1970-01-01T00:00:00.000Z",
             };
@@ -2922,6 +2945,7 @@ pending_approval_requests AS (
           threadRow.value.threadId,
         ),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
+        usagePause: mapUsagePause(threadRow.value),
       } satisfies OrchestrationThreadShell);
     });
 
