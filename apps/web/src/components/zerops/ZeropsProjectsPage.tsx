@@ -88,6 +88,8 @@ import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useNowMs } from "~/zerops/useNowMs";
+import { mateUpdateStatus } from "~/zerops/mateUpdate";
+import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
@@ -142,6 +144,7 @@ import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
@@ -1073,6 +1076,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
+  const updates = useZeropsMateUpdateStates();
   const withConversations = useAtomValue(environmentsWithSnapshotAtom);
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
@@ -2577,6 +2581,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ) : undefined;
     const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
     const tint = tints.get(candidate.project.id) ?? "slate";
+    // What the menu asked of this Mate's server — a check, an update — is
+    // answered on its card, over its subject, until it settles: the menu
+    // closes on the click, and the update restarts the Mate, so the card is
+    // the one place that stays in view throughout.
+    const updateStatus =
+      candidate.environmentId === undefined
+        ? null
+        : mateUpdateStatus(updates.get(candidate.environmentId));
+    const line =
+      updateStatus === null ? (
+        renderMateLine(candidate, presentation, action, live, busy)
+      ) : (
+        <MateUpdateStatusText status={updateStatus} />
+      );
 
     if (connected && candidate.environmentId !== undefined) {
       const environmentId = candidate.environmentId;
@@ -2584,14 +2602,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       // stays off the card: the version is in the menu, and so is the
       // update verb the control supplies.
       return (
-        <ZeropsMateUpdateControl environmentId={environmentId} key={candidate.key}>
+        <ZeropsMateUpdateControl environmentId={environmentId} key={candidate.key} mateName={name}>
           {({ menuActions }) => (
             <ZeropsMateCard
               action={startAction ?? removeAction}
               busy={busy}
               face={mateFace(candidate)}
               layout={layout}
-              line={renderMateLine(candidate, presentation, action, live, busy)}
+              line={line}
               menu={renderEnvironmentMenu(candidate, tags, true, action, menuActions)}
               name={name}
               onSelect={select}
@@ -2610,7 +2628,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         busy={busy}
         face={mateFace(candidate)}
         layout={layout}
-        line={renderMateLine(candidate, presentation, action, live, busy)}
+        line={line}
         menu={renderEnvironmentMenu(candidate, tags, true, action, [])}
         name={name}
         onSelect={select}

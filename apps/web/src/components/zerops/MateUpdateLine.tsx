@@ -11,7 +11,8 @@
  */
 import type { ReactNode } from "react";
 
-import type { MateUpdateLine as MateUpdateLineValue } from "~/zerops/mateUpdate";
+import { cn } from "~/lib/utils";
+import type { MateUpdateLine as MateUpdateLineValue, MateUpdateStatus } from "~/zerops/mateUpdate";
 
 export function MateUpdateLine({
   line,
@@ -37,6 +38,32 @@ export function MateUpdateLine({
       </span>
       {verb}
     </>
+  );
+}
+
+/**
+ * `mateUpdateStatus`'s words where a Mate is shown — its card, its row, the
+ * update line's verb — in the line's own size: what was asked of the Mate's
+ * server, answered where the Mate is.
+ */
+export function MateUpdateStatusText({
+  status,
+  className,
+}: {
+  readonly status: MateUpdateStatus;
+  readonly className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "min-w-0 truncate",
+        className,
+        status.tone === "failed" && "text-status-failed-text",
+      )}
+      data-zerops-surface="mate-update-status"
+    >
+      {status.text}
+    </span>
   );
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mateUpdateLine } from "./mateUpdate";
+import { mateUpdateLine, mateUpdateQuestion, mateUpdateStatus } from "./mateUpdate";
 
 describe("mateUpdateLine", () => {
   const cases: ReadonlyArray<{
@@ -44,4 +44,56 @@ describe("mateUpdateLine", () => {
       expect(mateUpdateLine(update, serverVersion)).toEqual(expected);
     });
   }
+});
+
+describe("mateUpdateStatus", () => {
+  // The menu that starts a check or an update closes on the click, so the
+  // Mate's card is where the person sees what came of it.
+  it.each([
+    { state: undefined, expected: null },
+    { state: { phase: "idle" } as const, expected: null },
+    {
+      state: { phase: "checking" } as const,
+      expected: { text: "Checking for updates…", tone: "quiet" },
+    },
+    {
+      state: { phase: "updating", to: "0.11.49" } as const,
+      expected: { text: "Updating to 0.11.49…", tone: "quiet" },
+    },
+    {
+      state: { phase: "updated", to: "0.11.49" } as const,
+      expected: { text: "Updated to 0.11.49", tone: "quiet" },
+    },
+    {
+      state: { phase: "already-current" } as const,
+      expected: { text: "Up to date", tone: "quiet" },
+    },
+    {
+      state: { phase: "failed", message: "zcp mate update exited 1" } as const,
+      expected: { text: "zcp mate update exited 1", tone: "failed" },
+    },
+  ])("$state.phase says $expected.text", ({ state, expected }) => {
+    expect(mateUpdateStatus(state)).toEqual(expected);
+  });
+});
+
+describe("mateUpdateQuestion", () => {
+  // The app's confirm dialog takes the line ending in "?" as its title and
+  // the rest as its description; running work stopping is said before the
+  // click (spec-mate.md §2.9 step 4), and naming the Mate matters when
+  // several are updated one after another.
+  it.each([
+    {
+      mateName: "Nova",
+      expected:
+        "Update Nova to 0.11.49?\nNova restarts on the new version, which takes about a minute. Work running in it stops; its conversations stay.",
+    },
+    {
+      mateName: undefined,
+      expected:
+        "Update this Mate to 0.11.49?\nIt restarts on the new version, which takes about a minute. Work running in it stops; its conversations stay.",
+    },
+  ])("asks about $mateName by name", ({ mateName, expected }) => {
+    expect(mateUpdateQuestion(mateName, "0.11.49")).toBe(expected);
+  });
 });
