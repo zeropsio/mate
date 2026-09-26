@@ -1201,9 +1201,7 @@ export function deriveMessagesTimelineRows(
                     (candidate) => candidate,
                   ),
                 )
-              : stretch.live
-                ? null
-                : "Thinking",
+              : null,
       noteCount: notes.length,
       activity: stretch.live ? liveActivity(stretch) : null,
       hasLog,

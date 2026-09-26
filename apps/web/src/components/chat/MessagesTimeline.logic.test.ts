@@ -322,6 +322,14 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list[1]).toMatchObject({ kind: "message", imageOnly: true, receipt: "sent" });
   });
 
+  it("has nothing to add for a stretch that only thought before its answer", () => {
+    const list = rows({
+      entries: [user("m0", 0), reasoning("r1", "t1", 1), assistant("a1", "t1", 2, "Yes.")],
+      settled: "t1",
+    });
+    expect(list[2]).toMatchObject({ kind: "work-line", note: null, fallback: null });
+  });
+
   it("draws a seam where a day begins and where the conversation went quiet", () => {
     const list = rows({
       entries: [

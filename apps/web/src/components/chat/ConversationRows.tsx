@@ -157,7 +157,9 @@ export function WorkLine({
   const liveWords = compacting ? "Condensing the context" : activityLabel;
   const text = row.note ?? row.fallback ?? liveWords ?? (live ? "Reading your message" : "");
   const side = live ? (row.note !== null ? liveWords : null) : null;
-  const verb = live ? "Working" : "Worked";
+  // A stretch that only thought before its answer says so, and nothing more.
+  const thoughtOnly = !live && row.note === null && row.fallback === null;
+  const verb = live ? "Working" : thoughtOnly ? "Thought for" : "Worked";
   const span = (
     <Tooltip>
       <TooltipTrigger
