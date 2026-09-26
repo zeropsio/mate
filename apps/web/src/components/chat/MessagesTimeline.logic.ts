@@ -534,6 +534,12 @@ type MessagesTimelineRowBody =
     }
   | { kind: "event"; id: string; createdAt: string; event: ConversationEvent }
   | {
+      /** The bottom edge of a stretch's card: nothing but the frame closing. */
+      kind: "card-end";
+      id: string;
+      createdAt: string;
+    }
+  | {
       /** Background work that finished outside any turn, as one quiet line. */
       kind: "background";
       id: string;
@@ -594,7 +600,21 @@ type MessagesTimelineRowBody =
  */
 export type RowGap = "none" | "tight" | "line" | "block" | "turn";
 
-export type MessagesTimelineRow = MessagesTimelineRowBody & { readonly gap?: RowGap };
+/**
+ * Where a row sits in its stretch's card — the one frame a stretch of work
+ * is drawn in, once it holds anything: its line is the card's top; the log,
+ * the Mate at work, the words the person answered and the report its body; a
+ * `card-end` row its bottom. A line with nothing under it stands alone. The answer and the person's messages stand outside it. The bottom
+ * is a row of its own so no row of the body ever becomes the edge: a stretch
+ * the person's message closes loses the Mate at work from under its log, and
+ * the row above it must not change its frame. Rows no stretch drew have none.
+ */
+export type CardSlice = "top" | "middle" | "bottom";
+
+export type MessagesTimelineRow = MessagesTimelineRowBody & {
+  readonly gap?: RowGap;
+  readonly card?: CardSlice;
+};
 
 function isLogRowBody(row: MessagesTimelineRow): boolean {
   switch (row.kind) {
@@ -1365,6 +1385,8 @@ export function deriveMessagesTimelineRows(
   };
 
   const emitted = new Set<string>();
+  // Each stretch's card, as the rows it drew: its line first.
+  const cardRanges: Array<readonly [start: number, end: number]> = [];
   // Work no turn owns — background tasks finishing after their turn ended —
   // is gathered, a task that failed included, unless it is something to show
   // on its own: an error that stopped the Mate, an answer, a compaction.
@@ -1434,6 +1456,7 @@ export function deriveMessagesTimelineRows(
     // stands under the message by itself. A live one always has its line, and
     // so does one the usage limit refused — the person's message is answered
     // by the reason.
+    const cardStart = rows.length;
     if (stretch.live || hasLog || pausedHere)
       rows.push({
         kind: "work-line",
@@ -1517,6 +1540,20 @@ export function deriveMessagesTimelineRows(
           outcome,
         });
       }
+    }
+    // The card closes before the answer: the Mate's last word stands on the
+    // conversation's own edge, as the person's messages do. A line with
+    // nothing under it is no card — a closed log of a stretch that came to
+    // no report is one quiet line, not an empty box.
+    if (rows[cardStart]?.kind === "work-line" && rows.length > cardStart + 1) {
+      rows.push({
+        kind: "card-end",
+        id: `card-end:${stretch.key}`,
+        createdAt: rows.at(-1)!.createdAt,
+      });
+      cardRanges.push([cardStart, rows.length]);
+    }
+    if (stretch.last && !turn.live) {
       if (answer !== null) {
         rows.push({
           kind: "message",
@@ -1653,7 +1690,23 @@ export function deriveMessagesTimelineRows(
       isNext: index === 0,
     });
   });
-  return rows.map((row, index) => ({ ...row, gap: rowGap(rows[index - 1], row) }));
+  const cards = new Map<number, CardSlice>();
+  for (const [start, end] of cardRanges) {
+    for (let index = start; index < end; index += 1) {
+      cards.set(index, index === start ? "top" : index === end - 1 ? "bottom" : "middle");
+    }
+  }
+  return rows.map((row, index) => {
+    const card = cards.get(index);
+    // A card's edge is not a row of the conversation: the row after it keeps
+    // the room it kept after the card's last row.
+    const previous = rows[index - 1]?.kind === "card-end" ? rows[index - 2] : rows[index - 1];
+    return {
+      ...row,
+      gap: row.kind === "card-end" ? "none" : rowGap(previous, row),
+      ...(card === undefined ? {} : { card }),
+    };
+  });
 }
 
 export function computeStableMessagesTimelineRows(
@@ -1683,7 +1736,13 @@ export function computeStableMessagesTimelineRows(
  * derivation rebuilds compares by value.
  */
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
-  if (a.kind !== b.kind || a.id !== b.id || a.createdAt !== b.createdAt || a.gap !== b.gap) {
+  if (
+    a.kind !== b.kind ||
+    a.id !== b.id ||
+    a.createdAt !== b.createdAt ||
+    a.gap !== b.gap ||
+    a.card !== b.card
+  ) {
     return false;
   }
   switch (a.kind) {

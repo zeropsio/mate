@@ -119,6 +119,7 @@ import {
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
+  type CardSlice,
   type MessagesTimelineRow,
   type RowGap,
   type TurnHeaderActivity,
@@ -162,7 +163,7 @@ import { DOCKED_KINDS, type DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
   EventLine,
-  GutterMark,
+  LineMark,
   IncidentLine,
   MateSpeech,
   MessageReceipt,
@@ -1324,21 +1325,6 @@ function TimelineMinimapNavigationButton({
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-/** Rows that belong to an opened log: they hang on its rail, under the line's words. */
-function isLogRow(row: TimelineRow): boolean {
-  switch (row.kind) {
-    case "log-note":
-    case "log-activity":
-    case "log-reasoning":
-    case "log-operation":
-      return true;
-    case "work":
-      return row.isExpandedToolGroupEntry || row.id.startsWith("log-entry:");
-    default:
-      return false;
-  }
-}
-
 /** The room a row keeps above itself (see `rowGap`). */
 const GAP_CLASS: Record<RowGap, string> = {
   none: "",
@@ -1349,31 +1335,62 @@ const GAP_CLASS: Record<RowGap, string> = {
 };
 
 /**
- * Where a row sits across the column. The person's messages hug the right
- * edge and a seam spans it; everything the Mate says or does starts on one
- * text edge with a gutter left of it for its marks, and an opened log hangs
- * on a hairline just inside that edge.
+ * Where a row with no card sits across the column. The person's messages hug
+ * the right edge, a seam spans it, and the Mate's work that outlived its
+ * turn is a card of its own; everything else the Mate says stands on the
+ * composer's text edge — its 1 px frame and 16 px padding — so the answer,
+ * an event and the text inside every card start on one line.
  */
 function rowInset(row: TimelineRow): string {
-  if (isLogRow(row)) return "ms-5.5 border-s border-border/70 ps-4";
   if (row.kind === "message" && row.message.role === "user") return "";
-  if (row.kind === "queued-message" || row.kind === "seam" || row.kind === "answer") return "";
-  return "ps-5";
+  if (row.kind === "queued-message" || row.kind === "seam" || row.kind === "after-work") return "";
+  // A line with no card keeps the card's geometry in a frame nobody sees, so
+  // opening it draws the card around the line without moving it.
+  if (row.kind === "work-line") return "border-x border-t border-transparent px-4 pt-2";
+  return "px-4.25";
 }
 
+/**
+ * A stretch's card, a slice per row (`MessagesTimelineRow.card`): its line is
+ * the top, with the room above it outside the card; each row of its body is
+ * a band of the card with its room inside; a row of its own is the bottom
+ * edge. One frame, one surface, one inner edge — the composer's.
+ */
+const CARD_SLICE: Record<CardSlice, string> = {
+  top: "rounded-t-3xl border-x border-t border-border/70 bg-card px-4 pt-2",
+  middle: "border-x border-border/70 bg-card px-4",
+  bottom: "h-4 rounded-b-3xl border-x border-b border-border/70 bg-card",
+};
+
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
+  const gap = GAP_CLASS[row.gap ?? "none"];
+  const card = row.card;
+  const content = <TimelineRowBody row={row} />;
   return (
     <div
       className={cn(
-        GAP_CLASS[row.gap ?? "none"],
-        rowInset(row),
+        card === undefined || card === "top" ? gap : null,
+        card === undefined ? rowInset(row) : null,
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
       )}
+      data-card-slice={card}
       data-timeline-row-id={row.id}
       data-timeline-row-kind={row.kind}
       data-message-id={row.kind === "message" ? row.message.id : undefined}
       data-message-role={row.kind === "message" ? row.message.role : undefined}
     >
+      {card === undefined ? (
+        content
+      ) : (
+        <div className={cn(CARD_SLICE[card], card === "middle" ? gap : null)}>{content}</div>
+      )}
+    </div>
+  );
+});
+
+function TimelineRowBody({ row }: { row: TimelineRow }) {
+  return (
+    <>
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
@@ -1414,9 +1431,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
       {row.kind === "answer" ? <AnswerTimelineRow row={row} /> : null}
-    </div>
+    </>
   );
-});
+}
 
 function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -1650,23 +1667,19 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
         ? "Background task failed"
         : "Background task finished"
       : `${row.tasks} background tasks finished`;
-  // The line grammar: its mark in the gutter, its words on the text edge,
-  // the chevron right after them.
+  // The line grammar: its mark on the text edge, its words after it, the
+  // chevron right after them.
   return (
-    <div className="relative flex min-h-7 min-w-0 items-center">
+    <div className="flex min-h-7 min-w-0 items-center gap-1.5">
       {failed > 0 ? (
         // A failed background task is a step on the way: marked, and muted.
-        <span
-          aria-label="Tool call failed"
-          className="absolute -start-5 flex w-5 justify-center"
-          role="img"
-        >
+        <span aria-label="Tool call failed" className="flex w-4 shrink-0 justify-center" role="img">
           <XIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
         </span>
       ) : (
-        <GutterMark>
+        <LineMark>
           <LayersIcon className="size-3.5 text-muted-foreground" />
-        </GutterMark>
+        </LineMark>
       )}
       <button
         type="button"
@@ -1768,16 +1781,14 @@ function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer"
     <div className="grid gap-3" data-person-answer>
       {row.pairs.map((pair) => (
         <Fragment key={pair.key}>
-          <div className="ps-5">
-            <MateSpeech speaker={ctx.speaker}>
-              <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-              <MateWords text={pair.question} />
-            </MateSpeech>
-          </div>
+          <MateSpeech speaker={ctx.speaker}>
+            <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
+            <MateWords text={pair.question} />
+          </MateSpeech>
           <div className="flex justify-end">
             <div className="max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground">
               <MessageAuthorHeading>You</MessageAuthorHeading>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{pair.answer}</p>
+              <p className="whitespace-pre-wrap text-prose">{pair.answer}</p>
             </div>
           </div>
         </Fragment>
@@ -1927,7 +1938,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
       <div
-        className="relative max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground"
+        className="relative max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-prose text-message-foreground"
         data-message-aside={row.aside ? "true" : undefined}
       >
         <MessageAuthorHeading>You</MessageAuthorHeading>
@@ -2578,6 +2589,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
             threadRef={ctx.threadRef ?? undefined}
             skills={props.skills}
             className="text-message-foreground"
+            variant="person"
             lineBreaks
             parseRawHtml={false}
             headingLevelOffset={MESSAGE_HEADING_LEVEL}
@@ -2591,7 +2603,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   const reviewCommentSegments = parseReviewCommentMessageSegments(props.text);
   if (reviewCommentSegments.some((segment) => segment.kind === "review-comment")) {
     return (
-      <div className="space-y-3 text-message-foreground text-sm leading-relaxed">
+      <div className="space-y-3 text-message-foreground">
         {reviewCommentSegments.map((segment) =>
           segment.kind === "text" ? (
             segment.text.trim().length > 0 ? (
@@ -2602,6 +2614,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
                   threadRef={ctx.threadRef ?? undefined}
                   skills={props.skills}
                   className="text-message-foreground"
+                  variant="person"
                   lineBreaks
                   parseRawHtml={false}
                   headingLevelOffset={MESSAGE_HEADING_LEVEL}
@@ -2692,6 +2705,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
           threadRef={ctx.threadRef ?? undefined}
           skills={props.skills}
           className="text-message-foreground"
+          variant="person"
           lineBreaks
           parseRawHtml={false}
           headingLevelOffset={MESSAGE_HEADING_LEVEL}
@@ -2719,6 +2733,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       threadRef={ctx.threadRef ?? undefined}
       skills={props.skills}
       className="text-message-foreground"
+      variant="person"
       lineBreaks
       parseRawHtml={false}
       headingLevelOffset={MESSAGE_HEADING_LEVEL}

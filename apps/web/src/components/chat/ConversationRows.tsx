@@ -40,8 +40,12 @@ export interface ConversationSpeaker {
   readonly tint: MateTintId;
 }
 
-/** A row's mark, hung in the gutter left of the column's text edge. */
-export function GutterMark({
+/**
+ * A row's mark, leading its words on the text edge. It used to hang in a
+ * gutter left of that edge, which put it outside the column the composer
+ * draws — and, inside a card, past the card's own border.
+ */
+export function LineMark({
   children,
   className,
 }: {
@@ -51,8 +55,8 @@ export function GutterMark({
   return (
     <span
       aria-hidden="true"
-      className={cn("absolute -start-5 flex w-5 justify-center", className)}
-      data-gutter-mark
+      className={cn("flex w-4 shrink-0 justify-center", className)}
+      data-line-mark
     >
       {children}
     </span>
@@ -167,9 +171,9 @@ export function WorkLine({
 }
 
 /**
- * The Mate's words the person answered: its face in the gutter and the words
- * in full in a bubble beside it — the mirror of the person's bubbles on the
- * right — left where they were said.
+ * The Mate's words the person answered: its face and the words in full in a
+ * bubble beside it — the mirror of the person's bubbles on the right — drawn
+ * as the Mate at work drew its newest words, and left where they were said.
  */
 export function MateSpeech({
   speaker,
@@ -179,11 +183,11 @@ export function MateSpeech({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="relative flex min-w-0" data-mate-speech="said">
-      <GutterMark className="top-1">
-        <MateFace size="sm" state="idle" tint={speaker.tint} />
-      </GutterMark>
-      <div className="min-w-0 max-w-full rounded-2xl rounded-ss-sm bg-muted px-3.5 py-2 text-foreground">
+    <div className="flex min-w-0 items-end gap-2.5" data-mate-speech="said">
+      <span aria-hidden="true" className="mb-0.5 shrink-0">
+        <MateFace size="md" state="idle" tint={speaker.tint} />
+      </span>
+      <div className="min-w-0 max-w-full rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground">
         {children}
       </div>
     </div>
@@ -295,10 +299,10 @@ function EventShell({
 }) {
   return (
     <div
-      className="relative flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
+      className="flex min-h-7 min-w-0 items-center gap-1.5 text-line text-muted-foreground"
       data-conversation-event
     >
-      <GutterMark>{icon}</GutterMark>
+      <LineMark>{icon}</LineMark>
       <Tooltip>
         <TooltipTrigger render={<span className="min-w-0 truncate" />}>{children}</TooltipTrigger>
         <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
@@ -395,15 +399,17 @@ export function ErrorLine({
   const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
   return (
     <div
-      className="relative min-h-7 min-w-0 py-1 text-line text-status-failed-text"
+      className="flex min-h-7 min-w-0 items-start gap-1.5 py-1 text-line text-status-failed-text"
       data-conversation-error
       role="alert"
     >
-      <GutterMark className="top-1.5">
+      <LineMark className="h-5 items-center">
         <CircleAlertIcon className="size-3.5" />
-      </GutterMark>
-      <p className="min-w-0">{label}</p>
-      {extra ? <p className="min-w-0 text-muted-foreground">{extra}</p> : null}
+      </LineMark>
+      <div className="min-w-0">
+        <p className="min-w-0">{label}</p>
+        {extra ? <p className="min-w-0 text-muted-foreground">{extra}</p> : null}
+      </div>
     </div>
   );
 }
@@ -482,9 +488,9 @@ export function PauseBlock({
     >
       <div className={cn("flex min-w-0 items-center gap-2", resumed ? "text-line" : "text-sm")}>
         {resumed ? (
-          <GutterMark className="top-3">
+          <LineMark>
             <PauseIcon className="size-3.5 text-muted-foreground" />
-          </GutterMark>
+          </LineMark>
         ) : (
           <PauseIcon aria-hidden="true" className="size-4 shrink-0 text-status-attention" />
         )}
@@ -542,9 +548,9 @@ export function IncidentLine({ incident }: { readonly incident: IncidentModel })
       data-conversation-incident={incident.tone}
       role={incident.tone === "ok" ? undefined : "status"}
     >
-      <GutterMark>
+      <LineMark>
         <span className={cn("size-1.5 rounded-full", tone.dot)} />
-      </GutterMark>
+      </LineMark>
       <span className="shrink-0 font-medium text-foreground">{incident.hostname}</span>
       <span className={cn("min-w-0 truncate", tone.text)}>{incident.phases.join(" · ")}</span>
     </div>

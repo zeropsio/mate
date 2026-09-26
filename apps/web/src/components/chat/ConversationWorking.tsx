@@ -679,7 +679,7 @@ function Instruments({
   }
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
   return (
-    <ul className="grid border-border/60 border-t p-2" data-working-instruments>
+    <ul className="-mx-4 grid border-border/60 border-t px-2 pt-2" data-working-instruments>
       {operations.map((operation) => (
         <Arriving key={operation.key}>
           <DeployInstrument
@@ -910,12 +910,10 @@ export function ConversationWorking({
       data-conversation-working
       style={minHeight === undefined ? undefined : { minHeight }}
     >
-      <div ref={contentRef} className="pb-1">
-        <section
-          aria-label={`${speaker.name} at work`}
-          className="relative z-10 animate-panel-in rounded-3xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60 motion-reduce:animate-none"
-        >
-          <div className="px-4 pt-2 pb-4">
+      <div ref={contentRef}>
+        {/* The stretch's card is the frame: the Mate at work is its body, on its inner edge. */}
+        <section aria-label={`${speaker.name} at work`} className="text-card-foreground">
+          <div className="pt-1 pb-2">
             <Stream activity={activity} bubbles={bubbles} speaker={speaker} />
           </div>
           <Instruments
@@ -927,17 +925,13 @@ export function ConversationWorking({
             open={open}
             threadRef={threadRef}
           />
-        </section>
-        {browser !== null ? (
-          // The browser slides out from under the panel, a drawer narrower than it.
-          <div className="grid animate-tray-out motion-reduce:animate-none" data-working-tray>
-            <div className="min-h-0 overflow-hidden px-6">
-              <div className="animate-tray-slide rounded-b-3xl bg-muted/70 p-3 motion-reduce:animate-none">
-                {browser}
-              </div>
+          {browser !== null ? (
+            // The browser opens inside the card, under what runs.
+            <div className="-mx-4 border-border/60 border-t px-4 pt-3" data-working-tray>
+              {browser}
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </section>
       </div>
     </div>
   );

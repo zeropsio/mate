@@ -4,6 +4,7 @@ import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  rowGap,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
   shouldPreserveAssistantLineBreaks,
@@ -30,7 +31,8 @@ type Scene = {
   expanded?: string[];
 };
 
-function rows(scene: Scene): MessagesTimelineRow[] {
+/** The conversation as the list draws it, its cards' frames included. */
+function framed(scene: Scene): MessagesTimelineRow[] {
   const latestId = scene.live ?? scene.settled;
   return deriveMessagesTimelineRows({
     timelineEntries: scene.entries,
@@ -52,7 +54,16 @@ function rows(scene: Scene): MessagesTimelineRow[] {
   });
 }
 
+/** The conversation's rows, without the rows that only close a card's frame. */
+function rows(scene: Scene): MessagesTimelineRow[] {
+  return framed(scene).filter((row) => row.kind !== "card-end");
+}
+
 const shape = (list: MessagesTimelineRow[]) => list.map((row) => `${row.kind}:${row.id}`);
+
+/** What a row draws, its frame included: a row that changes its gap or its place in a card changes its height. */
+const frame = (list: MessagesTimelineRow[]) =>
+  list.map((row) => `${row.kind}:${row.id}:${row.gap ?? "none"}:${row.card ?? "free"}`);
 
 /** Background work that finished after its turn: no turn owns it. */
 const background = (id: string, minute: number, overrides: Partial<WorkLogEntry> = {}) => {
@@ -777,6 +788,117 @@ describe("deriveMessagesTimelineRows", () => {
   });
 });
 
+describe("a stretch's card", () => {
+  // Every stretch of work is one card, from its line to its edge: the log,
+  // the Mate at work, the words the person answered and the report inside;
+  // the person's messages and the Mate's answer on the conversation's edge.
+  const cards = (list: MessagesTimelineRow[]) =>
+    list
+      .filter((row) => row.kind !== "seam")
+      .map((row) => `${row.kind}${row.card === undefined ? "" : `:${row.card}`}`);
+
+  it.each([
+    {
+      case: "settled, closed, with a report: its line, the report, its edge; the answer outside",
+      scene: {
+        entries: [
+          user("m0", 0),
+          operation("d1", "t1", 1, { kind: "deploy" }),
+          assistant("a1", "t1", 2, "Done."),
+        ],
+        settled: "t1",
+      } satisfies Scene,
+      expected: ["message", "work-line:top", "outcome:middle", "card-end:bottom", "message"],
+    },
+    {
+      case: "settled, closed, nothing under its line: one quiet line, no empty box",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+        settled: "t1",
+      } satisfies Scene,
+      expected: ["message", "work-line", "message"],
+    },
+    {
+      case: "settled, opened: the log inside the card",
+      scene: {
+        entries: [
+          user("m0", 0),
+          reasoning("r1", "t1", 1),
+          tool("w1", "t1", 1),
+          assistant("a1", "t1", 2, "Looking."),
+          assistant("a2", "t1", 3, "Done."),
+        ],
+        settled: "t1",
+        open: ["msg:m0"],
+      } satisfies Scene,
+      expected: [
+        "message",
+        "work-line:top",
+        "log-reasoning:middle",
+        "log-activity:middle",
+        "log-note:middle",
+        "card-end:bottom",
+        "message",
+      ],
+    },
+    {
+      case: "live: the Mate at work is the card's body",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Looking.")],
+        live: "t1",
+      } satisfies Scene,
+      expected: ["message", "work-line:top", "working:middle", "card-end:bottom"],
+    },
+    {
+      case: "interrupted: the words the person answered close the card, their message outside",
+      scene: {
+        entries: [
+          user("m0", 0),
+          tool("w1", "t1", 1),
+          assistant("a1", "t1", 2, "Which colour?"),
+          user("m1", 3, "Blue"),
+          tool("w2", "t1", 4),
+        ],
+        live: "t1",
+      } satisfies Scene,
+      expected: [
+        "message",
+        "work-line:top",
+        "speech:middle",
+        "card-end:bottom",
+        "message",
+        "work-line:top",
+        "working:middle",
+        "card-end:bottom",
+      ],
+    },
+    {
+      case: "an answer with no work before it: no card",
+      scene: {
+        entries: [user("m0", 0), assistant("a1", "t1", 1, "Hi.")],
+        settled: "t1",
+      } satisfies Scene,
+      expected: ["message", "message"],
+    },
+  ])("$case", ({ scene, expected }) => {
+    expect(cards(framed(scene))).toEqual(expected);
+  });
+
+  it("keeps the room after a card that the card's last row kept", () => {
+    const list = framed({
+      entries: [
+        user("m0", 0),
+        operation("d1", "t1", 1, { kind: "deploy" }),
+        assistant("a1", "t1", 2, "Done."),
+      ],
+      settled: "t1",
+    });
+    const edge = list.findIndex((row) => row.kind === "card-end");
+    expect(list[edge]!.gap).toBe("none");
+    expect(list[edge + 1]!.gap).toBe(rowGap(list[edge - 1], list[edge + 1]!));
+  });
+});
+
 describe("the no-shift contract", () => {
   // A turn as it arrives: everything a snapshot drew above its live tail must
   // be drawn the same by the next one — the timeline only grows at its bottom;
@@ -790,7 +912,12 @@ describe("the no-shift contract", () => {
     let end = list.length;
     while (end > 0) {
       const row = list[end - 1]!;
-      if (row.kind === "working" || (row.kind === "work-line" && row.live)) end -= 1;
+      if (
+        row.kind === "working" ||
+        row.kind === "card-end" ||
+        (row.kind === "work-line" && row.live)
+      )
+        end -= 1;
       else break;
     }
     return end;
@@ -801,13 +928,13 @@ describe("the no-shift contract", () => {
     for (let count = 1; count <= sequence.length; count += 1) {
       const entries = sequence.slice(0, count).map((arrival) => arrival.entry);
       const live = sequence[count - 1]!.live;
-      const current = rows({ entries, ...(live ? { live: "t1" } : { settled: "t1" }), open });
+      const current = framed({ entries, ...(live ? { live: "t1" } : { settled: "t1" }), open });
       const settling = wasLive && !live;
       const liveLineEnd = previous.findLastIndex((row) => row.kind === "work-line" && row.live) + 1;
       const bound = settling
         ? Math.min(liveTailStart(previous), liveLineEnd)
         : liveTailStart(previous);
-      expect(shape(current).slice(0, bound)).toEqual(shape(previous).slice(0, bound));
+      expect(frame(current).slice(0, bound)).toEqual(frame(previous).slice(0, bound));
       previous = current;
       wasLive = live;
     }

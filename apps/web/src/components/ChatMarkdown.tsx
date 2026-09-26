@@ -155,14 +155,15 @@ interface ChatMarkdownProps {
       text nests under the heading that introduces it, such as a chat message's
       author. Rendered tags and their styling are unchanged. */
   headingLevelOffset?: number | undefined;
-  /** How the text reads. `"answer"` is a reply set to be read: 15/24 in the
-      full foreground, from the stylesheet. `"log"` — narration, tool output,
-      anything around the answers — keeps the smaller muted body. Headings,
-      lists, tables and code scale with whichever body they sit in. */
+  /** How the text reads. `"answer"` is a reply set to be read: the prose
+      size (`--text-prose`) in the full foreground, from the stylesheet. `"person"` is the person's own
+      words at the same size, in their bubble's ink. `"log"` — narration, tool
+      output, anything around the answers — keeps the smaller muted body.
+      Headings, lists, tables and code scale with whichever body they sit in. */
   variant?: ChatMarkdownVariant | undefined;
 }
 
-export type ChatMarkdownVariant = "answer" | "log";
+export type ChatMarkdownVariant = "answer" | "person" | "log";
 
 export function canUseMarkdownFileShellActions(
   environmentId: EnvironmentId | null,
