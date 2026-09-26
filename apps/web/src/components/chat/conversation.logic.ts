@@ -445,8 +445,9 @@ export function timelineEntryEnd(entry: TimelineEntry): string {
  * Whether a settled turn ended on a step rather than a word: the person
  * stopped it, or it was cut off, mid-work. The server says so only of the
  * latest turn; read from how the turn ended, every turn says it the same way
- * once another follows. An error, or the Mate's own last word, ends a turn.
- * A background task reporting in, or a landing, is not the Mate's step.
+ * once another follows. An error, a plan the Mate proposed, or its own last
+ * word ends a turn. A background task reporting in, a landing, or the
+ * harness condensing the context is not the Mate's step.
  */
 function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
   const last = entries.findLast(
@@ -456,11 +457,13 @@ function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
       !(entry.kind === "message" && entry.message.text.trim().length === 0) &&
       !(
         (entry.kind === "work" || entry.kind === "generic-call") &&
-        entry.entry.sourceActivityKind?.startsWith("task.") === true
+        (entry.entry.sourceActivityKind?.startsWith("task.") === true ||
+          entry.entry.sourceActivityKind === "context-compaction")
       ),
   );
   if (last === undefined) return false;
   if (last.kind === "message") return last.message.role === "reasoning";
+  if (last.kind === "proposed-plan") return false;
   return !(last.kind === "work" && last.entry.tone === "error");
 }
 

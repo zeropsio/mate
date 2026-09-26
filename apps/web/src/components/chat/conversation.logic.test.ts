@@ -360,6 +360,20 @@ describe("deriveConversationStructure", () => {
     expect(only!.interrupted).toBe(true);
   });
 
+  const plan = (id: string, turnId: string, minute: number): TimelineEntry => ({
+    id,
+    kind: "proposed-plan",
+    createdAt: at(minute),
+    proposedPlan: {
+      id: id as Extract<TimelineEntry, { kind: "proposed-plan" }>["proposedPlan"]["id"],
+      turnId: turn(turnId),
+      planMarkdown: "1. Add the route.",
+      implementedAt: null,
+      implementationThreadId: null,
+      createdAt: at(minute),
+      updatedAt: at(minute),
+    },
+  });
   // Only the latest turn carries the server's word on how it ended: a stopped
   // turn read "stopped after 40s" until the next one began, then "worked for
   // 40s" (Nova, 2026-09-26). A turn that ended on a step, not a word, was
@@ -384,6 +398,24 @@ describe("deriveConversationStructure", () => {
     {
       name: "on an error",
       tail: [tool("w1", "t1", 1, { tone: "error", label: "Runtime error" })],
+      interrupted: false,
+    },
+    // A plan the Mate proposes ends its turn by design; a compaction is the
+    // harness condensing the context, a /compact's whole turn.
+    {
+      name: "on a plan it proposed",
+      tail: [tool("w1", "t1", 1), plan("p1", "t1", 2)],
+      interrupted: false,
+    },
+    {
+      name: "on a compaction",
+      tail: [
+        tool("c1", "t1", 1, {
+          tone: "info",
+          label: "Compacted context",
+          sourceActivityKind: "context-compaction",
+        }),
+      ],
       interrupted: false,
     },
   ])(
