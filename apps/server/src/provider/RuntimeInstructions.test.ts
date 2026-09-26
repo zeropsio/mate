@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
+import { CONTENT_CONTRACT } from "../contentContract.ts";
 import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
+  it.each(["Claude Code", "Codex", "Cursor"])(
+    "gives the %s harness the content contract after its runtime info",
+    (harness) => {
+      expect(buildRuntimeInstructions({ harness })).toMatch(
+        /^<runtime_info>[^\n]*<\/runtime_info>\n<writing>/,
+      );
+      expect(buildRuntimeInstructions({ harness }).endsWith(CONTENT_CONTRACT)).toBe(true);
+    },
+  );
+
   it("keeps known model and effort metadata on one line", () => {
     expect(
       buildRuntimeInstructions({
