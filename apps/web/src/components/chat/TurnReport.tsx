@@ -29,7 +29,7 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
 import { browserCheckDevice } from "./BrowserStrip";
 import {
   browserCheckCaption,
-  browserCheckFailed,
+  browserTakeState,
   type OutcomeModel,
   type OutcomeService,
 } from "./conversation.logic";
@@ -132,17 +132,21 @@ function Takes({
       {takes.map((take) => {
         const src = take.screenshot?.src;
         if (src === undefined) return null;
-        const failed = browserCheckFailed(take);
+        const state = browserTakeState(take, takes);
         const device = browserCheckDevice(take);
         const index = shots.findIndex((shot) => shot.key === take.key);
         return (
           <button
             key={take.key}
-            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${failed ? ", failed" : ""}. Open the screenshot`}
+            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : ""}. Open the screenshot`}
             className={cn(
               "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
               TAKE_CLASS[device],
-              failed ? "border-status-failed ring-1 ring-status-failed" : "border-border",
+              state === "failed"
+                ? "border-status-failed ring-1 ring-status-failed"
+                : state === "retried"
+                  ? "border-status-attention"
+                  : "border-border",
             )}
             data-report-take={device}
             onClick={() =>

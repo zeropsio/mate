@@ -1160,6 +1160,22 @@ export function unrecoveredCheckFailures(
   );
 }
 
+export type BrowserTakeState = "running" | "passed" | "retried" | "failed";
+
+/**
+ * How a take ended, as its frame tells it — the same reading the heading and
+ * the report count by: a failure a later take of the same page passed is a
+ * retry, never the page's failure.
+ */
+export function browserTakeState(
+  check: ZeropsOperation,
+  checks: ReadonlyArray<ZeropsOperation>,
+): BrowserTakeState {
+  if (check.phase === "running") return "running";
+  if (!browserCheckFailed(check)) return "passed";
+  return unrecoveredCheckFailures(checks).includes(check) ? "failed" : "retried";
+}
+
 /** How many pages the checks looked at. */
 function browserCheckViews(checks: ReadonlyArray<ZeropsOperation>): number {
   return new Set(checks.map(browserCheckPage)).size;

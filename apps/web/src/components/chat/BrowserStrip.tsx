@@ -18,7 +18,7 @@
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
-import { CheckIcon, CodeXmlIcon, XIcon } from "lucide-react";
+import { CheckIcon, CodeXmlIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -27,10 +27,11 @@ import { useZeropsBrowserStream } from "../../zerops/useZeropsFeeds";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   browserCheckCaption,
-  browserCheckFailed,
   browserCheckFailure,
+  browserTakeState,
   formatWorkDuration,
   type BrowserStripModel,
+  type BrowserTakeState,
 } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
@@ -82,6 +83,17 @@ const SCREEN_CLASS: Record<Device, string> = {
   desktop: "rounded-b-lg",
   tablet: "rounded-lg",
   phone: "rounded-2xl",
+};
+
+/**
+ * A take's frame, by how it ended: a failure red, a failure the same page
+ * passed later amber — a retry, as the heading and the report count it.
+ */
+const TAKE_FRAME: Record<BrowserTakeState, string> = {
+  running: "border-status-busy border-dashed",
+  passed: "border-border",
+  retried: "border-status-attention",
+  failed: "border-status-failed",
 };
 
 /** A take's thumbnail in the list of takes, in its device's shape. */
@@ -151,7 +163,8 @@ export function BrowserStrip({
       : onStage.screenshot?.src;
   const staged = running || stageSrc !== undefined;
   const caption = browserCheckCaption(onStage);
-  const failedOnStage = browserCheckFailed(onStage);
+  const stageState = browserTakeState(onStage, strip.checks);
+  const failedOnStage = stageState === "failed";
   const settledCount = strip.checks.filter((check) => check.phase !== "running").length;
 
   const filmRef = useRef<HTMLDivElement>(null);
@@ -202,7 +215,9 @@ export function BrowserStrip({
           .join(" · ");
   const viewport = onStage.viewport;
   const duration = checkDuration(onStage);
-  const structureOnStage = !running && onStage.screenshot === undefined;
+  // No picture of a take that passed: it read the page's structure. A take
+  // that failed or was retried has no picture because it never got one.
+  const structureOnStage = stageState === "passed" && onStage.screenshot === undefined;
   const facts = [
     onStage.deviceName ?? DEVICE_WORD[device],
     viewport && onStage.deviceName === undefined ? `${viewport.width}×${viewport.height}` : null,
@@ -238,7 +253,8 @@ export function BrowserStrip({
                   className={cn(
                     "relative flex min-h-0 flex-1 shrink-0 cursor-pointer flex-col self-center overflow-hidden border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 @xl/strip:h-66 @xl/strip:flex-none",
                     FRAME_CLASS[device],
-                    failedOnStage && "border-status-failed",
+                    stageState === "failed" && "border-status-failed",
+                    stageState === "retried" && "border-status-attention",
                   )}
                   data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
                   onClick={onStageClick}
@@ -307,19 +323,27 @@ export function BrowserStrip({
             data-browser-strip-film
           >
             {strip.checks.map((check) => {
-              const failed = browserCheckFailed(check);
-              const live = check.phase === "running";
+              const state = browserTakeState(check, strip.checks);
+              const live = state === "running";
               const takeDevice = browserCheckDevice(check);
-              const structure = !live && check.screenshot === undefined;
+              const structure = state === "passed" && check.screenshot === undefined;
               const takeWords = [
                 check.deviceName ?? DEVICE_WORD[takeDevice],
                 browserCheckCaption(check),
-                structure ? "structure" : null,
+                structure ? "structure" : state === "passed" || live ? null : state,
                 live ? "running" : checkDuration(check),
               ]
                 .filter(Boolean)
                 .join(" · ");
-              const label = `${browserCheckCaption(check)} on ${DEVICE_WORD[takeDevice].toLowerCase()}${failed ? ` — ${browserCheckFailure(check)}` : live ? " — running" : ""}`;
+              const label = `${browserCheckCaption(check)} on ${DEVICE_WORD[takeDevice].toLowerCase()}${
+                state === "failed"
+                  ? ` — ${browserCheckFailure(check)}`
+                  : state === "retried"
+                    ? ` — retried: ${browserCheckFailure(check)}`
+                    : live
+                      ? " — running"
+                      : ""
+              }`;
               return (
                 <button
                   key={check.key}
@@ -329,7 +353,7 @@ export function BrowserStrip({
                     "flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-md px-1.5 text-start text-xs transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
                     check === onStage ? "bg-accent/70 text-foreground" : "text-muted-foreground",
                   )}
-                  data-browser-strip-frame={failed ? "failed" : live ? "live" : "done"}
+                  data-browser-strip-frame={live ? "live" : state === "passed" ? "done" : state}
                   disabled={check.screenshot === undefined && !live}
                   onClick={() => (live ? openPanel() : setPickedKey(check.key))}
                   type="button"
@@ -341,11 +365,7 @@ export function BrowserStrip({
                       className={cn(
                         "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
                         TAKE_CLASS[takeDevice],
-                        failed
-                          ? "border-status-failed"
-                          : live
-                            ? "border-status-busy border-dashed"
-                            : "border-border",
+                        TAKE_FRAME[state],
                       )}
                     >
                       {check.screenshot ? (
@@ -354,17 +374,22 @@ export function BrowserStrip({
                           className="block size-full object-cover object-top"
                           src={check.screenshot.src}
                         />
-                      ) : live ? null : (
+                      ) : structure ? (
                         // No screenshot: the take read the page's structure.
                         <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
-                      )}
+                      ) : null}
                     </span>
                   </span>
                   <span className="min-w-0 flex-1 truncate">{takeWords}</span>
                   {live ? (
                     <span className="size-1.5 shrink-0 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
-                  ) : failed ? (
+                  ) : state === "failed" ? (
                     <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
+                  ) : state === "retried" ? (
+                    <RotateCcwIcon
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-status-attention"
+                    />
                   ) : (
                     <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
                   )}

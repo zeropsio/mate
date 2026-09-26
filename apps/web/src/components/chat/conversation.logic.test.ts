@@ -6,6 +6,7 @@ import {
   browserCheckCaption,
   browserCheckFailure,
   browserStrip,
+  browserTakeState,
   deriveConversationStructure,
   deriveOutcome,
   formatWorkDuration,
@@ -571,6 +572,32 @@ describe("browser checks", () => {
       views: 2,
       failures: 0,
     });
+  });
+
+  // A take drawn red with a ✗ under a heading saying "all passed" said two
+  // things at once (Nova, 2026-09-26: iPhone 13 refused, retaken on iPhone 16).
+  it("tells each take how it ended: a failure the same page passed later is a retry", () => {
+    const checks = [
+      operation("b1", "t1", 1, {
+        kind: "browser",
+        subject: "https://a.dev/",
+        phase: "failed",
+        deviceName: "iPhone 13",
+      }),
+      operation("b2", "t1", 2, { kind: "browser", subject: "https://a.dev/" }),
+      operation("b3", "t1", 3, { kind: "browser", subject: "https://a.dev/cart", phase: "failed" }),
+      operation("b4", "t1", 4, {
+        kind: "browser",
+        subject: "https://a.dev/cart",
+        phase: "running",
+      }),
+    ].map((entry) => (entry as Extract<TimelineEntry, { kind: "operation" }>).operation);
+    expect(checks.map((check) => browserTakeState(check, checks))).toEqual([
+      "retried",
+      "passed",
+      "failed",
+      "running",
+    ]);
   });
 
   it("gathers a stretch's checks into one strip", () => {
