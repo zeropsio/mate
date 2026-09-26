@@ -1647,7 +1647,21 @@ export function deriveMessagesTimelineRows(
       activityEntries.filter((candidate) => workEntryIsVisibleInGroup(candidate, turn.live)),
       (candidate) => candidate,
     );
-    const summary = shownActivity.length > 0 ? summarizeActivity(shownActivity) : null;
+    // A question the Mate asked is work too: without its tool said, a run
+    // that only asked would read "thought for".
+    const asked = turn.stretches.some((stretch) =>
+      stretch.entries.some(
+        (candidate) =>
+          (candidate.kind === "work" || candidate.kind === "generic-call") &&
+          (isQuestionToolCall(candidate.entry) || candidate.entry.inputQuestions !== undefined),
+      ),
+    );
+    const summary =
+      shownActivity.length > 0
+        ? summarizeActivity(shownActivity)
+        : asked
+          ? "Asked a question"
+          : null;
     const hasLog = turn.stretches.some((stretch) =>
       stretch.entries.some(
         (candidate) =>

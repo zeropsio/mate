@@ -375,6 +375,22 @@ describe("deriveMessagesTimelineRows", () => {
     expect(logged).not.toContain("c1");
   });
 
+  // Without its tool said, a run that only asked read "Nova thought for 11s":
+  // it asked the person something, which is work.
+  it("says a run that only asked the person something asked a question", () => {
+    const ask = tool("c1", "t1", 2, {
+      itemType: "dynamic_tool_call",
+      label: "Tool call",
+      command: undefined as never,
+      detail: 'AskUserQuestion: {"questions":[{"question":"Teal or amber?"}]}',
+    });
+    const line = rows({
+      entries: [user("m0", 0), ask, assistant("a2", "t1", 4, "Teal it is.")],
+      settled: "t1",
+    }).find((row) => row.kind === "work-line");
+    expect(line).toMatchObject({ summary: "Asked a question", fallback: "Asked a question" });
+  });
+
   // A result that woke the Mate and was answered in one breath flashed a
   // card for a frame: drawn live with the whole answer under it, gone as the
   // run settled 43 ms later, and the answer jumped up (Nova, 2026-09-26).
