@@ -431,11 +431,17 @@ describe("deriveMessagesTimelineRows", () => {
         : null;
     };
     const writing = rows({
-      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.")],
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.", { streaming: true })],
       live: "t1",
     });
     expect(streamOf(writing)).toEqual({ keys: ["a1"], activity: { kind: "writing" } });
     expect(writing.some((row) => row.id === "a2")).toBe(false);
+    // Written out, a line is a note, whether or not a step follows yet.
+    const written = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.")],
+      live: "t1",
+    });
+    expect(streamOf(written)?.keys).toEqual(["a1", "a2"]);
     const movedOn = rows({
       entries: [...before, assistant("a2", "t1", 3, "Checking /status next."), tool("w2", "t1", 4)],
       live: "t1",

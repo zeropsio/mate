@@ -367,9 +367,45 @@ describe("deriveConversationStructure", () => {
   it.each([
     {
       name: "a line it is still writing",
-      tail: [assistant("a1", "t1", 1, "Checking the routes.")],
+      tail: [assistant("a1", "t1", 1, "Checking the routes.", { streaming: true })],
       writing: "a1",
       answer: null,
+    },
+    // Done streaming, a line is a note: Codex says nothing of a command until
+    // it completes, so waiting for a step after the words hid them for the
+    // whole command.
+    {
+      name: "a line it finished writing",
+      tail: [assistant("a1", "t1", 1, "Running the build now; it takes a while.")],
+      writing: null,
+      answer: null,
+    },
+    // A background task reporting in is not the Mate moving on.
+    {
+      name: "a line it is writing as a task reports in",
+      tail: [
+        assistant("a1", "t1", 1, "Checking the routes.", { streaming: true }),
+        tool("t9", "t1", 2, {
+          tone: "info",
+          sourceActivityKind: "task.progress",
+          taskId: "task-9",
+        }),
+      ],
+      writing: "a1",
+      answer: null,
+    },
+    {
+      name: "an answer streaming as a task reports in",
+      tail: [
+        assistant("a1", "t1", 1, "Done.\n\nThe routes are:", { streaming: true }),
+        tool("t9", "t1", 2, {
+          tone: "info",
+          sourceActivityKind: "task.completed",
+          taskId: "task-9",
+        }),
+      ],
+      writing: null,
+      answer: "a1",
     },
     {
       name: "words that read as its answer",
@@ -449,6 +485,39 @@ describe("deriveConversationStructure", () => {
       name: "on a plan it proposed",
       tail: [tool("w1", "t1", 1), plan("p1", "t1", 2)],
       interrupted: false,
+    },
+    // Codex's question to the person is an info row after its words; a
+    // warning the runtime wrote after a stop is none of the Mate's steps.
+    {
+      name: "on a question it asked the person",
+      tail: [
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "Which accent: green or blue?"),
+        tool("q1", "t1", 3, {
+          tone: "info",
+          label: "User input requested",
+          command: undefined as never,
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          sourceActivityKind: "user-input.requested",
+        }),
+      ],
+      interrupted: false,
+    },
+    {
+      name: "on a step, then a warning",
+      tail: [
+        tool("w1", "t1", 1),
+        tool("x1", "t1", 2, {
+          tone: "info",
+          label: "Turn interrupted",
+          command: undefined as never,
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          sourceActivityKind: "runtime.warning",
+        }),
+      ],
+      interrupted: true,
     },
     {
       name: "on a compaction",

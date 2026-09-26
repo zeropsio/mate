@@ -1329,7 +1329,11 @@ describe("MessagesTimeline — the conversation", () => {
   });
 
   it("says the Mate is writing, and shows none of its words, until they are known", () => {
-    const markup = liveTimeline([tool("w1", 5), assistant("a1", 8, "Checking /status next.")]);
+    const writing = assistant("a1", 8, "Checking /status next.");
+    const markup = liveTimeline([
+      tool("w1", 5),
+      { ...writing, message: { ...writing.message, streaming: true } },
+    ]);
     expect(markup).toContain('data-stream-activity="writing"');
     expect(markup).toContain('aria-label="Writing"');
     expect(markup).not.toContain("Checking /status next.");

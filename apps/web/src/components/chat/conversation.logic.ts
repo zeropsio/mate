@@ -452,8 +452,9 @@ export function timelineEntryEnd(entry: TimelineEntry): string {
  * stopped it, or it was cut off, mid-work. The server says so only of the
  * latest turn; read from how the turn ended, every turn says it the same way
  * once another follows. An error, a plan the Mate proposed, or its own last
- * word ends a turn. A background task reporting in, a landing, or the
- * harness condensing the context is not the Mate's step.
+ * word ends a turn. A background task reporting in, a landing, the harness
+ * condensing the context, or a row that only tells — a question waiting on
+ * the person, a warning — is not the Mate's step.
  */
 function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
   const last = entries.findLast(
@@ -463,14 +464,23 @@ function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
       !(entry.kind === "message" && entry.message.text.trim().length === 0) &&
       !(
         (entry.kind === "work" || entry.kind === "generic-call") &&
-        (entry.entry.sourceActivityKind?.startsWith("task.") === true ||
-          entry.entry.sourceActivityKind === "context-compaction")
+        (isTaskReport(entry) ||
+          entry.entry.sourceActivityKind === "context-compaction" ||
+          !workLogEntryIsToolLike(entry.entry))
       ),
   );
   if (last === undefined) return false;
   if (last.kind === "message") return last.message.role === "reasoning";
   if (last.kind === "proposed-plan") return false;
   return !(last.kind === "work" && last.entry.tone === "error");
+}
+
+/** A background task or a helper reporting in: the task's word, never the Mate's step. */
+function isTaskReport(entry: TimelineEntry): boolean {
+  return (
+    (entry.kind === "work" || entry.kind === "generic-call") &&
+    entry.entry.sourceActivityKind?.startsWith("task.") === true
+  );
 }
 
 function hasMeaningfulContent(entry: TimelineEntry): boolean {
@@ -594,7 +604,9 @@ export function deriveConversationStructure(input: {
     // the Mate's panel (the owner, 2026-09-26 — "the last message … first
     // starts rendering in the working panel, then it all turns into the
     // result"). Work after it makes it a note on the way after all.
-    const lastSaid = turnEntries.findLast(hasMeaningfulContent);
+    const lastSaid = turnEntries.findLast(
+      (entry) => hasMeaningfulContent(entry) && !isTaskReport(entry),
+    );
     const answer = !live
       ? span.terminalEntry
       : span.terminalEntry !== null &&
@@ -602,17 +614,24 @@ export function deriveConversationStructure(input: {
           readsAsAnswer(span.terminalEntry.message.text)
         ? span.terminalEntry
         : null;
-    // Words not yet placed are drawn nowhere, so none stream in one place and
-    // then move to another: streamed in the panel first, every answer jumped
-    // under the card at its first paragraph break. Anything after them — a
-    // step, a thought — makes them a note.
+    // Words still streaming that cannot be placed yet are drawn nowhere, so
+    // none stream in one place and then move to another: streamed in the
+    // panel first, every answer jumped under the card at its first paragraph
+    // break. Anything after them — a step, a thought — makes them a note, and
+    // so does their end: Codex says nothing of a command until it completes,
+    // so words held until a step came after them hid the whole command long.
     const lastEntry = turnEntries.findLast(
       (entry) =>
         entry.kind !== "turn-plan" &&
+        !isTaskReport(entry) &&
         !(entry.kind === "message" && entry.message.text.trim().length === 0),
     );
     const writing =
-      live && answer === null && span.terminalEntry !== null && lastEntry === span.terminalEntry
+      live &&
+      answer === null &&
+      span.terminalEntry !== null &&
+      lastEntry === span.terminalEntry &&
+      span.terminalEntry.message.streaming === true
         ? span.terminalEntry
         : null;
     // The limit speaks as Claude's own last words, or as the server's error row.
@@ -643,11 +662,7 @@ export function deriveConversationStructure(input: {
     const turnEnd = live
       ? null
       : (turnEntries.reduce<string | null>(
-          (end, entry) =>
-            (entry.kind === "work" || entry.kind === "generic-call") &&
-            entry.entry.sourceActivityKind?.startsWith("task.") === true
-              ? end
-              : laterIso(end, timelineEntryEnd(entry)),
+          (end, entry) => (isTaskReport(entry) ? end : laterIso(end, timelineEntryEnd(entry))),
           null,
         ) ?? turnStart);
 
