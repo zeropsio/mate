@@ -26,7 +26,7 @@ import {
 
 import { cn } from "~/lib/utils";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
-import { browserCheckDevice } from "./BrowserStrip";
+import { browserCheckDevice, TAKE_ASPECT } from "./BrowserStrip";
 import {
   browserCheckCaption,
   browserTakeState,
@@ -35,6 +35,7 @@ import {
 } from "./conversation.logic";
 import { Pill, StatusDisc, type DiscTone } from "./ConversationPills";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import { useTakeThumbnail } from "./takeThumbnail";
 
 const SERVICE_DISC: Record<OutcomeService["tone"], DiscTone> = {
   ok: "ok",
@@ -110,6 +111,12 @@ function ServicePill({ service }: { readonly service: OutcomeService }) {
   );
 }
 
+/** A take's picture, its content cropped in when the page is mostly empty. */
+function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
+  const thumbnail = useTakeThumbnail(src, aspect);
+  return <img alt="" className="block size-full object-cover object-top" src={thumbnail} />;
+}
+
 function Takes({
   takes,
   onOpenImage,
@@ -154,7 +161,7 @@ function Takes({
             }
             type="button"
           >
-            <img alt="" className="block size-full object-cover object-top" src={src} />
+            <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
           </button>
         );
       })}

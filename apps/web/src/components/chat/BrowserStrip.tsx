@@ -34,6 +34,7 @@ import {
   type BrowserTakeState,
 } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import { useTakeThumbnail } from "./takeThumbnail";
 
 type Device = "desktop" | "tablet" | "phone";
 
@@ -61,6 +62,13 @@ export function browserCheckDevice(check: ZeropsOperation): Device {
   }
   return "desktop";
 }
+
+/** The shape of a take's frame, width over height, by device: a thumbnail crops its picture to it. */
+export const TAKE_ASPECT: Record<Device, number> = {
+  desktop: 1.6,
+  tablet: 0.75,
+  phone: 0.45,
+};
 
 const DEVICE_WORD: Record<Device, string> = {
   desktop: "Desktop",
@@ -126,6 +134,12 @@ function takeFindings(check: ZeropsOperation): string | null {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** A take's picture, its content cropped in when the page is mostly empty. */
+function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
+  const thumbnail = useTakeThumbnail(src, aspect);
+  return <img alt="" className="block size-full object-cover object-top" src={thumbnail} />;
 }
 
 export function BrowserStrip({
@@ -278,8 +292,10 @@ export function BrowserStrip({
                   SCREEN_CLASS[device],
                 )}
               >
-                {stageSrc ? (
+                {stageSrc && onStage === latest && running ? (
                   <img alt="" className="block size-full object-cover object-top" src={stageSrc} />
+                ) : stageSrc ? (
+                  <TakeThumbnail aspect={TAKE_ASPECT[device]} src={stageSrc} />
                 ) : (
                   <span className="flex size-full items-center justify-center px-3 text-center text-muted-foreground text-xs">
                     Opening the page…
@@ -369,9 +385,8 @@ export function BrowserStrip({
                       )}
                     >
                       {check.screenshot ? (
-                        <img
-                          alt=""
-                          className="block size-full object-cover object-top"
+                        <TakeThumbnail
+                          aspect={TAKE_ASPECT[takeDevice]}
                           src={check.screenshot.src}
                         />
                       ) : structure ? (
