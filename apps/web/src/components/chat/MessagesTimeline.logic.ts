@@ -362,6 +362,8 @@ export function resolveAssistantMessageCopyState({
 /** What the Mate's hands are on right now, beside its face while it works. */
 export type TurnHeaderActivity =
   | { readonly kind: "thinking" }
+  /** It writes words that cannot be placed yet: a note or its answer. */
+  | { readonly kind: "writing" }
   /** It asked the person something and waits for the answer. */
   | { readonly kind: "waiting" }
   | { readonly kind: "tool"; readonly entry: WorkLogEntry }
@@ -743,9 +745,10 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
   return answered ? null : asked;
 }
 
-/** What the Mate's hands are on: waiting for an answer, the running operation or tool, thinking. */
-function liveActivity(stretch: Stretch): TurnHeaderActivity | null {
+/** What the Mate's hands are on: waiting for an answer, the running operation or tool, thinking, writing. */
+function liveActivity(stretch: Stretch, writing: MessageEntry | null): TurnHeaderActivity | null {
   if (pendingQuestion(stretch) !== null) return { kind: "waiting" };
+  if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
     const entry = stretch.entries[index]!;
     if (entry.kind === "operation" && entry.operation.phase === "running") {
@@ -870,7 +873,11 @@ function latestAnswer(stretch: Stretch): TimelineEntry | null {
   );
 }
 
-function stretchStream(stretch: Stretch, answer: MessageEntry | null): WorkingStreamItem[] {
+function stretchStream(
+  stretch: Stretch,
+  answer: MessageEntry | null,
+  writing: MessageEntry | null,
+): WorkingStreamItem[] {
   const items: WorkingStreamItem[] = [];
   const answered = latestAnswer(stretch);
   const answeredAt = answered === null ? -1 : stretch.entries.indexOf(answered);
@@ -879,8 +886,9 @@ function stretchStream(stretch: Stretch, answer: MessageEntry | null): WorkingSt
     if (index <= answeredAt) return;
     const later = stretch.entries.slice(index + 1);
     if (entry.kind === "message") {
-      // The answer streams where it will stand, under the card.
-      if (entry === answer || entry.message.text.trim().length === 0) return;
+      // The answer streams where it will stand, under the card; words not
+      // placed yet stream nowhere.
+      if (entry === answer || entry === writing || entry.message.text.trim().length === 0) return;
       // Most of a Mate's work is thinking: said nowhere else live, it was
       // minutes of dots (the owner, 2026-09-26: "why aren't there thoughts
       // reflected in the chat?").
@@ -1587,7 +1595,9 @@ export function deriveMessagesTimelineRows(
       readUsageLimitNotice(turn.answer.message.text, turn.answer.message.createdAt) === null
         ? turn.answer
         : null;
-    const notes = turn.stretches.flatMap((stretch) => stretchNotes(stretch, turn.answer));
+    const notes = turn.stretches
+      .flatMap((stretch) => stretchNotes(stretch, turn.answer))
+      .filter((note) => note !== turn.writing);
     const lastNote = notes.at(-1) ?? null;
     const open = input.openStretchKeys?.has(first.key) ?? false;
     const pause = pauseByTurnKey.get(turn.key)?.row ?? null;
@@ -1680,8 +1690,8 @@ export function deriveMessagesTimelineRows(
         createdAt: last.startedAt,
         stretchKey: last.key,
         turnKey: turn.key,
-        stream: stretchStream(last, turn.answer),
-        activity: liveActivity(last),
+        stream: stretchStream(last, turn.answer, turn.writing),
+        activity: liveActivity(last, turn.writing),
         answering: answer !== null,
         strip: browserStrip(last),
         incidents: stretchIncidents(last),

@@ -73,6 +73,7 @@ export type WorkingBubble =
  */
 export type WorkingActivity =
   | { readonly kind: "thinking" }
+  | { readonly kind: "writing" }
   | { readonly kind: "doing"; readonly words: string }
   | { readonly kind: "waiting" };
 
@@ -179,17 +180,18 @@ function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
 
 /**
  * What the Mate is on, under its newest words — never a bubble of its own
- * words: the dots while it thinks, a quiet outline naming the call it is
- * making, the amber of a question that waits on the person. One height for
- * all three, so a change of what it does never moves the bubbles above.
+ * words: the dots while it thinks or writes words not placed yet, a quiet
+ * outline naming the call it is making, the amber of a question that waits
+ * on the person. One height for all of them, so a change of what it does
+ * never moves the bubbles above.
  */
 function StreamActivity({ activity }: { readonly activity: WorkingActivity }) {
-  if (activity.kind === "thinking") {
+  if (activity.kind === "thinking" || activity.kind === "writing") {
     return (
       <div
-        aria-label="Thinking"
+        aria-label={activity.kind === "thinking" ? "Thinking" : "Writing"}
         className="flex h-8 w-fit items-center rounded-2xl rounded-es-md bg-secondary px-3.5"
-        data-stream-activity="thinking"
+        data-stream-activity={activity.kind}
         role="img"
       >
         <TypingDots />

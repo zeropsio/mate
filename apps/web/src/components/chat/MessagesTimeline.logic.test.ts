@@ -206,9 +206,9 @@ describe("deriveMessagesTimelineRows", () => {
       activity: { kind: "tool" },
     },
     {
-      name: "writing: its words are the activity",
+      name: "writing: the dots, its words held until they are known",
       entries: [assistant("a1", "t1", 1, "Writing this now.", { streaming: true })],
-      activity: null,
+      activity: { kind: "writing" },
     },
     {
       name: "a question asked: it waits for the person",
@@ -255,7 +255,7 @@ describe("deriveMessagesTimelineRows", () => {
     const before = [user("m0", 0), assistant("a1", "t1", 1, "One question first."), asked("q1", 2)];
     const waiting = framed({ entries: before, live: "t1" });
     const after = framed({
-      entries: [...before, answered, assistant("a2", "t1", 4, "Green it is.")],
+      entries: [...before, answered, assistant("a2", "t1", 4, "Green it is."), tool("w9", "t1", 5)],
       live: "t1",
     });
     expect(shape(after).slice(-3)).toEqual([
@@ -283,6 +283,40 @@ describe("deriveMessagesTimelineRows", () => {
       "working:working:turn:t2",
     ]);
     expect(list.at(-1)).toMatchObject({ activity: { kind: "thinking" }, stream: [] });
+  });
+
+  // Words that cannot be placed yet stream nowhere: the panel says the Mate
+  // is writing, a note pops in whole once it moves on, and an answer streams
+  // under the card once it reads as one — never first in the panel.
+  it("holds the words the Mate is writing until they are known", () => {
+    const before = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Reading the routes."),
+      tool("w1", "t1", 2),
+    ];
+    const streamOf = (list: MessagesTimelineRow[]) => {
+      const working = list.find((row) => row.kind === "working");
+      return working?.kind === "working"
+        ? { keys: working.stream.map((item) => item.key), activity: working.activity }
+        : null;
+    };
+    const writing = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.")],
+      live: "t1",
+    });
+    expect(streamOf(writing)).toEqual({ keys: ["a1"], activity: { kind: "writing" } });
+    expect(writing.some((row) => row.id === "a2")).toBe(false);
+    const movedOn = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next."), tool("w2", "t1", 4)],
+      live: "t1",
+    });
+    expect(streamOf(movedOn)?.keys).toEqual(["a1", "a2"]);
+    const answering = rows({
+      entries: [...before, assistant("a2", "t1", 3, "All three pass.\n\nThe routes:")],
+      live: "t1",
+    });
+    expect(streamOf(answering)?.keys).toEqual(["a1"]);
+    expect(answering.at(-1)?.id).toBe("a2");
   });
 
   // A background result wakes the Mate. A helper's review came back while the
@@ -417,6 +451,7 @@ describe("deriveMessagesTimelineRows", () => {
         assistant("a5", "t1", 6, "Five."),
         assistant("a6", "t1", 7, "Six."),
         assistant("a7", "t1", 8, "Seven."),
+        tool("w2", "t1", 9),
       ],
       stream: ["One.", "Two.", "Three.", "Four.", "Five.", "Six.", "Seven."],
     },
@@ -445,6 +480,7 @@ describe("deriveMessagesTimelineRows", () => {
         assistant("a1", "t1", 1, "Type checking."),
         typeCheck("t9", 2, true),
         assistant("a2", "t1", 3, "Fixing the types."),
+        tool("w1", "t1", 4),
       ],
       stream: ["Type checking.", "✗ Run the type check failed", "Fixing the types."],
     },

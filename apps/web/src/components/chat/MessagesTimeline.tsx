@@ -2213,6 +2213,8 @@ function workingActivity(
       return null;
     case "thinking":
       return { kind: "thinking" };
+    case "writing":
+      return { kind: "writing" };
     case "waiting":
       return { kind: "waiting" };
     case "tool":

@@ -1248,6 +1248,7 @@ describe("MessagesTimeline — the conversation", () => {
         },
       },
       assistant("a2", 15, "Fixing the types."),
+      tool("w2", 16),
     ]);
     expect(markup).toContain("data-conversation-working");
     expect(markup.match(/data-stream-bubble="note"/g)).toHaveLength(2);
@@ -1259,6 +1260,13 @@ describe("MessagesTimeline — the conversation", () => {
     const newest = markup.slice(markup.indexOf('data-stream-age="0"'));
     expect(newest).toContain("Fixing the types.");
     expect(newest).not.toContain("Checking the build.");
+  });
+
+  it("says the Mate is writing, and shows none of its words, until they are known", () => {
+    const markup = liveTimeline([tool("w1", 5), assistant("a1", 8, "Checking /status next.")]);
+    expect(markup).toContain('data-stream-activity="writing"');
+    expect(markup).toContain('aria-label="Writing"');
+    expect(markup).not.toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {

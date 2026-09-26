@@ -360,6 +360,49 @@ describe("deriveConversationStructure", () => {
     expect(only!.interrupted).toBe(true);
   });
 
+  // Words that cannot be placed yet are drawn nowhere: a note if the Mate
+  // moves on, the answer if the run ends. Streamed in the panel first, every
+  // answer jumped under the card at its first paragraph break, a median 133
+  // characters in on the recorded threads.
+  it.each([
+    {
+      name: "a line it is still writing",
+      tail: [assistant("a1", "t1", 1, "Checking the routes.")],
+      writing: "a1",
+      answer: null,
+    },
+    {
+      name: "words that read as its answer",
+      tail: [assistant("a1", "t1", 1, "Done.\n\nThe routes are:")],
+      writing: null,
+      answer: "a1",
+    },
+    {
+      name: "a line it moved on from",
+      tail: [assistant("a1", "t1", 1, "Checking the routes."), tool("w1", "t1", 2)],
+      writing: null,
+      answer: null,
+    },
+    {
+      name: "a line it went on thinking after",
+      tail: [assistant("a1", "t1", 1, "Checking the routes."), reasoning("r1", "t1", 2)],
+      writing: null,
+      answer: null,
+    },
+  ])("holds $name until it is known", ({ tail, writing, answer }) => {
+    const [only] = structure([user("m0", 0), ...tail], { live: "t1" }).turns;
+    expect(only!.writing?.id ?? null).toBe(writing);
+    expect(only!.answer?.id ?? null).toBe(answer);
+  });
+
+  it("holds nothing once the run has ended", () => {
+    const [only] = structure([user("m0", 0), assistant("a1", "t1", 1, "Checking the routes.")], {
+      latest: { id: "t1", state: "completed", completed: true },
+    }).turns;
+    expect(only!.writing).toBeNull();
+    expect(only!.answer?.id).toBe("a1");
+  });
+
   const plan = (id: string, turnId: string, minute: number): TimelineEntry => ({
     id,
     kind: "proposed-plan",

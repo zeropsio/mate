@@ -407,6 +407,12 @@ export interface ConversationTurn {
   readonly stretches: ReadonlyArray<Stretch>;
   /** The Mate's answer: the turn's last message, once the turn has settled. */
   readonly answer: MessageEntry | null;
+  /**
+   * The words the Mate is writing while it runs that cannot be placed yet:
+   * its last, nothing after them, not reading as its answer. A note if it
+   * moves on, the answer if the run ends — drawn nowhere until then.
+   */
+  readonly writing: MessageEntry | null;
   readonly live: boolean;
   readonly interrupted: boolean;
   /** The usage-limit notice the turn ended on, when it did. */
@@ -596,6 +602,19 @@ export function deriveConversationStructure(input: {
           readsAsAnswer(span.terminalEntry.message.text)
         ? span.terminalEntry
         : null;
+    // Words not yet placed are drawn nowhere, so none stream in one place and
+    // then move to another: streamed in the panel first, every answer jumped
+    // under the card at its first paragraph break. Anything after them — a
+    // step, a thought — makes them a note.
+    const lastEntry = turnEntries.findLast(
+      (entry) =>
+        entry.kind !== "turn-plan" &&
+        !(entry.kind === "message" && entry.message.text.trim().length === 0),
+    );
+    const writing =
+      live && answer === null && span.terminalEntry !== null && lastEntry === span.terminalEntry
+        ? span.terminalEntry
+        : null;
     // The limit speaks as Claude's own last words, or as the server's error row.
     const limit =
       (answer !== null
@@ -691,6 +710,7 @@ export function deriveConversationStructure(input: {
       span,
       stretches,
       answer,
+      writing,
       live,
       interrupted,
       limit,
