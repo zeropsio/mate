@@ -1209,6 +1209,60 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).toContain('data-message-receipt="sent"');
   });
 
+  const running = {
+    turnId,
+    state: "running" as const,
+    startedAt: MESSAGE_CREATED_AT,
+    completedAt: null,
+  };
+  const liveTimeline = (entries: ReadonlyArray<unknown>) =>
+    renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        isWorking
+        activeTurnStartedAt={MESSAGE_CREATED_AT}
+        latestTurn={running}
+        runningTurnId={turnId}
+        timelineEntries={
+          [buildUserTimelineEntry("Fix the types"), ...entries] as Parameters<
+            typeof MessagesTimeline
+          >[0]["timelineEntries"]
+        }
+      />,
+    );
+
+  it("streams the Mate's words at the live tail, a failure where it happened, the newest last", () => {
+    const markup = liveTimeline([
+      assistant("a1", 5, "Checking the build."),
+      {
+        ...tool("t9", 10),
+        entry: {
+          ...tool("t9", 10).entry,
+          tone: "error" as const,
+          label: "Run the type check",
+          sourceActivityKind: "task.completed" as const,
+        },
+      },
+      assistant("a2", 15, "Fixing the types."),
+    ]);
+    expect(markup).toContain("data-conversation-working");
+    expect(markup.match(/data-stream-bubble="note"/g)).toHaveLength(2);
+    expect(markup).toContain('data-stream-bubble="failed"');
+    expect(markup).toContain("Run the type check failed");
+    // Oldest first: the newest bubble is last, and the only one of age 0.
+    expect(markup.indexOf("Checking the build.")).toBeLessThan(markup.indexOf("Fixing the types."));
+    expect(markup.match(/data-stream-age="0"/g)).toHaveLength(1);
+    const newest = markup.slice(markup.indexOf('data-stream-age="0"'));
+    expect(newest).toContain("Fixing the types.");
+    expect(newest).not.toContain("Checking the build.");
+  });
+
+  it("shows the Mate composing before it said anything", () => {
+    const markup = liveTimeline([tool("w1", 5)]);
+    expect(markup).toContain('data-stream-bubble="typing"');
+    expect(markup).not.toContain('data-stream-bubble="note"');
+  });
+
   it("draws a usage limit as one pause, however many attempts hit it", () => {
     const limit = "You've hit your session limit · resets 9:20pm (UTC)";
     const background = (id: string, second: number) => ({

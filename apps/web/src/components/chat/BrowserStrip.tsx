@@ -99,11 +99,14 @@ export function BrowserStrip({
   environmentId,
   threadRef,
   onOpenImage,
+  bare = false,
 }: {
   readonly strip: BrowserStripModel;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
+  /** Drawn in a surface of its own, or bare inside the Mate at work's tray. */
+  readonly bare?: boolean;
 }) {
   const latest = strip.checks.at(-1)!;
   const running = latest.phase === "running";
@@ -185,7 +188,10 @@ export function BrowserStrip({
 
   return (
     <div
-      className="@container/strip h-72 min-w-0 overflow-hidden rounded-2xl bg-muted/50 p-3"
+      className={cn(
+        "@container/strip min-w-0 overflow-hidden",
+        bare ? "h-66" : "h-72 rounded-2xl bg-muted/50 p-3",
+      )}
       data-browser-strip
       data-browser-strip-device={device}
     >

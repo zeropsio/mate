@@ -1,23 +1,30 @@
 /**
- * The Mate at work: the one component that shows what is happening now, at
- * the live stretch's tail, right under its line. Its face and its latest words
- * in full; a pill for each thing running — a deploy stepping through its
- * pipeline in the Zerops GUI's words, the helpers, the task list, a service in
- * trouble — each opening its detail in place; and the browser while it checks.
- * Nothing that runs pops out anywhere else: settling folds all of it into the
- * line, the words the person answered and the outcome.
+ * The Mate at work: one panel at the live stretch's tail, right under its
+ * line — what is happening now, and nothing that runs pops out anywhere else.
  *
- * It is the conversation's bottom, so it may change shape; it only ever grows
- * while live, so a finished pill or a shorter note never pulls the
- * conversation down.
+ * Its face speaks a stream of bubbles: the newest in full, popping in beside
+ * it; the ones before it pushed up and away, fading out through the top. A
+ * step that failed on the way streams as a red bubble where it failed, and
+ * turns amber once a later attempt came back. Under the stream, a status bar
+ * for each thing that runs — a deploy stepping through its pipeline in the
+ * Zerops GUI's words, a service in trouble, the task list, the helpers —
+ * each opening its detail in place. While the Mate checks pages, the browser
+ * slides out from under the panel.
+ *
+ * It is the conversation's bottom, so it may change shape; while live it only
+ * grows — a click that closes a detail is the one way it shrinks — so a
+ * shorter bubble never pulls the conversation down. Settling turns it into
+ * the turn's report, made of the same parts.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { PipelineSpokenState } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
+  ActivityIcon,
   BotIcon,
   CheckIcon,
+  ChevronDownIcon,
   CircleDotIcon,
   CircleIcon,
   ListTodoIcon,
@@ -32,10 +39,197 @@ import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { MateFace } from "../zerops/primitives";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
-import { Pill, Segments } from "./ConversationPills";
+import { StatusBar, StatusDisc, type BarTone, type DiscTone } from "./ConversationPills";
 import type { DockModel } from "./conversationDock.logic";
 import type { WorkingFailure } from "./MessagesTimeline.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
+
+/** A bubble in the Mate's stream: its words, rendered, or a step that failed on the way. */
+export type WorkingBubble =
+  | { readonly kind: "note"; readonly key: string; readonly body: ReactNode }
+  | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure };
+
+// ---------------------------------------------------------------------------
+// The stream
+// ---------------------------------------------------------------------------
+
+/** Room above the newest bubble for the one before it, drifting away through the fade. */
+const PEEK_PX = 56;
+
+/** How a bubble recedes as newer ones push it up: dimmer and a little smaller each step. */
+const AGE_CLASS = [
+  "",
+  "scale-98 opacity-55",
+  "scale-96 opacity-30",
+  "scale-94 opacity-15",
+  "scale-92 opacity-10",
+];
+
+function StreamBubble({ bubble }: { readonly bubble: WorkingBubble | null }) {
+  if (bubble === null) {
+    // Nothing said yet: the Mate composing its first words.
+    return (
+      <div
+        aria-label="Composing"
+        className="flex w-fit origin-bottom-left animate-bubble-pop items-center gap-1 rounded-2xl rounded-es-md bg-muted px-3.5 py-3 motion-reduce:animate-none"
+        data-stream-bubble="typing"
+        role="img"
+      >
+        <span className="size-1.5 animate-typing-first rounded-full bg-muted-foreground motion-reduce:animate-none" />
+        <span className="size-1.5 animate-typing-second rounded-full bg-muted-foreground motion-reduce:animate-none" />
+        <span className="size-1.5 animate-typing-third rounded-full bg-muted-foreground motion-reduce:animate-none" />
+      </div>
+    );
+  }
+  if (bubble.kind === "note") {
+    return (
+      <div
+        className="w-fit max-w-full origin-bottom-left animate-bubble-pop rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground motion-reduce:animate-none"
+        data-stream-bubble="note"
+      >
+        {bubble.body}
+      </div>
+    );
+  }
+  const { failure } = bubble;
+  const recovered = failure.recovered !== null;
+  return (
+    <div
+      className={cn(
+        "inline-flex max-w-full origin-bottom-left animate-bubble-pop items-center gap-1.5 rounded-2xl rounded-es-md border px-3 py-1.5 text-line transition-colors duration-500 motion-reduce:animate-none",
+        recovered
+          ? "border-status-attention/30 bg-status-attention-surface text-status-attention-text"
+          : "border-status-failed/30 bg-status-failed-surface text-status-failed-text",
+      )}
+      data-stream-bubble={recovered ? "recovered" : "failed"}
+    >
+      {recovered ? (
+        <RotateCcwIcon aria-hidden="true" className="size-3.5 shrink-0" />
+      ) : (
+        <XIcon aria-hidden="true" className="size-3.5 shrink-0" />
+      )}
+      {failure.subject ? <span className="shrink-0 font-medium">{failure.subject}</span> : null}
+      <span className="min-w-0 truncate">{failure.words}</span>
+      {recovered ? <span className="shrink-0">· {failure.recovered}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * The face and what it says: a window on the stream, anchored at its
+ * bottom. A new bubble opens its room there — pushing the ones before it up
+ * and out through the fading top — and pops in beside the face, which nods.
+ * The window keeps the newest bubble in full with room for the one before it
+ * to peek; it only ever grows, so a short bubble after a long one leaves the
+ * long one drifting above it rather than pulling the conversation down.
+ */
+function Stream({
+  speaker,
+  bubbles,
+}: {
+  readonly speaker: ConversationSpeaker;
+  readonly bubbles: ReadonlyArray<WorkingBubble>;
+}) {
+  const windowRef = useRef<HTMLDivElement>(null);
+  const [newest, setNewest] = useState<HTMLDivElement | null>(null);
+  const tallestRef = useRef(0);
+  const newestKey = bubbles.at(-1)?.key ?? "typing";
+  const older = bubbles.length > 1;
+  useLayoutEffect(() => {
+    const view = windowRef.current;
+    if (view === null || newest === null) return;
+    // The newest bubble's room grows as it opens, so the window follows it
+    // frame by frame and the conversation glides up with it.
+    const measure = () => {
+      const wanted = Math.ceil(newest.getBoundingClientRect().height) + (older ? PEEK_PX : 0);
+      if (wanted <= tallestRef.current) return;
+      tallestRef.current = wanted;
+      view.style.height = `${wanted}px`;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(newest);
+    return () => observer.disconnect();
+  }, [newest, older]);
+
+  const items: ReadonlyArray<WorkingBubble | null> = bubbles.length > 0 ? bubbles : [null];
+  return (
+    <div className="flex min-w-0 items-end gap-2.5" data-working-stream>
+      <span
+        key={newestKey}
+        aria-hidden="true"
+        className="mb-0.5 shrink-0 origin-bottom animate-face-nod motion-reduce:animate-none"
+      >
+        <MateFace size="md" state="working" tint={speaker.tint} />
+      </span>
+      <div
+        ref={windowRef}
+        aria-live="polite"
+        className={cn(
+          "flex min-w-0 flex-1 flex-col justify-end overflow-hidden",
+          older && "stream-fade",
+        )}
+      >
+        {items.map((bubble, index) => {
+          const age = items.length - 1 - index;
+          return (
+            <div
+              key={bubble?.key ?? "typing"}
+              ref={age === 0 ? setNewest : undefined}
+              className="grid animate-room-in motion-reduce:animate-none"
+              data-stream-age={age}
+            >
+              <div className="min-h-0">
+                <div
+                  className={cn(
+                    "origin-bottom-left pt-2 transition duration-500",
+                    AGE_CLASS[Math.min(age, AGE_CLASS.length - 1)],
+                  )}
+                >
+                  <StreamBubble bubble={bubble} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The status bars
+// ---------------------------------------------------------------------------
+
+const PIPELINE_BAR: Record<PipelineSpokenState, BarTone> = {
+  finished: "done",
+  running: "running",
+  activating: "running",
+  failed: "failed",
+  waiting: "waiting",
+  cancelled: "waiting",
+};
+
+const STEP_BAR: Record<string, BarTone> = {
+  done: "done",
+  running: "running",
+  failed: "failed",
+  queued: "waiting",
+};
+
+const HELPER_BAR: Record<ServiceStatusToneId, BarTone> = {
+  ok: "done",
+  busy: "running",
+  attention: "attention",
+  failed: "failed",
+  off: "waiting",
+};
+
+const INCIDENT_BAR: Record<IncidentModel["tone"], BarTone> = {
+  attention: "attention",
+  ok: "done",
+  failed: "failed",
+};
 
 const TONE_DOT: Record<ServiceStatusToneId, string> = {
   ok: "bg-status-ok",
@@ -45,34 +239,96 @@ const TONE_DOT: Record<ServiceStatusToneId, string> = {
   off: "bg-status-off",
 };
 
-const STEP_SEGMENT: Record<string, string> = {
-  done: "bg-status-ok",
-  running: "bg-status-busy",
-  failed: "bg-status-failed",
-  queued: "bg-muted-foreground/25",
-};
-
-const PIPELINE_SEGMENT: Record<PipelineSpokenState, string> = {
-  finished: "bg-status-ok",
-  running: "bg-status-busy",
-  activating: "bg-status-busy",
-  failed: "bg-status-failed",
-  waiting: "bg-muted-foreground/25",
-  cancelled: "bg-muted-foreground/25",
-};
-
-const INCIDENT_DOT: Record<IncidentModel["tone"], string> = {
-  attention: "bg-status-attention",
-  ok: "bg-status-ok",
-  failed: "bg-status-failed",
-};
+/**
+ * One status bar: its mark in a disc of its state's tone, its name, the bar,
+ * where it is now in words, and a figure — a time, a count. Given
+ * `onToggle`, a click opens its detail under it.
+ */
+function Instrument({
+  icon,
+  tone,
+  subject,
+  bar,
+  words,
+  figure = null,
+  failed = false,
+  label,
+  open = false,
+  onToggle = null,
+}: {
+  readonly icon: ReactNode;
+  readonly tone: DiscTone;
+  readonly subject: string;
+  readonly bar: ReadonlyArray<{ readonly key: string; readonly tone: BarTone }>;
+  readonly words: ReactNode;
+  readonly figure?: ReactNode;
+  readonly failed?: boolean;
+  readonly label: string;
+  readonly open?: boolean;
+  readonly onToggle?: (() => void) | null;
+}) {
+  const body = (
+    <>
+      <StatusDisc tone={tone}>{icon}</StatusDisc>
+      <span className="w-24 shrink-0 truncate text-start font-medium text-foreground">
+        {subject}
+      </span>
+      <StatusBar className="w-14 shrink-0 @md/panel:w-32" segments={bar} />
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-start",
+          failed ? "text-status-failed-text" : "text-muted-foreground",
+        )}
+      >
+        {words}
+      </span>
+      {figure !== null ? (
+        <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{figure}</span>
+      ) : null}
+      {onToggle !== null ? (
+        <ChevronDownIcon
+          aria-hidden="true"
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+            open && "rotate-180",
+          )}
+        />
+      ) : null}
+    </>
+  );
+  const className = "flex h-9 w-full min-w-0 items-center gap-3 rounded-xl px-2 text-line";
+  if (onToggle === null) {
+    return (
+      <div aria-label={label} className={className} data-instrument={tone} role="group">
+        {body}
+      </div>
+    );
+  }
+  return (
+    <button
+      aria-expanded={open}
+      aria-label={label}
+      className={cn(
+        className,
+        "cursor-pointer transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset",
+        open && "bg-accent/40",
+      )}
+      data-instrument={tone}
+      data-scroll-anchor-ignore
+      onClick={onToggle}
+      type="button"
+    >
+      {body}
+    </button>
+  );
+}
 
 /**
- * A deploy's pill: the service, a segment per step, the step running now in
- * the Zerops GUI's own sentence, and how long. Open, the full pipeline with
- * its build log.
+ * A deploy's status bar: a segment per step of its pipeline, the step running
+ * now in the Zerops GUI's own sentence, and how long. Open, the full pipeline
+ * with its build log.
  */
-function OperationPill({
+function DeployInstrument({
   operation,
   environmentId,
   open,
@@ -87,6 +343,7 @@ function OperationPill({
   const pipeline = regions.observed?.pipeline;
   const steps = regions.observed?.steps ?? operation.steps;
   const running = operation.phase === "running";
+  const failed = operation.phase === "failed";
   const pipelineStep =
     pipeline === undefined
       ? undefined
@@ -109,46 +366,51 @@ function OperationPill({
     operation.settledAt === undefined
       ? null
       : Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
-  const segments =
-    pipeline !== undefined && pipeline.steps.length > 1
-      ? pipeline.steps.map((step) => ({ key: step.id, className: PIPELINE_SEGMENT[step.state] }))
-      : steps.length > 1
-        ? steps.map((step) => ({
-            key: step.id,
-            className: STEP_SEGMENT[step.state] ?? STEP_SEGMENT.queued!,
-          }))
-        : null;
+  const live =
+    pipeline !== undefined && pipeline.steps.length > 0
+      ? pipeline.steps.map((step) => ({ key: step.id, tone: PIPELINE_BAR[step.state] }))
+      : steps.length > 0
+        ? steps.map((step) => ({ key: step.id, tone: STEP_BAR[step.state] ?? "waiting" }))
+        : [{ key: "whole", tone: "running" as const }];
+  // Settled, the bar says how it ended even when the feed has not caught up:
+  // a deploy that finished is whole, one that failed stops where it failed.
+  const bar = live.map((segment) => ({
+    key: segment.key,
+    tone: running
+      ? segment.tone
+      : failed
+        ? segment.tone === "running"
+          ? ("failed" as const)
+          : segment.tone
+        : ("done" as const),
+  }));
   return (
-    <Pill
-      label={`${operation.statusWord} ${operation.subject}. ${open ? "Hide" : "Show"} the pipeline`}
-      onToggle={onToggle}
-      open={open}
-    >
-      {operation.phase === "failed" ? (
-        <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
-      ) : operation.phase === "done" ? (
-        <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
-      ) : (
-        <RocketIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-busy" />
-      )}
-      <span className="shrink-0 font-medium text-foreground">{operation.subject}</span>
-      {running && segments !== null ? <Segments segments={segments} /> : null}
-      <span
-        className={cn(
-          "min-w-0 truncate",
-          operation.phase === "failed" ? "text-status-failed-text" : "text-muted-foreground",
-        )}
-      >
-        {words}
-      </span>
-      <span className="shrink-0 text-muted-foreground tabular-nums">
-        {running ? (
+    <Instrument
+      bar={bar}
+      failed={failed}
+      figure={
+        running ? (
           <ElapsedSince since={operation.anchorAt} />
         ) : settledMs !== null && Number.isFinite(settledMs) ? (
           formatWorkDuration(settledMs)
-        ) : null}
-      </span>
-    </Pill>
+        ) : null
+      }
+      icon={
+        failed ? (
+          <XIcon aria-hidden="true" className="size-3.5" />
+        ) : operation.phase === "done" ? (
+          <CheckIcon aria-hidden="true" className="size-3.5" />
+        ) : (
+          <RocketIcon aria-hidden="true" className="size-3.5" />
+        )
+      }
+      label={`${operation.subject}: ${words}. ${open ? "Hide" : "Show"} the pipeline`}
+      onToggle={onToggle}
+      open={open}
+      subject={operation.subject}
+      tone={failed ? "failed" : operation.phase === "done" ? "ok" : "busy"}
+      words={words}
+    />
   );
 }
 
@@ -175,22 +437,37 @@ function keyedSteps<T extends { readonly step: string }>(steps: ReadonlyArray<T>
   });
 }
 
+/** A status bar arriving: it opens its room in the panel, once. */
+function Arriving({ children }: { readonly children: ReactNode }) {
+  return (
+    <li className="grid animate-room-in motion-reduce:animate-none">
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The panel
+// ---------------------------------------------------------------------------
+
 /**
  * The reserved height of the Mate at work: it follows the content up and
- * never back down while live, so a pill finishing or a shorter note leaves
- * room at the very bottom instead of pulling the conversation down.
+ * never back down while live, so a finished bar leaves room at the very
+ * bottom instead of pulling the conversation down. `remeasure` starts it
+ * afresh from the next measurement — for a click that opens or closes a
+ * detail: the person moved it.
  */
 function useGrowOnlyHeight() {
   const contentRef = useRef<HTMLDivElement>(null);
+  const tallestRef = useRef(0);
   const [minHeight, setMinHeight] = useState<number | undefined>(undefined);
   useLayoutEffect(() => {
     const content = contentRef.current;
     if (content === null) return;
-    let tallest = 0;
     const measure = () => {
       const height = content.getBoundingClientRect().height;
-      if (height > tallest) {
-        tallest = height;
+      if (height > tallestRef.current) {
+        tallestRef.current = height;
         setMinHeight(height);
       }
     };
@@ -199,15 +476,193 @@ function useGrowOnlyHeight() {
     observer.observe(content);
     return () => observer.disconnect();
   }, []);
-  return { contentRef, minHeight };
+  const remeasure = () => {
+    tallestRef.current = 0;
+  };
+  return { contentRef, minHeight, remeasure };
+}
+
+function spanOf(startedAt: string, endedAt: string | null): ReactNode {
+  return endedAt === null ? (
+    <ElapsedSince since={startedAt} />
+  ) : (
+    formatWorkDuration(Date.parse(endedAt) - Date.parse(startedAt))
+  );
+}
+
+/**
+ * A status bar for each thing that runs — the deploys, a service in trouble,
+ * the task list, the helpers — each opening its detail under it.
+ */
+function Instruments({
+  dock,
+  incidents,
+  environmentId,
+  threadRef,
+  onOpenAgents,
+  open,
+  onToggle,
+}: {
+  readonly dock: DockModel | null;
+  readonly incidents: ReadonlyArray<IncidentModel>;
+  readonly environmentId: EnvironmentId | null;
+  readonly threadRef: ScopedThreadRef | null;
+  readonly onOpenAgents: () => void;
+  readonly open: string | null;
+  readonly onToggle: (key: string) => void;
+}) {
+  const operations = dock?.operations ?? [];
+  const helpers = dock?.helpers ?? null;
+  const tasks = dock?.tasks ?? null;
+  if (operations.length === 0 && incidents.length === 0 && tasks === null && helpers === null) {
+    return null;
+  }
+  return (
+    <ul className="grid border-border/60 border-t p-2" data-working-instruments>
+      {operations.map((operation) => (
+        <Arriving key={operation.key}>
+          <DeployInstrument
+            environmentId={environmentId}
+            onToggle={() => onToggle(operation.key)}
+            open={open === operation.key}
+            operation={operation}
+          />
+          {open === operation.key ? (
+            <div className="px-2 pt-1 pb-2" data-working-detail="operation">
+              <OperationDetail
+                environmentId={environmentId}
+                operation={operation}
+                threadRef={threadRef}
+              />
+            </div>
+          ) : null}
+        </Arriving>
+      ))}
+      {incidents.map((incident) => (
+        <Arriving key={incident.key}>
+          <Instrument
+            bar={[{ key: "whole", tone: INCIDENT_BAR[incident.tone] }]}
+            failed={incident.tone === "failed"}
+            icon={<ActivityIcon aria-hidden="true" className="size-3.5" />}
+            label={`${incident.hostname}: ${incident.phases.join(", ")}`}
+            subject={incident.hostname}
+            tone={incident.tone}
+            words={incident.phases.join(" · ")}
+          />
+        </Arriving>
+      ))}
+      {tasks !== null ? (
+        <Arriving>
+          <Instrument
+            bar={keyedSteps(tasks.steps).map(({ key, step }) => ({
+              key,
+              tone:
+                step.status === "completed"
+                  ? "done"
+                  : step.status === "inProgress"
+                    ? "running"
+                    : "waiting",
+            }))}
+            figure={`${tasks.done}/${tasks.steps.length}`}
+            icon={<ListTodoIcon aria-hidden="true" className="size-3.5" />}
+            label={`Tasks: ${tasks.done} of ${tasks.steps.length} done. ${open === "tasks" ? "Hide" : "Show"} the list`}
+            onToggle={() => onToggle("tasks")}
+            open={open === "tasks"}
+            subject="Tasks"
+            tone={tasks.done === tasks.steps.length ? "ok" : "busy"}
+            words={tasks.current ?? "All done"}
+          />
+          {open === "tasks" ? (
+            <ol className="grid gap-px px-2 pt-1 pb-2" data-working-detail="tasks">
+              {keyedSteps(tasks.steps).map(({ key, step }) => {
+                const Icon =
+                  step.status === "completed"
+                    ? CheckIcon
+                    : step.status === "inProgress"
+                      ? CircleDotIcon
+                      : CircleIcon;
+                return (
+                  <li key={key} className="flex min-h-6 min-w-0 items-start gap-2 ps-10 text-line">
+                    <Icon
+                      aria-hidden="true"
+                      className={cn(
+                        "mt-0.5 size-3.5 shrink-0",
+                        step.status === "completed"
+                          ? "text-status-ok"
+                          : step.status === "inProgress"
+                            ? "text-status-busy"
+                            : "text-muted-foreground/50",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "min-w-0",
+                        step.status === "completed" ? "text-muted-foreground" : "text-foreground",
+                      )}
+                    >
+                      {step.step}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
+        </Arriving>
+      ) : null}
+      {helpers !== null ? (
+        <Arriving>
+          <Instrument
+            bar={helpers.rows.map((helper) => ({ key: helper.id, tone: HELPER_BAR[helper.tone] }))}
+            icon={<BotIcon aria-hidden="true" className="size-3.5" />}
+            label={`Helpers. ${open === "helpers" ? "Hide" : "Show"} each one`}
+            onToggle={() => onToggle("helpers")}
+            open={open === "helpers"}
+            subject={helpers.rows.length === 1 ? "1 helper" : `${helpers.rows.length} helpers`}
+            tone={helpers.working > 0 ? "busy" : helpers.failed > 0 ? "failed" : "ok"}
+            words={[
+              helpers.working > 0 ? `${helpers.working} working` : null,
+              helpers.done > 0 ? `${helpers.done} done` : null,
+              helpers.failed > 0 ? `${helpers.failed} failed` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          />
+          {open === "helpers" ? (
+            <ul className="grid gap-px px-2 pt-1 pb-2" data-working-detail="helpers">
+              {helpers.rows.map((helper) => (
+                <li
+                  key={helper.id}
+                  className="flex min-h-6 min-w-0 items-center gap-2 ps-10 text-line"
+                >
+                  <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[helper.tone])} />
+                  <span className="min-w-0 flex-1 truncate text-foreground">{helper.title}</span>
+                  <span className="shrink-0 text-muted-foreground text-xs">{helper.word}</span>
+                  <span className="w-14 shrink-0 text-right text-muted-foreground text-xs tabular-nums">
+                    {spanOf(helper.startedAt, helper.endedAt)}
+                  </span>
+                </li>
+              ))}
+              <li className="ps-10 pt-0.5">
+                <button
+                  className="cursor-pointer text-info-foreground text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                  onClick={onOpenAgents}
+                  type="button"
+                >
+                  Open the helpers panel
+                </button>
+              </li>
+            </ul>
+          ) : null}
+        </Arriving>
+      ) : null}
+    </ul>
+  );
 }
 
 export function ConversationWorking({
   speaker,
-  noteKey,
-  speech,
+  bubbles,
   incidents,
-  failures,
   dock,
   browser,
   environmentId,
@@ -215,222 +670,57 @@ export function ConversationWorking({
   onOpenAgents,
 }: {
   readonly speaker: ConversationSpeaker;
-  /** Which note the bubble holds: a new one replays the rise. */
-  readonly noteKey: string | null;
-  /** The Mate's latest words, rendered; null before it has said anything. */
-  readonly speech: ReactNode;
+  /** The Mate's words and the steps that failed on the way, oldest first. */
+  readonly bubbles: ReadonlyArray<WorkingBubble>;
   readonly incidents: ReadonlyArray<IncidentModel>;
-  /** What failed on the way, marked where it happened: red, or "came back". */
-  readonly failures: ReadonlyArray<WorkingFailure>;
   readonly dock: DockModel | null;
-  /** The browser block while the stretch checks pages. */
+  /** The browser while the stretch checks pages. */
   readonly browser: ReactNode;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   readonly onOpenAgents: () => void;
 }) {
-  const { contentRef, minHeight } = useGrowOnlyHeight();
   const [open, setOpen] = useState<string | null>(null);
-  const toggle = (key: string) => setOpen((current) => (current === key ? null : key));
-  const operations = dock?.operations ?? [];
-  const helpers = dock?.helpers ?? null;
-  const tasks = dock?.tasks ?? null;
-  const openOperation = operations.find((operation) => operation.key === open);
-  const hasPills =
-    operations.length > 0 ||
-    helpers !== null ||
-    tasks !== null ||
-    incidents.length > 0 ||
-    failures.length > 0;
+  const { contentRef, minHeight, remeasure } = useGrowOnlyHeight();
+  const toggle = (key: string) => {
+    remeasure();
+    setOpen((current) => (current === key ? null : key));
+  };
 
   return (
-    <div data-conversation-working style={minHeight === undefined ? undefined : { minHeight }}>
-      <div ref={contentRef} className="grid gap-2 pb-1">
-        {speech !== null && noteKey !== null ? (
-          <div className="relative flex min-w-0" data-mate-speech="live">
-            <span aria-hidden="true" className="absolute -start-5 top-1 flex w-5 justify-center">
-              <MateFace size="sm" state="working" tint={speaker.tint} />
-            </span>
-            <div
-              key={noteKey}
-              aria-live="polite"
-              className="min-w-0 max-w-full animate-speech-in rounded-2xl rounded-ss-sm bg-muted px-3.5 py-2 text-foreground motion-reduce:animate-none"
-            >
-              {speech}
+    <div
+      className="@container/panel"
+      data-conversation-working
+      style={minHeight === undefined ? undefined : { minHeight }}
+    >
+      <div ref={contentRef} className="pb-1">
+        <section
+          aria-label={`${speaker.name} at work`}
+          className="relative z-10 animate-panel-in rounded-3xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60 motion-reduce:animate-none"
+        >
+          <div className="px-4 pt-2 pb-4">
+            <Stream bubbles={bubbles} speaker={speaker} />
+          </div>
+          <Instruments
+            dock={dock}
+            environmentId={environmentId}
+            incidents={incidents}
+            onOpenAgents={onOpenAgents}
+            onToggle={toggle}
+            open={open}
+            threadRef={threadRef}
+          />
+        </section>
+        {browser !== null ? (
+          // The browser slides out from under the panel, a drawer narrower than it.
+          <div className="grid animate-tray-out motion-reduce:animate-none" data-working-tray>
+            <div className="min-h-0 overflow-hidden px-6">
+              <div className="animate-tray-slide rounded-b-3xl bg-muted/70 p-3 motion-reduce:animate-none">
+                {browser}
+              </div>
             </div>
           </div>
         ) : null}
-        {hasPills ? (
-          <div className="flex min-w-0 flex-wrap gap-1.5" data-working-pills>
-            {operations.map((operation) => (
-              <OperationPill
-                key={operation.key}
-                environmentId={environmentId}
-                onToggle={() => toggle(operation.key)}
-                open={open === operation.key}
-                operation={operation}
-              />
-            ))}
-            {incidents.map((incident) => (
-              <Pill
-                key={incident.key}
-                label={incident.phases.join(", ")}
-                tone={
-                  incident.tone === "failed"
-                    ? "failed"
-                    : incident.tone === "attention"
-                      ? "attention"
-                      : "plain"
-                }
-              >
-                <span
-                  className={cn("size-1.5 shrink-0 rounded-full", INCIDENT_DOT[incident.tone])}
-                />
-                <span className="shrink-0 font-medium text-foreground">{incident.hostname}</span>
-                <span className="min-w-0 truncate text-muted-foreground">
-                  {incident.phases.at(-1)}
-                </span>
-              </Pill>
-            ))}
-            {failures.map((failure) => (
-              <Pill
-                key={failure.key}
-                label={`${failure.subject ? `${failure.subject}: ` : ""}${failure.words}${failure.recovered ? ", came back" : ""}`}
-                tone={failure.recovered ? "attention" : "failed"}
-              >
-                {failure.recovered ? (
-                  <RotateCcwIcon aria-hidden="true" className="size-3 shrink-0" />
-                ) : (
-                  <XIcon aria-hidden="true" className="size-3.5 shrink-0" />
-                )}
-                {failure.subject ? (
-                  <span className="shrink-0 font-medium">{failure.subject}</span>
-                ) : null}
-                <span className="min-w-0 truncate">
-                  {failure.words}
-                  {failure.recovered ? " · came back" : ""}
-                </span>
-              </Pill>
-            ))}
-            {helpers !== null ? (
-              <Pill
-                label={`Helpers. ${open === "helpers" ? "Hide" : "Show"} each one`}
-                onToggle={() => toggle("helpers")}
-                open={open === "helpers"}
-              >
-                <BotIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="shrink-0 font-medium text-foreground">
-                  {helpers.rows.length === 1 ? "1 helper" : `${helpers.rows.length} helpers`}
-                </span>
-                <span className="min-w-0 truncate text-muted-foreground">
-                  {[
-                    helpers.working > 0 ? `${helpers.working} working` : null,
-                    helpers.done > 0 ? `${helpers.done} done` : null,
-                    helpers.failed > 0 ? `${helpers.failed} failed` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              </Pill>
-            ) : null}
-            {tasks !== null ? (
-              <Pill
-                label={`Tasks. ${open === "tasks" ? "Hide" : "Show"} the list`}
-                onToggle={() => toggle("tasks")}
-                open={open === "tasks"}
-              >
-                <ListTodoIcon
-                  aria-hidden="true"
-                  className="size-3.5 shrink-0 text-muted-foreground"
-                />
-                <span className="shrink-0 font-medium text-foreground tabular-nums">
-                  {tasks.done} of {tasks.steps.length}
-                </span>
-                {tasks.current ? (
-                  <span className="min-w-0 truncate text-muted-foreground">{tasks.current}</span>
-                ) : null}
-              </Pill>
-            ) : null}
-          </div>
-        ) : null}
-        {openOperation !== undefined ? (
-          <div className="max-h-96 overflow-auto rounded-xl" data-working-detail="operation">
-            <OperationDetail
-              environmentId={environmentId}
-              operation={openOperation}
-              threadRef={threadRef}
-            />
-          </div>
-        ) : null}
-        {open === "helpers" && helpers !== null ? (
-          <ul className="grid gap-px rounded-xl bg-muted/50 p-1.5" data-working-detail="helpers">
-            {helpers.rows.map((helper) => (
-              <li
-                key={helper.id}
-                className="flex min-h-6 min-w-0 items-center gap-2 px-1.5 text-line"
-              >
-                <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[helper.tone])} />
-                <span className="min-w-0 flex-1 truncate text-foreground">{helper.title}</span>
-                <span className="shrink-0 text-muted-foreground text-xs">{helper.word}</span>
-                <span className="w-14 shrink-0 text-right text-muted-foreground text-xs tabular-nums">
-                  {helper.endedAt === null ? (
-                    <ElapsedSince since={helper.startedAt} />
-                  ) : (
-                    formatWorkDuration(Date.parse(helper.endedAt) - Date.parse(helper.startedAt))
-                  )}
-                </span>
-              </li>
-            ))}
-            <li className="px-1.5 pt-0.5">
-              <button
-                className="cursor-pointer text-info-foreground text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                onClick={onOpenAgents}
-                type="button"
-              >
-                Open the helpers panel
-              </button>
-            </li>
-          </ul>
-        ) : null}
-        {open === "tasks" && tasks !== null ? (
-          <ol className="grid gap-px rounded-xl bg-muted/50 p-1.5" data-working-detail="tasks">
-            {keyedSteps(tasks.steps).map(({ key, step }) => {
-              const Icon =
-                step.status === "completed"
-                  ? CheckIcon
-                  : step.status === "inProgress"
-                    ? CircleDotIcon
-                    : CircleIcon;
-              return (
-                <li
-                  key={key}
-                  className="flex min-h-6 min-w-0 items-start gap-2 px-1.5 py-0.5 text-line"
-                >
-                  <Icon
-                    aria-hidden="true"
-                    className={cn(
-                      "mt-0.5 size-3.5 shrink-0",
-                      step.status === "completed"
-                        ? "text-status-ok"
-                        : step.status === "inProgress"
-                          ? "text-status-busy"
-                          : "text-muted-foreground/50",
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "min-w-0",
-                      step.status === "completed" ? "text-muted-foreground" : "text-foreground",
-                    )}
-                  >
-                    {step.step}
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
-        ) : null}
-        {browser}
       </div>
     </div>
   );

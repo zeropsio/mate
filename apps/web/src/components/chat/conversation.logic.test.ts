@@ -527,6 +527,7 @@ describe("deriveOutcome", () => {
     });
     expect(outcome).toEqual({
       key: "outcome:msg:m0",
+      turnKey: "msg:m0",
       live: [
         {
           hostname: "medusastage",

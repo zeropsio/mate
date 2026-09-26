@@ -1001,6 +1001,8 @@ export interface OutcomeService {
 
 export interface OutcomeModel {
   readonly key: string;
+  /** The turn it reports on. */
+  readonly turnKey: string;
   readonly live: ReadonlyArray<OutcomeService>;
   readonly landed: ReadonlyArray<{
     readonly key: string;
@@ -1146,6 +1148,7 @@ export function deriveOutcome(input: {
 
   const outcome: OutcomeModel = {
     key: `outcome:${turn.key}`,
+    turnKey: turn.key,
     live: [...services.values()],
     landed: input.landed.map((entry) => ({
       key: entry.event.key,

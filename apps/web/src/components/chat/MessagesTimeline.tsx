@@ -1398,16 +1398,45 @@ function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-
   );
 }
 
-/** The Mate at work: its words, what runs, the browser while it checks. */
+/** A note of the Mate's, in full: its words as markdown, at the moment it said them. */
+function NoteWords({ message }: { readonly message: ChatMessage }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <ChangeChipMomentContext value={message.createdAt}>
+      <ChatMarkdown
+        text={message.text}
+        cwd={ctx.markdownCwd}
+        threadRef={ctx.threadRef ?? undefined}
+        isStreaming={Boolean(message.streaming)}
+        lineBreaks={shouldPreserveAssistantLineBreaks(message.text)}
+        skills={ctx.skills}
+        headingLevelOffset={MESSAGE_HEADING_LEVEL}
+        onRunShellCommand={ctx.onRunShellCommand}
+      />
+    </ChangeChipMomentContext>
+  );
+}
+
+/**
+ * Turns whose Mate at work this page watched live: their report arrives as
+ * the panel settles into it, once. A report scrolled back into view, or read
+ * after a reload, is simply there.
+ */
+const watchedTurnKeys = new Set<string>();
+
+/** The Mate at work: its words streaming, what runs, the browser while it checks. */
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const ctx = use(TimelineRowCtx);
   const dock = use(TimelineWorkingCtx);
-  const note = row.note;
+  useEffect(() => {
+    watchedTurnKeys.add(row.turnKey);
+  }, [row.turnKey]);
   return (
     <ConversationWorking
       browser={
         row.strip === null ? null : (
           <BrowserStrip
+            bare
             environmentId={ctx.activeThreadEnvironmentId}
             onOpenImage={ctx.onImageExpand}
             strip={row.strip}
@@ -1415,29 +1444,16 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
           />
         )
       }
+      bubbles={row.stream.map((item) =>
+        item.kind === "note"
+          ? { kind: "note", key: item.key, body: <NoteWords message={item.message} /> }
+          : item,
+      )}
       dock={dock}
       environmentId={ctx.activeThreadEnvironmentId}
-      failures={row.failures}
       incidents={row.incidents}
-      noteKey={note?.id ?? null}
       onOpenAgents={ctx.onOpenAgents}
       speaker={ctx.speaker}
-      speech={
-        note === null ? null : (
-          <ChangeChipMomentContext value={note.createdAt}>
-            <ChatMarkdown
-              text={note.text}
-              cwd={ctx.markdownCwd}
-              threadRef={ctx.threadRef ?? undefined}
-              isStreaming={Boolean(note.streaming)}
-              lineBreaks={shouldPreserveAssistantLineBreaks(note.text)}
-              skills={ctx.skills}
-              headingLevelOffset={MESSAGE_HEADING_LEVEL}
-              onRunShellCommand={ctx.onRunShellCommand}
-            />
-          </ChangeChipMomentContext>
-        )
-      }
       threadRef={ctx.threadRef}
     />
   );
@@ -1447,38 +1463,15 @@ function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech"
   const ctx = use(TimelineRowCtx);
   return (
     <MateSpeech speaker={ctx.speaker}>
-      <ChangeChipMomentContext value={row.message.createdAt}>
-        <ChatMarkdown
-          text={row.message.text}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          isStreaming={Boolean(row.message.streaming)}
-          lineBreaks={shouldPreserveAssistantLineBreaks(row.message.text)}
-          skills={ctx.skills}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onRunShellCommand={ctx.onRunShellCommand}
-        />
-      </ChangeChipMomentContext>
+      <NoteWords message={row.message} />
     </MateSpeech>
   );
 }
 
 function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-note" }> }) {
-  const ctx = use(TimelineRowCtx);
   return (
     <div className="min-w-0 py-0.5 text-foreground/90" data-log-note>
-      <ChangeChipMomentContext value={row.message.createdAt}>
-        <ChatMarkdown
-          text={row.message.text}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          isStreaming={Boolean(row.message.streaming)}
-          lineBreaks={shouldPreserveAssistantLineBreaks(row.message.text)}
-          skills={ctx.skills}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onRunShellCommand={ctx.onRunShellCommand}
-        />
-      </ChangeChipMomentContext>
+      <NoteWords message={row.message} />
     </div>
   );
 }
@@ -1654,11 +1647,13 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
 
 function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcome" }> }) {
   const ctx = use(TimelineRowCtx);
+  const [settling] = useState(() => watchedTurnKeys.delete(row.outcome.turnKey));
   return (
     <TurnReport
       onOpenImage={ctx.onImageExpand}
       onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
       outcome={row.outcome}
+      settling={settling}
     />
   );
 }

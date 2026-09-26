@@ -179,6 +179,21 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-zerops-appear: zerops-appear 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
   /* A Mate's new words: a small rise into place, once. */
   --animate-speech-in: speech-in 240ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  /* The Mate at work. Its panel rises in under the line once; each new
+     bubble opens its room, pushing what was said before it up and away,
+     and pops in beside the face, which nods; the browser slides out from
+     under the panel; the report settles where the panel was. All once. */
+  --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-room-in: room-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-bubble-pop: bubble-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-face-nod: face-nod 520ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-tray-out: room-in 640ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-tray-slide: tray-slide 640ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  /* The Mate composing its first words: three dots lit in turn, stepped. */
+  --animate-typing-first: typing-first 1.2s infinite;
+  --animate-typing-second: typing-second 1.2s infinite;
+  --animate-typing-third: typing-third 1.2s infinite;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -310,6 +325,86 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     from {
       opacity: 0;
       transform: translateY(4px) scale(0.985);
+    }
+  }
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+  }
+  @keyframes room-in {
+    from {
+      grid-template-rows: 0fr;
+    }
+    to {
+      grid-template-rows: 1fr;
+    }
+  }
+  @keyframes bubble-pop {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.86);
+    }
+  }
+  @keyframes face-nod {
+    35% {
+      transform: translateY(-3px) rotate(-6deg) scale(1.1);
+    }
+  }
+  @keyframes tray-slide {
+    from {
+      opacity: 0.4;
+      transform: translateY(-4rem);
+    }
+  }
+  @keyframes report-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.985);
+    }
+  }
+  @keyframes typing-first {
+    0% {
+      opacity: 1;
+      animation-timing-function: steps(1);
+    }
+    33% {
+      opacity: 0.3;
+      animation-timing-function: steps(1);
+    }
+    100% {
+      opacity: 0.3;
+    }
+  }
+  @keyframes typing-second {
+    0% {
+      opacity: 0.3;
+      animation-timing-function: steps(1);
+    }
+    33% {
+      opacity: 1;
+      animation-timing-function: steps(1);
+    }
+    66% {
+      opacity: 0.3;
+      animation-timing-function: steps(1);
+    }
+    100% {
+      opacity: 0.3;
+    }
+  }
+  @keyframes typing-third {
+    0% {
+      opacity: 0.3;
+      animation-timing-function: steps(1);
+    }
+    66% {
+      opacity: 1;
+      animation-timing-function: steps(1);
+    }
+    100% {
+      opacity: 1;
     }
   }
   @keyframes status-ping {
@@ -467,6 +562,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   @variant sm {
     --topbar-scroll-fade-height: 3rem;
   }
+}
+
+/* The Mate's stream: what was said before the newest bubble drifts up and
+   fades out through the top edge. */
+@utility stream-fade {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 3rem);
+  mask-image: linear-gradient(to bottom, transparent, black 3rem);
 }
 
 /* Virtualizers own their native scroll element, so they cannot use ScrollArea's

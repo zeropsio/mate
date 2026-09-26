@@ -1,21 +1,25 @@
 /**
- * What a settled turn did, as the report its working group settles into —
- * made of the same pills the person watched run: each service it left live
+ * What a settled turn did, as the report its panel settles into — made of
+ * the same parts the person watched run: each thing leads with the disc its
+ * status bar wore, now in the tone it ended in. Each service it left live
  * with its link, a failure it came back from, the changes that landed, the
- * files it changed, the checks with every take in its device's shape, what it
- * created and removed, and what it could not do. It sits where the working
- * group was, under the line, before the Mate's answer.
+ * files it changed, the checks with every take in its device's shape, what
+ * it created and removed, and what it could not do — pills on one small tray
+ * that hugs them, where the panel was, under the line and before the answer.
  */
 import type { TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   ArrowUpRightIcon,
+  CheckIcon,
+  CircleAlertIcon,
   FileDiffIcon,
   GitMergeIcon,
   MinusIcon,
   MonitorCheckIcon,
   MonitorXIcon,
   PlusIcon,
+  RocketIcon,
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
@@ -29,14 +33,21 @@ import {
   type OutcomeModel,
   type OutcomeService,
 } from "./conversation.logic";
-import { Pill } from "./ConversationPills";
+import { Pill, StatusDisc, type DiscTone } from "./ConversationPills";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
-const SERVICE_DOT: Record<OutcomeService["tone"], string> = {
-  ok: "bg-status-ok",
-  failed: "bg-status-failed",
-  attention: "bg-status-attention",
-  busy: "bg-status-busy",
+const SERVICE_DISC: Record<OutcomeService["tone"], DiscTone> = {
+  ok: "ok",
+  failed: "failed",
+  attention: "attention",
+  busy: "busy",
+};
+
+const SERVICE_ICON: Record<OutcomeService["tone"], typeof CheckIcon> = {
+  ok: CheckIcon,
+  failed: XIcon,
+  attention: CircleAlertIcon,
+  busy: RocketIcon,
 };
 
 /** A take in the report, in the shape of the device it was taken on. */
@@ -51,12 +62,15 @@ function compactCount(value: number): string {
 }
 
 const SERVICE_PILL_CLASS =
-  "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-background px-2.5 text-xs";
+  "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-card ps-1 pe-2.5 text-xs";
 
 function ServicePill({ service }: { readonly service: OutcomeService }) {
+  const Icon = SERVICE_ICON[service.tone];
   const words = (
     <>
-      <span className={cn("size-1.5 shrink-0 rounded-full", SERVICE_DOT[service.tone])} />
+      <StatusDisc size="sm" tone={SERVICE_DISC[service.tone]}>
+        <Icon aria-hidden="true" className="size-3" />
+      </StatusDisc>
       <span className="shrink-0 font-medium text-foreground">{service.hostname}</span>
       <span
         className={cn(
@@ -111,7 +125,7 @@ function Takes({
   if (shots.length === 0) return null;
   return (
     <div
-      className="flex min-w-0 items-end gap-2 overflow-x-auto pb-0.5 scrollbar-none"
+      className="flex min-w-0 items-end gap-2 overflow-x-auto px-1 pb-0.5 scrollbar-none"
       data-report-takes
     >
       {takes.map((take) => {
@@ -150,14 +164,24 @@ export function TurnReport({
   outcome,
   onOpenTurnDiff,
   onOpenImage,
+  settling = false,
 }: {
   readonly outcome: OutcomeModel;
   readonly onOpenTurnDiff: (turnId: TurnId) => void;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
+  /** The person watched the turn run: the report arrives as its panel settles. */
+  readonly settling?: boolean;
 }) {
   const checks = outcome.checks;
   return (
-    <section aria-label="What this turn did" className="grid gap-2" data-turn-report>
+    <section
+      aria-label="What this turn did"
+      className={cn(
+        "grid w-fit max-w-full gap-2 rounded-3xl bg-muted/60 p-1.5",
+        settling && "origin-top-left animate-report-in motion-reduce:animate-none",
+      )}
+      data-turn-report
+    >
       <div className="flex min-w-0 flex-wrap gap-1.5">
         {outcome.live.map((service) => (
           <ServicePill key={service.hostname} service={service} />
@@ -168,17 +192,22 @@ export function TurnReport({
                 <Pill
                   key={`${service.hostname}:recovered`}
                   label={`${service.hostname}: ${service.recovered}`}
-                  tone="attention"
                 >
-                  <RotateCcwIcon aria-hidden="true" className="size-3 shrink-0" />
-                  <span className="min-w-0 truncate">{service.recovered}</span>
+                  <StatusDisc size="sm" tone="attention">
+                    <RotateCcwIcon aria-hidden="true" className="size-3" />
+                  </StatusDisc>
+                  <span className="min-w-0 truncate text-status-attention-text">
+                    {service.recovered}
+                  </span>
                 </Pill>,
               ]
             : [],
         )}
         {outcome.landed.map((change) => (
           <Pill key={change.key} label={`${change.line} landed: ${change.title}`}>
-            <GitMergeIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
+            <StatusDisc size="sm" tone="ok">
+              <GitMergeIcon aria-hidden="true" className="size-3" />
+            </StatusDisc>
             <span className="shrink-0 font-medium text-foreground">{change.line}</span>
             <span className="min-w-0 max-w-80 truncate text-muted-foreground">{change.title}</span>
           </Pill>
@@ -188,7 +217,9 @@ export function TurnReport({
             label={`${outcome.files.count} files changed. Review the diff`}
             onClick={() => onOpenTurnDiff(outcome.files!.turnId)}
           >
-            <FileDiffIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+            <StatusDisc size="sm" tone="idle">
+              <FileDiffIcon aria-hidden="true" className="size-3" />
+            </StatusDisc>
             <span className="shrink-0 text-foreground">
               {outcome.files.count === 1 ? "1 file" : `${outcome.files.count} files`}
             </span>
@@ -204,20 +235,21 @@ export function TurnReport({
         {checks !== null ? (
           <Pill
             label={`${checks.count} checks of ${checks.views} pages, ${checks.failures > 0 ? `${checks.failures} failed` : "all passed"}`}
-            tone={checks.failures > 0 ? "failed" : "plain"}
           >
-            {checks.failures > 0 ? (
-              <MonitorXIcon aria-hidden="true" className="size-3.5 shrink-0" />
-            ) : (
-              <MonitorCheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
-            )}
-            <span className={cn("shrink-0", checks.failures > 0 ? null : "text-foreground")}>
+            <StatusDisc size="sm" tone={checks.failures > 0 ? "failed" : "ok"}>
+              {checks.failures > 0 ? (
+                <MonitorXIcon aria-hidden="true" className="size-3" />
+              ) : (
+                <MonitorCheckIcon aria-hidden="true" className="size-3" />
+              )}
+            </StatusDisc>
+            <span className="shrink-0 text-foreground">
               {checks.views === 1 ? "1 page" : `${checks.views} pages`}
             </span>
             <span
               className={cn(
                 "min-w-0 truncate",
-                checks.failures > 0 ? null : "text-muted-foreground",
+                checks.failures > 0 ? "text-status-failed-text" : "text-muted-foreground",
               )}
             >
               · {checks.count === 1 ? "1 check" : `${checks.count} checks`} ·{" "}
@@ -231,20 +263,26 @@ export function TurnReport({
         ) : null}
         {outcome.created.map((name) => (
           <Pill key={`created:${name}`} label={`Created ${name}`}>
-            <PlusIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
+            <StatusDisc size="sm" tone="ok">
+              <PlusIcon aria-hidden="true" className="size-3" />
+            </StatusDisc>
             <span className="min-w-0 truncate text-foreground">{name}</span>
           </Pill>
         ))}
         {outcome.removed.map((name) => (
           <Pill key={`removed:${name}`} label={`Removed ${name}`}>
-            <MinusIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+            <StatusDisc size="sm" tone="idle">
+              <MinusIcon aria-hidden="true" className="size-3" />
+            </StatusDisc>
             <span className="min-w-0 truncate text-muted-foreground">{name}</span>
           </Pill>
         ))}
         {outcome.notDone.map((line) => (
-          <Pill key={`not-done:${line}`} label={`Not done: ${line}`} tone="failed">
-            <XIcon aria-hidden="true" className="size-3.5 shrink-0" />
-            <span className="min-w-0 truncate">{line}</span>
+          <Pill key={`not-done:${line}`} label={`Not done: ${line}`}>
+            <StatusDisc size="sm" tone="failed">
+              <XIcon aria-hidden="true" className="size-3" />
+            </StatusDisc>
+            <span className="min-w-0 truncate text-status-failed-text">{line}</span>
           </Pill>
         ))}
       </div>

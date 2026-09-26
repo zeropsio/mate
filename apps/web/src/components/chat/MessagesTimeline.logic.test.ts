@@ -141,13 +141,83 @@ describe("deriveMessagesTimelineRows", () => {
       endedAt: null,
       activity: { kind: "tool" },
     });
-    // The Mate at work is the stretch's tail: its latest note, in full.
+    // The Mate at work is the stretch's tail: its words stream there, in full.
     expect(list[3]).toMatchObject({
       kind: "working",
-      note: expect.objectContaining({ text: "Checking the build." }),
+      turnKey: "msg:m0",
+      stream: [{ kind: "note", key: "a1", message: expect.objectContaining({ id: "a1" }) }],
       strip: null,
       incidents: [],
     });
+  });
+
+  const typeCheck = (id: string, minute: number, failed: boolean) =>
+    tool(id, "t1", minute, {
+      label: "Run the type check",
+      tone: failed ? "error" : "info",
+      sourceActivityKind: "task.completed",
+    });
+  it.each([
+    {
+      name: "the Mate's words stream oldest first, the last few of them",
+      entries: [
+        assistant("a1", "t1", 1, "One."),
+        tool("w1", "t1", 2),
+        assistant("a2", "t1", 3, "Two."),
+        assistant("a3", "t1", 4, "Three."),
+        assistant("a4", "t1", 5, "Four."),
+        assistant("a5", "t1", 6, "Five."),
+        assistant("a6", "t1", 7, "Six."),
+        assistant("a7", "t1", 8, "Seven."),
+      ],
+      stream: ["Two.", "Three.", "Four.", "Five.", "Six.", "Seven."],
+    },
+    {
+      name: "a step that failed on the way streams where it failed",
+      entries: [
+        assistant("a1", "t1", 1, "Type checking."),
+        typeCheck("t9", 2, true),
+        assistant("a2", "t1", 3, "Fixing the types."),
+      ],
+      stream: ["Type checking.", "✗ Run the type check failed", "Fixing the types."],
+    },
+    {
+      name: "a failure a later attempt came back from says so, in place",
+      entries: [
+        typeCheck("t9", 1, true),
+        assistant("a1", "t1", 2, "Fixed."),
+        typeCheck("t10", 3, false),
+      ],
+      stream: ["↺ Run the type check failed · then passed", "Fixed."],
+    },
+    {
+      name: "a failed operation streams; a deploy, a check and a dev server carry their own",
+      entries: [
+        operation("v1", "t1", 1, { kind: "verify", phase: "failed", statusWord: "Unhealthy" }),
+        operation("d1", "t1", 2, { kind: "deploy", phase: "failed", statusWord: "Failed" }),
+        operation("b1", "t1", 3, { kind: "browser", phase: "failed", statusWord: "Failed" }),
+        operation("v2", "t1", 4, { kind: "verify", phase: "done", statusWord: "Healthy" }),
+      ],
+      stream: ["↺ appdev Unhealthy · came back"],
+    },
+    {
+      name: "words that are only space are no note, and nothing said yet is an empty stream",
+      entries: [assistant("a1", "t1", 1, "  "), tool("w1", "t1", 2)],
+      stream: [],
+    },
+  ])("$name", ({ entries, stream }) => {
+    const working = rows({ entries: [user("m0", 0), ...entries], live: "t1" }).find(
+      (row) => row.kind === "working",
+    );
+    expect(
+      working?.kind === "working"
+        ? working.stream.map((item) =>
+            item.kind === "note"
+              ? item.message.text
+              : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
+          )
+        : null,
+    ).toEqual(stream);
   });
 
   it.each([

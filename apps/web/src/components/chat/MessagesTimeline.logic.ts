@@ -415,19 +415,20 @@ type MessagesTimelineRowBody =
   | {
       /**
        * The Mate at work, at the live stretch's tail — the one place what is
-       * happening now is shown: its latest words in full beside its face, a
-       * pill for each thing running (deploys, helpers, tasks, a service in
-       * trouble), and the browser while it checks. It is the conversation's
-       * bottom, so it may change; settling folds it into the line above.
+       * happening now is shown: its words streaming beside its face, the
+       * newest in full and the steps that failed on the way among them; a
+       * status bar for each thing running (deploys, helpers, tasks, a service
+       * in trouble); and the browser while it checks. It is the conversation's
+       * bottom, so it may change; settling turns it into the turn's report.
        */
       kind: "working";
       id: string;
       createdAt: string;
       stretchKey: string;
-      note: ChatMessage | null;
+      turnKey: string;
+      stream: ReadonlyArray<WorkingStreamItem>;
       strip: BrowserStripModel | null;
       incidents: ReadonlyArray<IncidentModel>;
-      failures: ReadonlyArray<WorkingFailure>;
     }
   | {
       /**
@@ -719,22 +720,42 @@ function isTaskActivityKind(kind: string | undefined): boolean {
  * same thing succeeded.
  */
 export interface WorkingFailure {
-  readonly key: string;
   readonly subject: string | null;
+  /** What failed, in words: "Unhealthy", "Re-run type checks failed". */
   readonly words: string;
-  readonly recovered: boolean;
+  /** Once a later attempt at the same thing succeeded: "came back", "then passed". */
+  readonly recovered: string | null;
 }
 
+/** One thing in the Mate's stream while it works: its words, or a step that failed on the way. */
+export type WorkingStreamItem =
+  | { readonly kind: "note"; readonly key: string; readonly message: ChatMessage }
+  | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure };
+
 /**
- * The failures of a stretch the live group marks: an operation that failed
- * (a verify, a subdomain, a scale — deploys carry their own state in their
- * pill, the browser its own in its takes, a dev server in its incident) and
- * a background task that failed.
+ * How much of the stream the Mate at work keeps: the newest item and the ones
+ * it pushed up, enough to fill the window above a short bubble after a long
+ * one as they fade out through its top.
  */
-function stretchFailures(stretch: Stretch): WorkingFailure[] {
-  const failures: WorkingFailure[] = [];
+const STREAM_DEPTH = 6;
+
+/**
+ * What a live stretch streams, oldest first, the last few of it: the Mate's
+ * words, and each step that failed on the way where it failed — an operation
+ * (a verify, a subdomain, a scale; a deploy carries its own state in its
+ * status bar, the browser its own in its takes, a dev server in its incident)
+ * or a background task.
+ */
+function stretchStream(stretch: Stretch): WorkingStreamItem[] {
+  const items: WorkingStreamItem[] = [];
   stretch.entries.forEach((entry, index) => {
     const later = stretch.entries.slice(index + 1);
+    if (entry.kind === "message") {
+      if (entry.message.role === "assistant" && entry.message.text.trim().length > 0) {
+        items.push({ kind: "note", key: entry.id, message: entry.message });
+      }
+      return;
+    }
     if (entry.kind === "operation") {
       const op = entry.operation;
       if (
@@ -745,17 +766,22 @@ function stretchFailures(stretch: Stretch): WorkingFailure[] {
       ) {
         return;
       }
-      failures.push({
+      items.push({
+        kind: "failure",
         key: op.key,
-        subject: op.subject,
-        words: op.statusWord,
-        recovered: later.some(
-          (next) =>
-            next.kind === "operation" &&
-            next.operation.kind === op.kind &&
-            next.operation.subject === op.subject &&
-            next.operation.phase === "done",
-        ),
+        failure: {
+          subject: op.subject,
+          words: op.statusWord,
+          recovered: later.some(
+            (next) =>
+              next.kind === "operation" &&
+              next.operation.kind === op.kind &&
+              next.operation.subject === op.subject &&
+              next.operation.phase === "done",
+          )
+            ? "came back"
+            : null,
+        },
       });
       return;
     }
@@ -765,21 +791,26 @@ function stretchFailures(stretch: Stretch): WorkingFailure[] {
       isTaskActivityKind(entry.entry.sourceActivityKind)
     ) {
       const label = entry.entry.label;
-      failures.push({
+      items.push({
+        kind: "failure",
         key: entry.id,
-        subject: null,
-        words: label,
-        recovered: later.some(
-          (next) =>
-            next.kind === "work" &&
-            next.entry.label === label &&
-            next.entry.tone !== "error" &&
-            isTaskActivityKind(next.entry.sourceActivityKind),
-        ),
+        failure: {
+          subject: null,
+          words: `${label} failed`,
+          recovered: later.some(
+            (next) =>
+              next.kind === "work" &&
+              next.entry.label === label &&
+              next.entry.tone !== "error" &&
+              isTaskActivityKind(next.entry.sourceActivityKind),
+          )
+            ? "then passed"
+            : null,
+        },
       });
     }
   });
-  return failures;
+  return items.slice(-STREAM_DEPTH);
 }
 
 /**
@@ -1460,10 +1491,10 @@ export function deriveMessagesTimelineRows(
         id: `working:${stretch.key}`,
         createdAt: stretch.startedAt,
         stretchKey: stretch.key,
-        note: lastNote?.message ?? null,
+        turnKey: turn.key,
+        stream: stretchStream(stretch),
         strip: browserStrip(stretch),
         incidents: stretchIncidents(stretch),
-        failures: stretchFailures(stretch),
       });
     } else if (!answered && lastNote !== null) {
       rows.push({
