@@ -8,16 +8,18 @@
  * take keeps its frame outlined red, saying why. Fixed height from the first
  * check on: the stage and the takes change inside it, the block never grows.
  *
- * A take's picture is the Mate's screenshot, else the last live frame the
- * person watched of it. Checks with no picture at all draw no empty frame:
- * the block is their list of takes (the owner, 2026-09-26, of a frame saying
- * "Screenshot not kept": "what is it good for then?").
+ * A take the Mate screenshot has its picture. One it did not read the
+ * page's structure — its errors, console and requests — and says so: a
+ * structure glyph and "structure", never an empty frame (the owner,
+ * 2026-09-26, of a frame saying "Screenshot not kept": "when there is no
+ * screenshot it means its checking just the structure right? we could somehow
+ * reflect as well"). With no picture to stage, the block is its list of takes.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
-import { CheckIcon, ImageOffIcon, XIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { CheckIcon, CodeXmlIcon, XIcon } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
@@ -31,7 +33,6 @@ import {
   type BrowserStripModel,
 } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
-import { checkPicture, keepFrame } from "./keptFrames";
 
 type Device = "desktop" | "tablet" | "phone";
 
@@ -100,6 +101,21 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/** What a structure check found, in words: "no errors", "2 errors · 1 failed request". */
+function takeFindings(check: ZeropsOperation): string | null {
+  const summary = check.browserSummary;
+  if (summary === undefined) return null;
+  const errors = summary.errorCount;
+  const requests = summary.failedRequestCount;
+  if (errors === 0 && requests === 0) return "no errors";
+  return [
+    errors > 0 ? plural(errors, "error", "errors") : null,
+    requests > 0 ? plural(requests, "failed request", "failed requests") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function BrowserStrip({
   strip,
   environmentId,
@@ -123,21 +139,16 @@ export function BrowserStrip({
     : strip.checks.find((check) => check.key === pickedKey && check !== latest);
   const stream = useZeropsBrowserStream(running ? environmentId : null);
   const liveFrame = stream !== undefined && stream !== "unavailable" ? stream.frame : undefined;
-  // Watched live, a take keeps its last frame as its picture.
-  useEffect(() => {
-    if (running && liveFrame !== undefined) keepFrame(latest.key, frameImageSrc(liveFrame));
-  }, [latest.key, liveFrame, running]);
   // Settled, the stage holds the newest take with a picture.
   const onStage =
-    picked ??
-    (running ? latest : (strip.checks.findLast((check) => checkPicture(check)) ?? latest));
+    picked ?? (running ? latest : (strip.checks.findLast((check) => check.screenshot) ?? latest));
   const device = browserCheckDevice(onStage);
   const stageSrc =
     onStage === latest && running
       ? liveFrame
         ? frameImageSrc(liveFrame)
         : undefined
-      : checkPicture(onStage);
+      : onStage.screenshot?.src;
   const staged = running || stageSrc !== undefined;
   const caption = browserCheckCaption(onStage);
   const failedOnStage = browserCheckFailed(onStage);
@@ -155,10 +166,11 @@ export function BrowserStrip({
     if (film) film.scrollTop = film.scrollHeight;
   });
 
-  const shots = strip.checks.flatMap((check) => {
-    const src = checkPicture(check);
-    return src === undefined ? [] : [{ key: check.key, src, name: browserCheckCaption(check) }];
-  });
+  const shots = strip.checks.flatMap((check) =>
+    check.screenshot
+      ? [{ key: check.key, src: check.screenshot.src, name: browserCheckCaption(check) }]
+      : [],
+  );
   const openShot = (key: string) => {
     const index = shots.findIndex((shot) => shot.key === key);
     if (index < 0) return;
@@ -190,10 +202,13 @@ export function BrowserStrip({
           .join(" · ");
   const viewport = onStage.viewport;
   const duration = checkDuration(onStage);
+  const structureOnStage = !running && onStage.screenshot === undefined;
   const facts = [
     onStage.deviceName ?? DEVICE_WORD[device],
     viewport && onStage.deviceName === undefined ? `${viewport.width}×${viewport.height}` : null,
     frames > 1 && !running ? caption : null,
+    structureOnStage ? "structure" : null,
+    structureOnStage ? takeFindings(onStage) : null,
     duration,
   ]
     .filter(Boolean)
@@ -295,9 +310,11 @@ export function BrowserStrip({
               const failed = browserCheckFailed(check);
               const live = check.phase === "running";
               const takeDevice = browserCheckDevice(check);
+              const structure = !live && check.screenshot === undefined;
               const takeWords = [
                 check.deviceName ?? DEVICE_WORD[takeDevice],
                 browserCheckCaption(check),
+                structure ? "structure" : null,
                 live ? "running" : checkDuration(check),
               ]
                 .filter(Boolean)
@@ -313,7 +330,7 @@ export function BrowserStrip({
                     check === onStage ? "bg-accent/70 text-foreground" : "text-muted-foreground",
                   )}
                   data-browser-strip-frame={failed ? "failed" : live ? "live" : "done"}
-                  disabled={checkPicture(check) === undefined && !live}
+                  disabled={check.screenshot === undefined && !live}
                   onClick={() => (live ? openPanel() : setPickedKey(check.key))}
                   type="button"
                 >
@@ -328,18 +345,15 @@ export function BrowserStrip({
                           : "border-border",
                     )}
                   >
-                    {checkPicture(check) !== undefined ? (
+                    {check.screenshot ? (
                       <img
                         alt=""
                         className="block size-full object-cover object-top"
-                        src={checkPicture(check)}
+                        src={check.screenshot.src}
                       />
                     ) : live ? null : (
-                      // The take ran and left no picture: say so rather than draw a blank.
-                      <ImageOffIcon
-                        aria-hidden="true"
-                        className="size-3 text-muted-foreground/60"
-                      />
+                      // No screenshot: the take read the page's structure.
+                      <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
                     )}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{takeWords}</span>
