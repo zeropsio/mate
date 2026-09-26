@@ -302,17 +302,23 @@ export function Seam({
   const label =
     row.seam === "day"
       ? dayLabel(row.createdAt)
-      : formatDayAwareTimestamp(row.createdAt, timestampFormat);
+      : row.seam === "new"
+        ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
+        : formatDayAwareTimestamp(row.createdAt, timestampFormat);
+  const fresh = row.seam === "new";
   return (
     <div
       aria-label={label}
-      className="flex items-center gap-3 text-muted-foreground text-xs"
+      className={cn(
+        "flex items-center gap-3 text-xs",
+        fresh ? "font-medium text-info-foreground" : "text-muted-foreground",
+      )}
       data-seam={row.seam}
       role="separator"
     >
-      <span className="h-px flex-1 bg-border" />
+      <span className={cn("h-px flex-1", fresh ? "bg-info/40" : "bg-border")} />
       <span className="shrink-0 tabular-nums">{label}</span>
-      <span className="h-px flex-1 bg-border" />
+      <span className={cn("h-px flex-1", fresh ? "bg-info/40" : "bg-border")} />
     </div>
   );
 }

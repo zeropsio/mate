@@ -132,6 +132,7 @@ import {
   type ParsedTerminalContextEntry,
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
+import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -490,9 +491,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [suspendEndScrollMaintenanceForDisclosure],
   );
 
+  // Where the person left off: the last visit this conversation remembers,
+  // read once as it opens — only when something came since — so the line
+  // marks what is new and never follows the reader around.
+  const [newSince] = useState(() => {
+    const visitedAt = useUiStateStore.getState().threadLastVisitedAtById[routeThreadKey];
+    const completedAt = latestTurn?.completedAt;
+    return visitedAt && completedAt && Date.parse(completedAt) > Date.parse(visitedAt)
+      ? visitedAt
+      : null;
+  });
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
+        newSince,
         timelineEntries,
         latestTurn,
         runningTurnId,
@@ -506,6 +518,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         queuedMessages,
       }),
     [
+      newSince,
       timelineEntries,
       latestTurn,
       runningTurnId,

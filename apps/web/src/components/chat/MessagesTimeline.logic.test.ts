@@ -315,6 +315,34 @@ describe("deriveMessagesTimelineRows", () => {
     ).toEqual(["day", "gap"]);
   });
 
+  it("marks where the person left off, once, before the first stretch after it", () => {
+    const list = deriveMessagesTimelineRows({
+      timelineEntries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Hi."),
+        user("m1", 10),
+        assistant("a2", "t2", 11, "Again."),
+        user("m2", 20),
+        assistant("a3", "t3", 21, "Once more."),
+      ],
+      latestTurn: {
+        turnId: turn("t3"),
+        state: "completed",
+        startedAt: at(20),
+        completedAt: at(22),
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+      newSince: at(5),
+    });
+    const seams = list.filter((row) => row.kind === "seam");
+    expect(seams.map((row) => (row as { seam: string }).seam)).toEqual(["day", "new"]);
+    const at10 = list.findIndex((row) => row.id === "m1");
+    expect(list[at10 - 1]).toMatchObject({ kind: "seam", seam: "new", createdAt: at(5) });
+  });
+
   it("puts queued messages last", () => {
     const list = deriveMessagesTimelineRows({
       timelineEntries: [user("m0", 0)],
