@@ -158,7 +158,7 @@ import {
   type ServerUsagePause,
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
-import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
+import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
@@ -1463,7 +1463,7 @@ function LogOperationTimelineRow({
       data-scroll-anchor-ignore
       onClick={() => ctx.onToggleLogItem(row.id, row.id)}
     >
-      <ZapIcon aria-hidden="true" className="size-3.5 shrink-0 opacity-70" />
+      <KindGlyph kind={operation.kind} />
       <span className={cn("shrink-0", running ? "text-foreground" : "text-foreground/85")}>
         {operation.statusWord}
       </span>

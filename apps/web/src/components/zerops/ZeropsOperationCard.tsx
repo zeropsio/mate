@@ -107,7 +107,7 @@ const KIND_GLYPH: Partial<Record<ZeropsOperationKind, LucideIcon>> = {
   verify: ShieldCheckIcon,
 };
 
-function KindGlyph({ kind }: { readonly kind: ZeropsOperationKind }) {
+export function KindGlyph({ kind }: { readonly kind: ZeropsOperationKind }) {
   const Icon = KIND_GLYPH[kind];
   return Icon === undefined ? (
     <ZeropsMark className="size-3.5 shrink-0" />

@@ -953,7 +953,8 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
       subjectHost: "kanbandev",
       verb: "Checking",
       chip: "kanbandev",
-      path: "/cz/products/vltava?lang=cs",
+      // The page as the person names it: its path, never the query.
+      path: "/cz/products/vltava",
     },
     {
       name: "a settled browser check on a host no service answers",
@@ -961,7 +962,8 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
       subjectHost: undefined,
       verb: "Checked",
       chip: "kanbandev-26a7.prg1.zerops.app",
-      path: "/cz/products/vltava?lang=cs",
+      // The page as the person names it: its path, never the query.
+      path: "/cz/products/vltava",
     },
     {
       name: "a deploy",
