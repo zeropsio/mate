@@ -239,6 +239,13 @@ export function isUserMessageEntry(entry: TimelineEntry): entry is UserMessageEn
   return entry.kind === "message" && entry.message.role === "user";
 }
 
+/** A command to the harness the person typed — `/compact` — drawn as an event, never their words. */
+export function isCommandMessage(entry: MessageEntry): boolean {
+  return (
+    readSlashCommand(entry.message.text) !== null && (entry.message.attachments?.length ?? 0) === 0
+  );
+}
+
 /** The last assistant message of each response: a turn's answer candidate. */
 export function deriveTerminalAssistantMessageIds(
   timelineEntries: ReadonlyArray<TimelineEntry>,
@@ -316,6 +323,11 @@ export function deriveTurnSpans(input: {
   // messages sent into that turn. Nothing reads which turn is the latest, so
   // a turn keeps its opener once another starts.
   let unclaimed: Array<{ entry: MessageEntry; index: number }> = [];
+  // A command the harness ran without a turn of its own (a `/compact`) still
+  // waits here when the person writes next: that message opens the next
+  // turn, never the command — the command stands alone before it.
+  const openerOf = (waiting: typeof unclaimed) =>
+    waiting.find(({ entry }) => !isCommandMessage(entry)) ?? waiting[0] ?? null;
   const open = (turnId: TurnId | null, opener: { entry: MessageEntry; index: number } | null) => {
     const span: MutableSpan = {
       key: opener ? `msg:${opener.entry.message.id}` : `turn:${turnId}`,
@@ -340,7 +352,7 @@ export function deriveTurnSpans(input: {
     if (span) {
       unclaimed = [];
     } else {
-      span = open(turnId, unclaimed[0] ?? null);
+      span = open(turnId, openerOf(unclaimed));
       unclaimed = [];
     }
     span.entryIndexes.push(index);
@@ -349,9 +361,9 @@ export function deriveTurnSpans(input: {
     }
   }
   if (input.unsettledTurnId !== null) {
-    if (!byTurnId.has(input.unsettledTurnId)) open(input.unsettledTurnId, unclaimed[0] ?? null);
+    if (!byTurnId.has(input.unsettledTurnId)) open(input.unsettledTurnId, openerOf(unclaimed));
   } else if (input.isWorking && unclaimed.length > 0) {
-    open(null, unclaimed[0]!);
+    open(null, openerOf(unclaimed));
   }
   const startOf = (span: MutableSpan) => span.openerIndex ?? span.entryIndexes[0] ?? Infinity;
   return spans.toSorted((left, right) => startOf(left) - startOf(right));
