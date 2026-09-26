@@ -13,13 +13,21 @@ import { useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
 
 export interface ProjectActivitySnapshot {
   readonly processes: ReadonlyArray<ActivityProcess> | undefined;
+  /** When the newest of the records was observed — a quiet process changes nothing for minutes. */
   readonly atMs: number | undefined;
+  /**
+   * Every interest the read requires is observing: the feed pushes each
+   * change as it happens, so what the snapshot holds is current now,
+   * however long ago a record last changed.
+   */
+  readonly live: boolean;
   readonly unavailableReason?: string | undefined;
 }
 
 export const EMPTY_PROJECT_ACTIVITY_SNAPSHOT: ProjectActivitySnapshot = {
   processes: undefined,
   atMs: undefined,
+  live: false,
 };
 
 const EMPTY_PROJECT_ACTIVITY_READ_ATOM = Atom.make<ProjectActivityRead | null>(null).pipe(
@@ -66,9 +74,11 @@ export function projectActivitySnapshotFromRead(
       ...(unavailableReason ? { unavailableReason } : {}),
     };
   }
+  const required = read.observation.required;
   return {
     processes: deduped,
     atMs,
+    live: required.length > 0 && required.every((interest) => interest.status === "observing"),
     ...(unavailableReason ? { unavailableReason } : {}),
   };
 }

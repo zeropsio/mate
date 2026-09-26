@@ -68,7 +68,7 @@ export interface ObservedRegion {
   readonly steps: ReadonlyArray<ZeropsOperationStep & { readonly durationMs?: number }>;
   /** The observation's secondary processes (e.g. a subdomain toggle beside a deploy), one compact row each. */
   readonly chips?: ReadonlyArray<ZeropsOperationStep>;
-  /** e.g. "live from Zerops · 2 s ago", frozen as "as last read from Zerops" once the card settles. */
+  /** Empty while the feed observes; "Zerops isn't answering · last update 2m ago" once it is not. */
   readonly provenance: string;
   /** The build log region, when the caller has one. */
   readonly log?: ReactNode;
