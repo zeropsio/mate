@@ -1371,7 +1371,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       className={cn(
         card === undefined || card === "top" ? gap : null,
         card === undefined ? rowInset(row) : null,
-        (row.kind === "message" && row.message.role === "assistant") || row.kind === "speech"
+        (row.kind === "message" && row.message.role === "assistant") ||
+          (row.kind === "speech" && row.card === undefined)
           ? "group/assistant"
           : null,
       )}
@@ -1592,8 +1593,21 @@ function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "afte
   );
 }
 
+/**
+ * The Mate's words the person answered. Inside a run's card — the person
+ * wrote into the run — they are the card's chatter, a note bubble in its
+ * bubble column above the person's message; after a card, the run's last
+ * words, in the answer's hand.
+ */
 function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech" }> }) {
-  return <MateProse message={row.message} showMeta />;
+  if (row.card === undefined) return <MateProse message={row.message} showMeta />;
+  return (
+    <div className={LOG_COLUMN} data-speech-in-card>
+      <div className={MATE_BUBBLE_CLASS.note}>
+        <NoteWords message={row.message} />
+      </div>
+    </div>
+  );
 }
 
 /**

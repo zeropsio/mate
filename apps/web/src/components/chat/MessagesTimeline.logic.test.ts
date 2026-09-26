@@ -109,7 +109,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list[3]).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
 
-  it("keeps every message the person sent where they sent it, with a line after each that did work", () => {
+  it("keeps every message the person sent where they sent it, inside the run's one card", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -121,13 +121,13 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t1",
     });
-    // The last stretch only answered: nothing to open, so no line — the
-    // answer stands under the message by itself.
+    // Messages sent into the run are delivered at the Mate's next step and
+    // the run goes on: one line for all of it, the messages inside its card
+    // where they arrived, the answer after it.
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
       "work-line:work-line:msg:m0",
       "message:m1",
-      "work-line:work-line:msg:m1",
       "message:m2",
       "message:a3",
     ]);
@@ -136,8 +136,8 @@ describe("deriveMessagesTimelineRows", () => {
       expect.objectContaining({ aside: true, receipt: "seen" }),
       expect.objectContaining({ aside: true, receipt: "seen" }),
     ]);
-    // A stretch without notes says what it did instead.
-    expect(list[2]).toMatchObject({ note: null, fallback: "Ran 1 command" });
+    // A run without notes says what it did instead, all of it.
+    expect(list[2]).toMatchObject({ note: null, fallback: "Ran 2 commands" });
   });
 
   it("keeps the running turn's last line live and its latest words at its tail", () => {
@@ -887,7 +887,7 @@ describe("a stretch's card", () => {
       expected: ["message", "work-line:top", "working:middle", "card-end:bottom"],
     },
     {
-      case: "interrupted: the words the person answered stand after the line, as an answer does",
+      case: "written into: the person's message inside the card, under the words it answered",
       scene: {
         entries: [
           user("m0", 0),
@@ -898,14 +898,13 @@ describe("a stretch's card", () => {
         ],
         live: "t1",
       } satisfies Scene,
-      // The words the person answered are the Mate talking to them: after
-      // the line, in the answer's hand, and the line holds nothing else.
+      // The run goes on after the person's message: one card, the message
+      // inside it under the Mate's words it answered, the Mate still at work.
       expected: [
         "message",
-        "work-line",
-        "speech",
-        "message",
         "work-line:top",
+        "speech:middle",
+        "message:middle",
         "working:middle",
         "card-end:bottom",
       ],
