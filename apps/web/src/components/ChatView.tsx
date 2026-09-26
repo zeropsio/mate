@@ -5227,9 +5227,13 @@ export default function ChatView(props: ChatViewProps) {
 
   /**
    * The one next step this Mate's conversation offers, from the project's
-   * flow rather than from what the agent said (`ZeropsNextStepBanner.tsx`).
+   * flow rather than from what the agent said (`ZeropsNextStepBanner.tsx`);
+   * it gives way while a question or an approval waits on the person.
    */
-  const mateNextStepBannerItem = useZeropsNextStepBanner(activeThreadRef);
+  const mateNextStepBannerItem = useZeropsNextStepBanner(activeThreadRef, {
+    question: activePendingUserInput !== null,
+    approval: activePendingApproval !== null,
+  });
 
   const feedbackBannerItems = useMemo(
     () =>

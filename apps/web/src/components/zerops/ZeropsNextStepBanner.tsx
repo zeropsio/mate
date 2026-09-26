@@ -16,12 +16,24 @@ import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/use
 import type { ComposerBannerStackItem } from "../chat/ComposerBannerStack";
 import { Button } from "../ui/button";
 
-/** The banner for `nextStep`, or `null` where the flow asks nothing of this conversation. */
+/** What waits on the person in the composer right now. */
+export interface ZeropsNextStepPending {
+  readonly question: boolean;
+  readonly approval: boolean;
+}
+
+/**
+ * The banner for `nextStep`, or `null` where the flow asks nothing of this
+ * conversation — or while a question or an approval waits on the person: the
+ * Mate cannot go on until it is answered, and the merge would be a second ask
+ * stacked on the first. It comes back once the answer is in.
+ */
 export function zeropsNextStepBannerItem(
   nextStep: ZeropsMateNextStep,
+  pending: ZeropsNextStepPending,
 ): ComposerBannerStackItem | null {
   const { step, trouble } = nextStep;
-  if (step.kind !== "merge") return null;
+  if (step.kind !== "merge" || pending.question || pending.approval) return null;
   return {
     id: `mate-next-step:merge:${step.pull.repository}#${step.pull.number}`,
     variant: trouble === null ? "info" : "error",
@@ -39,7 +51,11 @@ export function zeropsNextStepBannerItem(
 /** This conversation's next-step banner, its merge wired. */
 export function useZeropsNextStepBanner(
   threadRef: ScopedThreadRef | null,
+  { question, approval }: ZeropsNextStepPending,
 ): ComposerBannerStackItem | null {
   const nextStep = useZeropsMateNextStep(threadRef);
-  return useMemo(() => zeropsNextStepBannerItem(nextStep), [nextStep]);
+  return useMemo(
+    () => zeropsNextStepBannerItem(nextStep, { question, approval }),
+    [approval, nextStep, question],
+  );
 }
