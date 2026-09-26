@@ -30,6 +30,8 @@ type Scene = {
   working?: boolean;
   open?: string[];
   expanded?: string[];
+  /** The minute the latest turn started, when not the conversation's first. */
+  startedAt?: number;
 };
 
 /** The conversation as the list draws it, its cards' frames included. */
@@ -41,13 +43,13 @@ function framed(scene: Scene): MessagesTimelineRow[] {
       ? {
           turnId: turn(latestId),
           state: scene.live ? "running" : "completed",
-          startedAt: at(0),
+          startedAt: at(scene.startedAt ?? 0),
           completedAt: scene.live ? null : at(59),
         }
       : null,
     runningTurnId: scene.live ? turn(scene.live) : null,
     isWorking: scene.working ?? scene.live !== undefined,
-    activeTurnStartedAt: scene.live ? at(0) : null,
+    activeTurnStartedAt: scene.live ? at(scene.startedAt ?? 0) : null,
     turnDiffSummaries: [],
     supportsConversationRollback: false,
     openStretchKeys: new Set(scene.open ?? []),
@@ -455,18 +457,23 @@ describe("deriveMessagesTimelineRows", () => {
     expect(answering.at(-1)?.id).toBe("a2");
   });
 
-  // A background result wakes the Mate. A helper's review came back while the
-  // run that started it still worked, and the run it woke had no line saying
-  // why it began (Nova, 2026-09-26). Work no turn owns, right before the run,
-  // draws its own line already.
-  const helperDone = (id: string, turnId: string, minute: number) =>
-    tool(id, turnId, minute, {
+  // A background result wakes the Mate. A helper's review came back after the
+  // run that started it ended, and the run it woke had no line saying why it
+  // began (Nova, 2026-09-26). What finished while the run before still
+  // worked is not what woke the next one: named by where it stood, a task
+  // done ten minutes before was said to wake a run the harness started
+  // (Juno). Work no turn owns, right before the run, draws its own line.
+  // A helper's row stands where it was spawned and takes each report as it
+  // comes: it finished at its last update.
+  const helperDone = (id: string, turnId: string, spawned: number, done: number) =>
+    tool(id, turnId, spawned, {
       label: `Review ${id}`,
       toolTitle: `Review ${id}`,
       taskId: `task-${id}`,
       agentRole: "general-purpose",
       sourceActivityKind: "task.completed",
       tone: "info",
+      updatedAt: at(Math.floor(done), Math.round((done % 1) * 60)),
     });
   const shellDone = (id: string, turnId: string, minute: number) =>
     tool(id, turnId, minute, {
@@ -478,15 +485,15 @@ describe("deriveMessagesTimelineRows", () => {
     });
   it.each([
     {
-      name: "a helper that finished while the run before it worked",
-      during: [helperDone("h1", "t1", 2)],
+      name: "a helper that finished after the run before it ended",
+      during: [helperDone("h1", "t1", 2, 5)],
       after: [],
       woke: { entries: [{ id: "h1" }], tasks: 1, failed: 0, helpers: true, title: "Review h1" },
     },
     {
-      name: "a background task that finished while the run before it worked",
-      during: [shellDone("s1", "t1", 2)],
-      after: [],
+      name: "a background task that finished after the run before it ended",
+      during: [],
+      after: [shellDone("s1", "t1", 5)],
       woke: {
         entries: [{ id: "s1" }],
         tasks: 1,
@@ -496,16 +503,50 @@ describe("deriveMessagesTimelineRows", () => {
       },
     },
     {
-      name: "two helpers",
-      during: [helperDone("h1", "t1", 2), helperDone("h2", "t1", 3)],
+      name: "two helpers, in the order they finished",
+      during: [helperDone("h1", "t1", 2, 5), helperDone("h2", "t1", 3, 4.5)],
       after: [],
-      woke: { tasks: 2, helpers: true, title: "Review h2" },
+      woke: { entries: [{ id: "h2" }, { id: "h1" }], tasks: 2, helpers: true, title: "Review h1" },
+    },
+    {
+      name: "a helper that finished while the run before it still worked",
+      during: [helperDone("h1", "t1", 2, 3)],
+      after: [],
+      woke: null,
+    },
+    {
+      name: "a helper that finished after the run began",
+      during: [helperDone("h1", "t1", 2, 7)],
+      after: [],
+      woke: null,
+    },
+    {
+      name: "helpers gathered in one row, which of them finished unknown",
+      during: [
+        {
+          ...helperDone("h1", "t1", 2, 5),
+          entry: {
+            ...(helperDone("h1", "t1", 2, 5) as Extract<TimelineEntry, { kind: "work" }>).entry,
+            agentSpawn: { workflowId: null, agentTaskIds: ["task-h1", "task-h2"] },
+          },
+        } as TimelineEntry,
+      ],
+      after: [],
+      woke: null,
     },
     {
       name: "work no turn owns, right before it",
       during: [],
       after: [background("b1", 5)],
       woke: null,
+    },
+    // Two shell tasks said in their own line did not wake Juno's run; the
+    // research helper that finished after them did.
+    {
+      name: "a helper that finished after work no turn owns",
+      during: [helperDone("h1", "t1", 2, 5.5)],
+      after: [background("b1", 5)],
+      woke: { entries: [{ id: "h1" }], tasks: 1, helpers: true, title: "Review h1" },
     },
     { name: "nothing that finished", during: [], after: [], woke: null },
   ])("says what woke a run nobody wrote to start: $name", ({ during, after, woke }) => {
@@ -527,16 +568,16 @@ describe("deriveMessagesTimelineRows", () => {
     expect(line).toMatchObject({ kind: "background", ...woke });
     expect(list[list.indexOf(line!) + 1]?.id).toBe("a3");
     expect(shape(rows({ entries, settled: "t2", expanded: ["woke:turn:t2"] }))).toContain(
-      `work:woke-entry:${woke.entries?.[0]?.id ?? "h1"}`,
+      `work:woke-entry:${woke.entries[0]!.id}`,
     );
   });
 
-  it("names only what finished since the run before the woken one began", () => {
+  it("names only what finished since the run before the woken one ended", () => {
     const list = rows({
       entries: [
         user("m0", 0),
         assistant("a1", "t1", 1, "Started it."),
-        helperDone("h1", "t1", 2),
+        helperDone("h1", "t1", 2, 3),
         assistant("a2", "t1", 3, "It came back."),
         user("m1", 5),
         assistant("a3", "t2", 6, "Done."),
@@ -551,13 +592,14 @@ describe("deriveMessagesTimelineRows", () => {
     const before = [
       user("m0", 0),
       assistant("a1", "t1", 1, "Started it."),
-      helperDone("h1", "t1", 2),
+      helperDone("h1", "t1", 2, 4),
       assistant("a2", "t1", 3, "It reports back when done."),
     ];
-    const waking = framed({ entries: before, live: "t2" });
+    const waking = framed({ entries: before, live: "t2", startedAt: 5 });
     const speaking = framed({
       entries: [...before, assistant("a3", "t2", 5, "It came back clean.")],
       live: "t2",
+      startedAt: 5,
     });
     expect(shape(waking).slice(-4)).toEqual([
       "background:woke:turn:t2",

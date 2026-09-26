@@ -1472,6 +1472,8 @@ describe("MessagesTimeline — the conversation", () => {
                 taskId: "task-1",
                 agentRole: "general-purpose",
                 tone: "info",
+                // Spawned mid-run, it finished once the run had ended.
+                updatedAt: at(45),
               },
             },
             assistant("a3", 30, "It reports back when done."),

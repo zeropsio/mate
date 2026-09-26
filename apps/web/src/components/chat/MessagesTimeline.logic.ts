@@ -1531,30 +1531,34 @@ export function deriveMessagesTimelineRows(
     );
   };
   const expandedIds = input.expandedIds ?? new Set<string>();
-  // Where each run's entries begin: the person's message, or its first entry.
-  const firstIndexByTurn = new Map<string, number>();
-  structure.stretchByIndex.forEach((stretch, index) => {
-    const known = firstIndexByTurn.get(stretch.turnKey);
-    if (known === undefined || index < known) firstIndexByTurn.set(stretch.turnKey, index);
-  });
-  const turnStartIndexes = new Set(firstIndexByTurn.values());
+  /** When a background task or a helper finished: a helper's row takes each report as it comes. */
+  const finishedAt = (work: WorkLogEntry) => Date.parse(work.updatedAt ?? work.createdAt);
   /**
    * What woke a run nobody wrote to start: the helpers and background tasks
-   * that finished since the run before it began, for a background result
-   * wakes the Mate. None when work no turn owns stands right before the run:
-   * that line says so already.
+   * that finished after the run before it ended and before it began, for a
+   * result delivered then wakes the Mate. What finished while the run before
+   * still worked was that run's to take in. Rows gathering several helpers
+   * say only the latest report, so which of them finished is not known. Work
+   * no turn owns says itself in its own line, and is never said again here.
    */
   const wokeBy = (turn: ConversationTurn): WorkLogEntry[] => {
-    const start = firstIndexByTurn.get(turn.key) ?? entries.length;
-    if (isLooseActivity(start - 1)) return [];
-    const finished: WorkLogEntry[] = [];
-    for (let index = start - 1; index >= 0; index -= 1) {
-      const entry = entries[index]!;
-      if (turnStartIndexes.has(index) || isUserMessageEntry(entry)) break;
-      if (entry.kind === "work" && entry.entry.sourceActivityKind === "task.completed")
-        finished.unshift(entry.entry);
-    }
-    return finished;
+    const untilMs = Date.parse(turn.stretches[0]?.startedAt ?? "");
+    const previous = structure.turns[structure.turns.indexOf(turn) - 1];
+    const fromMs =
+      previous === undefined ? -Infinity : Date.parse(previous.stretches.at(-1)?.endedAt ?? "");
+    if (!Number.isFinite(untilMs) || Number.isNaN(fromMs)) return [];
+    return entries
+      .flatMap((entry, index) =>
+        entry.kind === "work" &&
+        entry.entry.sourceActivityKind === "task.completed" &&
+        !structure.looseIndexes.has(index) &&
+        (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1 &&
+        finishedAt(entry.entry) > fromMs &&
+        finishedAt(entry.entry) <= untilMs
+          ? [entry.entry]
+          : [],
+      )
+      .toSorted((left, right) => finishedAt(left) - finishedAt(right));
   };
   /**
    * One run of the Mate as the conversation draws it — a turn, from the
