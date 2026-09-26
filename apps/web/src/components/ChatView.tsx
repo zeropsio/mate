@@ -348,6 +348,8 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import { ConversationDock } from "./chat/ConversationDock";
+import { deriveDock, latestUsagePause } from "./chat/conversationDock.logic";
 import {
   environmentConnectionBannerItem,
   environmentRetryFailureToast,
@@ -5285,6 +5287,21 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [feedbackSubmissions, routeThreadKey],
   );
+  // What changes size while the Mate works lives in the dock above the
+  // composer, never in the conversation: running deploys, helpers, the task
+  // list, a pause's countdown.
+  const dockModel = useMemo(
+    () =>
+      deriveDock({
+        timelineEntries: displayedTimeline.entries,
+        isWorking,
+        runningTurnId: activeRunningTurnId,
+        agentPanelModel,
+        plan: activePlan ?? null,
+        pause: latestUsagePause(displayedTimeline.entries),
+      }),
+    [displayedTimeline.entries, isWorking, activeRunningTurnId, agentPanelModel, activePlan],
+  );
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     // Someone else's conversation is read, not run: every other banner offers
     // a step on this Mate (add production, release, stop, compact, restore),
@@ -7962,11 +7979,22 @@ export default function ChatView(props: ChatViewProps) {
                       />
                     </div>
                   ) : (
-                    <ComposerBannerStack
-                      className="relative z-0"
-                      items={composerBannerItems}
-                      stackRef={setComposerBannerStackElement}
-                    />
+                    <>
+                      <ComposerBannerStack
+                        className="relative z-0"
+                        items={composerBannerItems}
+                        stackRef={setComposerBannerStackElement}
+                      />
+                      {dockModel !== null && activeThread ? (
+                        <ConversationDock
+                          environmentId={activeThread.environmentId}
+                          model={dockModel}
+                          onOpenAgents={addAgentsSurface}
+                          threadRef={routeKind === "server" ? routeThreadRef : null}
+                          timestampFormat={timestampFormat}
+                        />
+                      ) : null}
+                    </>
                   )}
                   {shownThreadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={shownThreadSyncPhase} />
