@@ -222,18 +222,23 @@ function Working({
   readonly activity: WorkingActivity | null;
   readonly dock?: DockModel;
 }) {
+  // The stretch's card is the panel's frame in the conversation; drawn here
+  // as its top, body and edge would draw it.
   return (
-    <ConversationWorking
-      activity={activity}
-      browser={null}
-      bubbles={bubbles}
-      dock={dock}
-      environmentId={null}
-      incidents={[]}
-      onOpenAgents={() => undefined}
-      speaker={SPEAKER}
-      threadRef={null}
-    />
+    <div className="rounded-3xl border border-border/70 bg-card px-4 pt-2 pb-4">
+      <ConversationWorking
+        activity={activity}
+        answering={false}
+        browser={null}
+        bubbles={bubbles}
+        dock={dock}
+        environmentId={null}
+        incidents={[]}
+        onOpenAgents={() => undefined}
+        speaker={SPEAKER}
+        threadRef={null}
+      />
+    </div>
   );
 }
 

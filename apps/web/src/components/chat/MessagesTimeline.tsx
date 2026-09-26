@@ -123,6 +123,7 @@ import {
   type MessagesTimelineRow,
   type RowGap,
   type TurnHeaderActivity,
+  type WorkingStreamItem,
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
 } from "./MessagesTimeline.logic";
@@ -1463,11 +1464,18 @@ function MateWords({ text }: { readonly text: string }) {
 }
 
 /** A note of the Mate's, in full: its words as markdown, at the moment it said them. */
-function NoteWords({ message }: { readonly message: ChatMessage }) {
+function NoteWords({
+  message,
+  className,
+}: {
+  readonly message: ChatMessage;
+  readonly className?: string;
+}) {
   const ctx = use(TimelineRowCtx);
   return (
     <ChangeChipMomentContext value={message.createdAt}>
       <ChatMarkdown
+        {...(className === undefined ? {} : { className })}
         text={message.text}
         cwd={ctx.markdownCwd}
         threadRef={ctx.threadRef ?? undefined}
@@ -1478,6 +1486,26 @@ function NoteWords({ message }: { readonly message: ChatMessage }) {
         onRunShellCommand={ctx.onRunShellCommand}
       />
     </ChangeChipMomentContext>
+  );
+}
+
+/** A paragraph of what the Mate thinks, in the muted ink. */
+function ThoughtWords({
+  thought,
+}: {
+  readonly thought: Extract<WorkingStreamItem, { kind: "thought" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <ChatMarkdown
+      className="text-muted-foreground"
+      text={thought.text}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      isStreaming={thought.streaming}
+      skills={ctx.skills}
+      headingLevelOffset={MESSAGE_HEADING_LEVEL}
+    />
   );
 }
 
@@ -1514,16 +1542,19 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
           />
         )
       }
+      answering={row.answering}
       bubbles={row.stream.map((item) =>
         item.kind === "note"
           ? { kind: "note", key: item.key, body: <NoteWords message={item.message} /> }
-          : item.kind === "question"
-            ? {
-                kind: "question",
-                key: item.key,
-                body: <MateWords text={item.questions.join("\n\n")} />,
-              }
-            : item,
+          : item.kind === "thought"
+            ? { kind: "thought", key: item.key, body: <ThoughtWords thought={item} /> }
+            : item.kind === "question"
+              ? {
+                  kind: "question",
+                  key: item.key,
+                  body: <MateWords text={item.questions.join("\n\n")} />,
+                }
+              : item,
       )}
       dock={dock}
       environmentId={ctx.activeThreadEnvironmentId}

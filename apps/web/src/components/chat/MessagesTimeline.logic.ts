@@ -430,6 +430,8 @@ type MessagesTimelineRowBody =
       stream: ReadonlyArray<WorkingStreamItem>;
       /** What its hands are on right now; null while it writes. */
       activity: TurnHeaderActivity | null;
+      /** Its answer streams under the card: the panel says nothing of its own. */
+      answering: boolean;
       strip: BrowserStripModel | null;
       incidents: ReadonlyArray<IncidentModel>;
     }
@@ -788,10 +790,18 @@ export interface WorkingFailure {
 }
 
 /**
- * One thing in the Mate's stream while it works: its words, a step that
- * failed on the way, or the question it asked and waits on.
+ * One thing in the Mate's stream while it works: what it thinks, its words, a
+ * step that failed on the way, or the question it asked and waits on.
  */
 export type WorkingStreamItem =
+  | {
+      readonly kind: "thought";
+      readonly key: string;
+      /** One paragraph of what it thinks. */
+      readonly text: string;
+      readonly createdAt: string;
+      readonly streaming: boolean;
+    }
   | { readonly kind: "note"; readonly key: string; readonly message: ChatMessage }
   | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure }
   | { readonly kind: "question"; readonly key: string; readonly questions: ReadonlyArray<string> };
@@ -800,7 +810,7 @@ export type WorkingStreamItem =
  * How much of a stretch's stream the Mate at work keeps to scroll back
  * through: every word of an ordinary stretch; a runaway one its latest.
  */
-const STREAM_DEPTH = 40;
+const STREAM_DEPTH = 60;
 
 /**
  * What a live stretch streams, oldest first: the Mate's words, each step
@@ -809,12 +819,54 @@ const STREAM_DEPTH = 40;
  * browser its own in its takes, a dev server in its incident) or a background
  * task — and, while the person's answer is awaited, the question it asked.
  */
-function stretchStream(stretch: Stretch): WorkingStreamItem[] {
+/**
+ * A thought's paragraphs, in order; a paragraph that is only a bold title
+ * joins the one under it, so a title never stands as a bubble of its own.
+ * Paragraphs only ever append as a thought streams, so their places are
+ * stable keys.
+ */
+export function thoughtParagraphs(text: string): string[] {
+  const paragraphs: string[] = [];
+  let title: string | null = null;
+  for (const block of text.split(/\n\s*\n/)) {
+    const paragraph = block.trim();
+    if (paragraph.length === 0) continue;
+    if (/^\*\*[^*\n]+\*\*$/.test(paragraph)) {
+      title = title === null ? paragraph : `${title}\n\n${paragraph}`;
+      continue;
+    }
+    paragraphs.push(title === null ? paragraph : `${title}\n\n${paragraph}`);
+    title = null;
+  }
+  if (title !== null) paragraphs.push(title);
+  return paragraphs;
+}
+
+function stretchStream(stretch: Stretch, answer: MessageEntry | null): WorkingStreamItem[] {
   const items: WorkingStreamItem[] = [];
   stretch.entries.forEach((entry, index) => {
     const later = stretch.entries.slice(index + 1);
     if (entry.kind === "message") {
-      if (entry.message.role === "assistant" && entry.message.text.trim().length > 0) {
+      // The answer streams where it will stand, under the card.
+      if (entry === answer || entry.message.text.trim().length === 0) return;
+      // Most of a Mate's work is thinking: said nowhere else live, it was
+      // minutes of dots (the owner, 2026-09-26: "why aren't there thoughts
+      // reflected in the chat?").
+      if (entry.message.role === "reasoning") {
+        // A train of thought streams a paragraph at a time, each its own
+        // bubble — the newest popping in, the one before drifting up — so a
+        // long one never stands as one tower of text.
+        const paragraphs = thoughtParagraphs(entry.message.text);
+        paragraphs.forEach((text, index) => {
+          items.push({
+            kind: "thought",
+            key: `${entry.id}:${index}`,
+            text,
+            createdAt: entry.createdAt,
+            streaming: Boolean(entry.message.streaming) && index === paragraphs.length - 1,
+          });
+        });
+      } else if (entry.message.role === "assistant") {
         items.push({ kind: "note", key: entry.id, message: entry.message });
       }
       return;
@@ -1510,8 +1562,9 @@ export function deriveMessagesTimelineRows(
         createdAt: stretch.startedAt,
         stretchKey: stretch.key,
         turnKey: turn.key,
-        stream: stretchStream(stretch),
+        stream: stretchStream(stretch, turn.answer),
         activity: liveActivity(stretch),
+        answering: stretch.last && answer !== null,
         strip: browserStrip(stretch),
         incidents: stretchIncidents(stretch),
       });
@@ -1553,7 +1606,8 @@ export function deriveMessagesTimelineRows(
       });
       cardRanges.push([cardStart, rows.length]);
     }
-    if (stretch.last && !turn.live) {
+    // The answer follows the card, settled or still streaming.
+    if (stretch.last) {
       if (answer !== null) {
         rows.push({
           kind: "message",

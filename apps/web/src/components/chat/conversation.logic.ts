@@ -542,9 +542,20 @@ export function deriveConversationStructure(input: {
     const isLatestTurn = span.turnId !== null && input.latestTurn?.turnId === span.turnId;
     const interrupted = !live && isLatestTurn && input.latestTurn?.state === "interrupted";
 
-    // The answer is known only once the turn settles: while it runs, every
-    // message is a note on the way.
-    const answer = live ? null : span.terminalEntry;
+    // The answer is the turn's last message once it settles. While the turn
+    // runs, its last message is the answer already when it reads as one and
+    // nothing came after it: it streams where it will stand, never first in
+    // the Mate's panel (the owner, 2026-09-26 — "the last message … first
+    // starts rendering in the working panel, then it all turns into the
+    // result"). Work after it makes it a note on the way after all.
+    const lastSaid = turnEntries.findLast(hasMeaningfulContent);
+    const answer = !live
+      ? span.terminalEntry
+      : span.terminalEntry !== null &&
+          span.terminalEntry === lastSaid &&
+          readsAsAnswer(span.terminalEntry.message.text)
+        ? span.terminalEntry
+        : null;
     // The limit speaks as Claude's own last words, or as the server's error row.
     const limit =
       (answer !== null
@@ -661,7 +672,19 @@ export function deriveConversationStructure(input: {
 // What a stretch says
 // ---------------------------------------------------------------------------
 
-/** A message on the way to the answer — every assistant message but the settled turn's last. */
+/**
+ * Whether the Mate's words read as its answer rather than a note on the way.
+ * A note is a sentence or three; an answer breaks into paragraphs, lists,
+ * headings or tables early — and words that run this long are one too.
+ */
+export function readsAsAnswer(text: string): boolean {
+  const said = text.trim();
+  return (
+    /\n\s*\n/.test(said) || /^\s*(?:[-*+]\s|\d+[.)]\s|#{1,6}\s|\|)/m.test(said) || said.length > 480
+  );
+}
+
+/** A message on the way to the answer — every assistant message but the turn's answer. */
 export function stretchNotes(stretch: Stretch, answer: MessageEntry | null): MessageEntry[] {
   return stretch.entries.filter(
     (entry): entry is MessageEntry =>

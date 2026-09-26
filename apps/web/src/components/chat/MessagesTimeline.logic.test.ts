@@ -5,6 +5,7 @@ import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
   rowGap,
+  thoughtParagraphs,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
   shouldPreserveAssistantLineBreaks,
@@ -271,6 +272,25 @@ describe("deriveMessagesTimelineRows", () => {
       stream: ["One.", "Two.", "Three.", "Four.", "Five.", "Six.", "Seven."],
     },
     {
+      name: "what it thinks streams too, in order with what it says",
+      entries: [
+        reasoning("r1", "t1", 1),
+        tool("w1", "t1", 2),
+        assistant("a1", "t1", 3, "Deploying."),
+        reasoning("r2", "t1", 4),
+      ],
+      stream: ["~ thinking about it", "Deploying.", "~ thinking about it"],
+    },
+    {
+      name: "words that read as the answer leave the stream: they stream under the card",
+      entries: [
+        assistant("a1", "t1", 1, "Deploying."),
+        tool("w1", "t1", 2),
+        assistant("a2", "t1", 3, "It is live.\n\n**What changed**"),
+      ],
+      stream: ["Deploying."],
+    },
+    {
       name: "a step that failed on the way streams where it failed",
       entries: [
         assistant("a1", "t1", 1, "Type checking."),
@@ -312,9 +332,11 @@ describe("deriveMessagesTimelineRows", () => {
         ? working.stream.map((item) =>
             item.kind === "note"
               ? item.message.text
-              : item.kind === "question"
-                ? `? ${item.questions.join(" ")}`
-                : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
+              : item.kind === "thought"
+                ? `~ ${item.text}`
+                : item.kind === "question"
+                  ? `? ${item.questions.join(" ")}`
+                  : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
           )
         : null,
     ).toEqual(stream);
@@ -788,6 +810,21 @@ describe("deriveMessagesTimelineRows", () => {
   });
 });
 
+describe("thoughtParagraphs", () => {
+  it.each([
+    { text: "One.", paragraphs: ["One."] },
+    { text: "One.\n\nTwo.\n\n\nThree.", paragraphs: ["One.", "Two.", "Three."] },
+    {
+      text: "**Checking the menu**\n\nThe panel glides.\n\n**Next**\n\nThe keyboard.",
+      paragraphs: ["**Checking the menu**\n\nThe panel glides.", "**Next**\n\nThe keyboard."],
+    },
+    { text: "The panel glides.\n\n**Next**", paragraphs: ["The panel glides.", "**Next**"] },
+    { text: "  \n\n ", paragraphs: [] },
+  ])("$text", ({ text, paragraphs }) => {
+    expect(thoughtParagraphs(text)).toEqual(paragraphs);
+  });
+});
+
 describe("a stretch's card", () => {
   // Every stretch of work is one card, from its line to its edge: the log,
   // the Mate at work, the words the person answered and the report inside;
@@ -884,6 +921,26 @@ describe("a stretch's card", () => {
     expect(cards(framed(scene))).toEqual(expected);
   });
 
+  it("streams a running turn's answer under its card, the panel saying nothing of its own", () => {
+    const list = framed({
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
+      ],
+      live: "t1",
+    });
+    expect(cards(list)).toEqual([
+      "message",
+      "work-line:top",
+      "working:middle",
+      "card-end:bottom",
+      "message",
+    ]);
+    expect(list.at(-1)).toMatchObject({ kind: "message", id: "a1" });
+    expect(list.find((row) => row.kind === "working")).toMatchObject({ answering: true });
+  });
+
   it("keeps the room after a card that the card's last row kept", () => {
     const list = framed({
       entries: [
@@ -908,14 +965,16 @@ describe("the no-shift contract", () => {
   // re-forms what is under its live line (its last note becomes the answer, a
   // limit's notice becomes the pause). Queued messages leave when they are
   // sent, so they are not drawn.
-  const liveTailStart = (list: MessagesTimelineRow[]) => {
+  // A running turn's answer streams under its card: it is the live tail too.
+  const liveTailStart = (list: MessagesTimelineRow[], live: boolean) => {
     let end = list.length;
     while (end > 0) {
       const row = list[end - 1]!;
       if (
         row.kind === "working" ||
         row.kind === "card-end" ||
-        (row.kind === "work-line" && row.live)
+        (row.kind === "work-line" && row.live) ||
+        (live && row.kind === "message" && row.message.role === "assistant")
       )
         end -= 1;
       else break;
@@ -932,8 +991,8 @@ describe("the no-shift contract", () => {
       const settling = wasLive && !live;
       const liveLineEnd = previous.findLastIndex((row) => row.kind === "work-line" && row.live) + 1;
       const bound = settling
-        ? Math.min(liveTailStart(previous), liveLineEnd)
-        : liveTailStart(previous);
+        ? Math.min(liveTailStart(previous, wasLive), liveLineEnd)
+        : liveTailStart(previous, wasLive);
       expect(frame(current).slice(0, bound)).toEqual(frame(previous).slice(0, bound));
       previous = current;
       wasLive = live;
@@ -992,6 +1051,21 @@ describe("the no-shift contract", () => {
     ["with the live line opened", ["msg:m0", "msg:m1"]],
   ])("holds while a turn arrives, %s", (_label, open) => {
     holds(arrivals, open);
+  });
+
+  it("holds while the answer streams under the card, and as the turn settles", () => {
+    holds(
+      [
+        { entry: user("m0", 0), live: true },
+        { entry: reasoning("r1", "t1", 1), live: true },
+        { entry: tool("w1", "t1", 2), live: true },
+        { entry: assistant("a1", "t1", 3, "Deploying."), live: true },
+        { entry: operation("d1", "t1", 4, { kind: "deploy" }), live: true },
+        { entry: assistant("a2", "t1", 5, "It is live.\n\n**What changed**"), live: true },
+        { entry: landed("l1", 6), live: false },
+      ],
+      [],
+    );
   });
 
   it("holds when the person writes twice before the Mate did anything: the live line follows", () => {

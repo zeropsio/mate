@@ -13,6 +13,7 @@ import {
   namedToolCall,
   noteLine,
   readSlashCommand,
+  readsAsAnswer,
   splitBatchDeploy,
   toolCallWords,
   readUsageLimitNotice,
@@ -141,7 +142,67 @@ describe("readUsageLimitNotice", () => {
   });
 });
 
+describe("readsAsAnswer", () => {
+  // A note on the way is a sentence or three; an answer breaks into
+  // paragraphs, lists, headings or tables early.
+  it.each([
+    { text: "Stage is built and PR #34 is open. Checking what changed.", answer: false },
+    { text: "Yes, I know the one.\n\n**How it works** (desktop):", answer: true },
+    { text: "Done:\n- the menu\n- the panel", answer: true },
+    { text: "Done:\n1. the menu", answer: true },
+    { text: "## What changed\nThe menu.", answer: true },
+    { text: "| Page | Result |\n|---|---|", answer: true },
+    { text: "x".repeat(481), answer: true },
+    { text: "x".repeat(480), answer: false },
+    { text: "  ", answer: false },
+  ])("$text.length characters: $answer", ({ text, answer }) => {
+    expect(readsAsAnswer(text)).toBe(answer);
+  });
+});
+
 describe("deriveConversationStructure", () => {
+  // The answer streams where it will stand: a running turn's last words are
+  // its answer once they read as one and nothing came after them.
+  it.each([
+    {
+      case: "a note on the way",
+      entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Deploying now.")],
+      answer: undefined,
+    },
+    {
+      case: "words that read as the answer, nothing after them",
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
+      ],
+      answer: "a1",
+    },
+    {
+      case: "words that read as an answer, then more work: a note after all",
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Plan:\n- the menu\n- the panel"),
+        tool("w1", "t1", 2),
+      ],
+      answer: undefined,
+    },
+    {
+      case: "the answer while the Mate still thinks after it",
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
+        reasoning("r1", "t1", 3),
+      ],
+      answer: "a1",
+    },
+  ])("a running turn: $case", ({ entries, answer }) => {
+    const [only] = structure(entries, { live: "t1" }).turns;
+    expect(only!.live).toBe(true);
+    expect(only!.answer?.id).toBe(answer);
+  });
+
   it("reads a settled turn as one stretch, its last message the answer", () => {
     const entries = [
       user("m0", 0),
