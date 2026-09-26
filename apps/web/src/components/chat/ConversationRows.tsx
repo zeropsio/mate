@@ -215,6 +215,14 @@ export function WorkLine({
 }
 
 /**
+ * The Mate's bubble fill, wherever its words to the person stand — the panel,
+ * an opened log, the page: a share of the ink over whatever it sits on, so
+ * both palettes show it (muted and secondary all but vanish on one card or
+ * the other).
+ */
+export const MATE_BUBBLE_FILL = "bg-foreground/8";
+
+/**
  * The Mate's words the person answered: its face and the words in full in a
  * bubble beside it — the mirror of the person's bubbles on the right — drawn
  * as the Mate at work drew its newest words, and left where they were said.
@@ -231,7 +239,12 @@ export function MateSpeech({
       <span aria-hidden="true" className="mb-0.5 shrink-0">
         <MateFace size="md" state="idle" tint={speaker.tint} />
       </span>
-      <div className="min-w-0 max-w-full rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground">
+      <div
+        className={cn(
+          "min-w-0 max-w-full rounded-2xl rounded-es-md px-3.5 py-2 text-foreground",
+          MATE_BUBBLE_FILL,
+        )}
+      >
         {children}
       </div>
     </div>

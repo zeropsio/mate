@@ -158,6 +158,7 @@ import {
   ConversationAfterWork,
   ConversationWorking,
   MATE_BUBBLE_CLASS,
+  THOUGHT_WORDS_CLASS,
   type WorkingActivity,
 } from "./ConversationWorking";
 import { DOCKED_KINDS, type DockModel } from "./conversationDock.logic";
@@ -1500,6 +1501,7 @@ function MateWords({ text }: { readonly text: string }) {
   const ctx = use(TimelineRowCtx);
   return (
     <ChatMarkdown
+      className="text-foreground"
       text={text}
       cwd={ctx.markdownCwd}
       threadRef={ctx.threadRef ?? undefined}
@@ -1523,7 +1525,7 @@ function NoteWords({
   return (
     <ChangeChipMomentContext value={message.createdAt}>
       <ChatMarkdown
-        {...(className === undefined ? {} : { className })}
+        className={cn("text-foreground", className)}
         text={message.text}
         cwd={ctx.markdownCwd}
         threadRef={ctx.threadRef ?? undefined}
@@ -1546,7 +1548,7 @@ function ThoughtWords({
   const ctx = use(TimelineRowCtx);
   return (
     <ChatMarkdown
-      className="text-muted-foreground"
+      className={THOUGHT_WORDS_CLASS}
       text={thought.text}
       cwd={ctx.markdownCwd}
       threadRef={ctx.threadRef ?? undefined}
@@ -1687,7 +1689,7 @@ function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log
     });
   return (
     <div className={LOG_COLUMN} data-log-thought>
-      <div className="grid gap-1.5 border-border/70 border-s ps-3 italic">
+      <div className="grid gap-1.5 ps-3.5 italic">
         {paragraphs.map((thought) => {
           const open = opened.has(thought.key);
           return (
