@@ -1887,6 +1887,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
     <div className="relative min-w-0 px-1 py-0.5">
       <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
       <ChatMarkdown
+        variant="answer"
         text={messageText}
         cwd={ctx.markdownCwd}
         threadRef={ctx.threadRef ?? undefined}
