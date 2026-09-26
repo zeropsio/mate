@@ -285,7 +285,11 @@ function Harness() {
             activity={{ kind: "waiting" }}
             bubbles={[
               note("a1", "One question before the long part."),
-              { kind: "question", key: "q1", questions: ["Shall I go on?"] },
+              {
+                kind: "question",
+                key: "q1",
+                body: <p className="text-sm leading-relaxed">Shall I go on?</p>,
+              },
             ]}
           />
         </State>

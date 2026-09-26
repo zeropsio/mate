@@ -55,7 +55,8 @@ import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 export type WorkingBubble =
   | { readonly kind: "note"; readonly key: string; readonly body: ReactNode }
   | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure }
-  | { readonly kind: "question"; readonly key: string; readonly questions: ReadonlyArray<string> };
+  /** Its question, rendered, as its words are. */
+  | { readonly kind: "question"; readonly key: string; readonly body: ReactNode };
 
 /**
  * What the Mate's hands are on right now, under its newest words: thinking,
@@ -99,13 +100,7 @@ function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
         className="w-fit max-w-full origin-bottom-left animate-bubble-pop rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground motion-reduce:animate-none"
         data-stream-bubble={bubble.kind}
       >
-        {bubble.kind === "note"
-          ? bubble.body
-          : bubble.questions.map((question) => (
-              <p key={question} className="text-sm leading-relaxed">
-                {question}
-              </p>
-            ))}
+        {bubble.body}
       </div>
     );
   }

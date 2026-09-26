@@ -1429,6 +1429,22 @@ function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-
   );
 }
 
+/** Words the Mate wrote that are not a message of their own — a question it asked — as markdown. */
+function MateWords({ text }: { readonly text: string }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <ChatMarkdown
+      text={text}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      isStreaming={false}
+      skills={ctx.skills}
+      headingLevelOffset={MESSAGE_HEADING_LEVEL}
+      onRunShellCommand={ctx.onRunShellCommand}
+    />
+  );
+}
+
 /** A note of the Mate's, in full: its words as markdown, at the moment it said them. */
 function NoteWords({ message }: { readonly message: ChatMessage }) {
   const ctx = use(TimelineRowCtx);
@@ -1484,7 +1500,13 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
       bubbles={row.stream.map((item) =>
         item.kind === "note"
           ? { kind: "note", key: item.key, body: <NoteWords message={item.message} /> }
-          : item,
+          : item.kind === "question"
+            ? {
+                kind: "question",
+                key: item.key,
+                body: <MateWords text={item.questions.join("\n\n")} />,
+              }
+            : item,
       )}
       dock={dock}
       environmentId={ctx.activeThreadEnvironmentId}
@@ -1749,7 +1771,7 @@ function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer"
           <div className="ps-5">
             <MateSpeech speaker={ctx.speaker}>
               <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{pair.question}</p>
+              <MateWords text={pair.question} />
             </MateSpeech>
           </div>
           <div className="flex justify-end">
