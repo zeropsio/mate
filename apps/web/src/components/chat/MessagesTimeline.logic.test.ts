@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { TimelineEntry } from "../../session-logic";
+import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
@@ -268,6 +268,51 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
     expect(list[2]).toMatchObject({ face: "produced" });
   });
+
+  it.each([false, true])(
+    "draws the person's answer to the Mate's question as their own words (log open: %s)",
+    (opened) => {
+      const inputEntry = (id: string, minute: number, overrides: Partial<WorkLogEntry>) =>
+        tool(id, "t1", minute, {
+          tone: "info",
+          command: undefined as never,
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          inputRequestId: "req-1",
+          ...overrides,
+        });
+      const list = rows({
+        entries: [
+          user("m0", 0),
+          inputEntry("rq", 1, {
+            label: "User input requested",
+            sourceActivityKind: "user-input.requested",
+            inputQuestions: [
+              { id: "accent", header: "Accent color", question: "Which accent colour?" },
+            ],
+          }),
+          inputEntry("rs", 2, {
+            label: "User input submitted",
+            sourceActivityKind: "user-input.resolved",
+            inputAnswers: [{ key: "accent", answer: "Green" }],
+          }),
+          tool("w1", "t1", 3),
+          assistant("a1", "t1", 4, "Green it is."),
+        ],
+        settled: "t1",
+        open: opened ? ["msg:m0"] : [],
+      });
+      const answers = list.filter((row) => row.kind === "answer");
+      expect(answers).toEqual([
+        expect.objectContaining({
+          id: "answer:rs",
+          pairs: [{ key: "accent", asked: "Accent color", answer: "Green" }],
+        }),
+      ]);
+      // The request and the submission are not rows of their own.
+      expect(shape(list).filter((id) => id.includes(":rq") || id === "work:rs")).toEqual([]);
+    },
+  );
 
   it("puts the browser checks back where they happened when the line is opened", () => {
     const list = rows({

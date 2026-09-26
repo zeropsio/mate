@@ -61,6 +61,26 @@ describe("dockHelpers", () => {
       { id: "h2", title: "Fire and destruction", tone: "ok", word: "Done" },
     ]);
   });
+
+  it.each([
+    {
+      name: "a helper an earlier turn finished is that turn's history",
+      helper: { ...agent("h1", "completed", "old work"), startedAt: at(1), completedAt: at(2) },
+      shown: false,
+    },
+    {
+      name: "a helper from before that still works is shown",
+      helper: { ...agent("h1", "running", "long work"), startedAt: at(1) },
+      shown: true,
+    },
+    {
+      name: "a helper the running turn started is shown, done or not",
+      helper: { ...agent("h1", "completed", "new work"), startedAt: at(6), completedAt: at(7) },
+      shown: true,
+    },
+  ])("$name", ({ helper, shown }) => {
+    expect(dockHelpers(panel([helper]), at(5)).map(({ id }) => id)).toEqual(shown ? ["h1"] : []);
+  });
 });
 
 describe("deriveDock", () => {

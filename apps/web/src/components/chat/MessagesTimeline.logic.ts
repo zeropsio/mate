@@ -442,6 +442,20 @@ type MessagesTimelineRowBody =
       message: ChatMessage;
     }
   | {
+      /**
+       * The person's answer to a question the Mate asked with its question
+       * tool: their own words, on their side, each under what was asked.
+       */
+      kind: "answer";
+      id: string;
+      createdAt: string;
+      pairs: ReadonlyArray<{
+        readonly key: string;
+        readonly asked: string;
+        readonly answer: string;
+      }>;
+    }
+  | {
       /** A progress note in an opened log: the Mate's words on the way, in full. */
       kind: "log-note";
       id: string;
@@ -576,7 +590,11 @@ function isLogRowBody(row: MessagesTimelineRow): boolean {
 }
 
 function isPersonRow(row: MessagesTimelineRow): boolean {
-  return (row.kind === "message" && row.message.role === "user") || row.kind === "queued-message";
+  return (
+    (row.kind === "message" && row.message.role === "user") ||
+    row.kind === "queued-message" ||
+    row.kind === "answer"
+  );
 }
 
 function closesTurn(row: MessagesTimelineRow): boolean {
@@ -930,6 +948,9 @@ function stretchContentRows(input: {
       }
       case "work": {
         const work = entry.entry;
+        // What the Mate asked waits above the composer while it waits, and
+        // stands over the person's answer once given: never a row of its own.
+        if (work.inputQuestions !== undefined && work.inputAnswers === undefined) break;
         if (work.sourceActivityKind === "context-compaction") {
           push(entry.createdAt, [
             {
@@ -946,6 +967,36 @@ function stretchContentRows(input: {
               { kind: "error", id: entry.id, createdAt: entry.createdAt, entry: work },
             ]);
           }
+        } else if (work.inputAnswers !== undefined) {
+          // The person answered: their words stand in the conversation.
+          const asked =
+            stretch.entries
+              .flatMap((candidate) =>
+                candidate.kind === "work" &&
+                candidate.entry.inputQuestions !== undefined &&
+                (work.inputRequestId === undefined ||
+                  candidate.entry.inputRequestId === work.inputRequestId)
+                  ? [candidate.entry.inputQuestions]
+                  : [],
+              )
+              .at(-1) ?? [];
+          push(entry.createdAt, [
+            {
+              kind: "answer",
+              id: `answer:${entry.id}`,
+              createdAt: entry.createdAt,
+              pairs: work.inputAnswers.map((answer) => {
+                const question = asked.find(
+                  (candidate) => candidate.id === answer.key || candidate.question === answer.key,
+                );
+                return {
+                  key: answer.key,
+                  asked: question?.header ?? question?.question ?? answer.key,
+                  answer: answer.answer,
+                };
+              }),
+            },
+          ]);
         } else if (work.questionAnswer !== undefined) {
           push(entry.createdAt, [
             {

@@ -5294,6 +5294,7 @@ export default function ChatView(props: ChatViewProps) {
         timelineEntries: displayedTimeline.entries,
         isWorking,
         runningTurnId: activeRunningTurnId,
+        turnStartedAt: activeWorkStartedAt,
         agentPanelModel,
         plan: activePlan ?? null,
         // The server's own pause when it keeps one; the thread's last words otherwise.
@@ -5305,6 +5306,7 @@ export default function ChatView(props: ChatViewProps) {
       displayedTimeline.entries,
       isWorking,
       activeRunningTurnId,
+      activeWorkStartedAt,
       agentPanelModel,
       activePlan,
       activeThreadShell?.usagePause,

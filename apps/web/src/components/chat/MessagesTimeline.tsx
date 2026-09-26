@@ -1315,7 +1315,7 @@ const GAP_CLASS: Record<RowGap, string> = {
 function rowInset(row: TimelineRow): string {
   if (isLogRow(row)) return "ms-5.5 border-s border-border/70 ps-4";
   if (row.kind === "message" && row.message.role === "user") return "";
-  if (row.kind === "queued-message" || row.kind === "seam") return "";
+  if (row.kind === "queued-message" || row.kind === "seam" || row.kind === "answer") return "";
   return "ps-5";
 }
 
@@ -1370,6 +1370,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
+      {row.kind === "answer" ? <AnswerTimelineRow row={row} /> : null}
     </div>
   );
 });
@@ -1664,6 +1665,27 @@ function formatWorkDurationBetween(startIso: string, endIso: string): string | n
 }
 
 /**
+ * The person's answer to the Mate's question: their words in their own
+ * bubble, each under what was asked.
+ */
+function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer" }> }) {
+  return (
+    <div className="flex flex-col items-end gap-1" data-person-answer>
+      {row.pairs.map((pair) => (
+        <div
+          key={pair.key}
+          className="max-w-4/5 rounded-2xl bg-message px-4 py-2 text-message-foreground"
+        >
+          <MessageAuthorHeading>You</MessageAuthorHeading>
+          <p className="text-message-foreground/70 text-xs">{pair.asked}</p>
+          <p className="whitespace-pre-wrap">{pair.answer}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * A message waiting for the running turn: a dashed user bubble with icon
  * actions inside it. The dashed outline and the clock carry the state; the
  * timing reads from the clock's tooltip.
@@ -1955,7 +1977,10 @@ function turnHeaderActivityLabel(
     case "thinking":
       return "Thinking";
     case "tool":
-      return liveWorkEntryLabel(activity.entry, workspaceRoot);
+      // The question tool waits on the person: say so, never its arguments.
+      return /^AskUserQuestion\b/.test(activity.entry.toolTitle ?? activity.entry.label)
+        ? "Waiting for your answer"
+        : liveWorkEntryLabel(activity.entry, workspaceRoot);
     case "operation":
       // A check names the page, never the whole address: the host is the
       // service's, and the working component shows it in its frame.

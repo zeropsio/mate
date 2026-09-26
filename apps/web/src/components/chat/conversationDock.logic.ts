@@ -70,12 +70,23 @@ function helperTitle(agent: RuntimeSubagent): string {
   return agent.role ? `A ${agent.role.replace(/[-_]/g, " ")} helper` : "A helper";
 }
 
-/** Every helper the turn started, flattened: the direct ones and each workflow's members. */
-export function dockHelpers(model: AgentPanelModel): ReadonlyArray<DockHelper> {
+/**
+ * The helpers of the turn running now, flattened: the direct ones and each
+ * workflow's members — those it started, and any from before still working.
+ * A helper an earlier turn finished is that turn's history, not this one's.
+ */
+export function dockHelpers(
+  model: AgentPanelModel,
+  turnStartedAt: string | null = null,
+): ReadonlyArray<DockHelper> {
+  const since = turnStartedAt === null ? Number.NEGATIVE_INFINITY : Date.parse(turnStartedAt);
   const agents = [
     ...model.directAgents,
     ...model.workflows.flatMap((group) => group.phases.flatMap((phase) => phase.members)),
-  ];
+  ].filter(
+    (agent) =>
+      agent.completedAt === null || Date.parse(agent.startedAt ?? agent.firstSeenAt) >= since,
+  );
   return agents.map((agent) => {
     const state = HELPER_STATE[agent.status];
     return {
@@ -93,6 +104,8 @@ export function deriveDock(input: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly isWorking: boolean;
   readonly runningTurnId: string | null;
+  /** When the running turn started: helpers an earlier turn finished are not its own. */
+  readonly turnStartedAt?: string | null;
   readonly agentPanelModel: AgentPanelModel;
   readonly plan: ActivePlanState | null;
   /** The thread is held by a usage limit: when it resets, if known. */
@@ -112,7 +125,9 @@ export function deriveDock(input: {
         )
       : [];
 
-  const rows = input.isWorking ? dockHelpers(input.agentPanelModel) : [];
+  const rows = input.isWorking
+    ? dockHelpers(input.agentPanelModel, input.turnStartedAt ?? null)
+    : [];
   const helpers =
     rows.length === 0
       ? null

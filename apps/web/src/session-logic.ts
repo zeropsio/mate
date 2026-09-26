@@ -93,8 +93,27 @@ export type WorkLogToolLifecycleStatus =
   | "declined"
   | "stopped";
 
+/** A question the Mate asked with its question tool, as it asked it. */
+export interface InputQuestion {
+  readonly id: string;
+  readonly header: string;
+  readonly question: string;
+}
+
+/** The person's answer to one of the Mate's questions, keyed as the tool keys it. */
+export interface InputAnswer {
+  readonly key: string;
+  readonly answer: string;
+}
+
 export interface WorkLogEntry {
   questionAnswer?: UserInputAttachmentAnswerPayload;
+  /** `user-input.requested`/`.resolved`: which request the entry belongs to. */
+  inputRequestId?: string;
+  /** `user-input.requested`: what the Mate asked. */
+  inputQuestions?: ReadonlyArray<InputQuestion>;
+  /** `user-input.resolved`: what the person answered. */
+  inputAnswers?: ReadonlyArray<InputAnswer>;
   id: string;
   createdAt: string;
   /**
@@ -933,6 +952,14 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     const answer = decodeQuestionAttachmentAnswer(payload);
     if (Option.isSome(answer)) entry.questionAnswer = answer.value;
   }
+  if (activity.kind === "user-input.requested" || activity.kind === "user-input.resolved") {
+    const requestId = asTrimmedString(payload?.requestId);
+    if (requestId) entry.inputRequestId = requestId;
+    const questions = readInputQuestions(payload?.questions);
+    if (questions.length > 0) entry.inputQuestions = questions;
+    const answers = readInputAnswers(payload?.answers);
+    if (answers.length > 0) entry.inputAnswers = answers;
+  }
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
   const viewedImagePath = asTrimmedString(asRecord(payload?.data)?.imagePath);
@@ -1276,6 +1303,31 @@ function toLatestProposedPlanState(proposedPlan: ProposedPlan): LatestProposedPl
     implementedAt: proposedPlan.implementedAt,
     implementationThreadId: proposedPlan.implementationThreadId,
   };
+}
+
+function readInputQuestions(value: unknown): InputQuestion[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    const record = asRecord(candidate);
+    const id = asTrimmedString(record?.id);
+    const question = asTrimmedString(record?.question);
+    if (!id || !question) return [];
+    return [{ id, header: asTrimmedString(record?.header) ?? question, question }];
+  });
+}
+
+/** An answer as the person gave it: a choice, several choices, or their own words. */
+function readInputAnswers(value: unknown): InputAnswer[] {
+  const record = asRecord(value);
+  if (record === null) return [];
+  return Object.entries(record).flatMap(([key, answer]) => {
+    const words = Array.isArray(answer)
+      ? answer.flatMap((item) => (typeof item === "string" && item.trim() ? [item.trim()] : []))
+      : typeof answer === "string" && answer.trim()
+        ? [answer.trim()]
+        : [];
+    return words.length > 0 ? [{ key, answer: words.join(", ") }] : [];
+  });
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
