@@ -614,19 +614,14 @@ export function deriveConversationStructure(input: {
       span.opener?.createdAt ??
       turnEntries[0]?.createdAt ??
       (live ? input.activeTurnStartedAt : null);
+    // Settled, a turn ends where its entries did — whether it is the latest
+    // or not, so its "worked for" never changes after the fact.
     const turnEnd = live
       ? null
-      : ((isLatestTurn && input.latestTurn?.completedAt
-          ? laterIso(
-              input.latestTurn.completedAt,
-              turnEntries.length ? timelineEntryEnd(turnEntries.at(-1)!) : null,
-            )
-          : null) ??
-        turnEntries.reduce<string | null>(
+      : (turnEntries.reduce<string | null>(
           (end, entry) => laterIso(end, timelineEntryEnd(entry)),
           null,
-        ) ??
-        turnStart);
+        ) ?? turnStart);
 
     // Split at the person's messages.
     type Draft = { lead: MessageEntry | null; leadIndex: number | null; indexes: number[] };

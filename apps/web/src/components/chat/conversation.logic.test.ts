@@ -397,6 +397,20 @@ describe("deriveConversationStructure", () => {
     },
   );
 
+  // A turn's span ends where its entries did — the same while it is the
+  // latest and once another followed; "worked for 1m 16s" read "1m 20s" once
+  // the next turn began, "1m 13s" read "1m 12s".
+  it("ends a settled turn where its entries did, the latest or not", () => {
+    const first = [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 3, "Done.")];
+    const alone = structure(first, { latest: { id: "t1", state: "completed", completed: true } });
+    const followed = structure([...first, user("m1", 30), assistant("a2", "t2", 31, "Hi.")], {
+      latest: { id: "t2", state: "completed", completed: true },
+    });
+    expect(alone.turns[0]!.stretches.at(-1)!.endedAt).toBe(
+      followed.turns[0]!.stretches.at(-1)!.endedAt,
+    );
+  });
+
   it("leaves a message no turn took loose, and places a landing inside the turn it fell in", () => {
     const entries = [
       user("m0", 0),
