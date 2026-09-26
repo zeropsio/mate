@@ -28,10 +28,22 @@ function picture(
 
 describe("sparseCropBox", () => {
   it.each([
+    // Shown whole, a line across the page was a smudge along a white box
+    // (Nova, 2026-09-26: `/api/time` at 126 × 78); cut, its words read.
     {
-      name: "a JSON line along the top of a white page",
+      name: "a JSON line along the top of a white page: cut to its start, its height filling the frame",
       pixels: picture(160, 72, 255, 30, [[2, 2, 100, 2]]),
-      box: { x: 0, y: 0, width: 106, height: 66 },
+      box: { x: 0, y: 0, width: 40, height: 25 },
+    },
+    {
+      name: "a few lines of text: cut at the right, never shrunk to fit their width",
+      pixels: picture(160, 72, 255, 30, [[4, 4, 120, 16]]),
+      box: { x: 1, y: 1, width: 40, height: 25 },
+    },
+    {
+      name: "a narrow column: shown whole",
+      pixels: picture(160, 72, 255, 30, [[70, 10, 12, 50]]),
+      box: { x: 67, y: 7, width: 90, height: 56 },
     },
     {
       name: "a short line: never narrower than a quarter of the page",

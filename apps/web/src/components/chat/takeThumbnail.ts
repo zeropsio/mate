@@ -3,8 +3,10 @@
  * API's JSON, a plain-text page — shown whole at thumbnail size is a white
  * box with a smudge along its top, a take that reads as broken (Nova,
  * 2026-09-26: `/api/time` at 126 × 78). Such a picture is cropped to where
- * its content is, never narrower than a quarter of the page, so the thumbnail
- * shows the text as text. A page with content across it is shown whole.
+ * its content is, its height filling the frame — a line wider than that is
+ * cut at the right, never shrunk until its words are a smudge — and never
+ * narrower than a quarter of the page, so the thumbnail shows the text as
+ * text. A page with content across it is shown whole.
  */
 import { useEffect, useState } from "react";
 
@@ -66,17 +68,15 @@ export function sparseCropBox(
   const inkWidth = right - left + 1;
   const inkHeight = bottom - top + 1;
   if ((inkWidth * inkHeight) / (width * height) >= SPARSE_AREA) return null;
-  // The content with a margin, at least a quarter of the page wide, in the
-  // frame's shape, and inside the picture.
+  // The content's height with a margin, in the frame's shape, at least a
+  // quarter of the page wide, from the content's top left, inside the
+  // picture. Content wider than that runs on past the frame's right edge.
   const margin = Math.round(width * 0.02);
-  let cropWidth = Math.max(inkWidth + margin * 2, Math.round(width * MIN_CROP_WIDTH));
-  let cropHeight = Math.round(cropWidth / aspect);
-  if (cropHeight < inkHeight + margin * 2) {
-    cropHeight = inkHeight + margin * 2;
-    cropWidth = Math.round(cropHeight * aspect);
-  }
-  cropWidth = Math.min(cropWidth, width);
-  cropHeight = Math.min(cropHeight, height);
+  const cropWidth = Math.min(
+    Math.max(Math.round((inkHeight + margin * 2) * aspect), Math.round(width * MIN_CROP_WIDTH)),
+    width,
+  );
+  const cropHeight = Math.min(Math.round(cropWidth / aspect), height);
   const x = Math.min(Math.max(0, left - margin), width - cropWidth);
   const y = Math.min(Math.max(0, top - margin), height - cropHeight);
   return { x, y, width: cropWidth, height: cropHeight };
