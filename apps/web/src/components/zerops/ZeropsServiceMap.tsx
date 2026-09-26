@@ -22,7 +22,7 @@ import { ServiceBrowserLink, ServiceBrowserLinkIndicator } from "../ServiceBrows
  * of its bottom edge rather than standing on its own further down the panel.
  */
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
-import { ArrowUpRightIcon, DatabaseIcon, ExternalLinkIcon } from "lucide-react";
+import { ArrowUpRightIcon, DatabaseIcon } from "lucide-react";
 import { useContext, type ReactElement, type ReactNode } from "react";
 
 import type {
@@ -652,20 +652,37 @@ function ControlPlaneRow({
   row,
   usageRead,
   mate,
+  mateUpdate,
   agents,
 }: {
   row: ZeropsServiceRow;
   usageRead: boolean;
   mate: ZeropsMateOnMap | undefined;
+  mateUpdate: ReactNode;
   agents: ReactNode;
 }) {
   const hangs = agents !== undefined && agents !== null;
+  const versioned = mate !== undefined && mateUpdate !== undefined && mateUpdate !== null;
   return (
     <li data-zerops-service-row="control-plane" data-zerops-service-id={row.service.serviceId}>
       <MintPanel className={hangs ? "pb-3" : undefined}>
-        <ServiceCard render={<div className="px-3.5 py-2.5" />} row={row} usageRead={usageRead}>
+        <ServiceCard
+          render={<div className={cn("px-3.5 pt-2.5", versioned ? "pb-1" : "pb-2.5")} />}
+          row={row}
+          usageRead={usageRead}
+        >
           {mate === undefined ? null : <MateHome mate={mate} />}
         </ServiceCard>
+        {versioned ? (
+          // The Mate's version and its update, under its name — outside the
+          // hover pop's trigger, so a hand on Update never opens the pop.
+          <div
+            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ps-10.5 pe-3.5 pb-2.5 text-muted-foreground text-xs"
+            data-zerops-mate-update
+          >
+            {mateUpdate}
+          </div>
+        ) : null}
       </MintPanel>
       {hangs ? (
         <div className="relative -mt-3 mx-3" data-zerops-agent-auth-tray>
@@ -692,12 +709,14 @@ function ServiceGroup({
   group,
   usageRead,
   mate,
+  mateUpdate,
   agents,
   currentServiceId,
 }: {
   group: ZeropsServiceMapGroup;
   usageRead: boolean;
   mate: ZeropsMateOnMap | undefined;
+  mateUpdate: ReactNode;
   agents: ReactNode;
   currentServiceId: string | undefined;
 }) {
@@ -716,6 +735,7 @@ function ServiceGroup({
               agents={row.service.serviceId === currentServiceId ? agents : undefined}
               key={row.service.serviceId}
               mate={row.service.serviceId === currentServiceId ? mate : undefined}
+              mateUpdate={row.service.serviceId === currentServiceId ? mateUpdate : undefined}
               row={row}
               usageRead={usageRead}
             />
@@ -733,6 +753,7 @@ export function ZeropsServiceMap({
   liveness,
   error,
   mate,
+  mateUpdate,
   agents,
   currentServiceId,
 }: {
@@ -743,6 +764,12 @@ export function ZeropsServiceMap({
   readonly error?: string | undefined;
   /** Who lives in the control plane, when the caller knows — it is written on the control plane's card. */
   readonly mate?: ZeropsMateOnMap | undefined;
+  /**
+   * That Mate's server version and, when there is one, its update with the
+   * verb — rendered by the caller (this map only lays it out), under the
+   * Mate's name on the control plane's card.
+   */
+  readonly mateUpdate?: ReactNode;
   /** The coding agents' card, which grows out of the control plane's card. Nothing when there is none to show. */
   readonly agents?: ReactNode;
   /** Exact service of the current environment; absence never implies the first row. */
@@ -791,6 +818,7 @@ export function ZeropsServiceMap({
             group={group}
             key={group.group}
             mate={mate}
+            mateUpdate={mateUpdate}
             usageRead={view.usageRead}
           />
         ))

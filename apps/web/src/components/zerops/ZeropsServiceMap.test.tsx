@@ -77,12 +77,14 @@ const render = (
     readonly error?: string;
     readonly runningTool?: string;
     readonly mate?: ZeropsMateOnMap;
+    readonly mateUpdate?: ReactNode;
     readonly agents?: ReactNode;
     readonly currentServiceId?: string;
   },
 ): string =>
   renderToStaticMarkup(
     <ZeropsServiceMap
+      mateUpdate={options?.mateUpdate}
       currentServiceId={options?.currentServiceId}
       agents={options?.agents}
       error={options?.error}
@@ -447,6 +449,42 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
     // The Mate line is the last thing in the mint before the card grows out of it.
     expect(row.indexOf("data-zerops-mate-home")).toBeLessThan(mintEnd);
     expect(html.match(/data-zerops-agent-auth-tray/gu)).toHaveLength(1);
+  });
+
+  it("keeps the Mate's version and its update under its home, outside the hover pop", () => {
+    const html = render(topology([service({ hostname: "app" }), zcp]), {
+      mate: fen,
+      currentServiceId: zcp.serviceId,
+      mateUpdate: <span data-test-update="true">Server 0.11.43 · 0.11.47 available</span>,
+    });
+
+    const rowAt = html.indexOf('data-zerops-service-row="control-plane"');
+    const row = html.slice(rowAt, html.indexOf("</li>", rowAt));
+    // The hover pop's trigger is the card's text: the first div in the mint.
+    const mintAt = row.indexOf('data-zerops-primitive="mint-panel"');
+    const triggerAt = row.indexOf("<div", mintAt);
+    let depth = 0;
+    let triggerEnd = -1;
+    for (const match of row.slice(triggerAt).matchAll(/<div\b|<\/div>/gu)) {
+      depth += match[0] === "</div>" ? -1 : 1;
+      if (depth === 0) {
+        triggerEnd = triggerAt + match.index;
+        break;
+      }
+    }
+    const updateAt = row.indexOf("data-zerops-mate-update");
+    expect(row.indexOf("lives here")).toBeLessThan(triggerEnd);
+    expect(updateAt).toBeGreaterThan(triggerEnd);
+    expect(updateAt).toBeLessThan(row.indexOf("</section>", mintAt));
+    expect(row).toContain('data-test-update="true"');
+  });
+
+  it("says no version where nobody is known to live", () => {
+    const html = render(topology([zcp]), {
+      mateUpdate: <span data-test-update="true">Server 0.11.43</span>,
+    });
+
+    expect(html).not.toContain("data-zerops-mate-update");
   });
 
   it("hangs nothing when there is no agents card", () => {

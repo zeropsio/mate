@@ -77,8 +77,23 @@ vi.mock("../../zerops/useAgentSignOut", () => ({
 vi.mock("~/state/environments", () => ({
   useEnvironment: () => ({
     serverConfig: {
-      environment: { capabilities: { agentSignOut: signOutState.supported } },
+      environment: {
+        serverVersion: "0.11.43",
+        update: { installed: "0.11.43", latest: "0.11.47", available: true },
+        capabilities: { agentSignOut: signOutState.supported, mateUpdate: true },
+      },
     },
+  }),
+}));
+
+vi.mock("../../zerops/useZeropsMateUpdate", () => ({
+  useZeropsMateUpdate: () => ({
+    state: { phase: "idle" },
+    request: () => {},
+    confirm: () => {},
+    cancel: () => {},
+    checked: undefined,
+    check: () => {},
   }),
 }));
 
@@ -463,6 +478,29 @@ describe("ZeropsPanel — the Mate's home", () => {
     expect(html).toContain('data-mate-face-tint="coral"');
     expect(html).toContain('data-mate-face-state="needs"');
     expect(html).toContain(">Fen</span>");
+  });
+
+  it("keeps the Mate's version and its Update on its home, and none where nobody is known", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: true,
+      serviceId: "svc-zcp",
+    });
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+    const home = html.slice(html.indexOf("data-zerops-mate-home"));
+    expect(home).toContain("data-zerops-mate-update");
+    expect(home).toContain("Server 0.11.43");
+    expect(home).toContain("0.11.47 available");
+    expect(home).toContain(">Update<");
+
+    mateState.mates.clear();
+    const nobody = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />,
+    );
+    expect(nobody).not.toContain("data-zerops-mate-update");
   });
 
   it("wears the idle face until the conversation has an activity, and names nobody it does not know", () => {
