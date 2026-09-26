@@ -45,9 +45,11 @@ export function CheckpointHistoryDiff(props: HistoryDiffProps) {
   );
   return (
     <div className="min-h-0 flex-1 overflow-auto">
-      <p className="px-3 py-2 text-xs text-muted-foreground">
-        {checkpointHistoryNotice(props.history)}
-      </p>
+      {checkpointHistoryNotice(props.history) ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">
+          {checkpointHistoryNotice(props.history)}
+        </p>
+      ) : null}
       {props.history.overlappingRunIds?.length ? (
         <p className="px-3 pb-2 text-xs text-muted-foreground">
           Other Mate runs overlapped this work.
@@ -171,7 +173,9 @@ function CheckpointRootDiff(
           </Button>
         )}
       </div>
-      <p className="px-3 py-2 text-xs text-muted-foreground">{checkpointRootNotice(entry)}</p>
+      {checkpointRootNotice(entry) ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">{checkpointRootNotice(entry)}</p>
+      ) : null}
       {expanded && (
         <>
           {state.message && (

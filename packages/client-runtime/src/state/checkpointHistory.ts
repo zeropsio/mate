@@ -4,19 +4,21 @@ import type {
   CheckpointDiffRootResult,
 } from "@t3tools/contracts";
 
+/** A caveat about the history's coverage, only when there is one to make. */
 export function checkpointHistoryNotice(
   history: Pick<CheckpointHistory, "coverage"> | undefined,
-): string {
+): string | null {
   if (!history) return "Coverage of this older history is unknown.";
   if (history.coverage !== "complete")
     return "History is incomplete. Recorded file counts cover available snapshots only.";
-  return "Observed workspace changes between snapshots; other writers may be included.";
+  return null;
 }
 
-export function checkpointRootNotice(entry: CheckpointHistoryRoot): string {
+/** Why a root's snapshot is missing, when it is. */
+export function checkpointRootNotice(entry: CheckpointHistoryRoot): string | null {
   if (entry.before.status !== "captured") return entry.before.reason;
   if (entry.after.status !== "captured") return entry.after.reason;
-  return "Snapshots recorded. Detail depends on the service and retained objects.";
+  return null;
 }
 
 export function checkpointDiffNotice(
