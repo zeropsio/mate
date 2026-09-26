@@ -73,17 +73,17 @@ describe("deriveDock", () => {
     pause: null,
   };
 
-  it("holds the running turn's long operations, not the settled or quick ones", () => {
+  it("holds the running turn's pipelines, finished ones too, not quick calls or older turns", () => {
     const dock = deriveDock({
       ...base,
       timelineEntries: [
-        operation("d1", "t1", 1, { kind: "deploy", phase: "running" }),
         operation("d0", "t1", 0, { kind: "deploy", phase: "done" }),
+        operation("d1", "t1", 1, { kind: "deploy", phase: "running" }),
         operation("v1", "t1", 2, { kind: "verify", phase: "running" }),
         operation("d2", "t0", 2, { kind: "deploy", phase: "running" }),
       ],
     });
-    expect(dock?.operations.map((op) => op.key)).toEqual(["op:d1"]);
+    expect(dock?.operations.map((op) => op.key)).toEqual(["op:d0", "op:d1"]);
   });
 
   it("counts helpers by state", () => {

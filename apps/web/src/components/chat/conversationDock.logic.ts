@@ -98,16 +98,19 @@ export function deriveDock(input: {
   /** The thread is held by a usage limit: when it resets, if known. */
   readonly pause: { readonly resetsAt: string | null } | null;
 }): DockModel | null {
-  const operations = input.isWorking
-    ? input.timelineEntries.flatMap((entry) =>
-        entry.kind === "operation" &&
-        entry.operation.phase === "running" &&
-        DOCKED_KINDS.has(entry.operation.kind) &&
-        (input.runningTurnId === null || entry.operation.turnId === input.runningTurnId)
-          ? [entry.operation]
-          : [],
-      )
-    : [];
+  // The running turn's pipelines, finished ones included: a deploy that
+  // landed mid-turn keeps its row, final word and all, until the turn's
+  // outcome takes over.
+  const operations =
+    input.isWorking && input.runningTurnId !== null
+      ? input.timelineEntries.flatMap((entry) =>
+          entry.kind === "operation" &&
+          DOCKED_KINDS.has(entry.operation.kind) &&
+          entry.operation.turnId === input.runningTurnId
+            ? [entry.operation]
+            : [],
+        )
+      : [];
 
   const rows = input.isWorking ? dockHelpers(input.agentPanelModel) : [];
   const helpers =
