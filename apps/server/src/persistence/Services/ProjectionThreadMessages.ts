@@ -43,21 +43,28 @@ export type AppendStreamingProjectionThreadMessage =
   typeof AppendStreamingProjectionThreadMessage.Type;
 
 /**
- * What a preview of the newest message reads: who, the opening characters,
- * when — never a body or its attachments (`@t3tools/shared/messagePreview`
- * turns the characters into the preview).
+ * What a preview of a message reads: who, the opening characters, when, and
+ * the kinds of its attachments — never a body or attachment metadata
+ * (`@t3tools/shared/userAsk` turns these into the preview).
  */
 export const ProjectionThreadMessagePreviewSource = Schema.Struct({
   role: ThreadMessagePreviewRole,
   text: Schema.String,
+  attachments: Schema.Array(Schema.Struct({ type: Schema.String })),
   createdAt: IsoDateTime,
 });
 export type ProjectionThreadMessagePreviewSource = typeof ProjectionThreadMessagePreviewSource.Type;
 
-/** A preview source read: the newest message, of one role when `role` is given. */
+/**
+ * A preview source read: the newest messages with text or attachments, of one
+ * role when `role` is given, newest first — at most `limit` of them, because a
+ * slash command or the usage-limit resume previews nothing and the one before
+ * it is the preview.
+ */
 export const LatestProjectionThreadMessagePreviewSourceInput = Schema.Struct({
   threadId: ThreadId,
   role: Schema.optional(ThreadMessagePreviewRole),
+  limit: Schema.Int,
 });
 export type LatestProjectionThreadMessagePreviewSourceInput =
   typeof LatestProjectionThreadMessagePreviewSourceInput.Type;
@@ -132,13 +139,16 @@ export interface ProjectionThreadMessageRepositoryShape {
   ) => Effect.Effect<ProjectionThreadMessage["createdAt"] | null, ProjectionRepositoryError>;
 
   /**
-   * The newest user or assistant message with any text — of one role when
-   * asked — as far as a preview reads it: one bounded row, no attachments
-   * decoded. Null for a thread nobody has spoken into.
+   * The newest user or assistant messages with any text or attachments — of
+   * one role when asked — as far as a preview reads them: bounded rows, no
+   * attachment metadata decoded. Empty for a thread nobody has spoken into.
    */
-  readonly getLatestPreviewSource: (
+  readonly listLatestPreviewSources: (
     input: LatestProjectionThreadMessagePreviewSourceInput,
-  ) => Effect.Effect<ProjectionThreadMessagePreviewSource | null, ProjectionRepositoryError>;
+  ) => Effect.Effect<
+    ReadonlyArray<ProjectionThreadMessagePreviewSource>,
+    ProjectionRepositoryError
+  >;
 
   /**
    * Delete projected thread messages by thread.

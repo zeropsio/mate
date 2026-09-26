@@ -8,6 +8,7 @@ import {
   type ThreadMessagePreview,
 } from "@t3tools/contracts";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
+import { userAskPreviewText } from "@t3tools/shared/userAsk";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -135,17 +136,30 @@ function isStalePendingApprovalFailureDetail(detail: string | null): boolean {
   );
 }
 
-// The shell's preview of the last message: the newest user or assistant
-// message with text, quoted (`@t3tools/shared/messagePreview`). Null when
-// nothing has been said or nothing said quotes to anything.
+// The shell's preview of a message: the assistant's words quoted
+// (`@t3tools/shared/messagePreview`), the person's ask as `userAskPreviewText`
+// reads it — attachments without words by their count, a slash command or the
+// usage-limit resume not at all. Null when nothing said quotes to anything.
 function threadMessagePreviewFromSource(
-  source: ProjectionThreadMessagePreviewSource | null,
+  source: ProjectionThreadMessagePreviewSource,
 ): ThreadMessagePreview | null {
-  if (source === null) {
-    return null;
-  }
-  const text = messagePreviewText(source.text);
+  const text =
+    source.role === "user" ? userAskPreviewText(source) : messagePreviewText(source.text);
   return text === null ? null : { role: source.role, text, createdAt: source.createdAt };
+}
+
+// How many of the newest messages a preview looks through for one that
+// previews: past this many slash commands in a row, it says nothing.
+const PREVIEW_SOURCE_WINDOW = 20;
+
+function firstThreadMessagePreview(
+  sources: ReadonlyArray<ProjectionThreadMessagePreviewSource>,
+): ThreadMessagePreview | null {
+  for (const source of sources) {
+    const preview = threadMessagePreviewFromSource(source);
+    if (preview !== null) return preview;
+  }
+  return null;
 }
 
 // A refresh reads each persisted summary source, so skip activities that cannot change the result.
@@ -565,11 +579,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     });
 
     // The previews fold in the way latestUserMessageAt does: a completed user
-    // or assistant message with text becomes the preview when it is the
+    // or assistant message that previews becomes the preview when it is the
     // newest — of anyone for `latestMessagePreview`, of the person for
-    // `latestUserMessagePreview`. A completion event may carry no text (the
-    // streamed body stands), and then the projected row is read — one bounded
-    // row of the same role, not the thread.
+    // `latestUserMessagePreview`. The person's message arrives whole; an
+    // assistant completion may carry no text (the streamed body stands), and
+    // then the projected rows are read — a bounded window of that role, not
+    // the thread.
     const foldLatestMessagePreview = Effect.fn("foldLatestMessagePreview")(function* (
       previous: ThreadMessagePreview | null,
       payload: Extract<OrchestrationEvent, { type: "thread.message-sent" }>["payload"],
@@ -579,16 +594,18 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         return previous;
       }
       const next =
-        payload.text.length > 0
+        payload.role === "user" || payload.text.length > 0
           ? threadMessagePreviewFromSource({
               role: payload.role,
               text: payload.text,
+              attachments: payload.attachments ?? [],
               createdAt: payload.createdAt,
             })
-          : threadMessagePreviewFromSource(
-              yield* projectionThreadMessageRepository.getLatestPreviewSource({
+          : firstThreadMessagePreview(
+              yield* projectionThreadMessageRepository.listLatestPreviewSources({
                 threadId: payload.threadId,
                 role: payload.role,
+                limit: PREVIEW_SOURCE_WINDOW,
               }),
             );
       if (next === null || (previous !== null && previous.createdAt > next.createdAt)) {
@@ -609,15 +626,22 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
 
       const [
         latestUserMessageAt,
-        previewSource,
-        userPreviewSource,
+        previewSources,
+        userPreviewSources,
         hasActionableProposedPlan,
         activities,
         pendingApprovalCount,
       ] = yield* Effect.all([
         projectionThreadMessageRepository.getLatestUserMessageAt({ threadId }),
-        projectionThreadMessageRepository.getLatestPreviewSource({ threadId }),
-        projectionThreadMessageRepository.getLatestPreviewSource({ threadId, role: "user" }),
+        projectionThreadMessageRepository.listLatestPreviewSources({
+          threadId,
+          limit: PREVIEW_SOURCE_WINDOW,
+        }),
+        projectionThreadMessageRepository.listLatestPreviewSources({
+          threadId,
+          role: "user",
+          limit: PREVIEW_SOURCE_WINDOW,
+        }),
         projectionThreadProposedPlanRepository.hasActionableByThreadId({
           threadId,
           latestTurnId: existingRow.value.latestTurnId,
@@ -631,8 +655,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       yield* projectionThreadRepository.upsert({
         ...existingRow.value,
         latestUserMessageAt,
-        latestMessagePreview: threadMessagePreviewFromSource(previewSource),
-        latestUserMessagePreview: threadMessagePreviewFromSource(userPreviewSource),
+        latestMessagePreview: firstThreadMessagePreview(previewSources),
+        latestUserMessagePreview: firstThreadMessagePreview(userPreviewSources),
         pendingApprovalCount,
         pendingUserInputCount,
         hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
