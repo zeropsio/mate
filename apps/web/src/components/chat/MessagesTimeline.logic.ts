@@ -1015,6 +1015,8 @@ function stretchStream(
 function stretchContentRows(input: {
   stretch: Stretch;
   answer: MessageEntry | null;
+  /** Words still streaming that cannot be placed yet: an opened log holds them too. */
+  writing: MessageEntry | null;
   open: boolean;
   view: ConversationView;
   pauseRow: MessagesTimelineRow | null;
@@ -1095,7 +1097,7 @@ function stretchContentRows(input: {
   };
 
   for (const entry of stretch.entries) {
-    if (entry === input.answer) continue;
+    if (entry === input.answer || entry === input.writing) continue;
     // The Mate's question tool: its question and the person's answer stand
     // in the run as bubbles, so the call itself is never a line of its own.
     if ((entry.kind === "work" || entry.kind === "generic-call") && isQuestionToolCall(entry.entry))
@@ -1730,6 +1732,7 @@ export function deriveMessagesTimelineRows(
         ...stretchContentRows({
           stretch,
           answer: turn.answer,
+          writing: turn.writing,
           open,
           view: input,
           pauseRow: stretch === last ? pause : null,

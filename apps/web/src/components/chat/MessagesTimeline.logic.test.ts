@@ -438,6 +438,13 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(streamOf(writing)).toEqual({ keys: ["a1"], activity: { kind: "writing" } });
     expect(writing.some((row) => row.id === "a2")).toBe(false);
+    // An opened log holds them too: they stream nowhere until known.
+    const opened = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.", { streaming: true })],
+      live: "t1",
+      open: ["msg:m0"],
+    });
+    expect(opened.some((row) => row.id === "log-note:a2")).toBe(false);
     // Written out, a line is a note, whether or not a step follows yet.
     const written = rows({
       entries: [...before, assistant("a2", "t1", 3, "Checking /status next.")],
