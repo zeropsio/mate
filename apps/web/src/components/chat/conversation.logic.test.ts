@@ -684,6 +684,34 @@ describe("browser checks", () => {
     expect(browserCheckCaption(entry.operation)).toBe(caption);
   });
 
+  // "set device iPhone 13: Other" was the tool's step and its error class,
+  // shown in red under a failed take (Nova, 2026-09-26).
+  it.each([
+    {
+      name: "a step the tool gave only a class of error",
+      step: { label: "set device iPhone 13", note: "Other" },
+      words: "couldn't set device iPhone 13",
+    },
+    {
+      name: "a step with the tool's reason",
+      step: { label: "open https://a.dev/", note: "net::ERR_NAME_NOT_RESOLVED" },
+      words: "couldn't open https://a.dev/: net::ERR_NAME_NOT_RESOLVED",
+    },
+    { name: "a step with no reason", step: { label: "click #buy" }, words: "couldn't click #buy" },
+    {
+      name: "a step that timed out",
+      step: { label: "open https://a.dev/", note: "Timeout 30000ms exceeded" },
+      words: "timed out, the page never loaded",
+    },
+  ])("says why a check failed at $name", ({ step, words }) => {
+    const failed = operation("b1", "t1", 1, {
+      kind: "browser",
+      phase: "failed",
+      browserSummary: { failedStep: step } as never,
+    }) as Extract<TimelineEntry, { kind: "operation" }>;
+    expect(browserCheckFailure(failed.operation)).toBe(words);
+  });
+
   it("says why a check failed", () => {
     const timedOut = operation("b1", "t1", 1, {
       kind: "browser",

@@ -1174,9 +1174,14 @@ export function browserCheckFailure(operation: ZeropsOperation): string | null {
   if (!browserCheckFailed(operation)) return null;
   const step = operation.browserSummary?.failedStep;
   if (step) {
-    const words = [step.label, step.note].filter(Boolean).join(": ");
-    if (/timeout|timed out/i.test(words)) return "timed out, the page never loaded";
-    return words.length > 0 ? words : "failed";
+    // The step as a thing the check could not do. The tool's bare class of
+    // error ("Other") tells a person nothing.
+    const note = step.note?.trim() && !/^other$/i.test(step.note.trim()) ? step.note.trim() : null;
+    const label = step.label?.trim() ?? "";
+    if (/timeout|timed out/i.test(`${label} ${note ?? ""}`))
+      return "timed out, the page never loaded";
+    if (label.length === 0) return note ?? "failed";
+    return note === null ? `couldn't ${label}` : `couldn't ${label}: ${note}`;
   }
   if ((operation.browserSummary?.errorCount ?? 0) > 0) {
     const count = operation.browserSummary!.errorCount;
