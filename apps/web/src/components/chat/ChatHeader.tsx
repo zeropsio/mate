@@ -50,7 +50,6 @@ import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
-import { ZeropsMateUpdateControl } from "../zerops/ZeropsMateUpdateControl";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
@@ -606,12 +605,9 @@ export const ChatHeader = memo(function ChatHeader({
       >
         {mate === undefined ? null : (
           <>
+            {/* The Mate's version and its update live with its body in the
+                right panel's Zerops view, not over the conversation. */}
             <StartFreshButton onStartFresh={onStartFresh} />
-            <span className="hidden items-center gap-1.5 text-xs text-muted-foreground @3xl/header-actions:inline-flex">
-              <ZeropsMateUpdateControl environmentId={activeThreadEnvironmentId}>
-                {({ line }) => line}
-              </ZeropsMateUpdateControl>
-            </span>
             <ZeropsProjectLink projectUrl={mate.projectUrl} />
           </>
         )}
