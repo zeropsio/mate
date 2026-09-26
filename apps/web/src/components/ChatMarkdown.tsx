@@ -304,42 +304,18 @@ const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
-/** GitHub's own five alert kinds, in its colors: the glyph names the urgency, the title says it. */
-const GITHUB_ALERT_PRESENTATIONS: Record<
-  string,
-  { label: string; Icon: typeof InfoIcon; borderClassName: string; titleClassName: string }
-> = {
-  note: {
-    label: "Note",
-    Icon: InfoIcon,
-    borderClassName: "border-blue-500/70",
-    titleClassName: "text-blue-600 dark:text-blue-400",
-  },
-  tip: {
-    label: "Tip",
-    Icon: LightbulbIcon,
-    borderClassName: "border-emerald-500/70",
-    titleClassName: "text-emerald-600 dark:text-emerald-400",
-  },
-  important: {
-    label: "Important",
-    Icon: MessageSquareWarningIcon,
-    borderClassName: "border-purple-500/70",
-    titleClassName: "text-purple-600 dark:text-purple-400",
-  },
-  warning: {
-    label: "Warning",
-    Icon: TriangleAlertIcon,
-    borderClassName: "border-amber-500/70",
-    titleClassName: "text-amber-600 dark:text-amber-500",
-  },
-  caution: {
-    label: "Caution",
-    Icon: OctagonAlertIcon,
-    borderClassName: "border-red-500/70",
-    titleClassName: "text-red-600 dark:text-red-400",
-  },
-};
+/**
+ * GitHub's five alert kinds, drawn as callouts: the glyph names the urgency,
+ * the word says it. Their tones are the product's status grammar and live in
+ * the stylesheet (`.chat-markdown-callout[data-alert]`).
+ */
+const CALLOUTS = new Map<string, { label: string; Icon: typeof InfoIcon }>([
+  ["note", { label: "Note", Icon: InfoIcon }],
+  ["tip", { label: "Tip", Icon: LightbulbIcon }],
+  ["important", { label: "Important", Icon: MessageSquareWarningIcon }],
+  ["warning", { label: "Warning", Icon: TriangleAlertIcon }],
+  ["caution", { label: "Caution", Icon: OctagonAlertIcon }],
+]);
 
 function extractFenceLanguage(className: string | undefined): string {
   const match = className?.match(CODE_FENCE_LANGUAGE_REGEX);
@@ -1912,21 +1888,24 @@ const CHAT_MARKDOWN_COMPONENTS = {
     return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
-    const alert =
-      GITHUB_ALERT_PRESENTATIONS[String((props as Record<string, unknown>)["data-alert"] ?? "")];
-    if (!alert) {
+    const kind = String((props as Record<string, unknown>)["data-alert"] ?? "");
+    const callout = CALLOUTS.get(kind);
+    if (!callout) {
       return <blockquote {...props}>{children}</blockquote>;
     }
-    // Not a <blockquote>: the stylesheet mutes those, and an alert's body is ordinary
-    // text under a colored title — which is how the host renders it.
+    // Still a quote underneath, so copying it out gives back `> [!KIND]` and
+    // its lines: the label copies as the marker it replaced.
     return (
-      <div role="note" className={cn("my-1 border-l-2 pl-3", alert.borderClassName)}>
-        <p className={cn("flex items-center gap-1.5 font-medium", alert.titleClassName)}>
-          <alert.Icon aria-hidden className="size-3.5 shrink-0" />
-          {alert.label}
+      <blockquote {...props} role="note" className="chat-markdown-callout">
+        <p
+          className="chat-markdown-callout-label"
+          data-markdown-copy={`[!${kind.toUpperCase()}]\n`}
+        >
+          <callout.Icon aria-hidden className="size-3.5 shrink-0" />
+          {callout.label}
         </p>
         {children}
-      </div>
+      </blockquote>
     );
   },
   ol: function MarkdownOrderedList({ node, start, style, ...props }) {

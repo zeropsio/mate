@@ -2099,6 +2099,66 @@ code {
   color: var(--contrast-muted-foreground);
 }
 
+/* GitHub's alerts (`> [!NOTE]` to `> [!CAUTION]`) as callouts in the status
+   grammar: a 3 px edge and a faint tint in the tone, a small label in its ink,
+   then ordinary text in the body's. A note is neutral, a tip the ok green, the
+   important thing the blue of what the person can act on, a warning the
+   attention amber, a caution the failure red. */
+.chat-markdown .chat-markdown-callout {
+  border-left: 3px solid var(--callout-tone);
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: color-mix(in srgb, var(--callout-tone) 8%, transparent);
+  padding: 0.6em 0.9em;
+  color: inherit;
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="note"] {
+  --callout-tone: var(--zerops-status-off);
+  --callout-ink: var(--contrast-muted-foreground);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="tip"] {
+  --callout-tone: var(--zerops-status-ok);
+  --callout-ink: var(--zerops-status-ok-text);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="important"] {
+  --callout-tone: var(--message-action);
+  --callout-ink: var(--message-action);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="warning"] {
+  --callout-tone: var(--zerops-status-attention);
+  --callout-ink: var(--zerops-status-attention-text);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="caution"] {
+  --callout-tone: var(--zerops-status-failed);
+  --callout-ink: var(--zerops-status-failed-text);
+}
+
+/* The label's ink is its tone's pulled a quarter toward the text: the status
+   inks are set for white cards, and on the canvas, under the tint, a 13 px
+   label needs the extra contrast in both themes. */
+.chat-markdown .chat-markdown-callout-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0 0 0.25em;
+  color: color-mix(in oklab, var(--callout-ink) 75%, var(--contrast-foreground));
+  font-size: calc(13em / 15);
+  font-weight: 600;
+  line-height: calc(20 / 13);
+}
+
+.chat-markdown .chat-markdown-callout-label + * {
+  margin-top: 0;
+}
+
+.chat-markdown .chat-markdown-callout > :last-child {
+  margin-bottom: 0;
+}
+
 .chat-markdown section[data-footnotes] {
   margin-top: 1.25rem;
   border-top: 1px solid var(--contrast-border);

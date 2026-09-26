@@ -607,6 +607,96 @@ describe("ChatMarkdown bare addresses", () => {
   });
 });
 
+describe("ChatMarkdown callouts", () => {
+  /** The callout's opening tag, its label paragraph and the markup after the label. */
+  function callout(html: string) {
+    const [, open = "", label = "", body = ""] =
+      /(<blockquote[^>]*>)(<p class="chat-markdown-callout-label"[^>]*>[\s\S]*?<\/p>)([\s\S]*)<\/blockquote>/.exec(
+        html,
+      ) ?? [];
+    return { open, label, body };
+  }
+
+  it.each([
+    { marker: "[!NOTE]", kind: "note", word: "Note" },
+    { marker: "[!TIP]", kind: "tip", word: "Tip" },
+    { marker: "[!IMPORTANT]", kind: "important", word: "Important" },
+    { marker: "[!WARNING]", kind: "warning", word: "Warning" },
+    { marker: "[!CAUTION]", kind: "caution", word: "Caution" },
+    { marker: "[!caution]", kind: "caution", word: "Caution" },
+  ])("renders > $marker as a $word callout", ({ marker, kind, word }) => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text={`> ${marker}\n> Stripe is empty.`} />,
+    );
+    const { open, label, body } = callout(html);
+
+    expect(open).toContain(`data-alert="${kind}"`);
+    expect(open).toContain('role="note"');
+    expect(open).toContain("chat-markdown-callout");
+    // A small label: the glyph and the word, then the content without its marker line.
+    expect(label).toMatch(new RegExp(`<svg[\\s\\S]*</svg>${word}</p>$`));
+    expect(body.trim()).toBe("<p>Stripe is empty.</p>");
+    expect(html.replace(/<[^>]+>/g, "")).not.toContain("[!");
+    // Copying gives back the alert it was written as.
+    expect(label).toContain(`data-markdown-copy="[!${kind.toUpperCase()}]\n"`);
+  });
+
+  it("keeps lists and code in a callout's body, in order", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown
+        cwd="/tmp/project"
+        text={[
+          "> [!WARNING]",
+          "> Before Medusa ever comes up:",
+          ">",
+          "> - set `JWT_SECRET`;",
+          "> - set `COOKIE_SECRET`.",
+          ">",
+          "> ```bash",
+          "> openssl rand -hex 32",
+          "> ```",
+        ].join("\n")}
+      />,
+    );
+    const { body } = callout(html);
+    const order = [
+      "<p>Before Medusa ever comes up:</p>",
+      "<ul>",
+      "COOKIE_SECRET",
+      "chat-markdown-codeblock",
+    ].map((part) => body.indexOf(part));
+
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual(order.toSorted((left, right) => left - right));
+    // Highlighted or not yet, the command reads whole.
+    expect(body.replace(/<[^>]+>/g, "")).toContain("openssl rand -hex 32");
+  });
+
+  it.each([
+    ["a plain quote", "> Just a quote."],
+    ["a marker sharing its line", "> [!NOTE] an ordinary quote"],
+    ["an unknown kind", "> [!DANGER]\n> Not one of GitHub's."],
+  ])("leaves %s a quote", (_name, text) => {
+    const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={text} />);
+
+    expect(html).toMatch(/<blockquote>\s*<p>/);
+    expect(html).not.toContain("chat-markdown-callout");
+    expect(html).not.toContain('role="note"');
+  });
+
+  it("does not take a raw alert attribute outside the five kinds for one", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown
+        cwd="/tmp/project"
+        text={'<blockquote data-alert="constructor">Hi</blockquote>'}
+      />,
+    );
+
+    expect(html).not.toContain("chat-markdown-callout");
+    expect(html).toContain("Hi");
+  });
+});
+
 describe("ChatMarkdown tables", () => {
   const TABLE = [
     "| Service | Where it runs | What changed |",

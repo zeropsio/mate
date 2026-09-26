@@ -299,6 +299,48 @@ describe("the chat markdown stylesheet", () => {
     expect(declarationsOf(".chat-markdown table").get("overflow-wrap")).toBeUndefined();
   });
 
+  it("draws a callout as a 3 px edge and a faint tint in its tone", () => {
+    const callout = declarationsOf(".chat-markdown .chat-markdown-callout");
+    const label = declarationsOf(".chat-markdown .chat-markdown-callout-label");
+
+    expect(callout.get("border-left")).toBe("3px solid var(--callout-tone)");
+    expect(callout.get("background")).toMatch(
+      /^color-mix\(in srgb, var\(--callout-tone\) \d+%, transparent\)$/,
+    );
+    // The body is ordinary text: not the muted ink of a plain quote.
+    expect(callout.get("color")).toBe("inherit");
+    // The label is the tone's ink pulled toward the text, which measured
+    // 5.2:1 or better for every kind in both themes on the canvas.
+    expect(label.get("color")).toBe(
+      "color-mix(in oklab, var(--callout-ink) 75%, var(--contrast-foreground))",
+    );
+    expect(label.get("font-weight")).toBe("600");
+  });
+
+  // The product's status grammar: a note is neutral, a tip the ok green, the
+  // important thing the blue of what the person can act on, a warning the
+  // attention amber, a caution the failure red.
+  it.each([
+    { kind: "note", tone: "var(--zerops-status-off)", ink: "var(--contrast-muted-foreground)" },
+    { kind: "tip", tone: "var(--zerops-status-ok)", ink: "var(--zerops-status-ok-text)" },
+    { kind: "important", tone: "var(--message-action)", ink: "var(--message-action)" },
+    {
+      kind: "warning",
+      tone: "var(--zerops-status-attention)",
+      ink: "var(--zerops-status-attention-text)",
+    },
+    {
+      kind: "caution",
+      tone: "var(--zerops-status-failed)",
+      ink: "var(--zerops-status-failed-text)",
+    },
+  ])("tones a $kind callout from the status grammar", ({ kind, tone, ink }) => {
+    const callout = declarationsOf(`.chat-markdown .chat-markdown-callout[data-alert="${kind}"]`);
+
+    expect(callout.get("--callout-tone")).toBe(tone);
+    expect(callout.get("--callout-ink")).toBe(ink);
+  });
+
   it("finds the chat markdown rules it pins", () => {
     expect(CHAT_MARKDOWN_RULES.length).toBeGreaterThan(20);
   });
