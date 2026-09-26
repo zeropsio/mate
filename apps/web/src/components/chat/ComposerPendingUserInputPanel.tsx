@@ -84,7 +84,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
       isResponding={respondingRequestIds.includes(activePrompt.requestId)}
       answers={answers}
       questionIndex={questionIndex}
-      waitingLabel="WAITING FOR YOU"
+      waitingLabel="Waiting for you"
       answer={answer}
     />
   );
@@ -288,10 +288,14 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
           className="group -my-1 flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-primary/25"
         >
+          {/* Whom it waits on, as a phrase: the product sets no label in
+              capitals, and the amber is the conversation's for who is next. */}
           <StatusDot
+            className="text-status-attention-text text-xs"
             data-pending-user-input-waiting
             label={waitingLabel}
             pulse={false}
+            sentence
             tone="attention"
           />
           <span

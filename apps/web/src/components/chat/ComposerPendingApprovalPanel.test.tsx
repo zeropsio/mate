@@ -29,7 +29,10 @@ describe("ComposerPendingApprovalPanel", () => {
     expect(markup).toContain("whitespace-pre");
     expect(markup).toContain("[scrollbar-width:thin]");
     expect(markup).toContain("[&amp;::-webkit-scrollbar]:h-1.5");
-    expect(markup).not.toContain("truncate");
+    // The command is never cut; the words beside the dot may be.
+    const detailTag = markup.match(/<code\b[^>]*>/)?.[0];
+    expect(detailTag).toContain('data-approval-detail="complete"');
+    expect(detailTag).not.toContain("truncate");
     expect(markup).not.toContain("line-clamp");
     expect(markup).toContain("min-w-0");
     expect(markup).not.toContain("Command approval requested");
@@ -94,5 +97,30 @@ describe("ComposerPendingApprovalPanel", () => {
     expect(markup).toContain(appName);
     expect(markup).toContain('data-approval-detail="complete"');
     expect(markup).toContain(detail);
+  });
+
+  // No label in the product is set in capitals: whom the approval waits on
+  // reads as written, and nothing on the way re-cases it.
+  it.each([
+    ["the viewer", undefined, "Waiting for you"],
+    ["someone else", "Waiting for the owner", "Waiting for the owner"],
+  ] as const)("says in sentence case that it waits on %s", (_whom, waitingLabel, words) => {
+    const markup = renderToStaticMarkup(
+      <ComposerPendingApprovalPanel
+        approval={{
+          requestId: ApprovalRequestId.make("approval-waiting"),
+          requestKind: "command",
+          createdAt: "2026-09-26T00:00:00.000Z",
+          detail: "vp test run",
+        }}
+        pendingCount={1}
+        {...(waitingLabel === undefined ? {} : { waitingLabel })}
+      />,
+    );
+
+    expect(markup).toContain(`>${words}</span>`);
+    expect(markup).not.toContain("uppercase");
+    expect(markup).not.toContain("tracking-");
+    expect(markup).not.toContain('data-zerops-primitive="micro-label"');
   });
 });
