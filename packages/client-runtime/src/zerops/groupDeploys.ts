@@ -144,10 +144,12 @@ export interface MainHeadRead {
  * Which repositories' default branches a release has to read (D28, `release.ts`).
  *
  * A release lists what is merged, whether or not the group has a stage, so
- * every service the production runs is asked for — at the repository its
- * tier's `buildFromGit` names, the hostname when the tier does not say
- * (`DeployStatusRead.repo`). A group with no production declared has nothing
- * to release and is asked nothing.
+ * every service the production runs is asked for at the repository its tier's
+ * `buildFromGit` names. A service the tier builds from no repository of the
+ * group is not asked: the broker never deploys it, and a tag listing it held
+ * Release as in flight until its bound ran out (2026-09-26, a stray `mailpit`
+ * matched a repository of that name). A group with no production declared has
+ * nothing to release and is asked nothing.
  */
 export function planMainHeadReads(input: {
   readonly declarations: ReadonlyArray<GroupEnvironment>;
@@ -161,10 +163,9 @@ export function planMainHeadReads(input: {
   const reads = new Map<string, MainHeadRead>();
   for (const service of input.services) {
     if (!productions.has(service.projectId) || reads.has(service.hostname)) continue;
-    reads.set(service.hostname, {
-      hostname: service.hostname,
-      repo: input.repositories.get(service.hostname) ?? service.hostname,
-    });
+    const repo = input.repositories.get(service.hostname);
+    if (repo === undefined) continue;
+    reads.set(service.hostname, { hostname: service.hostname, repo });
   }
   return [...reads.values()];
 }

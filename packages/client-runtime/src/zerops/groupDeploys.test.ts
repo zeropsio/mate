@@ -336,10 +336,18 @@ describe("what a release has to read", () => {
     ]);
   });
 
-  it("asks under the hostname where the tier names no repository", () => {
+  // The broker deploys a production service only from the repository its tier
+  // names, so a release that listed any other one would list a commit that is
+  // never deployed — and the app held Release as in flight for 30 minutes
+  // waiting for it (2026-09-26: a stray `mailpit` service matched a repository
+  // of the same name, and `v0.1.31` sat at "Releasing").
+  it.each([
+    ["the tier names no repository at all", new Map<string, string>()],
+    ["the tier names one for another service", new Map([["web", "webdev"]])],
+  ])("asks for nothing where %s", (_, tierRepositories) => {
     expect(
-      planMainHeadReads({ declarations: [production], services, repositories: new Map() }),
-    ).toEqual([{ hostname: "api", repo: "api" }]);
+      planMainHeadReads({ declarations: [production], services, repositories: tierRepositories }),
+    ).toEqual([]);
   });
 
   it("asks the same for a project that also has a stage", () => {
