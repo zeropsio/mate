@@ -86,11 +86,13 @@ export function ElapsedSince({ since }: { readonly since: string }) {
   );
 }
 
-function spanText(startedAt: string, endedAt: string | null): string {
+function spanText(startedAt: string, endedAt: string | null, waitedMs = 0): string {
   const startMs = Date.parse(startedAt);
   const endMs = endedAt === null ? Date.now() : Date.parse(endedAt);
   return formatWorkDuration(
-    Number.isFinite(startMs) && Number.isFinite(endMs) ? endMs - startMs : 0,
+    Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? Math.max(0, endMs - startMs - waitedMs)
+      : 0,
   );
 }
 
@@ -132,7 +134,13 @@ export function WorkLine({
       <Tooltip>
         <TooltipTrigger render={<span className="shrink-0 tabular-nums" data-work-line-clock />}>
           {speaker.name} {verb}{" "}
-          {live ? <ElapsedSince since={row.startedAt} /> : spanText(row.startedAt, row.endedAt)}
+          {live ? (
+            <ElapsedSince since={row.startedAt} />
+          ) : (
+            // How long the Mate worked: the time its questions waited on the
+            // person is theirs. The tooltip keeps the run's whole span.
+            spanText(row.startedAt, row.endedAt, row.waitedMs)
+          )}
         </TooltipTrigger>
         <TooltipPopup>
           {formatChatTimestampTooltip(row.startedAt, timestampFormat)}
@@ -164,7 +172,7 @@ export function WorkLine({
         <button
           type="button"
           aria-expanded={row.open}
-          aria-label={`${speaker.name} ${verb} ${spanText(row.startedAt, row.endedAt)}${summary === null ? "" : `, ${summary.charAt(0).toLowerCase() + summary.slice(1)}`}. ${row.open ? "Hide" : "Show"} what it did`}
+          aria-label={`${speaker.name} ${verb} ${spanText(row.startedAt, row.endedAt, row.waitedMs)}${summary === null ? "" : `, ${summary.charAt(0).toLowerCase() + summary.slice(1)}`}. ${row.open ? "Hide" : "Show"} what it did`}
           className={cn(
             className,
             "cursor-pointer rounded-sm transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",

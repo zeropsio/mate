@@ -40,7 +40,8 @@ function markOf(line: Extract<MessagesTimelineRow, { kind: "work-line" }> | null
           ? "produced"
           : "quiet";
   const endMs = line.endedAt === null ? Date.now() : Date.parse(line.endedAt);
-  const minutes = (endMs - Date.parse(line.startedAt)) / 60_000;
+  // How long the Mate worked, as the line says it: its waits on the person are theirs.
+  const minutes = (endMs - Date.parse(line.startedAt) - line.waitedMs) / 60_000;
   const weight = !Number.isFinite(minutes) || minutes < 10 ? 0 : minutes < 60 ? 1 : 2;
   return { tone, weight: weight as 0 | 1 | 2, note: line.note ?? line.fallback };
 }

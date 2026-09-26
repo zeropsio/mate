@@ -407,6 +407,8 @@ type MessagesTimelineRowBody =
       face: WorkLineFace;
       startedAt: string;
       endedAt: string | null;
+      /** How long the run waited on the person — its questions and approvals — which is not the Mate's work. */
+      waitedMs: number;
       /** The latest note (live) or the last one the person saw (frozen), one line. */
       note: string | null;
       /** What stands in for a note when the stretch had none. */
@@ -743,6 +745,27 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
         entry.entry.inputRequestId === asked.entry.inputRequestId),
   );
   return answered ? null : asked;
+}
+
+/**
+ * How long a run waited on the person: from each question or approval it
+ * asked to the person's answer. A wait still open counts nothing yet.
+ */
+function waitedOnPerson(turn: ConversationTurn): number {
+  let waited = 0;
+  let since: number | null = null;
+  for (const entry of turn.stretches.flatMap((stretch) => stretch.entries)) {
+    if (entry.kind !== "work") continue;
+    const kind = entry.entry.sourceActivityKind;
+    const at = Date.parse(entry.createdAt);
+    if (!Number.isFinite(at)) continue;
+    if (kind === "user-input.requested" || kind === "approval.requested") since ??= at;
+    else if ((kind === "user-input.resolved" || kind === "approval.resolved") && since !== null) {
+      waited += Math.max(0, at - since);
+      since = null;
+    }
+  }
+  return waited;
 }
 
 /** What the Mate's hands are on: waiting for an answer, the running operation or tool, thinking, writing. */
@@ -1648,6 +1671,7 @@ export function deriveMessagesTimelineRows(
         face: stretchFace({ stretch: last, turn, pausedHere }),
         startedAt: first.startedAt,
         endedAt: last.endedAt,
+        waitedMs: waitedOnPerson(turn),
         note: lastNote === null ? null : noteLine(lastNote.message.text),
         fallback: lastNote !== null ? null : pausedHere ? "Stopped by the usage limit" : summary,
         summary,

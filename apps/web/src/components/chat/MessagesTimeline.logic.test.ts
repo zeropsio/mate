@@ -188,6 +188,36 @@ describe("deriveMessagesTimelineRows", () => {
         { id: "accent", header: "Accent colour", question: "Which accent colour do you prefer?" },
       ],
     });
+  // "Nova worked for 7m 5s" counted the three minutes its question waited on
+  // the person: the clock says how long the Mate worked, its tooltip the
+  // run's whole span (Nova, 2026-09-26).
+  it.each([
+    { name: "a question", kinds: ["user-input.requested", "user-input.resolved"] as const },
+    { name: "an approval", kinds: ["approval.requested", "approval.resolved"] as const },
+  ])("leaves the time $name waited on the person out of how long the Mate worked", ({ kinds }) => {
+    const waitOn = (id: string, minute: number, kind: (typeof kinds)[number]) =>
+      tool(id, "t1", minute, {
+        tone: "info",
+        label: "Waiting on the person",
+        command: undefined as never,
+        toolCallId: undefined as never,
+        toolLifecycleStatus: undefined as never,
+        sourceActivityKind: kind,
+      });
+    const line = rows({
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "One thing first."),
+        waitOn("q1", 2, kinds[0]),
+        waitOn("q2", 7, kinds[1]),
+        tool("w1", "t1", 8),
+        assistant("a2", "t1", 9, "Done."),
+      ],
+      settled: "t1",
+    }).find((row) => row.kind === "work-line");
+    expect(line).toMatchObject({ waitedMs: 5 * 60_000 });
+  });
+
   it.each([
     { name: "nothing yet: it thinks", entries: [], activity: { kind: "thinking" } },
     {
