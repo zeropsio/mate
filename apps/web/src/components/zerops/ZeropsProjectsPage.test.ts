@@ -748,8 +748,12 @@ describe("an environment's menu", () => {
     // holds the server's own answer, so a page that lists Mates mounts it
     // per Mate rather than re-deriving the verbs. A project's page used to
     // be the one place a Mate's update could not be started from.
-    expect(groupDetailSource).toContain("<ZeropsMateUpdateControl environmentId=");
+    expect(groupDetailSource).toMatch(/<ZeropsMateUpdateControl\s+environmentId=/u);
     expect(groupDetailSource).toContain("{({ menuActions }) => menu(menuActions)}");
+    // The confirm dialog asks about the Mate by name: several are often
+    // updated one after another.
+    expect(groupDetailSource).toMatch(/<ZeropsMateUpdateControl[^>]*\bmateName=/u);
+    expect(projectsPageSource).toMatch(/<ZeropsMateUpdateControl[^>]*\bmateName=/u);
   });
 });
 

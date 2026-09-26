@@ -100,6 +100,8 @@ import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useNowMs } from "~/zerops/useNowMs";
+import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
+import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import {
   useZeropsLandedChange,
   type ZeropsLandedChangeState,
@@ -144,6 +146,7 @@ import {
   VerdictPanel,
 } from "./primitives";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -266,7 +269,10 @@ function useMateMenus(): {
       // there are the same check (`useZeropsMateUpdate` keys by environment).
       if (candidate.group !== "connected" || candidate.environmentId === undefined) return menu([]);
       return (
-        <ZeropsMateUpdateControl environmentId={candidate.environmentId}>
+        <ZeropsMateUpdateControl
+          environmentId={candidate.environmentId}
+          mateName={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+        >
           {({ menuActions }) => menu(menuActions)}
         </ZeropsMateUpdateControl>
       );
@@ -398,6 +404,7 @@ function useGroupMates(groupId: string): {
 } {
   const { listing, refresh } = useZeropsCandidates();
   const activity = useZeropsAgentActivity();
+  const updates = useZeropsMateUpdateStates();
   const nowMs = useNowMs();
   const mates = useMemo(() => {
     const candidates = heldCandidates(listing).rows;
@@ -430,9 +437,10 @@ function useGroupMates(groupId: string): {
             live === undefined || subject === undefined
               ? undefined
               : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
+          update: mateUpdateStatus(updates.of(item)),
         };
       });
-  }, [activity, groupId, listing]);
+  }, [activity, groupId, listing, updates]);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs),
     [listing, nowMs],
@@ -2199,6 +2207,8 @@ export interface GroupMate {
   readonly subject: string | undefined;
   readonly snippet: string | undefined;
   readonly when: string | undefined;
+  /** What its menu's check or update is doing, said over its subject until it settles. */
+  readonly update?: MateUpdateStatus | null | undefined;
 }
 
 /**
@@ -2246,7 +2256,12 @@ function MateLine({
               </span>
             )}
           </span>
-          {mate.subject === undefined ? (
+          {mate.update !== null && mate.update !== undefined ? (
+            <MateUpdateStatusText
+              className="text-xs leading-4 text-muted-foreground"
+              status={mate.update}
+            />
+          ) : mate.subject === undefined ? (
             <span className="truncate text-xs leading-4 text-muted-foreground/70">
               Nothing asked of it yet
             </span>
