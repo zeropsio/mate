@@ -145,7 +145,7 @@ their tests are shared (`oxlint-plugin-t3code/exceptions.ts`, W1-EXC).
 | R9   | `exceptions/no-restyle.json`              |                    329 |       0 | restyles that predate the ui-kit pass (75 in the Zerops dirs); all expire at F6                                                      |
 | R10  | `exceptions/no-unknown-classes.json`      |                      3 |       3 | the `MateMark.css` classes — `@shadcn/lint` reads only `index.css` and its imports                                                   |
 | R10  | `exceptions/require-static-classes.json`  |                      4 |       0 | runtime-built `className`s on ui exports (1 in the Zerops dirs); expire at F6                                                        |
-| R11  | `exceptions/no-arbitrary-values.json`     |                    247 |       0 | arbitrary values that predate the token pass (141 in the Zerops dirs; 2 are the usage breakdown's 8px avatar initials); expire at F6 |
+| R11  | `exceptions/no-arbitrary-values.json`     |                    246 |       0 | arbitrary values that predate the token pass (141 in the Zerops dirs; 2 are the usage breakdown's 8px avatar initials); expire at F6 |
 
 ## 6. Decisions taken inside the programme
 
