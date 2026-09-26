@@ -545,7 +545,10 @@ type MessagesTimelineRowBody =
       createdAt: string;
     }
   | {
-      /** Background work that finished outside any turn, as one quiet line. */
+      /**
+       * Background work as one quiet line: work that finished outside any
+       * turn, or the helpers and tasks whose results woke the run under it.
+       */
       kind: "background";
       id: string;
       createdAt: string;
@@ -553,6 +556,8 @@ type MessagesTimelineRowBody =
       /** How many tasks — a task that reported twice is still one. */
       tasks: number;
       failed: number;
+      /** Every task a helper's: said as helpers, not as background tasks. */
+      helpers: boolean;
       /** The latest task's, in the words it was given. */
       title: string | null;
       expanded: boolean;
@@ -1265,6 +1270,7 @@ function stretchContentRows(input: {
 function backgroundRunSummary(run: ReadonlyArray<WorkLogEntry>): {
   tasks: number;
   failed: number;
+  helpers: boolean;
   title: string | null;
 } {
   const lastByTask = new Map<string, WorkLogEntry>();
@@ -1273,6 +1279,8 @@ function backgroundRunSummary(run: ReadonlyArray<WorkLogEntry>): {
   return {
     tasks: lastByTask.size,
     failed: [...lastByTask.values()].filter(workEntryDisplayIndicatesToolFailure).length,
+    // A helper's task names the helper's role; a shell or a watch loop has none.
+    helpers: run.length > 0 && run.every((entry) => entry.agentRole !== undefined),
     title: last === undefined ? null : normalizeCompactToolLabel(last.toolTitle ?? last.label),
   };
 }
@@ -1482,6 +1490,32 @@ export function deriveMessagesTimelineRows(
       candidate.entry.sourceActivityKind !== "context-compaction"
     );
   };
+  const expandedIds = input.expandedIds ?? new Set<string>();
+  // Where each run's entries begin: the person's message, or its first entry.
+  const firstIndexByTurn = new Map<string, number>();
+  structure.stretchByIndex.forEach((stretch, index) => {
+    const known = firstIndexByTurn.get(stretch.turnKey);
+    if (known === undefined || index < known) firstIndexByTurn.set(stretch.turnKey, index);
+  });
+  const turnStartIndexes = new Set(firstIndexByTurn.values());
+  /**
+   * What woke a run nobody wrote to start: the helpers and background tasks
+   * that finished since the run before it began, for a background result
+   * wakes the Mate. None when work no turn owns stands right before the run:
+   * that line says so already.
+   */
+  const wokeBy = (turn: ConversationTurn): WorkLogEntry[] => {
+    const start = firstIndexByTurn.get(turn.key) ?? entries.length;
+    if (isLooseActivity(start - 1)) return [];
+    const finished: WorkLogEntry[] = [];
+    for (let index = start - 1; index >= 0; index -= 1) {
+      const entry = entries[index]!;
+      if (turnStartIndexes.has(index) || isUserMessageEntry(entry)) break;
+      if (entry.kind === "work" && entry.entry.sourceActivityKind === "task.completed")
+        finished.unshift(entry.entry);
+    }
+    return finished;
+  };
   /**
    * One run of the Mate as the conversation draws it — a turn, from the
    * person's message that started it to its answer — as one card, however
@@ -1504,6 +1538,34 @@ export function deriveMessagesTimelineRows(
     seamBefore(first.lead?.createdAt ?? first.startedAt, first.lead?.id ?? first.key);
     if (first.lead !== null && first.leadIndex !== null) {
       rows.push(personRow(first.lead, first.leadIndex, first.aside));
+    } else {
+      // A run nobody wrote to start opens with what woke it, where the
+      // person's message would stand (Nova, 2026-09-26: a helper's review
+      // came back, and the run it woke began with no word of why).
+      const woke = wokeBy(turn);
+      if (woke.length > 0) {
+        const id = `woke:${first.key}`;
+        const expanded = expandedIds.has(id);
+        rows.push({
+          kind: "background",
+          id,
+          createdAt: first.startedAt,
+          entries: woke,
+          ...backgroundRunSummary(woke),
+          expanded,
+        });
+        if (expanded) {
+          for (const work of woke) {
+            rows.push({
+              kind: "work",
+              id: `woke-entry:${work.id}`,
+              createdAt: work.createdAt,
+              groupedEntries: [work],
+              isExpandedToolGroupEntry: true,
+            });
+          }
+        }
+      }
     }
 
     // A /compact is its own event line: it says when the context is condensed,
@@ -1685,7 +1747,6 @@ export function deriveMessagesTimelineRows(
     lastEnd = last.endedAt ?? last.startedAt;
   };
 
-  const expandedIds = input.expandedIds ?? new Set<string>();
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
     if (isLooseActivity(index)) {

@@ -285,6 +285,120 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list.at(-1)).toMatchObject({ activity: { kind: "thinking" }, stream: [] });
   });
 
+  // A background result wakes the Mate. A helper's review came back while the
+  // run that started it still worked, and the run it woke had no line saying
+  // why it began (Nova, 2026-09-26). Work no turn owns, right before the run,
+  // draws its own line already.
+  const helperDone = (id: string, turnId: string, minute: number) =>
+    tool(id, turnId, minute, {
+      label: `Review ${id}`,
+      toolTitle: `Review ${id}`,
+      taskId: `task-${id}`,
+      agentRole: "general-purpose",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+    });
+  const shellDone = (id: string, turnId: string, minute: number) =>
+    tool(id, turnId, minute, {
+      label: `Smoke test ${id}`,
+      toolTitle: `Smoke test ${id}`,
+      taskId: `task-${id}`,
+      sourceActivityKind: "task.completed",
+      tone: "info",
+    });
+  it.each([
+    {
+      name: "a helper that finished while the run before it worked",
+      during: [helperDone("h1", "t1", 2)],
+      after: [],
+      woke: { entries: [{ id: "h1" }], tasks: 1, failed: 0, helpers: true, title: "Review h1" },
+    },
+    {
+      name: "a background task that finished while the run before it worked",
+      during: [shellDone("s1", "t1", 2)],
+      after: [],
+      woke: {
+        entries: [{ id: "s1" }],
+        tasks: 1,
+        failed: 0,
+        helpers: false,
+        title: "Smoke test s1",
+      },
+    },
+    {
+      name: "two helpers",
+      during: [helperDone("h1", "t1", 2), helperDone("h2", "t1", 3)],
+      after: [],
+      woke: { tasks: 2, helpers: true, title: "Review h2" },
+    },
+    {
+      name: "work no turn owns, right before it",
+      during: [],
+      after: [background("b1", 5)],
+      woke: null,
+    },
+    { name: "nothing that finished", during: [], after: [], woke: null },
+  ])("says what woke a run nobody wrote to start: $name", ({ during, after, woke }) => {
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started it."),
+      ...during,
+      assistant("a2", "t1", 4, "It reports back when done."),
+      ...after,
+      assistant("a3", "t2", 6, "It came back clean."),
+    ];
+    const list = rows({ entries, settled: "t2" });
+    const line = list.find((row) => row.id === "woke:turn:t2");
+    if (woke === null) {
+      expect(line).toBeUndefined();
+      return;
+    }
+    // It stands where the person's message would: first in the run.
+    expect(line).toMatchObject({ kind: "background", ...woke });
+    expect(list[list.indexOf(line!) + 1]?.id).toBe("a3");
+    expect(shape(rows({ entries, settled: "t2", expanded: ["woke:turn:t2"] }))).toContain(
+      `work:woke-entry:${woke.entries?.[0]?.id ?? "h1"}`,
+    );
+  });
+
+  it("names only what finished since the run before the woken one began", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started it."),
+        helperDone("h1", "t1", 2),
+        assistant("a2", "t1", 3, "It came back."),
+        user("m1", 5),
+        assistant("a3", "t2", 6, "Done."),
+        assistant("a4", "t3", 8, "Checking in."),
+      ],
+      settled: "t3",
+    });
+    expect(list.some((row) => row.id.startsWith("woke:"))).toBe(false);
+  });
+
+  it("says what woke a run from its first frame, and the line holds as the run speaks", () => {
+    const before = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started it."),
+      helperDone("h1", "t1", 2),
+      assistant("a2", "t1", 3, "It reports back when done."),
+    ];
+    const waking = framed({ entries: before, live: "t2" });
+    const speaking = framed({
+      entries: [...before, assistant("a3", "t2", 5, "It came back clean.")],
+      live: "t2",
+    });
+    expect(shape(waking).slice(-4)).toEqual([
+      "background:woke:turn:t2",
+      "work-line:work-line:turn:t2",
+      "working:working:turn:t2",
+      "card-end:card-end:turn:t2",
+    ]);
+    const lineAt = waking.findIndex((row) => row.id === "woke:turn:t2");
+    expect(frame(speaking).slice(0, lineAt + 2)).toEqual(frame(waking).slice(0, lineAt + 2));
+  });
+
   const typeCheck = (id: string, minute: number, failed: boolean) =>
     tool(id, "t1", minute, {
       label: "Run the type check",

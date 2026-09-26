@@ -1372,6 +1372,43 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain("1 background task ");
   });
 
+  it("opens a run a helper's result woke with the helper that finished", () => {
+    const woken = TurnId.make("turn-2");
+    const review = tool("h1", 20);
+    const answer = assistant("a2", 60, "The review came back clean.");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={{ ...settled, turnId: woken }}
+        timelineEntries={
+          [
+            buildUserTimelineEntry("Have a helper review it"),
+            assistant("a1", 5, "A helper is reviewing it."),
+            {
+              ...review,
+              entry: {
+                ...review.entry,
+                label: "Review the endpoint",
+                toolTitle: "Review the endpoint",
+                sourceActivityKind: "task.completed",
+                taskId: "task-1",
+                agentRole: "general-purpose",
+                tone: "info",
+              },
+            },
+            assistant("a3", 30, "It reports back when done."),
+            { ...answer, message: { ...answer.message, turnId: woken } },
+          ] as Parameters<typeof MessagesTimeline>[0]["timelineEntries"]
+        }
+      />,
+    );
+    const line = markup.indexOf("Helper finished");
+    expect(line).toBeGreaterThan(markup.indexOf("It reports back when done."));
+    expect(line).toBeLessThan(markup.indexOf("The review came back clean."));
+    expect(markup).toContain("Review the endpoint");
+    expect(markup).not.toContain("Background task finished");
+  });
+
   it.each([
     { watch: true, words: "Watching in the background", title: "Watch the pull request" },
     { watch: false, words: "Still working in the background", title: "Typecheck appdev" },

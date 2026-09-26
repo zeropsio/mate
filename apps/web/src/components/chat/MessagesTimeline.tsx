@@ -1772,9 +1772,10 @@ function StripTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "strip" }
 }
 
 /**
- * Background work that finished after its turn: one quiet line saying what
- * finished — a task, or how many — and the latest in its own words, its
- * tasks one click away. The Mate picks it up in the line under it.
+ * Background work that finished after its turn, or that woke the run under
+ * it: one quiet line saying what finished — a helper, a task, or how many —
+ * and the latest in its own words, its tasks one click away. The Mate picks
+ * it up in the line under it.
  */
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -1782,10 +1783,8 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
   const { failed } = row;
   const finished =
     row.tasks === 1
-      ? failed > 0
-        ? "Background task failed"
-        : "Background task finished"
-      : `${row.tasks} background tasks finished`;
+      ? `${row.helpers ? "Helper" : "Background task"} ${failed > 0 ? "failed" : "finished"}`
+      : `${row.tasks} ${row.helpers ? "helpers" : "background tasks"} finished`;
   // The line grammar: its mark on the text edge, its words after it, the
   // chevron right after them.
   return (
