@@ -14,7 +14,7 @@ import {
   TurnId,
 } from "./baseSchemas.ts";
 import { ProviderInstanceId, ProviderDriverKind } from "./providerInstance.ts";
-import { ProviderUsageLimitsUpdate } from "./providerUsageLimits.ts";
+import { ProviderUsageLimitBlock, ProviderUsageLimitsUpdate } from "./providerUsageLimits.ts";
 import { ProviderApprovalOption } from "./orchestration.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
@@ -662,9 +662,12 @@ export type AccountUpdatedPayload = typeof AccountUpdatedPayload.Type;
 /**
  * Adapters normalise their native rate-limit payload at the boundary so the
  * consumer that folds it into the provider snapshot never sees driver shapes.
+ * `blocked` is set while the update's window refuses new requests, whether or
+ * not a turn is running; `limits` may then carry no windows at all.
  */
 const AccountRateLimitsUpdatedPayload = Schema.Struct({
   limits: ProviderUsageLimitsUpdate,
+  blocked: Schema.optional(ProviderUsageLimitBlock),
 });
 export type AccountRateLimitsUpdatedPayload = typeof AccountRateLimitsUpdatedPayload.Type;
 

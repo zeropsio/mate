@@ -27,7 +27,7 @@ Consumers never read `payload.data` (a driver's raw, per-provider item shape) �
 
 ## 2. Version + changelog
 
-`PROVIDER_RUNTIME_SPI_VERSION` is `"2.3"` (`providerRuntimeSpi.ts`). Bump it, and add a
+`PROVIDER_RUNTIME_SPI_VERSION` is `"2.4"` (`providerRuntimeSpi.ts`). Bump it, and add a
 changelog entry in that file's doc comment, whenever a change to `ProviderRuntimeEventV2` or the
 `toolCall` enrichment changes what owned code may depend on — a new member, a renamed field, a
 narrowed payload shape. 2.2 (S8b) added an optional `images`/`imagesDropped` on `SpiToolCall.result`,
@@ -35,7 +35,10 @@ read from an MCP result's image content blocks — the `zerops_browser` screensh
 consumer; a reader that does not know about `images` still gets `text` exactly as before. 2.3
 (intake row 3, 2026-09-05) renames `account.rate-limits.updated`'s payload to a typed `limits`
 (the snapshot's `usageLimits` is the primary carrier) and adds optional `beforeTokens`/`afterTokens`
-to `thread.state.changed` for context compaction. The bus
+to `thread.state.changed` for context compaction. 2.4 adds an optional `blocked: { window, resetsAt }`
+to `account.rate-limits.updated` — a closed usage window and when it reopens, reported whether or not
+a turn runs — which `orchestration/Layers/ThreadUsagePauseReactor.ts` turns into the thread's usage
+pause; Claude emits it, the other drivers do not yet. The bus
 carries its build-time version (`bus.version`,
 `ProviderRuntimeEventBus.ts:39-43`) as a hook for a future adapter-version gate at startup — that
 gate is a **stated intent, not implemented**; nothing reads `bus.version` today (the "exposes the
@@ -50,6 +53,7 @@ Verified by grepping `zerops/**` and `orchestration/**` for each event's `type` 
 - `turn.started`/`turn.completed` (incl. the `state: "interrupted"` variant) — `orchestration/Layers/CheckpointReactor.ts:1021,1058,1108`, `.../ProviderRuntimeIngestion.ts:1751-1872,2302,2443`, `.../ProjectionPipeline.ts:1536,1580,1594`.
 - `runtime.error` — `zeropsTurnAuthFailure.ts:37`, `orchestration/Layers/ProviderRuntimeIngestion.ts:533,539,2384`.
 - `thread.state.changed` — `.../ProviderRuntimeIngestion.ts:850`.
+- `account.rate-limits.updated` (its `blocked`), `task.completed` (outside a turn) and `turn.completed` (`state: "completed"`) — `orchestration/usagePause.ts`, read by `orchestration/Layers/ThreadUsagePauseReactor.ts`.
 
 ## 4. Delivery guarantee
 

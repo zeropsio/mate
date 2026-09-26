@@ -43,6 +43,7 @@ import {
   type ProviderRuntimeTurnStatus,
   type ProviderSendTurnInput,
   type ProviderSession,
+  type ProviderUsageLimitBlock,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
   type RuntimeContentStreamKind,
@@ -454,6 +455,10 @@ interface ClaudeSessionContext {
   lastThreadStartedId: string | undefined;
   /** Limits already announced for the running turn, keyed `window:resetsAt`. */
   announcedUsageLimits: { turnId: string; keys: Set<string> } | undefined;
+  /** When the closed usage window last reported reopens, if credibly known (epoch ms). */
+  usageLimitBlockedUntilMs?: number | undefined;
+  /** A background wake the closed window held; its result is still to arrive. */
+  heldLimitWake?: boolean | undefined;
   stopped: boolean;
 }
 
@@ -657,6 +662,37 @@ function describeClaudeUsageLimit(
   return `Claude usage limit reached. This turn is paused until the ${
     label ? `${label} ` : ""
   }limit resets${wait ? ` in ${wait}` : ""}.`;
+}
+
+/**
+ * The closed window as `account.rate-limits.updated` reports it, whether or
+ * not a turn runs, so orchestration can hold the thread in one pause until it
+ * reopens (`orchestration/usagePause.ts`). Undefined without a credible reset:
+ * a pause with no end is nothing to hold.
+ */
+function claudeUsageLimitBlock(
+  info: SDKRateLimitInfo,
+  nowMs: number,
+  names: ClaudeScopedLimitNames,
+): { readonly block: ProviderUsageLimitBlock; readonly resetsAtMs: number } | undefined {
+  const resetsAtMs = info.resetsAt === undefined ? undefined : info.resetsAt * 1000;
+  if (
+    resetsAtMs === undefined ||
+    !(resetsAtMs > nowMs) ||
+    resetsAtMs - nowMs > CLAUDE_USAGE_LIMIT_MAX_WAIT_MS
+  ) {
+    return undefined;
+  }
+  const window =
+    info.rateLimitType === "seven_day_overage_included" && names.overageIncluded
+      ? `7-day ${names.overageIncluded}`
+      : info.rateLimitType
+        ? CLAUDE_USAGE_LIMIT_WINDOWS[info.rateLimitType]
+        : "usage";
+  return {
+    block: { window, resetsAt: DateTime.formatIso(DateTime.makeUnsafe(resetsAtMs)) },
+    resetsAtMs,
+  };
 }
 
 function formatClaudeUsageLimitWait(waitMs: number): string {
@@ -3354,6 +3390,19 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     // Auto-start a synthetic turn for assistant messages that arrive without
     // an active turn (e.g., background agent/subagent responses between user prompts).
     if (!context.turnState) {
+      // Claude Code wakes itself to hand the model a background result; against
+      // a closed usage window the wake fails at once with this synthetic reply.
+      // The result stays in Claude's conversation, so no turn opens: the thread
+      // is held in one pause until the reset (orchestration/usagePause.ts).
+      if (
+        message.error === "rate_limit" &&
+        (context.usageLimitBlockedUntilMs ?? 0) > DateTime.toEpochMillis(yield* DateTime.now)
+      ) {
+        context.heldLimitWake = true;
+        context.lastAssistantUuid = message.uuid;
+        yield* updateResumeCursor(context);
+        return;
+      }
       const turnId = TurnId.make(yield* randomUUIDv4);
       const startedAt = yield* nowIso;
       context.turnStartMessageIds.push(message.uuid);
@@ -3471,6 +3520,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     const turn = context.turnState;
+    // The end of a wake the closed usage window held: no turn, no failure to report.
+    if (turn === undefined && context.heldLimitWake === true) {
+      context.heldLimitWake = false;
+      return;
+    }
     const failureHint =
       turn?.authenticationFailureMessage ??
       (turn && (turn.rejectedRateLimitTypes.size > 0 || turn.latestAssistantRateLimited)
@@ -4058,13 +4112,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ? yield* Ref.get(options.scopedLimitNames)
         : { overageIncluded: undefined };
       const limits = claudeRateLimitEventToUpdate(rateLimitInfo, names);
-      if (limits) {
-        yield* offerRuntimeEvent({
-          ...base,
-          type: "account.rate-limits.updated",
-          payload: { limits },
-        });
-      }
       // A rejected window parks the turn inside the SDK: no further messages
       // arrive and no result lands, so without a row the thread just spins.
       // Warnings (allowed_warning) still have headroom and stay quiet, an
@@ -4076,6 +4123,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         rateLimitInfo.isUsingOverage === true ||
         rateLimitInfo.overageInUse === true;
       const blocked = rateLimitInfo.status === "rejected" && !overageAllowed;
+      const closed = blocked
+        ? claudeUsageLimitBlock(rateLimitInfo, Date.parse(stamp.createdAt), names)
+        : undefined;
+      context.usageLimitBlockedUntilMs = closed?.resetsAtMs;
+      if (limits || closed) {
+        yield* offerRuntimeEvent({
+          ...base,
+          type: "account.rate-limits.updated",
+          payload: {
+            limits: limits ?? { windows: [] },
+            ...(closed ? { blocked: closed.block } : {}),
+          },
+        });
+      }
       const limitType = rateLimitInfo.rateLimitType ?? "unknown";
       const limitKey = `${limitType}:${rateLimitInfo.resetsAt ?? "unknown"}`;
       if (context.turnState) {

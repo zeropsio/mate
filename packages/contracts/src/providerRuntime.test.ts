@@ -23,6 +23,30 @@ describe("ProviderRuntimeEvent", () => {
     expect(parsed.providerInstanceId).toBe("ollama_local");
   });
 
+  it.each([
+    ["no blocked window", {}, undefined],
+    [
+      "a blocked window with its reset",
+      { blocked: { window: "5-hour", resetsAt: "2026-02-28T05:00:00.000Z" } },
+      { window: "5-hour", resetsAt: "2026-02-28T05:00:00.000Z" },
+    ],
+  ])("decodes account.rate-limits.updated with %s", (_, extra, blocked) => {
+    const parsed = decodeRuntimeEvent({
+      type: "account.rate-limits.updated",
+      eventId: "event-limits",
+      provider: "claudeAgent",
+      createdAt: "2026-02-28T00:00:00.000Z",
+      threadId: "thread-1",
+      payload: { limits: { windows: [] }, ...extra },
+    });
+
+    expect(parsed.type).toBe("account.rate-limits.updated");
+    if (parsed.type !== "account.rate-limits.updated") {
+      throw new Error("expected account.rate-limits.updated");
+    }
+    expect(parsed.payload.blocked).toEqual(blocked);
+  });
+
   it("decodes turn.plan.updated for plan rendering", () => {
     const parsed = decodeRuntimeEvent({
       type: "turn.plan.updated",
