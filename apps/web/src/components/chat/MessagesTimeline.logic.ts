@@ -34,6 +34,7 @@ import {
   summarizeActivity,
   timelineEntryEnd,
   type BrowserStripModel,
+  type ConversationTurn,
   type IncidentModel,
   type MessageEntry,
   type OutcomeModel,
@@ -408,6 +409,8 @@ type MessagesTimelineRowBody =
       note: string | null;
       /** What stands in for a note when the stretch had none. */
       fallback: string | null;
+      /** What its calls came to, in words ("Read 4 files · ran 2 commands"); null when it made none. */
+      summary: string | null;
       noteCount: number;
       /** The stretch has a log to open. */
       hasLog: boolean;
@@ -430,6 +433,8 @@ type MessagesTimelineRowBody =
       stream: ReadonlyArray<WorkingStreamItem>;
       /** What its hands are on right now; null while it writes. */
       activity: TurnHeaderActivity | null;
+      /** Its answer streams under the card: the panel says nothing of its own. */
+      answering: boolean;
       strip: BrowserStripModel | null;
       incidents: ReadonlyArray<IncidentModel>;
     }
@@ -534,6 +539,12 @@ type MessagesTimelineRowBody =
     }
   | { kind: "event"; id: string; createdAt: string; event: ConversationEvent }
   | {
+      /** The bottom edge of a stretch's card: nothing but the frame closing. */
+      kind: "card-end";
+      id: string;
+      createdAt: string;
+    }
+  | {
       /** Background work that finished outside any turn, as one quiet line. */
       kind: "background";
       id: string;
@@ -594,7 +605,21 @@ type MessagesTimelineRowBody =
  */
 export type RowGap = "none" | "tight" | "line" | "block" | "turn";
 
-export type MessagesTimelineRow = MessagesTimelineRowBody & { readonly gap?: RowGap };
+/**
+ * Where a row sits in its stretch's card — the one frame a stretch of work
+ * is drawn in, once it holds anything: its line is the card's top; the log,
+ * the Mate at work, the words the person answered and the report its body; a
+ * `card-end` row its bottom. A line with nothing under it stands alone. The answer and the person's messages stand outside it. The bottom
+ * is a row of its own so no row of the body ever becomes the edge: a stretch
+ * the person's message closes loses the Mate at work from under its log, and
+ * the row above it must not change its frame. Rows no stretch drew have none.
+ */
+export type CardSlice = "top" | "middle" | "bottom";
+
+export type MessagesTimelineRow = MessagesTimelineRowBody & {
+  readonly gap?: RowGap;
+  readonly card?: CardSlice;
+};
 
 function isLogRowBody(row: MessagesTimelineRow): boolean {
   switch (row.kind) {
@@ -622,6 +647,11 @@ function closesTurn(row: MessagesTimelineRow): boolean {
   return (row.kind === "message" && row.message.role === "assistant") || row.kind === "outcome";
 }
 
+/** The Mate talking to the person: its line of copy and time keeps room under it already. */
+function isMateProse(row: MessagesTimelineRow): boolean {
+  return (row.kind === "message" && row.message.role === "assistant") || row.kind === "speech";
+}
+
 export function rowGap(
   previous: MessagesTimelineRow | undefined,
   row: MessagesTimelineRow,
@@ -632,6 +662,7 @@ export function rowGap(
   if (previous.kind === "seam") return "block";
   if (isPersonRow(row)) {
     if (isPersonRow(previous)) return "tight";
+    if (isMateProse(previous)) return "block";
     return closesTurn(previous) ||
       previous.kind === "event" ||
       previous.kind === "error" ||
@@ -642,6 +673,7 @@ export function rowGap(
   }
   if (closesTurn(previous)) {
     if (row.kind === "outcome") return "line";
+    if (isMateProse(previous)) return "block";
     return row.kind === "work-line" ? "turn" : "block";
   }
   // The report hangs from its line: they read as one.
@@ -768,10 +800,18 @@ export interface WorkingFailure {
 }
 
 /**
- * One thing in the Mate's stream while it works: its words, a step that
- * failed on the way, or the question it asked and waits on.
+ * One thing in the Mate's stream while it works: what it thinks, its words, a
+ * step that failed on the way, or the question it asked and waits on.
  */
 export type WorkingStreamItem =
+  | {
+      readonly kind: "thought";
+      readonly key: string;
+      /** One paragraph of what it thinks. */
+      readonly text: string;
+      readonly createdAt: string;
+      readonly streaming: boolean;
+    }
   | { readonly kind: "note"; readonly key: string; readonly message: ChatMessage }
   | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure }
   | { readonly kind: "question"; readonly key: string; readonly questions: ReadonlyArray<string> };
@@ -780,7 +820,7 @@ export type WorkingStreamItem =
  * How much of a stretch's stream the Mate at work keeps to scroll back
  * through: every word of an ordinary stretch; a runaway one its latest.
  */
-const STREAM_DEPTH = 40;
+const STREAM_DEPTH = 60;
 
 /**
  * What a live stretch streams, oldest first: the Mate's words, each step
@@ -789,12 +829,54 @@ const STREAM_DEPTH = 40;
  * browser its own in its takes, a dev server in its incident) or a background
  * task — and, while the person's answer is awaited, the question it asked.
  */
-function stretchStream(stretch: Stretch): WorkingStreamItem[] {
+/**
+ * A thought's paragraphs, in order; a paragraph that is only a bold title
+ * joins the one under it, so a title never stands as a bubble of its own.
+ * Paragraphs only ever append as a thought streams, so their places are
+ * stable keys.
+ */
+export function thoughtParagraphs(text: string): string[] {
+  const paragraphs: string[] = [];
+  let title: string | null = null;
+  for (const block of text.split(/\n\s*\n/)) {
+    const paragraph = block.trim();
+    if (paragraph.length === 0) continue;
+    if (/^\*\*[^*\n]+\*\*$/.test(paragraph)) {
+      title = title === null ? paragraph : `${title}\n\n${paragraph}`;
+      continue;
+    }
+    paragraphs.push(title === null ? paragraph : `${title}\n\n${paragraph}`);
+    title = null;
+  }
+  if (title !== null) paragraphs.push(title);
+  return paragraphs;
+}
+
+function stretchStream(stretch: Stretch, answer: MessageEntry | null): WorkingStreamItem[] {
   const items: WorkingStreamItem[] = [];
   stretch.entries.forEach((entry, index) => {
     const later = stretch.entries.slice(index + 1);
     if (entry.kind === "message") {
-      if (entry.message.role === "assistant" && entry.message.text.trim().length > 0) {
+      // The answer streams where it will stand, under the card.
+      if (entry === answer || entry.message.text.trim().length === 0) return;
+      // Most of a Mate's work is thinking: said nowhere else live, it was
+      // minutes of dots (the owner, 2026-09-26: "why aren't there thoughts
+      // reflected in the chat?").
+      if (entry.message.role === "reasoning") {
+        // A train of thought streams a paragraph at a time, each its own
+        // bubble — the newest popping in, the one before drifting up — so a
+        // long one never stands as one tower of text.
+        const paragraphs = thoughtParagraphs(entry.message.text);
+        paragraphs.forEach((text, index) => {
+          items.push({
+            kind: "thought",
+            key: `${entry.id}:${index}`,
+            text,
+            createdAt: entry.createdAt,
+            streaming: Boolean(entry.message.streaming) && index === paragraphs.length - 1,
+          });
+        });
+      } else if (entry.message.role === "assistant") {
         items.push({ kind: "note", key: entry.id, message: entry.message });
       }
       return;
@@ -1365,6 +1447,8 @@ export function deriveMessagesTimelineRows(
   };
 
   const emitted = new Set<string>();
+  // Each stretch's card, as the rows it drew: its line first.
+  const cardRanges: Array<readonly [start: number, end: number]> = [];
   // Work no turn owns — background tasks finishing after their turn ended —
   // is gathered, a task that failed included, unless it is something to show
   // on its own: an error that stopped the Mate, an answer, a compaction.
@@ -1380,26 +1464,35 @@ export function deriveMessagesTimelineRows(
       candidate.entry.sourceActivityKind !== "context-compaction"
     );
   };
-  // One stretch as the conversation draws it: the person's message that
-  // started it, its line, what stays visible under the line, and at its end
-  // the Mate at work (live), the words the person answered (interrupted), or
-  // the turn's report and answer (settled).
-  const emitStretch = (stretch: Stretch) => {
-    const turn = turnByKey.get(stretch.turnKey)!;
+  /**
+   * One run of the Mate as the conversation draws it — a turn, from the
+   * person's message that started it to its answer — as one card, however
+   * often the person wrote while it worked. A message sent into the run is
+   * delivered at the Mate's next step and the run goes on: it stands inside
+   * the card where it arrived, under the Mate's words just before it, and
+   * the line keeps saying the Mate is working until the run ends (the owner,
+   * 2026-09-26: a message queued mid-run split the work into "Juno worked
+   * for 1m 4s" and a reply, as if the Mate had finished — "it needs to be
+   * handled properly").
+   */
+  const emitTurn = (turn: ConversationTurn) => {
     if (foldedTurnKeys.has(turn.key)) return;
+    const first = turn.stretches[0];
+    const last = turn.stretches.at(-1);
+    if (first === undefined || last === undefined) return;
 
     // Keyed by the message, as a loose message's seam is: the seam must not
     // change its identity when a turn claims the message it stands before.
-    seamBefore(stretch.lead?.createdAt ?? stretch.startedAt, stretch.lead?.id ?? stretch.key);
-    if (stretch.lead !== null && stretch.leadIndex !== null) {
-      rows.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
+    seamBefore(first.lead?.createdAt ?? first.startedAt, first.lead?.id ?? first.key);
+    if (first.lead !== null && first.leadIndex !== null) {
+      rows.push(personRow(first.lead, first.leadIndex, first.aside));
     }
 
     // A /compact is its own event line: it says when the context is condensed,
-    // so its stretch draws no work line and no second compaction line.
-    const leadCommand = stretch.lead ? readSlashCommand(stretch.lead.message.text) : null;
+    // so its run draws no work line and no second compaction line.
+    const leadCommand = first.lead ? readSlashCommand(first.lead.message.text) : null;
     if (leadCommand?.name === "compact") {
-      lastEnd = stretch.endedAt ?? stretch.startedAt;
+      lastEnd = last.endedAt ?? last.startedAt;
       return;
     }
 
@@ -1409,101 +1502,107 @@ export function deriveMessagesTimelineRows(
       readUsageLimitNotice(turn.answer.message.text, turn.answer.message.createdAt) === null
         ? turn.answer
         : null;
-    const notes = stretchNotes(stretch, turn.answer);
+    const notes = turn.stretches.flatMap((stretch) => stretchNotes(stretch, turn.answer));
     const lastNote = notes.at(-1) ?? null;
-    const open = input.openStretchKeys?.has(stretch.key) ?? false;
-    const pause = stretch.last ? (pauseByTurnKey.get(turn.key)?.row ?? null) : null;
-    const pausedHere = pause !== null || (stretch.last && turn.limitOnly);
-    const activityEntries = stretch.entries.flatMap((candidate) =>
-      (candidate.kind === "work" || candidate.kind === "generic-call") &&
-      isActivityWork(candidate.entry)
-        ? [candidate.entry]
-        : [],
+    const open = input.openStretchKeys?.has(first.key) ?? false;
+    const pause = pauseByTurnKey.get(turn.key)?.row ?? null;
+    const pausedHere = pause !== null || turn.limitOnly;
+    const activityEntries = turn.stretches.flatMap((stretch) =>
+      stretch.entries.flatMap((candidate) =>
+        (candidate.kind === "work" || candidate.kind === "generic-call") &&
+        isActivityWork(candidate.entry)
+          ? [candidate.entry]
+          : [],
+      ),
     );
-    const hasLog = stretch.entries.some(
-      (candidate) =>
-        candidate !== turn.answer &&
-        candidate.kind !== "change-landed" &&
-        !(
-          candidate.kind === "message" &&
-          candidate.message.role === "reasoning" &&
-          candidate.message.text.trim().length === 0
-        ),
+    const shownActivity = omitSupersededLifecycleMarkers(
+      activityEntries.filter((candidate) => workEntryIsVisibleInGroup(candidate, turn.live)),
+      (candidate) => candidate,
     );
-    // A settled stretch with nothing to open has nothing to say: the answer
+    const summary = shownActivity.length > 0 ? summarizeActivity(shownActivity) : null;
+    const hasLog = turn.stretches.some((stretch) =>
+      stretch.entries.some(
+        (candidate) =>
+          candidate !== turn.answer &&
+          candidate.kind !== "change-landed" &&
+          !(
+            candidate.kind === "message" &&
+            candidate.message.role === "reasoning" &&
+            candidate.message.text.trim().length === 0
+          ),
+      ),
+    );
+    // A settled run with nothing to open has nothing to say: the answer
     // stands under the message by itself. A live one always has its line, and
     // so does one the usage limit refused — the person's message is answered
     // by the reason.
-    if (stretch.live || hasLog || pausedHere)
+    const cardStart = rows.length;
+    if (turn.live || hasLog || pausedHere)
       rows.push({
         kind: "work-line",
-        id: `work-line:${stretch.key}`,
-        createdAt: stretch.startedAt,
-        stretchKey: stretch.key,
-        turnId: stretch.turnId,
-        live: stretch.live,
-        face: stretchFace({ stretch, turn, pausedHere }),
-        startedAt: stretch.startedAt,
-        endedAt: stretch.endedAt,
+        id: `work-line:${first.key}`,
+        createdAt: first.startedAt,
+        stretchKey: first.key,
+        turnId: first.turnId,
+        live: turn.live,
+        face: stretchFace({ stretch: last, turn, pausedHere }),
+        startedAt: first.startedAt,
+        endedAt: last.endedAt,
         note: lastNote === null ? null : noteLine(lastNote.message.text),
-        fallback:
-          lastNote !== null
-            ? null
-            : pausedHere
-              ? "Stopped by the usage limit"
-              : activityEntries.length > 0
-                ? summarizeActivity(
-                    omitSupersededLifecycleMarkers(
-                      activityEntries.filter((candidate) =>
-                        workEntryIsVisibleInGroup(candidate, stretch.live),
-                      ),
-                      (candidate) => candidate,
-                    ),
-                  )
-                : null,
+        fallback: lastNote !== null ? null : pausedHere ? "Stopped by the usage limit" : summary,
+        summary,
         noteCount: notes.length,
         hasLog,
         open,
       });
 
-    // Live, the stretch ends in the Mate at work; interrupted, in the words
-    // the person answered — unless its log is open, which says them already.
-    const answered = stretch.last && answer !== null && !turn.live;
-    const speech = !stretch.live && !answered && !open ? lastNote : null;
-    rows.push(
-      ...stretchContentRows({
-        stretch,
-        answer: turn.answer,
-        open,
-        view: input,
-        pauseRow: pause,
-      }),
-    );
+    turn.stretches.forEach((stretch, index) => {
+      if (index > 0) {
+        // What the person sent into the run, where it arrived, under the
+        // Mate's words just before it — which an opened log says itself.
+        const before = turn.stretches[index - 1]!;
+        const said = stretchNotes(before, turn.answer).at(-1) ?? null;
+        if (!open && said !== null) {
+          rows.push({
+            kind: "speech",
+            id: `speech:${before.key}`,
+            createdAt: said.createdAt,
+            message: said.message,
+          });
+        }
+        if (stretch.lead !== null && stretch.leadIndex !== null) {
+          rows.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
+        }
+      }
+      rows.push(
+        ...stretchContentRows({
+          stretch,
+          answer: turn.answer,
+          open,
+          view: input,
+          pauseRow: stretch === last ? pause : null,
+        }),
+      );
+    });
 
-    if (stretch.live) {
+    if (last.live) {
       rows.push({
         kind: "working",
-        id: `working:${stretch.key}`,
-        createdAt: stretch.startedAt,
-        stretchKey: stretch.key,
+        id: `working:${last.key}`,
+        createdAt: last.startedAt,
+        stretchKey: last.key,
         turnKey: turn.key,
-        stream: stretchStream(stretch),
-        activity: liveActivity(stretch),
-        strip: browserStrip(stretch),
-        incidents: stretchIncidents(stretch),
-      });
-    } else if (speech !== null) {
-      rows.push({
-        kind: "speech",
-        id: `speech:${stretch.key}`,
-        createdAt: speech.createdAt,
-        message: speech.message,
+        stream: stretchStream(last, turn.answer),
+        activity: liveActivity(last),
+        answering: answer !== null,
+        strip: browserStrip(last),
+        incidents: stretchIncidents(last),
       });
     }
 
-    // Settled, the working group becomes the turn's report — the same pills,
-    // where the group was — and the Mate's answer follows it.
-    if (stretch.last && !turn.live) {
+    // Settled, the Mate at work becomes the run's report — the same pills,
+    // where it was — and the Mate's answer follows it.
+    if (!turn.live) {
       const outcome = deriveOutcome({
         turn,
         landed: landedByTurnKey.get(turn.key) ?? [],
@@ -1513,24 +1612,51 @@ export function deriveMessagesTimelineRows(
         rows.push({
           kind: "outcome",
           id: outcome.key,
-          createdAt: turn.answer?.createdAt ?? stretch.endedAt ?? stretch.startedAt,
+          createdAt: turn.answer?.createdAt ?? last.endedAt ?? last.startedAt,
           outcome,
         });
       }
-      if (answer !== null) {
-        rows.push({
-          kind: "message",
-          id: answer.id,
-          createdAt: answer.createdAt,
-          message: answer.message,
-          receipt: null,
-          aside: false,
-          imageOnly: false,
-          showAssistantMeta: !answer.message.streaming,
-        });
-      }
     }
-    lastEnd = stretch.endedAt ?? stretch.startedAt;
+    // The card closes before the answer: the Mate's last word stands on the
+    // conversation's own edge, as the person's messages do. A line with
+    // nothing under it is no card — a closed log of a run that came to no
+    // report is one quiet line, not an empty box.
+    if (rows[cardStart]?.kind === "work-line" && rows.length > cardStart + 1) {
+      rows.push({
+        kind: "card-end",
+        id: `card-end:${first.key}`,
+        createdAt: rows.at(-1)!.createdAt,
+      });
+      cardRanges.push([cardStart, rows.length]);
+    }
+    // A run that ended with no answer — stopped, interrupted — ends in its
+    // last words, the Mate talking to the person as its answer would have:
+    // after the card, in the answer's hand (the owner, 2026-09-26: "why all
+    // of the sudden the mate reply has an avatar and background bubble?").
+    // An opened log says them instead.
+    const speech = !turn.live && answer === null && !open ? lastNote : null;
+    if (speech !== null) {
+      rows.push({
+        kind: "speech",
+        id: `speech:${last.key}`,
+        createdAt: speech.createdAt,
+        message: speech.message,
+      });
+    }
+    // The answer follows the card, settled or still streaming.
+    if (answer !== null) {
+      rows.push({
+        kind: "message",
+        id: answer.id,
+        createdAt: answer.createdAt,
+        message: answer.message,
+        receipt: null,
+        aside: false,
+        imageOnly: false,
+        showAssistantMeta: !answer.message.streaming,
+      });
+    }
+    lastEnd = last.endedAt ?? last.startedAt;
   };
 
   const expandedIds = input.expandedIds ?? new Set<string>();
@@ -1622,18 +1748,18 @@ export function deriveMessagesTimelineRows(
       continue;
     }
     const stretch = structure.stretchByIndex.get(index);
-    if (stretch === undefined || emitted.has(stretch.key)) continue;
-    emitted.add(stretch.key);
-    emitStretch(stretch);
+    if (stretch === undefined) continue;
+    const turn = turnByKey.get(stretch.turnKey)!;
+    if (emitted.has(turn.key)) continue;
+    emitted.add(turn.key);
+    emitTurn(turn);
   }
   // A live turn that has drawn nothing yet — one a finished background task
   // woke, before its first words — is the conversation's bottom all the same.
   for (const turn of structure.turns) {
-    for (const stretch of turn.stretches) {
-      if (!stretch.live || emitted.has(stretch.key)) continue;
-      emitted.add(stretch.key);
-      emitStretch(stretch);
-    }
+    if (!turn.live || emitted.has(turn.key)) continue;
+    emitted.add(turn.key);
+    emitTurn(turn);
   }
 
   if (!input.isWorking && input.afterTurnWork) {
@@ -1653,7 +1779,23 @@ export function deriveMessagesTimelineRows(
       isNext: index === 0,
     });
   });
-  return rows.map((row, index) => ({ ...row, gap: rowGap(rows[index - 1], row) }));
+  const cards = new Map<number, CardSlice>();
+  for (const [start, end] of cardRanges) {
+    for (let index = start; index < end; index += 1) {
+      cards.set(index, index === start ? "top" : index === end - 1 ? "bottom" : "middle");
+    }
+  }
+  return rows.map((row, index) => {
+    const card = cards.get(index);
+    // A card's edge is not a row of the conversation: the row after it keeps
+    // the room it kept after the card's last row.
+    const previous = rows[index - 1]?.kind === "card-end" ? rows[index - 2] : rows[index - 1];
+    return {
+      ...row,
+      gap: row.kind === "card-end" ? "none" : rowGap(previous, row),
+      ...(card === undefined ? {} : { card }),
+    };
+  });
 }
 
 export function computeStableMessagesTimelineRows(
@@ -1683,7 +1825,13 @@ export function computeStableMessagesTimelineRows(
  * derivation rebuilds compares by value.
  */
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
-  if (a.kind !== b.kind || a.id !== b.id || a.createdAt !== b.createdAt || a.gap !== b.gap) {
+  if (
+    a.kind !== b.kind ||
+    a.id !== b.id ||
+    a.createdAt !== b.createdAt ||
+    a.gap !== b.gap ||
+    a.card !== b.card
+  ) {
     return false;
   }
   switch (a.kind) {

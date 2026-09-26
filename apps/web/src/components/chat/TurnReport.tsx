@@ -117,6 +117,7 @@ function Takes({
   readonly takes: ReadonlyArray<ZeropsOperation>;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
 }) {
+  // A structure check has no picture: the report's pill counts it.
   const shots = takes.flatMap((take) =>
     take.screenshot
       ? [{ key: take.key, src: take.screenshot.src, name: browserCheckCaption(take) }]
@@ -129,7 +130,8 @@ function Takes({
       data-report-takes
     >
       {takes.map((take) => {
-        if (!take.screenshot) return null;
+        const src = take.screenshot?.src;
+        if (src === undefined) return null;
         const failed = browserCheckFailed(take);
         const device = browserCheckDevice(take);
         const index = shots.findIndex((shot) => shot.key === take.key);
@@ -148,11 +150,7 @@ function Takes({
             }
             type="button"
           >
-            <img
-              alt=""
-              className="block size-full object-cover object-top"
-              src={take.screenshot.src}
-            />
+            <img alt="" className="block size-full object-cover object-top" src={src} />
           </button>
         );
       })}
@@ -176,8 +174,9 @@ export function TurnReport({
   return (
     <section
       aria-label="What this turn did"
+      // The stretch's card is the report's tray: its pills and takes sit on it.
       className={cn(
-        "grid w-fit max-w-full gap-2 rounded-3xl bg-muted/60 p-1.5",
+        "grid w-fit max-w-full gap-2 pb-1",
         settling && "origin-top-left animate-report-in motion-reduce:animate-none",
       )}
       data-turn-report

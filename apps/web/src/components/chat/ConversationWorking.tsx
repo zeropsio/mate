@@ -35,7 +35,15 @@ import {
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  use,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { cn } from "~/lib/utils";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
@@ -49,10 +57,11 @@ import type { WorkingFailure } from "./MessagesTimeline.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 
 /**
- * A bubble in the Mate's stream: its words, rendered; a step that failed on
- * the way; or the question it asked and waits on.
+ * A bubble in the Mate's stream: what it thinks, its words, rendered; a step
+ * that failed on the way; or the question it asked and waits on.
  */
 export type WorkingBubble =
+  | { readonly kind: "thought"; readonly key: string; readonly body: ReactNode }
   | { readonly kind: "note"; readonly key: string; readonly body: ReactNode }
   | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure }
   /** Its question, rendered, as its words are. */
@@ -66,6 +75,27 @@ export type WorkingActivity =
   | { readonly kind: "thinking" }
   | { readonly kind: "doing"; readonly words: string }
   | { readonly kind: "waiting" };
+
+// ---------------------------------------------------------------------------
+// Arriving live
+// ---------------------------------------------------------------------------
+
+/** Whether the panel has been drawn once: set after its first commit. */
+const PanelShownContext = createContext<{ readonly current: boolean }>({ current: true });
+
+/**
+ * Whether something drawn now arrived while the person watched: what a
+ * conversation opens onto is simply there, and only what arrives after the
+ * panel was first drawn pops in. A panel that replayed every entrance when a
+ * thread opened grew after the conversation had already scrolled to its end
+ * (the owner, 2026-09-26: "retriggering animation of existing items" — "when
+ * opening the page it doesn't properly scroll to the very bottom").
+ */
+function useArrivedLive(): boolean {
+  const shown = use(PanelShownContext);
+  const [arrived] = useState(() => shown.current);
+  return arrived;
+}
 
 // ---------------------------------------------------------------------------
 // The stream
@@ -93,11 +123,23 @@ function TypingDots({ className }: { readonly className?: string }) {
   );
 }
 
+/**
+ * The Mate's thinking and its words as bubbles — the panel's and the opened
+ * log's alike, so what it thought and said reads the same live and after. A
+ * thought is the same bubble, lighter, in the muted ink.
+ */
+export const MATE_BUBBLE_CLASS: Record<"thought" | "note", string> = {
+  thought:
+    "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-muted/45 px-3.5 py-2 text-muted-foreground",
+  note: "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground",
+};
+
 function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
-  if (bubble.kind === "note" || bubble.kind === "question") {
+  const pop = useArrivedLive() ? "animate-bubble-pop motion-reduce:animate-none" : null;
+  if (bubble.kind === "thought" || bubble.kind === "note" || bubble.kind === "question") {
     return (
       <div
-        className="w-fit max-w-full origin-bottom-left animate-bubble-pop rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground motion-reduce:animate-none"
+        className={cn(MATE_BUBBLE_CLASS[bubble.kind === "thought" ? "thought" : "note"], pop)}
         data-stream-bubble={bubble.kind}
       >
         {bubble.body}
@@ -109,7 +151,8 @@ function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
   return (
     <div
       className={cn(
-        "inline-flex max-w-full origin-bottom-left animate-bubble-pop items-center gap-1.5 rounded-2xl rounded-es-md border px-3 py-1.5 text-line transition-colors duration-500 motion-reduce:animate-none",
+        "inline-flex max-w-full origin-bottom-left items-center gap-1.5 rounded-2xl rounded-es-md border px-3 py-1.5 text-line transition-colors duration-500",
+        pop,
         recovered
           ? "border-status-attention/30 bg-status-attention-surface text-status-attention-text"
           : "border-status-failed/30 bg-status-failed-surface text-status-failed-text",
@@ -169,6 +212,41 @@ function StreamActivity({ activity }: { readonly activity: WorkingActivity }) {
   );
 }
 
+/** A place in the stream: it opens its room when what it holds arrived live. */
+function StreamRoom({
+  age,
+  children,
+}: {
+  readonly age: number | "activity";
+  readonly children: ReactNode;
+}) {
+  const arrived = useArrivedLive();
+  return (
+    <div
+      className={cn("grid", arrived && "animate-room-in motion-reduce:animate-none")}
+      data-stream-age={age}
+    >
+      <div className="min-h-0">{children}</div>
+    </div>
+  );
+}
+
+/** The face beside the newest words: it nods when words arrive live. */
+function NoddingFace({ tint }: { readonly tint: ConversationSpeaker["tint"] }) {
+  const nod = useArrivedLive();
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "mb-0.5 shrink-0 origin-bottom",
+        nod && "animate-face-nod motion-reduce:animate-none",
+      )}
+    >
+      <MateFace size="md" state="working" tint={tint} />
+    </span>
+  );
+}
+
 /**
  * The face and what it says: a window on the stream, anchored at its
  * bottom. A new bubble opens its room there — pushing the ones before it up
@@ -184,10 +262,13 @@ function Stream({
   speaker,
   bubbles,
   activity,
+  answering,
 }: {
   readonly speaker: ConversationSpeaker;
   readonly bubbles: ReadonlyArray<WorkingBubble>;
   readonly activity: WorkingActivity | null;
+  /** Its answer streams under the card: nothing of its own to say here. */
+  readonly answering: boolean;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -199,15 +280,19 @@ function Stream({
   const newestKey = bubbles.at(-1)?.key ?? "none";
   const older = bubbles.length > 1;
   // Nothing said and nothing named yet: the Mate is composing.
-  const shown: WorkingActivity | null =
-    activity ?? (bubbles.length === 0 ? { kind: "thinking" } : null);
+  const shown: WorkingActivity | null = answering
+    ? null
+    : (activity ?? (bubbles.length === 0 ? { kind: "thinking" } : null));
 
+  const grownForKeyRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller === null) return;
     // Measured at the bubbles' own boxes, never the rooms opening around
     // them: the window takes its final height at once and eases to it, and
-    // the conversation glides up with it.
+    // the conversation glides up with it — for a bubble arriving. Words
+    // already there settling into their lines take their height at once, so
+    // a conversation opened onto the Mate at work is at its end when it opens.
     const measure = () => {
       const wanted =
         Math.ceil(
@@ -216,6 +301,9 @@ function Stream({
         ) + (older ? PEEK_PX : 0);
       if (wanted <= tallestRef.current) return;
       tallestRef.current = wanted;
+      const arriving = grownForKeyRef.current !== null && grownForKeyRef.current !== newestKey;
+      grownForKeyRef.current = newestKey;
+      scroller.style.transitionDuration = arriving ? "" : "0s";
       scroller.style.height = `${wanted}px`;
     };
     measure();
@@ -223,7 +311,7 @@ function Stream({
     if (newest !== null) observer.observe(newest);
     if (trailing !== null) observer.observe(trailing);
     return () => observer.disconnect();
-  }, [newest, trailing, older]);
+  }, [newest, trailing, older, newestKey]);
 
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
@@ -265,13 +353,7 @@ function Stream({
 
   return (
     <div className="flex min-w-0 items-end gap-2.5" data-working-stream>
-      <span
-        key={newestKey}
-        aria-hidden="true"
-        className="mb-0.5 shrink-0 origin-bottom animate-face-nod motion-reduce:animate-none"
-      >
-        <MateFace size="md" state="working" tint={speaker.tint} />
-      </span>
+      <NoddingFace key={newestKey} tint={speaker.tint} />
       <div
         ref={scrollerRef}
         aria-label={`What ${speaker.name} said while working`}
@@ -292,37 +374,25 @@ function Stream({
           {bubbles.map((bubble, index) => {
             const age = bubbles.length - 1 - index;
             return (
-              <div
-                key={bubble.key}
-                className="grid animate-room-in motion-reduce:animate-none"
-                data-stream-age={age}
-              >
-                <div className="min-h-0">
-                  <div
-                    ref={age === 0 ? setNewest : undefined}
-                    className={cn(
-                      "origin-bottom-left pt-2 transition duration-500",
-                      !reading && AGE_CLASS[Math.min(age, AGE_CLASS.length - 1)],
-                    )}
-                  >
-                    <StreamBubble bubble={bubble} />
-                  </div>
+              <StreamRoom key={bubble.key} age={age}>
+                <div
+                  ref={age === 0 ? setNewest : undefined}
+                  className={cn(
+                    "origin-bottom-left pt-2 transition duration-500",
+                    !reading && AGE_CLASS[Math.min(age, AGE_CLASS.length - 1)],
+                  )}
+                >
+                  <StreamBubble bubble={bubble} />
                 </div>
-              </div>
+              </StreamRoom>
             );
           })}
           {shown !== null ? (
-            <div
-              key="activity"
-              className="grid animate-room-in motion-reduce:animate-none"
-              data-stream-age="activity"
-            >
-              <div className="min-h-0">
-                <div ref={setTrailing} className="pt-2">
-                  <StreamActivity activity={shown} />
-                </div>
+            <StreamRoom key="activity" age="activity">
+              <div ref={setTrailing} className="pt-2">
+                <StreamActivity activity={shown} />
               </div>
-            </div>
+            </StreamRoom>
           ) : null}
         </div>
       </div>
@@ -572,10 +642,11 @@ function keyedSteps<T extends { readonly step: string }>(steps: ReadonlyArray<T>
   });
 }
 
-/** A status bar arriving: it opens its room in the panel, once. */
+/** A status bar arriving: it opens its room in the panel, once, when it arrived live. */
 function Arriving({ children }: { readonly children: ReactNode }) {
+  const arrived = useArrivedLive();
   return (
-    <li className="grid animate-room-in motion-reduce:animate-none">
+    <li className={cn("grid", arrived && "animate-room-in motion-reduce:animate-none")}>
       <div className="min-h-0 overflow-hidden">{children}</div>
     </li>
   );
@@ -679,7 +750,7 @@ function Instruments({
   }
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
   return (
-    <ul className="grid border-border/60 border-t p-2" data-working-instruments>
+    <ul className="-mx-4 grid border-border/60 border-t px-2 pt-2" data-working-instruments>
       {operations.map((operation) => (
         <Arriving key={operation.key}>
           <DeployInstrument
@@ -877,6 +948,7 @@ export function ConversationWorking({
   speaker,
   bubbles,
   activity,
+  answering,
   incidents,
   dock,
   browser,
@@ -889,6 +961,8 @@ export function ConversationWorking({
   readonly bubbles: ReadonlyArray<WorkingBubble>;
   /** What it is on right now; null while it writes. */
   readonly activity: WorkingActivity | null;
+  /** Its answer streams under the card. */
+  readonly answering: boolean;
   readonly incidents: ReadonlyArray<IncidentModel>;
   readonly dock: DockModel | null;
   /** The browser while the stretch checks pages. */
@@ -903,43 +977,49 @@ export function ConversationWorking({
     remeasure();
     setOpen((current) => (current === key ? null : key));
   };
+  // Drawn once: from here on, what arrives arrives live.
+  const shownRef = useRef(false);
+  useEffect(() => {
+    shownRef.current = true;
+  }, []);
 
   return (
-    <div
-      className="@container/panel"
-      data-conversation-working
-      style={minHeight === undefined ? undefined : { minHeight }}
-    >
-      <div ref={contentRef} className="pb-1">
-        <section
-          aria-label={`${speaker.name} at work`}
-          className="relative z-10 animate-panel-in rounded-3xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60 motion-reduce:animate-none"
-        >
-          <div className="px-4 pt-2 pb-4">
-            <Stream activity={activity} bubbles={bubbles} speaker={speaker} />
-          </div>
-          <Instruments
-            dock={dock}
-            environmentId={environmentId}
-            incidents={incidents}
-            onOpenAgents={onOpenAgents}
-            onToggle={toggle}
-            open={open}
-            threadRef={threadRef}
-          />
-        </section>
-        {browser !== null ? (
-          // The browser slides out from under the panel, a drawer narrower than it.
-          <div className="grid animate-tray-out motion-reduce:animate-none" data-working-tray>
-            <div className="min-h-0 overflow-hidden px-6">
-              <div className="animate-tray-slide rounded-b-3xl bg-muted/70 p-3 motion-reduce:animate-none">
+    <PanelShownContext value={shownRef}>
+      <div
+        className="@container/panel"
+        data-conversation-working
+        style={minHeight === undefined ? undefined : { minHeight }}
+      >
+        <div ref={contentRef}>
+          {/* The stretch's card is the frame: the Mate at work is its body, on its inner edge. */}
+          <section aria-label={`${speaker.name} at work`} className="text-card-foreground">
+            <div className="pt-1 pb-2">
+              <Stream
+                activity={activity}
+                answering={answering}
+                bubbles={bubbles}
+                speaker={speaker}
+              />
+            </div>
+            <Instruments
+              dock={dock}
+              environmentId={environmentId}
+              incidents={incidents}
+              onOpenAgents={onOpenAgents}
+              onToggle={toggle}
+              open={open}
+              threadRef={threadRef}
+            />
+            {browser !== null ? (
+              // The browser opens inside the card, under what runs.
+              <div className="-mx-4 border-border/60 border-t px-4 pt-3" data-working-tray>
                 {browser}
               </div>
-            </div>
-          </div>
-        ) : null}
+            ) : null}
+          </section>
+        </div>
       </div>
-    </div>
+    </PanelShownContext>
   );
 }
 

@@ -64,9 +64,6 @@ import {
   resolveFileDiffPath,
 } from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import type { Root, RootContent } from "mdast";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
   ArrowUpIcon,
@@ -116,12 +113,15 @@ import {
   resolveTimelineMinimapInteractiveWidth,
   resolveTimelineMinimapTopPercent,
   shouldPreserveAssistantLineBreaks,
+  thoughtParagraphs,
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
+  type CardSlice,
   type MessagesTimelineRow,
   type RowGap,
   type TurnHeaderActivity,
+  type WorkingStreamItem,
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
 } from "./MessagesTimeline.logic";
@@ -156,13 +156,14 @@ import { TurnReport } from "./TurnReport";
 import {
   ConversationAfterWork,
   ConversationWorking,
+  MATE_BUBBLE_CLASS,
   type WorkingActivity,
 } from "./ConversationWorking";
 import { DOCKED_KINDS, type DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
   EventLine,
-  GutterMark,
+  LineMark,
   IncidentLine,
   MateSpeech,
   MessageReceipt,
@@ -1324,21 +1325,6 @@ function TimelineMinimapNavigationButton({
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-/** Rows that belong to an opened log: they hang on its rail, under the line's words. */
-function isLogRow(row: TimelineRow): boolean {
-  switch (row.kind) {
-    case "log-note":
-    case "log-activity":
-    case "log-reasoning":
-    case "log-operation":
-      return true;
-    case "work":
-      return row.isExpandedToolGroupEntry || row.id.startsWith("log-entry:");
-    default:
-      return false;
-  }
-}
-
 /** The room a row keeps above itself (see `rowGap`). */
 const GAP_CLASS: Record<RowGap, string> = {
   none: "",
@@ -1349,31 +1335,65 @@ const GAP_CLASS: Record<RowGap, string> = {
 };
 
 /**
- * Where a row sits across the column. The person's messages hug the right
- * edge and a seam spans it; everything the Mate says or does starts on one
- * text edge with a gutter left of it for its marks, and an opened log hangs
- * on a hairline just inside that edge.
+ * Where a row with no card sits across the column. The person's messages hug
+ * the right edge, a seam spans it, and the Mate's work that outlived its
+ * turn is a card of its own; everything else the Mate says stands on the
+ * composer's text edge — its 1 px frame and 16 px padding — so the answer,
+ * an event and the text inside every card start on one line.
  */
 function rowInset(row: TimelineRow): string {
-  if (isLogRow(row)) return "ms-5.5 border-s border-border/70 ps-4";
   if (row.kind === "message" && row.message.role === "user") return "";
-  if (row.kind === "queued-message" || row.kind === "seam" || row.kind === "answer") return "";
-  return "ps-5";
+  if (row.kind === "queued-message" || row.kind === "seam" || row.kind === "after-work") return "";
+  // A line with no card keeps the card's geometry in a frame nobody sees, so
+  // opening it draws the card around the line without moving it.
+  if (row.kind === "work-line") return "border-x border-t border-transparent px-4 pt-2";
+  return "px-4.25";
 }
 
+/**
+ * A stretch's card, a slice per row (`MessagesTimelineRow.card`): its line is
+ * the top, with the room above it outside the card; each row of its body is
+ * a band of the card with its room inside; a row of its own is the bottom
+ * edge. One frame, one surface, one inner edge — the composer's.
+ */
+const CARD_SLICE: Record<CardSlice, string> = {
+  top: "rounded-t-3xl border-x border-t border-border/70 bg-card px-4 pt-2",
+  middle: "border-x border-border/70 bg-card px-4",
+  bottom: "h-4 rounded-b-3xl border-x border-b border-border/70 bg-card",
+};
+
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
+  const gap = GAP_CLASS[row.gap ?? "none"];
+  const card = row.card;
+  const content = <TimelineRowBody row={row} />;
   return (
     <div
       className={cn(
-        GAP_CLASS[row.gap ?? "none"],
-        rowInset(row),
-        row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
+        card === undefined || card === "top" ? gap : null,
+        card === undefined ? rowInset(row) : null,
+        (row.kind === "message" && row.message.role === "assistant") ||
+          (row.kind === "speech" && row.card === undefined)
+          ? "group/assistant"
+          : null,
       )}
+      data-card-slice={card}
       data-timeline-row-id={row.id}
       data-timeline-row-kind={row.kind}
       data-message-id={row.kind === "message" ? row.message.id : undefined}
       data-message-role={row.kind === "message" ? row.message.role : undefined}
     >
+      {card === undefined ? (
+        content
+      ) : (
+        <div className={cn(CARD_SLICE[card], card === "middle" ? gap : null)}>{content}</div>
+      )}
+    </div>
+  );
+});
+
+function TimelineRowBody({ row }: { row: TimelineRow }) {
+  return (
+    <>
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
@@ -1384,23 +1404,27 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "speech" ? <SpeechTimelineRow row={row} /> : null}
       {row.kind === "log-note" ? <LogNoteTimelineRow row={row} /> : null}
       {row.kind === "log-activity" ? <LogActivityTimelineRow row={row} /> : null}
-      {row.kind === "log-reasoning" ? (
-        <ReasoningTraceBlock
-          anchorKey={row.id}
-          messages={row.messages}
-          live={row.live}
-          showHeader
-        />
-      ) : null}
+      {row.kind === "log-reasoning" ? <LogThoughtTimelineRow row={row} /> : null}
       {row.kind === "log-operation" ? <LogOperationTimelineRow row={row} /> : null}
       {row.kind === "work" ? (
-        <WorkGroupSection
-          groupedEntries={row.groupedEntries}
-          isExpandedToolGroupEntry={row.isExpandedToolGroupEntry}
-        />
+        // A call opened from a run's line sits under that line's words.
+        <div className={cn(LOG_COLUMN, row.isExpandedToolGroupEntry && "ps-14")}>
+          <WorkGroupSection
+            groupedEntries={row.groupedEntries}
+            isExpandedToolGroupEntry={row.isExpandedToolGroupEntry}
+          />
+        </div>
       ) : null}
-      {row.kind === "operation" ? <OperationTimelineRow row={row} /> : null}
-      {row.kind === "strip" ? <StripTimelineRow row={row} /> : null}
+      {row.kind === "operation" ? (
+        <div className={LOG_COLUMN}>
+          <OperationTimelineRow row={row} />
+        </div>
+      ) : null}
+      {row.kind === "strip" ? (
+        <div className={LOG_COLUMN}>
+          <StripTimelineRow row={row} />
+        </div>
+      ) : null}
       {row.kind === "incident" ? <IncidentLine incident={row.incident} /> : null}
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
@@ -1414,9 +1438,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
       {row.kind === "answer" ? <AnswerTimelineRow row={row} /> : null}
-    </div>
+    </>
   );
-});
+}
 
 function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -1424,6 +1448,8 @@ function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-
     <WorkLine
       onToggle={() => ctx.onToggleStretch(row.stretchKey, row.id)}
       row={row}
+      speaker={ctx.speaker}
+      summarized={row.card === undefined}
       timestampFormat={ctx.timestampFormat}
     />
   );
@@ -1446,11 +1472,18 @@ function MateWords({ text }: { readonly text: string }) {
 }
 
 /** A note of the Mate's, in full: its words as markdown, at the moment it said them. */
-function NoteWords({ message }: { readonly message: ChatMessage }) {
+function NoteWords({
+  message,
+  className,
+}: {
+  readonly message: ChatMessage;
+  readonly className?: string;
+}) {
   const ctx = use(TimelineRowCtx);
   return (
     <ChangeChipMomentContext value={message.createdAt}>
       <ChatMarkdown
+        {...(className === undefined ? {} : { className })}
         text={message.text}
         cwd={ctx.markdownCwd}
         threadRef={ctx.threadRef ?? undefined}
@@ -1461,6 +1494,26 @@ function NoteWords({ message }: { readonly message: ChatMessage }) {
         onRunShellCommand={ctx.onRunShellCommand}
       />
     </ChangeChipMomentContext>
+  );
+}
+
+/** A paragraph of what the Mate thinks, in the muted ink. */
+function ThoughtWords({
+  thought,
+}: {
+  readonly thought: Extract<WorkingStreamItem, { kind: "thought" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <ChatMarkdown
+      className="text-muted-foreground"
+      text={thought.text}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      isStreaming={thought.streaming}
+      skills={ctx.skills}
+      headingLevelOffset={MESSAGE_HEADING_LEVEL}
+    />
   );
 }
 
@@ -1497,16 +1550,19 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
           />
         )
       }
+      answering={row.answering}
       bubbles={row.stream.map((item) =>
         item.kind === "note"
           ? { kind: "note", key: item.key, body: <NoteWords message={item.message} /> }
-          : item.kind === "question"
-            ? {
-                kind: "question",
-                key: item.key,
-                body: <MateWords text={item.questions.join("\n\n")} />,
-              }
-            : item,
+          : item.kind === "thought"
+            ? { kind: "thought", key: item.key, body: <ThoughtWords thought={item} /> }
+            : item.kind === "question"
+              ? {
+                  kind: "question",
+                  key: item.key,
+                  body: <MateWords text={item.questions.join("\n\n")} />,
+                }
+              : item,
       )}
       dock={dock}
       environmentId={ctx.activeThreadEnvironmentId}
@@ -1537,25 +1593,113 @@ function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "afte
   );
 }
 
+/**
+ * The Mate's words the person answered. Inside a run's card — the person
+ * wrote into the run — they are the card's chatter, a note bubble in its
+ * bubble column above the person's message; after a card, the run's last
+ * words, in the answer's hand.
+ */
 function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech" }> }) {
-  const ctx = use(TimelineRowCtx);
+  if (row.card === undefined) return <MateProse message={row.message} showMeta />;
   return (
-    <MateSpeech speaker={ctx.speaker}>
-      <NoteWords message={row.message} />
-    </MateSpeech>
+    <div className={LOG_COLUMN} data-speech-in-card>
+      <div className={MATE_BUBBLE_CLASS.note}>
+        <NoteWords message={row.message} />
+      </div>
+    </div>
   );
 }
 
 /**
- * A note in an opened log, on the log's one text edge: the marks of the rows
- * around it (thinking, a run of calls, an operation) hang in a column before
- * that edge, and a note has none.
+ * The opened log hangs in the Mate's bubble column — the face's width in from
+ * the card's edge, where the panel's bubbles stand — so the log reads as the
+ * panel did live: what it thought and said as bubbles, what it did as quiet
+ * lines between them (the owner, 2026-09-26, of the log's rows of cut-off
+ * thoughts, each with a chevron: "pure shit").
  */
+const LOG_COLUMN = "ps-9.5";
+
+/**
+ * Its thinking in an opened log: a record to scan, so quieter than the panel
+ * that popped it live — muted paragraphs on one hairline, each to three
+ * lines, a click opening it in full. A forty-minute stretch opened onto walls
+ * of full thoughts.
+ */
+function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-reasoning" }> }) {
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
+  const paragraphs = row.messages.flatMap((message) => {
+    const said = thoughtParagraphs(message.text);
+    return said.map((text, index) => ({
+      kind: "thought" as const,
+      key: `${message.id}:${index}`,
+      text,
+      createdAt: message.createdAt,
+      streaming: Boolean(message.streaming) && index === said.length - 1,
+    }));
+  });
+  if (paragraphs.length === 0) return null;
+  const toggle = (key: string) =>
+    setOpened((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  return (
+    <div className={LOG_COLUMN} data-log-thought>
+      <div className="grid gap-1.5 border-border/70 border-s ps-3">
+        {paragraphs.map((thought) => {
+          const open = opened.has(thought.key);
+          return (
+            <div
+              key={thought.key}
+              aria-expanded={open}
+              className={cn(
+                "cursor-pointer rounded-sm text-start transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+                !open && "line-clamp-3",
+              )}
+              data-scroll-anchor-ignore
+              onClick={() => toggle(thought.key)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                toggle(thought.key);
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <ThoughtWords thought={thought} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Its words on the way, in an opened log: the bubble the panel showed them in. */
 function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-note" }> }) {
   return (
-    <div className="min-w-0 py-0.5 ps-6.5 text-foreground/90" data-log-note>
-      <NoteWords message={row.message} />
+    <div className={LOG_COLUMN} data-log-note>
+      <div className={MATE_BUBBLE_CLASS.note}>
+        <NoteWords message={row.message} />
+      </div>
     </div>
+  );
+}
+
+/** A quiet line in an opened log that opens what it stands for; its chevron shows on hover or open. */
+const LOG_LINE =
+  "group/log-line inline-flex min-h-6 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md text-left text-line text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70";
+
+function LogLineChevron({ open }: { readonly open: boolean }) {
+  return (
+    <ChevronRightIcon
+      aria-hidden="true"
+      className={cn(
+        "size-3 shrink-0 transition duration-150",
+        open ? "rotate-90 opacity-70" : "opacity-0 group-hover/log-line:opacity-70",
+      )}
+    />
   );
 }
 
@@ -1564,24 +1708,20 @@ function LogActivityTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "lo
   const last = row.entries.at(-1);
   const iconName = row.failed ? "x" : last ? workEntryIconName(last) : "hammer";
   return (
-    <button
-      type="button"
-      aria-expanded={row.expanded}
-      aria-label={row.failed ? `${row.summary}, the last call failed` : undefined}
-      className="flex min-h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      data-scroll-anchor-ignore
-      onClick={() => ctx.onToggleLogItem(row.id, row.id)}
-    >
-      <WorkEntryIconSvg name={iconName} className="size-3.5 shrink-0 opacity-70" />
-      <span className="min-w-0 flex-1 truncate">{row.summary}</span>
-      <ChevronRightIcon
-        aria-hidden="true"
-        className={cn(
-          "size-3 shrink-0 opacity-70 transition-transform duration-150",
-          row.expanded && "rotate-90",
-        )}
-      />
-    </button>
+    <div className={LOG_COLUMN}>
+      <button
+        type="button"
+        aria-expanded={row.expanded}
+        aria-label={row.failed ? `${row.summary}, the last call failed` : undefined}
+        className={LOG_LINE}
+        data-scroll-anchor-ignore
+        onClick={() => ctx.onToggleLogItem(row.id, row.id)}
+      >
+        <WorkEntryIconSvg name={iconName} className="size-3.5 shrink-0 opacity-70" />
+        <span className="min-w-0 truncate">{row.summary}</span>
+        <LogLineChevron open={row.expanded} />
+      </button>
+    </div>
   );
 }
 
@@ -1594,32 +1734,28 @@ function LogOperationTimelineRow({
   const { operation } = row;
   const running = operation.phase === "running";
   return (
-    <button
-      type="button"
-      aria-expanded={row.expanded}
-      className="flex min-h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      data-log-operation={operation.kind}
-      data-scroll-anchor-ignore
-      onClick={() => ctx.onToggleLogItem(row.id, row.id)}
-    >
-      <KindGlyph kind={operation.kind} />
-      <span className={cn("shrink-0", running ? "text-foreground" : "text-foreground/85")}>
-        {operation.statusWord}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{operation.subject}</span>
-      {operation.settledAt ? (
-        <span className="shrink-0 text-xs tabular-nums">
-          {formatWorkDurationBetween(operation.anchorAt, operation.settledAt)}
+    <div className={LOG_COLUMN}>
+      <button
+        type="button"
+        aria-expanded={row.expanded}
+        className={LOG_LINE}
+        data-log-operation={operation.kind}
+        data-scroll-anchor-ignore
+        onClick={() => ctx.onToggleLogItem(row.id, row.id)}
+      >
+        <KindGlyph kind={operation.kind} />
+        <span className={cn("shrink-0", running ? "text-foreground" : "text-foreground/85")}>
+          {operation.statusWord}
         </span>
-      ) : null}
-      <ChevronRightIcon
-        aria-hidden="true"
-        className={cn(
-          "size-3 shrink-0 opacity-70 transition-transform duration-150",
-          row.expanded && "rotate-90",
-        )}
-      />
-    </button>
+        <span className="min-w-0 truncate">{operation.subject}</span>
+        {operation.settledAt ? (
+          <span className="shrink-0 text-xs tabular-nums">
+            · {formatWorkDurationBetween(operation.anchorAt, operation.settledAt)}
+          </span>
+        ) : null}
+        <LogLineChevron open={row.expanded} />
+      </button>
+    </div>
   );
 }
 
@@ -1650,23 +1786,19 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
         ? "Background task failed"
         : "Background task finished"
       : `${row.tasks} background tasks finished`;
-  // The line grammar: its mark in the gutter, its words on the text edge,
-  // the chevron right after them.
+  // The line grammar: its mark on the text edge, its words after it, the
+  // chevron right after them.
   return (
-    <div className="relative flex min-h-7 min-w-0 items-center">
+    <div className="flex min-h-7 min-w-0 items-center gap-1.5">
       {failed > 0 ? (
         // A failed background task is a step on the way: marked, and muted.
-        <span
-          aria-label="Tool call failed"
-          className="absolute -start-5 flex w-5 justify-center"
-          role="img"
-        >
+        <span aria-label="Tool call failed" className="flex w-4 shrink-0 justify-center" role="img">
           <XIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
         </span>
       ) : (
-        <GutterMark>
+        <LineMark>
           <LayersIcon className="size-3.5 text-muted-foreground" />
-        </GutterMark>
+        </LineMark>
       )}
       <button
         type="button"
@@ -1768,16 +1900,14 @@ function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer"
     <div className="grid gap-3" data-person-answer>
       {row.pairs.map((pair) => (
         <Fragment key={pair.key}>
-          <div className="ps-5">
-            <MateSpeech speaker={ctx.speaker}>
-              <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-              <MateWords text={pair.question} />
-            </MateSpeech>
-          </div>
+          <MateSpeech speaker={ctx.speaker}>
+            <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
+            <MateWords text={pair.question} />
+          </MateSpeech>
           <div className="flex justify-end">
             <div className="max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground">
               <MessageAuthorHeading>You</MessageAuthorHeading>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{pair.answer}</p>
+              <p className="whitespace-pre-wrap text-prose">{pair.answer}</p>
             </div>
           </div>
         </Fragment>
@@ -1927,7 +2057,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
       <div
-        className="relative max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground"
+        className="relative max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-prose text-message-foreground"
         data-message-aside={row.aside ? "true" : undefined}
       >
         <MessageAuthorHeading>You</MessageAuthorHeading>
@@ -2100,55 +2230,66 @@ function workingActivity(
 
 /** The Mate's answer to a settled turn, set for reading. */
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+  return <MateProse message={row.message} showMeta={row.showAssistantMeta} />;
+}
+
+/**
+ * The Mate talking to the person — its answer, or the words the person
+ * answered: prose on the conversation's text edge, one hand for both, with
+ * no bubble and no face (the person's words are the bubbles). Its copy and
+ * its time stand on a line of their own under it, shown on hover — reserved,
+ * so showing them moves nothing, and under the words, so they cover none
+ * and no edge clips them (the owner, 2026-09-26: "placement of this utterly
+ * sucks + its even cut of overflow").
+ */
+function MateProse({
+  message,
+  showMeta,
+}: {
+  readonly message: ChatMessage;
+  readonly showMeta: boolean;
+}) {
   const ctx = use(TimelineRowCtx);
-  const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  const messageText = message.text || (message.streaming ? "" : "(empty response)");
+  const copy = resolveAssistantMessageCopyState({
+    text: message.text ?? null,
+    showCopyButton: showMeta,
+    streaming: Boolean(message.streaming),
+  });
   return (
-    <div className="relative min-w-0">
+    <div className="min-w-0">
       <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-      <ChangeChipMomentContext value={row.message.createdAt}>
+      <ChangeChipMomentContext value={message.createdAt}>
         <ChatMarkdown
           variant="answer"
           text={messageText}
           cwd={ctx.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}
-          isStreaming={Boolean(row.message.streaming)}
+          isStreaming={Boolean(message.streaming)}
           lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
           skills={ctx.skills}
           headingLevelOffset={MESSAGE_HEADING_LEVEL}
           onRunShellCommand={ctx.onRunShellCommand}
         />
       </ChangeChipMomentContext>
-      {row.showAssistantMeta ? (
-        // Floats over the gap above the answer instead of reserving a blank
-        // line under every one of them.
-        <div className="absolute end-0 -top-4 z-10 flex items-center gap-1.5 rounded-md border border-border bg-popover ps-0.5 pe-2 text-xs tabular-nums opacity-0 shadow-sm transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">
-          <AssistantCopyButton row={row} />
+      {showMeta ? (
+        <div
+          className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
+          data-mate-prose-actions
+        >
+          {copy.visible ? <MessageCopyButton text={copy.text ?? ""} variant="ghost" /> : null}
           <Tooltip>
             <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-              {formatDayAwareTimestamp(row.message.updatedAt, ctx.timestampFormat)}
+              {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
             </TooltipTrigger>
             <TooltipPopup>
-              {formatChatTimestampTooltip(row.message.updatedAt, ctx.timestampFormat)}
+              {formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat)}
             </TooltipPopup>
           </Tooltip>
         </div>
       ) : null}
     </div>
   );
-}
-
-function AssistantCopyButton({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  const assistantCopyState = resolveAssistantMessageCopyState({
-    text: row.message.text ?? null,
-    showCopyButton: row.showAssistantMeta,
-    streaming: Boolean(row.message.streaming),
-  });
-
-  if (!assistantCopyState.visible) {
-    return null;
-  }
-
-  return <MessageCopyButton text={assistantCopyState.text ?? ""} variant="ghost" />;
 }
 
 function ProposedPlanTimelineRow({
@@ -2341,112 +2482,6 @@ const WorkGroupSection = memo(function WorkGroupSection({
   );
 });
 
-function remarkThoughtPreview(fallback: string) {
-  return (tree: Root) => {
-    const plainText = (node: Root | RootContent): string => {
-      if (node.type === "html" || node.type === "definition") return "";
-      if ("alt" in node) return node.alt ?? "";
-      if ("value" in node) return node.value;
-      if ("children" in node) {
-        const separator = ["root", "blockquote", "list", "listItem", "table", "tableRow"].includes(
-          node.type,
-        )
-          ? " "
-          : "";
-        return node.children.map(plainText).join(separator);
-      }
-      return node.type === "break" ? " " : "";
-    };
-    tree.children = [
-      { type: "text", value: plainText(tree).replace(/\s+/g, " ").trim() || fallback },
-    ];
-  };
-}
-
-/**
- * Thinking inside an activity row. Beside tool calls it has its own
- * disclosure, whose collapsed header previews the first line; a row that
- * already reads "Thought" (no visible tool) shows the text directly.
- */
-function ReasoningTraceBlock({
-  anchorKey,
-  messages,
-  live,
-  showHeader,
-}: {
-  anchorKey: string;
-  messages: ReadonlyArray<ChatMessage>;
-  live: boolean;
-  showHeader: boolean;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const { isWorking, latestTurnId } = use(TimelineRowActivityCtx);
-  const first = messages[0]!;
-  const expanded = !showHeader || ctx.expandedReasoningMessageIds.has(first.id);
-  // Only the live turn may claim to still be thinking: a block stranded by a
-  // crashed provider keeps its streaming flag forever.
-  const streaming =
-    live &&
-    messages.some((message) => message.streaming) &&
-    isWorking &&
-    first.turnId !== null &&
-    first.turnId === latestTurnId;
-  if (messages.every((message) => message.text.trim().length === 0) && !streaming) {
-    return null;
-  }
-  const label = streaming ? "Thinking" : "Thought";
-  const collapsedPreview = messages.find((message) => message.text.trim().length > 0)?.text.trim();
-  const headerText = expanded ? (
-    label
-  ) : (
-    <ReactMarkdown remarkPlugins={[remarkGfm, [remarkThoughtPreview, label]]}>
-      {collapsedPreview ?? label}
-    </ReactMarkdown>
-  );
-  return (
-    <div className="flex flex-col">
-      {showHeader ? (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => ctx.onToggleReasoning(first.id, !expanded, anchorKey)}
-          className="flex cursor-pointer select-none items-center gap-2 rounded-sm px-1 py-px text-start text-line transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-        >
-          <span className="flex w-3.5 shrink-0 items-center justify-center text-icon-muted">
-            <BrainIcon aria-hidden className="block size-3.5 shrink-0 stroke-[1.8] opacity-70" />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">{headerText}</span>
-          <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
-            <ChevronRightIcon
-              className={cn(
-                "size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200",
-                expanded && "rotate-90",
-              )}
-            />
-          </span>
-        </button>
-      ) : null}
-      {expanded ? (
-        <div className="ms-5.5 flex max-h-96 flex-col gap-3 overflow-auto px-1 py-1 select-text">
-          {messages.map((message) => (
-            <ChatMarkdown
-              key={message.id}
-              className="text-foreground"
-              text={message.text}
-              cwd={ctx.markdownCwd}
-              threadRef={ctx.threadRef ?? undefined}
-              isStreaming={streaming && message.streaming}
-              lineBreaks
-              skills={ctx.skills}
-              headingLevelOffset={MESSAGE_HEADING_LEVEL}
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Leaf components
 // ---------------------------------------------------------------------------
@@ -2578,6 +2613,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
             threadRef={ctx.threadRef ?? undefined}
             skills={props.skills}
             className="text-message-foreground"
+            variant="person"
             lineBreaks
             parseRawHtml={false}
             headingLevelOffset={MESSAGE_HEADING_LEVEL}
@@ -2591,7 +2627,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   const reviewCommentSegments = parseReviewCommentMessageSegments(props.text);
   if (reviewCommentSegments.some((segment) => segment.kind === "review-comment")) {
     return (
-      <div className="space-y-3 text-message-foreground text-sm leading-relaxed">
+      <div className="space-y-3 text-message-foreground">
         {reviewCommentSegments.map((segment) =>
           segment.kind === "text" ? (
             segment.text.trim().length > 0 ? (
@@ -2602,6 +2638,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
                   threadRef={ctx.threadRef ?? undefined}
                   skills={props.skills}
                   className="text-message-foreground"
+                  variant="person"
                   lineBreaks
                   parseRawHtml={false}
                   headingLevelOffset={MESSAGE_HEADING_LEVEL}
@@ -2692,6 +2729,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
           threadRef={ctx.threadRef ?? undefined}
           skills={props.skills}
           className="text-message-foreground"
+          variant="person"
           lineBreaks
           parseRawHtml={false}
           headingLevelOffset={MESSAGE_HEADING_LEVEL}
@@ -2719,6 +2757,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       threadRef={ctx.threadRef ?? undefined}
       skills={props.skills}
       className="text-message-foreground"
+      variant="person"
       lineBreaks
       parseRawHtml={false}
       headingLevelOffset={MESSAGE_HEADING_LEVEL}

@@ -40,8 +40,12 @@ export interface ConversationSpeaker {
   readonly tint: MateTintId;
 }
 
-/** A row's mark, hung in the gutter left of the column's text edge. */
-export function GutterMark({
+/**
+ * A row's mark, leading its words on the text edge. It used to hang in a
+ * gutter left of that edge, which put it outside the column the composer
+ * draws — and, inside a card, past the card's own border.
+ */
+export function LineMark({
   children,
   className,
 }: {
@@ -51,8 +55,8 @@ export function GutterMark({
   return (
     <span
       aria-hidden="true"
-      className={cn("absolute -start-5 flex w-5 justify-center", className)}
-      data-gutter-mark
+      className={cn("flex w-4 shrink-0 justify-center", className)}
+      data-line-mark
     >
       {children}
     </span>
@@ -99,10 +103,16 @@ function spanText(startedAt: string, endedAt: string | null): string {
  */
 export function WorkLine({
   row,
+  speaker,
+  summarized,
   timestampFormat,
   onToggle,
 }: {
   readonly row: WorkLineRow;
+  /** Who worked: a line that says only "Worked" says nobody did (the owner, 2026-09-26: "'worked' who where?"). */
+  readonly speaker: ConversationSpeaker;
+  /** A line with nothing under it says what the work came to; a card's body says it itself. */
+  readonly summarized: boolean;
   readonly timestampFormat: TimestampFormat;
   readonly onToggle: () => void;
 }) {
@@ -110,17 +120,18 @@ export function WorkLine({
   // A stretch that did nothing but think says so, and nothing more.
   const thoughtOnly = !live && row.note === null && row.fallback === null;
   const verb = live
-    ? "Working for"
+    ? "is working ·"
     : row.face === "stopped"
-      ? "Stopped after"
+      ? "stopped after"
       : thoughtOnly
-        ? "Thought for"
-        : "Worked for";
+        ? "thought for"
+        : "worked for";
+  const summary = summarized && !live ? row.summary : null;
   const words = (
     <>
       <Tooltip>
         <TooltipTrigger render={<span className="shrink-0 tabular-nums" data-work-line-clock />}>
-          {verb}{" "}
+          {speaker.name} {verb}{" "}
           {live ? <ElapsedSince since={row.startedAt} /> : spanText(row.startedAt, row.endedAt)}
         </TooltipTrigger>
         <TooltipPopup>
@@ -128,6 +139,12 @@ export function WorkLine({
           {row.endedAt ? ` – ${formatDayAwareTimestamp(row.endedAt, timestampFormat)}` : ""}
         </TooltipPopup>
       </Tooltip>
+      {summary === null ? null : (
+        // A clause of the line's sentence, after its clock.
+        <span className="min-w-0 truncate" data-work-line-summary>
+          · {summary.charAt(0).toLowerCase() + summary.slice(1)}
+        </span>
+      )}
       {row.hasLog ? (
         <ChevronRightIcon
           aria-hidden="true"
@@ -147,7 +164,7 @@ export function WorkLine({
         <button
           type="button"
           aria-expanded={row.open}
-          aria-label={`${verb} ${spanText(row.startedAt, row.endedAt)}. ${row.open ? "Hide" : "Show"} what it did`}
+          aria-label={`${speaker.name} ${verb} ${spanText(row.startedAt, row.endedAt)}${summary === null ? "" : `, ${summary.charAt(0).toLowerCase() + summary.slice(1)}`}. ${row.open ? "Hide" : "Show"} what it did`}
           className={cn(
             className,
             "cursor-pointer rounded-sm transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
@@ -167,9 +184,9 @@ export function WorkLine({
 }
 
 /**
- * The Mate's words the person answered: its face in the gutter and the words
- * in full in a bubble beside it — the mirror of the person's bubbles on the
- * right — left where they were said.
+ * The Mate's words the person answered: its face and the words in full in a
+ * bubble beside it — the mirror of the person's bubbles on the right — drawn
+ * as the Mate at work drew its newest words, and left where they were said.
  */
 export function MateSpeech({
   speaker,
@@ -179,11 +196,11 @@ export function MateSpeech({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="relative flex min-w-0" data-mate-speech="said">
-      <GutterMark className="top-1">
-        <MateFace size="sm" state="idle" tint={speaker.tint} />
-      </GutterMark>
-      <div className="min-w-0 max-w-full rounded-2xl rounded-ss-sm bg-muted px-3.5 py-2 text-foreground">
+    <div className="flex min-w-0 items-end gap-2.5" data-mate-speech="said">
+      <span aria-hidden="true" className="mb-0.5 shrink-0">
+        <MateFace size="md" state="idle" tint={speaker.tint} />
+      </span>
+      <div className="min-w-0 max-w-full rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground">
         {children}
       </div>
     </div>
@@ -295,10 +312,10 @@ function EventShell({
 }) {
   return (
     <div
-      className="relative flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
+      className="flex min-h-7 min-w-0 items-center gap-1.5 text-line text-muted-foreground"
       data-conversation-event
     >
-      <GutterMark>{icon}</GutterMark>
+      <LineMark>{icon}</LineMark>
       <Tooltip>
         <TooltipTrigger render={<span className="min-w-0 truncate" />}>{children}</TooltipTrigger>
         <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
@@ -395,15 +412,17 @@ export function ErrorLine({
   const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
   return (
     <div
-      className="relative min-h-7 min-w-0 py-1 text-line text-status-failed-text"
+      className="flex min-h-7 min-w-0 items-start gap-1.5 py-1 text-line text-status-failed-text"
       data-conversation-error
       role="alert"
     >
-      <GutterMark className="top-1.5">
+      <LineMark className="h-5 items-center">
         <CircleAlertIcon className="size-3.5" />
-      </GutterMark>
-      <p className="min-w-0">{label}</p>
-      {extra ? <p className="min-w-0 text-muted-foreground">{extra}</p> : null}
+      </LineMark>
+      <div className="min-w-0">
+        <p className="min-w-0">{label}</p>
+        {extra ? <p className="min-w-0 text-muted-foreground">{extra}</p> : null}
+      </div>
     </div>
   );
 }
@@ -482,9 +501,9 @@ export function PauseBlock({
     >
       <div className={cn("flex min-w-0 items-center gap-2", resumed ? "text-line" : "text-sm")}>
         {resumed ? (
-          <GutterMark className="top-3">
+          <LineMark>
             <PauseIcon className="size-3.5 text-muted-foreground" />
-          </GutterMark>
+          </LineMark>
         ) : (
           <PauseIcon aria-hidden="true" className="size-4 shrink-0 text-status-attention" />
         )}
@@ -542,9 +561,9 @@ export function IncidentLine({ incident }: { readonly incident: IncidentModel })
       data-conversation-incident={incident.tone}
       role={incident.tone === "ok" ? undefined : "status"}
     >
-      <GutterMark>
+      <LineMark>
         <span className={cn("size-1.5 rounded-full", tone.dot)} />
-      </GutterMark>
+      </LineMark>
       <span className="shrink-0 font-medium text-foreground">{incident.hostname}</span>
       <span className={cn("min-w-0 truncate", tone.text)}>{incident.phases.join(" · ")}</span>
     </div>

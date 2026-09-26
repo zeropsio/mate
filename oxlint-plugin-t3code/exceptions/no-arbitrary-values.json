@@ -394,14 +394,6 @@
   {
     "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
     "kind": "Literal",
-    "fingerprint": "<> stroke-[1.8] in \"block size-3.5 shrink-0 stroke-[1.8] opacity-70\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[10px] in \"w-3 shrink-0 text-center font-mono text-[10px]\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",

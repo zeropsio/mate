@@ -365,15 +365,8 @@ export function useOperationCard(
   const nowMs = useSecondsNowMs(operation.phase === "running");
   const { state, history, buildLog } = useOperationObservation(target, environmentId, nowMs);
   const topology = useZeropsTopology(environmentId);
-  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
-  // The log is open from a running card's first frame, its tail's height
-  // held before a line arrives, and stays open once the deploy ends: closing
-  // it at settle would shrink the card under the reader.
-  const [heldOpen, setHeldOpen] = useState(false);
-  const openByDefault = heldOpen || operation.phase === "running" || buildLog.status === "live";
-  if (openByDefault && !heldOpen) {
-    setHeldOpen(true);
-  }
+  // The whole log opens in a dialog, only when asked for.
+  const [logOpen, setLogOpen] = useState(false);
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
   const devServerUrl = devServerUrlFor(operation, topology);
@@ -409,12 +402,12 @@ export function useOperationCard(
     return { observed, ...fields };
   }
 
-  const open = manualOpen ?? openByDefault;
   const log: ReactElement = createElement(ZeropsBuildLog, {
     lines: buildLog.lines,
-    onToggle: () => setManualOpen(!open),
-    open,
+    onToggle: () => setLogOpen(!logOpen),
+    open: logOpen,
     status: buildLog.status,
+    subject: operation.subject,
   });
   return { observed: { ...observed, log }, ...fields };
 }

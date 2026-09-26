@@ -4,6 +4,8 @@ import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  rowGap,
+  thoughtParagraphs,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
   shouldPreserveAssistantLineBreaks,
@@ -30,7 +32,8 @@ type Scene = {
   expanded?: string[];
 };
 
-function rows(scene: Scene): MessagesTimelineRow[] {
+/** The conversation as the list draws it, its cards' frames included. */
+function framed(scene: Scene): MessagesTimelineRow[] {
   const latestId = scene.live ?? scene.settled;
   return deriveMessagesTimelineRows({
     timelineEntries: scene.entries,
@@ -52,7 +55,16 @@ function rows(scene: Scene): MessagesTimelineRow[] {
   });
 }
 
+/** The conversation's rows, without the rows that only close a card's frame. */
+function rows(scene: Scene): MessagesTimelineRow[] {
+  return framed(scene).filter((row) => row.kind !== "card-end");
+}
+
 const shape = (list: MessagesTimelineRow[]) => list.map((row) => `${row.kind}:${row.id}`);
+
+/** What a row draws, its frame included: a row that changes its gap or its place in a card changes its height. */
+const frame = (list: MessagesTimelineRow[]) =>
+  list.map((row) => `${row.kind}:${row.id}:${row.gap ?? "none"}:${row.card ?? "free"}`);
 
 /** Background work that finished after its turn: no turn owns it. */
 const background = (id: string, minute: number, overrides: Partial<WorkLogEntry> = {}) => {
@@ -97,7 +109,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list[3]).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
 
-  it("keeps every message the person sent where they sent it, with a line after each that did work", () => {
+  it("keeps every message the person sent where they sent it, inside the run's one card", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -109,13 +121,13 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t1",
     });
-    // The last stretch only answered: nothing to open, so no line — the
-    // answer stands under the message by itself.
+    // Messages sent into the run are delivered at the Mate's next step and
+    // the run goes on: one line for all of it, the messages inside its card
+    // where they arrived, the answer after it.
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
       "work-line:work-line:msg:m0",
       "message:m1",
-      "work-line:work-line:msg:m1",
       "message:m2",
       "message:a3",
     ]);
@@ -124,8 +136,8 @@ describe("deriveMessagesTimelineRows", () => {
       expect.objectContaining({ aside: true, receipt: "seen" }),
       expect.objectContaining({ aside: true, receipt: "seen" }),
     ]);
-    // A stretch without notes says what it did instead.
-    expect(list[2]).toMatchObject({ note: null, fallback: "Ran 1 command" });
+    // A run without notes says what it did instead, all of it.
+    expect(list[2]).toMatchObject({ note: null, fallback: "Ran 2 commands" });
   });
 
   it("keeps the running turn's last line live and its latest words at its tail", () => {
@@ -260,6 +272,25 @@ describe("deriveMessagesTimelineRows", () => {
       stream: ["One.", "Two.", "Three.", "Four.", "Five.", "Six.", "Seven."],
     },
     {
+      name: "what it thinks streams too, in order with what it says",
+      entries: [
+        reasoning("r1", "t1", 1),
+        tool("w1", "t1", 2),
+        assistant("a1", "t1", 3, "Deploying."),
+        reasoning("r2", "t1", 4),
+      ],
+      stream: ["~ thinking about it", "Deploying.", "~ thinking about it"],
+    },
+    {
+      name: "words that read as the answer leave the stream: they stream under the card",
+      entries: [
+        assistant("a1", "t1", 1, "Deploying."),
+        tool("w1", "t1", 2),
+        assistant("a2", "t1", 3, "It is live.\n\n**What changed**"),
+      ],
+      stream: ["Deploying."],
+    },
+    {
       name: "a step that failed on the way streams where it failed",
       entries: [
         assistant("a1", "t1", 1, "Type checking."),
@@ -301,9 +332,11 @@ describe("deriveMessagesTimelineRows", () => {
         ? working.stream.map((item) =>
             item.kind === "note"
               ? item.message.text
-              : item.kind === "question"
-                ? `? ${item.questions.join(" ")}`
-                : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
+              : item.kind === "thought"
+                ? `~ ${item.text}`
+                : item.kind === "question"
+                  ? `? ${item.questions.join(" ")}`
+                  : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
           )
         : null,
     ).toEqual(stream);
@@ -777,6 +810,152 @@ describe("deriveMessagesTimelineRows", () => {
   });
 });
 
+describe("thoughtParagraphs", () => {
+  it.each([
+    { text: "One.", paragraphs: ["One."] },
+    { text: "One.\n\nTwo.\n\n\nThree.", paragraphs: ["One.", "Two.", "Three."] },
+    {
+      text: "**Checking the menu**\n\nThe panel glides.\n\n**Next**\n\nThe keyboard.",
+      paragraphs: ["**Checking the menu**\n\nThe panel glides.", "**Next**\n\nThe keyboard."],
+    },
+    { text: "The panel glides.\n\n**Next**", paragraphs: ["The panel glides.", "**Next**"] },
+    { text: "  \n\n ", paragraphs: [] },
+  ])("$text", ({ text, paragraphs }) => {
+    expect(thoughtParagraphs(text)).toEqual(paragraphs);
+  });
+});
+
+describe("a stretch's card", () => {
+  // Every stretch of work is one card, from its line to its edge: the log,
+  // the Mate at work, the words the person answered and the report inside;
+  // the person's messages and the Mate's answer on the conversation's edge.
+  const cards = (list: MessagesTimelineRow[]) =>
+    list
+      .filter((row) => row.kind !== "seam")
+      .map((row) => `${row.kind}${row.card === undefined ? "" : `:${row.card}`}`);
+
+  it.each([
+    {
+      case: "settled, closed, with a report: its line, the report, its edge; the answer outside",
+      scene: {
+        entries: [
+          user("m0", 0),
+          operation("d1", "t1", 1, { kind: "deploy" }),
+          assistant("a1", "t1", 2, "Done."),
+        ],
+        settled: "t1",
+      } satisfies Scene,
+      expected: ["message", "work-line:top", "outcome:middle", "card-end:bottom", "message"],
+    },
+    {
+      case: "settled, closed, nothing under its line: one quiet line, no empty box",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+        settled: "t1",
+      } satisfies Scene,
+      expected: ["message", "work-line", "message"],
+    },
+    {
+      case: "settled, opened: the log inside the card",
+      scene: {
+        entries: [
+          user("m0", 0),
+          reasoning("r1", "t1", 1),
+          tool("w1", "t1", 1),
+          assistant("a1", "t1", 2, "Looking."),
+          assistant("a2", "t1", 3, "Done."),
+        ],
+        settled: "t1",
+        open: ["msg:m0"],
+      } satisfies Scene,
+      expected: [
+        "message",
+        "work-line:top",
+        "log-reasoning:middle",
+        "log-activity:middle",
+        "log-note:middle",
+        "card-end:bottom",
+        "message",
+      ],
+    },
+    {
+      case: "live: the Mate at work is the card's body",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Looking.")],
+        live: "t1",
+      } satisfies Scene,
+      expected: ["message", "work-line:top", "working:middle", "card-end:bottom"],
+    },
+    {
+      case: "written into: the person's message inside the card, under the words it answered",
+      scene: {
+        entries: [
+          user("m0", 0),
+          tool("w1", "t1", 1),
+          assistant("a1", "t1", 2, "Which colour?"),
+          user("m1", 3, "Blue"),
+          tool("w2", "t1", 4),
+        ],
+        live: "t1",
+      } satisfies Scene,
+      // The run goes on after the person's message: one card, the message
+      // inside it under the Mate's words it answered, the Mate still at work.
+      expected: [
+        "message",
+        "work-line:top",
+        "speech:middle",
+        "message:middle",
+        "working:middle",
+        "card-end:bottom",
+      ],
+    },
+    {
+      case: "an answer with no work before it: no card",
+      scene: {
+        entries: [user("m0", 0), assistant("a1", "t1", 1, "Hi.")],
+        settled: "t1",
+      } satisfies Scene,
+      expected: ["message", "message"],
+    },
+  ])("$case", ({ scene, expected }) => {
+    expect(cards(framed(scene))).toEqual(expected);
+  });
+
+  it("streams a running turn's answer under its card, the panel saying nothing of its own", () => {
+    const list = framed({
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
+      ],
+      live: "t1",
+    });
+    expect(cards(list)).toEqual([
+      "message",
+      "work-line:top",
+      "working:middle",
+      "card-end:bottom",
+      "message",
+    ]);
+    expect(list.at(-1)).toMatchObject({ kind: "message", id: "a1" });
+    expect(list.find((row) => row.kind === "working")).toMatchObject({ answering: true });
+  });
+
+  it("keeps the room after a card that the card's last row kept", () => {
+    const list = framed({
+      entries: [
+        user("m0", 0),
+        operation("d1", "t1", 1, { kind: "deploy" }),
+        assistant("a1", "t1", 2, "Done."),
+      ],
+      settled: "t1",
+    });
+    const edge = list.findIndex((row) => row.kind === "card-end");
+    expect(list[edge]!.gap).toBe("none");
+    expect(list[edge + 1]!.gap).toBe(rowGap(list[edge - 1], list[edge + 1]!));
+  });
+});
+
 describe("the no-shift contract", () => {
   // A turn as it arrives: everything a snapshot drew above its live tail must
   // be drawn the same by the next one — the timeline only grows at its bottom;
@@ -786,11 +965,18 @@ describe("the no-shift contract", () => {
   // re-forms what is under its live line (its last note becomes the answer, a
   // limit's notice becomes the pause). Queued messages leave when they are
   // sent, so they are not drawn.
-  const liveTailStart = (list: MessagesTimelineRow[]) => {
+  // A running turn's answer streams under its card: it is the live tail too.
+  const liveTailStart = (list: MessagesTimelineRow[], live: boolean) => {
     let end = list.length;
     while (end > 0) {
       const row = list[end - 1]!;
-      if (row.kind === "working" || (row.kind === "work-line" && row.live)) end -= 1;
+      if (
+        row.kind === "working" ||
+        row.kind === "card-end" ||
+        (row.kind === "work-line" && row.live) ||
+        (live && row.kind === "message" && row.message.role === "assistant")
+      )
+        end -= 1;
       else break;
     }
     return end;
@@ -801,13 +987,13 @@ describe("the no-shift contract", () => {
     for (let count = 1; count <= sequence.length; count += 1) {
       const entries = sequence.slice(0, count).map((arrival) => arrival.entry);
       const live = sequence[count - 1]!.live;
-      const current = rows({ entries, ...(live ? { live: "t1" } : { settled: "t1" }), open });
+      const current = framed({ entries, ...(live ? { live: "t1" } : { settled: "t1" }), open });
       const settling = wasLive && !live;
       const liveLineEnd = previous.findLastIndex((row) => row.kind === "work-line" && row.live) + 1;
       const bound = settling
-        ? Math.min(liveTailStart(previous), liveLineEnd)
-        : liveTailStart(previous);
-      expect(shape(current).slice(0, bound)).toEqual(shape(previous).slice(0, bound));
+        ? Math.min(liveTailStart(previous, wasLive), liveLineEnd)
+        : liveTailStart(previous, wasLive);
+      expect(frame(current).slice(0, bound)).toEqual(frame(previous).slice(0, bound));
       previous = current;
       wasLive = live;
     }
@@ -865,6 +1051,21 @@ describe("the no-shift contract", () => {
     ["with the live line opened", ["msg:m0", "msg:m1"]],
   ])("holds while a turn arrives, %s", (_label, open) => {
     holds(arrivals, open);
+  });
+
+  it("holds while the answer streams under the card, and as the turn settles", () => {
+    holds(
+      [
+        { entry: user("m0", 0), live: true },
+        { entry: reasoning("r1", "t1", 1), live: true },
+        { entry: tool("w1", "t1", 2), live: true },
+        { entry: assistant("a1", "t1", 3, "Deploying."), live: true },
+        { entry: operation("d1", "t1", 4, { kind: "deploy" }), live: true },
+        { entry: assistant("a2", "t1", 5, "It is live.\n\n**What changed**"), live: true },
+        { entry: landed("l1", 6), live: false },
+      ],
+      [],
+    );
   });
 
   it("holds when the person writes twice before the Mate did anything: the live line follows", () => {

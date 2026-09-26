@@ -7,11 +7,18 @@
  * own frame — a retake is a new frame, never a replaced one — and a failed
  * take keeps its frame outlined red, saying why. Fixed height from the first
  * check on: the stage and the takes change inside it, the block never grows.
+ *
+ * A take the Mate screenshot has its picture. One it did not read the
+ * page's structure — its errors, console and requests — and says so: a
+ * structure glyph and "structure", never an empty frame (the owner,
+ * 2026-09-26, of a frame saying "Screenshot not kept": "when there is no
+ * screenshot it means its checking just the structure right? we could somehow
+ * reflect as well"). With no picture to stage, the block is its list of takes.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
-import { CheckIcon, ImageOffIcon, XIcon } from "lucide-react";
+import { CheckIcon, CodeXmlIcon, XIcon } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -94,6 +101,21 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/** What a structure check found, in words: "no errors", "2 errors · 1 failed request". */
+function takeFindings(check: ZeropsOperation): string | null {
+  const summary = check.browserSummary;
+  if (summary === undefined) return null;
+  const errors = summary.errorCount;
+  const requests = summary.failedRequestCount;
+  if (errors === 0 && requests === 0) return "no errors";
+  return [
+    errors > 0 ? plural(errors, "error", "errors") : null,
+    requests > 0 ? plural(requests, "failed request", "failed requests") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function BrowserStrip({
   strip,
   environmentId,
@@ -115,16 +137,19 @@ export function BrowserStrip({
   const picked = running
     ? undefined
     : strip.checks.find((check) => check.key === pickedKey && check !== latest);
-  const onStage = picked ?? latest;
-  const device = browserCheckDevice(onStage);
   const stream = useZeropsBrowserStream(running ? environmentId : null);
   const liveFrame = stream !== undefined && stream !== "unavailable" ? stream.frame : undefined;
+  // Settled, the stage holds the newest take with a picture.
+  const onStage =
+    picked ?? (running ? latest : (strip.checks.findLast((check) => check.screenshot) ?? latest));
+  const device = browserCheckDevice(onStage);
   const stageSrc =
     onStage === latest && running
       ? liveFrame
         ? frameImageSrc(liveFrame)
         : undefined
       : onStage.screenshot?.src;
+  const staged = running || stageSrc !== undefined;
   const caption = browserCheckCaption(onStage);
   const failedOnStage = browserCheckFailed(onStage);
   const settledCount = strip.checks.filter((check) => check.phase !== "running").length;
@@ -177,10 +202,13 @@ export function BrowserStrip({
           .join(" · ");
   const viewport = onStage.viewport;
   const duration = checkDuration(onStage);
+  const structureOnStage = !running && onStage.screenshot === undefined;
   const facts = [
     onStage.deviceName ?? DEVICE_WORD[device],
     viewport && onStage.deviceName === undefined ? `${viewport.width}×${viewport.height}` : null,
     frames > 1 && !running ? caption : null,
+    structureOnStage ? "structure" : null,
+    structureOnStage ? takeFindings(onStage) : null,
     duration,
   ]
     .filter(Boolean)
@@ -190,67 +218,70 @@ export function BrowserStrip({
     <div
       className={cn(
         "@container/strip min-w-0 overflow-hidden",
-        bare ? "h-66" : "h-72 rounded-2xl bg-muted/50 p-3",
+        staged ? (bare ? "h-66" : "h-72") : "max-h-66",
+        !bare && "rounded-2xl bg-muted/50 p-3",
       )}
       data-browser-strip
       data-browser-strip-device={device}
     >
       <div className="flex size-full min-w-0 flex-col-reverse gap-2 @xl/strip:flex-row @xl/strip:gap-4">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                aria-label={
-                  stageSrc
-                    ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
-                    : "Open the Browser panel"
-                }
-                className={cn(
-                  "relative flex min-h-0 flex-1 shrink-0 cursor-pointer flex-col self-center overflow-hidden border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 @xl/strip:h-66 @xl/strip:flex-none",
-                  FRAME_CLASS[device],
-                  failedOnStage && "border-status-failed",
-                )}
-                data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
-                onClick={onStageClick}
-                type="button"
-              />
-            }
-          >
-            {device === "desktop" ? (
-              <span className="flex h-6 shrink-0 items-center gap-1 border-border border-b px-2">
-                <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-                <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-                <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-                <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-muted px-2 text-start text-2xs text-muted-foreground leading-4">
-                  {caption}
-                </span>
-              </span>
-            ) : null}
-            <span
-              className={cn(
-                "relative block min-h-0 flex-1 overflow-hidden bg-background",
-                SCREEN_CLASS[device],
-              )}
+        {staged ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={
+                    stageSrc
+                      ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
+                      : "Open the Browser panel"
+                  }
+                  className={cn(
+                    "relative flex min-h-0 flex-1 shrink-0 cursor-pointer flex-col self-center overflow-hidden border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 @xl/strip:h-66 @xl/strip:flex-none",
+                    FRAME_CLASS[device],
+                    failedOnStage && "border-status-failed",
+                  )}
+                  data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
+                  onClick={onStageClick}
+                  type="button"
+                />
+              }
             >
-              {stageSrc ? (
-                <img alt="" className="block size-full object-cover object-top" src={stageSrc} />
-              ) : (
-                <span className="flex size-full items-center justify-center px-3 text-center text-muted-foreground text-xs">
-                  {running ? "Opening the page…" : "Screenshot not kept"}
+              {device === "desktop" ? (
+                <span className="flex h-6 shrink-0 items-center gap-1 border-border border-b px-2">
+                  <span className="size-1.5 rounded-full bg-muted-foreground/30" />
+                  <span className="size-1.5 rounded-full bg-muted-foreground/30" />
+                  <span className="size-1.5 rounded-full bg-muted-foreground/30" />
+                  <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-muted px-2 text-start text-2xs text-muted-foreground leading-4">
+                    {caption}
+                  </span>
                 </span>
-              )}
-            </span>
-            {running && onStage === latest ? (
-              <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 text-2xs text-foreground leading-5 shadow-sm">
-                <span className="size-1.5 animate-status-pulse rounded-full bg-status-failed motion-reduce:animate-none" />
-                Live
+              ) : null}
+              <span
+                className={cn(
+                  "relative block min-h-0 flex-1 overflow-hidden bg-background",
+                  SCREEN_CLASS[device],
+                )}
+              >
+                {stageSrc ? (
+                  <img alt="" className="block size-full object-cover object-top" src={stageSrc} />
+                ) : (
+                  <span className="flex size-full items-center justify-center px-3 text-center text-muted-foreground text-xs">
+                    Opening the page…
+                  </span>
+                )}
               </span>
-            ) : null}
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">
-            {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
-          </TooltipPopup>
-        </Tooltip>
+              {running && onStage === latest ? (
+                <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 text-2xs text-foreground leading-5 shadow-sm">
+                  <span className="size-1.5 animate-status-pulse rounded-full bg-status-failed motion-reduce:animate-none" />
+                  Live
+                </span>
+              ) : null}
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">
+              {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
+            </TooltipPopup>
+          </Tooltip>
+        ) : null}
         <div className="flex min-w-0 flex-none flex-col gap-0.5 @xl/strip:flex-1 @xl/strip:py-1">
           <p
             className={cn(
@@ -269,16 +300,21 @@ export function BrowserStrip({
           ) : null}
           <div
             ref={filmRef}
-            className="mt-2 hidden min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto scrollbar-none @xl/strip:flex"
+            className={cn(
+              "mt-2 min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto scrollbar-none",
+              staged ? "hidden @xl/strip:flex" : "flex",
+            )}
             data-browser-strip-film
           >
             {strip.checks.map((check) => {
               const failed = browserCheckFailed(check);
               const live = check.phase === "running";
               const takeDevice = browserCheckDevice(check);
+              const structure = !live && check.screenshot === undefined;
               const takeWords = [
                 check.deviceName ?? DEVICE_WORD[takeDevice],
                 browserCheckCaption(check),
+                structure ? "structure" : null,
                 live ? "running" : checkDuration(check),
               ]
                 .filter(Boolean)
@@ -298,30 +334,31 @@ export function BrowserStrip({
                   onClick={() => (live ? openPanel() : setPickedKey(check.key))}
                   type="button"
                 >
-                  <span
-                    className={cn(
-                      "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
-                      TAKE_CLASS[takeDevice],
-                      failed
-                        ? "border-status-failed"
-                        : live
-                          ? "border-status-busy border-dashed"
-                          : "border-border",
-                    )}
-                  >
-                    {check.screenshot ? (
-                      <img
-                        alt=""
-                        className="block size-full object-cover object-top"
-                        src={check.screenshot.src}
-                      />
-                    ) : live ? null : (
-                      // The take ran, its picture was not kept: say so rather than draw a blank.
-                      <ImageOffIcon
-                        aria-hidden="true"
-                        className="size-3 text-muted-foreground/60"
-                      />
-                    )}
+                  {/* Every take's words start on one edge: its thumbnail, in its
+                      device's shape, sits in a slot as wide as a desktop's. */}
+                  <span className="flex w-13 shrink-0 justify-center" data-browser-strip-take-slot>
+                    <span
+                      className={cn(
+                        "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
+                        TAKE_CLASS[takeDevice],
+                        failed
+                          ? "border-status-failed"
+                          : live
+                            ? "border-status-busy border-dashed"
+                            : "border-border",
+                      )}
+                    >
+                      {check.screenshot ? (
+                        <img
+                          alt=""
+                          className="block size-full object-cover object-top"
+                          src={check.screenshot.src}
+                        />
+                      ) : live ? null : (
+                        // No screenshot: the take read the page's structure.
+                        <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
+                      )}
+                    </span>
                   </span>
                   <span className="min-w-0 flex-1 truncate">{takeWords}</span>
                   {live ? (
