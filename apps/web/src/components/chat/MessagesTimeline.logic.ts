@@ -1628,11 +1628,16 @@ export function deriveMessagesTimelineRows(
       ),
     );
     // A settled run with nothing to open has nothing to say: the answer
-    // stands under the message by itself. A live one always has its line, and
-    // so does one the usage limit refused — the person's message is answered
-    // by the reason.
+    // stands under the message by itself. A live one has its line while the
+    // Mate works toward an answer, and so does one the usage limit refused —
+    // the person's message is answered by the reason. A live run with nothing
+    // in its log whose answer is known already is drawn as it will settle:
+    // a result that woke the Mate and was answered in one breath flashed a
+    // card for a frame, and the answer jumped up as it went (Nova,
+    // 2026-09-26).
+    const answeredAlone = turn.live && !hasLog && answer !== null;
     const cardStart = rows.length;
-    if (turn.live || hasLog || pausedHere)
+    if ((turn.live && !answeredAlone) || hasLog || pausedHere)
       rows.push({
         kind: "work-line",
         id: `work-line:${first.key}`,
@@ -1680,7 +1685,7 @@ export function deriveMessagesTimelineRows(
       );
     });
 
-    if (last.live) {
+    if (last.live && !answeredAlone) {
       // Under the person's answer the Mate at work starts afresh: its own
       // panel, so the window of what it said before the question is gone.
       const answeredBy = latestAnswer(last);

@@ -285,6 +285,30 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list.at(-1)).toMatchObject({ activity: { kind: "thinking" }, stream: [] });
   });
 
+  // A result that woke the Mate and was answered in one breath flashed a
+  // card for a frame: drawn live with the whole answer under it, gone as the
+  // run settled 43 ms later, and the answer jumped up (Nova, 2026-09-26).
+  it("draws a run with nothing in its log as its answer alone once the answer is known", () => {
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "The review is done.\n\nFour issues stood out."),
+    ];
+    expect(frame(framed({ entries, live: "t1" }))).toEqual(
+      frame(framed({ entries, settled: "t1" })),
+    );
+  });
+
+  it("keeps the card while the Mate composes, before its answer is known", () => {
+    for (const entries of [
+      [user("m0", 0)],
+      [user("m0", 0), assistant("a1", "t1", 1, "The review is done.")],
+    ]) {
+      const kinds = rows({ entries, live: "t1" }).map((row) => row.kind);
+      expect(kinds).toContain("work-line");
+      expect(kinds).toContain("working");
+    }
+  });
+
   // Words that cannot be placed yet stream nowhere: the panel says the Mate
   // is writing, a note pops in whole once it moves on, and an answer streams
   // under the card once it reads as one — never first in the panel.
