@@ -112,7 +112,10 @@ export function buildDeployFields(
   const errorInfo = errorInfoFor(call, decoded);
   const card = decoded.card?.kind === "deploy" ? decoded.card : undefined;
   const resultStatus = card?.status;
-  const phase = deployPhase(call, resultStatus, context.nowMs);
+  // A result that reports its own failure is a failed deploy however cleanly
+  // the call returned — the batch reads its entries the same way.
+  const failedByResult = card !== undefined && reportsFailure(card);
+  const phase = failedByResult ? "failed" : deployPhase(call, resultStatus, context.nowMs);
   const subject =
     pickFirst(readInputString(call.input, "targetService"), card?.target) ?? "the service";
   const { voice, voiceSource } = mateVoiceFor("deploy", subject);
@@ -131,7 +134,12 @@ export function buildDeployFields(
       ? undefined
       : phase === "failed"
         ? operationClosing("deploy", "failed", {
-            errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
+            errorFirstLine:
+              errorInfo !== undefined
+                ? firstLine(errorInfo.message)
+                : card?.message !== undefined
+                  ? firstLine(card.message)
+                  : undefined,
           })
         : phase === "done" && card !== undefined
           ? operationClosing("deploy", "done", { host: subject })

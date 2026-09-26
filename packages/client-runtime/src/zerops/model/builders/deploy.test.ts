@@ -339,3 +339,60 @@ describe("buildDeployFields — zerops_deploy_batch, one entry per service", () 
     expect(fields.steps[0]?.note).toBe("Build failed");
   });
 });
+
+/**
+ * zcp returns BUILD_FAILED and kin as a successful call. Read as its call's
+ * status, the card said "Deployed" and "apidev is live." under a failed
+ * build, with the URL chip of a service that never got the version.
+ */
+describe("buildDeployFields — a result that reports its own failure settles failed", () => {
+  it.each([
+    {
+      name: "a failed build: its message, the cause left to the explanation",
+      result: {
+        status: "BUILD_FAILED",
+        targetService: "apidev",
+        message: "Build failed",
+        failedPhase: "build",
+        failureClassification: { category: "build", likelyCause: "Build OOM-killed" },
+        subdomainUrl: "https://apidev-26a7-3000.prg1.zerops.app",
+      },
+      closing: "Build failed",
+    },
+    {
+      name: "a failed prepare: its message",
+      result: {
+        status: "PREPARING_RUNTIME_FAILED",
+        targetService: "apidev",
+        message: "Prepare commands failed\nmore",
+        failedPhase: "prepare",
+      },
+      closing: "Prepare commands failed",
+    },
+    {
+      name: "a container that did not start",
+      result: {
+        status: "DEPLOY_FAILED",
+        targetService: "apidev",
+        message: "initCommand exited 1",
+        failedPhase: "init",
+      },
+      closing: "initCommand exited 1",
+    },
+  ])("$name", ({ result, closing }) => {
+    const fields = buildDeployFields(deployCall({ result }), CONTEXT);
+
+    expect(fields.phaseOverride).toBe("failed");
+    expect(fields.statusWord).toBe("Failed");
+    expect(fields.closing).toBe(closing);
+    expect(fields.links).toEqual([]);
+  });
+
+  it("a deploy that landed stays done", () => {
+    const fields = buildDeployFields(
+      deployCall({ result: { status: "DEPLOYED", targetService: "apidev" } }),
+      CONTEXT,
+    );
+    expect([fields.phaseOverride, fields.statusWord]).toEqual(["done", "Deployed"]);
+  });
+});
