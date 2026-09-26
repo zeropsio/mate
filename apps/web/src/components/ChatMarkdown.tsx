@@ -58,6 +58,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { bareUrlLabel } from "../markdown-bare-urls";
 import { remarkGithubAlerts } from "../markdown-github-alerts";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
@@ -1995,9 +1996,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const faviconHost = resolveExternalWebLinkHost(href);
       const isSameDocumentLink = href?.startsWith("#") ?? false;
       const onClick = props.onClick;
+      const plainText = plainHastText(node);
+      // A pasted address shows where it goes; its href, tooltip and copy keep all of it.
+      const bareUrl = href && plainText !== null ? bareUrlLabel(plainText, href) : null;
       const link = (
         <ServiceBrowserLink
           {...props}
+          data-markdown-copy={bareUrl === null ? undefined : href}
           href={href}
           target={isSameDocumentLink ? undefined : "_blank"}
           rel={isSameDocumentLink ? undefined : "noopener noreferrer"}
@@ -2056,7 +2061,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
         >
           {faviconHost && hastHasText(node) ? (
             <MarkdownExternalLinkContent host={faviconHost}>
-              {plainHastText(node) ?? children}
+              {bareUrl ?? plainText ?? children}
             </MarkdownExternalLinkContent>
           ) : (
             children

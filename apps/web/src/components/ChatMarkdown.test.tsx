@@ -549,6 +549,64 @@ describe("ChatMarkdown wrapping", () => {
   });
 });
 
+describe("ChatMarkdown bare addresses", () => {
+  /** The first link's tag and its visible words, without its favicon or destination hint. */
+  function firstLink(html: string): { tag: string; words: string } {
+    const [, tag = "", inner = ""] = /(<a [^>]*>)([\s\S]*?)<\/a>/.exec(html) ?? [];
+    return {
+      tag,
+      words: inner.replace(/<span[^>]*data-link-indicator[\s\S]*$/, "").replace(/<[^>]+>/g, ""),
+    };
+  }
+
+  it.each([
+    {
+      text: "The PR: https://github.com/zeropsio/mate/pull/12",
+      address: "https://github.com/zeropsio/mate/pull/12",
+      words: "github.com/zeropsio/mate/pull/12",
+    },
+    {
+      text: "It's in <https://git-4c1a-3000.prg1.zerops.app/garden/group/src/branch/main/environments.yaml>",
+      address:
+        "https://git-4c1a-3000.prg1.zerops.app/garden/group/src/branch/main/environments.yaml",
+      words: "git-4c1a-3000.prg1.zerops.app/…/environments.yaml",
+    },
+    {
+      text: "[https://garden-5b2d-9000.prg1.zerops.app/app](https://garden-5b2d-9000.prg1.zerops.app/app)",
+      address: "https://garden-5b2d-9000.prg1.zerops.app/app",
+      words: "garden-5b2d-9000.prg1.zerops.app/app",
+    },
+    {
+      text: "Scripted: https://orbitstage-6e3f-3000.prg1.zerops.app/?view=orbit#hud.",
+      address: "https://orbitstage-6e3f-3000.prg1.zerops.app/?view=orbit#hud",
+      words: "orbitstage-6e3f-3000.prg1.zerops.app",
+    },
+  ])("shows $address as $words, keeping the whole of it to follow and copy", (link) => {
+    const { tag, words } = firstLink(
+      renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={link.text} />),
+    );
+
+    expect(words).toBe(link.words);
+    expect(tag).toContain(`href="${link.address}"`);
+    expect(tag).toContain(`data-markdown-copy="${link.address}"`);
+  });
+
+  it.each([
+    {
+      text: "Notes are in [the tier folder](https://github.com/fxck/noola/tree/main/.zerops-recipe).",
+      words: "the tier folder",
+    },
+    { text: "The email is admin@example.com.", words: "admin@example.com" },
+  ])("keeps a link's own words: $words", (link) => {
+    const { tag, words } = firstLink(
+      renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={link.text} />),
+    );
+
+    expect(words).toBe(link.words);
+    expect(tag).not.toContain("data-markdown-copy");
+  });
+});
+
 describe("ChatMarkdown tables", () => {
   const TABLE = [
     "| Service | Where it runs | What changed |",
