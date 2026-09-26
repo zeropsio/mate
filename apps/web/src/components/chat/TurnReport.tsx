@@ -33,6 +33,7 @@ import {
   type OutcomeModel,
   type OutcomeService,
 } from "./conversation.logic";
+import { checkPicture } from "./keptFrames";
 import { Pill, StatusDisc, type DiscTone } from "./ConversationPills";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
@@ -117,11 +118,10 @@ function Takes({
   readonly takes: ReadonlyArray<ZeropsOperation>;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
 }) {
-  const shots = takes.flatMap((take) =>
-    take.screenshot
-      ? [{ key: take.key, src: take.screenshot.src, name: browserCheckCaption(take) }]
-      : [],
-  );
+  const shots = takes.flatMap((take) => {
+    const src = checkPicture(take);
+    return src === undefined ? [] : [{ key: take.key, src, name: browserCheckCaption(take) }];
+  });
   if (shots.length === 0) return null;
   return (
     <div
@@ -129,7 +129,8 @@ function Takes({
       data-report-takes
     >
       {takes.map((take) => {
-        if (!take.screenshot) return null;
+        const src = checkPicture(take);
+        if (src === undefined) return null;
         const failed = browserCheckFailed(take);
         const device = browserCheckDevice(take);
         const index = shots.findIndex((shot) => shot.key === take.key);
@@ -148,11 +149,7 @@ function Takes({
             }
             type="button"
           >
-            <img
-              alt=""
-              className="block size-full object-cover object-top"
-              src={take.screenshot.src}
-            />
+            <img alt="" className="block size-full object-cover object-top" src={src} />
           </button>
         );
       })}
