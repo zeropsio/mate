@@ -191,6 +191,8 @@ interface TimelineRowSharedState {
   /** Opens or closes one line of an opened log in place: a run of tool calls, an operation. */
   onToggleLogItem: (id: string, anchorKey: string) => void;
   onToggleShowReasoning: (anchorKey: string) => void;
+  /** Whether opened logs show the Mate's thinking between its notes. */
+  showReasoning: boolean;
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
   /** `anchorKey` is the timeline row that holds the block; a standalone block is its own row. */
@@ -799,6 +801,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onToggleStretch,
       onToggleLogItem,
       onToggleShowReasoning,
+      showReasoning,
       speaker,
       onToggleReasoning,
       expandedReasoningMessageIds,
@@ -825,6 +828,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onToggleStretch,
       onToggleLogItem,
       onToggleShowReasoning,
+      showReasoning,
       speaker,
       onToggleReasoning,
       expandedReasoningMessageIds,
@@ -1273,7 +1277,6 @@ function isLogRow(row: TimelineRow): boolean {
     case "log-activity":
     case "log-reasoning":
     case "log-operation":
-    case "log-switch":
       return true;
     case "work":
       return row.isExpandedToolGroupEntry || row.id.startsWith("log-entry:");
@@ -1335,7 +1338,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         />
       ) : null}
       {row.kind === "log-operation" ? <LogOperationTimelineRow row={row} /> : null}
-      {row.kind === "log-switch" ? <LogSwitchTimelineRow row={row} /> : null}
       {row.kind === "work" ? (
         <WorkGroupSection
           groupedEntries={row.groupedEntries}
@@ -1368,7 +1370,9 @@ function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-
       activityLabel={row.live ? turnHeaderActivityLabel(row.activity, ctx.workspaceRoot) : null}
       compacting={row.live && isCompacting}
       onToggle={() => ctx.onToggleStretch(row.stretchKey, row.id)}
+      onToggleReasoning={() => ctx.onToggleShowReasoning(row.id)}
       row={row}
+      showReasoning={ctx.showReasoning}
       speaker={ctx.speaker}
       timestampFormat={ctx.timestampFormat}
     />
@@ -1454,24 +1458,6 @@ function LogOperationTimelineRow({
         )}
       />
     </button>
-  );
-}
-
-function LogSwitchTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-switch" }> }) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <div className="flex justify-end">
-      <button
-        type="button"
-        aria-pressed={row.showReasoning}
-        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-muted-foreground text-xs leading-6 transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-        data-scroll-anchor-ignore
-        onClick={() => ctx.onToggleShowReasoning(row.id)}
-      >
-        <BrainIcon aria-hidden="true" className="size-3.5" />
-        {row.showReasoning ? "Hide thinking" : "Show thinking"}
-      </button>
-    </div>
   );
 }
 

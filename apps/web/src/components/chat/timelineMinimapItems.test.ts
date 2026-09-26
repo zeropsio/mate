@@ -101,6 +101,7 @@ describe("timeline minimap previews", () => {
       activity: null,
       hasLog: true,
       open: false,
+      hasReasoning: false,
     });
     const withLines: MessagesTimelineRow[] = [
       { ...source[0]!, aside: false } as MessagesTimelineRow,

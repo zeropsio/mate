@@ -11,6 +11,7 @@
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
+  BrainIcon,
   CheckIcon,
   ChevronRightIcon,
   CircleAlertIcon,
@@ -138,6 +139,8 @@ export function WorkLine({
   compacting,
   timestampFormat,
   onToggle,
+  showReasoning,
+  onToggleReasoning,
 }: {
   readonly row: WorkLineRow;
   readonly speaker: ConversationSpeaker;
@@ -146,6 +149,9 @@ export function WorkLine({
   readonly compacting: boolean;
   readonly timestampFormat: TimestampFormat;
   readonly onToggle: () => void;
+  /** Opened logs show the Mate's thinking between its notes. */
+  readonly showReasoning: boolean;
+  readonly onToggleReasoning: () => void;
 }) {
   const live = row.live;
   const liveWords = compacting ? "Condensing the context" : activityLabel;
@@ -211,7 +217,22 @@ export function WorkLine({
   );
   const className =
     "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground";
-  return row.hasLog ? (
+  // The thinking switch lives on the opened line itself, so it appearing
+  // when the Mate first thinks never pushes the log under it.
+  const reasoningSwitch =
+    row.open && row.hasReasoning ? (
+      <button
+        type="button"
+        aria-pressed={showReasoning}
+        className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-muted-foreground text-xs transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+        data-scroll-anchor-ignore
+        onClick={onToggleReasoning}
+      >
+        <BrainIcon aria-hidden="true" className="size-3.5" />
+        {showReasoning ? "Hide thinking" : "Show thinking"}
+      </button>
+    ) : null;
+  const line = row.hasLog ? (
     <button
       type="button"
       aria-expanded={row.open}
@@ -229,6 +250,14 @@ export function WorkLine({
     <div className={className} role={live ? "status" : undefined}>
       {body}
     </div>
+  );
+  return reasoningSwitch ? (
+    <div className="flex min-w-0 items-center gap-1">
+      {line}
+      {reasoningSwitch}
+    </div>
+  ) : (
+    line
   );
 }
 

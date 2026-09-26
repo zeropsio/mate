@@ -158,17 +158,16 @@ describe("deriveMessagesTimelineRows", () => {
     expect(shape(rows(scene)).slice(1)).toEqual([
       "message:m0",
       "work-line:work-line:msg:m0",
-      "log-switch:log-switch:msg:m0",
       "log-activity:log-activity:w1",
       "log-note:log-note:a1",
       "log-activity:log-activity:w3",
       "message:a2",
     ]);
-    expect(rows(scene)[4]).toMatchObject({ summary: "Edited 1 file · ran 1 command" });
+    expect(rows(scene)[3]).toMatchObject({ summary: "Edited 1 file · ran 1 command" });
 
     // Thinking shown: it splits the run where it happened.
-    expect(shape(rows({ ...scene, showReasoning: true })).slice(3, 8)).toEqual([
-      "log-switch:log-switch:msg:m0",
+    expect(rows(scene)[2]).toMatchObject({ kind: "work-line", hasReasoning: true, open: true });
+    expect(shape(rows({ ...scene, showReasoning: true })).slice(3, 7)).toEqual([
       "log-reasoning:log-reasoning:r1",
       "log-activity:log-activity:w1",
       "log-reasoning:log-reasoning:r2",
@@ -176,7 +175,7 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
 
     // An opened activity line lists its calls under it.
-    expect(shape(rows({ ...scene, expanded: ["log-activity:w3"] })).slice(6, 9)).toEqual([
+    expect(shape(rows({ ...scene, expanded: ["log-activity:w3"] })).slice(5, 8)).toEqual([
       "log-activity:log-activity:w3",
       "work:log-entry:w3",
       "message:a2",

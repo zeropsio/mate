@@ -407,6 +407,8 @@ export type MessagesTimelineRow =
       /** The stretch has a log to open. */
       hasLog: boolean;
       open: boolean;
+      /** The stretch thought aloud: an opened line offers the switch that shows it. */
+      hasReasoning: boolean;
     }
   | {
       /** A progress note in an opened log: the Mate's words on the way, in full. */
@@ -440,13 +442,6 @@ export type MessagesTimelineRow =
       createdAt: string;
       operation: ZeropsOperation;
       expanded: boolean;
-    }
-  | {
-      /** The switch at the top of an opened log that has thinking in it. */
-      kind: "log-switch";
-      id: string;
-      createdAt: string;
-      showReasoning: boolean;
     }
   | {
       kind: "work";
@@ -623,17 +618,12 @@ function stretchContentRows(input: {
     if (rows.length > 0) items.push({ at, order: order++, rows });
   };
 
+  // A strip and an incident take their place where the entry that began them
+  // sits, so a tie on the clock keeps the order things arrived in.
   const strip = browserStrip(stretch);
-  if (strip) {
-    push(strip.checks[0]!.anchorAt, [
-      { kind: "strip", id: strip.key, createdAt: strip.checks[0]!.anchorAt, strip },
-    ]);
-  }
-  for (const incident of stretchIncidents(stretch)) {
-    push(incident.appearedAt, [
-      { kind: "incident", id: incident.key, createdAt: incident.appearedAt, incident },
-    ]);
-  }
+  const incidentsByKey = new Map(
+    stretchIncidents(stretch).map((incident) => [incident.key, incident] as const),
+  );
 
   let activity: WorkLogEntry[] = [];
   let activityStart: TimelineEntry | null = null;
@@ -729,6 +719,15 @@ function stretchContentRows(input: {
     switch (entry.kind) {
       case "operation": {
         const op = entry.operation;
+        if (strip !== null && op === strip.checks[0]) {
+          push(op.anchorAt, [{ kind: "strip", id: strip.key, createdAt: op.anchorAt, strip }]);
+        }
+        const incident = incidentsByKey.get(`incident:${op.key}`);
+        if (incident !== undefined) {
+          push(incident.appearedAt, [
+            { kind: "incident", id: incident.key, createdAt: incident.appearedAt, incident },
+          ]);
+        }
         if (op.kind === "browser") break;
         const failed = op.phase === "failed";
         if (open && !failed) {
@@ -851,28 +850,11 @@ function stretchContentRows(input: {
   flush();
   if (input.pauseRow) push(input.pauseRow.createdAt, [input.pauseRow]);
 
-  const hasReasoning = stretch.entries.some(
-    (entry) =>
-      entry.kind === "message" &&
-      entry.message.role === "reasoning" &&
-      entry.message.text.trim().length > 0,
-  );
-  const sorted = items
+  return items
     .toSorted(
       (left, right) => Date.parse(left.at) - Date.parse(right.at) || left.order - right.order,
     )
     .flatMap((item) => item.rows);
-  return open && hasReasoning
-    ? [
-        {
-          kind: "log-switch",
-          id: `log-switch:${stretch.key}`,
-          createdAt: stretch.startedAt,
-          showReasoning,
-        },
-        ...sorted,
-      ]
-    : sorted;
 }
 
 function localDayKey(iso: string): string | null {
@@ -962,7 +944,12 @@ export function deriveMessagesTimelineRows(
       if (turn.span.opener === null) foldedTurnKeys.add(turn.key);
       continue;
     }
-    const answerAt = turn.answer?.createdAt ?? turn.stretches.at(-1)!.startedAt;
+    // The pause sits where the limit struck: its own error row, else the notice.
+    const limitError = turn.stretches
+      .flatMap((stretch) => stretch.entries)
+      .findLast((entry) => isUsageLimitError(entry));
+    const answerAt =
+      limitError?.createdAt ?? turn.answer?.createdAt ?? turn.stretches.at(-1)!.startedAt;
     const row: Extract<MessagesTimelineRow, { kind: "pause" }> = {
       kind: "pause",
       id: `pause:${turn.key}`,
@@ -1147,7 +1134,9 @@ export function deriveMessagesTimelineRows(
     const turn = turnByKey.get(stretch.turnKey)!;
     if (foldedTurnKeys.has(turn.key)) continue;
 
-    seamBefore(stretch.lead?.createdAt ?? stretch.startedAt, stretch.key);
+    // Keyed by the message, as a loose message's seam is: the seam must not
+    // change its identity when a turn claims the message it stands before.
+    seamBefore(stretch.lead?.createdAt ?? stretch.startedAt, stretch.lead?.id ?? stretch.key);
     if (stretch.lead !== null && stretch.leadIndex !== null) {
       rows.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
     }
@@ -1219,6 +1208,12 @@ export function deriveMessagesTimelineRows(
       activity: stretch.live ? liveActivity(stretch) : null,
       hasLog,
       open,
+      hasReasoning: stretch.entries.some(
+        (candidate) =>
+          candidate.kind === "message" &&
+          candidate.message.role === "reasoning" &&
+          candidate.message.text.trim().length > 0,
+      ),
     });
 
     rows.push(
