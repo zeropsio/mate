@@ -282,6 +282,19 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  it("tells a /compact in one line: no work line, no second compaction line", () => {
+    const compaction = tool("w1", "t1", 1, {
+      sourceActivityKind: "context-compaction",
+      label: "Context compacted",
+    });
+    const running = rows({ entries: [user("m0", 0, "/compact")], live: "t1" });
+    expect(shape(running).slice(1)).toEqual(["event:m0"]);
+    expect(running[1]).toMatchObject({ event: { done: false } });
+    const done = rows({ entries: [user("m0", 0, "/compact"), compaction], settled: "t1" });
+    expect(shape(done).slice(1)).toEqual(["event:m0"]);
+    expect(done[1]).toMatchObject({ event: { done: true } });
+  });
+
   it("shows an image-only message's images without the placeholder", () => {
     const list = rows({ entries: [user("m0", 0, IMAGE_ONLY_BOOTSTRAP_PROMPT)], working: true });
     expect(list[1]).toMatchObject({ kind: "message", imageOnly: true, receipt: "sent" });

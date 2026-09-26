@@ -1101,6 +1101,15 @@ export function deriveOutcome(input: {
         }
       : null;
 
+  // Checks alone are what the stretch's strip already shows: the outcome
+  // carries them only beside something else the turn produced.
+  const checksOnly =
+    services.size === 0 &&
+    input.landed.length === 0 &&
+    !(input.diff && input.diff.files.length > 0) &&
+    created.length === 0 &&
+    removed.length === 0 &&
+    notDone.length === 0;
   const outcome: OutcomeModel = {
     key: `outcome:${turn.key}`,
     live: [...services.values()],
@@ -1111,7 +1120,7 @@ export function deriveOutcome(input: {
     })),
     files,
     checks:
-      checks.length > 0
+      checks.length > 0 && !checksOnly
         ? {
             count: checks.length,
             views: new Set(checks.map(browserCheckCaption)).size,

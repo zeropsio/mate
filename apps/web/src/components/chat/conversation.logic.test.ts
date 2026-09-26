@@ -562,6 +562,17 @@ describe("deriveOutcome", () => {
     expect(deriveOutcome({ turn: refused.turns[0]!, landed: [], diff: diff(2) })).toBeNull();
   });
 
+  it("leaves checks alone to the stretch's strip", () => {
+    const entries = [
+      user("m0", 0),
+      operation("b1", "t1", 1, { kind: "browser", subject: "https://shop.dev/" }),
+      assistant("a1", "t1", 2),
+    ];
+    expect(
+      deriveOutcome({ turn: structure(entries, settled).turns[0]!, landed: [], diff: null }),
+    ).toBeNull();
+  });
+
   it("names what could not be done", () => {
     const entries = [
       user("m0", 0),

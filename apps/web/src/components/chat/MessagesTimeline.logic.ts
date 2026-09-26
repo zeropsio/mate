@@ -1000,7 +1000,14 @@ export function deriveMessagesTimelineRows(
         event: {
           type: "command",
           command,
-          done: stretch !== undefined && (!stretch.live || stretch.entries.length > 0),
+          done:
+            stretch !== undefined &&
+            (!stretch.live ||
+              stretch.entries.some(
+                (candidate) =>
+                  candidate.kind === "work" &&
+                  candidate.entry.sourceActivityKind === "context-compaction",
+              )),
         },
       };
     }
@@ -1079,6 +1086,14 @@ export function deriveMessagesTimelineRows(
     seamBefore(stretch.lead?.createdAt ?? stretch.startedAt, stretch.key);
     if (stretch.lead !== null && stretch.leadIndex !== null) {
       rows.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
+    }
+
+    // A /compact is its own event line: it says when the context is condensed,
+    // so its stretch draws no work line and no second compaction line.
+    const leadCommand = stretch.lead ? readSlashCommand(stretch.lead.message.text) : null;
+    if (leadCommand?.name === "compact") {
+      lastEnd = stretch.endedAt ?? stretch.startedAt;
+      continue;
     }
 
     const limitAnswer = turn.limit !== null ? turn.answer : null;
