@@ -249,6 +249,29 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list[5]).toMatchObject({ face: "paused", fallback: "Stopped by the usage limit" });
   });
 
+  it("tells a limit once when the server adds its own error row, and keeps a real answer", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "The first half is done."),
+        tool("e1", "t1", 3, {
+          tone: "error",
+          label: "Runtime error",
+          detail: "Claude usage limit reached. Send the message again once the limit resets.",
+        }),
+      ],
+      settled: "t1",
+    });
+    expect(shape(list).slice(1)).toEqual([
+      "message:m0",
+      "work-line:work-line:msg:m0",
+      "pause:pause:msg:m0",
+      "message:a1",
+    ]);
+    expect(list[2]).toMatchObject({ face: "paused" });
+  });
+
   it("marks a pause resumed once the Mate works again", () => {
     const limit = "You've hit your session limit · resets 9:20pm (UTC)";
     const list = rows({
@@ -341,6 +364,41 @@ describe("deriveMessagesTimelineRows", () => {
     expect(seams.map((row) => (row as { seam: string }).seam)).toEqual(["day", "new"]);
     const at10 = list.findIndex((row) => row.id === "m1");
     expect(list[at10 - 1]).toMatchObject({ kind: "seam", seam: "new", createdAt: at(5) });
+  });
+
+  it("gathers background work no turn owns into one line", () => {
+    const background = (id: string, minute: number) => {
+      const entry = tool(id, "t1", minute, { label: `Task ${id}` }) as Extract<
+        TimelineEntry,
+        { kind: "work" }
+      >;
+      return { ...entry, entry: { ...entry.entry, turnId: null } };
+    };
+    const scene: Scene = {
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started."),
+        background("b1", 5),
+        background("b2", 6),
+        background("b3", 7),
+        user("m1", 20),
+      ],
+      settled: "t1",
+    };
+    expect(shape(rows(scene)).slice(1)).toEqual([
+      "message:m0",
+      "work-line:work-line:msg:m0",
+      "message:a1",
+      "background:background:b1",
+      "message:m1",
+    ]);
+    expect(rows(scene)[4]).toMatchObject({ entries: [{ id: "b1" }, { id: "b2" }, { id: "b3" }] });
+    expect(shape(rows({ ...scene, expanded: ["background:b1"] })).slice(4, 8)).toEqual([
+      "background:background:b1",
+      "work:log-entry:b1",
+      "work:log-entry:b2",
+      "work:log-entry:b3",
+    ]);
   });
 
   it("puts queued messages last", () => {

@@ -19,10 +19,12 @@ import {
   deriveOutcome,
   isActivityWork,
   isImageOnlyPlaceholder,
+  isUsageLimitError,
   isUserMessageEntry,
   messageReceipt,
   noteLine,
   readSlashCommand,
+  readUsageLimitNotice,
   stretchFace,
   stretchIncidents,
   stretchNotes,
@@ -476,6 +478,14 @@ export type MessagesTimelineRow =
     }
   | { kind: "event"; id: string; createdAt: string; event: ConversationEvent }
   | {
+      /** Background work that finished outside any turn, as one quiet line. */
+      kind: "background";
+      id: string;
+      createdAt: string;
+      entries: ReadonlyArray<WorkLogEntry>;
+      expanded: boolean;
+    }
+  | {
       /** Something stopped the Mate: an error it could not work past. */
       kind: "error";
       id: string;
@@ -762,9 +772,12 @@ function stretchContentRows(input: {
             },
           ]);
         } else if (isErrorEntry(entry)) {
-          push(entry.createdAt, [
-            { kind: "error", id: entry.id, createdAt: entry.createdAt, entry: work },
-          ]);
+          // A limit's error row is the pause's to tell, once.
+          if (!isUsageLimitError(entry)) {
+            push(entry.createdAt, [
+              { kind: "error", id: entry.id, createdAt: entry.createdAt, entry: work },
+            ]);
+          }
         } else if (work.questionAnswer !== undefined) {
           push(entry.createdAt, [
             {
@@ -1034,7 +1047,49 @@ export function deriveMessagesTimelineRows(
   };
 
   const emitted = new Set<string>();
-  for (const [index, entry] of entries.entries()) {
+  // Work no turn owns — background tasks finishing after their turn ended —
+  // is gathered, whatever its tone, unless it is something to show on its own.
+  const isLooseActivity = (index: number) => {
+    const candidate = entries[index];
+    return (
+      candidate !== undefined &&
+      structure.looseIndexes.has(index) &&
+      (candidate.kind === "work" || candidate.kind === "generic-call") &&
+      candidate.entry.tone !== "error" &&
+      candidate.entry.questionAnswer === undefined &&
+      candidate.entry.sourceActivityKind !== "context-compaction"
+    );
+  };
+  const expandedIds = input.expandedIds ?? new Set<string>();
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]!;
+    if (isLooseActivity(index)) {
+      // A run of background work no turn owns: one line, its tasks one click away.
+      const run: WorkLogEntry[] = [];
+      let cursor = index;
+      while (isLooseActivity(cursor)) {
+        run.push((entries[cursor] as Extract<TimelineEntry, { kind: "work" }>).entry);
+        cursor += 1;
+      }
+      seamBefore(entry.createdAt, entry.id);
+      const id = `background:${entry.id}`;
+      const expanded = expandedIds.has(id);
+      rows.push({ kind: "background", id, createdAt: entry.createdAt, entries: run, expanded });
+      if (expanded) {
+        for (const work of run) {
+          rows.push({
+            kind: "work",
+            id: `log-entry:${work.id}`,
+            createdAt: work.createdAt,
+            groupedEntries: [work],
+            isExpandedToolGroupEntry: true,
+          });
+        }
+      }
+      lastEnd = timelineEntryEnd(entries[cursor - 1]!);
+      index = cursor - 1;
+      continue;
+    }
     if (structure.looseIndexes.has(index)) {
       seamBefore(entry.createdAt, entry.id);
       if (isUserMessageEntry(entry)) rows.push(personRow(entry, index, false));
@@ -1105,8 +1160,12 @@ export function deriveMessagesTimelineRows(
       continue;
     }
 
-    const limitAnswer = turn.limit !== null ? turn.answer : null;
-    const answer = turn.limit === null ? turn.answer : null;
+    // An answer that is the limit's own notice is the pause's to tell.
+    const answer =
+      turn.answer !== null &&
+      readUsageLimitNotice(turn.answer.message.text, turn.answer.message.createdAt) === null
+        ? turn.answer
+        : null;
     const notes = stretchNotes(stretch, turn.answer);
     const lastNote = notes.at(-1) ?? null;
     const open = input.openStretchKeys?.has(stretch.key) ?? false;
@@ -1142,10 +1201,7 @@ export function deriveMessagesTimelineRows(
       fallback:
         lastNote !== null
           ? null
-          : pausedHere &&
-              stretch.entries.every(
-                (candidate) => candidate === limitAnswer || candidate.kind === "message",
-              )
+          : pausedHere
             ? "Stopped by the usage limit"
             : activityEntries.length > 0
               ? summarizeActivity(

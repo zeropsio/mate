@@ -151,7 +151,7 @@ export function WorkLine({
   const liveWords = compacting ? "Condensing the context" : activityLabel;
   const text = row.note ?? row.fallback ?? liveWords ?? (live ? "Reading your message" : "");
   const side = live ? (row.note !== null ? liveWords : null) : null;
-  const verb = row.face === "paused" && !live ? "Paused after" : live ? "Working" : "Worked";
+  const verb = live ? "Working" : "Worked";
   const span = (
     <Tooltip>
       <TooltipTrigger

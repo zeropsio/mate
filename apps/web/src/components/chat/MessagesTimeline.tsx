@@ -83,6 +83,7 @@ import {
   EyeIcon,
   GlobeIcon,
   HammerIcon,
+  LayersIcon,
   MessageCircleIcon,
   SearchIcon,
   SquarePenIcon,
@@ -1348,6 +1349,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "strip" ? <StripTimelineRow row={row} /> : null}
       {row.kind === "incident" ? <IncidentLine incident={row.incident} /> : null}
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
+      {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? (
         <ErrorLine label={row.entry.label} detail={row.entry.detail} />
       ) : null}
@@ -1485,6 +1487,50 @@ function StripTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "strip" }
       strip={row.strip}
       threadRef={ctx.threadRef}
     />
+  );
+}
+
+/** Background work that finished outside any turn: one quiet line, its tasks one click away. */
+function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const last = row.entries.at(-1);
+  const lastLabel = last
+    ? capitalizePhrase(normalizeCompactToolLabel(last.toolTitle ?? last.label))
+    : null;
+  const count = row.entries.length;
+  const failed = row.entries.filter(workEntryDisplayIndicatesToolFailure).length;
+  return (
+    <button
+      type="button"
+      aria-expanded={row.expanded}
+      className="flex min-h-7 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      data-scroll-anchor-ignore
+      onClick={() => ctx.onToggleLogItem(row.id, row.id)}
+    >
+      {failed > 0 ? (
+        <span role="img" aria-label="Tool call failed" className="flex shrink-0">
+          <XIcon aria-hidden="true" className="size-3.5 opacity-70" />
+        </span>
+      ) : (
+        <LayersIcon aria-hidden="true" className="size-3.5 shrink-0 opacity-70" />
+      )}
+      <span className="shrink-0 text-foreground/85">
+        {count === 1 ? "1 background task" : `${count} background tasks`}
+        {failed > 0 ? ` · ${failed} failed` : ""}
+      </span>
+      {lastLabel ? (
+        <span className="min-w-0 flex-1 truncate">· last: {lastLabel}</span>
+      ) : (
+        <span className="flex-1" />
+      )}
+      <ChevronRightIcon
+        aria-hidden="true"
+        className={cn(
+          "size-3 shrink-0 opacity-70 transition-transform duration-150",
+          row.expanded && "rotate-90",
+        )}
+      />
+    </button>
   );
 }
 

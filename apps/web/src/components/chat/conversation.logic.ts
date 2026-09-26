@@ -173,6 +173,27 @@ export function readUsageLimitNotice(text: string, createdAt: string): UsageLimi
   return null;
 }
 
+/** The server's own row for a limit ("Claude usage limit reached. Send the message again…"). */
+export function isUsageLimitError(entry: TimelineEntry): boolean {
+  return (
+    entry.kind === "work" &&
+    entry.entry.tone === "error" &&
+    readUsageLimitNotice(`${entry.entry.label} ${entry.entry.detail ?? ""}`, entry.createdAt) !==
+      null
+  );
+}
+
+function usageLimitErrorNotice(entries: ReadonlyArray<TimelineEntry>): UsageLimitNotice | null {
+  for (const entry of entries.toReversed()) {
+    if (!isUsageLimitError(entry) || entry.kind !== "work") continue;
+    return readUsageLimitNotice(
+      `${entry.entry.detail ?? ""} ${entry.entry.label}`,
+      entry.createdAt,
+    );
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Turns
 // ---------------------------------------------------------------------------
@@ -483,15 +504,21 @@ export function deriveConversationStructure(input: {
     // The answer is known only once the turn settles: while it runs, every
     // message is a note on the way.
     const answer = live ? null : span.terminalEntry;
+    // The limit speaks as Claude's own last words, or as the server's error row.
     const limit =
-      answer !== null ? readUsageLimitNotice(answer.message.text, answer.message.createdAt) : null;
+      (answer !== null
+        ? readUsageLimitNotice(answer.message.text, answer.message.createdAt)
+        : null) ?? (live ? null : usageLimitErrorNotice(turnEntries));
     const limitOnly =
       limit !== null &&
       turnEntries.every(
         (entry) =>
           entry === answer ||
           !hasMeaningfulContent(entry) ||
-          (entry.kind === "message" && entry.message.role === "reasoning"),
+          isUsageLimitError(entry) ||
+          (entry.kind === "message" && entry.message.role === "reasoning") ||
+          (entry.kind === "message" &&
+            readUsageLimitNotice(entry.message.text, entry.createdAt) !== null),
       );
 
     const turnStart =
