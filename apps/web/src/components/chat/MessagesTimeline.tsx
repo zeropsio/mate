@@ -963,6 +963,13 @@ function timelineMinimapEventTargetsPreview(target: EventTarget): boolean {
   return target instanceof Element && target.closest("[data-minimap-preview]") !== null;
 }
 
+const MINIMAP_TONE_CLASS: Record<TimelineMinimapItem["tone"], string | null> = {
+  quiet: null,
+  produced: "bg-status-ok data-[in-view=true]:bg-status-ok",
+  failed: "bg-status-failed data-[in-view=true]:bg-status-failed",
+  paused: "bg-status-attention data-[in-view=true]:bg-status-attention",
+};
+
 function TimelineMinimap({
   hasPersistentGutter,
   hitStripWidth,
@@ -1136,6 +1143,12 @@ function TimelineMinimap({
                         : activeDistance === 2
                           ? "w-2.5"
                           : "w-2",
+                    // The turn map: a stretch's outcome in its colour, its
+                    // length in the mark's weight, a message sent into a
+                    // running turn as a dot.
+                    MINIMAP_TONE_CLASS[item.tone],
+                    item.weight === 1 ? "h-1" : item.weight === 2 ? "h-1.5" : null,
+                    item.aside && activeDistance !== 0 ? "w-1" : null,
                   )}
                   data-in-view="false"
                   data-minimap-strip
@@ -1165,7 +1178,7 @@ function TimelineMinimap({
                   <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
                     {activeItem.userText ?? "User message"}
                   </span>
-                  {activeItem.assistantText ? (
+                  {(activeItem.assistantText ?? activeItem.note) ? (
                     <span
                       className="mt-1 max-h-[3.75rem] overflow-hidden text-muted-foreground text-sm leading-5"
                       style={{
@@ -1174,7 +1187,7 @@ function TimelineMinimap({
                         WebkitLineClamp: 3,
                       }}
                     >
-                      {activeItem.assistantText}
+                      {activeItem.assistantText ?? activeItem.note}
                     </span>
                   ) : null}
                 </span>

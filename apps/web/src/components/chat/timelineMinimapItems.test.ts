@@ -78,4 +78,48 @@ describe("timeline minimap previews", () => {
     });
     expect(resolveTimelineMinimapPreview(first)?.assistantText).toBe("First");
   });
+
+  it("marks each message with what its stretch came to, how long it ran and whether it was an aside", () => {
+    const source = rows([
+      ["user", "Deploy it"],
+      ["user", "btw the footer"],
+      ["user", "Next"],
+    ]);
+    const line = (after: number, face: string, minutes: number) => ({
+      kind: "work-line" as const,
+      id: `work-line:${after}`,
+      createdAt: source[after]!.createdAt,
+      stretchKey: `msg:${source[after]!.id}`,
+      turnId: null,
+      live: false,
+      face: face as "produced",
+      startedAt: new Date(0).toISOString(),
+      endedAt: new Date(minutes * 60_000).toISOString(),
+      note: "Stage is live.",
+      fallback: null,
+      noteCount: 1,
+      activity: null,
+      hasLog: true,
+      open: false,
+    });
+    const withLines: MessagesTimelineRow[] = [
+      { ...source[0]!, aside: false } as MessagesTimelineRow,
+      line(0, "produced", 75),
+      { ...(source[1] as Extract<MessagesTimelineRow, { kind: "message" }>), aside: true },
+      line(1, "failed", 4),
+      source[2]!,
+    ];
+    expect(
+      deriveTimelineMinimapItems(withLines).map(({ tone, weight, aside, note }) => ({
+        tone,
+        weight,
+        aside,
+        note,
+      })),
+    ).toEqual([
+      { tone: "produced", weight: 2, aside: false, note: "Stage is live." },
+      { tone: "failed", weight: 0, aside: true, note: "Stage is live." },
+      { tone: "quiet", weight: 0, aside: false, note: null },
+    ]);
+  });
 });
