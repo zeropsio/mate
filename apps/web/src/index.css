@@ -2012,6 +2012,11 @@ code {
   list-style-type: decimal;
 }
 
+/* Markers stay quiet: the words carry the item, the marker only says one began. */
+.chat-markdown li::marker {
+  color: var(--contrast-muted-foreground);
+}
+
 .chat-markdown ol > li::marker {
   font-variant-numeric: tabular-nums;
 }
@@ -2020,20 +2025,29 @@ code {
   list-style-type: circle;
 }
 
-.chat-markdown ul ul ul {
-  list-style-type: square;
-}
-
 .chat-markdown ol ol {
   list-style-type: lower-alpha;
 }
 
-.chat-markdown ol ol ol {
-  list-style-type: lower-roman;
+/* 6 px between items at a 15 px body. */
+.chat-markdown li + li {
+  margin-top: calc(6em / 15);
 }
 
-.chat-markdown li + li {
-  margin-top: 0.25rem;
+/* A nested list hangs from a hairline under its parent's text, one item gap
+   below it. The line is a faint cut of the markers' ink, which holds on the
+   canvas where the border token disappears. */
+.chat-markdown li > :is(ul, ol) {
+  margin: calc(6em / 15) 0 0;
+  border-left: 1px solid color-mix(in srgb, var(--contrast-muted-foreground) 30%, transparent);
+}
+
+/* A third level (and any deeper) reads as the second: the same marker, on the
+   second level's guide and indent, so an outline cannot staircase off the
+   column. */
+.chat-markdown li li > :is(ul, ol) {
+  border-left: none;
+  padding-left: 0;
 }
 
 /* GitHub-style task lists: the checkbox replaces the list marker. */

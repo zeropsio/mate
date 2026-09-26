@@ -208,6 +208,40 @@ describe("the chat markdown stylesheet", () => {
     expect(declarationsOf(".chat-markdown > :first-child").get("margin-top")).toBe("0");
   });
 
+  it("mutes list markers and sets items 6 px apart", () => {
+    expect(declarationsOf(".chat-markdown li::marker").get("color")).toBe(
+      "var(--contrast-muted-foreground)",
+    );
+    expect(
+      (amount(declarationsOf(".chat-markdown li + li").get("margin-top")) ?? 0) * 15,
+    ).toBeCloseTo(6);
+  });
+
+  it("hangs a nested list on a hairline guide, 6 px under its parent's text", () => {
+    const nested = declarationsOf(".chat-markdown li > :is(ul, ol)");
+    const [above, , below] = sides(nested.get("margin"));
+
+    // A faint cut of the markers' own ink: the border token vanishes on the canvas.
+    expect(nested.get("border-left")).toBe(
+      "1px solid color-mix(in srgb, var(--contrast-muted-foreground) 30%, transparent)",
+    );
+    expect((amount(above) ?? 0) * 15).toBeCloseTo(6);
+    expect(below).toBe("0");
+  });
+
+  it("draws a third level like the second, with no further indent", () => {
+    const third = declarationsOf(".chat-markdown li li > :is(ul, ol)");
+
+    expect(third.get("padding-left")).toBe("0");
+    expect(third.get("border-left")).toBe("none");
+    // No marker of its own either: the second level's circle and letters hold.
+    expect(
+      CHAT_MARKDOWN_RULES.some((rule) =>
+        rule.selectors.some((selector) => /\b(?:ul|ol) (?:ul|ol) (?:ul|ol)\b/.test(selector)),
+      ),
+    ).toBe(false);
+  });
+
   it("finds the chat markdown rules it pins", () => {
     expect(CHAT_MARKDOWN_RULES.length).toBeGreaterThan(20);
   });
