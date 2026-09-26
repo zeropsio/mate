@@ -441,6 +441,29 @@ export function timelineEntryEnd(entry: TimelineEntry): string {
   }
 }
 
+/**
+ * Whether a settled turn ended on a step rather than a word: the person
+ * stopped it, or it was cut off, mid-work. The server says so only of the
+ * latest turn; read from how the turn ended, every turn says it the same way
+ * once another follows. An error, or the Mate's own last word, ends a turn.
+ * A background task reporting in, or a landing, is not the Mate's step.
+ */
+function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
+  const last = entries.findLast(
+    (entry) =>
+      entry.kind !== "turn-plan" &&
+      entry.kind !== "change-landed" &&
+      !(entry.kind === "message" && entry.message.text.trim().length === 0) &&
+      !(
+        (entry.kind === "work" || entry.kind === "generic-call") &&
+        entry.entry.sourceActivityKind?.startsWith("task.") === true
+      ),
+  );
+  if (last === undefined) return false;
+  if (last.kind === "message") return last.message.role === "reasoning";
+  return !(last.kind === "work" && last.entry.tone === "error");
+}
+
 function hasMeaningfulContent(entry: TimelineEntry): boolean {
   if (entry.kind === "message") {
     return entry.message.role === "assistant" && entry.message.text.trim().length > 0;
@@ -552,7 +575,9 @@ export function deriveConversationStructure(input: {
       .filter((entry) => !isUserMessageEntry(entry));
     const firstMember = members[0];
     const isLatestTurn = span.turnId !== null && input.latestTurn?.turnId === span.turnId;
-    const interrupted = !live && isLatestTurn && input.latestTurn?.state === "interrupted";
+    const interrupted =
+      !live &&
+      ((isLatestTurn && input.latestTurn?.state === "interrupted") || endedOnAStep(turnEntries));
 
     // The answer is the turn's last message once it settles. While the turn
     // runs, its last message is the answer already when it reads as one and

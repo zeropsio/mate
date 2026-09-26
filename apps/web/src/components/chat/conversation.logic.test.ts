@@ -360,6 +360,43 @@ describe("deriveConversationStructure", () => {
     expect(only!.interrupted).toBe(true);
   });
 
+  // Only the latest turn carries the server's word on how it ended: a stopped
+  // turn read "stopped after 40s" until the next one began, then "worked for
+  // 40s" (Nova, 2026-09-26). A turn that ended on a step, not a word, was
+  // cut off — whichever turn is the latest.
+  it.each([
+    { name: "on a step", tail: [tool("w1", "t1", 1)], interrupted: true },
+    {
+      name: "on a thought",
+      tail: [tool("w1", "t1", 1), reasoning("r1", "t1", 2)],
+      interrupted: true,
+    },
+    {
+      name: "on a word after its last step",
+      tail: [tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+      interrupted: false,
+    },
+    {
+      name: "on a step after its words",
+      tail: [assistant("a1", "t1", 1, "Checking."), tool("w1", "t1", 2)],
+      interrupted: true,
+    },
+    {
+      name: "on an error",
+      tail: [tool("w1", "t1", 1, { tone: "error", label: "Runtime error" })],
+      interrupted: false,
+    },
+  ])(
+    "tells a turn that ended $name as stopped or not, before the next one",
+    ({ tail, interrupted }) => {
+      const entries = [user("m0", 0), ...tail, user("m1", 10), assistant("a2", "t2", 11, "Hi.")];
+      const [first] = structure(entries, {
+        latest: { id: "t2", state: "completed", completed: true },
+      }).turns;
+      expect(first!.interrupted).toBe(interrupted);
+    },
+  );
+
   it("leaves a message no turn took loose, and places a landing inside the turn it fell in", () => {
     const entries = [
       user("m0", 0),
