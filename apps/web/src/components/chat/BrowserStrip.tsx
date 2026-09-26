@@ -334,27 +334,31 @@ export function BrowserStrip({
                   onClick={() => (live ? openPanel() : setPickedKey(check.key))}
                   type="button"
                 >
-                  <span
-                    className={cn(
-                      "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
-                      TAKE_CLASS[takeDevice],
-                      failed
-                        ? "border-status-failed"
-                        : live
-                          ? "border-status-busy border-dashed"
-                          : "border-border",
-                    )}
-                  >
-                    {check.screenshot ? (
-                      <img
-                        alt=""
-                        className="block size-full object-cover object-top"
-                        src={check.screenshot.src}
-                      />
-                    ) : live ? null : (
-                      // No screenshot: the take read the page's structure.
-                      <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
-                    )}
+                  {/* Every take's words start on one edge: its thumbnail, in its
+                      device's shape, sits in a slot as wide as a desktop's. */}
+                  <span className="flex w-13 shrink-0 justify-center" data-browser-strip-take-slot>
+                    <span
+                      className={cn(
+                        "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
+                        TAKE_CLASS[takeDevice],
+                        failed
+                          ? "border-status-failed"
+                          : live
+                            ? "border-status-busy border-dashed"
+                            : "border-border",
+                      )}
+                    >
+                      {check.screenshot ? (
+                        <img
+                          alt=""
+                          className="block size-full object-cover object-top"
+                          src={check.screenshot.src}
+                        />
+                      ) : live ? null : (
+                        // No screenshot: the take read the page's structure.
+                        <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
+                      )}
+                    </span>
                   </span>
                   <span className="min-w-0 flex-1 truncate">{takeWords}</span>
                   {live ? (
