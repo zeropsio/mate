@@ -3,7 +3,7 @@
  * its newest lines — a glance at what the build is doing — and one link to
  * the whole log, which opens in a dialog of its own: every line, scrollable,
  * following the newest while it is read at the bottom. The log itself is
- * never inline: a fixed tail in the conversation could not be scrolled,
+ * never inline: a fixed tail could not be scrolled where it stood,
  * stood apart from its step and was context nobody reading the conversation
  * needs (the owner, 2026-09-26: "it should be opened in like a live dialog or
  * something instead of inline" — "or if you want some mini version inline it
