@@ -267,6 +267,14 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
     layout: true,
   },
 } as const;
+/**
+ * How far from the end growth at the end is still followed, in viewports.
+ * Following is ours to switch off — every gesture that moves the viewport
+ * away turns it off — so while it is on, the end is followed however fast it
+ * grows: the browser sliding out of the Mate at work opens a few hundred
+ * pixels in a few frames, and LegendList's own tenth of a viewport lost it.
+ */
+const TIMELINE_FOLLOW_THRESHOLD = 1;
 
 // ---------------------------------------------------------------------------
 // Props (public API)
@@ -900,6 +908,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
               {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
               contentInsetEndAdjustment={contentInsetEndAdjustment}
+              maintainScrollAtEndThreshold={TIMELINE_FOLLOW_THRESHOLD}
               maintainScrollAtEnd={
                 restoringReadingPosition ||
                 anchoredEndSpace ||
