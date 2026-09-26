@@ -157,18 +157,63 @@ describe("planGroupMembership", () => {
       reason: "That environment is already the group's mate.",
     },
     {
-      name: "a second production",
+      name: "a second production, naming the one that holds it",
       registry: parseZeropsRegistry(["mate:gn:g-acme:acme", "mate:gm:g-acme:p-prod:production"]),
       groupId: "g-acme",
       projectId: "p-prod2",
       kind: "production" as const,
       reason: "This project already has a production.",
+      production: "p-prod",
     },
-  ])("refuses $name", ({ registry, groupId, projectId, kind, reason }) => {
-    expect(planGroupMembership({ registry, groupId, projectId, kind })).toEqual({
+    {
+      name: "a second production beside one the platform did not say is deleted",
+      registry: parseZeropsRegistry(["mate:gn:g-acme:acme", "mate:gm:g-acme:p-prod:production"]),
+      groupId: "g-acme",
+      projectId: "p-prod2",
+      kind: "production" as const,
+      gone: ["p-elsewhere"],
+      reason: "This project already has a production.",
+      production: "p-prod",
+    },
+  ])("refuses $name", ({ registry, groupId, projectId, kind, gone, reason, production }) => {
+    expect(planGroupMembership({ registry, groupId, projectId, kind, gone })).toEqual({
       ok: false,
       reason,
+      production,
     });
+  });
+
+  // Beviro's production, deleted in the Zerops GUI, kept its entry, and every production added
+  // after it was refused (2026-09-24).
+  it.each([
+    {
+      name: "replaces a production whose project the platform says is deleted",
+      tags: [
+        "mate:gn:g-acme:acme",
+        "mate:gm:g-acme:p-fen:mate",
+        "mate:gm:g-acme:p-prod:production",
+      ],
+    },
+    {
+      name: "is a no-op once the replacement is written",
+      tags: [
+        "mate:gn:g-acme:acme",
+        "mate:gm:g-acme:p-fen:mate",
+        "mate:gm:g-acme:p-prod2:production",
+      ],
+    },
+  ])("$name", ({ tags }) => {
+    const result = planGroupMembership({
+      registry: parseZeropsRegistry(tags),
+      groupId: "g-acme",
+      projectId: "p-prod2",
+      kind: "production",
+      gone: ["p-prod"],
+    });
+    expect(result.ok && result.tagList.filter((tag) => tag.startsWith("mate:gm:g-acme:"))).toEqual([
+      "mate:gm:g-acme:p-fen:mate",
+      "mate:gm:g-acme:p-prod2:production",
+    ]);
   });
 
   it("allows a second stage", () => {

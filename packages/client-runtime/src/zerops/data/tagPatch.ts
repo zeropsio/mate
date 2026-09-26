@@ -45,13 +45,23 @@ export type ProjectTagPatch =
       readonly groupId: string;
       readonly projectId: string;
       readonly member: RoleProjectKind;
+      /**
+       * Projects the platform answered `projectNotFound` for: a member of the group naming one is
+       * dropped in the same write (`planGroupMembership`, 2026-09-24).
+       */
+      readonly gone?: ReadonlyArray<string> | undefined;
     };
 
 export type ProjectTagRefusal =
   /** The registry names no such group — yet, when its own write has not landed. */
   | { readonly code: "group-unknown"; readonly reason: string }
   /** The registry holds something that contradicts the patch; the words say what. */
-  | { readonly code: "registry-conflict"; readonly reason: string };
+  | { readonly code: "registry-conflict"; readonly reason: string }
+  /**
+   * The group's one production is another project, named so the caller can ask the platform
+   * whether it still exists — and write again with it `gone` when it does not.
+   */
+  | { readonly code: "production-held"; readonly reason: string; readonly projectId: string };
 
 export type ProjectTagPatchResult =
   | { readonly ok: true; readonly tags: ReadonlyArray<string> }
@@ -99,10 +109,20 @@ export function applyProjectTagPatch(
         groupId: patch.groupId,
         projectId: patch.projectId,
         kind: patch.member,
+        gone: patch.gone,
       });
-      return membership.ok
-        ? changed(membership.tagList)
-        : { ok: false, refusal: { code: "registry-conflict", reason: membership.reason } };
+      if (membership.ok) return changed(membership.tagList);
+      return {
+        ok: false,
+        refusal:
+          membership.production === undefined
+            ? { code: "registry-conflict", reason: membership.reason }
+            : {
+                code: "production-held",
+                reason: membership.reason,
+                projectId: membership.production,
+              },
+      };
     }
   }
 }

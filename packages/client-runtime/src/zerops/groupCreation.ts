@@ -152,7 +152,15 @@ export function planGroupRegistration(input: {
 
 export type GroupMembershipResult =
   | { readonly ok: true; readonly tagList: ReadonlyArray<string> }
-  | { readonly ok: false; readonly reason: string };
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      /**
+       * The project that is the group's production, when a second one is the
+       * refusal: the caller asks the platform whether it still exists.
+       */
+      readonly production?: string | undefined;
+    };
 
 /**
  * The registry with one project added to a group as a Mate, a stage or the
@@ -163,6 +171,13 @@ export type GroupMembershipResult =
  * would leave two projects claiming the same release target with nothing to
  * decide between them.
  *
+ * A member whose project the platform has confirmed deleted (`gone`) is
+ * dropped in the same write, so the production that replaces one takes its
+ * place: a production deleted in the Zerops GUI kept its entry, and every
+ * *Add production* after it was refused for a project that no longer existed
+ * (Beviro, 2026-09-24). This module does no I/O, so it cannot know a project
+ * is gone; the refusal names the production in the way, and the caller asks.
+ *
  * Adding a project already in the group is a no-op rather than a duplicate —
  * the same write run twice, which is what a retried creation is.
  */
@@ -171,19 +186,25 @@ export function planGroupMembership(input: {
   readonly groupId: string;
   readonly projectId: string;
   readonly kind: RoleProjectKind;
+  /** Projects the platform answered `projectNotFound` for. */
+  readonly gone?: ReadonlyArray<string> | undefined;
 }): GroupMembershipResult {
   const group = input.registry.groups.find((entry) => entry.groupId === input.groupId);
   if (group === undefined) return { ok: false, reason: "That project is not in the registry." };
 
-  const already = group.projects.find((entry) => entry.projectId === input.projectId);
-  if (already?.kind === input.kind) {
-    return { ok: true, tagList: formatZeropsRegistryTags(input.registry) };
-  }
-  if (already !== undefined) {
+  const gone = new Set(input.gone ?? []);
+  const members = group.projects.filter((entry) => !gone.has(entry.projectId));
+  const already = members.find((entry) => entry.projectId === input.projectId);
+  if (already !== undefined && already.kind !== input.kind) {
     return { ok: false, reason: `That environment is already the group's ${already.kind}.` };
   }
-  if (input.kind === "production" && group.projects.some((entry) => entry.kind === "production")) {
-    return { ok: false, reason: "This project already has a production." };
+  const production = members.find((entry) => entry.kind === "production");
+  if (already === undefined && input.kind === "production" && production !== undefined) {
+    return {
+      ok: false,
+      reason: "This project already has a production.",
+      production: production.projectId,
+    };
   }
 
   return {
@@ -194,7 +215,10 @@ export function planGroupMembership(input: {
         entry.groupId === input.groupId
           ? {
               ...entry,
-              projects: [...entry.projects, { projectId: input.projectId, kind: input.kind }],
+              projects:
+                already === undefined
+                  ? [...members, { projectId: input.projectId, kind: input.kind }]
+                  : members,
             }
           : entry,
       ),

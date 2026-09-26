@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { applyProjectTagPatch, sameProjectTags, type ProjectTagPatch } from "./tagPatch.ts";
+import {
+  applyProjectTagPatch,
+  sameProjectTags,
+  type ProjectTagPatch,
+  type ProjectTagRefusal,
+} from "./tagPatch.ts";
 
 const REGISTRY = ["mate:tool:gitea", "mate:gn:g1:acme", "mate:gm:g1:p1:mate", "person:own"];
 
@@ -47,6 +52,19 @@ describe("applyProjectTagPatch", () => {
       adds: ["mate:gm:g1:p2:stage"],
       removes: [],
     },
+    {
+      name: "a production replaces one whose project the platform says is deleted",
+      tags: [...REGISTRY, "mate:gm:g1:p-dead:production"],
+      patch: {
+        kind: "registry-member",
+        groupId: "g1",
+        projectId: "p-prod",
+        member: "production",
+        gone: ["p-dead"],
+      },
+      adds: ["mate:gm:g1:p-prod:production", "mate:gm:g1:p1:mate"],
+      removes: ["mate:gm:g1:p-dead:production"],
+    },
   ])("$name, and changes nothing applied again", ({ tags, patch, adds, removes }) => {
     const once = applyProjectTagPatch(tags, patch);
     if (!once.ok) throw new Error(once.refusal.reason);
@@ -60,24 +78,43 @@ describe("applyProjectTagPatch", () => {
   it.each<{
     readonly name: string;
     readonly patch: ProjectTagPatch;
-    readonly code: "group-unknown" | "registry-conflict";
+    readonly refusal: Partial<ProjectTagRefusal>;
   }>([
     {
       name: "a member of a group the registry does not name",
       patch: { kind: "registry-member", groupId: "g9", projectId: "p2", member: "mate" },
-      code: "group-unknown",
+      refusal: { code: "group-unknown" },
     },
     {
       name: "a member already in the group as something else",
       patch: { kind: "registry-member", groupId: "g1", projectId: "p1", member: "stage" },
-      code: "registry-conflict",
+      refusal: { code: "registry-conflict" },
     },
     {
       name: "a group with no name",
       patch: { kind: "registry-group", groupId: "g2", name: "  " },
-      code: "registry-conflict",
+      refusal: { code: "registry-conflict" },
     },
-  ])("refuses $name", ({ patch, code }) => {
-    expect(applyProjectTagPatch(REGISTRY, patch)).toMatchObject({ ok: false, refusal: { code } });
+    {
+      // Named, so the caller can ask the platform whether that project still exists.
+      name: "a second production, naming the project that holds the first",
+      patch: { kind: "registry-member", groupId: "g1", projectId: "p3", member: "production" },
+      refusal: { code: "production-held", projectId: "p-prod" },
+    },
+    {
+      name: "a second production beside one nobody said is deleted",
+      patch: {
+        kind: "registry-member",
+        groupId: "g1",
+        projectId: "p3",
+        member: "production",
+        gone: ["p-other"],
+      },
+      refusal: { code: "production-held", projectId: "p-prod" },
+    },
+  ])("refuses $name", ({ patch, refusal }) => {
+    expect(
+      applyProjectTagPatch([...REGISTRY, "mate:gm:g1:p-prod:production"], patch),
+    ).toMatchObject({ ok: false, refusal });
   });
 });
