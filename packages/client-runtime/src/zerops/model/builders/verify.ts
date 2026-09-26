@@ -28,15 +28,20 @@ export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
   const subject = inputHostname ?? "all services";
   const { voice, voiceSource } = mateVoiceFor("verify", subject);
 
-  const steps = (card?.checks ?? []).map((check) =>
-    buildStep(
+  const steps = (card?.checks ?? []).map((check) => {
+    // The name already says HTTP ("HTTP internal"); the result is the code
+    // alone — and a failed check says why beside it, in its first line.
+    const code = check.httpStatus !== undefined ? String(check.httpStatus) : undefined;
+    const step = buildStep(
       check.name,
       isAllServices ? check.name : humanizeCheckName(check.name),
       check.status,
-      // The name already says HTTP ("HTTP internal"); the result is the code alone.
-      check.httpStatus !== undefined ? String(check.httpStatus) : undefined,
-    ),
-  );
+      code,
+    );
+    const why = check.detail === undefined ? undefined : firstLine(check.detail).trim();
+    if (step.state !== "failed" || why === undefined || why.length === 0) return step;
+    return { ...step, note: code === undefined ? why : `${code} · ${why}` };
+  });
   const passed = steps.filter((s) => s.state === "done").length;
   const failedCount = steps.filter((s) => s.state === "failed").length;
   /**
