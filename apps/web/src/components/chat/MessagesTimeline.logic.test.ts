@@ -111,7 +111,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list[3]).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
 
-  it("keeps every message the person sent where they sent it, inside the run's one card", () => {
+  it("keeps every message the person sent where they sent it, on the page, the run's one line after them", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -124,13 +124,13 @@ describe("deriveMessagesTimelineRows", () => {
       settled: "t1",
     });
     // Messages sent into the run are delivered at the Mate's next step and
-    // the run goes on: one line for all of it, the messages inside its card
-    // where they arrived, the answer after it.
+    // the run goes on: the messages on the page where the person sent them,
+    // one line for all of the work after them, the answer after it.
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
-      "work-line:work-line:msg:m0",
       "message:m1",
       "message:m2",
+      "work-line:work-line:msg:m0",
       "message:a3",
     ]);
     expect(list.filter((row) => row.kind === "message" && row.message.role === "user")).toEqual([
@@ -139,7 +139,10 @@ describe("deriveMessagesTimelineRows", () => {
       expect.objectContaining({ aside: true, receipt: "seen" }),
     ]);
     // A run without notes says what it did instead, all of it.
-    expect(list[2]).toMatchObject({ note: null, fallback: "Ran 2 commands" });
+    expect(list.find((row) => row.kind === "work-line")).toMatchObject({
+      note: null,
+      fallback: "Ran 2 commands",
+    });
   });
 
   it("keeps the running turn's last line live and its latest words at its tail", () => {
@@ -323,8 +326,9 @@ describe("deriveMessagesTimelineRows", () => {
       entries: [...before, answered, assistant("a2", "t1", 4, "Green it is."), tool("w9", "t1", 5)],
       live: "t1",
     });
-    expect(shape(after).slice(-3)).toEqual([
+    expect(shape(after).slice(-4)).toEqual([
       "answer:answer:rs",
+      "work-line:work-line:msg:m0",
       "working:working:msg:m0:rs",
       "card-end:card-end:msg:m0",
     ]);
@@ -332,9 +336,10 @@ describe("deriveMessagesTimelineRows", () => {
     expect(working?.kind === "working" ? working.stream.map((item) => item.key) : null).toEqual([
       "a2",
     ]);
-    // Everything above the live panel is drawn as it was.
-    const panelAt = waiting.findIndex((row) => row.kind === "working");
-    expect(frame(after).slice(0, panelAt)).toEqual(frame(waiting).slice(0, panelAt));
+    // Everything above the live card is drawn as it was: the answer lands
+    // under it, and the card goes on under the answer.
+    const cardAt = waiting.findIndex((row) => row.kind === "work-line" && row.live);
+    expect(frame(after).slice(0, cardAt)).toEqual(frame(waiting).slice(0, cardAt));
   });
 
   it("draws a turn a finished background task woke before its first words", () => {
@@ -1192,7 +1197,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
-  it("says the words the person answered once: in the opened log, else in the speech", () => {
+  it("keeps the words the person answered on the page, and the whole record in the opened log", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -1203,13 +1208,17 @@ describe("deriveMessagesTimelineRows", () => {
       live: "t1",
       open: ["msg:m0"],
     });
-    expect(shape(list).slice(1, 6)).toEqual([
+    // Opening the log changes nothing above its line: the words the person
+    // answered stay beside the face, the log below says them in their place.
+    expect(shape(list).slice(1, 7)).toEqual([
       "message:m0",
+      "speech:speech:msg:m0",
+      "message:m1",
       "work-line:work-line:msg:m0",
       "log-activity:log-activity:w1",
       "log-note:log-note:a1",
-      "message:m1",
     ]);
+    expect(list.find((row) => row.kind === "speech")).toMatchObject({ hand: "bubble" });
   });
 
   it.each([
@@ -1339,7 +1348,7 @@ describe("a stretch's card", () => {
       expected: ["message", "work-line:top", "working:middle", "card-end:bottom"],
     },
     {
-      case: "written into: the person's message inside the card, under the words it answered",
+      case: "written into: the person's message on the page under the words it answered, the card after it",
       scene: {
         entries: [
           user("m0", 0),
@@ -1350,13 +1359,14 @@ describe("a stretch's card", () => {
         ],
         live: "t1",
       } satisfies Scene,
-      // The run goes on after the person's message: one card, the message
-      // inside it under the Mate's words it answered, the Mate still at work.
+      // The run goes on after the person's message: the message on the page
+      // under the Mate's words it answered, the one card under it, the Mate
+      // still at work.
       expected: [
         "message",
+        "speech",
+        "message",
         "work-line:top",
-        "speech:middle",
-        "message:middle",
         "working:middle",
         "card-end:bottom",
       ],
@@ -1433,6 +1443,11 @@ describe("the no-shift contract", () => {
     }
     return end;
   };
+  // The live card stays whole under the conversation's last word, as a
+  // typing indicator stays under the last message: a message the person
+  // sends into the run lands above it and the card moves down with it. So
+  // the page above the live card only grows at its bottom, and the card
+  // itself only grows at its bottom above its panel.
   const holds = (sequence: Array<{ entry: TimelineEntry; live: boolean }>, open: string[]) => {
     let previous: MessagesTimelineRow[] = [];
     let wasLive = false;
@@ -1441,11 +1456,26 @@ describe("the no-shift contract", () => {
       const live = sequence[count - 1]!.live;
       const current = framed({ entries, ...(live ? { live: "t1" } : { settled: "t1" }), open });
       const settling = wasLive && !live;
-      const liveLineEnd = previous.findLastIndex((row) => row.kind === "work-line" && row.live) + 1;
-      const bound = settling
-        ? Math.min(liveTailStart(previous, wasLive), liveLineEnd)
-        : liveTailStart(previous, wasLive);
-      expect(frame(current).slice(0, bound)).toEqual(frame(previous).slice(0, bound));
+      const tail = liveTailStart(previous, wasLive);
+      const cardAt = previous.findIndex((row) => row.kind === "work-line" && row.live);
+      if (cardAt === -1) {
+        expect(frame(current).slice(0, tail)).toEqual(frame(previous).slice(0, tail));
+      } else {
+        expect(frame(current).slice(0, cardAt)).toEqual(frame(previous).slice(0, cardAt));
+        // Settling, a card re-forms, its line's frame too: a line left with
+        // nothing under it stands alone.
+        const held = settling ? 0 : Math.max(1, tail - cardAt);
+        // The card moves as one: the room above its line is the room its new
+        // neighbour keeps, so the line is compared by what it draws.
+        const movedTo = current.findIndex((row) => row.id === previous[cardAt]!.id);
+        const unroomed = (list: MessagesTimelineRow[]) =>
+          frame(list).map((drawn, index) =>
+            index === 0 ? drawn.replace(/:(none|tight|line|block|turn):/, ":") : drawn,
+          );
+        expect(unroomed(current.slice(movedTo, movedTo + held))).toEqual(
+          unroomed(previous.slice(cardAt, cardAt + held)),
+        );
+      }
       previous = current;
       wasLive = live;
     }

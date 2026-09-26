@@ -466,6 +466,11 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       message: ChatMessage;
+      /**
+       * Words the person answered stand beside the Mate's face in its bubble;
+       * a run's last words, with no answer after them, in the answer's hand.
+       */
+      hand: "bubble" | "prose";
     }
   | {
       /**
@@ -660,7 +665,10 @@ function closesTurn(row: MessagesTimelineRow): boolean {
 
 /** The Mate talking to the person: its line of copy and time keeps room under it already. */
 function isMateProse(row: MessagesTimelineRow): boolean {
-  return (row.kind === "message" && row.message.role === "assistant") || row.kind === "speech";
+  return (
+    (row.kind === "message" && row.message.role === "assistant") ||
+    (row.kind === "speech" && row.hand === "prose")
+  );
 }
 
 export function rowGap(
@@ -1689,6 +1697,49 @@ export function deriveMessagesTimelineRows(
     // card for a frame, and the answer jumped up as it went (Nova,
     // 2026-09-26).
     const answeredAlone = turn.live && !hasLog && answer !== null;
+
+    // What the person and the Mate said to each other while the run went on
+    // stands on the page, in the order it was said: each message the person
+    // sent into the run under the Mate's words just before it, and each
+    // answer under the question it answers. The run's card follows it all —
+    // the Mate's own surface, never the person's words (the owner,
+    // 2026-09-27, of a run they wrote into seven times: "what exactly is
+    // this white wrapping?" — a white box around their own messages, the
+    // first of them outside it). The live card stays whole under them, its
+    // line with its panel, as a typing indicator stays under the last
+    // message.
+    const exchanges: MessagesTimelineRow[] = [];
+    const cardRows: MessagesTimelineRow[] = [];
+    turn.stretches.forEach((stretch, index) => {
+      if (index > 0) {
+        const before = turn.stretches[index - 1]!;
+        const said = stretchNotes(before, turn.answer).at(-1) ?? null;
+        if (said !== null) {
+          exchanges.push({
+            kind: "speech",
+            id: `speech:${before.key}`,
+            createdAt: said.createdAt,
+            message: said.message,
+            hand: "bubble",
+          });
+        }
+        if (stretch.lead !== null && stretch.leadIndex !== null) {
+          exchanges.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
+        }
+      }
+      for (const row of stretchContentRows({
+        stretch,
+        answer: turn.answer,
+        writing: turn.writing,
+        open,
+        view: input,
+        pauseRow: stretch === last ? pause : null,
+      })) {
+        (row.kind === "answer" ? exchanges : cardRows).push(row);
+      }
+    });
+    rows.push(...exchanges);
+
     const cardStart = rows.length;
     if ((turn.live && !answeredAlone) || hasLog || pausedHere)
       rows.push({
@@ -1710,35 +1761,7 @@ export function deriveMessagesTimelineRows(
         open,
       });
 
-    turn.stretches.forEach((stretch, index) => {
-      if (index > 0) {
-        // What the person sent into the run, where it arrived, under the
-        // Mate's words just before it — which an opened log says itself.
-        const before = turn.stretches[index - 1]!;
-        const said = stretchNotes(before, turn.answer).at(-1) ?? null;
-        if (!open && said !== null) {
-          rows.push({
-            kind: "speech",
-            id: `speech:${before.key}`,
-            createdAt: said.createdAt,
-            message: said.message,
-          });
-        }
-        if (stretch.lead !== null && stretch.leadIndex !== null) {
-          rows.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
-        }
-      }
-      rows.push(
-        ...stretchContentRows({
-          stretch,
-          answer: turn.answer,
-          writing: turn.writing,
-          open,
-          view: input,
-          pauseRow: stretch === last ? pause : null,
-        }),
-      );
-    });
+    rows.push(...cardRows);
 
     if (last.live && !answeredAlone) {
       // Under the person's answer the Mate at work starts afresh: its own
@@ -1799,6 +1822,7 @@ export function deriveMessagesTimelineRows(
         id: `speech:${last.key}`,
         createdAt: speech.createdAt,
         message: speech.message,
+        hand: "prose",
       });
     }
     // The answer follows the card, settled or still streaming.
