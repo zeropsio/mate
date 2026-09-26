@@ -1,5 +1,3 @@
-import type { TurnId } from "@t3tools/contracts";
-
 import { onAccountLifetimeClose } from "../../zerops/accountLifetime";
 
 export type TimelineScrollMode = "following-end" | "anchoring-new-turn" | "free-scrolling";
@@ -103,9 +101,12 @@ export interface RememberedTimelinePosition {
   readonly scrollOffset: number;
   readonly atEnd: boolean;
   readonly disclosures?: {
-    readonly turns: ReadonlySet<TurnId>;
-    readonly workGroups: ReadonlySet<string>;
+    /** Work lines opened into their log, by stretch key. */
+    readonly stretches: ReadonlySet<string>;
+    /** Log lines opened in place: activity runs and operations. */
+    readonly logItems: ReadonlySet<string>;
     readonly spawnEntries: ReadonlySet<string>;
+    readonly showReasoning: boolean;
   };
 }
 

@@ -21,11 +21,10 @@ function rows(
     id: message.id,
     createdAt: message.createdAt,
     message,
-    durationStart: message.createdAt,
-    narration: false,
+    receipt: null,
+    aside: false,
+    imageOnly: false,
     showAssistantMeta: false,
-    showAssistantCopyButton: false,
-    assistantCopyStreaming: false,
   }));
 }
 
