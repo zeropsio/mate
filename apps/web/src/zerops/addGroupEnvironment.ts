@@ -202,9 +202,21 @@ export async function addGroupEnvironment(input: {
 
     // An earlier attempt may have got as far as the branch, or the request
     // (a tab closed between the two, 2026-09-17): what is there is reused,
-    // never written again — Gitea refuses a branch that exists.
+    // never written again — Gitea refuses a branch that exists. Only a branch
+    // that already declares this project is that attempt's: Beviro's re-added
+    // production met the branch its deleted predecessor's merged declaration
+    // left, and reused it would have declared the deleted project again
+    // (2026-09-24). Any other is deleted and written afresh.
     const left = await gitea.getBranch(slug, GROUP_REPOSITORY, write.branch).catch(() => undefined);
-    if (left?.name !== write.branch) {
+    const leftover = left?.name === write.branch;
+    const reusable =
+      leftover &&
+      readGroupEnvironments(
+        (await gitea.readFile(slug, GROUP_REPOSITORY, ENVIRONMENTS_DOCUMENT_PATH, write.branch))
+          ?.content ?? "",
+      ).some((entry) => entry.project === input.environment.project);
+    if (!reusable) {
+      if (leftover) await gitea.deleteBranch(slug, GROUP_REPOSITORY, write.branch);
       await gitea.changeFiles(slug, GROUP_REPOSITORY, {
         message: environmentCommitMessage(environment),
         branch: "main",

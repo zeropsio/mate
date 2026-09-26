@@ -25,6 +25,7 @@ function giteaFake(overrides: Partial<GiteaClient> = {}): GiteaClient {
     listPullRequests: vi.fn().mockResolvedValue([]),
     createPullRequest: vi.fn().mockResolvedValue({ number: 12, title: "t", state: "open" }),
     mergePullRequest: vi.fn().mockResolvedValue(undefined),
+    deleteBranch: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as GiteaClient;
 }
@@ -362,29 +363,72 @@ environments:
 });
 
 describe("an attempt an earlier one left half done", () => {
-  it("reuses the branch it left and opens the request from it", async () => {
+  const declaring = (project: string) => `version: 1
+environments:
+  acme-stage:
+    tier: stage
+    project: ${project}
+    sources: [main]
+    deploy: on-push
+`;
+  /** `main` declares nothing yet; the leftover branch carries `onBranch`. */
+  const leftover = (onBranch: string | undefined) => ({
+    getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
+      name === "main" ? { name: "main", user_can_merge: true } : { name, commit: { id: "c0ffee" } },
+    ),
+    readFile: vi.fn(async (_owner: string, _repo: string, path: string, ref?: string) =>
+      ref === "main" || onBranch === undefined
+        ? undefined
+        : { path, sha: "blob-b", content: onBranch },
+    ),
+  });
+
+  // Only a branch that already declares this project is an earlier attempt's. Beviro's re-added
+  // production met the branch of its deleted predecessor's merged declaration, and reused it would
+  // have declared the deleted project again (2026-09-24).
+  it.each([
+    { carries: "declares this project", onBranch: declaring("p-stage"), reused: true },
+    { carries: "declares a project since deleted", onBranch: declaring("p-dead"), reused: false },
+    { carries: "holds no environments document", onBranch: undefined, reused: false },
+  ])("a leftover branch that $carries is reused: $reused", async ({ onBranch, reused }) => {
     const gitea = giteaFake({
-      getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
-        name === "main"
-          ? { name: "main", user_can_merge: true }
-          : { name, commit: { id: "c0ffee" } },
-      ),
+      ...leftover(onBranch),
       listPullRequests: vi.fn().mockResolvedValue([]),
     });
     const outcome = await addGroupEnvironment(base(apiFake(), gitea));
+
     expect(outcome.failed).toBeUndefined();
-    expect(gitea.changeFiles).not.toHaveBeenCalled();
+    expect(gitea.readFile).toHaveBeenCalledWith(
+      "acme",
+      "group",
+      "environments.yaml",
+      "mate-app/env-acme-stage",
+    );
+    if (reused) {
+      expect(gitea.deleteBranch).not.toHaveBeenCalled();
+      expect(gitea.changeFiles).not.toHaveBeenCalled();
+    } else {
+      expect(gitea.deleteBranch).toHaveBeenCalledWith("acme", "group", "mate-app/env-acme-stage");
+      const [deleted] = (gitea.deleteBranch as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+      const [written] = (gitea.changeFiles as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+      expect(deleted).toBeLessThan(written ?? 0);
+      expect(gitea.changeFiles).toHaveBeenCalledWith(
+        "acme",
+        "group",
+        expect.objectContaining({
+          branch: "main",
+          newBranch: "mate-app/env-acme-stage",
+          files: [expect.objectContaining({ content: declaring("p-stage") })],
+        }),
+      );
+    }
     expect(gitea.createPullRequest).toHaveBeenCalledTimes(1);
     expect(outcome.pullRequest).toEqual({ number: 12, merged: true });
   });
 
   it("reuses the request it left rather than opening a second", async () => {
     const gitea = giteaFake({
-      getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
-        name === "main"
-          ? { name: "main", user_can_merge: true }
-          : { name, commit: { id: "c0ffee" } },
-      ),
+      ...leftover(declaring("p-stage")),
       listPullRequests: vi
         .fn()
         .mockResolvedValue([
@@ -433,7 +477,17 @@ environments:
   it("is replaced by the new one in the registry and in the document, its name kept", async () => {
     const api = apiFake({ fetchProject: vi.fn(deleted) });
     const registry = tagsFake(HELD_REGISTRY);
-    const gitea = giteaFake({ readFile: documentOnMain(HELD_DOCUMENT) });
+    // The branch the deleted production's merged declaration left, still declaring it.
+    const gitea = giteaFake({
+      readFile: vi.fn(async (_owner: string, _repo: string, path: string) => ({
+        path,
+        sha: "blob-1",
+        content: HELD_DOCUMENT,
+      })),
+      getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
+        name === "main" ? { name: "main", user_can_merge: false } : { name },
+      ),
+    });
     const outcome = await addGroupEnvironment({
       ...base(api, gitea, registry.writeTags),
       environment: PRODUCTION,
@@ -449,6 +503,11 @@ environments:
     expect(api.fetchProject).toHaveBeenCalledWith("p-dead", undefined);
     expect(registry.tags()).toContain("mate:gm:g-1:p-new:production");
     expect(registry.tags()).not.toContain("mate:gm:g-1:p-dead:production");
+    expect(gitea.deleteBranch).toHaveBeenCalledWith(
+      "acme",
+      "group",
+      "mate-app/env-beviro-production",
+    );
     expect(gitea.changeFiles).toHaveBeenCalledWith("acme", "group", {
       message: "Add the beviro-production production environment",
       branch: "main",
