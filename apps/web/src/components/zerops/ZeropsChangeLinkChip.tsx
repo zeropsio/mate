@@ -21,12 +21,30 @@
  * its in-app open once the registry names it.
  */
 import { changeState, parseGiteaChangeUrl } from "@t3tools/client-runtime/zerops";
-import { GitPullRequestArrow } from "lucide-react";
-import { useContext, useEffect, type ReactNode } from "react";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { GitMergeIcon, GitPullRequestArrow } from "lucide-react";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
 import { AppLinkContext } from "../ServiceBrowserLink";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
 import { useZeropsLandedChange } from "../../zerops/useZeropsLandedChange";
+
+/**
+ * When the message a chip stands in was written: a change that landed after
+ * it wears a dot, so the sentence's "waiting for review" and the chip's
+ * landed glyph read as history, not a contradiction.
+ */
+export const ChangeChipMomentContext = createContext<string | null>(null);
+
+const TONE_GLYPH: Record<ServiceStatusToneId, string> = {
+  ok: "text-status-ok",
+  busy: "text-status-busy",
+  attention: "text-status-attention",
+  failed: "text-status-failed",
+  off: "text-muted-foreground",
+};
 
 export function ZeropsChangeLinkChip({
   href,
@@ -37,6 +55,7 @@ export function ZeropsChangeLinkChip({
 }) {
   const flowValue = useZeropsProjectFlowOptional();
   const openInApp = useContext(AppLinkContext);
+  const writtenAt = useContext(ChangeChipMomentContext);
   const link = href === undefined ? null : parseGiteaChangeUrl(href, flowValue?.giteaOrigin);
 
   let groupId: string | undefined;
@@ -89,10 +108,29 @@ export function ZeropsChangeLinkChip({
   if (pull === undefined && !reading) return children;
 
   const line = pull?.line ?? `${link?.repository ?? ""} #${String(link?.number ?? 0)}`;
-  const state = pull === undefined ? undefined : pull.merged ? "Landed" : changeState(pull)?.word;
-  return (
+  // The state is a glyph of one size, never a word of its own width: a change
+  // landing reflows nothing in the sentence around it. The words are the
+  // tooltip's.
+  const openState = pull === undefined || pull.merged ? undefined : changeState(pull);
+  const state =
+    pull === undefined
+      ? undefined
+      : pull.merged
+        ? { word: "Landed", tone: "ok" as const, merged: true }
+        : openState === undefined
+          ? undefined
+          : { word: openState.word, tone: openState.tone, merged: false };
+  const landedSince =
+    pull?.merged === true &&
+    writtenAt !== null &&
+    pull.mergedAt !== undefined &&
+    Date.parse(pull.mergedAt) > Date.parse(writtenAt);
+  const Glyph = state?.merged ? GitMergeIcon : GitPullRequestArrow;
+  const chip = (
     <a
       className="inline-flex items-baseline gap-1 rounded-md border border-border bg-muted px-1.5 align-baseline text-sm no-underline"
+      data-zerops-change-state={state === undefined ? "reading" : state.merged ? "landed" : "open"}
+      data-zerops-change-since={landedSince ? "landed" : undefined}
       data-zerops-change-chip={`${pull?.repository ?? link?.repository ?? ""}#${String(pull?.number ?? link?.number ?? 0)}`}
       href={href}
       onClick={(event) => {
@@ -111,9 +149,37 @@ export function ZeropsChangeLinkChip({
       rel="noopener noreferrer"
       target="_blank"
     >
-      <GitPullRequestArrow aria-hidden="true" className="size-3 shrink-0 self-center" />
+      <span className="relative inline-flex shrink-0 self-center">
+        <Glyph
+          aria-hidden="true"
+          className={cn(
+            "size-3",
+            state === undefined ? "text-muted-foreground" : TONE_GLYPH[state.tone],
+          )}
+        />
+        {landedSince ? (
+          <span
+            aria-hidden="true"
+            className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-info ring-1 ring-muted"
+          />
+        ) : null}
+      </span>
       <span className="font-medium">{line}</span>
-      {state === undefined ? null : <span className="text-muted-foreground">{state}</span>}
+      {state === undefined ? null : (
+        <span className="sr-only">
+          {`, ${state.word}${landedSince ? ", landed since this message" : ""}`}
+        </span>
+      )}
     </a>
+  );
+  if (state === undefined) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={chip} />
+      <TooltipPopup side="top">
+        {state.word}
+        {landedSince ? " — landed after this was written" : ""}
+      </TooltipPopup>
+    </Tooltip>
   );
 }

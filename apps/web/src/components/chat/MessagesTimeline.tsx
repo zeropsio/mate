@@ -157,6 +157,7 @@ import {
   type ConversationSpeaker,
   type ServerUsagePause,
 } from "./ConversationRows";
+import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -1403,16 +1404,18 @@ function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-no
   const ctx = use(TimelineRowCtx);
   return (
     <div className="min-w-0 py-0.5 text-foreground/90" data-log-note>
-      <ChatMarkdown
-        text={row.message.text}
-        cwd={ctx.markdownCwd}
-        threadRef={ctx.threadRef ?? undefined}
-        isStreaming={Boolean(row.message.streaming)}
-        lineBreaks={shouldPreserveAssistantLineBreaks(row.message.text)}
-        skills={ctx.skills}
-        headingLevelOffset={MESSAGE_HEADING_LEVEL}
-        onRunShellCommand={ctx.onRunShellCommand}
-      />
+      <ChangeChipMomentContext value={row.message.createdAt}>
+        <ChatMarkdown
+          text={row.message.text}
+          cwd={ctx.markdownCwd}
+          threadRef={ctx.threadRef ?? undefined}
+          isStreaming={Boolean(row.message.streaming)}
+          lineBreaks={shouldPreserveAssistantLineBreaks(row.message.text)}
+          skills={ctx.skills}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          onRunShellCommand={ctx.onRunShellCommand}
+        />
+      </ChangeChipMomentContext>
     </div>
   );
 }
@@ -1893,17 +1896,19 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   return (
     <div className="relative min-w-0 px-1 py-0.5">
       <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-      <ChatMarkdown
-        variant="answer"
-        text={messageText}
-        cwd={ctx.markdownCwd}
-        threadRef={ctx.threadRef ?? undefined}
-        isStreaming={Boolean(row.message.streaming)}
-        lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
-        skills={ctx.skills}
-        headingLevelOffset={MESSAGE_HEADING_LEVEL}
-        onRunShellCommand={ctx.onRunShellCommand}
-      />
+      <ChangeChipMomentContext value={row.message.createdAt}>
+        <ChatMarkdown
+          variant="answer"
+          text={messageText}
+          cwd={ctx.markdownCwd}
+          threadRef={ctx.threadRef ?? undefined}
+          isStreaming={Boolean(row.message.streaming)}
+          lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
+          skills={ctx.skills}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          onRunShellCommand={ctx.onRunShellCommand}
+        />
+      </ChangeChipMomentContext>
       {row.showAssistantMeta ? (
         <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">
           <AssistantCopyButton row={row} />
