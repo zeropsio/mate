@@ -103,10 +103,16 @@ function spanText(startedAt: string, endedAt: string | null): string {
  */
 export function WorkLine({
   row,
+  speaker,
+  summarized,
   timestampFormat,
   onToggle,
 }: {
   readonly row: WorkLineRow;
+  /** Who worked: a line that says only "Worked" says nobody did (the owner, 2026-09-26: "'worked' who where?"). */
+  readonly speaker: ConversationSpeaker;
+  /** A line with nothing under it says what the work came to; a card's body says it itself. */
+  readonly summarized: boolean;
   readonly timestampFormat: TimestampFormat;
   readonly onToggle: () => void;
 }) {
@@ -114,17 +120,18 @@ export function WorkLine({
   // A stretch that did nothing but think says so, and nothing more.
   const thoughtOnly = !live && row.note === null && row.fallback === null;
   const verb = live
-    ? "Working for"
+    ? "is working ·"
     : row.face === "stopped"
-      ? "Stopped after"
+      ? "stopped after"
       : thoughtOnly
-        ? "Thought for"
-        : "Worked for";
+        ? "thought for"
+        : "worked for";
+  const summary = summarized && !live ? row.summary : null;
   const words = (
     <>
       <Tooltip>
         <TooltipTrigger render={<span className="shrink-0 tabular-nums" data-work-line-clock />}>
-          {verb}{" "}
+          {speaker.name} {verb}{" "}
           {live ? <ElapsedSince since={row.startedAt} /> : spanText(row.startedAt, row.endedAt)}
         </TooltipTrigger>
         <TooltipPopup>
@@ -132,6 +139,12 @@ export function WorkLine({
           {row.endedAt ? ` – ${formatDayAwareTimestamp(row.endedAt, timestampFormat)}` : ""}
         </TooltipPopup>
       </Tooltip>
+      {summary === null ? null : (
+        // A clause of the line's sentence, after its clock.
+        <span className="min-w-0 truncate" data-work-line-summary>
+          · {summary.charAt(0).toLowerCase() + summary.slice(1)}
+        </span>
+      )}
       {row.hasLog ? (
         <ChevronRightIcon
           aria-hidden="true"
@@ -151,7 +164,7 @@ export function WorkLine({
         <button
           type="button"
           aria-expanded={row.open}
-          aria-label={`${verb} ${spanText(row.startedAt, row.endedAt)}. ${row.open ? "Hide" : "Show"} what it did`}
+          aria-label={`${speaker.name} ${verb} ${spanText(row.startedAt, row.endedAt)}${summary === null ? "" : `, ${summary.charAt(0).toLowerCase() + summary.slice(1)}`}. ${row.open ? "Hide" : "Show"} what it did`}
           className={cn(
             className,
             "cursor-pointer rounded-sm transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",

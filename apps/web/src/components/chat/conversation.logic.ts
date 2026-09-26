@@ -805,11 +805,51 @@ export function summarizeActivity(entries: ReadonlyArray<WorkLogEntry>): string 
       case "search":
         return [times(count, "searched the web once", "searched the web # times")];
       case "other":
-        return [times(count, "used 1 tool", "used # tools")];
+        return [otherToolsClause(list)];
     }
   });
   const sentence = clauses.join(" · ");
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/** Zerops tools with no card of their own, said by what they did. */
+const ZEROPS_TOOL_WORDS: Readonly<Record<string, string>> = {
+  zerops_workflow: "checked the workflow",
+  zerops_knowledge: "read the Zerops guides",
+};
+
+/** A tool call's own name: in its detail for the runtime's calls, its title for a connected tool's. */
+function calledToolName(entry: WorkLogEntry): string | null {
+  const named = namedToolCall(entry);
+  if (named !== null) return named;
+  return entry.itemType === "mcp_tool_call" ? (entry.toolTitle ?? null) : null;
+}
+
+/**
+ * Tools no action names. A Zerops tool is said by what it did, once however
+ * often it ran; the rest by name where each call names its tool and at most
+ * two tools ran — "used Workflow", "used Workflow twice", "used Workflow and
+ * SendMessage" — and counted otherwise.
+ */
+function otherToolsClause(entries: ReadonlyArray<WorkLogEntry>): string {
+  const zerops = [...new Set(entries.flatMap((entry) => ZEROPS_TOOL_WORDS[entry.label] ?? []))];
+  const rest = entries.filter((entry) => ZEROPS_TOOL_WORDS[entry.label] === undefined);
+  return [...zerops, ...(rest.length === 0 ? [] : [namedToolsClause(rest)])].join(" · ");
+}
+
+function namedToolsClause(entries: ReadonlyArray<WorkLogEntry>): string {
+  const names = entries.map(calledToolName);
+  const distinct = [...new Set(names)];
+  if (names.includes(null) || distinct.length > 2) {
+    return times(entries.length, "used 1 tool", "used # tools");
+  }
+  if (distinct.length === 2) return `used ${distinct[0]} and ${distinct[1]}`;
+  const name = distinct[0]!;
+  return entries.length === 1
+    ? `used ${name}`
+    : entries.length === 2
+      ? `used ${name} twice`
+      : `used ${name} ${entries.length} times`;
 }
 
 /**
@@ -820,7 +860,13 @@ export function summarizeActivity(entries: ReadonlyArray<WorkLogEntry>): string 
 export function namedToolCall(
   entry: Pick<WorkLogEntry, "itemType" | "label" | "detail">,
 ): string | null {
-  if (entry.itemType !== "dynamic_tool_call" && entry.label !== "Tool call") return null;
+  if (
+    entry.itemType !== "dynamic_tool_call" &&
+    entry.itemType !== "collab_agent_tool_call" &&
+    entry.label !== "Tool call"
+  ) {
+    return null;
+  }
   const match = /^([A-Za-z][\w-]*):\s*[{[]/.exec(entry.detail ?? "");
   return match?.[1] ?? null;
 }

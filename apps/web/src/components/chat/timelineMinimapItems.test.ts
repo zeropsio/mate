@@ -97,6 +97,7 @@ describe("timeline minimap previews", () => {
       endedAt: new Date(minutes * 60_000).toISOString(),
       note: "Stage is live.",
       fallback: null,
+      summary: null,
       noteCount: 1,
       activity: null,
       liveNote: null,

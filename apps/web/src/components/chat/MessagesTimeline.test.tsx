@@ -1147,10 +1147,11 @@ describe("MessagesTimeline — the conversation", () => {
         ]}
       />,
     );
-    // Settled, the line is one quiet phrase: no preview, no count, no face,
-    // and a read message carries no mark.
+    // Settled, the line says who worked, how long and what the calls came
+    // to — no note preview, no face — and a read message carries no mark.
     expect(markup).toContain('data-timeline-row-kind="work-line"');
-    expect(markup).toContain("Worked for 1m 30s");
+    expect(markup).toContain("Assistant worked for 1m 30s");
+    expect(markup).toContain("· ran 2 commands");
     expect(markup).not.toContain("Building the shop now.");
     expect(markup).not.toContain("1 note");
     expect(markup).not.toContain("data-message-receipt");
@@ -1203,7 +1204,7 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     expect(markup).toContain('data-timeline-row-id="work-line:msg:message-1"');
-    expect(markup).toContain("Working for");
+    expect(markup).toContain("Assistant is working ·");
     expect(markup).toContain("Thinking");
     expect(markup).toContain('data-work-line="working"');
     expect(markup).toContain('data-message-receipt="sent"');

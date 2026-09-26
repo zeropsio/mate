@@ -123,30 +123,23 @@ function TypingDots({ className }: { readonly className?: string }) {
   );
 }
 
+/**
+ * The Mate's thinking and its words as bubbles — the panel's and the opened
+ * log's alike, so what it thought and said reads the same live and after. A
+ * thought is the same bubble, lighter, in the muted ink.
+ */
+export const MATE_BUBBLE_CLASS: Record<"thought" | "note", string> = {
+  thought:
+    "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-muted/45 px-3.5 py-2 text-muted-foreground",
+  note: "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground",
+};
+
 function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
   const pop = useArrivedLive() ? "animate-bubble-pop motion-reduce:animate-none" : null;
-  // What it thinks is not said to anyone: the same bubble, lighter, in the
-  // muted ink — beside what it says to the person, in full.
-  if (bubble.kind === "thought") {
+  if (bubble.kind === "thought" || bubble.kind === "note" || bubble.kind === "question") {
     return (
       <div
-        className={cn(
-          "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-muted/45 px-3.5 py-2 text-muted-foreground",
-          pop,
-        )}
-        data-stream-bubble="thought"
-      >
-        {bubble.body}
-      </div>
-    );
-  }
-  if (bubble.kind === "note" || bubble.kind === "question") {
-    return (
-      <div
-        className={cn(
-          "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground",
-          pop,
-        )}
+        className={cn(MATE_BUBBLE_CLASS[bubble.kind === "thought" ? "thought" : "note"], pop)}
         data-stream-bubble={bubble.kind}
       >
         {bubble.body}

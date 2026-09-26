@@ -408,6 +408,8 @@ type MessagesTimelineRowBody =
       note: string | null;
       /** What stands in for a note when the stretch had none. */
       fallback: string | null;
+      /** What its calls came to, in words ("Read 4 files · ran 2 commands"); null when it made none. */
+      summary: string | null;
       noteCount: number;
       /** The stretch has a log to open. */
       hasLog: boolean;
@@ -644,6 +646,11 @@ function closesTurn(row: MessagesTimelineRow): boolean {
   return (row.kind === "message" && row.message.role === "assistant") || row.kind === "outcome";
 }
 
+/** The Mate talking to the person: its line of copy and time keeps room under it already. */
+function isMateProse(row: MessagesTimelineRow): boolean {
+  return (row.kind === "message" && row.message.role === "assistant") || row.kind === "speech";
+}
+
 export function rowGap(
   previous: MessagesTimelineRow | undefined,
   row: MessagesTimelineRow,
@@ -654,6 +661,7 @@ export function rowGap(
   if (previous.kind === "seam") return "block";
   if (isPersonRow(row)) {
     if (isPersonRow(previous)) return "tight";
+    if (isMateProse(previous)) return "block";
     return closesTurn(previous) ||
       previous.kind === "event" ||
       previous.kind === "error" ||
@@ -664,6 +672,7 @@ export function rowGap(
   }
   if (closesTurn(previous)) {
     if (row.kind === "outcome") return "line";
+    if (isMateProse(previous)) return "block";
     return row.kind === "work-line" ? "turn" : "block";
   }
   // The report hangs from its line: they read as one.
@@ -1494,6 +1503,11 @@ export function deriveMessagesTimelineRows(
         ? [candidate.entry]
         : [],
     );
+    const shownActivity = omitSupersededLifecycleMarkers(
+      activityEntries.filter((candidate) => workEntryIsVisibleInGroup(candidate, stretch.live)),
+      (candidate) => candidate,
+    );
+    const summary = shownActivity.length > 0 ? summarizeActivity(shownActivity) : null;
     const hasLog = stretch.entries.some(
       (candidate) =>
         candidate !== turn.answer &&
@@ -1521,28 +1535,19 @@ export function deriveMessagesTimelineRows(
         startedAt: stretch.startedAt,
         endedAt: stretch.endedAt,
         note: lastNote === null ? null : noteLine(lastNote.message.text),
-        fallback:
-          lastNote !== null
-            ? null
-            : pausedHere
-              ? "Stopped by the usage limit"
-              : activityEntries.length > 0
-                ? summarizeActivity(
-                    omitSupersededLifecycleMarkers(
-                      activityEntries.filter((candidate) =>
-                        workEntryIsVisibleInGroup(candidate, stretch.live),
-                      ),
-                      (candidate) => candidate,
-                    ),
-                  )
-                : null,
+        fallback: lastNote !== null ? null : pausedHere ? "Stopped by the usage limit" : summary,
+        summary,
         noteCount: notes.length,
         hasLog,
         open,
       });
 
     // Live, the stretch ends in the Mate at work; interrupted, in the words
-    // the person answered — unless its log is open, which says them already.
+    // the person answered. Those are the Mate talking to the person, as its
+    // answer is: they stand after the card in the answer's hand (the owner,
+    // 2026-09-26: "why all of the sudden the mate reply has an avatar and
+    // background bubble?") — said once, so an opened log says them instead,
+    // and a message sent under an opened log moves nothing in it.
     const answered = stretch.last && answer !== null && !turn.live;
     const speech = !stretch.live && !answered && !open ? lastNote : null;
     rows.push(
@@ -1567,13 +1572,6 @@ export function deriveMessagesTimelineRows(
         answering: stretch.last && answer !== null,
         strip: browserStrip(stretch),
         incidents: stretchIncidents(stretch),
-      });
-    } else if (speech !== null) {
-      rows.push({
-        kind: "speech",
-        id: `speech:${stretch.key}`,
-        createdAt: speech.createdAt,
-        message: speech.message,
       });
     }
 
@@ -1605,6 +1603,14 @@ export function deriveMessagesTimelineRows(
         createdAt: rows.at(-1)!.createdAt,
       });
       cardRanges.push([cardStart, rows.length]);
+    }
+    if (speech !== null) {
+      rows.push({
+        kind: "speech",
+        id: `speech:${stretch.key}`,
+        createdAt: speech.createdAt,
+        message: speech.message,
+      });
     }
     // The answer follows the card, settled or still streaming.
     if (stretch.last) {

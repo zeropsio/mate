@@ -176,8 +176,9 @@ export function TurnReport({
   return (
     <section
       aria-label="What this turn did"
+      // The stretch's card is the report's tray: its pills and takes sit on it.
       className={cn(
-        "grid w-fit max-w-full gap-2 rounded-3xl bg-muted/60 p-1.5",
+        "grid w-fit max-w-full gap-2 pb-1",
         settling && "origin-top-left animate-report-in motion-reduce:animate-none",
       )}
       data-turn-report

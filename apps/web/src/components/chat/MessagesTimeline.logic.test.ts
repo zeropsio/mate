@@ -887,7 +887,7 @@ describe("a stretch's card", () => {
       expected: ["message", "work-line:top", "working:middle", "card-end:bottom"],
     },
     {
-      case: "interrupted: the words the person answered close the card, their message outside",
+      case: "interrupted: the words the person answered stand after the line, as an answer does",
       scene: {
         entries: [
           user("m0", 0),
@@ -898,11 +898,12 @@ describe("a stretch's card", () => {
         ],
         live: "t1",
       } satisfies Scene,
+      // The words the person answered are the Mate talking to them: after
+      // the line, in the answer's hand, and the line holds nothing else.
       expected: [
         "message",
-        "work-line:top",
-        "speech:middle",
-        "card-end:bottom",
+        "work-line",
+        "speech",
         "message",
         "work-line:top",
         "working:middle",
