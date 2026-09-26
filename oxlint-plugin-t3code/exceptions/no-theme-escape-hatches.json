@@ -536,22 +536,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"@container/changed-files mt-4 rounded-2xl border border-border/70 bg-secondary p-2 dark:border-transparent dark:bg-input/32\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ChangedFilesTree awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"sticky top-2 z-10 mb-2 bg-secondary dark:bg-[color-mix(in_srgb,var(--contrast-foreground)_2.5%,var(--background))]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ChangedFilesTree awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
     "kind": "Literal",
     "fingerprint": "\"chat-composer-banner-stack-cap border border-b-0 shadow-[0_6px_18px_rgba(0,0,0,0.06)]\"",
