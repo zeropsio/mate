@@ -156,21 +156,21 @@ export function formatShortTimestamp(isoDate: string, timestampFormat: Timestamp
   return getTimestampFormatter(timestampFormat, false).format(date);
 }
 
-const numericDateFormatter = new Intl.DateTimeFormat(timestampLocale, {
-  month: "numeric",
+const shortDateFormatter = new Intl.DateTimeFormat(timestampLocale, {
+  month: "short",
   day: "numeric",
 });
-const numericDateWithYearFormatter = new Intl.DateTimeFormat(timestampLocale, {
-  month: "numeric",
+const shortDateWithYearFormatter = new Intl.DateTimeFormat(timestampLocale, {
+  month: "short",
   day: "numeric",
   year: "numeric",
 });
 
 /**
- * Chat timestamp that adds the date once the message is no longer from today:
- * today `12:34 PM`, yesterday `yesterday at 12:34 PM`, older `8/13 12:34 PM`
- * (locale digit order), with the year included once the calendar year differs.
- * Boundaries are local calendar days, not 24-hour windows.
+ * The conversation's one clock: today `9:14 PM`, the day before `Yesterday
+ * 9:14 PM`, older `Sep 24 9:14 PM` (locale order), with the year once the
+ * calendar year differs. Boundaries are local calendar days, not 24-hour
+ * windows.
  */
 export function formatDayAwareTimestamp(
   isoDate: string,
@@ -188,9 +188,9 @@ export function formatDayAwareTimestamp(
   const dayDiff = Math.round((startOfToday - startOfMessageDay) / 86_400_000);
 
   if (dayDiff <= 0) return time;
-  if (dayDiff === 1) return `yesterday at ${time}`;
+  if (dayDiff === 1) return `Yesterday ${time}`;
   const dateFormatter =
-    date.getFullYear() === now.getFullYear() ? numericDateFormatter : numericDateWithYearFormatter;
+    date.getFullYear() === now.getFullYear() ? shortDateFormatter : shortDateWithYearFormatter;
   return `${dateFormatter.format(date)} ${time}`;
 }
 
@@ -216,7 +216,7 @@ export function formatUpcomingTimestamp(
   if (dayDiff <= 0) return time;
   if (dayDiff === 1) return `tomorrow at ${time}`;
   const dateFormatter =
-    date.getFullYear() === now.getFullYear() ? numericDateFormatter : numericDateWithYearFormatter;
+    date.getFullYear() === now.getFullYear() ? shortDateFormatter : shortDateWithYearFormatter;
   return `${dateFormatter.format(date)} ${time}`;
 }
 
