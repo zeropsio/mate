@@ -1560,8 +1560,11 @@ export function deriveOutcome(input: {
 // ---------------------------------------------------------------------------
 
 /**
- * Whether the Mate has read a message: something of its turn came after it.
- * A message the provider has not reached yet is only sent.
+ * Whether the Mate has read a message. The one that began a run is read once
+ * the server has begun it: the run is the Mate reading it, however long it
+ * thinks before a word shows. One sent into a running turn is read at the
+ * Mate's next step — once something of its turn came after it. A message the
+ * provider has not reached yet is only sent.
  */
 export function messageReceipt(
   message: ChatMessage,
@@ -1570,6 +1573,7 @@ export function messageReceipt(
 ): "sent" | "seen" {
   const stretch = structure.stretchByIndex.get(index);
   if (stretch === undefined) return "sent";
+  if (!stretch.aside && stretch.turnId !== null) return "seen";
   const turn = structure.turns.find((candidate) => candidate.key === stretch.turnKey);
   if (turn === undefined) return "sent";
   const sentMs = parseMs(message.createdAt) ?? -Infinity;

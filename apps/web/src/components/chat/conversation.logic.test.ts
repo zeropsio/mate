@@ -596,25 +596,63 @@ describe("deriveConversationStructure", () => {
 });
 
 describe("messageReceipt", () => {
-  it("reads seen once the turn produced anything after the message, sent before", () => {
-    const entries = [user("m0", 0), tool("w1", "t1", 1), user("m1", 2)];
-    const result = structure(entries, { live: "t1" });
-    const message = (index: number) =>
-      (entries[index] as Extract<TimelineEntry, { kind: "message" }>).message;
-    expect(messageReceipt(message(0), result, 0)).toBe("seen");
-    expect(messageReceipt(message(2), result, 2)).toBe("sent");
-  });
-
-  it("reads a loose message as sent", () => {
-    const entries = [user("m0", 0)];
-    const result = structure(entries, {});
+  it.each([
+    {
+      // Juno, 2026-09-27: minutes of thinking under the message that began
+      // the run, and the message said "Not read yet".
+      name: "the message that began a run the Mate is still thinking over",
+      entries: [user("m0", 0)],
+      options: { live: "t1" },
+      expected: [["m0", "seen"]],
+    },
+    {
+      name: "a message the server has not begun a run for",
+      entries: [user("m0", 0)],
+      options: { working: true },
+      expected: [["m0", "sent"]],
+    },
+    {
+      name: "a message sent into a run before its first step",
+      entries: [user("m0", 0), user("m1", 1)],
+      options: { live: "t1" },
+      expected: [
+        ["m0", "seen"],
+        ["m1", "sent"],
+      ],
+    },
+    {
+      name: "a message sent into a run before its next step",
+      entries: [user("m0", 0), tool("w1", "t1", 1), user("m1", 2)],
+      options: { live: "t1" },
+      expected: [
+        ["m0", "seen"],
+        ["m1", "sent"],
+      ],
+    },
+    {
+      name: "a message sent into a run after its next step",
+      entries: [user("m0", 0), tool("w1", "t1", 1), user("m1", 2), tool("w2", "t1", 3)],
+      options: { live: "t1" },
+      expected: [
+        ["m0", "seen"],
+        ["m1", "seen"],
+      ],
+    },
+    {
+      name: "a message no run claimed",
+      entries: [user("m0", 0)],
+      options: {},
+      expected: [["m0", "sent"]],
+    },
+  ])("$name", ({ entries, options, expected }) => {
+    const result = structure(entries, options);
     expect(
-      messageReceipt(
-        (entries[0] as Extract<TimelineEntry, { kind: "message" }>).message,
-        result,
-        0,
+      entries.flatMap((entry, index) =>
+        entry.kind === "message" && entry.message.role === "user"
+          ? [[entry.message.id, messageReceipt(entry.message, result, index)]]
+          : [],
       ),
-    ).toBe("sent");
+    ).toEqual(expected);
   });
 });
 
