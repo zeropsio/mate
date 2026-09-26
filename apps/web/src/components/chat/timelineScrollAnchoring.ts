@@ -37,6 +37,30 @@ export function keepTimelineEndVisibleAfterOverlayGrowth({
   }
 }
 
+/**
+ * Whether a row's new height pulls the followed timeline back to its end:
+ * LegendList's `maintainScrollAtEnd` on item layout, without its gate of more
+ * than 5 px in one measurement. A row easing to a new height — the Mate's
+ * stream opening for its question — grows by less than that in each late
+ * frame; the list followed the early frames, then stopped 40 px short, the
+ * bottom of the Mate's card under the question panel. A row settling shorter
+ * needs nothing: the browser clamps the scroll to the new end.
+ */
+export function shouldRepinTimelineEndAfterRowResize({
+  followingEnd,
+  withinFollowThreshold,
+  previousSize,
+  size,
+}: {
+  readonly followingEnd: boolean;
+  /** LegendList's own reading: the end within `maintainScrollAtEndThreshold` of the viewport. */
+  readonly withinFollowThreshold: boolean;
+  readonly previousSize: number;
+  readonly size: number;
+}): boolean {
+  return followingEnd && withinFollowThreshold && size > previousSize;
+}
+
 export function getRowBottom(state: TimelineListMeasurementState, index: number): number | null {
   const top = state.positionAtIndex(index);
   const height = state.sizeAtIndex(index);

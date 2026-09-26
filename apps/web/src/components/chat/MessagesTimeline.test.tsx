@@ -570,6 +570,72 @@ describe("MessagesTimeline", () => {
     ).not.toContain('data-maintain-scroll-at-end="enabled"');
   });
 
+  it("follows a row easing taller on the next frame, and only while following", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const runFrames = () => {
+      for (const frame of frames.splice(0)) frame(0);
+    };
+    const { LegendList } = await import("@legendapp/list/react");
+    const viewport = { scrollTop: 0, scrollHeight: 2000, clientHeight: 800 };
+    const listRef = {
+      current: {
+        getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
+        getScrollableNode: () => viewport,
+      } as unknown as LegendListRef,
+    };
+    const timeline = (liveFollowEnabled: boolean) => (
+      <MessagesTimeline
+        {...buildProps()}
+        listRef={listRef}
+        liveFollowEnabled={liveFollowEnabled}
+        routeThreadKey="environment-local:thread-follow"
+        timelineEntries={[buildUserTimelineEntry("Ask me first.")]}
+      />
+    );
+    let renderer: ReactTestRenderer | undefined;
+    // A late frame of the Mate's stream easing open: 3 px, under the 5 px a
+    // measurement needs before LegendList re-pins the end itself.
+    const easeTaller = () =>
+      renderer!.root.findByType(LegendList).props.onItemSizeChanged({
+        index: 0,
+        itemKey: "message-1",
+        itemData: undefined,
+        previous: 412,
+        size: 415,
+      });
+    try {
+      await act(() => {
+        renderer = create(timeline(true));
+      });
+      runFrames();
+
+      viewport.scrollTop = 1180;
+      easeTaller();
+      expect(viewport.scrollTop).toBe(1180);
+      runFrames();
+      expect(viewport.scrollTop).toBe(1200);
+
+      // A gesture between the growth and its frame hands the viewport over.
+      viewport.scrollTop = 1180;
+      easeTaller();
+      await act(() => renderer!.update(timeline(false)));
+      runFrames();
+      expect(viewport.scrollTop).toBe(1180);
+
+      // Reading history, growth never pulls the viewport down.
+      easeTaller();
+      runFrames();
+      expect(viewport.scrollTop).toBe(1180);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
   it("sets a user message's time and actions beside its bubble, not under it", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline {...buildProps()} timelineEntries={[buildUserTimelineEntry("Ship it.")]} />,
