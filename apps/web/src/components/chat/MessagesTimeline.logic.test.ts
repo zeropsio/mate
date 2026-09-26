@@ -315,6 +315,33 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list.at(-1)).toMatchObject({ activity: { kind: "thinking" }, stream: [] });
   });
 
+  // The question and the person's answer stand in the run as bubbles; its
+  // tool call said again as "Used AskUserQuestion" put an internal name over
+  // its own question (Nova, 2026-09-26).
+  it("says the Mate's question as the question alone, never as its tool", () => {
+    const ask = tool("c1", "t1", 2, {
+      itemType: "dynamic_tool_call",
+      label: "Tool call",
+      command: undefined as never,
+      detail: 'AskUserQuestion: {"questions":[{"question":"Teal or amber?"}]}',
+    });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "One thing first."),
+      ask,
+      tool("w1", "t1", 3),
+      assistant("a2", "t1", 4, "Done."),
+    ];
+    const list = rows({ entries, settled: "t1", open: ["msg:m0"] });
+    const line = list.find((row) => row.kind === "work-line");
+    expect(line?.kind === "work-line" ? line.summary : null).not.toMatch(/AskUserQuestion|tool/);
+    const logged = list.flatMap((row) =>
+      row.kind === "log-activity" ? row.entries.map((entry) => entry.id) : [],
+    );
+    expect(logged).toContain("w1");
+    expect(logged).not.toContain("c1");
+  });
+
   // A result that woke the Mate and was answered in one breath flashed a
   // card for a frame: drawn live with the whole answer under it, gone as the
   // run settled 43 ms later, and the answer jumped up (Nova, 2026-09-26).

@@ -1091,6 +1091,10 @@ function stretchContentRows(input: {
 
   for (const entry of stretch.entries) {
     if (entry === input.answer) continue;
+    // The Mate's question tool: its question and the person's answer stand
+    // in the run as bubbles, so the call itself is never a line of its own.
+    if ((entry.kind === "work" || entry.kind === "generic-call") && isQuestionToolCall(entry.entry))
+      continue;
     if (entry.kind === "message") {
       if (entry.message.role === "reasoning") {
         flushActivity();
@@ -1628,7 +1632,8 @@ export function deriveMessagesTimelineRows(
     const activityEntries = turn.stretches.flatMap((stretch) =>
       stretch.entries.flatMap((candidate) =>
         (candidate.kind === "work" || candidate.kind === "generic-call") &&
-        isActivityWork(candidate.entry)
+        isActivityWork(candidate.entry) &&
+        !isQuestionToolCall(candidate.entry)
           ? [candidate.entry]
           : [],
       ),
