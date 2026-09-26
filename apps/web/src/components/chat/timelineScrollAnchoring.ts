@@ -106,7 +106,6 @@ export interface RememberedTimelinePosition {
     /** Log lines opened in place: activity runs and operations. */
     readonly logItems: ReadonlySet<string>;
     readonly spawnEntries: ReadonlySet<string>;
-    readonly showReasoning: boolean;
   };
 }
 

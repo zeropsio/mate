@@ -1,25 +1,25 @@
 /**
- * The conversation's own rows — the work line after each of the person's
- * messages, the receipts on those messages, the quiet seams between days,
- * events, errors, a usage-limit pause and an incident — in the one status
- * grammar: routine is quiet, a result is marked, a pause is amber, a failure
- * is red, and the Mate's face carries the state.
+ * The conversation's own rows — the line for each stretch of the Mate's work,
+ * the receipt on a message it has not read yet, the quiet seams between days,
+ * events, errors, a usage-limit pause and an incident.
+ *
+ * One grammar: the Mate's side of the column has a gutter, and a row's mark
+ * (a live dot, an event's icon, a failure) hangs in it, so every row's words
+ * start on the same edge as the answer's. Routine is grey and small; only a
+ * pause is amber and only a failure is red.
  *
  * Presentational: every word comes from the row. Every row here has its final
  * height from its first frame; only words and fixed-size marks change in place.
  */
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateTintId } from "@t3tools/shared/brand";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
-  BrainIcon,
-  CheckIcon,
   ChevronRightIcon,
   CircleAlertIcon,
   ClockIcon,
   GitMergeIcon,
   Minimize2Icon,
   PauseIcon,
-  SquareIcon,
   TerminalIcon,
 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
@@ -29,7 +29,7 @@ import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../times
 import { MateFace } from "../zerops/primitives";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { formatWorkDuration, type IncidentModel, type WorkLineFace } from "./conversation.logic";
+import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
 
 type WorkLineRow = Extract<MessagesTimelineRow, { kind: "work-line" }>;
@@ -40,58 +40,21 @@ export interface ConversationSpeaker {
   readonly tint: MateTintId;
 }
 
-const FACE_STATE: Record<WorkLineFace, MateMarkState> = {
-  working: "working",
-  idle: "idle",
-  produced: "done",
-  failed: "surprise",
-  paused: "sleep",
-  stopped: "closed",
-};
-
-const BADGE: Partial<
-  Record<
-    WorkLineFace,
-    { readonly icon: typeof CheckIcon; readonly className: string; readonly label: string }
-  >
-> = {
-  produced: { icon: CheckIcon, className: "bg-status-ok", label: "Produced something" },
-  failed: { icon: CircleAlertIcon, className: "bg-status-failed", label: "Something failed" },
-  paused: { icon: PauseIcon, className: "bg-status-attention", label: "Paused" },
-  stopped: { icon: SquareIcon, className: "bg-status-off", label: "Stopped" },
-};
-
-/** The Mate's face wearing a stretch's state, with a small badge for what it came to. */
-export function ConversationFace({
-  face,
-  speaker,
-  size = "dot",
+/** A row's mark, hung in the gutter left of the column's text edge. */
+export function GutterMark({
+  children,
+  className,
 }: {
-  readonly face: WorkLineFace;
-  readonly speaker: ConversationSpeaker;
-  readonly size?: "dot" | "sm";
+  readonly children: ReactNode;
+  readonly className?: string;
 }) {
-  const badge = BADGE[face];
   return (
     <span
-      className={cn(
-        "relative inline-flex shrink-0",
-        face === "working" && "animate-status-pulse motion-reduce:animate-none",
-      )}
-      data-conversation-face={face}
+      aria-hidden="true"
+      className={cn("absolute -start-5 flex w-5 justify-center", className)}
+      data-gutter-mark
     >
-      <MateFace size={size} state={FACE_STATE[face]} tint={speaker.tint} />
-      {badge ? (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "absolute -right-1 -bottom-0.5 flex size-2.5 items-center justify-center rounded-full ring-2 ring-background",
-            badge.className,
-          )}
-        >
-          <badge.icon className="size-2 stroke-3 text-background" />
-        </span>
-      ) : null}
+      {children}
     </span>
   );
 }
@@ -128,90 +91,69 @@ function spanText(startedAt: string, endedAt: string | null): string {
 }
 
 /**
- * The line after one of the person's messages: the face in the stretch's
- * state, how long the Mate has worked, and the latest note (live) or the last
- * one the person saw (frozen), with the count of notes behind it. One click
- * opens the log under it; the line itself never changes height.
+ * The line for one stretch of the Mate's work. Settled, it is one quiet
+ * phrase — "Worked for 2m 57s", "Thought for 16s" — and a chevron; one click
+ * opens everything the stretch did under it, thinking included. Live, a dot
+ * in the gutter and what the Mate is on right now; its words are the speech
+ * at the stretch's end. The line never changes height.
  */
 export function WorkLine({
   row,
-  speaker,
   activityLabel,
   compacting,
   timestampFormat,
   onToggle,
-  showReasoning,
-  onToggleReasoning,
 }: {
   readonly row: WorkLineRow;
-  readonly speaker: ConversationSpeaker;
   /** Live: what runs right now, in words. */
   readonly activityLabel: string | null;
   readonly compacting: boolean;
   readonly timestampFormat: TimestampFormat;
   readonly onToggle: () => void;
-  /** Opened logs show the Mate's thinking between its notes. */
-  readonly showReasoning: boolean;
-  readonly onToggleReasoning: () => void;
 }) {
   const live = row.live;
-  const liveWords = compacting ? "Condensing the context" : activityLabel;
-  const text = row.note ?? row.fallback ?? liveWords ?? (live ? "Reading your message" : "");
-  const side = live ? (row.note !== null ? liveWords : null) : null;
-  // A stretch that only thought before its answer says so, and nothing more.
+  // A stretch that did nothing but think says so, and nothing more.
   const thoughtOnly = !live && row.note === null && row.fallback === null;
-  const verb = live ? "Working" : thoughtOnly ? "Thought for" : "Worked";
-  const span = (
-    <Tooltip>
-      <TooltipTrigger
-        render={<span className="shrink-0 font-medium text-foreground" data-work-line-clock />}
-      >
-        {verb}{" "}
-        {live ? <ElapsedSince since={row.startedAt} /> : spanText(row.startedAt, row.endedAt)}
-      </TooltipTrigger>
-      <TooltipPopup>
-        {formatChatTimestampTooltip(row.startedAt, timestampFormat)}
-        {row.endedAt ? ` – ${formatDayAwareTimestamp(row.endedAt, timestampFormat)}` : ""}
-      </TooltipPopup>
-    </Tooltip>
-  );
-  const body = (
+  const verb = live
+    ? "Working for"
+    : row.face === "stopped"
+      ? "Stopped after"
+      : thoughtOnly
+        ? "Thought for"
+        : "Worked for";
+  // Live, the line names what runs; the Mate's words are its speech's.
+  const now = live
+    ? compacting
+      ? "Condensing the context"
+      : (activityLabel ?? (row.note === null ? "Reading your message" : null))
+    : null;
+  const words = (
     <>
-      <ConversationFace face={row.face} speaker={speaker} />
-      {span}
-      {text.length > 0 ? (
+      <Tooltip>
+        <TooltipTrigger render={<span className="shrink-0 tabular-nums" data-work-line-clock />}>
+          {verb}{" "}
+          {live ? <ElapsedSince since={row.startedAt} /> : spanText(row.startedAt, row.endedAt)}
+        </TooltipTrigger>
+        <TooltipPopup>
+          {formatChatTimestampTooltip(row.startedAt, timestampFormat)}
+          {row.endedAt ? ` – ${formatDayAwareTimestamp(row.endedAt, timestampFormat)}` : ""}
+        </TooltipPopup>
+      </Tooltip>
+      {now !== null ? (
         <>
-          <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">
+          <span aria-hidden="true" className="shrink-0 opacity-60">
             ·
           </span>
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate",
-              live ? "text-foreground/85" : "text-muted-foreground",
-            )}
-            data-work-line-note
-          >
-            {text}
+          <span className="min-w-0 truncate" data-work-line-note>
+            {now}
           </span>
         </>
-      ) : (
-        <span className="flex-1" />
-      )}
-      {side ? (
-        <span className="max-w-2/5 min-w-0 shrink truncate text-muted-foreground text-xs">
-          {side}
-        </span>
-      ) : null}
-      {!live && row.noteCount > 0 ? (
-        <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
-          {row.noteCount === 1 ? "1 note" : `${row.noteCount} notes`}
-        </span>
       ) : null}
       {row.hasLog ? (
         <ChevronRightIcon
           aria-hidden="true"
           className={cn(
-            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
+            "size-3.5 shrink-0 opacity-70 transition-transform duration-150",
             row.open && "rotate-90",
           )}
         />
@@ -219,52 +161,65 @@ export function WorkLine({
     </>
   );
   const className =
-    "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground";
-  // The thinking switch lives on the opened line itself, so it appearing
-  // when the Mate first thinks never pushes the log under it.
-  const reasoningSwitch =
-    row.open && row.hasReasoning ? (
-      <button
-        type="button"
-        aria-pressed={showReasoning}
-        className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-muted-foreground text-xs transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-        data-scroll-anchor-ignore
-        onClick={onToggleReasoning}
-      >
-        <BrainIcon aria-hidden="true" className="size-3.5" />
-        {showReasoning ? "Hide thinking" : "Show thinking"}
-      </button>
-    ) : null;
-  const line = row.hasLog ? (
-    <button
-      type="button"
-      aria-expanded={row.open}
-      aria-label={`${verb} ${spanText(row.startedAt, row.endedAt)}${text ? `: ${text}` : ""}. ${row.open ? "Hide" : "Show"} the log`}
-      className={cn(
-        className,
-        "cursor-pointer transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+    "inline-flex min-h-7 max-w-full min-w-0 items-center gap-1.5 text-left text-line text-muted-foreground";
+  return (
+    <div className="relative flex min-h-7 min-w-0 items-center" data-work-line={row.face}>
+      {live ? (
+        <GutterMark>
+          <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
+        </GutterMark>
+      ) : null}
+      {row.hasLog ? (
+        <button
+          type="button"
+          aria-expanded={row.open}
+          aria-label={`${verb} ${spanText(row.startedAt, row.endedAt)}${now ? `: ${now}` : ""}. ${row.open ? "Hide" : "Show"} what it did`}
+          className={cn(
+            className,
+            "cursor-pointer rounded-sm transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+          )}
+          data-scroll-anchor-ignore
+          onClick={onToggle}
+        >
+          {words}
+        </button>
+      ) : (
+        <div className={className} role={live ? "status" : undefined}>
+          {words}
+        </div>
       )}
-      data-scroll-anchor-ignore
-      onClick={onToggle}
-    >
-      {body}
-    </button>
-  ) : (
-    <div className={className} role={live ? "status" : undefined}>
-      {body}
     </div>
-  );
-  return reasoningSwitch ? (
-    <div className="flex min-w-0 items-center gap-1">
-      {line}
-      {reasoningSwitch}
-    </div>
-  ) : (
-    line
   );
 }
 
-/** Whether the Mate has read a message: a clock while it waits, the Mate's face once read. */
+/**
+ * The Mate's words the person answered: its face in the gutter and the words
+ * in full in a bubble beside it — the mirror of the person's bubbles on the
+ * right — left where they were said.
+ */
+export function MateSpeech({
+  speaker,
+  children,
+}: {
+  readonly speaker: ConversationSpeaker;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="relative flex min-w-0" data-mate-speech="said">
+      <GutterMark className="top-1">
+        <MateFace size="sm" state="idle" tint={speaker.tint} />
+      </GutterMark>
+      <div className="min-w-0 max-w-full rounded-2xl rounded-ss-sm bg-muted px-3.5 py-2 text-foreground">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A message the Mate has not read yet: a small clock beside it, gone once the
+ * Mate reads it. A read message carries nothing — reading is the normal case.
+ */
 export function MessageReceipt({
   receipt,
   speaker,
@@ -272,7 +227,8 @@ export function MessageReceipt({
   readonly receipt: "sent" | "seen";
   readonly speaker: ConversationSpeaker;
 }) {
-  const label = receipt === "seen" ? `Seen by ${speaker.name}` : "Sent";
+  if (receipt === "seen") return null;
+  const label = `Not read yet — ${speaker.name} reads it at its next step`;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -285,11 +241,7 @@ export function MessageReceipt({
           />
         }
       >
-        {receipt === "seen" ? (
-          <MateFace size="dot" state="idle" tint={speaker.tint} />
-        ) : (
-          <ClockIcon aria-hidden="true" className="size-3 text-muted-foreground" />
-        )}
+        <ClockIcon aria-hidden="true" className="size-3 text-muted-foreground" />
       </TooltipTrigger>
       <TooltipPopup side="left">{label}</TooltipPopup>
     </Tooltip>
@@ -355,6 +307,7 @@ export function Seam({
   );
 }
 
+/** An event's line: its icon in the gutter, its words on the text edge, its time on hover. */
 function EventShell({
   icon,
   children,
@@ -368,16 +321,14 @@ function EventShell({
 }) {
   return (
     <div
-      className="flex min-h-7 min-w-0 items-center gap-2 px-1 text-line text-muted-foreground"
+      className="relative flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
       data-conversation-event
     >
-      <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      <span className="shrink-0 text-xs tabular-nums">
-        {formatDayAwareTimestamp(at, timestampFormat)}
-      </span>
+      <GutterMark>{icon}</GutterMark>
+      <Tooltip>
+        <TooltipTrigger render={<span className="min-w-0 truncate" />}>{children}</TooltipTrigger>
+        <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
+      </Tooltip>
     </div>
   );
 }
@@ -455,7 +406,11 @@ export function EventLine({
   }
 }
 
-/** An error the Mate could not work past, in the failure tone. */
+/**
+ * What stopped the turn, in the failure tone: the icon in the gutter, the
+ * words on the text edge. Only a turn-ending error reaches here — a step that
+ * failed on the way stays in the log it belongs to.
+ */
 export function ErrorLine({
   label,
   detail,
@@ -463,19 +418,28 @@ export function ErrorLine({
   readonly label: string;
   readonly detail?: string | undefined;
 }) {
+  const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
   return (
     <div
-      className="flex min-h-7 min-w-0 items-start gap-2 rounded-md bg-status-failed-surface px-2 py-1 text-line text-status-failed-text"
+      className="relative min-h-7 min-w-0 py-1 text-line text-status-failed-text"
       data-conversation-error
       role="alert"
     >
-      <CircleAlertIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-      <span className="min-w-0 flex-1">
-        {label}
-        {detail ? <span className="block text-muted-foreground text-xs">{detail}</span> : null}
-      </span>
+      <GutterMark className="top-1.5">
+        <CircleAlertIcon className="size-3.5" />
+      </GutterMark>
+      <p className="min-w-0">{label}</p>
+      {extra ? <p className="min-w-0 text-muted-foreground">{extra}</p> : null}
     </div>
   );
+}
+
+/** A moment as a sentence says it: "at 10:25 PM", "yesterday at 10:25 PM", "on Sep 24 at 9:14 PM". */
+function spokenMoment(iso: string, timestampFormat: TimestampFormat): string {
+  const stamp = formatDayAwareTimestamp(iso, timestampFormat);
+  if (stamp.startsWith("Yesterday ")) return `yesterday at ${stamp.slice("Yesterday ".length)}`;
+  const dated = stamp.match(/^([A-Z][a-z]{2} \d{1,2}(?:, \d{4})?) (.+)$/);
+  return dated ? `on ${dated[1]} at ${dated[2]}` : `at ${stamp}`;
 }
 
 function untilText(resetsAt: string, nowMs: number): string {
@@ -518,7 +482,7 @@ export function PauseBlock({
   const passed = reset !== null && reset <= nowMs;
   const autoResume = serverPause?.autoResume ?? false;
   const detail = resumed
-    ? `${speaker.name} picked up again at ${formatDayAwareTimestamp(row.resumedAt!, timestampFormat)}.`
+    ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
     : resetsAt === null
       ? "The limit resets later; the work continues from where it stopped."
       : passed
@@ -531,18 +495,30 @@ export function PauseBlock({
   return (
     <div
       className={cn(
-        "grid gap-1 rounded-xl border px-3.5 py-2.5",
+        // Resumed, the same block goes quiet — history, not a state to act
+        // on, its mark in the gutter and its words on the text edge — and
+        // keeps its height: newer rows may already sit under it.
+        "relative grid gap-1 rounded-xl border py-2.5",
         resumed
-          ? "border-border bg-card"
-          : "border-status-attention/40 bg-status-attention-surface",
+          ? "border-transparent text-muted-foreground"
+          : "border-status-attention/40 bg-status-attention-surface px-3.5",
       )}
       data-conversation-pause={resumed ? "resumed" : "paused"}
       role="status"
     >
-      <div className="flex min-w-0 items-center gap-2 text-sm">
-        <ConversationFace face="paused" speaker={speaker} size="sm" />
+      <div className={cn("flex min-w-0 items-center gap-2", resumed ? "text-line" : "text-sm")}>
+        {resumed ? (
+          <GutterMark className="top-3">
+            <PauseIcon className="size-3.5 text-muted-foreground" />
+          </GutterMark>
+        ) : (
+          <PauseIcon aria-hidden="true" className="size-4 shrink-0 text-status-attention" />
+        )}
         <span
-          className={cn("font-medium", resumed ? "text-foreground" : "text-status-attention-text")}
+          className={cn(
+            "font-medium",
+            resumed ? "text-muted-foreground" : "text-status-attention-text",
+          )}
         >
           Paused
         </span>
@@ -563,7 +539,7 @@ export function PauseBlock({
           </Tooltip>
         ) : null}
       </div>
-      <p className="ps-7 text-line text-muted-foreground">{detail}</p>
+      <p className={cn("text-line text-muted-foreground", resumed ? null : "ps-6")}>{detail}</p>
       {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
         <label className="flex w-fit cursor-pointer items-center gap-2 ps-7 text-line text-foreground">
           <Switch
@@ -588,19 +564,15 @@ export function IncidentLine({ incident }: { readonly incident: IncidentModel })
   const tone = INCIDENT_TONE[incident.tone];
   return (
     <div
-      className="flex min-h-7 min-w-0 items-center gap-2 px-1 text-line"
+      className="relative flex min-h-7 min-w-0 items-center gap-1.5 text-line"
       data-conversation-incident={incident.tone}
       role={incident.tone === "ok" ? undefined : "status"}
     >
-      <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">
-        <span className={cn("size-2 rounded-full", tone.dot)} />
-      </span>
-      <span className="shrink-0 rounded-md bg-accent px-1.5 text-foreground text-xs leading-5">
-        {incident.hostname}
-      </span>
-      <span className={cn("min-w-0 flex-1 truncate", tone.text)}>
-        {incident.phases.join(" · ")}
-      </span>
+      <GutterMark>
+        <span className={cn("size-1.5 rounded-full", tone.dot)} />
+      </GutterMark>
+      <span className="shrink-0 font-medium text-foreground">{incident.hostname}</span>
+      <span className={cn("min-w-0 truncate", tone.text)}>{incident.phases.join(" · ")}</span>
     </div>
   );
 }

@@ -527,6 +527,7 @@ describe("deriveOutcome", () => {
     });
     expect(outcome).toEqual({
       key: "outcome:msg:m0",
+      turnKey: "msg:m0",
       live: [
         {
           hostname: "medusastage",
@@ -539,7 +540,12 @@ describe("deriveOutcome", () => {
       ],
       landed: [{ key: "landed:l1", line: "titandev #17", title: "Draw distance" }],
       files: { count: 3, additions: 30, deletions: 6, turnId: turn("t1") },
-      checks: { count: 1, views: 1, failures: 0 },
+      checks: {
+        count: 1,
+        views: 1,
+        failures: 0,
+        takes: [expect.objectContaining({ kind: "browser" })],
+      },
       created: [],
       removed: ["oldtier"],
       notDone: [],
@@ -562,7 +568,7 @@ describe("deriveOutcome", () => {
     expect(deriveOutcome({ turn: refused.turns[0]!, landed: [], diff: diff(2) })).toBeNull();
   });
 
-  it("leaves checks alone to the stretch's strip", () => {
+  it("reports checks alone, with every take: the report is where a settled turn's checks are seen", () => {
     const entries = [
       user("m0", 0),
       operation("b1", "t1", 1, { kind: "browser", subject: "https://shop.dev/" }),
@@ -570,7 +576,14 @@ describe("deriveOutcome", () => {
     ];
     expect(
       deriveOutcome({ turn: structure(entries, settled).turns[0]!, landed: [], diff: null }),
-    ).toBeNull();
+    ).toMatchObject({
+      checks: {
+        count: 1,
+        views: 1,
+        failures: 0,
+        takes: [expect.objectContaining({ kind: "browser" })],
+      },
+    });
   });
 
   it("names what could not be done", () => {

@@ -75,6 +75,8 @@ export interface BuiltCardFields {
   readonly browserSummary?: ZeropsOperationBrowserSummary;
   /** `browser` only. */
   readonly viewport?: ZeropsBrowserViewport;
+  /** `browser` only: the device the agent emulated (`set device <name>`), as agent-browser names it. */
+  readonly deviceName?: string;
   /** `logs` · `events` · `process` · `discover` only. */
   readonly readResult?: ZeropsReadResult;
   /**

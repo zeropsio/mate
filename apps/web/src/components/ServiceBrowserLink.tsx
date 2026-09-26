@@ -23,14 +23,20 @@ export const ServiceBrowserLinkContext = createContext<ServicePreviewResolver | 
 export type AppLinkResolver = (url: string) => (() => void) | null;
 export const AppLinkContext = createContext<AppLinkResolver | null>(null);
 
+/**
+ * Where a link goes, as a small mark after its words. The word joiner ties
+ * the mark to the last word, so a wrapping link never leaves it alone on a
+ * line of its own.
+ */
 function DestinationIndicator({ preview }: { preview: boolean }) {
   const Icon = preview ? PanelRightIcon : ExternalLinkIcon;
   return (
     <span
-      className="ml-0.5 inline-flex shrink-0 align-baseline text-muted-foreground"
+      className="whitespace-nowrap text-muted-foreground"
       data-link-indicator={preview ? "preview" : "external"}
     >
-      <Icon aria-hidden="true" className="size-3" />
+      {"\u2060"}
+      <Icon aria-hidden="true" className="ms-0.5 inline size-3 align-baseline" />
       <span className="sr-only">{preview ? "Open in side panel" : "Open in new tab"}</span>
     </span>
   );

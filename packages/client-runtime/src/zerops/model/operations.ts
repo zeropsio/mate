@@ -183,6 +183,7 @@ function buildStandaloneOperation(
     ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),
     ...(fields.browserSummary !== undefined ? { browserSummary: fields.browserSummary } : {}),
     ...(fields.viewport !== undefined ? { viewport: fields.viewport } : {}),
+    ...(fields.deviceName !== undefined ? { deviceName: fields.deviceName } : {}),
     ...(fields.readResult !== undefined ? { readResult: fields.readResult } : {}),
   };
 }

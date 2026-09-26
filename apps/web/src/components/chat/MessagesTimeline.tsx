@@ -22,6 +22,7 @@ import {
 
 const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
+const NOOP_STOP_BACKGROUND_WORK = () => {};
 const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
@@ -119,6 +120,7 @@ import {
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
+  type RowGap,
   type TurnHeaderActivity,
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
@@ -144,12 +146,16 @@ import {
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
-import { formatWorkDuration } from "./conversation.logic";
-import { OutcomeCard } from "./OutcomeCard";
+import { browserCheckCaption, formatWorkDuration } from "./conversation.logic";
+import { TurnReport } from "./TurnReport";
+import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
+import type { DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
   EventLine,
+  GutterMark,
   IncidentLine,
+  MateSpeech,
   MessageReceipt,
   PauseBlock,
   Seam,
@@ -192,9 +198,6 @@ interface TimelineRowSharedState {
   onToggleStretch: (stretchKey: string, anchorKey: string) => void;
   /** Opens or closes one line of an opened log in place: a run of tool calls, an operation. */
   onToggleLogItem: (id: string, anchorKey: string) => void;
-  onToggleShowReasoning: (anchorKey: string) => void;
-  /** Whether opened logs show the Mate's thinking between its notes. */
-  showReasoning: boolean;
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
   /** The pause row that holds the thread now, and the server's reading of it. */
@@ -208,6 +211,8 @@ interface TimelineRowSharedState {
   agentPanelModel: AgentPanelModel;
   expandedSpawnEntryIds: ReadonlySet<string>;
   onOpenAgents: () => void;
+  /** Stops the work that outlived the turn. */
+  onStopBackgroundWork: () => void;
   onSteerQueuedMessage: (id: string) => void;
   steerQueuedMessageShortcutLabel: string | null;
   onRemoveQueuedMessage: (id: string) => void;
@@ -220,10 +225,14 @@ interface TimelineRowActivityState {
   latestTurnId: TurnId | null;
   /** Current plan step label for the working row, when the turn has a plan. */
   workingStepLabel: string | null;
+  /** A stop of the work that outlived the turn is on its way. */
+  stoppingBackgroundWork: boolean;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
 const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
+/** What runs now, for the Mate at work: its own context, so a pipeline stepping on re-renders that row alone. */
+const TimelineWorkingCtx = createContext<DockModel | null>(null);
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 
@@ -263,6 +272,14 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
     layout: true,
   },
 } as const;
+/**
+ * How far from the end growth at the end is still followed, in viewports.
+ * Following is ours to switch off — every gesture that moves the viewport
+ * away turns it off — so while it is on, the end is followed however fast it
+ * grows: the browser sliding out of the Mate at work opens a few hundred
+ * pixels in a few frames, and LegendList's own tenth of a viewport lost it.
+ */
+const TIMELINE_FOLLOW_THRESHOLD = 1;
 
 // ---------------------------------------------------------------------------
 // Props (public API)
@@ -271,6 +288,12 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
 interface MessagesTimelineProps {
   agentPanelModel?: AgentPanelModel;
   onOpenAgents?: () => void;
+  /** What runs now in the live turn: deploys, helpers, the task list, background tasks. */
+  working?: DockModel | null;
+  /** The server's word on work that outlived the turn, while it runs on. */
+  afterTurnWork?: "working" | "monitoring" | null;
+  onStopBackgroundWork?: () => void;
+  stoppingBackgroundWork?: boolean;
   isWorking: boolean;
   workingStepLabel?: string | null;
   isCompacting?: boolean;
@@ -332,6 +355,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   activeTurnStartedAt,
   agentPanelModel,
   onOpenAgents = NOOP_OPEN_AGENTS,
+  working = null,
+  afterTurnWork = null,
+  onStopBackgroundWork = NOOP_STOP_BACKGROUND_WORK,
+  stoppingBackgroundWork = false,
   listRef,
   timelineEntries,
   latestTurn,
@@ -375,9 +402,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const [expandedLogItemIds, setExpandedLogItemIds] = useState<ReadonlySet<string>>(
     () => rememberedPosition?.disclosures?.logItems ?? new Set(),
-  );
-  const [showReasoning, setShowReasoning] = useState(
-    () => rememberedPosition?.disclosures?.showReasoning ?? false,
   );
   // Preserve member disclosure state across virtualization.
   const [expandedSpawnEntryIds, setExpandedSpawnEntryIds] = useState<ReadonlySet<string>>(
@@ -455,13 +479,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [suspendEndScrollMaintenanceForDisclosure],
   );
-  const onToggleShowReasoning = useCallback(
-    (anchorKey: string) => {
-      suspendEndScrollMaintenanceForDisclosure(anchorKey);
-      setShowReasoning((current) => !current);
-    },
-    [suspendEndScrollMaintenanceForDisclosure],
-  );
   const [expandedReasoningMessageIds, setExpandedReasoningMessageIds] = useState<
     ReadonlySet<string>
   >(new Set());
@@ -521,12 +538,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         runningTurnId,
         openStretchKeys,
         expandedIds: expandedLogItemIds,
-        showReasoning,
         isWorking,
         activeTurnStartedAt,
         turnDiffSummaries,
         supportsConversationRollback,
         queuedMessages,
+        afterTurnWork,
       }),
     [
       newSince,
@@ -535,12 +552,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       runningTurnId,
       openStretchKeys,
       expandedLogItemIds,
-      showReasoning,
       isWorking,
       activeTurnStartedAt,
       turnDiffSummaries,
       supportsConversationRollback,
       queuedMessages,
+      afterTurnWork,
     ],
   );
   const rows = useStableRows(rawRows);
@@ -704,7 +721,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             stretches: openStretchKeys,
             logItems: expandedLogItemIds,
             spawnEntries: expandedSpawnEntryIds,
-            showReasoning,
           },
         });
       }
@@ -751,7 +767,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     expandedSpawnEntryIds,
     openStretchKeys,
     expandedLogItemIds,
-    showReasoning,
     listRef,
     minimapItems,
     minimapStripMap,
@@ -815,8 +830,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenTurnDiff,
       onToggleStretch,
       onToggleLogItem,
-      onToggleShowReasoning,
-      showReasoning,
       speaker,
       livePauseId,
       usagePause,
@@ -827,6 +840,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       expandedSpawnEntryIds,
       onOpenAgents,
+      onStopBackgroundWork,
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
@@ -845,8 +859,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenTurnDiff,
       onToggleStretch,
       onToggleLogItem,
-      onToggleShowReasoning,
-      showReasoning,
       speaker,
       livePauseId,
       usagePause,
@@ -857,6 +869,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       agentPanelModel,
       expandedSpawnEntryIds,
       onOpenAgents,
+      onStopBackgroundWork,
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
@@ -869,8 +882,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
       workingStepLabel,
+      stoppingBackgroundWork,
     }),
-    [isCompacting, isRevertingCheckpoint, isWorking, latestTurn?.turnId, workingStepLabel],
+    [
+      isCompacting,
+      isRevertingCheckpoint,
+      isWorking,
+      latestTurn?.turnId,
+      workingStepLabel,
+      stoppingBackgroundWork,
+    ],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -898,65 +919,68 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
-        <div ref={setTimelineViewportElement} className="relative h-full min-h-0">
-          <LegendList<MessagesTimelineRow>
-            ref={listRef}
-            data={rows}
-            keyExtractor={keyExtractor}
-            getItemType={getItemType}
-            renderItem={renderItem}
-            estimatedItemSize={90}
-            initialScrollAtEnd={rememberedPosition?.atEnd !== false}
-            {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
-            {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
-            contentInsetEndAdjustment={contentInsetEndAdjustment}
-            maintainScrollAtEnd={
-              restoringReadingPosition ||
-              anchoredEndSpace ||
-              !liveFollowEnabled ||
-              disclosureToggleSettling
-                ? false
-                : TIMELINE_MAINTAIN_SCROLL_AT_END
-            }
-            maintainVisibleContentPosition={
-              restoringReadingPosition ? false : maintainVisibleContentPosition
-            }
-            onScroll={handleScroll}
-            className={cn(
-              "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
-              topFadeEnabled && "topbar-scroll-fade",
-            )}
-            ListHeaderComponent={
-              loadEarlier !== null ? (
-                <TimelineLoadEarlierHeader
-                  loading={loadEarlier.loading}
-                  onLoadEarlier={loadEarlier.onLoadEarlier}
-                  fade={topFadeEnabled}
-                />
-              ) : topFadeEnabled ? (
-                TIMELINE_LIST_FADE_HEADER
-              ) : (
-                TIMELINE_LIST_HEADER
-              )
-            }
-            ListFooterComponent={TIMELINE_LIST_FOOTER}
-          />
-          <TimelineMinimap
-            items={minimapItems}
-            hasPersistentGutter={minimapHasPersistentGutter}
-            hitStripWidth={minimapHitStripWidth}
-            currentIndex={minimapCurrentIndex}
-            stripMap={minimapStripMap}
-            onSelect={(item) => {
-              onManualNavigation();
-              void listRef.current?.scrollToIndex({
-                index: item.rowIndex,
-                animated: true,
-                viewOffset: 24,
-              });
-            }}
-          />
-        </div>
+        <TimelineWorkingCtx value={working}>
+          <div ref={setTimelineViewportElement} className="relative h-full min-h-0">
+            <LegendList<MessagesTimelineRow>
+              ref={listRef}
+              data={rows}
+              keyExtractor={keyExtractor}
+              getItemType={getItemType}
+              renderItem={renderItem}
+              estimatedItemSize={90}
+              initialScrollAtEnd={rememberedPosition?.atEnd !== false}
+              {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
+              {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
+              contentInsetEndAdjustment={contentInsetEndAdjustment}
+              maintainScrollAtEndThreshold={TIMELINE_FOLLOW_THRESHOLD}
+              maintainScrollAtEnd={
+                restoringReadingPosition ||
+                anchoredEndSpace ||
+                !liveFollowEnabled ||
+                disclosureToggleSettling
+                  ? false
+                  : TIMELINE_MAINTAIN_SCROLL_AT_END
+              }
+              maintainVisibleContentPosition={
+                restoringReadingPosition ? false : maintainVisibleContentPosition
+              }
+              onScroll={handleScroll}
+              className={cn(
+                "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
+                topFadeEnabled && "topbar-scroll-fade",
+              )}
+              ListHeaderComponent={
+                loadEarlier !== null ? (
+                  <TimelineLoadEarlierHeader
+                    loading={loadEarlier.loading}
+                    onLoadEarlier={loadEarlier.onLoadEarlier}
+                    fade={topFadeEnabled}
+                  />
+                ) : topFadeEnabled ? (
+                  TIMELINE_LIST_FADE_HEADER
+                ) : (
+                  TIMELINE_LIST_HEADER
+                )
+              }
+              ListFooterComponent={TIMELINE_LIST_FOOTER}
+            />
+            <TimelineMinimap
+              items={minimapItems}
+              hasPersistentGutter={minimapHasPersistentGutter}
+              hitStripWidth={minimapHitStripWidth}
+              currentIndex={minimapCurrentIndex}
+              stripMap={minimapStripMap}
+              onSelect={(item) => {
+                onManualNavigation();
+                void listRef.current?.scrollToIndex({
+                  index: item.rowIndex,
+                  animated: true,
+                  viewOffset: 24,
+                });
+              }}
+            />
+          </div>
+        </TimelineWorkingCtx>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
   );
@@ -1291,7 +1315,7 @@ function TimelineMinimapNavigationButton({
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-/** Rows that belong to an opened log: they sit on its rail, under the line's words. */
+/** Rows that belong to an opened log: they hang on its rail, under the line's words. */
 function isLogRow(row: TimelineRow): boolean {
   switch (row.kind) {
     case "log-note":
@@ -1306,36 +1330,34 @@ function isLogRow(row: TimelineRow): boolean {
   }
 }
 
-/** The vertical rhythm: a message opens a stretch, its line hugs it, what it produced follows. */
-function rowSpacing(row: TimelineRow): string {
-  switch (row.kind) {
-    case "message":
-      return row.message.role === "user" ? "pt-4 pb-1" : "pt-2 pb-2";
-    case "work-line":
-      return "pb-0.5";
-    case "seam":
-      return "pt-5 pb-1";
-    case "outcome":
-      return "pt-1 pb-3";
-    case "strip":
-    case "operation":
-    case "pause":
-    case "proposed-plan":
-      return "py-1";
-    case "queued-message":
-      return "pt-3 pb-1";
-    default:
-      return isLogRow(row) ? "py-0.5" : "py-0.5";
-  }
+/** The room a row keeps above itself (see `rowGap`). */
+const GAP_CLASS: Record<RowGap, string> = {
+  none: "",
+  tight: "pt-1",
+  line: "pt-3",
+  block: "pt-5",
+  turn: "pt-10",
+};
+
+/**
+ * Where a row sits across the column. The person's messages hug the right
+ * edge and a seam spans it; everything the Mate says or does starts on one
+ * text edge with a gutter left of it for its marks, and an opened log hangs
+ * on a hairline just inside that edge.
+ */
+function rowInset(row: TimelineRow): string {
+  if (isLogRow(row)) return "ms-5.5 border-s border-border/70 ps-4";
+  if (row.kind === "message" && row.message.role === "user") return "";
+  if (row.kind === "queued-message" || row.kind === "seam" || row.kind === "answer") return "";
+  return "ps-5";
 }
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
-  const log = isLogRow(row);
   return (
     <div
       className={cn(
-        rowSpacing(row),
-        log && "ms-3 border-s border-border ps-4",
+        GAP_CLASS[row.gap ?? "none"],
+        rowInset(row),
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
       )}
       data-timeline-row-id={row.id}
@@ -1348,6 +1370,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         <AssistantTimelineRow row={row} />
       ) : null}
       {row.kind === "work-line" ? <WorkLineTimelineRow row={row} /> : null}
+      {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
+      {row.kind === "after-work" ? <AfterWorkTimelineRow row={row} /> : null}
+      {row.kind === "speech" ? <SpeechTimelineRow row={row} /> : null}
       {row.kind === "log-note" ? <LogNoteTimelineRow row={row} /> : null}
       {row.kind === "log-activity" ? <LogActivityTimelineRow row={row} /> : null}
       {row.kind === "log-reasoning" ? (
@@ -1379,6 +1404,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
+      {row.kind === "answer" ? <AnswerTimelineRow row={row} /> : null}
     </div>
   );
 });
@@ -1391,31 +1417,105 @@ function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-
       activityLabel={row.live ? turnHeaderActivityLabel(row.activity, ctx.workspaceRoot) : null}
       compacting={row.live && isCompacting}
       onToggle={() => ctx.onToggleStretch(row.stretchKey, row.id)}
-      onToggleReasoning={() => ctx.onToggleShowReasoning(row.id)}
       row={row}
-      showReasoning={ctx.showReasoning}
-      speaker={ctx.speaker}
       timestampFormat={ctx.timestampFormat}
     />
   );
 }
 
-function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-note" }> }) {
+/** A note of the Mate's, in full: its words as markdown, at the moment it said them. */
+function NoteWords({ message }: { readonly message: ChatMessage }) {
   const ctx = use(TimelineRowCtx);
   return (
+    <ChangeChipMomentContext value={message.createdAt}>
+      <ChatMarkdown
+        text={message.text}
+        cwd={ctx.markdownCwd}
+        threadRef={ctx.threadRef ?? undefined}
+        isStreaming={Boolean(message.streaming)}
+        lineBreaks={shouldPreserveAssistantLineBreaks(message.text)}
+        skills={ctx.skills}
+        headingLevelOffset={MESSAGE_HEADING_LEVEL}
+        onRunShellCommand={ctx.onRunShellCommand}
+      />
+    </ChangeChipMomentContext>
+  );
+}
+
+/**
+ * Turns whose Mate at work this page watched live: their report arrives as
+ * the panel settles into it, once. A report scrolled back into view, or read
+ * after a reload, is simply there.
+ */
+const watchedTurnKeys = new Set<string>();
+
+/** The Mate at work: its words streaming, what runs, the browser while it checks. */
+function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const dock = use(TimelineWorkingCtx);
+  useEffect(() => {
+    watchedTurnKeys.add(row.turnKey);
+  }, [row.turnKey]);
+  return (
+    <ConversationWorking
+      browser={
+        row.strip === null ? null : (
+          <BrowserStrip
+            bare
+            environmentId={ctx.activeThreadEnvironmentId}
+            onOpenImage={ctx.onImageExpand}
+            strip={row.strip}
+            threadRef={ctx.threadRef}
+          />
+        )
+      }
+      bubbles={row.stream.map((item) =>
+        item.kind === "note"
+          ? { kind: "note", key: item.key, body: <NoteWords message={item.message} /> }
+          : item,
+      )}
+      dock={dock}
+      environmentId={ctx.activeThreadEnvironmentId}
+      incidents={row.incidents}
+      onOpenAgents={ctx.onOpenAgents}
+      speaker={ctx.speaker}
+      threadRef={ctx.threadRef}
+    />
+  );
+}
+
+/** Work that outlived the turn: the Mate at work, smaller, until it ends. */
+function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "after-work" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const { stoppingBackgroundWork } = use(TimelineRowActivityCtx);
+  const dock = use(TimelineWorkingCtx);
+  return (
+    <ConversationAfterWork
+      dock={dock}
+      environmentId={ctx.activeThreadEnvironmentId}
+      onOpenAgents={ctx.onOpenAgents}
+      onStop={ctx.onStopBackgroundWork}
+      speaker={ctx.speaker}
+      state={row.state}
+      stopping={stoppingBackgroundWork}
+      threadRef={ctx.threadRef}
+    />
+  );
+}
+
+function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <MateSpeech speaker={ctx.speaker}>
+      <NoteWords message={row.message} />
+    </MateSpeech>
+  );
+}
+
+function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-note" }> }) {
+  return (
     <div className="min-w-0 py-0.5 text-foreground/90" data-log-note>
-      <ChangeChipMomentContext value={row.message.createdAt}>
-        <ChatMarkdown
-          text={row.message.text}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          isStreaming={Boolean(row.message.streaming)}
-          lineBreaks={shouldPreserveAssistantLineBreaks(row.message.text)}
-          skills={ctx.skills}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onRunShellCommand={ctx.onRunShellCommand}
-        />
-      </ChangeChipMomentContext>
+      <NoteWords message={row.message} />
     </div>
   );
 }
@@ -1505,38 +1605,53 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
     : null;
   const count = row.entries.length;
   const failed = row.entries.filter(workEntryDisplayIndicatesToolFailure).length;
+  // The line grammar: its mark in the gutter, its words on the text edge,
+  // the chevron right after them.
   return (
-    <button
-      type="button"
-      aria-expanded={row.expanded}
-      className="flex min-h-7 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1 text-left text-line text-muted-foreground transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      data-scroll-anchor-ignore
-      onClick={() => ctx.onToggleLogItem(row.id, row.id)}
-    >
+    <div className="relative flex min-h-7 min-w-0 items-center">
       {failed > 0 ? (
-        <span role="img" aria-label="Tool call failed" className="flex shrink-0">
-          <XIcon aria-hidden="true" className="size-3.5 opacity-70" />
+        // A failed background task is a step on the way: marked, and muted.
+        <span
+          aria-label="Tool call failed"
+          className="absolute -start-5 flex w-5 justify-center"
+          role="img"
+        >
+          <XIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
         </span>
       ) : (
-        <LayersIcon aria-hidden="true" className="size-3.5 shrink-0 opacity-70" />
+        <GutterMark>
+          <LayersIcon className="size-3.5 text-muted-foreground" />
+        </GutterMark>
       )}
-      <span className="shrink-0 text-foreground/85">
-        {count === 1 ? "1 background task" : `${count} background tasks`}
-        {failed > 0 ? ` · ${failed} failed` : ""}
-      </span>
-      {lastLabel ? (
-        <span className="min-w-0 flex-1 truncate">· last: {lastLabel}</span>
-      ) : (
-        <span className="flex-1" />
-      )}
-      <ChevronRightIcon
-        aria-hidden="true"
-        className={cn(
-          "size-3 shrink-0 opacity-70 transition-transform duration-150",
-          row.expanded && "rotate-90",
-        )}
-      />
-    </button>
+      <button
+        type="button"
+        aria-expanded={row.expanded}
+        aria-label={`${count === 1 ? "1 background task" : `${count} background tasks`}${failed > 0 ? `, ${failed} failed` : ""}. ${row.expanded ? "Hide" : "Show"} them`}
+        className="inline-flex min-h-7 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-left text-line text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+        data-scroll-anchor-ignore
+        onClick={() => ctx.onToggleLogItem(row.id, row.id)}
+      >
+        <span className="shrink-0">
+          {count === 1 ? "1 background task" : `${count} background tasks`}
+          {failed > 0 ? ` · ${failed} failed` : ""}
+        </span>
+        {lastLabel ? (
+          <>
+            <span aria-hidden="true" className="shrink-0 opacity-60">
+              ·
+            </span>
+            <span className="min-w-0 truncate">{lastLabel}</span>
+          </>
+        ) : null}
+        <ChevronRightIcon
+          aria-hidden="true"
+          className={cn(
+            "size-3.5 shrink-0 opacity-70 transition-transform duration-150",
+            row.expanded && "rotate-90",
+          )}
+        />
+      </button>
+    </div>
   );
 }
 
@@ -1576,8 +1691,14 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
 
 function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcome" }> }) {
   const ctx = use(TimelineRowCtx);
+  const [settling] = useState(() => watchedTurnKeys.delete(row.outcome.turnKey));
   return (
-    <OutcomeCard onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)} outcome={row.outcome} />
+    <TurnReport
+      onOpenImage={ctx.onImageExpand}
+      onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
+      outcome={row.outcome}
+      settling={settling}
+    />
   );
 }
 
@@ -1589,6 +1710,27 @@ function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> 
 function formatWorkDurationBetween(startIso: string, endIso: string): string | null {
   const ms = Date.parse(endIso) - Date.parse(startIso);
   return Number.isFinite(ms) ? formatWorkDuration(ms) : null;
+}
+
+/**
+ * The person's answer to the Mate's question: their words in their own
+ * bubble, each under what was asked.
+ */
+function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer" }> }) {
+  return (
+    <div className="flex flex-col items-end gap-1" data-person-answer>
+      {row.pairs.map((pair) => (
+        <div
+          key={pair.key}
+          className="max-w-4/5 rounded-2xl bg-message px-4 py-2 text-message-foreground"
+        >
+          <MessageAuthorHeading>You</MessageAuthorHeading>
+          <p className="text-message-foreground/70 text-xs">{pair.asked}</p>
+          <p className="whitespace-pre-wrap">{pair.answer}</p>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -1732,7 +1874,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
       <div
-        className="relative max-w-4/5 rounded-2xl bg-message p-3 text-message-foreground"
+        className="relative max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground"
         data-message-aside={row.aside ? "true" : undefined}
       >
         <MessageAuthorHeading>You</MessageAuthorHeading>
@@ -1883,9 +2025,17 @@ function turnHeaderActivityLabel(
     case "thinking":
       return "Thinking";
     case "tool":
-      return liveWorkEntryLabel(activity.entry, workspaceRoot);
+      // The question tool waits on the person: say so, never its arguments.
+      return /^AskUserQuestion\b/.test(activity.entry.toolTitle ?? activity.entry.label)
+        ? "Waiting for your answer"
+        : liveWorkEntryLabel(activity.entry, workspaceRoot);
     case "operation":
-      return activity.operation.voice;
+      // A check names the page, never the whole address: the host is the
+      // service's, and the working component shows it in its frame.
+      // The voice is a sentence; the line is a phrase, so it drops the full stop.
+      return activity.operation.kind === "browser"
+        ? `Checking ${browserCheckCaption(activity.operation)}`
+        : activity.operation.voice.replace(/\.$/, "");
   }
 }
 
@@ -1894,7 +2044,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
   return (
-    <div className="relative min-w-0 px-1 py-0.5">
+    <div className="relative min-w-0">
       <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
       <ChangeChipMomentContext value={row.message.createdAt}>
         <ChatMarkdown
@@ -1910,7 +2060,9 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         />
       </ChangeChipMomentContext>
       {row.showAssistantMeta ? (
-        <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">
+        // Floats over the gap above the answer instead of reserving a blank
+        // line under every one of them.
+        <div className="absolute end-0 -top-4 z-10 flex items-center gap-1.5 rounded-md border border-border bg-popover ps-0.5 pe-2 text-xs tabular-nums opacity-0 shadow-sm transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">
           <AssistantCopyButton row={row} />
           <Tooltip>
             <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
