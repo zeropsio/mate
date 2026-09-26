@@ -173,6 +173,34 @@ describe("agentActivitySubject", () => {
     ).toBeUndefined();
   });
 
+  it.each([
+    ["the last message was a slash command", "/compact", "create todo app", "create todo app"],
+    ["the title is one too", "/compact", "/compact", undefined],
+    [
+      "an image-only placeholder",
+      "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]",
+      "create todo app",
+      "create todo app",
+    ],
+  ] as const)(
+    "never names a command or the client's placeholder as the task: %s",
+    (_label, preview, title, expected) => {
+      expect(
+        agentActivitySubject(
+          shell({
+            title,
+            latestUserMessagePreview: {
+              role: "user",
+              text: preview,
+              createdAt: "2026-09-06T01:55:00.000Z",
+            },
+          }),
+          "idle",
+        ),
+      ).toBe(expected);
+    },
+  );
+
   it("has nothing to say for a blank step and a blank title", () => {
     expect(
       agentActivitySubject(

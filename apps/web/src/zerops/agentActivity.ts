@@ -111,14 +111,24 @@ export function agentActivitySubject(
     const step = thread.planProgress?.step.trim();
     if (step !== undefined && step.length > 0) return step;
   }
-  // The last task, as the person put it.
+  // The last task, as the person put it — never a command to the harness or
+  // the client's own placeholder for an image-only message, which a server
+  // from before it knew better may still hand over as the latest words.
   const asked = thread.latestUserMessagePreview;
-  if (asked !== undefined && asked !== null) return asked.text;
+  if (asked !== undefined && asked !== null && isPersonsWords(asked.text)) return asked.text;
   // A conversation nobody has spoken into has a placeholder for a title, not
   // a subject: a Mate that was never asked anything has nothing it is about.
   if (thread.latestUserMessageAt === null) return undefined;
   const title = thread.title.trim();
-  return title.length > 0 ? title : undefined;
+  return title.length > 0 && isPersonsWords(title) ? title : undefined;
+}
+
+const SLASH_COMMAND = /^\/[a-z][\w:-]*(?:\s|$)/i;
+const IMAGE_ONLY_PLACEHOLDER = "[User attached one or more images without additional text.";
+
+function isPersonsWords(text: string): boolean {
+  const trimmed = text.trim();
+  return !SLASH_COMMAND.test(trimmed) && !trimmed.startsWith(IMAGE_ONLY_PLACEHOLDER);
 }
 
 export function deriveZeropsAgentActivity(
