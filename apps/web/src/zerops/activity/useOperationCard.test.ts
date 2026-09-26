@@ -832,6 +832,29 @@ describe("useOperationCard — a build log opened while live stays open at settl
       (region.observed?.log as { props: { open: boolean } } | undefined)?.props.open;
     expect([openOf(running), openOf(settled)]).toEqual([true, true]);
   });
+
+  it("is open from a running card's first frame, before a line is live, and stays open", () => {
+    observationSpy.mockReturnValueOnce(observed("loading"));
+    hooks.beginRender();
+    const running = useOperationCard(operation({ phase: "running" }), ENVIRONMENT_ID);
+    observationSpy.mockReturnValueOnce(observed("ended"));
+    hooks.beginRender();
+    const settled = useOperationCard(operation({ phase: "failed" }), ENVIRONMENT_ID);
+
+    const openOf = (region: typeof running) =>
+      (region.observed?.log as { props: { open: boolean } } | undefined)?.props.open;
+    expect([openOf(running), openOf(settled)]).toEqual([true, true]);
+  });
+
+  it("a settled card seen only settled keeps its log closed until asked", () => {
+    observationSpy.mockReturnValueOnce(observed("ended"));
+    hooks.beginRender();
+    const settled = useOperationCard(operation({ phase: "done" }), ENVIRONMENT_ID);
+
+    expect((settled.observed?.log as { props: { open: boolean } } | undefined)?.props.open).toBe(
+      false,
+    );
+  });
 });
 
 describe("useOperationCard — the browser check's subject host (hook)", () => {

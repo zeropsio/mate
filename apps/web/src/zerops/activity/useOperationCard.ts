@@ -366,12 +366,13 @@ export function useOperationCard(
   const { state, history, buildLog } = useOperationObservation(target, environmentId, nowMs);
   const topology = useZeropsTopology(environmentId);
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
-  // A log that opened itself while live stays open once it ends: closing it
-  // at settle would shrink the card under the reader.
-  const [wasLive, setWasLive] = useState(false);
-  const logEverLive = wasLive || buildLog.status === "live";
-  if (logEverLive && !wasLive) {
-    setWasLive(true);
+  // The log is open from a running card's first frame, its tail's height
+  // held before a line arrives, and stays open once the deploy ends: closing
+  // it at settle would shrink the card under the reader.
+  const [heldOpen, setHeldOpen] = useState(false);
+  const openByDefault = heldOpen || operation.phase === "running" || buildLog.status === "live";
+  if (openByDefault && !heldOpen) {
+    setHeldOpen(true);
   }
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
@@ -408,7 +409,7 @@ export function useOperationCard(
     return { observed, ...fields };
   }
 
-  const open = manualOpen ?? logEverLive;
+  const open = manualOpen ?? openByDefault;
   const log: ReactElement = createElement(ZeropsBuildLog, {
     lines: buildLog.lines,
     onToggle: () => setManualOpen(!open),

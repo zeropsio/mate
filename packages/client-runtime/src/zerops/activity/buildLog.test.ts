@@ -5,6 +5,7 @@ import {
   buildOlderLogUrl,
   buildLogUrls,
   decodeBuildLogItems,
+  foldBuildLogLines,
   mergeBoundedBuildLogLines,
   mergeBuildLogLines,
   withStreamFrom,
@@ -248,5 +249,182 @@ describe("mergeBuildLogLines", () => {
     expect(oldest.lines).toEqual([one, two]);
     expect(oldest.droppedOlder).toBe(false);
     expect(oldest.droppedNewer).toBe(true);
+  });
+});
+
+describe("foldBuildLogLines — consecutive lines that differ only in a package collapse", () => {
+  const lines = (texts: ReadonlyArray<string>, severity = 6): ReadonlyArray<BuildLogLine> =>
+    texts.map((text, index) => ({
+      id: `l${index + 1}`,
+      at: `2026-09-26T10:00:${String(index).padStart(2, "0")}.000Z`,
+      text,
+      severity,
+    }));
+  /** Each row as `text ×count`, the way the tail reads it. */
+  const rowsOf = (texts: ReadonlyArray<string>, severity?: number) =>
+    foldBuildLogLines(lines(texts, severity)).map(({ text, count }) =>
+      count === 1 ? text : `${text} ×${count}`,
+    );
+
+  it.each([
+    {
+      name: "yarn berry: a fetch step's packages",
+      texts: [
+        "➤ YN0000: ┌ Fetch step",
+        "➤ YN0013: │ cssesc@npm:3.0.0 can't be found in the cache and will be fetched from the remote registry",
+        "➤ YN0013: │ csstype@npm:3.1.3 can't be found in the cache and will be fetched from the remote registry",
+        "➤ YN0013: │ @types/node@npm:20.8.10 can't be found in the cache and will be fetched from the remote registry",
+        "➤ YN0000: └ Completed in 12s 345ms",
+      ],
+      rows: [
+        "➤ YN0000: ┌ Fetch step",
+        "➤ YN0013: │ @types/node@npm:20.8.10 can't be found in the cache and will be fetched from the remote registry ×3",
+        "➤ YN0000: └ Completed in 12s 345ms",
+      ],
+    },
+    {
+      name: "yarn berry: archives removed from the cache",
+      texts: [
+        "➤ YN0019: │ cssesc-npm-3.0.0-9a3ae3a5a4-f8c4ababff.zip appears to be unused - removing",
+        "➤ YN0019: │ lodash-npm-4.17.21-6382451519-eb835a2e51.zip appears to be unused - removing",
+      ],
+      rows: [
+        "➤ YN0019: │ lodash-npm-4.17.21-6382451519-eb835a2e51.zip appears to be unused - removing ×2",
+      ],
+    },
+    {
+      name: "yarn classic: its four phases stay four lines",
+      texts: [
+        "[1/4] Resolving packages...",
+        "[2/4] Fetching packages...",
+        "[3/4] Linking dependencies...",
+        "[4/4] Building fresh packages...",
+      ],
+      rows: [
+        "[1/4] Resolving packages...",
+        "[2/4] Fetching packages...",
+        "[3/4] Linking dependencies...",
+        "[4/4] Building fresh packages...",
+      ],
+    },
+    {
+      name: "npm: deprecation warnings each say something of their own",
+      texts: [
+        "npm WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory.",
+        "npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported",
+        "added 312 packages, and audited 313 packages in 9s",
+      ],
+      rows: [
+        "npm WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory.",
+        "npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported",
+        "added 312 packages, and audited 313 packages in 9s",
+      ],
+    },
+    {
+      name: "pnpm: a dependency list, name and version",
+      texts: ["dependencies:", "+ next 14.0.4", "+ react 18.2.0", "+ react-dom 18.2.0"],
+      rows: ["dependencies:", "+ react-dom 18.2.0 ×3"],
+    },
+    {
+      name: "pnpm: progress counts are not packages",
+      texts: [
+        "Progress: resolved 120, reused 0, downloaded 118, added 0",
+        "Progress: resolved 240, reused 0, downloaded 236, added 0",
+      ],
+      rows: [
+        "Progress: resolved 120, reused 0, downloaded 118, added 0",
+        "Progress: resolved 240, reused 0, downloaded 236, added 0",
+      ],
+    },
+    {
+      name: "go: modules downloading, path and version",
+      texts: [
+        "go: downloading github.com/gin-gonic/gin v1.9.1",
+        "go: downloading golang.org/x/net v0.17.0",
+        "go: downloading github.com/bytedance/sonic v1.10.2",
+        "go: found github.com/gin-gonic/gin in github.com/gin-gonic/gin v1.9.1",
+      ],
+      rows: [
+        "go: downloading github.com/bytedance/sonic v1.10.2 ×3",
+        "go: found github.com/gin-gonic/gin in github.com/gin-gonic/gin v1.9.1",
+      ],
+    },
+    {
+      name: "composer: downloads, then installs",
+      texts: [
+        "  - Downloading symfony/console (v6.3.4)",
+        "  - Downloading psr/log (3.0.0)",
+        "  - Installing symfony/console (v6.3.4): Extracting archive",
+        "  - Installing psr/log (3.0.0): Extracting archive",
+        "Generating optimized autoload files",
+      ],
+      rows: [
+        "  - Downloading psr/log (3.0.0) ×2",
+        "  - Installing psr/log (3.0.0): Extracting archive ×2",
+        "Generating optimized autoload files",
+      ],
+    },
+    {
+      name: "pip: requirements collected; wheel sizes differ, so downloads stay apart",
+      texts: [
+        "Collecting fastapi==0.104.1",
+        "Collecting uvicorn==0.24.0",
+        "  Downloading fastapi-0.104.1-py3-none-any.whl (92 kB)",
+        "  Downloading uvicorn-0.24.0-py3-none-any.whl (59 kB)",
+      ],
+      rows: [
+        "Collecting uvicorn==0.24.0 ×2",
+        "  Downloading fastapi-0.104.1-py3-none-any.whl (92 kB)",
+        "  Downloading uvicorn-0.24.0-py3-none-any.whl (59 kB)",
+      ],
+    },
+    {
+      name: "cargo: crates compiling, name and version",
+      texts: ["   Compiling serde v1.0.193", "   Compiling tokio v1.35.0", "    Finished release"],
+      rows: ["   Compiling tokio v1.35.0 ×2", "    Finished release"],
+    },
+    {
+      name: "a line repeated verbatim",
+      texts: ["waiting for the database", "waiting for the database", "ready"],
+      rows: ["waiting for the database ×2", "ready"],
+    },
+    {
+      name: "two tokens apart are two changes, not one package",
+      texts: ["fetch a@1.0.0 took 3ms", "fetch b@2.0.0 took 9ms"],
+      rows: ["fetch a@1.0.0 took 3ms", "fetch b@2.0.0 took 9ms"],
+    },
+    {
+      name: "a word that changes is not a package",
+      texts: ["Step build done", "Step deploy done"],
+      rows: ["Step build done", "Step deploy done"],
+    },
+    {
+      name: "a run keeps the one place it varies",
+      texts: ["get a@1.0.0 from x/y", "get b@1.0.0 from x/y", "get b@1.0.0 from x/z"],
+      rows: ["get b@1.0.0 from x/y ×2", "get b@1.0.0 from x/z"],
+    },
+  ])("$name", ({ texts, rows }) => {
+    expect(rowsOf(texts)).toEqual(rows);
+  });
+
+  it("never folds an error line, however alike", () => {
+    expect(
+      rowsOf(["npm ERR! 404 Not Found - GET a@1.0.0", "npm ERR! 404 Not Found - GET b@1.0.0"], 3),
+    ).toEqual(["npm ERR! 404 Not Found - GET a@1.0.0", "npm ERR! 404 Not Found - GET b@1.0.0"]);
+  });
+
+  it("never folds lines of a different severity", () => {
+    const folded = foldBuildLogLines([
+      { id: "a", at: "2026-09-26T10:00:00.000Z", text: "get a@1.0.0", severity: 6 },
+      { id: "b", at: "2026-09-26T10:00:01.000Z", text: "get b@1.0.0", severity: 4 },
+    ]);
+    expect(folded.map(({ count }) => count)).toEqual([1, 1]);
+  });
+
+  it("a row keeps its first line's id and the newest line's words while the run grows", () => {
+    const folded = foldBuildLogLines(
+      lines(["get a@1.0.0 now", "get b@1.0.0 now", "get c@1.0.0 now"]),
+    );
+    expect(folded).toEqual([{ id: "l1", text: "get c@1.0.0 now", severity: 6, count: 3 }]);
   });
 });
