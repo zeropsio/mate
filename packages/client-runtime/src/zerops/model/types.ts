@@ -274,6 +274,8 @@ export interface ZeropsOperation {
    * frame takes its final shape before any pixel does.
    */
   readonly viewport?: ZeropsBrowserViewport;
+  /** `browser` only: the device the agent emulated (`set device "iPhone 14"`), as agent-browser names it. */
+  readonly deviceName?: string;
   /** `logs` · `events` · `process` · `discover` only. */
   readonly readResult?: ZeropsReadResult;
   /** bootstrap only. */
