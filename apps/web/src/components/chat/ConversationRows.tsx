@@ -496,23 +496,24 @@ export function PauseBlock({
     <div
       className={cn(
         // Resumed, the same block goes quiet — history, not a state to act
-        // on — and keeps its height: newer rows may already sit under it.
-        "grid gap-1 rounded-xl border px-3.5 py-2.5",
+        // on, its mark in the gutter and its words on the text edge — and
+        // keeps its height: newer rows may already sit under it.
+        "relative grid gap-1 rounded-xl border py-2.5",
         resumed
           ? "border-transparent text-muted-foreground"
-          : "border-status-attention/40 bg-status-attention-surface",
+          : "border-status-attention/40 bg-status-attention-surface px-3.5",
       )}
       data-conversation-pause={resumed ? "resumed" : "paused"}
       role="status"
     >
-      <div className="flex min-w-0 items-center gap-2 text-sm">
-        <PauseIcon
-          aria-hidden="true"
-          className={cn(
-            "size-4 shrink-0",
-            resumed ? "text-muted-foreground" : "text-status-attention",
-          )}
-        />
+      <div className={cn("flex min-w-0 items-center gap-2", resumed ? "text-line" : "text-sm")}>
+        {resumed ? (
+          <GutterMark className="top-3">
+            <PauseIcon className="size-3.5 text-muted-foreground" />
+          </GutterMark>
+        ) : (
+          <PauseIcon aria-hidden="true" className="size-4 shrink-0 text-status-attention" />
+        )}
         <span
           className={cn(
             "font-medium",
@@ -538,7 +539,7 @@ export function PauseBlock({
           </Tooltip>
         ) : null}
       </div>
-      <p className="ps-7 text-line text-muted-foreground">{detail}</p>
+      <p className={cn("text-line text-muted-foreground", resumed ? null : "ps-6")}>{detail}</p>
       {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
         <label className="flex w-fit cursor-pointer items-center gap-2 ps-7 text-line text-foreground">
           <Switch
