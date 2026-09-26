@@ -13,6 +13,7 @@ import {
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
+import { DOCKED_KINDS } from "./conversationDock.logic";
 import {
   browserStrip,
   deriveConversationStructure,
@@ -369,7 +370,7 @@ export type ConversationEvent =
   /** The server resumed the thread itself after a usage limit reset. */
   | { readonly type: "resumed" };
 
-export type MessagesTimelineRow =
+type MessagesTimelineRowBody =
   | {
       /** The person's message, or the Mate's answer to a settled turn. */
       kind: "message";
@@ -410,8 +411,35 @@ export type MessagesTimelineRow =
       /** The stretch has a log to open. */
       hasLog: boolean;
       open: boolean;
-      /** The stretch thought aloud: an opened line offers the switch that shows it. */
-      hasReasoning: boolean;
+    }
+  | {
+      /**
+       * The Mate at work, at the live stretch's tail — the one place what is
+       * happening now is shown: its latest words in full beside its face, a
+       * pill for each thing running (deploys, helpers, tasks, a service in
+       * trouble), and the browser while it checks. It is the conversation's
+       * bottom, so it may change; settling folds it into the line above.
+       */
+      kind: "working";
+      id: string;
+      createdAt: string;
+      stretchKey: string;
+      note: ChatMessage | null;
+      strip: BrowserStripModel | null;
+      incidents: ReadonlyArray<IncidentModel>;
+      failures: ReadonlyArray<WorkingFailure>;
+    }
+  | {
+      /**
+       * The Mate's words the person answered: the last note of a stretch the
+       * person's message closed, frozen beside its face where it was said. A
+       * stretch that ends in an answer has none — the answer is the Mate's
+       * last word.
+       */
+      kind: "speech";
+      id: string;
+      createdAt: string;
+      message: ChatMessage;
     }
   | {
       /** A progress note in an opened log: the Mate's words on the way, in full. */
@@ -431,7 +459,7 @@ export type MessagesTimelineRow =
       expanded: boolean;
     }
   | {
-      /** Thinking in an opened log, shown only when the person asked for it. */
+      /** Thinking in an opened log, in order with the rest of what the stretch did. */
       kind: "log-reasoning";
       id: string;
       createdAt: string;
@@ -521,6 +549,67 @@ export type MessagesTimelineRow =
       isNext: boolean;
     };
 
+/**
+ * How much room a row keeps above itself — the conversation's rhythm, read
+ * from the row before it: a person's messages in a run sit close, a turn's
+ * parts follow each other at a line's distance, and a new turn opens with
+ * air. A row's gap depends only on its predecessor, so it never changes
+ * once both are on screen (opening a log changes the row after it — a click
+ * moves what is under it, nothing else does).
+ */
+export type RowGap = "none" | "tight" | "line" | "block" | "turn";
+
+export type MessagesTimelineRow = MessagesTimelineRowBody & { readonly gap?: RowGap };
+
+function isLogRowBody(row: MessagesTimelineRow): boolean {
+  switch (row.kind) {
+    case "log-note":
+    case "log-activity":
+    case "log-reasoning":
+    case "log-operation":
+      return true;
+    case "work":
+      return row.isExpandedToolGroupEntry || row.id.startsWith("log-entry:");
+    default:
+      return false;
+  }
+}
+
+function isPersonRow(row: MessagesTimelineRow): boolean {
+  return (row.kind === "message" && row.message.role === "user") || row.kind === "queued-message";
+}
+
+function closesTurn(row: MessagesTimelineRow): boolean {
+  return (row.kind === "message" && row.message.role === "assistant") || row.kind === "outcome";
+}
+
+export function rowGap(
+  previous: MessagesTimelineRow | undefined,
+  row: MessagesTimelineRow,
+): RowGap {
+  if (previous === undefined) return "none";
+  if (isLogRowBody(row)) return "tight";
+  if (row.kind === "seam") return "turn";
+  if (previous.kind === "seam") return "block";
+  if (isPersonRow(row)) {
+    if (isPersonRow(previous)) return "tight";
+    return closesTurn(previous) ||
+      previous.kind === "event" ||
+      previous.kind === "error" ||
+      previous.kind === "pause" ||
+      previous.kind === "background"
+      ? "turn"
+      : "block";
+  }
+  if (closesTurn(previous)) {
+    if (row.kind === "outcome") return "line";
+    return row.kind === "work-line" ? "turn" : "block";
+  }
+  // The report hangs from its line: they read as one.
+  if (row.kind === "outcome" && previous.kind === "work-line") return "tight";
+  return "line";
+}
+
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
   result: MessagesTimelineRow[];
@@ -531,7 +620,6 @@ export interface ConversationView {
   readonly openStretchKeys?: ReadonlySet<string>;
   /** Log lines the person opened (activity lines, operations), by row id. */
   readonly expandedIds?: ReadonlySet<string>;
-  readonly showReasoning?: boolean;
 }
 
 /** Match each user message to the next assistant checkpoint. */
@@ -589,12 +677,91 @@ type StretchItem = {
   readonly rows: MessagesTimelineRow[];
 };
 
+/**
+ * What stopped the turn and stands outside the log: a runtime error, a denied
+ * tool, a setup script or a revert that failed. A background task that failed
+ * (a type check, a test run) is a step on the way — it stays in the log.
+ */
 function isErrorEntry(entry: TimelineEntry): boolean {
   return (
     entry.kind === "work" &&
     entry.entry.tone === "error" &&
-    entry.entry.questionAnswer === undefined
+    entry.entry.questionAnswer === undefined &&
+    !isTaskActivityKind(entry.entry.sourceActivityKind)
   );
+}
+
+function isTaskActivityKind(kind: string | undefined): boolean {
+  return kind !== undefined && kind.startsWith("task.");
+}
+
+/**
+ * A failure the Mate hit on the way, as the live group marks it: in context,
+ * never popping out of it. It says "came back" once a later attempt at the
+ * same thing succeeded.
+ */
+export interface WorkingFailure {
+  readonly key: string;
+  readonly subject: string | null;
+  readonly words: string;
+  readonly recovered: boolean;
+}
+
+/**
+ * The failures of a stretch the live group marks: an operation that failed
+ * (a verify, a subdomain, a scale — deploys carry their own state in their
+ * pill, the browser its own in its takes, a dev server in its incident) and
+ * a background task that failed.
+ */
+function stretchFailures(stretch: Stretch): WorkingFailure[] {
+  const failures: WorkingFailure[] = [];
+  stretch.entries.forEach((entry, index) => {
+    const later = stretch.entries.slice(index + 1);
+    if (entry.kind === "operation") {
+      const op = entry.operation;
+      if (
+        op.phase !== "failed" ||
+        DOCKED_KINDS.has(op.kind) ||
+        op.kind === "browser" ||
+        op.kind === "devServer"
+      ) {
+        return;
+      }
+      failures.push({
+        key: op.key,
+        subject: op.subject,
+        words: op.statusWord,
+        recovered: later.some(
+          (next) =>
+            next.kind === "operation" &&
+            next.operation.kind === op.kind &&
+            next.operation.subject === op.subject &&
+            next.operation.phase === "done",
+        ),
+      });
+      return;
+    }
+    if (
+      entry.kind === "work" &&
+      entry.entry.tone === "error" &&
+      isTaskActivityKind(entry.entry.sourceActivityKind)
+    ) {
+      const label = entry.entry.label;
+      failures.push({
+        key: entry.id,
+        subject: null,
+        words: label,
+        recovered: later.some(
+          (next) =>
+            next.kind === "work" &&
+            next.entry.label === label &&
+            next.entry.tone !== "error" &&
+            isTaskActivityKind(next.entry.sourceActivityKind),
+        ),
+      });
+    }
+  });
+  return failures;
 }
 
 /**
@@ -603,7 +770,7 @@ function isErrorEntry(entry: TimelineEntry): boolean {
  * the browser strip, an incident, a failure, an error, a landing, a
  * compaction, the person's answers to a question, a plan to approve. Opened,
  * the log interleaves with them: notes in full, tool calls as one line per
- * run, thinking when asked for, operations one line each.
+ * run, thinking, operations one line each.
  */
 function stretchContentRows(input: {
   stretch: Stretch;
@@ -614,7 +781,6 @@ function stretchContentRows(input: {
 }): MessagesTimelineRow[] {
   const { stretch, open, view } = input;
   const expanded = view.expandedIds ?? new Set<string>();
-  const showReasoning = view.showReasoning ?? false;
   const items: StretchItem[] = [];
   let order = 0;
   const push = (at: string, rows: MessagesTimelineRow[]) => {
@@ -672,7 +838,7 @@ function stretchContentRows(input: {
     const messages = reasoning;
     reasoning = [];
     reasoningStart = null;
-    if (!open || !showReasoning) return;
+    if (!open) return;
     push(start.createdAt, [
       {
         kind: "log-reasoning",
@@ -692,8 +858,6 @@ function stretchContentRows(input: {
     if (entry === input.answer) continue;
     if (entry.kind === "message") {
       if (entry.message.role === "reasoning") {
-        // Hidden thinking never splits a run of tool calls.
-        if (!showReasoning) continue;
         flushActivity();
         if (reasoningStart === null) reasoningStart = entry;
         reasoning.push(entry.message);
@@ -722,18 +886,24 @@ function stretchContentRows(input: {
     switch (entry.kind) {
       case "operation": {
         const op = entry.operation;
-        if (strip !== null && op === strip.checks[0]) {
+        // The checks and a service's trouble belong to the work: live, the
+        // working component shows them; settled, the outcome says what they
+        // came to; opened, the log keeps them where they happened.
+        if (open && strip !== null && op === strip.checks[0]) {
           push(op.anchorAt, [{ kind: "strip", id: strip.key, createdAt: op.anchorAt, strip }]);
         }
         const incident = incidentsByKey.get(`incident:${op.key}`);
-        if (incident !== undefined) {
+        if (open && incident !== undefined) {
           push(incident.appearedAt, [
             { kind: "incident", id: incident.key, createdAt: incident.appearedAt, incident },
           ]);
         }
         if (op.kind === "browser") break;
-        const failed = op.phase === "failed";
-        if (open && !failed) {
+        // A failed operation is a step like any other: one line in the log,
+        // its card a click away. What a failure came to is the outcome's to
+        // say, once the turn is done — a card that fails and then recovers
+        // never stands under a closed line without its ending.
+        if (open) {
           const id = `log-operation:${op.key}`;
           const isExpanded = expanded.has(id);
           push(entry.createdAt, [
@@ -755,10 +925,6 @@ function stretchContentRows(input: {
                 ]
               : []),
           ]);
-        }
-        if (failed && op.kind !== "devServer") {
-          const at = op.settledAt ?? op.anchorAt;
-          push(at, [{ kind: "operation", id: `card:${op.key}`, createdAt: at, operation: op }]);
         }
         break;
       }
@@ -1187,43 +1353,42 @@ export function deriveMessagesTimelineRows(
           candidate.message.text.trim().length === 0
         ),
     );
-    rows.push({
-      kind: "work-line",
-      id: `work-line:${stretch.key}`,
-      createdAt: stretch.startedAt,
-      stretchKey: stretch.key,
-      turnId: stretch.turnId,
-      live: stretch.live,
-      face: stretchFace({ stretch, turn, pausedHere }),
-      startedAt: stretch.startedAt,
-      endedAt: stretch.endedAt,
-      note: lastNote === null ? null : noteLine(lastNote.message.text),
-      fallback:
-        lastNote !== null
-          ? null
-          : pausedHere
-            ? "Stopped by the usage limit"
-            : activityEntries.length > 0
-              ? summarizeActivity(
-                  omitSupersededLifecycleMarkers(
-                    activityEntries.filter((candidate) =>
-                      workEntryIsVisibleInGroup(candidate, stretch.live),
+    // A settled stretch with nothing to open has nothing to say: the answer
+    // stands under the message by itself. A live one always has its line, and
+    // so does one the usage limit refused — the person's message is answered
+    // by the reason.
+    if (stretch.live || hasLog || pausedHere)
+      rows.push({
+        kind: "work-line",
+        id: `work-line:${stretch.key}`,
+        createdAt: stretch.startedAt,
+        stretchKey: stretch.key,
+        turnId: stretch.turnId,
+        live: stretch.live,
+        face: stretchFace({ stretch, turn, pausedHere }),
+        startedAt: stretch.startedAt,
+        endedAt: stretch.endedAt,
+        note: lastNote === null ? null : noteLine(lastNote.message.text),
+        fallback:
+          lastNote !== null
+            ? null
+            : pausedHere
+              ? "Stopped by the usage limit"
+              : activityEntries.length > 0
+                ? summarizeActivity(
+                    omitSupersededLifecycleMarkers(
+                      activityEntries.filter((candidate) =>
+                        workEntryIsVisibleInGroup(candidate, stretch.live),
+                      ),
+                      (candidate) => candidate,
                     ),
-                    (candidate) => candidate,
-                  ),
-                )
-              : null,
-      noteCount: notes.length,
-      activity: stretch.live ? liveActivity(stretch) : null,
-      hasLog,
-      open,
-      hasReasoning: stretch.entries.some(
-        (candidate) =>
-          candidate.kind === "message" &&
-          candidate.message.role === "reasoning" &&
-          candidate.message.text.trim().length > 0,
-      ),
-    });
+                  )
+                : null,
+        noteCount: notes.length,
+        activity: stretch.live ? liveActivity(stretch) : null,
+        hasLog,
+        open,
+      });
 
     rows.push(
       ...stretchContentRows({
@@ -1235,19 +1400,32 @@ export function deriveMessagesTimelineRows(
       }),
     );
 
+    // Live, the stretch ends in the Mate at work; interrupted, in the words
+    // the person answered.
+    const answered = stretch.last && answer !== null && !turn.live;
+    if (stretch.live) {
+      rows.push({
+        kind: "working",
+        id: `working:${stretch.key}`,
+        createdAt: stretch.startedAt,
+        stretchKey: stretch.key,
+        note: lastNote?.message ?? null,
+        strip: browserStrip(stretch),
+        incidents: stretchIncidents(stretch),
+        failures: stretchFailures(stretch),
+      });
+    } else if (!answered && lastNote !== null) {
+      rows.push({
+        kind: "speech",
+        id: `speech:${stretch.key}`,
+        createdAt: lastNote.createdAt,
+        message: lastNote.message,
+      });
+    }
+
+    // Settled, the working group becomes the turn's report — the same pills,
+    // where the group was — and the Mate's answer follows it.
     if (stretch.last && !turn.live) {
-      if (answer !== null) {
-        rows.push({
-          kind: "message",
-          id: answer.id,
-          createdAt: answer.createdAt,
-          message: answer.message,
-          receipt: null,
-          aside: false,
-          imageOnly: false,
-          showAssistantMeta: !answer.message.streaming,
-        });
-      }
       const outcome = deriveOutcome({
         turn,
         landed: landedByTurnKey.get(turn.key) ?? [],
@@ -1259,6 +1437,18 @@ export function deriveMessagesTimelineRows(
           id: outcome.key,
           createdAt: turn.answer?.createdAt ?? stretch.endedAt ?? stretch.startedAt,
           outcome,
+        });
+      }
+      if (answer !== null) {
+        rows.push({
+          kind: "message",
+          id: answer.id,
+          createdAt: answer.createdAt,
+          message: answer.message,
+          receipt: null,
+          aside: false,
+          imageOnly: false,
+          showAssistantMeta: !answer.message.streaming,
         });
       }
     }
@@ -1274,7 +1464,7 @@ export function deriveMessagesTimelineRows(
       isNext: index === 0,
     });
   });
-  return rows;
+  return rows.map((row, index) => ({ ...row, gap: rowGap(rows[index - 1], row) }));
 }
 
 export function computeStableMessagesTimelineRows(
@@ -1304,7 +1494,9 @@ export function computeStableMessagesTimelineRows(
  * derivation rebuilds compares by value.
  */
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
-  if (a.kind !== b.kind || a.id !== b.id || a.createdAt !== b.createdAt) return false;
+  if (a.kind !== b.kind || a.id !== b.id || a.createdAt !== b.createdAt || a.gap !== b.gap) {
+    return false;
+  }
   switch (a.kind) {
     case "message": {
       const bm = b as typeof a;
@@ -1318,6 +1510,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       );
     }
     case "log-note":
+      return a.message === (b as typeof a).message;
+    case "speech":
       return a.message === (b as typeof a).message;
     case "log-reasoning": {
       const br = b as typeof a;

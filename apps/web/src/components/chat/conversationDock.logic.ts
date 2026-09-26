@@ -17,7 +17,7 @@ import type { ActivePlanState, TimelineEntry } from "../../session-logic";
 import { readUsageLimitNotice } from "./conversation.logic";
 
 /** Operations that run long enough to watch: a pipeline or a multi-step setup. */
-const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
+export const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
   "deploy",
   "import",
   "bootstrap",

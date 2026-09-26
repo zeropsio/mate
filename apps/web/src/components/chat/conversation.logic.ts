@@ -1017,6 +1017,8 @@ export interface OutcomeModel {
     readonly count: number;
     readonly views: number;
     readonly failures: number;
+    /** Every check, in order: the report shows each take in its device's shape. */
+    readonly takes: ReadonlyArray<ZeropsOperation>;
   } | null;
   readonly created: ReadonlyArray<string>;
   readonly removed: ReadonlyArray<string>;
@@ -1142,15 +1144,6 @@ export function deriveOutcome(input: {
         }
       : null;
 
-  // Checks alone are what the stretch's strip already shows: the outcome
-  // carries them only beside something else the turn produced.
-  const checksOnly =
-    services.size === 0 &&
-    input.landed.length === 0 &&
-    !(input.diff && input.diff.files.length > 0) &&
-    created.length === 0 &&
-    removed.length === 0 &&
-    notDone.length === 0;
   const outcome: OutcomeModel = {
     key: `outcome:${turn.key}`,
     live: [...services.values()],
@@ -1160,12 +1153,15 @@ export function deriveOutcome(input: {
       title: entry.event.title,
     })),
     files,
+    // The report is where a settled turn's checks are seen: every take, as
+    // the thumbnail of the device it was taken on.
     checks:
-      checks.length > 0 && !checksOnly
+      checks.length > 0
         ? {
             count: checks.length,
             views: new Set(checks.map(browserCheckCaption)).size,
             failures: checks.filter(browserCheckFailed).length,
+            takes: checks,
           }
         : null,
     created,

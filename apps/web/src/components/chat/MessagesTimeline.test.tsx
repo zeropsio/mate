@@ -607,7 +607,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).not.toContain("Show full message");
     expect(markup).toContain('data-user-message-collapsible="false"');
-    expect(markup).toMatch(/rounded-2xl bg-message[^"]* p-3/);
+    expect(markup).toMatch(/rounded-2xl bg-message[^"]* px-4 py-2\.5/);
   });
 
   it("preserves arbitrary XML-like tags and comparisons in rendered user messages", async () => {
@@ -1147,11 +1147,14 @@ describe("MessagesTimeline — the conversation", () => {
         ]}
       />,
     );
+    // Settled, the line is one quiet phrase: no preview, no count, no face,
+    // and a read message carries no mark.
     expect(markup).toContain('data-timeline-row-kind="work-line"');
-    expect(markup).toContain("Worked 1m 30s");
-    expect(markup).toContain("Building the shop now.");
-    expect(markup).toContain("1 note");
-    expect(markup).toContain('data-message-receipt="seen"');
+    expect(markup).toContain("Worked for 1m 30s");
+    expect(markup).not.toContain("Building the shop now.");
+    expect(markup).not.toContain("1 note");
+    expect(markup).not.toContain("data-message-receipt");
+    expect(markup).not.toContain('data-zerops-primitive="mate-face"');
     expect(markup).toContain("The shop builds.");
     // The log stays closed: no tool rows, no "Work Log".
     expect(markup).not.toContain('data-timeline-row-kind="log-activity"');
@@ -1169,7 +1172,6 @@ describe("MessagesTimeline — the conversation", () => {
         stretches: new Set(["msg:message-1"]),
         logItems: new Set(),
         spawnEntries: new Set(),
-        showReasoning: false,
       },
     });
     const markup = renderToStaticMarkup(
@@ -1201,9 +1203,9 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     expect(markup).toContain('data-timeline-row-id="work-line:msg:message-1"');
-    expect(markup).toContain("Working");
+    expect(markup).toContain("Working for");
     expect(markup).toContain("Thinking");
-    expect(markup).toContain('data-conversation-face="working"');
+    expect(markup).toContain('data-work-line="working"');
     expect(markup).toContain('data-message-receipt="sent"');
   });
 
@@ -1276,7 +1278,7 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain("User attached one or more images");
   });
 
-  it("keeps a failed deploy's card in the conversation and a finished one in the outcome", () => {
+  it("keeps a failed deploy in the log and says in the outcome what the turn came to", () => {
     const markup = renderToStaticMarkup(
       zeropsStandIns(
         <MessagesTimeline
@@ -1310,9 +1312,9 @@ describe("MessagesTimeline — the conversation", () => {
         />,
       ),
     );
-    expect(markup.match(/data-zerops-card-kind="deploy"/g)).toHaveLength(1);
-    expect(markup).toContain('data-zerops-card-tone="failed"');
-    expect(markup).toContain("data-outcome-card");
+    // The failure is a step on the way, not a card under the closed line.
+    expect(markup).not.toContain('data-zerops-card-kind="deploy"');
+    expect(markup).toContain("data-turn-report");
     expect(markup).toContain("appstage");
     expect(markup).toContain("Deployed");
   });

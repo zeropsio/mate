@@ -119,6 +119,7 @@ import {
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
+  type RowGap,
   type TurnHeaderActivity,
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
@@ -145,11 +146,14 @@ import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
 import { formatWorkDuration } from "./conversation.logic";
-import { OutcomeCard } from "./OutcomeCard";
+import { TurnReport } from "./TurnReport";
+import { ConversationWorking } from "./ConversationWorking";
+import type { DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
   EventLine,
   IncidentLine,
+  MateSpeech,
   MessageReceipt,
   PauseBlock,
   Seam,
@@ -192,9 +196,6 @@ interface TimelineRowSharedState {
   onToggleStretch: (stretchKey: string, anchorKey: string) => void;
   /** Opens or closes one line of an opened log in place: a run of tool calls, an operation. */
   onToggleLogItem: (id: string, anchorKey: string) => void;
-  onToggleShowReasoning: (anchorKey: string) => void;
-  /** Whether opened logs show the Mate's thinking between its notes. */
-  showReasoning: boolean;
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
   /** The pause row that holds the thread now, and the server's reading of it. */
@@ -224,6 +225,8 @@ interface TimelineRowActivityState {
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
 const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
+/** What runs now, for the Mate at work: its own context, so a pipeline stepping on re-renders that row alone. */
+const TimelineWorkingCtx = createContext<DockModel | null>(null);
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 
@@ -271,6 +274,8 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
 interface MessagesTimelineProps {
   agentPanelModel?: AgentPanelModel;
   onOpenAgents?: () => void;
+  /** What runs now in the live turn: deploys, helpers, the task list. */
+  working?: DockModel | null;
   isWorking: boolean;
   workingStepLabel?: string | null;
   isCompacting?: boolean;
@@ -332,6 +337,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   activeTurnStartedAt,
   agentPanelModel,
   onOpenAgents = NOOP_OPEN_AGENTS,
+  working = null,
   listRef,
   timelineEntries,
   latestTurn,
@@ -375,9 +381,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const [expandedLogItemIds, setExpandedLogItemIds] = useState<ReadonlySet<string>>(
     () => rememberedPosition?.disclosures?.logItems ?? new Set(),
-  );
-  const [showReasoning, setShowReasoning] = useState(
-    () => rememberedPosition?.disclosures?.showReasoning ?? false,
   );
   // Preserve member disclosure state across virtualization.
   const [expandedSpawnEntryIds, setExpandedSpawnEntryIds] = useState<ReadonlySet<string>>(
@@ -455,13 +458,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [suspendEndScrollMaintenanceForDisclosure],
   );
-  const onToggleShowReasoning = useCallback(
-    (anchorKey: string) => {
-      suspendEndScrollMaintenanceForDisclosure(anchorKey);
-      setShowReasoning((current) => !current);
-    },
-    [suspendEndScrollMaintenanceForDisclosure],
-  );
   const [expandedReasoningMessageIds, setExpandedReasoningMessageIds] = useState<
     ReadonlySet<string>
   >(new Set());
@@ -521,7 +517,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         runningTurnId,
         openStretchKeys,
         expandedIds: expandedLogItemIds,
-        showReasoning,
         isWorking,
         activeTurnStartedAt,
         turnDiffSummaries,
@@ -535,7 +530,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       runningTurnId,
       openStretchKeys,
       expandedLogItemIds,
-      showReasoning,
       isWorking,
       activeTurnStartedAt,
       turnDiffSummaries,
@@ -704,7 +698,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             stretches: openStretchKeys,
             logItems: expandedLogItemIds,
             spawnEntries: expandedSpawnEntryIds,
-            showReasoning,
           },
         });
       }
@@ -751,7 +744,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     expandedSpawnEntryIds,
     openStretchKeys,
     expandedLogItemIds,
-    showReasoning,
     listRef,
     minimapItems,
     minimapStripMap,
@@ -815,8 +807,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenTurnDiff,
       onToggleStretch,
       onToggleLogItem,
-      onToggleShowReasoning,
-      showReasoning,
       speaker,
       livePauseId,
       usagePause,
@@ -845,8 +835,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenTurnDiff,
       onToggleStretch,
       onToggleLogItem,
-      onToggleShowReasoning,
-      showReasoning,
       speaker,
       livePauseId,
       usagePause,
@@ -898,65 +886,67 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
-        <div ref={setTimelineViewportElement} className="relative h-full min-h-0">
-          <LegendList<MessagesTimelineRow>
-            ref={listRef}
-            data={rows}
-            keyExtractor={keyExtractor}
-            getItemType={getItemType}
-            renderItem={renderItem}
-            estimatedItemSize={90}
-            initialScrollAtEnd={rememberedPosition?.atEnd !== false}
-            {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
-            {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
-            contentInsetEndAdjustment={contentInsetEndAdjustment}
-            maintainScrollAtEnd={
-              restoringReadingPosition ||
-              anchoredEndSpace ||
-              !liveFollowEnabled ||
-              disclosureToggleSettling
-                ? false
-                : TIMELINE_MAINTAIN_SCROLL_AT_END
-            }
-            maintainVisibleContentPosition={
-              restoringReadingPosition ? false : maintainVisibleContentPosition
-            }
-            onScroll={handleScroll}
-            className={cn(
-              "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
-              topFadeEnabled && "topbar-scroll-fade",
-            )}
-            ListHeaderComponent={
-              loadEarlier !== null ? (
-                <TimelineLoadEarlierHeader
-                  loading={loadEarlier.loading}
-                  onLoadEarlier={loadEarlier.onLoadEarlier}
-                  fade={topFadeEnabled}
-                />
-              ) : topFadeEnabled ? (
-                TIMELINE_LIST_FADE_HEADER
-              ) : (
-                TIMELINE_LIST_HEADER
-              )
-            }
-            ListFooterComponent={TIMELINE_LIST_FOOTER}
-          />
-          <TimelineMinimap
-            items={minimapItems}
-            hasPersistentGutter={minimapHasPersistentGutter}
-            hitStripWidth={minimapHitStripWidth}
-            currentIndex={minimapCurrentIndex}
-            stripMap={minimapStripMap}
-            onSelect={(item) => {
-              onManualNavigation();
-              void listRef.current?.scrollToIndex({
-                index: item.rowIndex,
-                animated: true,
-                viewOffset: 24,
-              });
-            }}
-          />
-        </div>
+        <TimelineWorkingCtx value={working}>
+          <div ref={setTimelineViewportElement} className="relative h-full min-h-0">
+            <LegendList<MessagesTimelineRow>
+              ref={listRef}
+              data={rows}
+              keyExtractor={keyExtractor}
+              getItemType={getItemType}
+              renderItem={renderItem}
+              estimatedItemSize={90}
+              initialScrollAtEnd={rememberedPosition?.atEnd !== false}
+              {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
+              {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
+              contentInsetEndAdjustment={contentInsetEndAdjustment}
+              maintainScrollAtEnd={
+                restoringReadingPosition ||
+                anchoredEndSpace ||
+                !liveFollowEnabled ||
+                disclosureToggleSettling
+                  ? false
+                  : TIMELINE_MAINTAIN_SCROLL_AT_END
+              }
+              maintainVisibleContentPosition={
+                restoringReadingPosition ? false : maintainVisibleContentPosition
+              }
+              onScroll={handleScroll}
+              className={cn(
+                "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
+                topFadeEnabled && "topbar-scroll-fade",
+              )}
+              ListHeaderComponent={
+                loadEarlier !== null ? (
+                  <TimelineLoadEarlierHeader
+                    loading={loadEarlier.loading}
+                    onLoadEarlier={loadEarlier.onLoadEarlier}
+                    fade={topFadeEnabled}
+                  />
+                ) : topFadeEnabled ? (
+                  TIMELINE_LIST_FADE_HEADER
+                ) : (
+                  TIMELINE_LIST_HEADER
+                )
+              }
+              ListFooterComponent={TIMELINE_LIST_FOOTER}
+            />
+            <TimelineMinimap
+              items={minimapItems}
+              hasPersistentGutter={minimapHasPersistentGutter}
+              hitStripWidth={minimapHitStripWidth}
+              currentIndex={minimapCurrentIndex}
+              stripMap={minimapStripMap}
+              onSelect={(item) => {
+                onManualNavigation();
+                void listRef.current?.scrollToIndex({
+                  index: item.rowIndex,
+                  animated: true,
+                  viewOffset: 24,
+                });
+              }}
+            />
+          </div>
+        </TimelineWorkingCtx>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
   );
@@ -1291,7 +1281,7 @@ function TimelineMinimapNavigationButton({
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-/** Rows that belong to an opened log: they sit on its rail, under the line's words. */
+/** Rows that belong to an opened log: they hang on its rail, under the line's words. */
 function isLogRow(row: TimelineRow): boolean {
   switch (row.kind) {
     case "log-note":
@@ -1306,36 +1296,34 @@ function isLogRow(row: TimelineRow): boolean {
   }
 }
 
-/** The vertical rhythm: a message opens a stretch, its line hugs it, what it produced follows. */
-function rowSpacing(row: TimelineRow): string {
-  switch (row.kind) {
-    case "message":
-      return row.message.role === "user" ? "pt-4 pb-1" : "pt-2 pb-2";
-    case "work-line":
-      return "pb-0.5";
-    case "seam":
-      return "pt-5 pb-1";
-    case "outcome":
-      return "pt-1 pb-3";
-    case "strip":
-    case "operation":
-    case "pause":
-    case "proposed-plan":
-      return "py-1";
-    case "queued-message":
-      return "pt-3 pb-1";
-    default:
-      return isLogRow(row) ? "py-0.5" : "py-0.5";
-  }
+/** The room a row keeps above itself (see `rowGap`). */
+const GAP_CLASS: Record<RowGap, string> = {
+  none: "",
+  tight: "pt-1",
+  line: "pt-3",
+  block: "pt-5",
+  turn: "pt-10",
+};
+
+/**
+ * Where a row sits across the column. The person's messages hug the right
+ * edge and a seam spans it; everything the Mate says or does starts on one
+ * text edge with a gutter left of it for its marks, and an opened log hangs
+ * on a hairline just inside that edge.
+ */
+function rowInset(row: TimelineRow): string {
+  if (isLogRow(row)) return "ms-5.5 border-s border-border/70 ps-4";
+  if (row.kind === "message" && row.message.role === "user") return "";
+  if (row.kind === "queued-message" || row.kind === "seam") return "";
+  return "ps-5";
 }
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
-  const log = isLogRow(row);
   return (
     <div
       className={cn(
-        rowSpacing(row),
-        log && "ms-3 border-s border-border ps-4",
+        GAP_CLASS[row.gap ?? "none"],
+        rowInset(row),
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
       )}
       data-timeline-row-id={row.id}
@@ -1348,6 +1336,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         <AssistantTimelineRow row={row} />
       ) : null}
       {row.kind === "work-line" ? <WorkLineTimelineRow row={row} /> : null}
+      {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
+      {row.kind === "speech" ? <SpeechTimelineRow row={row} /> : null}
       {row.kind === "log-note" ? <LogNoteTimelineRow row={row} /> : null}
       {row.kind === "log-activity" ? <LogActivityTimelineRow row={row} /> : null}
       {row.kind === "log-reasoning" ? (
@@ -1391,12 +1381,74 @@ function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-
       activityLabel={row.live ? turnHeaderActivityLabel(row.activity, ctx.workspaceRoot) : null}
       compacting={row.live && isCompacting}
       onToggle={() => ctx.onToggleStretch(row.stretchKey, row.id)}
-      onToggleReasoning={() => ctx.onToggleShowReasoning(row.id)}
       row={row}
-      showReasoning={ctx.showReasoning}
-      speaker={ctx.speaker}
       timestampFormat={ctx.timestampFormat}
     />
+  );
+}
+
+/** The Mate at work: its words, what runs, the browser while it checks. */
+function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
+  const ctx = use(TimelineRowCtx);
+  const dock = use(TimelineWorkingCtx);
+  const note = row.note;
+  return (
+    <ConversationWorking
+      browser={
+        row.strip === null ? null : (
+          <BrowserStrip
+            environmentId={ctx.activeThreadEnvironmentId}
+            onOpenImage={ctx.onImageExpand}
+            strip={row.strip}
+            threadRef={ctx.threadRef}
+          />
+        )
+      }
+      dock={dock}
+      environmentId={ctx.activeThreadEnvironmentId}
+      failures={row.failures}
+      incidents={row.incidents}
+      noteKey={note?.id ?? null}
+      onOpenAgents={ctx.onOpenAgents}
+      speaker={ctx.speaker}
+      speech={
+        note === null ? null : (
+          <ChangeChipMomentContext value={note.createdAt}>
+            <ChatMarkdown
+              text={note.text}
+              cwd={ctx.markdownCwd}
+              threadRef={ctx.threadRef ?? undefined}
+              isStreaming={Boolean(note.streaming)}
+              lineBreaks={shouldPreserveAssistantLineBreaks(note.text)}
+              skills={ctx.skills}
+              headingLevelOffset={MESSAGE_HEADING_LEVEL}
+              onRunShellCommand={ctx.onRunShellCommand}
+            />
+          </ChangeChipMomentContext>
+        )
+      }
+      threadRef={ctx.threadRef}
+    />
+  );
+}
+
+function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <MateSpeech speaker={ctx.speaker}>
+      <ChangeChipMomentContext value={row.message.createdAt}>
+        <ChatMarkdown
+          text={row.message.text}
+          cwd={ctx.markdownCwd}
+          threadRef={ctx.threadRef ?? undefined}
+          isStreaming={Boolean(row.message.streaming)}
+          lineBreaks={shouldPreserveAssistantLineBreaks(row.message.text)}
+          skills={ctx.skills}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          onRunShellCommand={ctx.onRunShellCommand}
+        />
+      </ChangeChipMomentContext>
+    </MateSpeech>
   );
 }
 
@@ -1577,7 +1629,11 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
 function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcome" }> }) {
   const ctx = use(TimelineRowCtx);
   return (
-    <OutcomeCard onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)} outcome={row.outcome} />
+    <TurnReport
+      onOpenImage={ctx.onImageExpand}
+      onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
+      outcome={row.outcome}
+    />
   );
 }
 
@@ -1732,7 +1788,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
       <div
-        className="relative max-w-4/5 rounded-2xl bg-message p-3 text-message-foreground"
+        className="relative max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground"
         data-message-aside={row.aside ? "true" : undefined}
       >
         <MessageAuthorHeading>You</MessageAuthorHeading>
@@ -1894,7 +1950,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
   return (
-    <div className="relative min-w-0 px-1 py-0.5">
+    <div className="relative min-w-0">
       <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
       <ChangeChipMomentContext value={row.message.createdAt}>
         <ChatMarkdown
@@ -1910,7 +1966,9 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         />
       </ChangeChipMomentContext>
       {row.showAssistantMeta ? (
-        <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">
+        // Floats over the gap above the answer instead of reserving a blank
+        // line under every one of them.
+        <div className="absolute end-0 -top-4 z-10 flex items-center gap-1.5 rounded-md border border-border bg-popover ps-0.5 pe-2 text-xs tabular-nums opacity-0 shadow-sm transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">
           <AssistantCopyButton row={row} />
           <Tooltip>
             <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>

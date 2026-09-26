@@ -1,34 +1,41 @@
 /**
- * The dock above the composer: the running deploy with its pipeline, the
- * helpers the Mate started and their states, the Mate's task list, a pause's
- * countdown — one quiet row each, a click opening one in place. It floats
- * over the timeline's bottom, so nothing in it ever moves a message.
+ * The Mate at work: the one component that shows what is happening now, at
+ * the live stretch's tail, right under its line. Its face and its latest words
+ * in full; a pill for each thing running — a deploy stepping through its
+ * pipeline in the Zerops GUI's words, the helpers, the task list, a service in
+ * trouble — each opening its detail in place; and the browser while it checks.
+ * Nothing that runs pops out anywhere else: settling folds all of it into the
+ * line, the words the person answered and the outcome.
+ *
+ * It is the conversation's bottom, so it may change shape; it only ever grows
+ * while live, so a finished pill or a shorter note never pulls the
+ * conversation down.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { PipelineSpokenState } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   BotIcon,
   CheckIcon,
-  ChevronRightIcon,
   CircleDotIcon,
   CircleIcon,
   ListTodoIcon,
-  PauseIcon,
   RocketIcon,
-  type LucideIcon,
+  RotateCcwIcon,
+  XIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { formatDayAwareTimestamp } from "../../timestampFormat";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
+import { MateFace } from "../zerops/primitives";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
-import { formatWorkDuration } from "./conversation.logic";
+import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
+import { Pill, Segments } from "./ConversationPills";
 import type { DockModel } from "./conversationDock.logic";
-import { ElapsedSince } from "./ConversationRows";
+import type { WorkingFailure } from "./MessagesTimeline.logic";
+import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 
 const TONE_DOT: Record<ServiceStatusToneId, string> = {
   ok: "bg-status-ok",
@@ -45,59 +52,6 @@ const STEP_SEGMENT: Record<string, string> = {
   queued: "bg-muted-foreground/25",
 };
 
-function DockRow({
-  icon: Icon,
-  iconClassName,
-  open,
-  onToggle,
-  children,
-  label,
-}: {
-  readonly icon: LucideIcon;
-  readonly iconClassName?: string | undefined;
-  readonly open: boolean;
-  readonly onToggle: (() => void) | null;
-  readonly children: ReactNode;
-  readonly label: string;
-}) {
-  const body = (
-    <>
-      <Icon
-        aria-hidden="true"
-        className={cn("size-3.5 shrink-0 text-muted-foreground", iconClassName)}
-      />
-      {children}
-      {onToggle ? (
-        <ChevronRightIcon
-          aria-hidden="true"
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
-            open && "rotate-90",
-          )}
-        />
-      ) : null}
-    </>
-  );
-  const className =
-    "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-left text-line";
-  return onToggle ? (
-    <button
-      aria-expanded={open}
-      aria-label={label}
-      className={cn(
-        className,
-        "cursor-pointer transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-      )}
-      onClick={onToggle}
-      type="button"
-    >
-      {body}
-    </button>
-  ) : (
-    <div className={className}>{body}</div>
-  );
-}
-
 const PIPELINE_SEGMENT: Record<PipelineSpokenState, string> = {
   finished: "bg-status-ok",
   running: "bg-status-busy",
@@ -107,21 +61,25 @@ const PIPELINE_SEGMENT: Record<PipelineSpokenState, string> = {
   cancelled: "bg-muted-foreground/25",
 };
 
+const INCIDENT_DOT: Record<IncidentModel["tone"], string> = {
+  attention: "bg-status-attention",
+  ok: "bg-status-ok",
+  failed: "bg-status-failed",
+};
+
 /**
- * A pipeline in one line: its word, the service, a segment per step, the step
- * running now in the Zerops GUI's own sentence, and how long — the full
- * pipeline, step by step with the build log, one click away.
+ * A deploy's pill: the service, a segment per step, the step running now in
+ * the Zerops GUI's own sentence, and how long. Open, the full pipeline with
+ * its build log.
  */
-function DockOperation({
+function OperationPill({
   operation,
   environmentId,
-  threadRef,
   open,
   onToggle,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
-  readonly threadRef: ScopedThreadRef | null;
   readonly open: boolean;
   readonly onToggle: () => void;
 }) {
@@ -138,76 +96,73 @@ function DockOperation({
     steps.find((step) => step.state === "running") ??
     steps.find((step) => step.state === "failed") ??
     steps.findLast((step) => step.state === "done");
-  const words = pipeline?.calculating
-    ? "Calculating steps from zerops.yml"
-    : pipelineStep !== undefined
-      ? pipelineStep.sentence
-      : fallbackStep !== undefined
-        ? `${fallbackStep.label}${fallbackStep.stateLabel ? ` · ${fallbackStep.stateLabel.toLowerCase()}` : ""}`
-        : running
-          ? "Starting"
-          : (operation.closing ?? "");
+  const words = !running
+    ? operation.statusWord
+    : pipeline?.calculating
+      ? "Calculating steps"
+      : pipelineStep !== undefined
+        ? pipelineStep.sentence
+        : fallbackStep !== undefined
+          ? fallbackStep.label
+          : "Starting";
   const settledMs =
     operation.settledAt === undefined
       ? null
       : Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
+  const segments =
+    pipeline !== undefined && pipeline.steps.length > 1
+      ? pipeline.steps.map((step) => ({ key: step.id, className: PIPELINE_SEGMENT[step.state] }))
+      : steps.length > 1
+        ? steps.map((step) => ({
+            key: step.id,
+            className: STEP_SEGMENT[step.state] ?? STEP_SEGMENT.queued!,
+          }))
+        : null;
   return (
-    <div data-dock-operation={operation.kind} data-dock-operation-phase={operation.phase}>
-      <DockRow
-        icon={RocketIcon}
-        iconClassName={
-          operation.phase === "failed"
-            ? "text-status-failed"
-            : operation.phase === "done"
-              ? "text-status-ok"
-              : undefined
-        }
-        label={`${operation.statusWord} ${operation.subject}. ${open ? "Hide" : "Show"} the pipeline`}
-        onToggle={onToggle}
-        open={open}
+    <Pill
+      label={`${operation.statusWord} ${operation.subject}. ${open ? "Hide" : "Show"} the pipeline`}
+      onToggle={onToggle}
+      open={open}
+    >
+      {operation.phase === "failed" ? (
+        <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
+      ) : operation.phase === "done" ? (
+        <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
+      ) : (
+        <RocketIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-busy" />
+      )}
+      <span className="shrink-0 font-medium text-foreground">{operation.subject}</span>
+      {running && segments !== null ? <Segments segments={segments} /> : null}
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          operation.phase === "failed" ? "text-status-failed-text" : "text-muted-foreground",
+        )}
       >
-        <span className="shrink-0 font-medium text-foreground">{operation.statusWord}</span>
-        <span className="shrink-0 rounded-md bg-accent px-1.5 text-foreground text-xs leading-5">
-          {operation.subject}
-        </span>
-        {pipeline !== undefined && pipeline.steps.length > 1 ? (
-          <span aria-hidden="true" className="flex w-16 shrink-0 items-center gap-0.5">
-            {pipeline.steps.map((step) => (
-              <span
-                key={step.id}
-                className={cn("h-1 min-w-0 flex-1 rounded-full", PIPELINE_SEGMENT[step.state])}
-              />
-            ))}
-          </span>
-        ) : steps.length > 1 ? (
-          <span aria-hidden="true" className="flex w-16 shrink-0 items-center gap-0.5">
-            {steps.map((step) => (
-              <span
-                key={step.id}
-                className={cn(
-                  "h-1 min-w-0 flex-1 rounded-full",
-                  STEP_SEGMENT[step.state] ?? STEP_SEGMENT.queued,
-                )}
-              />
-            ))}
-          </span>
+        {words}
+      </span>
+      <span className="shrink-0 text-muted-foreground tabular-nums">
+        {running ? (
+          <ElapsedSince since={operation.anchorAt} />
+        ) : settledMs !== null && Number.isFinite(settledMs) ? (
+          formatWorkDuration(settledMs)
         ) : null}
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">{words}</span>
-        <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
-          {running ? (
-            <ElapsedSince since={operation.anchorAt} />
-          ) : settledMs !== null && Number.isFinite(settledMs) ? (
-            formatWorkDuration(settledMs)
-          ) : null}
-        </span>
-      </DockRow>
-      {open ? (
-        <div className="mx-1 mt-1 mb-1.5 max-h-96 overflow-auto">
-          <ZeropsOperationCard operation={operation} threadRef={threadRef} {...regions} />
-        </div>
-      ) : null}
-    </div>
+      </span>
+    </Pill>
   );
+}
+
+function OperationDetail({
+  operation,
+  environmentId,
+  threadRef,
+}: {
+  readonly operation: ZeropsOperation;
+  readonly environmentId: EnvironmentId | null;
+  readonly threadRef: ScopedThreadRef | null;
+}) {
+  const regions = useOperationCard(operation, environmentId);
+  return <ZeropsOperationCard operation={operation} threadRef={threadRef} {...regions} />;
 }
 
 /** A step's key: its words, and how many times the same words came before it. */
@@ -220,173 +175,263 @@ function keyedSteps<T extends { readonly step: string }>(steps: ReadonlyArray<T>
   });
 }
 
-export function ConversationDock({
-  model,
+/**
+ * The reserved height of the Mate at work: it follows the content up and
+ * never back down while live, so a pill finishing or a shorter note leaves
+ * room at the very bottom instead of pulling the conversation down.
+ */
+function useGrowOnlyHeight() {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [minHeight, setMinHeight] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (content === null) return;
+    let tallest = 0;
+    const measure = () => {
+      const height = content.getBoundingClientRect().height;
+      if (height > tallest) {
+        tallest = height;
+        setMinHeight(height);
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+  return { contentRef, minHeight };
+}
+
+export function ConversationWorking({
+  speaker,
+  noteKey,
+  speech,
+  incidents,
+  failures,
+  dock,
+  browser,
   environmentId,
   threadRef,
-  timestampFormat,
   onOpenAgents,
 }: {
-  readonly model: DockModel;
+  readonly speaker: ConversationSpeaker;
+  /** Which note the bubble holds: a new one replays the rise. */
+  readonly noteKey: string | null;
+  /** The Mate's latest words, rendered; null before it has said anything. */
+  readonly speech: ReactNode;
+  readonly incidents: ReadonlyArray<IncidentModel>;
+  /** What failed on the way, marked where it happened: red, or "came back". */
+  readonly failures: ReadonlyArray<WorkingFailure>;
+  readonly dock: DockModel | null;
+  /** The browser block while the stretch checks pages. */
+  readonly browser: ReactNode;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
-  readonly timestampFormat: TimestampFormat;
   readonly onOpenAgents: () => void;
 }) {
+  const { contentRef, minHeight } = useGrowOnlyHeight();
   const [open, setOpen] = useState<string | null>(null);
   const toggle = (key: string) => setOpen((current) => (current === key ? null : key));
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const counting = model.pause?.resetsAt != null;
-  useEffect(() => {
-    if (!counting) return;
-    const id = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, [counting]);
+  const operations = dock?.operations ?? [];
+  const helpers = dock?.helpers ?? null;
+  const tasks = dock?.tasks ?? null;
+  const openOperation = operations.find((operation) => operation.key === open);
+  const hasPills =
+    operations.length > 0 ||
+    helpers !== null ||
+    tasks !== null ||
+    incidents.length > 0 ||
+    failures.length > 0;
 
   return (
-    <section
-      aria-label="What the Mate is doing now"
-      className="dropdown-glass mx-auto mb-2 grid w-full max-w-3xl gap-px rounded-2xl p-1 shadow-lg"
-      data-conversation-dock
-    >
-      {model.operations.map((operation) => (
-        <DockOperation
-          key={operation.key}
-          environmentId={environmentId}
-          onToggle={() => toggle(operation.key)}
-          open={open === operation.key}
-          operation={operation}
-          threadRef={threadRef}
-        />
-      ))}
-      {model.helpers ? (
-        <div data-dock-helpers>
-          <DockRow
-            icon={BotIcon}
-            label={`Helpers. ${open === "helpers" ? "Hide" : "Show"} each one`}
-            onToggle={() => toggle("helpers")}
-            open={open === "helpers"}
-          >
-            <span className="shrink-0 font-medium text-foreground">
-              {model.helpers.rows.length === 1
-                ? "1 helper"
-                : `${model.helpers.rows.length} helpers`}
+    <div data-conversation-working style={minHeight === undefined ? undefined : { minHeight }}>
+      <div ref={contentRef} className="grid gap-2 pb-1">
+        {speech !== null && noteKey !== null ? (
+          <div className="relative flex min-w-0" data-mate-speech="live">
+            <span aria-hidden="true" className="absolute -start-5 top-1 flex w-5 justify-center">
+              <MateFace size="sm" state="working" tint={speaker.tint} />
             </span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {[
-                model.helpers.working > 0 ? `${model.helpers.working} working` : null,
-                model.helpers.done > 0 ? `${model.helpers.done} done` : null,
-                model.helpers.failed > 0 ? `${model.helpers.failed} failed` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-          </DockRow>
-          {open === "helpers" ? (
-            <ul className="mx-1 mb-1 grid gap-px">
-              {model.helpers.rows.map((helper) => (
+            <div
+              key={noteKey}
+              aria-live="polite"
+              className="min-w-0 max-w-full animate-speech-in rounded-2xl rounded-ss-sm bg-muted px-3.5 py-2 text-foreground motion-reduce:animate-none"
+            >
+              {speech}
+            </div>
+          </div>
+        ) : null}
+        {hasPills ? (
+          <div className="flex min-w-0 flex-wrap gap-1.5" data-working-pills>
+            {operations.map((operation) => (
+              <OperationPill
+                key={operation.key}
+                environmentId={environmentId}
+                onToggle={() => toggle(operation.key)}
+                open={open === operation.key}
+                operation={operation}
+              />
+            ))}
+            {incidents.map((incident) => (
+              <Pill
+                key={incident.key}
+                label={incident.phases.join(", ")}
+                tone={
+                  incident.tone === "failed"
+                    ? "failed"
+                    : incident.tone === "attention"
+                      ? "attention"
+                      : "plain"
+                }
+              >
+                <span
+                  className={cn("size-1.5 shrink-0 rounded-full", INCIDENT_DOT[incident.tone])}
+                />
+                <span className="shrink-0 font-medium text-foreground">{incident.hostname}</span>
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {incident.phases.at(-1)}
+                </span>
+              </Pill>
+            ))}
+            {failures.map((failure) => (
+              <Pill
+                key={failure.key}
+                label={`${failure.subject ? `${failure.subject}: ` : ""}${failure.words}${failure.recovered ? ", came back" : ""}`}
+                tone={failure.recovered ? "attention" : "failed"}
+              >
+                {failure.recovered ? (
+                  <RotateCcwIcon aria-hidden="true" className="size-3 shrink-0" />
+                ) : (
+                  <XIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                )}
+                {failure.subject ? (
+                  <span className="shrink-0 font-medium">{failure.subject}</span>
+                ) : null}
+                <span className="min-w-0 truncate">
+                  {failure.words}
+                  {failure.recovered ? " · came back" : ""}
+                </span>
+              </Pill>
+            ))}
+            {helpers !== null ? (
+              <Pill
+                label={`Helpers. ${open === "helpers" ? "Hide" : "Show"} each one`}
+                onToggle={() => toggle("helpers")}
+                open={open === "helpers"}
+              >
+                <BotIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="shrink-0 font-medium text-foreground">
+                  {helpers.rows.length === 1 ? "1 helper" : `${helpers.rows.length} helpers`}
+                </span>
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {[
+                    helpers.working > 0 ? `${helpers.working} working` : null,
+                    helpers.done > 0 ? `${helpers.done} done` : null,
+                    helpers.failed > 0 ? `${helpers.failed} failed` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </Pill>
+            ) : null}
+            {tasks !== null ? (
+              <Pill
+                label={`Tasks. ${open === "tasks" ? "Hide" : "Show"} the list`}
+                onToggle={() => toggle("tasks")}
+                open={open === "tasks"}
+              >
+                <ListTodoIcon
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                />
+                <span className="shrink-0 font-medium text-foreground tabular-nums">
+                  {tasks.done} of {tasks.steps.length}
+                </span>
+                {tasks.current ? (
+                  <span className="min-w-0 truncate text-muted-foreground">{tasks.current}</span>
+                ) : null}
+              </Pill>
+            ) : null}
+          </div>
+        ) : null}
+        {openOperation !== undefined ? (
+          <div className="max-h-96 overflow-auto rounded-xl" data-working-detail="operation">
+            <OperationDetail
+              environmentId={environmentId}
+              operation={openOperation}
+              threadRef={threadRef}
+            />
+          </div>
+        ) : null}
+        {open === "helpers" && helpers !== null ? (
+          <ul className="grid gap-px rounded-xl bg-muted/50 p-1.5" data-working-detail="helpers">
+            {helpers.rows.map((helper) => (
+              <li
+                key={helper.id}
+                className="flex min-h-6 min-w-0 items-center gap-2 px-1.5 text-line"
+              >
+                <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[helper.tone])} />
+                <span className="min-w-0 flex-1 truncate text-foreground">{helper.title}</span>
+                <span className="shrink-0 text-muted-foreground text-xs">{helper.word}</span>
+                <span className="w-14 shrink-0 text-right text-muted-foreground text-xs tabular-nums">
+                  {helper.endedAt === null ? (
+                    <ElapsedSince since={helper.startedAt} />
+                  ) : (
+                    formatWorkDuration(Date.parse(helper.endedAt) - Date.parse(helper.startedAt))
+                  )}
+                </span>
+              </li>
+            ))}
+            <li className="px-1.5 pt-0.5">
+              <button
+                className="cursor-pointer text-info-foreground text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                onClick={onOpenAgents}
+                type="button"
+              >
+                Open the helpers panel
+              </button>
+            </li>
+          </ul>
+        ) : null}
+        {open === "tasks" && tasks !== null ? (
+          <ol className="grid gap-px rounded-xl bg-muted/50 p-1.5" data-working-detail="tasks">
+            {keyedSteps(tasks.steps).map(({ key, step }) => {
+              const Icon =
+                step.status === "completed"
+                  ? CheckIcon
+                  : step.status === "inProgress"
+                    ? CircleDotIcon
+                    : CircleIcon;
+              return (
                 <li
-                  key={helper.id}
-                  className="flex min-h-6 min-w-0 items-center gap-2 px-2 text-line"
+                  key={key}
+                  className="flex min-h-6 min-w-0 items-start gap-2 px-1.5 py-0.5 text-line"
                 >
-                  <span className={cn("size-2 shrink-0 rounded-full", TONE_DOT[helper.tone])} />
-                  <span className="min-w-0 flex-1 truncate text-foreground">{helper.title}</span>
-                  <span className="shrink-0 text-muted-foreground text-xs">{helper.word}</span>
-                  <span className="w-14 shrink-0 text-right text-muted-foreground text-xs tabular-nums">
-                    {helper.endedAt === null ? (
-                      <ElapsedSince since={helper.startedAt} />
-                    ) : (
-                      formatWorkDuration(Date.parse(helper.endedAt) - Date.parse(helper.startedAt))
+                  <Icon
+                    aria-hidden="true"
+                    className={cn(
+                      "mt-0.5 size-3.5 shrink-0",
+                      step.status === "completed"
+                        ? "text-status-ok"
+                        : step.status === "inProgress"
+                          ? "text-status-busy"
+                          : "text-muted-foreground/50",
                     )}
+                  />
+                  <span
+                    className={cn(
+                      "min-w-0",
+                      step.status === "completed" ? "text-muted-foreground" : "text-foreground",
+                    )}
+                  >
+                    {step.step}
                   </span>
                 </li>
-              ))}
-              <li className="px-2 pt-0.5">
-                <button
-                  className="cursor-pointer text-info-foreground text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                  onClick={onOpenAgents}
-                  type="button"
-                >
-                  Open the helpers panel
-                </button>
-              </li>
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-      {model.tasks ? (
-        <div data-dock-tasks>
-          <DockRow
-            icon={ListTodoIcon}
-            label={`Tasks. ${open === "tasks" ? "Hide" : "Show"} the list`}
-            onToggle={() => toggle("tasks")}
-            open={open === "tasks"}
-          >
-            <span className="shrink-0 font-medium text-foreground tabular-nums">
-              {model.tasks.done} of {model.tasks.steps.length} done
-            </span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {model.tasks.current ?? ""}
-            </span>
-          </DockRow>
-          {open === "tasks" ? (
-            <ol className="mx-1 mb-1 grid gap-px">
-              {keyedSteps(model.tasks.steps).map(({ key, step }) => {
-                const Icon =
-                  step.status === "completed"
-                    ? CheckIcon
-                    : step.status === "inProgress"
-                      ? CircleDotIcon
-                      : CircleIcon;
-                return (
-                  <li
-                    key={key}
-                    className="flex min-h-6 min-w-0 items-start gap-2 px-2 py-0.5 text-line"
-                  >
-                    <Icon
-                      aria-hidden="true"
-                      className={cn(
-                        "mt-0.5 size-3.5 shrink-0",
-                        step.status === "completed"
-                          ? "text-status-ok"
-                          : step.status === "inProgress"
-                            ? "text-status-busy"
-                            : "text-muted-foreground/50",
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        "min-w-0",
-                        step.status === "completed" ? "text-muted-foreground" : "text-foreground",
-                      )}
-                    >
-                      {step.step}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          ) : null}
-        </div>
-      ) : null}
-      {model.pause ? (
-        <DockRow
-          icon={PauseIcon}
-          iconClassName="text-status-attention"
-          label="Paused"
-          onToggle={null}
-          open={false}
-        >
-          <span className="shrink-0 font-medium text-status-attention-text">Paused</span>
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            {model.pause.resetsAt === null
-              ? "Claude usage limit"
-              : Date.parse(model.pause.resetsAt) <= nowMs
-                ? `Claude usage limit · reset at ${formatDayAwareTimestamp(model.pause.resetsAt, timestampFormat)}`
-                : `Claude usage limit · resets at ${formatDayAwareTimestamp(model.pause.resetsAt, timestampFormat)}, in ${formatWorkDuration(Date.parse(model.pause.resetsAt) - nowMs)}`}
-          </span>
-        </DockRow>
-      ) : null}
-    </section>
+              );
+            })}
+          </ol>
+        ) : null}
+        {browser}
+      </div>
+    </div>
   );
 }

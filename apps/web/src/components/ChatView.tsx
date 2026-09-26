@@ -349,7 +349,6 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
-import { ConversationDock } from "./chat/ConversationDock";
 import { deriveDock, latestUsagePause } from "./chat/conversationDock.logic";
 import {
   environmentConnectionBannerItem,
@@ -5287,9 +5286,8 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [feedbackSubmissions, routeThreadKey],
   );
-  // What changes size while the Mate works lives in the dock above the
-  // composer, never in the conversation: running deploys, helpers, the task
-  // list, a pause's countdown.
+  // What runs while the Mate works — deploys, helpers, the task list — shown
+  // in the conversation's working component, under the live line it belongs to.
   const dockModel = useMemo(
     () =>
       deriveDock({
@@ -7898,6 +7896,7 @@ export default function ChatView(props: ChatViewProps) {
               <MessagesTimeline
                 agentPanelModel={agentPanelModel}
                 onOpenAgents={addAgentsSurface}
+                working={dockModel}
                 key={activeThread.id}
                 isWorking={isWorking}
                 workingStepLabel={workingStepLabel}
@@ -8013,15 +8012,6 @@ export default function ChatView(props: ChatViewProps) {
                         items={composerBannerItems}
                         stackRef={setComposerBannerStackElement}
                       />
-                      {dockModel !== null && activeThread ? (
-                        <ConversationDock
-                          environmentId={activeThread.environmentId}
-                          model={dockModel}
-                          onOpenAgents={addAgentsSurface}
-                          threadRef={routeKind === "server" ? routeThreadRef : null}
-                          timestampFormat={timestampFormat}
-                        />
-                      ) : null}
                     </>
                   )}
                   {shownThreadSyncPhase && !activeEnvironmentUnavailable ? (
