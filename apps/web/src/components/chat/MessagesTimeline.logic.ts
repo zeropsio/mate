@@ -852,9 +852,26 @@ export function thoughtParagraphs(text: string): string[] {
   return paragraphs;
 }
 
+/**
+ * The person's latest answer to a question the Mate asked in this stretch:
+ * it stands in the card where it arrived, with the question over it, and the
+ * Mate at work carries on under it.
+ */
+function latestAnswer(stretch: Stretch): TimelineEntry | null {
+  return (
+    stretch.entries.findLast(
+      (entry) => entry.kind === "work" && entry.entry.inputAnswers !== undefined,
+    ) ?? null
+  );
+}
+
 function stretchStream(stretch: Stretch, answer: MessageEntry | null): WorkingStreamItem[] {
   const items: WorkingStreamItem[] = [];
+  const answered = latestAnswer(stretch);
+  const answeredAt = answered === null ? -1 : stretch.entries.indexOf(answered);
   stretch.entries.forEach((entry, index) => {
+    // What came before the person's answer stands above it.
+    if (index <= answeredAt) return;
     const later = stretch.entries.slice(index + 1);
     if (entry.kind === "message") {
       // The answer streams where it will stand, under the card.
@@ -1592,9 +1609,12 @@ export function deriveMessagesTimelineRows(
     });
 
     if (last.live) {
+      // Under the person's answer the Mate at work starts afresh: its own
+      // panel, so the window of what it said before the question is gone.
+      const answeredBy = latestAnswer(last);
       rows.push({
         kind: "working",
-        id: `working:${last.key}`,
+        id: answeredBy === null ? `working:${last.key}` : `working:${last.key}:${answeredBy.id}`,
         createdAt: last.startedAt,
         stretchKey: last.key,
         turnKey: turn.key,

@@ -237,6 +237,41 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  // Answered, the question and the person's answer stand in the card where
+  // the answer arrived; the Mate at work streams on under them from there.
+  // Streaming what came before the question under the answer put thoughts
+  // from half a minute earlier below the person's reply (Nova, 2026-09-26).
+  it("streams on from the person's answer, and what came before stays above it", () => {
+    const answered = tool("rs", "t1", 3, {
+      tone: "info",
+      label: "User input submitted",
+      command: undefined as never,
+      toolCallId: undefined as never,
+      toolLifecycleStatus: undefined as never,
+      sourceActivityKind: "user-input.resolved",
+      inputRequestId: "req-1",
+      inputAnswers: [{ key: "accent", answer: "Green" }],
+    });
+    const before = [user("m0", 0), assistant("a1", "t1", 1, "One question first."), asked("q1", 2)];
+    const waiting = framed({ entries: before, live: "t1" });
+    const after = framed({
+      entries: [...before, answered, assistant("a2", "t1", 4, "Green it is.")],
+      live: "t1",
+    });
+    expect(shape(after).slice(-3)).toEqual([
+      "answer:answer:rs",
+      "working:working:msg:m0:rs",
+      "card-end:card-end:msg:m0",
+    ]);
+    const working = after.find((row) => row.kind === "working");
+    expect(working?.kind === "working" ? working.stream.map((item) => item.key) : null).toEqual([
+      "a2",
+    ]);
+    // Everything above the live panel is drawn as it was.
+    const panelAt = waiting.findIndex((row) => row.kind === "working");
+    expect(frame(after).slice(0, panelAt)).toEqual(frame(waiting).slice(0, panelAt));
+  });
+
   it("draws a turn a finished background task woke before its first words", () => {
     const list = rows({
       entries: [user("m0", 0), assistant("a1", "t1", 1, "Started it."), background("b1", 5)],
