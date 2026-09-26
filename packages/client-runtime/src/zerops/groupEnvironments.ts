@@ -263,10 +263,21 @@ export type GroupEnvironmentWrite =
  * An empty or absent document is given the header it needs; a file that already
  * declares environments keeps every one of them and gets the new block at the
  * end, where a diff reads as one addition.
+ *
+ * An entry of the same name and tier whose project the platform has confirmed
+ * deleted (`gone`) is taken over instead: only its `project:` line changes, so
+ * its name — the branches and every workflow that ask for it — and whatever a
+ * person wrote under it stay. Beviro's production, deleted in the Zerops GUI,
+ * was still declared, and the production added after it was refused
+ * (2026-09-24).
  */
 export function withGroupEnvironment(
   yaml: string,
   environment: GroupEnvironment,
+  options: {
+    /** Projects the platform answered `projectNotFound` for. */
+    readonly gone?: ReadonlyArray<string> | undefined;
+  } = {},
 ): GroupEnvironmentWrite {
   const name = environment.name.trim();
   if (name.length === 0) return { ok: false, reason: "An environment needs a name." };
@@ -274,11 +285,16 @@ export function withGroupEnvironment(
     return { ok: false, reason: "An environment's name is lower-case letters, digits and dashes." };
   }
 
+  const gone = new Set(options.gone ?? []);
   const existing = readGroupEnvironments(yaml);
-  if (existing.some((entry) => entry.name === name)) {
+  const replaced = existing.find(
+    (entry) => entry.name === name && entry.tier === environment.tier && gone.has(entry.project),
+  );
+  const others = existing.filter((entry) => entry !== replaced);
+  if (others.some((entry) => entry.name === name)) {
     return { ok: false, reason: `This project already has an environment called ${name}.` };
   }
-  if (environment.tier === "production" && existing.some((entry) => entry.tier === "production")) {
+  if (environment.tier === "production" && others.some((entry) => entry.tier === "production")) {
     // One production per group (`docs/vocabulary.md`). Two would leave two
     // projects claiming the same release target with nothing to choose between.
     return { ok: false, reason: "This project already has a production." };
@@ -305,12 +321,45 @@ export function withGroupEnvironment(
       break;
     }
   }
+  if (replaced !== undefined) {
+    return {
+      ok: true,
+      yaml: document(withEntryProject(lines, { from: at + 1, to: end }, name, environment.project)),
+      branch: environmentBranchName(name),
+    };
+  }
   const body = trimTrailingBlank(lines.slice(at + 1, end));
   return {
     ok: true,
     yaml: document([...lines.slice(0, at + 1), ...body, ...block, ...lines.slice(end)]),
     branch: environmentBranchName(name),
   };
+}
+
+/**
+ * The lines with the first `project:` of the entry called `name` naming
+ * `project` instead — a comment after the value kept, every other line as it
+ * was. `mapping` is the span of lines inside `environments:`.
+ */
+function withEntryProject(
+  lines: ReadonlyArray<string>,
+  mapping: { readonly from: number; readonly to: number },
+  name: string,
+  project: string,
+): ReadonlyArray<string> {
+  let inside = false;
+  let written = false;
+  return lines.map((line, index) => {
+    if (written || index < mapping.from || index >= mapping.to) return line;
+    const key = ENTRY_KEY.exec(line);
+    if (key?.[1] !== undefined) {
+      inside = key[1].trim() === name;
+      return line;
+    }
+    if (!inside || !PROJECT.test(line)) return line;
+    written = true;
+    return line.replace(/^( {4}project:\s*)\S+/u, `$1${project}`);
+  });
 }
 
 /** One document, ending in exactly one newline whatever it was handed. */

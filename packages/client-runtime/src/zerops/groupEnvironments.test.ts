@@ -167,12 +167,67 @@ environments:
     expect(write.ok && write.yaml).toContain("      requireOnStage: stage");
   });
 
+  // Beviro's production, deleted in the Zerops GUI, was still declared, and the production added
+  // after it was refused (2026-09-24). Its entry is the new one's: its name, so the environment's
+  // branches and every workflow asking for it by name stay, and whatever a person wrote under it.
+  it.each([
+    {
+      name: "a production takes over the entry of one whose project is deleted, gates and all",
+      yaml: FULL,
+      entry: {
+        name: "production",
+        tier: "production" as const,
+        project: "p-new",
+        sources: "release" as const,
+        deploy: undefined,
+      },
+      gone: ["p-prod"],
+      expected: FULL.replace("    project: p-prod\n", "    project: p-new\n"),
+      branch: "mate-app/env-production",
+    },
+    {
+      name: "a stage takes over the entry of one whose project is deleted, sources and all",
+      yaml: FULL,
+      entry: { ...STAGE, name: "stage-client-x", project: "p-new" },
+      gone: ["p-clientx"],
+      expected: FULL.replace("    project: p-clientx\n", "    project: p-new\n"),
+      branch: "mate-app/env-stage-client-x",
+    },
+  ])("$name", ({ yaml, entry, gone, expected, branch }) => {
+    expect(withGroupEnvironment(yaml, entry, { gone })).toEqual({
+      ok: true,
+      yaml: expected,
+      branch,
+    });
+  });
+
   it.each([
     {
       name: "a second production",
       entry: { ...STAGE, name: "prod-2", tier: "production" as const },
       yaml: FULL,
       reason: "This project already has a production.",
+    },
+    {
+      name: "a second production beside one nobody said is deleted",
+      entry: { ...STAGE, name: "production", tier: "production" as const },
+      yaml: FULL,
+      gone: ["p-elsewhere"],
+      reason: "This project already has an environment called production.",
+    },
+    {
+      name: "a production under another name beside a deleted one",
+      entry: { ...STAGE, name: "prod-2", tier: "production" as const },
+      yaml: FULL,
+      gone: ["p-prod"],
+      reason: "This project already has a production.",
+    },
+    {
+      name: "a stage taking the name of a deleted production",
+      entry: { ...STAGE, name: "production" },
+      yaml: FULL,
+      gone: ["p-prod"],
+      reason: "This project already has an environment called production.",
     },
     {
       name: "a name already taken",
@@ -192,8 +247,8 @@ environments:
       yaml: "",
       reason: "An environment's name is lower-case letters, digits and dashes.",
     },
-  ])("refuses $name", ({ entry, yaml, reason }) => {
-    expect(withGroupEnvironment(yaml, entry)).toEqual({ ok: false, reason });
+  ])("refuses $name", ({ entry, yaml, gone, reason }) => {
+    expect(withGroupEnvironment(yaml, entry, { gone })).toEqual({ ok: false, reason });
   });
 
   it("names the branch and the commit after the environment", () => {
