@@ -54,7 +54,7 @@ export interface PipelineOverall {
 export interface PipelineReadoutStep {
   readonly id: PipelineStepId;
   readonly label: PipelineStepLabel;
-  readonly state: PipelineStepStatus;
+  readonly state: PipelineSpokenState;
   /** What the step does, did or failed to do, in the GUI's words. */
   readonly sentence: string;
   /** A running deploy's "Preparing upgrade…", once whether the service ran containers is known. */
@@ -98,11 +98,12 @@ const LABEL: Readonly<Record<PipelineStepId, PipelineStepLabel>> = {
   DEPLOY: "Deploy",
 };
 
-type SpokenState = Exclude<PipelineStepStatus, "noop">;
+/** Every state a listed step can be in — a `noop` step is not listed. */
+export type PipelineSpokenState = Exclude<PipelineStepStatus, "noop">;
 
 /** The four fixed-word steps; the deploy step's sentence names the version and the service. */
 const SENTENCE: Readonly<
-  Record<Exclude<PipelineStepId, "DEPLOY">, Readonly<Record<SpokenState, string>>>
+  Record<Exclude<PipelineStepId, "DEPLOY">, Readonly<Record<PipelineSpokenState, string>>>
 > = {
   INIT_BUILD_CONTAINER: {
     waiting: "Initialize build container",
@@ -138,6 +139,9 @@ const SENTENCE: Readonly<
   },
 };
 
+/** What the GUI shows in place of the steps while the platform works them out of zerops.yml. */
+export const CALCULATING_SENTENCE = "Calculating steps from zerops.yml";
+
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const SHORT_SHA_LENGTH = 7;
 
@@ -146,24 +150,27 @@ export function displayVersionName(name: string): string {
   return FULL_SHA.test(name) ? name.slice(0, SHORT_SHA_LENGTH) : name;
 }
 
-function deploySentence(
-  state: SpokenState,
-  appVersion: ActivityAppVersion,
-  options: ReadPipelineOptions,
-): string {
+/** What a deploy step's sentence names; any of them may not be known. */
+export interface PipelineSentenceNames {
+  readonly versionName: string | undefined;
+  readonly serviceName: string | undefined;
+  readonly serviceType: string | undefined;
+}
+
+function deploySentence(state: PipelineSpokenState, names: PipelineSentenceNames): string {
   const version =
-    appVersion.name === undefined
+    names.versionName === undefined
       ? "app version"
-      : `app version ${displayVersionName(appVersion.name)}`;
-  const service = options.serviceName ?? "the service";
-  const type = options.serviceType;
+      : `app version ${displayVersionName(names.versionName)}`;
+  const service = names.serviceName ?? "the service";
+  const type = names.serviceType;
   // "upgrade Node.js service appstage", or the named service alone.
   const upgraded =
     type === undefined
       ? service
-      : options.serviceName === undefined
+      : names.serviceName === undefined
         ? `the ${type} service`
-        : `${type} service ${options.serviceName}`;
+        : `${type} service ${names.serviceName}`;
   // "appstage (Node.js)", the GUI's form where the sentence speaks of a failure.
   const named = type === undefined ? service : `${service} (${type})`;
   switch (state) {
@@ -179,6 +186,15 @@ function deploySentence(
     case "cancelled":
       return `Cancelled ${version} creation and deploy to ${named}`;
   }
+}
+
+/** One step's sentence in one state — what the GUI's step component writes for it. */
+export function pipelineStepSentence(
+  id: PipelineStepId,
+  state: PipelineSpokenState,
+  names: PipelineSentenceNames,
+): string {
+  return id === "DEPLOY" ? deploySentence(state, names) : SENTENCE[id][state];
 }
 
 function parseMs(value: string | undefined): number | undefined {
@@ -374,10 +390,11 @@ export function readPipeline(
         id,
         label: LABEL[id],
         state: stepState,
-        sentence:
-          id === "DEPLOY"
-            ? deploySentence(stepState, appVersion, options)
-            : SENTENCE[id][stepState],
+        sentence: pipelineStepSentence(id, stepState, {
+          versionName: appVersion.name,
+          serviceName: options.serviceName,
+          serviceType: options.serviceType,
+        }),
         ...(note === undefined ? {} : { note }),
         ...stepSpan(id, stepState, appVersion, options),
       },

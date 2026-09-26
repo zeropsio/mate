@@ -5,7 +5,7 @@
  * it, e.g. a start-without-code deploy with no build) is omitted rather than
  * rendered as an empty row.
  */
-import { platformStatus, processActionWord, statusWord } from "../operations/phrases.ts";
+import { platformStatus, processActionWord } from "../operations/phrases.ts";
 import { type PipelineState, type PipelineStepStatus, getPipelineState } from "./pipelineState.ts";
 import type { ActivityAppVersion, ActivityProcess } from "./dto.ts";
 
@@ -136,21 +136,14 @@ export function observedSteps(
   return steps;
 }
 
-/**
- * The five pipeline slots a deploy card holds from its first frame, so the
- * steps fill in place instead of appearing: nothing observed yet → every slot
- * queued; once the pipeline has spoken, a slot `observedSteps` omitted (a
- * `noop` — no build, no prepare) reads skipped rather than vanishing.
- */
-export function pipelineStepSlots(steps: ReadonlyArray<ObservedStep>): ReadonlyArray<ObservedStep> {
-  const byId = new Map(steps.map((step) => [step.id, step]));
-  return STEP_ORDER.map(
-    (id) =>
-      byId.get(id) ??
-      (steps.length === 0
-        ? { id, label: LABELS[id], state: STATE.waiting, stateLabel: STATE_LABEL.waiting }
-        : { id, label: LABELS[id], state: "done", stateLabel: statusWord("skipped") }),
-  );
+/** The five pipeline slots a deploy holds before anything reports on them, every one queued. */
+export function queuedPipelineSlots(): ReadonlyArray<ObservedStep> {
+  return STEP_ORDER.map((id) => ({
+    id,
+    label: LABELS[id],
+    state: STATE.waiting,
+    stateLabel: STATE_LABEL.waiting,
+  }));
 }
 
 /** The five slots in order, with their labels. */

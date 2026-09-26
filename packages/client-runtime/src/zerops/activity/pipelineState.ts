@@ -28,18 +28,6 @@ export interface PipelineState {
   readonly DEPLOY: PipelineStepStatus;
 }
 
-/** Rendering order + label for each step, for callers building a step list. */
-export const PIPELINE_STEPS: ReadonlyArray<{
-  readonly id: keyof PipelineState;
-  readonly label: string;
-}> = [
-  { id: "INIT_BUILD_CONTAINER", label: "Init build container" },
-  { id: "RUN_BUILD_COMMANDS", label: "Run build commands" },
-  { id: "INIT_PREPARE_CONTAINER", label: "Init prepare container" },
-  { id: "RUN_PREPARE_COMMANDS", label: "Run prepare commands" },
-  { id: "DEPLOY", label: "Deploy" },
-];
-
 const ALL = (status: PipelineStepStatus): PipelineState => ({
   INIT_BUILD_CONTAINER: status,
   RUN_BUILD_COMMANDS: status,

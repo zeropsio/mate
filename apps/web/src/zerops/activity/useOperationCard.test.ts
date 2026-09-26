@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
   Observation,
   ObservationState,
+  ObservedPipeline,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import { readPipeline } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
@@ -58,6 +60,7 @@ import {
   devServerUrlFor,
   isBrowserOperationLive,
   observationTargetFor,
+  pipelineServiceFor,
   useOperationCard,
 } from "./useOperationCard.ts";
 
@@ -331,7 +334,7 @@ describe("devServerUrlFor — the Open link from the topology view", () => {
 });
 
 /** A build 42 s in at `NOW`: its container took 4 s, its commands have run 38 s. */
-const BUILDING: Observation["pipeline"] = {
+const BUILDING: ObservedPipeline = {
   appVersion: {
     status: "BUILDING",
     build: {
@@ -581,39 +584,129 @@ describe("deriveObservedStepsRegion — the build log once shown stays while the
   });
 });
 
-describe("deriveObservedStepsRegion — a deploy holds its five pipeline slots from birth", () => {
-  const SLOT_IDS = [
-    "INIT_BUILD_CONTAINER",
-    "RUN_BUILD_COMMANDS",
-    "INIT_PREPARE_CONTAINER",
-    "RUN_PREPARE_COMMANDS",
-    "DEPLOY",
-  ];
-  const before: ObservationState = {
+describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the Zerops GUI does", () => {
+  const SERVICE = { name: "weatherdash", type: "Node.js", hadContainers: true };
+  const observingOf = (pipeline: ObservedPipeline): ObservationState => ({
     kind: "observing",
-    observation: observation(),
-    elapsedMs: 2_000,
-  };
-  const off: ObservationState = { kind: "off", reason: "no-target" };
-  const building: ObservationState = {
-    kind: "observing",
-    observation: observation({ pipeline: BUILDING, readAtMs: NOW }),
+    observation: observation({ pipeline, readAtMs: NOW }),
     elapsedMs: 42_000,
-  };
-
-  it.each([
-    { name: "before the first read", state: before },
-    { name: "with the feed off", state: off },
-  ])("$name: no region — the card draws the operation's own five slots", ({ state }) => {
-    expect(deriveObservedStepsRegion("deploy", "running", state, undefined, NOW)).toBeUndefined();
   });
 
-  it("once the build runs: five slots, the observed one filled in place", () => {
-    const region = deriveObservedStepsRegion("deploy", "running", building, undefined, NOW);
+  it.each([
+    {
+      name: "before the first read",
+      state: { kind: "observing", observation: observation(), elapsedMs: 2_000 } as const,
+    },
+    { name: "with the feed off", state: { kind: "off", reason: "no-target" } as const },
+  ])("$name: no region — the card says it is calculating the steps", ({ state }) => {
+    expect(
+      deriveObservedStepsRegion("deploy", "running", state, undefined, NOW, SERVICE),
+    ).toBeUndefined();
+  });
 
-    expect(region?.steps.map((slot) => slot.id)).toEqual(SLOT_IDS);
-    expect(region?.steps.filter((slot) => slot.state === "running").map((slot) => slot.id)).toEqual(
-      ["RUN_BUILD_COMMANDS"],
+  it("once the build runs: the readout, read against the render clock, and no slot steps", () => {
+    const region = deriveObservedStepsRegion(
+      "deploy",
+      "running",
+      observingOf(BUILDING),
+      undefined,
+      NOW,
+      SERVICE,
+    );
+
+    expect(region?.steps).toEqual([]);
+    expect(region?.pipeline).toEqual(
+      readPipeline(BUILDING.appVersion, {
+        nowMs: NOW,
+        serviceName: "weatherdash",
+        serviceType: "Node.js",
+        hadContainers: true,
+      }),
+    );
+  });
+
+  it("the deploy step names the service, and a deploy-only pipeline starts at its process", () => {
+    const deploying = {
+      appVersion: { name: "abc123", status: "DEPLOYING" },
+      startedAt: "2026-09-01T00:00:30.000Z",
+    };
+    const region = deriveObservedStepsRegion(
+      "deploy",
+      "running",
+      observingOf(deploying),
+      undefined,
+      NOW,
+      SERVICE,
+    );
+
+    expect(region?.pipeline?.steps).toEqual([
+      expect.objectContaining({
+        id: "DEPLOY",
+        state: "running",
+        sentence: "Creating app version abc123 and upgrading Node.js service weatherdash",
+        note: "Preparing upgrade…",
+        durationMs: 12_000,
+      }),
+    ]);
+  });
+
+  it("a settled deploy keeps the readout it last saw", () => {
+    const region = deriveObservedStepsRegion(
+      "deploy",
+      "done",
+      { kind: "off", reason: "ceiling" },
+      observation({ pipeline: BUILDING }),
+      NOW,
+      SERVICE,
+    );
+    expect(region?.pipeline?.currentStepId).toBe("RUN_BUILD_COMMANDS");
+  });
+
+  it("another kind carries no readout", () => {
+    const region = deriveObservedStepsRegion(
+      "import",
+      "running",
+      observingOf(BUILDING),
+      undefined,
+      NOW,
+      SERVICE,
+    );
+    expect(region).not.toHaveProperty("pipeline");
+  });
+});
+
+describe("pipelineServiceFor — what the readout names the deployed service by", () => {
+  const appstage = {
+    hostname: "appstage",
+    serviceId: "svc-1",
+    type: "nodejs@22",
+    typeName: "Node.js",
+    status: "ACTIVE",
+    group: "runtimes",
+    transient: false,
+    ports: [],
+    routes: [],
+  } as const satisfies ZeropsTopologyView["services"][number];
+
+  it.each([
+    {
+      name: "a service that runs a deploy",
+      view: topology({ services: [{ ...appstage, deploy: { source: "CLI" } }] }),
+      expected: { name: "appstage", type: "Node.js", hadContainers: true },
+    },
+    {
+      name: "a service with no deploy it states: whether it ran containers is not known",
+      view: topology({ services: [appstage] }),
+      expected: { name: "appstage", type: "Node.js", hadContainers: undefined },
+    },
+    {
+      name: "before the topology view loads",
+      view: undefined,
+      expected: { name: "appstage", type: undefined, hadContainers: undefined },
+    },
+  ])("$name", ({ view, expected }) => {
+    expect(pipelineServiceFor(operation({ target: { hostname: "appstage" } }), view)).toEqual(
+      expected,
     );
   });
 });

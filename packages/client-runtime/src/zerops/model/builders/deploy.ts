@@ -1,7 +1,7 @@
 import {
   PIPELINE_SLOTS,
   failedPipelineSlots,
-  pipelineStepSlots,
+  queuedPipelineSlots,
 } from "../../activity/observedSteps.ts";
 import type { PipelineState } from "../../activity/pipelineState.ts";
 import { readRecordArray, readString } from "../../cards/decode.ts";
@@ -92,7 +92,7 @@ function deploySlots(
   failedPhase: string | undefined,
 ): ReadonlyArray<ZeropsOperationStep> {
   if (phase === "running") {
-    return pipelineStepSlots([]);
+    return queuedPipelineSlots();
   }
   const failedAt = failedPhase === undefined ? undefined : FAILED_PHASE_SLOT[failedPhase];
   if (failedAt !== undefined) {

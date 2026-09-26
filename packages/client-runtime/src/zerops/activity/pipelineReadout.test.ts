@@ -7,6 +7,7 @@ import {
   type ReadPipelineOptions,
   displayVersionName,
   formatDuration,
+  pipelineStepSentence,
   readPipeline,
 } from "./pipelineReadout.ts";
 
@@ -1048,6 +1049,28 @@ describe("readPipeline — durations are the clock's, never a read's", () => {
     expect(readout.steps[0]).not.toHaveProperty("durationMs");
     expect(readout.overall).toBeUndefined();
     expect(readout.steps[1]?.durationMs).toBe(0);
+  });
+});
+
+describe("pipelineStepSentence — one step's words, outside a readout", () => {
+  it.each([
+    {
+      id: "RUN_BUILD_COMMANDS",
+      names: { versionName: NAME, serviceName: "appstage", serviceType: undefined },
+      sentence: "Build commands from zerops.yml failed",
+    },
+    {
+      id: "RUN_PREPARE_COMMANDS",
+      names: { versionName: undefined, serviceName: undefined, serviceType: undefined },
+      sentence: "Runtime prepare commands from zerops.yml failed",
+    },
+    {
+      id: "DEPLOY",
+      names: { versionName: NAME, serviceName: "appstage", serviceType: undefined },
+      sentence: "Failed while creating app version 3f2a9c1 or upgrading appstage",
+    },
+  ] as const)("$id, failed", ({ id, names, sentence }) => {
+    expect(pipelineStepSentence(id, "failed", names)).toBe(sentence);
   });
 });
 
