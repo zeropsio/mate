@@ -633,6 +633,11 @@ export interface ChatComposerProps {
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
   connectedPlaceholder?: string;
+  /**
+   * What the composer invites before a session runs. A Mate is there whether
+   * or not its session started, so its conversation says the same both ways.
+   */
+  idlePlaceholder?: string;
 
   // Session phase
   phase: SessionPhase;
@@ -781,6 +786,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     forceExpandedOnMobile,
     projectSelectionRequired,
     connectedPlaceholder = DEFAULT_CONNECTED_COMPOSER_PLACEHOLDER,
+    idlePlaceholder = DISCONNECTED_COMPOSER_PLACEHOLDER,
     phase,
     isConnecting,
     isSendBusy,
@@ -3811,7 +3817,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 : showProviderUnavailable
                                   ? "Enable a provider in Settings to send a message"
                                   : phase === "disconnected"
-                                    ? DISCONNECTED_COMPOSER_PLACEHOLDER
+                                    ? idlePlaceholder
                                     : connectedPlaceholder
                     }
                     disabled={

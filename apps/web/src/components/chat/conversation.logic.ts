@@ -436,6 +436,31 @@ function hasMeaningfulContent(entry: TimelineEntry): boolean {
   return entry.kind !== "turn-plan";
 }
 
+/**
+ * The running turn the session has not named yet: while the thread works, a
+ * turn whose entries came after the latest one finished. A finished
+ * background task wakes the Mate that way — its first words carry the new
+ * turn's id before the session says which turn runs, and they are notes on
+ * the way, never already its answer.
+ */
+function unnamedRunningTurnId(
+  entries: ReadonlyArray<TimelineEntry>,
+  latestTurn: TimelineLatestTurnLike | null,
+): TurnId | null {
+  const finishedMs = parseMs(latestTurn?.completedAt);
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    // The person wrote since: the work is for their message's turn.
+    if (isUserMessageEntry(entry)) return null;
+    const turnId = timelineEntryTurnId(entry);
+    if (turnId === null) continue;
+    if (turnId === latestTurn?.turnId) return null;
+    const atMs = parseMs(entry.createdAt);
+    return finishedMs === null || (atMs !== null && atMs >= finishedMs) ? turnId : null;
+  }
+  return null;
+}
+
 export function deriveConversationStructure(input: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly latestTurn: TimelineLatestTurnLike | null;
@@ -444,7 +469,9 @@ export function deriveConversationStructure(input: {
   readonly activeTurnStartedAt: string | null;
 }): ConversationStructure {
   const entries = input.timelineEntries;
-  const unsettledTurnId = deriveUnsettledTurnId(input.latestTurn, input.runningTurnId);
+  const unsettledTurnId =
+    deriveUnsettledTurnId(input.latestTurn, input.runningTurnId) ??
+    (input.isWorking ? unnamedRunningTurnId(entries, input.latestTurn) : null);
   const terminalIds = deriveTerminalAssistantMessageIds(entries);
   const spans = deriveTurnSpans({
     timelineEntries: entries,
@@ -676,7 +703,22 @@ const ACTIVITY_ORDER: ReadonlyArray<ActivityAction> = [
   "other",
 ];
 
+/** A call a runtime names only in its detail, by what it did. */
+const NAMED_CALL_ACTION: Readonly<Record<string, ActivityAction>> = {
+  Read: "read",
+  Edit: "edit",
+  MultiEdit: "edit",
+  Write: "edit",
+  NotebookEdit: "edit",
+  Bash: "command",
+  Grep: "code-search",
+  Glob: "code-search",
+  WebSearch: "search",
+};
+
 function activityAction(entry: WorkLogEntry): ActivityAction {
+  const named = namedToolCall(entry);
+  if (named !== null) return NAMED_CALL_ACTION[named] ?? "other";
   if (
     entry.requestKind === "file-read" ||
     entry.itemType === "image_view" ||
@@ -747,6 +789,83 @@ export function summarizeActivity(entries: ReadonlyArray<WorkLogEntry>): string 
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
+/**
+ * The tool a generic call ran, when its detail names it: a call the runtime
+ * knows only as a "Tool call" carries its name and arguments as
+ * "AskUserQuestion: {…}" — the name is for people, the arguments never are.
+ */
+export function namedToolCall(
+  entry: Pick<WorkLogEntry, "itemType" | "label" | "detail">,
+): string | null {
+  if (entry.itemType !== "dynamic_tool_call" && entry.label !== "Tool call") return null;
+  const match = /^([A-Za-z][\w-]*):\s*[{[]/.exec(entry.detail ?? "");
+  return match?.[1] ?? null;
+}
+
+/** The file a file tool call names in its arguments, by its name alone. */
+function calledFileName(detail: string | undefined): string | null {
+  const path = /"file_path"\s*:\s*"([^"]+)"/.exec(detail ?? "")?.[1];
+  return path === undefined ? null : (path.split("/").findLast(Boolean) ?? null);
+}
+
+const FILE_TOOL_VERB: Readonly<Record<string, string>> = {
+  Read: "Reading",
+  Edit: "Editing",
+  MultiEdit: "Editing",
+  Write: "Writing",
+  NotebookEdit: "Editing",
+};
+
+const TOOL_CALL_WORDS: Readonly<Record<string, string>> = {
+  AskUserQuestion: "Waiting for your answer",
+  Read: "Reading a file",
+  Edit: "Editing a file",
+  MultiEdit: "Editing a file",
+  Write: "Writing a file",
+  NotebookEdit: "Editing a notebook",
+  Grep: "Searching the code",
+  Glob: "Looking for files",
+  Bash: "Running a command",
+  WebFetch: "Reading a web page",
+  WebSearch: "Searching the web",
+  Task: "Starting a helper",
+  Agent: "Starting a helper",
+  Skill: "Using a skill",
+  ToolSearch: "Looking up a tool",
+  TodoWrite: "Updating its list",
+  ExitPlanMode: "Finishing the plan",
+};
+
+/**
+ * What a named tool call is doing, in words: "Reading package.json",
+ * "Reading a web page", "Using some new tool" — a file by its name, never
+ * the rest of the arguments.
+ */
+export function toolCallWords(name: string, detail?: string): string {
+  const verb = FILE_TOOL_VERB[name];
+  const file = verb === undefined ? null : calledFileName(detail);
+  if (verb !== undefined && file !== null) return `${verb} ${file}`;
+  const known = TOOL_CALL_WORDS[name];
+  if (known !== undefined) return known;
+  const words = name
+    .replace(/^mcp__[^_]+__/, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+  return words.length > 0 ? `Using ${words}` : "Using a tool";
+}
+
+/** The question tool, however the runtime names its call. */
+export function isQuestionToolCall(
+  entry: Pick<WorkLogEntry, "itemType" | "label" | "detail" | "toolTitle">,
+): boolean {
+  return (
+    /^AskUserQuestion\b/.test(entry.toolTitle ?? entry.label) ||
+    namedToolCall(entry) === "AskUserQuestion"
+  );
+}
+
 /** A work entry that is a tool call on the way — the log's activity lines. */
 export function isActivityWork(entry: WorkLogEntry): boolean {
   return (
@@ -792,6 +911,52 @@ const PRODUCING_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
   "subdomain",
 ]);
 
+/**
+ * A deploy as the person reads it: one service's. A batch deploy is one call
+ * the Mate made for several services, and each of them deploys, succeeds or
+ * fails on its own — so it becomes one deploy per service, named by it,
+ * observed by its hostname, in the state its own step reached.
+ */
+export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] {
+  if (operation.kind !== "deploy" || operation.batch !== true || operation.steps.length === 0) {
+    return [operation];
+  }
+  // What the batch said as a whole is no single service's: its closing, its
+  // version, its reason (a service's own failure keeps its own).
+  const { batch: _batch, version: _version, closing: _closing, explanation, ...shared } = operation;
+  return operation.steps.map((step) => {
+    const phase: ZeropsOperation["phase"] =
+      step.state === "done" || step.state === "failed"
+        ? step.state
+        : operation.phase === "running"
+          ? "running"
+          : operation.phase === "failed"
+            ? "failed"
+            : "done";
+    const reason = step.note ?? explanation?.reason;
+    return {
+      ...shared,
+      key: `${operation.key}:${step.label}`,
+      subject: step.label,
+      kicker: `Deploy · ${step.label}`,
+      target: { hostname: step.label },
+      phase,
+      statusWord:
+        phase === "done"
+          ? "Deployed"
+          : phase === "failed"
+            ? "Failed"
+            : step.state === "queued"
+              ? "Waiting"
+              : operation.statusWord,
+      // Its own step alone: the bar reads its state, waiting or running.
+      steps: [step],
+      links: [],
+      ...(phase === "failed" && reason !== undefined ? { explanation: { reason } } : {}),
+    };
+  });
+}
+
 export function stretchOperations(stretch: Stretch): ZeropsOperation[] {
   return stretch.entries.flatMap((entry) => (entry.kind === "operation" ? [entry.operation] : []));
 }
@@ -831,22 +996,38 @@ export function stretchFace(input: {
 // Browser checks and incidents
 // ---------------------------------------------------------------------------
 
-/** The page a check looked at, as the person names it: the path, decoded, never the query. */
-export function browserCheckCaption(operation: ZeropsOperation): string {
+function browserCheckUrl(operation: ZeropsOperation): URL | null {
   const subject = operation.subject.trim();
-  const url = URL.canParse(subject)
+  return URL.canParse(subject)
     ? new URL(subject)
     : URL.canParse(`https://${subject}`) && /^[\w.-]+\.[a-z]{2,}(?:[/:]|$)/i.test(subject)
       ? new URL(`https://${subject}`)
       : null;
-  if (url === null) return subject;
+}
+
+/**
+ * The page a check looked at, as the person names it: the path, decoded,
+ * never the query or the host — a service's front page is "/", the same way
+ * its status page is "/status".
+ */
+export function browserCheckCaption(operation: ZeropsOperation): string {
+  const url = browserCheckUrl(operation);
+  if (url === null) return operation.subject.trim();
   let path: string;
   try {
     path = decodeURIComponent(url.pathname);
   } catch {
     path = url.pathname;
   }
-  return path === "/" || path === "" ? url.host : path;
+  return path === "" ? "/" : path;
+}
+
+/** Which page a check looked at, for counting pages: its host and its path. */
+function browserCheckPage(operation: ZeropsOperation): string {
+  const url = browserCheckUrl(operation);
+  return url === null
+    ? browserCheckCaption(operation)
+    : `${url.host}${browserCheckCaption(operation)}`;
 }
 
 /** A check that did not show what it looked for: failed, or finished with errors. */
@@ -876,6 +1057,33 @@ export function browserCheckFailure(operation: ZeropsOperation): string | null {
   return closing && closing.length > 0 ? closing.replace(/\.$/, "") : "failed";
 }
 
+/**
+ * The checks that failed and stayed failed: a failure a later check of the
+ * same page passed is a retry — the Mate asked for a device the browser does
+ * not know, or took the page before it was up — never the page's.
+ */
+export function unrecoveredCheckFailures(
+  checks: ReadonlyArray<ZeropsOperation>,
+): ReadonlyArray<ZeropsOperation> {
+  return checks.filter(
+    (check, index) =>
+      browserCheckFailed(check) &&
+      !checks
+        .slice(index + 1)
+        .some(
+          (later) =>
+            later.phase === "done" &&
+            !browserCheckFailed(later) &&
+            browserCheckPage(later) === browserCheckPage(check),
+        ),
+  );
+}
+
+/** How many pages the checks looked at. */
+function browserCheckViews(checks: ReadonlyArray<ZeropsOperation>): number {
+  return new Set(checks.map(browserCheckPage)).size;
+}
+
 export interface BrowserStripModel {
   readonly key: string;
   readonly checks: ReadonlyArray<ZeropsOperation>;
@@ -891,8 +1099,8 @@ export function browserStrip(stretch: Stretch): BrowserStripModel | null {
   return {
     key: `strip:${checks[0]!.key}`,
     checks,
-    views: new Set(checks.map(browserCheckCaption)).size,
-    failures: checks.filter(browserCheckFailed).length,
+    views: browserCheckViews(checks),
+    failures: unrecoveredCheckFailures(checks).length,
     live: stretch.live,
   };
 }
@@ -1051,7 +1259,7 @@ export function deriveOutcome(input: {
 }): OutcomeModel | null {
   const { turn } = input;
   if (turn.live || turn.limitOnly) return null;
-  const operations = turn.stretches.flatMap(stretchOperations);
+  const operations = turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy);
   const settled = operations.filter((operation) => operation.phase !== "running");
 
   const services = new Map<string, OutcomeService>();
@@ -1063,7 +1271,6 @@ export function deriveOutcome(input: {
       operation.kind !== "devServer"
     )
       continue;
-    if (operation.kind === "deploy" && operation.batch) continue;
     const host = operationTargetKey(operation);
     const known = services.get(host);
     if (operation.phase === "failed") {
@@ -1162,8 +1369,8 @@ export function deriveOutcome(input: {
       checks.length > 0
         ? {
             count: checks.length,
-            views: new Set(checks.map(browserCheckCaption)).size,
-            failures: checks.filter(browserCheckFailed).length,
+            views: browserCheckViews(checks),
+            failures: unrecoveredCheckFailures(checks).length,
             takes: checks,
           }
         : null,

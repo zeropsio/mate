@@ -23,6 +23,7 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ActivityIcon,
+  ArrowDownIcon,
   BotIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -47,10 +48,24 @@ import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import type { WorkingFailure } from "./MessagesTimeline.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 
-/** A bubble in the Mate's stream: its words, rendered, or a step that failed on the way. */
+/**
+ * A bubble in the Mate's stream: its words, rendered; a step that failed on
+ * the way; or the question it asked and waits on.
+ */
 export type WorkingBubble =
   | { readonly kind: "note"; readonly key: string; readonly body: ReactNode }
-  | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure };
+  | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure }
+  /** Its question, rendered, as its words are. */
+  | { readonly kind: "question"; readonly key: string; readonly body: ReactNode };
+
+/**
+ * What the Mate's hands are on right now, under its newest words: thinking,
+ * a few words for the call it is making, or the person's answer it waits on.
+ */
+export type WorkingActivity =
+  | { readonly kind: "thinking" }
+  | { readonly kind: "doing"; readonly words: string }
+  | { readonly kind: "waiting" };
 
 // ---------------------------------------------------------------------------
 // The stream
@@ -68,27 +83,22 @@ const AGE_CLASS = [
   "scale-92 opacity-10",
 ];
 
-function StreamBubble({ bubble }: { readonly bubble: WorkingBubble | null }) {
-  if (bubble === null) {
-    // Nothing said yet: the Mate composing its first words.
-    return (
-      <div
-        aria-label="Composing"
-        className="flex w-fit origin-bottom-left animate-bubble-pop items-center gap-1 rounded-2xl rounded-es-md bg-muted px-3.5 py-3 motion-reduce:animate-none"
-        data-stream-bubble="typing"
-        role="img"
-      >
-        <span className="size-1.5 animate-typing-first rounded-full bg-muted-foreground motion-reduce:animate-none" />
-        <span className="size-1.5 animate-typing-second rounded-full bg-muted-foreground motion-reduce:animate-none" />
-        <span className="size-1.5 animate-typing-third rounded-full bg-muted-foreground motion-reduce:animate-none" />
-      </div>
-    );
-  }
-  if (bubble.kind === "note") {
+function TypingDots({ className }: { readonly className?: string }) {
+  return (
+    <span aria-hidden="true" className={cn("flex items-center gap-1", className)}>
+      <span className="size-1.5 animate-typing-first rounded-full bg-muted-foreground motion-reduce:animate-none" />
+      <span className="size-1.5 animate-typing-second rounded-full bg-muted-foreground motion-reduce:animate-none" />
+      <span className="size-1.5 animate-typing-third rounded-full bg-muted-foreground motion-reduce:animate-none" />
+    </span>
+  );
+}
+
+function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
+  if (bubble.kind === "note" || bubble.kind === "question") {
     return (
       <div
         className="w-fit max-w-full origin-bottom-left animate-bubble-pop rounded-2xl rounded-es-md bg-muted px-3.5 py-2 text-foreground motion-reduce:animate-none"
-        data-stream-bubble="note"
+        data-stream-bubble={bubble.kind}
       >
         {bubble.body}
       </div>
@@ -119,43 +129,140 @@ function StreamBubble({ bubble }: { readonly bubble: WorkingBubble | null }) {
 }
 
 /**
+ * What the Mate is on, under its newest words — never a bubble of its own
+ * words: the dots while it thinks, a quiet outline naming the call it is
+ * making, the amber of a question that waits on the person. One height for
+ * all three, so a change of what it does never moves the bubbles above.
+ */
+function StreamActivity({ activity }: { readonly activity: WorkingActivity }) {
+  if (activity.kind === "thinking") {
+    return (
+      <div
+        aria-label="Thinking"
+        className="flex h-8 w-fit items-center rounded-2xl rounded-es-md bg-muted px-3.5"
+        data-stream-activity="thinking"
+        role="img"
+      >
+        <TypingDots />
+      </div>
+    );
+  }
+  if (activity.kind === "waiting") {
+    return (
+      <div
+        className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-2xl rounded-es-md bg-status-attention-surface px-3 text-line text-status-attention-text"
+        data-stream-activity="waiting"
+      >
+        <ArrowDownIcon aria-hidden="true" className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">Waiting for your answer</span>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="inline-flex h-8 max-w-full items-center gap-2 rounded-2xl rounded-es-md border border-border/70 border-dashed px-3 text-line text-muted-foreground"
+      data-stream-activity="doing"
+    >
+      <TypingDots className="shrink-0 scale-75" />
+      <span className="min-w-0 truncate">{activity.words}</span>
+    </div>
+  );
+}
+
+/**
  * The face and what it says: a window on the stream, anchored at its
  * bottom. A new bubble opens its room there — pushing the ones before it up
- * and out through the fading top — and pops in beside the face, which nods.
- * The window keeps the newest bubble in full with room for the one before it
- * to peek; it only ever grows, so a short bubble after a long one leaves the
- * long one drifting above it rather than pulling the conversation down.
+ * and out through the fading top — and pops in beside the face, which nods;
+ * what the Mate is on sits under the newest. The window keeps the newest
+ * bubble in full with room for the one before it to peek, and only ever
+ * grows, so a short bubble after a long one never pulls the conversation
+ * down. Everything the stretch said stays in it: scrolled back, the stream
+ * holds still and every bubble reads at full strength; scrolled to the
+ * bottom again, it follows the newest.
  */
 function Stream({
   speaker,
   bubbles,
+  activity,
 }: {
   readonly speaker: ConversationSpeaker;
   readonly bubbles: ReadonlyArray<WorkingBubble>;
+  readonly activity: WorkingActivity | null;
 }) {
-  const windowRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [newest, setNewest] = useState<HTMLDivElement | null>(null);
+  const [trailing, setTrailing] = useState<HTMLDivElement | null>(null);
   const tallestRef = useRef(0);
-  const newestKey = bubbles.at(-1)?.key ?? "typing";
+  const followingRef = useRef(true);
+  const [reading, setReading] = useState(false);
+  const newestKey = bubbles.at(-1)?.key ?? "none";
   const older = bubbles.length > 1;
+  // Nothing said and nothing named yet: the Mate is composing.
+  const shown: WorkingActivity | null =
+    activity ?? (bubbles.length === 0 ? { kind: "thinking" } : null);
+
   useLayoutEffect(() => {
-    const view = windowRef.current;
-    if (view === null || newest === null) return;
-    // The newest bubble's room grows as it opens, so the window follows it
-    // frame by frame and the conversation glides up with it.
+    const scroller = scrollerRef.current;
+    if (scroller === null) return;
+    // Measured at the bubbles' own boxes, never the rooms opening around
+    // them: the window takes its final height at once and eases to it, and
+    // the conversation glides up with it.
     const measure = () => {
-      const wanted = Math.ceil(newest.getBoundingClientRect().height) + (older ? PEEK_PX : 0);
+      const wanted =
+        Math.ceil(
+          (newest?.getBoundingClientRect().height ?? 0) +
+            (trailing?.getBoundingClientRect().height ?? 0),
+        ) + (older ? PEEK_PX : 0);
       if (wanted <= tallestRef.current) return;
       tallestRef.current = wanted;
-      view.style.height = `${wanted}px`;
+      scroller.style.height = `${wanted}px`;
     };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(newest);
+    if (newest !== null) observer.observe(newest);
+    if (trailing !== null) observer.observe(trailing);
     return () => observer.disconnect();
-  }, [newest, older]);
+  }, [newest, trailing, older]);
 
-  const items: ReadonlyArray<WorkingBubble | null> = bubbles.length > 0 ? bubbles : [null];
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    const content = contentRef.current;
+    if (scroller === null || content === null) return;
+    // Following the newest: held at the bottom as words arrive and the
+    // window grows, unless the person scrolled back to read.
+    const pin = () => {
+      if (followingRef.current) scroller.scrollTop = scroller.scrollHeight;
+    };
+    pin();
+    const observer = new ResizeObserver(pin);
+    observer.observe(content);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, []);
+
+  // Only the person leaves the bottom: a wheel, a touch or a key. The window
+  // easing to a new height and the rooms opening move the scroll position
+  // too, and those must never read as reading back.
+  const gestureAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const markGesture = () => {
+    gestureAtRef.current = performance.now();
+  };
+  const onScroll = () => {
+    const scroller = scrollerRef.current;
+    if (scroller === null) return;
+    const atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 2;
+    if (atBottom) {
+      followingRef.current = true;
+      setReading(false);
+    } else if (performance.now() - gestureAtRef.current < 400) {
+      followingRef.current = false;
+      setReading(true);
+    } else if (followingRef.current) {
+      scroller.scrollTop = scroller.scrollHeight;
+    }
+  };
+
   return (
     <div className="flex min-w-0 items-end gap-2.5" data-working-stream>
       <span
@@ -166,35 +273,58 @@ function Stream({
         <MateFace size="md" state="working" tint={speaker.tint} />
       </span>
       <div
-        ref={windowRef}
+        ref={scrollerRef}
+        aria-label={`What ${speaker.name} said while working`}
         aria-live="polite"
         className={cn(
-          "flex min-w-0 flex-1 flex-col justify-end overflow-hidden",
-          older && "stream-fade",
+          "min-w-0 flex-1 overflow-y-auto scrollbar-none transition-[height] duration-500 ease-out motion-reduce:transition-none",
+          older && !reading && "stream-fade",
         )}
+        data-stream-reading={reading ? "true" : undefined}
+        onKeyDown={markGesture}
+        onScroll={onScroll}
+        onTouchMove={markGesture}
+        onWheel={markGesture}
+        role="log"
+        tabIndex={older ? 0 : -1}
       >
-        {items.map((bubble, index) => {
-          const age = items.length - 1 - index;
-          return (
+        <div ref={contentRef} className="flex min-h-full flex-col justify-end">
+          {bubbles.map((bubble, index) => {
+            const age = bubbles.length - 1 - index;
+            return (
+              <div
+                key={bubble.key}
+                className="grid animate-room-in motion-reduce:animate-none"
+                data-stream-age={age}
+              >
+                <div className="min-h-0">
+                  <div
+                    ref={age === 0 ? setNewest : undefined}
+                    className={cn(
+                      "origin-bottom-left pt-2 transition duration-500",
+                      !reading && AGE_CLASS[Math.min(age, AGE_CLASS.length - 1)],
+                    )}
+                  >
+                    <StreamBubble bubble={bubble} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {shown !== null ? (
             <div
-              key={bubble?.key ?? "typing"}
-              ref={age === 0 ? setNewest : undefined}
+              key="activity"
               className="grid animate-room-in motion-reduce:animate-none"
-              data-stream-age={age}
+              data-stream-age="activity"
             >
               <div className="min-h-0">
-                <div
-                  className={cn(
-                    "origin-bottom-left pt-2 transition duration-500",
-                    AGE_CLASS[Math.min(age, AGE_CLASS.length - 1)],
-                  )}
-                >
-                  <StreamBubble bubble={bubble} />
+                <div ref={setTrailing} className="pt-2">
+                  <StreamActivity activity={shown} />
                 </div>
               </div>
             </div>
-          );
-        })}
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -273,7 +403,7 @@ function Instrument({
   const body = (
     <>
       <StatusDisc tone={tone}>{icon}</StatusDisc>
-      <span className="w-24 shrink-0 truncate text-start font-medium text-foreground">
+      <span className="w-28 shrink-0 truncate text-start font-medium text-foreground">
         {subject}
       </span>
       <StatusBar className="w-14 shrink-0 @md/panel:w-32" segments={bar} />
@@ -356,15 +486,17 @@ function DeployInstrument({
     steps.find((step) => step.state === "running") ??
     steps.find((step) => step.state === "failed") ??
     steps.findLast((step) => step.state === "done");
+  // A service of a batch has one step, named by the service: its state is
+  // the words, never its name a second time.
   const words = !running
     ? operation.statusWord
     : pipeline?.calculating
       ? "Calculating steps"
       : pipelineStep !== undefined
         ? pipelineStep.sentence
-        : fallbackStep !== undefined
+        : fallbackStep !== undefined && fallbackStep.label !== operation.subject
           ? fallbackStep.label
-          : "Starting";
+          : operation.statusWord;
   const settledMs =
     operation.settledAt === undefined
       ? null
@@ -744,6 +876,7 @@ function Instruments({
 export function ConversationWorking({
   speaker,
   bubbles,
+  activity,
   incidents,
   dock,
   browser,
@@ -754,6 +887,8 @@ export function ConversationWorking({
   readonly speaker: ConversationSpeaker;
   /** The Mate's words and the steps that failed on the way, oldest first. */
   readonly bubbles: ReadonlyArray<WorkingBubble>;
+  /** What it is on right now; null while it writes. */
+  readonly activity: WorkingActivity | null;
   readonly incidents: ReadonlyArray<IncidentModel>;
   readonly dock: DockModel | null;
   /** The browser while the stretch checks pages. */
@@ -781,7 +916,7 @@ export function ConversationWorking({
           className="relative z-10 animate-panel-in rounded-3xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60 motion-reduce:animate-none"
         >
           <div className="px-4 pt-2 pb-4">
-            <Stream bubbles={bubbles} speaker={speaker} />
+            <Stream activity={activity} bubbles={bubbles} speaker={speaker} />
           </div>
           <Instruments
             dock={dock}

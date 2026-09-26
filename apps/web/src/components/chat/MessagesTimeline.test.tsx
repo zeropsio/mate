@@ -1259,8 +1259,113 @@ describe("MessagesTimeline — the conversation", () => {
 
   it("shows the Mate composing before it said anything", () => {
     const markup = liveTimeline([tool("w1", 5)]);
-    expect(markup).toContain('data-stream-bubble="typing"');
+    expect(markup).toContain('data-stream-activity="thinking"');
     expect(markup).not.toContain('data-stream-bubble="note"');
+  });
+
+  const call = (id: string, second: number, detail: string) => ({
+    ...tool(id, second),
+    entry: {
+      ...tool(id, second).entry,
+      itemType: "dynamic_tool_call" as const,
+      label: "Tool call",
+      command: undefined,
+      detail,
+      toolLifecycleStatus: "inProgress" as const,
+    },
+  });
+
+  it("says what the Mate is on beside its face, once, and never a call's arguments", () => {
+    const markup = liveTimeline([
+      assistant("a1", 5, "Reading the docs first."),
+      call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev"}'),
+    ]);
+    expect(markup).toContain('data-stream-activity="doing"');
+    // The panel says it; the line above keeps to its clock.
+    expect(markup.match(/Reading a web page/g)).toHaveLength(1);
+    expect(markup).not.toContain("docs.example.dev");
+  });
+
+  it("waits on the person when the Mate asked with its question tool", () => {
+    const markup = liveTimeline([
+      call("c1", 8, 'AskUserQuestion: {"questions":[{"question":"Teal or amber?"}]}'),
+    ]);
+    expect(markup).toContain('data-stream-activity="waiting"');
+    expect(markup).toContain("Waiting for your answer");
+    expect(markup).not.toContain("AskUserQuestion");
+  });
+
+  it("keeps the question the Mate asked in its words beside its face, the answer in the person's", () => {
+    const input = (id: string, second: number, extra: Record<string, unknown>) => ({
+      ...tool(id, second),
+      entry: {
+        ...tool(id, second).entry,
+        tone: "info" as const,
+        itemType: undefined,
+        command: undefined,
+        toolCallId: undefined,
+        toolLifecycleStatus: undefined,
+        inputRequestId: "req-1",
+        ...extra,
+      },
+    });
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={settled}
+        timelineEntries={
+          [
+            buildUserTimelineEntry("Pick a colour with me"),
+            input("rq", 5, {
+              label: "User input requested",
+              sourceActivityKind: "user-input.requested",
+              inputQuestions: [
+                { id: "accent", header: "Accent colour", question: "Which accent do you prefer?" },
+              ],
+            }),
+            input("rs", 20, {
+              label: "User input submitted",
+              sourceActivityKind: "user-input.resolved",
+              inputAnswers: [{ key: "accent", answer: "Teal" }],
+            }),
+            assistant("a1", 30, "Teal it is."),
+          ] as Parameters<typeof MessagesTimeline>[0]["timelineEntries"]
+        }
+      />,
+    );
+    const answer = markup.slice(markup.indexOf("data-person-answer"));
+    expect(answer).toContain('data-mate-speech="said"');
+    expect(answer.indexOf("Which accent do you prefer?")).toBeLessThan(answer.indexOf("Teal"));
+    // The question's short header was never the person's words.
+    expect(markup).not.toContain("Accent colour");
+  });
+
+  it("says what finished in the background, in words", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={settled}
+        timelineEntries={
+          [
+            buildUserTimelineEntry("Start the checks"),
+            assistant("a1", 5, "Started them."),
+            {
+              ...tool("b1", 120),
+              entry: {
+                ...tool("b1", 120).entry,
+                turnId: null,
+                label: "Run the smoke tests",
+                sourceActivityKind: "task.completed",
+                taskId: "task-1",
+              },
+            },
+          ] as Parameters<typeof MessagesTimeline>[0]["timelineEntries"]
+        }
+      />,
+    );
+    expect(markup).toContain("Background task finished");
+    expect(markup).toContain("Run the smoke tests");
+    expect(markup).not.toContain("1 background task ");
   });
 
   it.each([

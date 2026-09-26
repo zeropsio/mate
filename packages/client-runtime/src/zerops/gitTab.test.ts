@@ -24,7 +24,6 @@ import {
 } from "./forge/mergeState.ts";
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
-import { groupFlow } from "./groupFlow.ts";
 import { mateNextStep } from "./mateNextStep.ts";
 import { changeState, flowPullRequest, type FlowPullRequest } from "./projectFlow.ts";
 
@@ -843,27 +842,7 @@ describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
 
   /** The conversation's banner over a project holding only this pull request: its merge, or nothing. */
   function bannerOf(flow: FlowPullRequest) {
-    const step = mateNextStep({
-      group: groupFlow({
-        groupId: "g",
-        mates: [],
-        pullRequests: [flow],
-        merged: [],
-        stops: [],
-        missing: [],
-        release: {
-          gate: { allowed: false, reason: "Nothing is merged to release." },
-          suggestion: "v0.1.0",
-          waiting: 0,
-        },
-        mainHasCode: undefined,
-        mainHead: undefined,
-        productionAddable: false,
-        pending: [],
-      }),
-      mateProjectId: "p1",
-      mateName: "Iris",
-    });
+    const step = mateNextStep({ pullRequests: [flow], mateProjectId: "p1", mateName: "Iris" });
     return step.kind === "merge" ? step : undefined;
   }
 

@@ -426,14 +426,6 @@
   {
     "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"flex cursor-pointer select-none items-center gap-2 rounded-sm px-0.5 py-px text-start text-[13px] leading-5 transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"flex min-w-0 w-full items-baseline gap-1.5 text-[13px] leading-5\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",

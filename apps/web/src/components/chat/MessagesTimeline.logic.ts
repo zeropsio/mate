@@ -20,6 +20,7 @@ import {
   deriveOutcome,
   isActivityWork,
   isImageOnlyPlaceholder,
+  isQuestionToolCall,
   isResumePrompt,
   isUsageLimitError,
   isUserMessageEntry,
@@ -357,9 +358,11 @@ export function resolveAssistantMessageCopyState({
 // Rows — the conversation as the list draws it
 // ---------------------------------------------------------------------------
 
-/** What the live line says is happening now, when no note says it better. */
+/** What the Mate's hands are on right now, beside its face while it works. */
 export type TurnHeaderActivity =
   | { readonly kind: "thinking" }
+  /** It asked the person something and waits for the answer. */
+  | { readonly kind: "waiting" }
   | { readonly kind: "tool"; readonly entry: WorkLogEntry }
   | { readonly kind: "operation"; readonly operation: ZeropsOperation };
 
@@ -406,8 +409,6 @@ type MessagesTimelineRowBody =
       /** What stands in for a note when the stretch had none. */
       fallback: string | null;
       noteCount: number;
-      /** Live only: what runs right now. */
-      activity: TurnHeaderActivity | null;
       /** The stretch has a log to open. */
       hasLog: boolean;
       open: boolean;
@@ -427,6 +428,8 @@ type MessagesTimelineRowBody =
       stretchKey: string;
       turnKey: string;
       stream: ReadonlyArray<WorkingStreamItem>;
+      /** What its hands are on right now; null while it writes. */
+      activity: TurnHeaderActivity | null;
       strip: BrowserStripModel | null;
       incidents: ReadonlyArray<IncidentModel>;
     }
@@ -455,15 +458,16 @@ type MessagesTimelineRowBody =
     }
   | {
       /**
-       * The person's answer to a question the Mate asked with its question
-       * tool: their own words, on their side, each under what was asked.
+       * A question the Mate asked with its question tool and the person's
+       * answer: the question in the Mate's words, on its side, and the
+       * answer in theirs, on theirs.
        */
       kind: "answer";
       id: string;
       createdAt: string;
       pairs: ReadonlyArray<{
         readonly key: string;
-        readonly asked: string;
+        readonly question: string;
         readonly answer: string;
       }>;
     }
@@ -535,6 +539,11 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       entries: ReadonlyArray<WorkLogEntry>;
+      /** How many tasks — a task that reported twice is still one. */
+      tasks: number;
+      failed: number;
+      /** The latest task's, in the words it was given. */
+      title: string | null;
       expanded: boolean;
     }
   | {
@@ -680,8 +689,26 @@ function buildRevertTurnCountByUserMessageId(input: {
   return byUserMessageId;
 }
 
-/** What the live line names while no note does: the running operation, the running tool, or thinking. */
+/** The question the Mate asked and the person has not answered yet, if one waits. */
+function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work" }> | null {
+  const asked = stretch.entries.findLast(
+    (entry): entry is Extract<TimelineEntry, { kind: "work" }> =>
+      entry.kind === "work" && entry.entry.inputQuestions !== undefined,
+  );
+  if (asked === undefined) return null;
+  const answered = stretch.entries.some(
+    (entry) =>
+      entry.kind === "work" &&
+      entry.entry.inputAnswers !== undefined &&
+      (asked.entry.inputRequestId === undefined ||
+        entry.entry.inputRequestId === asked.entry.inputRequestId),
+  );
+  return answered ? null : asked;
+}
+
+/** What the Mate's hands are on: waiting for an answer, the running operation or tool, thinking. */
 function liveActivity(stretch: Stretch): TurnHeaderActivity | null {
+  if (pendingQuestion(stretch) !== null) return { kind: "waiting" };
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
     const entry = stretch.entries[index]!;
     if (entry.kind === "operation" && entry.operation.phase === "running") {
@@ -692,7 +719,9 @@ function liveActivity(stretch: Stretch): TurnHeaderActivity | null {
       entry.entry.toolLifecycleStatus === "inProgress" &&
       isActivityWork(entry.entry)
     ) {
-      return { kind: "tool", entry: entry.entry };
+      return isQuestionToolCall(entry.entry)
+        ? { kind: "waiting" }
+        : { kind: "tool", entry: entry.entry };
     }
     if (entry.kind === "message") {
       return entry.message.role === "reasoning" ? { kind: "thinking" } : null;
@@ -738,24 +767,27 @@ export interface WorkingFailure {
   readonly recovered: string | null;
 }
 
-/** One thing in the Mate's stream while it works: its words, or a step that failed on the way. */
+/**
+ * One thing in the Mate's stream while it works: its words, a step that
+ * failed on the way, or the question it asked and waits on.
+ */
 export type WorkingStreamItem =
   | { readonly kind: "note"; readonly key: string; readonly message: ChatMessage }
-  | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure };
+  | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure }
+  | { readonly kind: "question"; readonly key: string; readonly questions: ReadonlyArray<string> };
 
 /**
- * How much of the stream the Mate at work keeps: the newest item and the ones
- * it pushed up, enough to fill the window above a short bubble after a long
- * one as they fade out through its top.
+ * How much of a stretch's stream the Mate at work keeps to scroll back
+ * through: every word of an ordinary stretch; a runaway one its latest.
  */
-const STREAM_DEPTH = 6;
+const STREAM_DEPTH = 40;
 
 /**
- * What a live stretch streams, oldest first, the last few of it: the Mate's
- * words, and each step that failed on the way where it failed — an operation
- * (a verify, a subdomain, a scale; a deploy carries its own state in its
- * status bar, the browser its own in its takes, a dev server in its incident)
- * or a background task.
+ * What a live stretch streams, oldest first: the Mate's words, each step
+ * that failed on the way where it failed — an operation (a verify, a
+ * subdomain, a scale; a deploy carries its own state in its status bar, the
+ * browser its own in its takes, a dev server in its incident) or a background
+ * task — and, while the person's answer is awaited, the question it asked.
  */
 function stretchStream(stretch: Stretch): WorkingStreamItem[] {
   const items: WorkingStreamItem[] = [];
@@ -821,6 +853,14 @@ function stretchStream(stretch: Stretch): WorkingStreamItem[] {
       });
     }
   });
+  const question = pendingQuestion(stretch);
+  if (question !== null) {
+    items.push({
+      kind: "question",
+      key: `question:${question.id}`,
+      questions: (question.entry.inputQuestions ?? []).map((asked) => asked.question),
+    });
+  }
   return items.slice(-STREAM_DEPTH);
 }
 
@@ -1033,7 +1073,7 @@ function stretchContentRows(input: {
                 );
                 return {
                   key: answer.key,
-                  asked: question?.header ?? question?.question ?? answer.key,
+                  question: question?.question ?? question?.header ?? answer.key,
                   answer: answer.answer,
                 };
               }),
@@ -1117,6 +1157,25 @@ function stretchContentRows(input: {
       (left, right) => Date.parse(left.at) - Date.parse(right.at) || left.order - right.order,
     )
     .flatMap((item) => item.rows);
+}
+
+/**
+ * A run of background work, by task: a watch that reported three times and
+ * then finished is one task, and it failed if its last word was a failure.
+ */
+function backgroundRunSummary(run: ReadonlyArray<WorkLogEntry>): {
+  tasks: number;
+  failed: number;
+  title: string | null;
+} {
+  const lastByTask = new Map<string, WorkLogEntry>();
+  for (const entry of run) lastByTask.set(entry.taskId ?? entry.id, entry);
+  const last = run.at(-1);
+  return {
+    tasks: lastByTask.size,
+    failed: [...lastByTask.values()].filter(workEntryDisplayIndicatesToolFailure).length,
+    title: last === undefined ? null : normalizeCompactToolLabel(last.toolTitle ?? last.label),
+  };
 }
 
 function localDayKey(iso: string): string | null {
@@ -1307,18 +1366,173 @@ export function deriveMessagesTimelineRows(
 
   const emitted = new Set<string>();
   // Work no turn owns — background tasks finishing after their turn ended —
-  // is gathered, whatever its tone, unless it is something to show on its own.
+  // is gathered, a task that failed included, unless it is something to show
+  // on its own: an error that stopped the Mate, an answer, a compaction.
   const isLooseActivity = (index: number) => {
     const candidate = entries[index];
     return (
       candidate !== undefined &&
       structure.looseIndexes.has(index) &&
       (candidate.kind === "work" || candidate.kind === "generic-call") &&
-      candidate.entry.tone !== "error" &&
+      (candidate.entry.tone !== "error" ||
+        isTaskActivityKind(candidate.entry.sourceActivityKind)) &&
       candidate.entry.questionAnswer === undefined &&
       candidate.entry.sourceActivityKind !== "context-compaction"
     );
   };
+  // One stretch as the conversation draws it: the person's message that
+  // started it, its line, what stays visible under the line, and at its end
+  // the Mate at work (live), the words the person answered (interrupted), or
+  // the turn's report and answer (settled).
+  const emitStretch = (stretch: Stretch) => {
+    const turn = turnByKey.get(stretch.turnKey)!;
+    if (foldedTurnKeys.has(turn.key)) return;
+
+    // Keyed by the message, as a loose message's seam is: the seam must not
+    // change its identity when a turn claims the message it stands before.
+    seamBefore(stretch.lead?.createdAt ?? stretch.startedAt, stretch.lead?.id ?? stretch.key);
+    if (stretch.lead !== null && stretch.leadIndex !== null) {
+      rows.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
+    }
+
+    // A /compact is its own event line: it says when the context is condensed,
+    // so its stretch draws no work line and no second compaction line.
+    const leadCommand = stretch.lead ? readSlashCommand(stretch.lead.message.text) : null;
+    if (leadCommand?.name === "compact") {
+      lastEnd = stretch.endedAt ?? stretch.startedAt;
+      return;
+    }
+
+    // An answer that is the limit's own notice is the pause's to tell.
+    const answer =
+      turn.answer !== null &&
+      readUsageLimitNotice(turn.answer.message.text, turn.answer.message.createdAt) === null
+        ? turn.answer
+        : null;
+    const notes = stretchNotes(stretch, turn.answer);
+    const lastNote = notes.at(-1) ?? null;
+    const open = input.openStretchKeys?.has(stretch.key) ?? false;
+    const pause = stretch.last ? (pauseByTurnKey.get(turn.key)?.row ?? null) : null;
+    const pausedHere = pause !== null || (stretch.last && turn.limitOnly);
+    const activityEntries = stretch.entries.flatMap((candidate) =>
+      (candidate.kind === "work" || candidate.kind === "generic-call") &&
+      isActivityWork(candidate.entry)
+        ? [candidate.entry]
+        : [],
+    );
+    const hasLog = stretch.entries.some(
+      (candidate) =>
+        candidate !== turn.answer &&
+        candidate.kind !== "change-landed" &&
+        !(
+          candidate.kind === "message" &&
+          candidate.message.role === "reasoning" &&
+          candidate.message.text.trim().length === 0
+        ),
+    );
+    // A settled stretch with nothing to open has nothing to say: the answer
+    // stands under the message by itself. A live one always has its line, and
+    // so does one the usage limit refused — the person's message is answered
+    // by the reason.
+    if (stretch.live || hasLog || pausedHere)
+      rows.push({
+        kind: "work-line",
+        id: `work-line:${stretch.key}`,
+        createdAt: stretch.startedAt,
+        stretchKey: stretch.key,
+        turnId: stretch.turnId,
+        live: stretch.live,
+        face: stretchFace({ stretch, turn, pausedHere }),
+        startedAt: stretch.startedAt,
+        endedAt: stretch.endedAt,
+        note: lastNote === null ? null : noteLine(lastNote.message.text),
+        fallback:
+          lastNote !== null
+            ? null
+            : pausedHere
+              ? "Stopped by the usage limit"
+              : activityEntries.length > 0
+                ? summarizeActivity(
+                    omitSupersededLifecycleMarkers(
+                      activityEntries.filter((candidate) =>
+                        workEntryIsVisibleInGroup(candidate, stretch.live),
+                      ),
+                      (candidate) => candidate,
+                    ),
+                  )
+                : null,
+        noteCount: notes.length,
+        hasLog,
+        open,
+      });
+
+    // Live, the stretch ends in the Mate at work; interrupted, in the words
+    // the person answered — unless its log is open, which says them already.
+    const answered = stretch.last && answer !== null && !turn.live;
+    const speech = !stretch.live && !answered && !open ? lastNote : null;
+    rows.push(
+      ...stretchContentRows({
+        stretch,
+        answer: turn.answer,
+        open,
+        view: input,
+        pauseRow: pause,
+      }),
+    );
+
+    if (stretch.live) {
+      rows.push({
+        kind: "working",
+        id: `working:${stretch.key}`,
+        createdAt: stretch.startedAt,
+        stretchKey: stretch.key,
+        turnKey: turn.key,
+        stream: stretchStream(stretch),
+        activity: liveActivity(stretch),
+        strip: browserStrip(stretch),
+        incidents: stretchIncidents(stretch),
+      });
+    } else if (speech !== null) {
+      rows.push({
+        kind: "speech",
+        id: `speech:${stretch.key}`,
+        createdAt: speech.createdAt,
+        message: speech.message,
+      });
+    }
+
+    // Settled, the working group becomes the turn's report — the same pills,
+    // where the group was — and the Mate's answer follows it.
+    if (stretch.last && !turn.live) {
+      const outcome = deriveOutcome({
+        turn,
+        landed: landedByTurnKey.get(turn.key) ?? [],
+        diff: turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null),
+      });
+      if (outcome !== null) {
+        rows.push({
+          kind: "outcome",
+          id: outcome.key,
+          createdAt: turn.answer?.createdAt ?? stretch.endedAt ?? stretch.startedAt,
+          outcome,
+        });
+      }
+      if (answer !== null) {
+        rows.push({
+          kind: "message",
+          id: answer.id,
+          createdAt: answer.createdAt,
+          message: answer.message,
+          receipt: null,
+          aside: false,
+          imageOnly: false,
+          showAssistantMeta: !answer.message.streaming,
+        });
+      }
+    }
+    lastEnd = stretch.endedAt ?? stretch.startedAt;
+  };
+
   const expandedIds = input.expandedIds ?? new Set<string>();
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
@@ -1333,7 +1547,14 @@ export function deriveMessagesTimelineRows(
       seamBefore(entry.createdAt, entry.id);
       const id = `background:${entry.id}`;
       const expanded = expandedIds.has(id);
-      rows.push({ kind: "background", id, createdAt: entry.createdAt, entries: run, expanded });
+      rows.push({
+        kind: "background",
+        id,
+        createdAt: entry.createdAt,
+        entries: run,
+        ...backgroundRunSummary(run),
+        expanded,
+      });
       if (expanded) {
         for (const work of run) {
           rows.push({
@@ -1403,151 +1624,16 @@ export function deriveMessagesTimelineRows(
     const stretch = structure.stretchByIndex.get(index);
     if (stretch === undefined || emitted.has(stretch.key)) continue;
     emitted.add(stretch.key);
-    const turn = turnByKey.get(stretch.turnKey)!;
-    if (foldedTurnKeys.has(turn.key)) continue;
-
-    // Keyed by the message, as a loose message's seam is: the seam must not
-    // change its identity when a turn claims the message it stands before.
-    seamBefore(stretch.lead?.createdAt ?? stretch.startedAt, stretch.lead?.id ?? stretch.key);
-    if (stretch.lead !== null && stretch.leadIndex !== null) {
-      rows.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
+    emitStretch(stretch);
+  }
+  // A live turn that has drawn nothing yet — one a finished background task
+  // woke, before its first words — is the conversation's bottom all the same.
+  for (const turn of structure.turns) {
+    for (const stretch of turn.stretches) {
+      if (!stretch.live || emitted.has(stretch.key)) continue;
+      emitted.add(stretch.key);
+      emitStretch(stretch);
     }
-
-    // A /compact is its own event line: it says when the context is condensed,
-    // so its stretch draws no work line and no second compaction line.
-    const leadCommand = stretch.lead ? readSlashCommand(stretch.lead.message.text) : null;
-    if (leadCommand?.name === "compact") {
-      lastEnd = stretch.endedAt ?? stretch.startedAt;
-      continue;
-    }
-
-    // An answer that is the limit's own notice is the pause's to tell.
-    const answer =
-      turn.answer !== null &&
-      readUsageLimitNotice(turn.answer.message.text, turn.answer.message.createdAt) === null
-        ? turn.answer
-        : null;
-    const notes = stretchNotes(stretch, turn.answer);
-    const lastNote = notes.at(-1) ?? null;
-    const open = input.openStretchKeys?.has(stretch.key) ?? false;
-    const pause = stretch.last ? (pauseByTurnKey.get(turn.key)?.row ?? null) : null;
-    const pausedHere = pause !== null || (stretch.last && turn.limitOnly);
-    const activityEntries = stretch.entries.flatMap((candidate) =>
-      (candidate.kind === "work" || candidate.kind === "generic-call") &&
-      isActivityWork(candidate.entry)
-        ? [candidate.entry]
-        : [],
-    );
-    const hasLog = stretch.entries.some(
-      (candidate) =>
-        candidate !== turn.answer &&
-        candidate.kind !== "change-landed" &&
-        !(
-          candidate.kind === "message" &&
-          candidate.message.role === "reasoning" &&
-          candidate.message.text.trim().length === 0
-        ),
-    );
-    // A settled stretch with nothing to open has nothing to say: the answer
-    // stands under the message by itself. A live one always has its line, and
-    // so does one the usage limit refused — the person's message is answered
-    // by the reason.
-    if (stretch.live || hasLog || pausedHere)
-      rows.push({
-        kind: "work-line",
-        id: `work-line:${stretch.key}`,
-        createdAt: stretch.startedAt,
-        stretchKey: stretch.key,
-        turnId: stretch.turnId,
-        live: stretch.live,
-        face: stretchFace({ stretch, turn, pausedHere }),
-        startedAt: stretch.startedAt,
-        endedAt: stretch.endedAt,
-        note: lastNote === null ? null : noteLine(lastNote.message.text),
-        fallback:
-          lastNote !== null
-            ? null
-            : pausedHere
-              ? "Stopped by the usage limit"
-              : activityEntries.length > 0
-                ? summarizeActivity(
-                    omitSupersededLifecycleMarkers(
-                      activityEntries.filter((candidate) =>
-                        workEntryIsVisibleInGroup(candidate, stretch.live),
-                      ),
-                      (candidate) => candidate,
-                    ),
-                  )
-                : null,
-        noteCount: notes.length,
-        activity: stretch.live ? liveActivity(stretch) : null,
-        hasLog,
-        open,
-      });
-
-    rows.push(
-      ...stretchContentRows({
-        stretch,
-        answer: turn.answer,
-        open,
-        view: input,
-        pauseRow: pause,
-      }),
-    );
-
-    // Live, the stretch ends in the Mate at work; interrupted, in the words
-    // the person answered.
-    const answered = stretch.last && answer !== null && !turn.live;
-    if (stretch.live) {
-      rows.push({
-        kind: "working",
-        id: `working:${stretch.key}`,
-        createdAt: stretch.startedAt,
-        stretchKey: stretch.key,
-        turnKey: turn.key,
-        stream: stretchStream(stretch),
-        strip: browserStrip(stretch),
-        incidents: stretchIncidents(stretch),
-      });
-    } else if (!answered && lastNote !== null) {
-      rows.push({
-        kind: "speech",
-        id: `speech:${stretch.key}`,
-        createdAt: lastNote.createdAt,
-        message: lastNote.message,
-      });
-    }
-
-    // Settled, the working group becomes the turn's report — the same pills,
-    // where the group was — and the Mate's answer follows it.
-    if (stretch.last && !turn.live) {
-      const outcome = deriveOutcome({
-        turn,
-        landed: landedByTurnKey.get(turn.key) ?? [],
-        diff: turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null),
-      });
-      if (outcome !== null) {
-        rows.push({
-          kind: "outcome",
-          id: outcome.key,
-          createdAt: turn.answer?.createdAt ?? stretch.endedAt ?? stretch.startedAt,
-          outcome,
-        });
-      }
-      if (answer !== null) {
-        rows.push({
-          kind: "message",
-          id: answer.id,
-          createdAt: answer.createdAt,
-          message: answer.message,
-          receipt: null,
-          aside: false,
-          imageOnly: false,
-          showAssistantMeta: !answer.message.streaming,
-        });
-      }
-    }
-    lastEnd = stretch.endedAt ?? stretch.startedAt;
   }
 
   if (!input.isWorking && input.afterTurnWork) {

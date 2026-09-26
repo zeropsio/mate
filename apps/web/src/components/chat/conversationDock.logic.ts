@@ -18,7 +18,7 @@ const WATCH_TASK_TYPES: ReadonlySet<string> = new Set(["monitor", "monitor_mcp"]
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
-import { readUsageLimitNotice } from "./conversation.logic";
+import { readUsageLimitNotice, splitBatchDeploy } from "./conversation.logic";
 
 /** Operations that run long enough to watch: a pipeline or a multi-step setup. */
 export const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
@@ -252,14 +252,14 @@ export function deriveDock(input: {
 
   // The running turn's pipelines, finished ones included: a deploy that
   // landed mid-turn keeps its row, final word and all, until the turn's
-  // outcome takes over.
+  // outcome takes over. A batch deploy is a row per service.
   const operations =
     input.isWorking && input.runningTurnId !== null
       ? input.timelineEntries.flatMap((entry) =>
           entry.kind === "operation" &&
           DOCKED_KINDS.has(entry.operation.kind) &&
           entry.operation.turnId === input.runningTurnId
-            ? [entry.operation]
+            ? splitBatchDeploy(entry.operation)
             : [],
         )
       : [];
