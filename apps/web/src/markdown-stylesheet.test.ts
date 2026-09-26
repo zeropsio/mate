@@ -242,6 +242,39 @@ describe("the chat markdown stylesheet", () => {
     ).toBe(false);
   });
 
+  it("sets a table at 13/20 in a 15 px body, with sentence-case headers in the muted ink", () => {
+    const table = declarationsOf(".chat-markdown table");
+    const size = amount(table.get("font-size")) ?? 0;
+    const header = declarationsOf(".chat-markdown thead th");
+
+    expect(size * 15).toBeCloseTo(13);
+    expect((amount(table.get("line-height"), "") ?? 0) * size * 15).toBeCloseTo(20);
+    expect(header.get("font-weight")).toBe("600");
+    expect(header.get("color")).toBe("var(--contrast-muted-foreground)");
+    expect(header.get("text-transform") ?? "none").toBe("none");
+    expect(header.get("letter-spacing") ?? "normal").toBe("normal");
+  });
+
+  it("wraps table cells and lets the table grow past the column only when its words do", () => {
+    const cellRules = CHAT_MARKDOWN_RULES.filter((rule) =>
+      rule.selectors.some((selector) => /\b(?:table|th|td)\b/.test(selector)),
+    );
+
+    for (const rule of cellRules) {
+      expect(rule.declarations.get("white-space")).toBeUndefined();
+      expect(rule.declarations.get("max-width")).toBeUndefined();
+      expect(rule.declarations.get("text-overflow")).toBeUndefined();
+      expect(rule.declarations.get("min-width")).toBeUndefined();
+    }
+    expect(declarationsOf(".chat-markdown td").get("vertical-align")).toBe("top");
+    // No toggle between a truncated and a wrapped table is left to style.
+    expect(
+      CHAT_MARKDOWN_RULES.some((rule) =>
+        rule.selectors.some((selector) => selector.includes("data-expanded")),
+      ),
+    ).toBe(false);
+  });
+
   it("finds the chat markdown rules it pins", () => {
     expect(CHAT_MARKDOWN_RULES.length).toBeGreaterThan(20);
   });

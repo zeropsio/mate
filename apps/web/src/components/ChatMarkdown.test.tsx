@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import * as settingsModule from "../hooks/useSettings";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { Button } from "./ui/button";
 import { setMarkdownTaskChecked } from "./files/filePreviewMode";
@@ -525,6 +526,35 @@ describe("ChatMarkdown variants", () => {
       false,
     );
   });
+});
+
+describe("ChatMarkdown tables", () => {
+  const TABLE = [
+    "| Service | Where it runs | What changed |",
+    "| --- | --- | --- |",
+    "| api | the dev container | the health check waits for the database; a slow start no longer fails the deploy |",
+  ].join("\n");
+
+  it.each([true, false])(
+    "wraps its cells with no truncated reading to toggle (word wrap %s)",
+    (wordWrap) => {
+      vi.spyOn(settingsModule, "getClientSettings").mockReturnValue({
+        ...settingsModule.getClientSettings(),
+        wordWrap,
+      });
+      try {
+        const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={TABLE} />);
+
+        expect(html).toContain("chat-markdown-table-container");
+        expect(html).not.toContain("data-expanded");
+        expect(html).not.toContain("table cells");
+        expect(html).toContain('aria-label="Copy table"');
+        expect(html).toContain("a slow start no longer fails the deploy");
+      } finally {
+        vi.restoreAllMocks();
+      }
+    },
+  );
 });
 
 describe("ChatMarkdown heading levels", () => {

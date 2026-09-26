@@ -2196,50 +2196,36 @@ code {
   }
 }
 
-/* Diagnostics-style tables: row separators only, uppercase headers, and a
-   scroll-fade container for horizontal overflow. The root chat-markdown
-   wrapping rules (overflow-wrap: anywhere) would let columns shrink to single
-   characters and defeat the overflow — restore word-boundary wrapping so the
-   min column width is the longest word. */
+/* Tables: row separators only, a step below the body (13/20 at an answer's
+   15 px), headers in the muted ink and the case they were written in. Cells
+   wrap at word boundaries, which the root's wrapping rules would otherwise
+   break down to single letters, so a table is as wide as the column unless its
+   words alone are wider; only then does its container scroll sideways. */
 .chat-markdown table {
   width: 100%;
-  min-width: max-content;
   border-collapse: collapse;
   overflow-wrap: normal;
   word-break: normal;
-  font-size: 0.75rem;
+  font-size: calc(13em / 15);
+  line-height: calc(20 / 13);
 }
 
 .chat-markdown th,
 .chat-markdown td {
   padding: 0.45rem 0.75rem;
   text-align: left;
+  vertical-align: top;
 }
 
 .chat-markdown thead th {
   border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
   padding-block: 0.55rem;
   font-weight: 600;
-  white-space: nowrap;
+  color: var(--contrast-muted-foreground);
 }
 
 .chat-markdown tbody td {
   border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
-}
-
-/* Collapsed (default): single-line cells truncate so arbitrary chat content
-   cannot blow the column out; the footer toggle expands cells to wrap. */
-.chat-markdown .chat-markdown-table-container[data-expanded="false"] th,
-.chat-markdown .chat-markdown-table-container[data-expanded="false"] td {
-  overflow: hidden;
-  max-width: 24rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-markdown .chat-markdown-table-container[data-expanded="true"] td {
-  max-width: 24rem;
-  overflow-wrap: anywhere;
 }
 
 :root {
