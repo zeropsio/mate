@@ -24,25 +24,67 @@ const readRecord = (value: unknown): Record<string, unknown> | undefined =>
 const readRecordArray = (value: unknown): ReadonlyArray<Record<string, unknown>> =>
   Array.isArray(value) ? value.filter(isRecord) : [];
 
+/** The `keys` of `record` that read as non-empty strings — every other one is left out. */
+function readStringFields<Key extends string>(
+  record: Record<string, unknown>,
+  keys: ReadonlyArray<Key>,
+): { readonly [Field in Key]?: string } {
+  const fields: { [Field in Key]?: string } = {};
+  for (const key of keys) {
+    const value = readString(record[key]);
+    if (value !== undefined) {
+      fields[key] = value;
+    }
+  }
+  return fields;
+}
+
 /** `internal/ops` fields off `AppVersionBuild` the pipeline steps are derived from. */
 export interface ActivityAppVersionBuild {
   readonly pipelineStart?: string;
   readonly startDate?: string;
   readonly endDate?: string;
-  /** A timestamp in the API; only its presence is read (`!!pipelineFailed`). */
+  /** When the pipeline failed or was cancelled — the end of whichever step it stopped in. */
   readonly pipelineFailed?: string;
   /** The build container's own service, e.g. `zbuilder@<appVersionId>` log tags. */
   readonly serviceStackId?: string;
   /** Set once the whole pipeline (build → prepare → deploy) has finished. */
   readonly pipelineFinish?: string;
+  /** When the platform began creating the build container. */
+  readonly containerCreationStart?: string;
+  /** The build container's service name — the GUI's `<name>.zerops` container host. */
+  readonly serviceStackName?: string;
 }
+
+const BUILD_FIELDS = [
+  "pipelineStart",
+  "startDate",
+  "endDate",
+  "pipelineFailed",
+  "serviceStackId",
+  "pipelineFinish",
+  "containerCreationStart",
+  "serviceStackName",
+] as const satisfies ReadonlyArray<keyof ActivityAppVersionBuild>;
 
 /** Fields off `PrepareCustomRuntime` the pipeline steps are derived from. */
 export interface ActivityPrepareCustomRuntime {
   readonly startDate?: string;
   readonly endDate?: string;
   readonly serviceStackId?: string;
+  /** When the platform began creating the prepare container — a build-less pipeline's start. */
+  readonly containerCreationStart?: string;
+  /** The prepare container's service name, once the platform has named it. */
+  readonly serviceStackName?: string;
 }
+
+const PREPARE_FIELDS = [
+  "startDate",
+  "endDate",
+  "serviceStackId",
+  "containerCreationStart",
+  "serviceStackName",
+] as const satisfies ReadonlyArray<keyof ActivityPrepareCustomRuntime>;
 
 /** The slice of `AppVersionJsonObject` the pipeline-state port reads. */
 export interface ActivityAppVersion {
@@ -51,10 +93,23 @@ export interface ActivityAppVersion {
   readonly name?: string;
   /** One of the `AppVersionStatusEnum` values, e.g. `BUILDING`, `WAITING_TO_DEPLOY`. */
   readonly status?: string;
+  /** When the version was created. */
+  readonly created?: string;
+  /** Where the version came from: `CLI`, `GUI`, `GITHUB`, `GITLAB` or `GIT`. */
+  readonly source?: string;
   readonly build?: ActivityAppVersionBuild;
   readonly prepareCustomRuntime?: ActivityPrepareCustomRuntime;
   readonly activationDate?: string;
 }
+
+const APP_VERSION_FIELDS = [
+  "id",
+  "name",
+  "status",
+  "created",
+  "source",
+  "activationDate",
+] as const satisfies ReadonlyArray<keyof ActivityAppVersion>;
 
 /** The slice of `Process` attribution and rendering read. */
 export interface ActivityProcess {
@@ -80,51 +135,11 @@ export function readActivityAppVersion(value: unknown): ActivityAppVersion | und
   const build = readRecord(record.build);
   const prepareCustomRuntime = readRecord(record.prepareCustomRuntime);
   return {
-    ...(readString(record.id) === undefined ? {} : { id: readString(record.id)! }),
-    ...(readString(record.name) === undefined ? {} : { name: readString(record.name)! }),
-    ...(readString(record.status) === undefined ? {} : { status: readString(record.status)! }),
-    ...(build === undefined
-      ? {}
-      : {
-          build: {
-            ...(readString(build.pipelineStart) === undefined
-              ? {}
-              : { pipelineStart: readString(build.pipelineStart)! }),
-            ...(readString(build.startDate) === undefined
-              ? {}
-              : { startDate: readString(build.startDate)! }),
-            ...(readString(build.endDate) === undefined
-              ? {}
-              : { endDate: readString(build.endDate)! }),
-            ...(readString(build.pipelineFailed) === undefined
-              ? {}
-              : { pipelineFailed: readString(build.pipelineFailed)! }),
-            ...(readString(build.serviceStackId) === undefined
-              ? {}
-              : { serviceStackId: readString(build.serviceStackId)! }),
-            ...(readString(build.pipelineFinish) === undefined
-              ? {}
-              : { pipelineFinish: readString(build.pipelineFinish)! }),
-          },
-        }),
+    ...readStringFields(record, APP_VERSION_FIELDS),
+    ...(build === undefined ? {} : { build: readStringFields(build, BUILD_FIELDS) }),
     ...(prepareCustomRuntime === undefined
       ? {}
-      : {
-          prepareCustomRuntime: {
-            ...(readString(prepareCustomRuntime.startDate) === undefined
-              ? {}
-              : { startDate: readString(prepareCustomRuntime.startDate)! }),
-            ...(readString(prepareCustomRuntime.endDate) === undefined
-              ? {}
-              : { endDate: readString(prepareCustomRuntime.endDate)! }),
-            ...(readString(prepareCustomRuntime.serviceStackId) === undefined
-              ? {}
-              : { serviceStackId: readString(prepareCustomRuntime.serviceStackId)! }),
-          },
-        }),
-    ...(readString(record.activationDate) === undefined
-      ? {}
-      : { activationDate: readString(record.activationDate)! }),
+      : { prepareCustomRuntime: readStringFields(prepareCustomRuntime, PREPARE_FIELDS) }),
   };
 }
 

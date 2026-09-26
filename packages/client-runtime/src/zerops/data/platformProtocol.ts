@@ -152,10 +152,14 @@ const ProcessAppVersionRow = Schema.Struct({
   id: OptionalNullableString,
   name: OptionalNullableString,
   status: OptionalNullableString,
+  created: OptionalNullableString,
+  source: OptionalNullableString,
   build: Schema.optionalKey(
     Schema.Union([
       Schema.Struct({
         serviceStackId: OptionalNullableString,
+        serviceStackName: OptionalNullableString,
+        containerCreationStart: OptionalNullableString,
         pipelineStart: OptionalNullableString,
         pipelineFinish: OptionalNullableString,
         pipelineFailed: OptionalNullableString,
@@ -169,6 +173,8 @@ const ProcessAppVersionRow = Schema.Struct({
     Schema.Union([
       Schema.Struct({
         serviceStackId: OptionalNullableString,
+        serviceStackName: OptionalNullableString,
+        containerCreationStart: OptionalNullableString,
         startDate: OptionalNullableString,
         endDate: OptionalNullableString,
       }),

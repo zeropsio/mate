@@ -1,6 +1,67 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { readProjectProcesses } from "./dto.ts";
+import { readActivityAppVersion, readProjectProcesses } from "./dto.ts";
+
+describe("readActivityAppVersion — what the pipeline readout reads", () => {
+  it.each([
+    {
+      name: "the version's own birth and source",
+      raw: { status: "BUILDING", created: "t0", source: "CLI" },
+      expected: { status: "BUILDING", created: "t0", source: "CLI" },
+    },
+    {
+      name: "the build container's creation start and service name",
+      raw: {
+        build: {
+          pipelineStart: "t1",
+          containerCreationStart: "t1b",
+          serviceStackName: "build-appdev",
+        },
+      },
+      expected: {
+        build: {
+          pipelineStart: "t1",
+          containerCreationStart: "t1b",
+          serviceStackName: "build-appdev",
+        },
+      },
+    },
+    {
+      name: "the prepare container's creation start and service name",
+      raw: {
+        prepareCustomRuntime: {
+          startDate: "t3",
+          containerCreationStart: "t2",
+          serviceStackName: "prepare-appdev",
+        },
+      },
+      expected: {
+        prepareCustomRuntime: {
+          startDate: "t3",
+          containerCreationStart: "t2",
+          serviceStackName: "prepare-appdev",
+        },
+      },
+    },
+    {
+      name: "a null, empty or mistyped field degrades to absent",
+      raw: {
+        created: null,
+        source: "",
+        build: { containerCreationStart: 42, serviceStackName: null },
+        prepareCustomRuntime: { containerCreationStart: {}, serviceStackName: [] },
+      },
+      expected: { build: {}, prepareCustomRuntime: {} },
+    },
+  ])("$name", ({ raw, expected }) => {
+    expect(readActivityAppVersion(raw)).toEqual(expected);
+  });
+
+  it("reads nothing from a value that is not a record", () => {
+    expect(readActivityAppVersion("BUILDING")).toBeUndefined();
+    expect(readActivityAppVersion(null)).toBeUndefined();
+  });
+});
 
 describe("readProjectProcesses", () => {
   it("reads a process with a full appVersion", () => {

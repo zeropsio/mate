@@ -1124,6 +1124,59 @@ describe("the datastream's deploy frames", () => {
       }),
     );
   });
+
+  it("a process frame carries what the pipeline readout reads off its appVersion", () => {
+    const observations = decodeUpdate("process", {
+      id: "process",
+      projectId: "project",
+      actionName: "stack.build",
+      status: "RUNNING",
+      created: "2026-09-23T14:01:39Z",
+      serviceStackId: "service",
+      appVersion: {
+        id: "app-version",
+        status: "PREPARING_RUNTIME",
+        created: "2026-09-23T14:01:38Z",
+        source: "CLI",
+        build: {
+          serviceStackId: "build-service",
+          serviceStackName: "build-appdev",
+          containerCreationStart: "2026-09-23T14:01:40Z",
+          pipelineStart: "2026-09-23T14:01:40Z",
+        },
+        prepareCustomRuntime: {
+          serviceStackId: "prepare-service",
+          serviceStackName: null,
+          containerCreationStart: "2026-09-23T14:02:40Z",
+        },
+      },
+    });
+    const pipeline = observations.find(
+      (observation) => observation.kind === "process-pipeline-observed",
+    );
+
+    expect(pipeline).toMatchObject({
+      observation: {
+        fields: {
+          appVersion: {
+            created: "2026-09-23T14:01:38Z",
+            source: "CLI",
+            build: {
+              serviceStackName: "build-appdev",
+              containerCreationStart: "2026-09-23T14:01:40Z",
+            },
+            prepareCustomRuntime: {
+              serviceStackId: "prepare-service",
+              containerCreationStart: "2026-09-23T14:02:40Z",
+            },
+          },
+        },
+      },
+    });
+    expect(pipeline).not.toHaveProperty(
+      "observation.fields.appVersion.prepareCustomRuntime.serviceStackName",
+    );
+  });
 });
 
 describe("a service read's active version name (A14)", () => {
