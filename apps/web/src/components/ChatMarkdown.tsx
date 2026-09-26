@@ -1137,21 +1137,6 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
   );
 });
 
-function leadingExternalLinkTextLength(text: string): number {
-  const protocol = /^(?:https?:\/\/)/i.exec(text)?.[0];
-  if (protocol) return protocol.length;
-  return Math.min(text.length, 1);
-}
-
-function breakableExternalLinkText(text: string): ReactNode[] {
-  return Array.from(text, (character, index) => (
-    <React.Fragment key={`${index}:${character}`}>
-      {character}
-      <wbr />
-    </React.Fragment>
-  ));
-}
-
 function plainHastText(node: unknown): string | null {
   if (!node || typeof node !== "object" || !("children" in node) || !Array.isArray(node.children)) {
     return null;
@@ -1251,41 +1236,24 @@ function handleMarkdownFragmentClick(event: ReactMouseEvent<HTMLAnchorElement>, 
   target.scrollIntoView({ block: "nearest" });
 }
 
-function MarkdownExternalLinkContent({
-  host,
-  plainText,
-  children,
-}: {
-  host: string;
-  plainText: string | null;
-  children: ReactNode;
-}) {
-  if (plainText) {
-    const leadingLength = leadingExternalLinkTextLength(plainText);
-    return (
-      <>
-        <span className="whitespace-nowrap">
-          <MarkdownLinkFavicon host={host} />
-          {plainText.slice(0, leadingLength)}
-        </span>
-        {breakableExternalLinkText(plainText.slice(leadingLength))}
-      </>
-    );
-  }
-
-  const childNodes = Children.toArray(children);
-  const firstChild = childNodes[0];
+/**
+ * The favicon holds on to the link's first letter, so it never ends a line
+ * alone. The rest wraps as text does: at word boundaries, and inside a token
+ * only when the token cannot fit a line (the stylesheet's `anywhere` on links).
+ */
+function MarkdownExternalLinkContent({ host, children }: { host: string; children: ReactNode }) {
+  const [firstChild, ...rest] = Children.toArray(children);
 
   if (typeof firstChild === "string" && firstChild.length > 0) {
-    const leadingLength = leadingExternalLinkTextLength(firstChild);
+    const [firstLetter = ""] = firstChild;
     return (
       <>
         <span className="whitespace-nowrap">
           <MarkdownLinkFavicon host={host} />
-          {firstChild.slice(0, leadingLength)}
+          {firstLetter}
         </span>
-        {breakableExternalLinkText(firstChild.slice(leadingLength))}
-        {childNodes.slice(1)}
+        {firstChild.slice(firstLetter.length)}
+        {rest}
       </>
     );
   }
@@ -1296,7 +1264,7 @@ function MarkdownExternalLinkContent({
         <MarkdownLinkFavicon host={host} />
         {firstChild}
       </span>
-      {childNodes.slice(1)}
+      {rest}
     </>
   );
 }
@@ -2087,8 +2055,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
           }}
         >
           {faviconHost && hastHasText(node) ? (
-            <MarkdownExternalLinkContent host={faviconHost} plainText={plainHastText(node)}>
-              {children}
+            <MarkdownExternalLinkContent host={faviconHost}>
+              {plainHastText(node) ?? children}
             </MarkdownExternalLinkContent>
           ) : (
             children
@@ -2237,7 +2205,7 @@ function ChatMarkdown({
   return (
     <div
       className={cn(
-        "chat-markdown w-full min-w-0 [overflow-wrap:anywhere] [word-break:break-word]",
+        "chat-markdown w-full min-w-0",
         // The log's body is these utilities. An answer's is the stylesheet's
         // `[data-variant="answer"]` rule, which no utility can override.
         variant === "log" &&

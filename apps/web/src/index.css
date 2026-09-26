@@ -1938,6 +1938,20 @@ code {
   color: var(--contrast-foreground);
 }
 
+/* A word breaks only when it cannot fit a line by itself. Unlike `anywhere`,
+   this leaves min-content whole-word, so a short label never splits mid-word
+   ("Tit / an") and a table column never shrinks to a letter. */
+.chat-markdown {
+  overflow-wrap: break-word;
+}
+
+/* Long tokens (addresses, paths, hashes) are what cannot fit: they alone break
+   anywhere, and only once they are wider than the line. */
+.chat-markdown a,
+.chat-markdown :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
 .chat-markdown > :first-child {
   margin-top: 0;
 }
@@ -2198,14 +2212,12 @@ code {
 
 /* Tables: row separators only, a step below the body (13/20 at an answer's
    15 px), headers in the muted ink and the case they were written in. Cells
-   wrap at word boundaries, which the root's wrapping rules would otherwise
-   break down to single letters, so a table is as wide as the column unless its
+   wrap at word boundaries (the root's break-word keeps each column's
+   min-content whole-word), so a table is as wide as the column unless its
    words alone are wider; only then does its container scroll sideways. */
 .chat-markdown table {
   width: 100%;
   border-collapse: collapse;
-  overflow-wrap: normal;
-  word-break: normal;
   font-size: calc(13em / 15);
   line-height: calc(20 / 13);
 }

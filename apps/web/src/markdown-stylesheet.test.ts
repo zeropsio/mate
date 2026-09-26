@@ -275,6 +275,30 @@ describe("the chat markdown stylesheet", () => {
     ).toBe(false);
   });
 
+  it("breaks a word only when it cannot fit a line, and long tokens anywhere", () => {
+    // break-word leaves min-content whole-word, so a table column never
+    // shrinks to one letter; a link or inline code (an address, a path, a
+    // hash) still breaks where it must.
+    expect(declarationsOf(".chat-markdown").get("overflow-wrap")).toBe("break-word");
+    for (const token of [".chat-markdown a", ".chat-markdown :not(pre) > code"]) {
+      expect(declarationsOf(token).get("overflow-wrap")).toBe("anywhere");
+    }
+    const breaksAnywhere = CHAT_MARKDOWN_RULES.filter(
+      (rule) =>
+        rule.declarations.get("overflow-wrap") === "anywhere" ||
+        rule.declarations.get("word-break") === "break-all",
+    ).flatMap((rule) => rule.selectors);
+    expect(breaksAnywhere.toSorted()).toEqual(
+      [
+        ".chat-markdown a",
+        ".chat-markdown :not(pre) > code",
+        '.chat-markdown .chat-markdown-codeblock[data-wrap="true"] pre',
+      ].toSorted(),
+    );
+    // Tables inherit the root's rule rather than resetting it.
+    expect(declarationsOf(".chat-markdown table").get("overflow-wrap")).toBeUndefined();
+  });
+
   it("finds the chat markdown rules it pins", () => {
     expect(CHAT_MARKDOWN_RULES.length).toBeGreaterThan(20);
   });

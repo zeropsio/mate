@@ -528,6 +528,27 @@ describe("ChatMarkdown variants", () => {
   });
 });
 
+describe("ChatMarkdown wrapping", () => {
+  it("leaves breaking anywhere to long tokens, not the whole text", () => {
+    const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text="Body" />);
+
+    for (const className of markdownRoot(html).classes) {
+      expect(className).not.toMatch(/overflow-wrap|word-break|wrap-anywhere/);
+    }
+  });
+
+  it.each([
+    ["a link's own words", "[the Medusa recipe](https://github.com/zerops-recipe-apps/medusa-dtc)"],
+    ["a pasted address", "https://github.com/zeropsio/mate/pull/12"],
+  ])("breaks %s at word boundaries, not after every letter", (_name, text) => {
+    const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={text} />);
+
+    expect(html).not.toContain("<wbr");
+    // The favicon holds on to the first letter, so it never ends a line alone.
+    expect(html).toMatch(/<span class="whitespace-nowrap"><span[^>]*aria-hidden="true"/);
+  });
+});
+
 describe("ChatMarkdown tables", () => {
   const TABLE = [
     "| Service | Where it runs | What changed |",
