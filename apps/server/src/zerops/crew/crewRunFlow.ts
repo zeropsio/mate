@@ -8,7 +8,9 @@
  * - a ready task lands when the run's landing is *Land when the check
  *   passes*; with *I land everything* it waits for the person's **Land**;
  * - a turn that ended without a report gets one nudge per attempt, and a
- *   turn the run's own pause stopped carries on when the run goes on.
+ *   turn the run's own pause stopped carries on when the run goes on;
+ * - with *The crew may show work on dev*, a crewmate's request to show its
+ *   copy is allowed as soon as its turn ends.
  *
  * Without a running run none of this happens: every crew turn then traces to
  * a press of the person's (PRD §2.4). A dispatch admission refuses pauses the
@@ -32,6 +34,7 @@ import {
   type CrewMember,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { grantClaim } from "./crewClaims.ts";
 import { land, reworkCard } from "./crewLanding.ts";
 import { wakeLead } from "./crewLead.ts";
 import { pauseRun, runOptionsOf } from "./crewRuns.ts";
@@ -102,6 +105,27 @@ const carryOn = (
     }
   });
 
+/** A run's dev grant: a free crewmate's standing request to show its copy on dev is allowed. */
+const allowShowOnDev = (core: CrewCore, applied: AppliedCrew, member: CrewMember) =>
+  Effect.gen(function* () {
+    const run = runningRun(applied);
+    const host = member.row.host;
+    const claim = host === null ? undefined : core.memory.claims.get(host);
+    if (
+      run === undefined ||
+      host === null ||
+      runOptionsOf(run)?.devGrant !== true ||
+      claim?.state !== "requested" ||
+      claim.handle !== member.row.handle
+    ) {
+      return false;
+    }
+    return yield* grantClaim(core, { kind: "crew", startedBy: run.startedBy }, host).pipe(
+      Effect.as(true),
+      Effect.catchTag("CrewCommandError", () => Effect.succeed(false)),
+    );
+  });
+
 /**
  * A crewmate is free, or something it waits on moved: its open task goes on
  * in a running run, or its next queued task starts.
@@ -115,8 +139,11 @@ export const advance = (core: CrewCore, handle: string) =>
     if (member.row.kind === "lead") return yield* wakeLead(core, applied, member);
     if (!isWorking(core, applied, handle)) {
       const open = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
-      if (open === undefined) yield* pump(core, handle);
-      else if (runningRun(applied) !== undefined) yield* carryOn(core, applied, member, open);
+      // An allowed Show on dev sends the claim turn now; the task goes on when it ends.
+      if (!(yield* allowShowOnDev(core, applied, member))) {
+        if (open === undefined) yield* pump(core, handle);
+        else if (runningRun(applied) !== undefined) yield* carryOn(core, applied, member, open);
+      }
     }
     // What this crewmate did may wait on the lead now: a review, a question.
     const lead = leadOf(applied);
