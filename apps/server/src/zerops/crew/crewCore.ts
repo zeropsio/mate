@@ -63,6 +63,7 @@ import {
   CrewStore,
   type CrewAssignmentRow,
   type CrewMemberRow,
+  type CrewRunRow,
   type CrewStintRow,
 } from "./CrewStore.ts";
 import { CrewWorkspace } from "./CrewWorkspace.ts";
@@ -88,6 +89,8 @@ export interface AppliedCrew {
   readonly repositories: ReadonlyMap<string, ZeropsRepository>;
   /** Each crewmate's login's coding agent; a Codex crewmate hosts no crew tools (PRD §2.3). */
   readonly agents: ReadonlyMap<string, ZeropsAgentId | undefined>;
+  /** The crew's latest run in any state; `undefined` before its first. */
+  readonly run: CrewRunRow | undefined;
 }
 
 /** A shaped turn the gate lets through one tool shape for (CONCEPT §3.3). */
@@ -135,6 +138,12 @@ export interface EngineMemory {
   readonly showReasons: Map<string, string>;
   /** The dev services this Mate mounts: whether each reaches a database, `null` until read. */
   readonly devHosts: Map<string, boolean | null>;
+  /** When the running run's time last started counting (clock ms); `null` while none runs. */
+  runningSince: number | null;
+  /** The run tick is forked (`crewRuns.ensureRunTick`). */
+  runTick: boolean;
+  /** Each login's fullest usage window, from the provider's rate-limit events. */
+  readonly usage: Map<string, number>;
   lastError: string | null;
 }
 
@@ -166,6 +175,9 @@ export const makeMemory = (): EngineMemory => ({
   integration: new Map(),
   showReasons: new Map(),
   devHosts: new Map(),
+  runningSince: null,
+  runTick: false,
+  usage: new Map(),
   lastError: null,
 });
 
@@ -261,6 +273,7 @@ export const makeCrewCore = Effect.gen(function* () {
       members,
       stints: yield* store.stints(CREW_ID),
       repositories: known,
+      run: Option.getOrUndefined(yield* store.latestRun(CREW_ID)),
     });
   });
 
@@ -444,3 +457,19 @@ export const laterPrincipal = (task: Pick<CrewAssignmentRow, "createdBy">): Turn
   kind: "crew",
   startedBy: task.createdBy,
 });
+
+/** The run that lets the crew start its own turns now; `undefined` when none runs. */
+export const runningRun = (applied: AppliedCrew): CrewRunRow | undefined =>
+  applied.run?.state === "running" ? applied.run : undefined;
+
+/**
+ * Whom the engine's own dispatch of a task runs as: the running run's
+ * starter (ARCHITECTURE §2), else the person whose press or message made it.
+ */
+export const dispatchPrincipal = (
+  applied: AppliedCrew,
+  task: Pick<CrewAssignmentRow, "createdBy">,
+): TurnPrincipal => {
+  const run = runningRun(applied);
+  return run === undefined ? laterPrincipal(task) : { kind: "crew", startedBy: run.startedBy };
+};

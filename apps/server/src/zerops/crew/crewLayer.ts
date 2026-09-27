@@ -84,8 +84,26 @@ import * as CrewStateRef from "./CrewStateRef.ts";
 import * as CrewStore from "./CrewStore.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import { editMemory, forgetMemory, removeMemory } from "./crewMemoryCommands.ts";
-import { discard, editTask, markFresh, message, newTask, retryTask, tell } from "./crewTasks.ts";
+import {
+  discard,
+  editTask,
+  markFresh,
+  message,
+  newTask,
+  pumpAll,
+  retryTask,
+  tell,
+} from "./crewTasks.ts";
 import { makeTurnHandler } from "./crewTurns.ts";
+import {
+  finishRun,
+  pressPause,
+  resumeRun,
+  runOnAfterRestart,
+  runView,
+  startRun,
+  stopRun,
+} from "./crewRuns.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
@@ -144,9 +162,11 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
       const unfiled = rows.filter((entry) => entry.kind === "unfiled").length;
       memory.set(member.handle, { entries: rows.length - unfiled, unfiled });
     }
+    const applied = yield* core.applied;
     return appliedSnapshot({
       memory,
       seq,
+      run: applied === undefined ? null : runView(core, applied, yield* Clock.currentTimeMillis),
       definition: row.value.spec as CrewDefinition,
       briefVersion: row.value.briefVersion,
       members,
@@ -272,11 +292,25 @@ const run = (
       case "forgetMemory":
         yield* forgetMemory(core, command.handle);
         return done;
-      case "start":
+      case "start": {
+        const { _tag: _, ...options } = command;
+        yield* startRun(core, principal, options);
+        yield* pumpAll(core);
+        return done;
+      }
       case "pause":
+        yield* pressPause(core, command.runId);
+        return done;
       case "resume":
+        yield* resumeRun(core, command.runId);
+        yield* pumpAll(core);
+        return done;
       case "stop":
+        yield* stopRun(core, command.runId);
+        return done;
       case "finish":
+        yield* finishRun(core, command.runId);
+        return done;
       case "planAccept":
       case "planDiscard":
       case "review":
@@ -332,7 +366,11 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     yield* Effect.flatMap(core.applied, (applied) =>
       applied === undefined
         ? Effect.void
-        : core.verify.pipe(Effect.andThen(readiness.await), Effect.andThen(boot(core))),
+        : core.verify.pipe(
+            Effect.andThen(runOnAfterRestart(core)),
+            Effect.andThen(readiness.await),
+            Effect.andThen(boot(core)),
+          ),
     ).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {

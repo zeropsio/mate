@@ -28,13 +28,14 @@ import { carriedCard, continueCard, taskCard } from "./crewCards.ts";
 import {
   asRefusal,
   currentStint,
+  dispatchPrincipal,
   isWorking,
-  laterPrincipal,
   memberOf,
   principalUser,
   refuse,
   requireApplied,
   requireMember,
+  runningRun,
   type AppliedCrew,
   type CrewCore,
   type CrewMember,
@@ -49,6 +50,7 @@ import {
 import { CREW_ID } from "./CrewHome.ts";
 import { taskTransition, type TaskCounters, type TaskEvent } from "./crewMachines.ts";
 import { implicitTaskTitle, routeCrewMessage } from "./crewRouting.ts";
+import { pauseRun } from "./crewRuns.ts";
 import { isOpenTask } from "./crewSnapshot.ts";
 import { openStint, rotate } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
@@ -399,7 +401,10 @@ const landed = (tasks: ReadonlyArray<CrewAssignmentRow>, id: string) =>
 /**
  * Starts the crewmate's oldest queued task whose dependencies landed, when
  * it is free. `now` names a task dispatched inside its creator's own call,
- * which runs as their session; every other runs as its creator later.
+ * which runs as their session; every other runs as the running run's
+ * starter, or without a run as its creator. The lead's tasks start only in
+ * a running run (PRD §5.4), and a run whose own dispatch admission refuses
+ * pauses with admission's words.
  */
 export const pump = (
   core: CrewCore,
@@ -413,16 +418,21 @@ export const pump = (
     if (member === undefined || isWorking(core, applied, handle)) return;
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     if (openTaskOf(tasks, handle) !== undefined) return;
+    const run = runningRun(applied);
     const next = tasks.find(
       (row) =>
         row.member === handle &&
         row.state === "queued" &&
+        (row.source !== "lead" || run !== undefined) &&
         row.dependsOn.every((id) => landed(tasks, id)),
     );
     if (next === undefined) return;
-    const principal =
-      now !== undefined && now.taskId === next.assignment ? now.principal : laterPrincipal(next);
-    yield* startTask(core, applied, member, next, principal);
+    const ownCall = now !== undefined && now.taskId === next.assignment;
+    const principal = ownCall ? now.principal : dispatchPrincipal(applied, next);
+    const outcome = yield* startTask(core, applied, member, next, principal);
+    if (outcome._tag === "refused" && run !== undefined && !ownCall) {
+      yield* pauseRun(core, "refused", outcome.detail);
+    }
     yield* core.changed;
   });
 

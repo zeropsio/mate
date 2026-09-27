@@ -521,4 +521,71 @@ describe("CrewStore", () => {
         }),
     );
   });
+
+  it.layer(storeLayer)("runs", (it) => {
+    const run = (overrides: Partial<CrewStore.CrewRunRow> = {}): CrewStore.CrewRunRow => ({
+      run: "run-1",
+      crew: "game",
+      startedBy: "user-karel",
+      budgetUsd: 20,
+      spentUsd: 0,
+      options: { budgetUsd: 20, timeLimitHours: "unlimited" },
+      reasonDetail: null,
+      state: "running",
+      reason: null,
+      startedAt: "2026-09-27T10:00:00.000Z",
+      wallMs: 0,
+      waitingMs: 0,
+      finishedAt: null,
+      ...overrides,
+    });
+
+    it.effect("keeps a crew's runs, changes one in place and reads the latest", () =>
+      Effect.gen(function* () {
+        const store = yield* CrewStore.CrewStore;
+        const seen = yield* store.changes.pipe(Stream.take(1), Stream.runCollect, Effect.forkChild);
+        yield* Effect.yieldNow;
+        const none = Option.isNone(yield* store.latestRun("game"));
+        yield* store.putRun(run({ state: "stopped", reason: "person" }));
+        yield* store.putRun(
+          run({ run: "run-2", budgetUsd: null, startedAt: "2026-09-27T11:00:00.000Z" }),
+        );
+        yield* store.putRun(
+          run({
+            run: "run-2",
+            budgetUsd: null,
+            startedAt: "2026-09-27T11:00:00.000Z",
+            state: "paused",
+            reason: "refused",
+            reasonDetail: "not the login's signer",
+            spentUsd: 1.5,
+            wallMs: 60_000,
+          }),
+        );
+        assert.deepStrictEqual(
+          {
+            none,
+            latest: Option.getOrUndefined(yield* store.latestRun("game")),
+            other: Option.isNone(yield* store.latestRun("shop")),
+            change: Array.from(yield* Fiber.join(seen)),
+          },
+          {
+            none: true,
+            latest: run({
+              run: "run-2",
+              budgetUsd: null,
+              startedAt: "2026-09-27T11:00:00.000Z",
+              state: "paused",
+              reason: "refused",
+              reasonDetail: "not the login's signer",
+              spentUsd: 1.5,
+              wallMs: 60_000,
+            }),
+            other: true,
+            change: [{ crew: "game", table: "run" }],
+          },
+        );
+      }),
+    );
+  });
 });

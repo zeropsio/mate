@@ -31,6 +31,7 @@ import {
   memberOf,
   refuse,
   requireApplied,
+  runningRun,
   type AppliedCrew,
   type CrewCore,
   type CrewMember,
@@ -139,6 +140,7 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
     const current =
       stint.retiredAt === null && currentStint(applied, row.handle)?.threadId === threadId;
     const shaped = current ? gateFor(core, applied, member, stint) : undefined;
+    const budget = runningRun(applied)?.budgetUsd ?? null;
     return Option.some({
       crew: CREW_ID,
       handle: row.handle,
@@ -161,6 +163,10 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
         crewTools: applied.agents.get(row.handle) !== "codex",
       },
       contextWindow: spec.context ?? CREW_CONTEXT_DEFAULT,
+      // What the running run has left; a run with No limit sets none (PRD Δ16).
+      ...(budget === null
+        ? {}
+        : { maxBudgetUsd: Math.max(0, budget - (applied.run?.spentUsd ?? 0)) }),
       ...(row.model === null ? {} : { model: row.model }),
       ...(row.effort === null ? {} : { effort: row.effort }),
     });

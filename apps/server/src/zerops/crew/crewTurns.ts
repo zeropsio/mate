@@ -10,7 +10,8 @@
  *   turn); a task the crewmate reported done merges in and checks; a
  *   crewmate that freed up starts its next queued task. An interrupted turn
  *   ends like any other — its work is committed too.
- * - token usage and compaction are recorded for the section's context meter.
+ * - token usage and compaction are recorded for the section's context meter;
+ *   a turn's cost and the logins' usage windows move a run's meters.
  * - `zerops_deploy` onto a service with lanes (any thread) freezes the
  *   service's lanes and interrupts their turns; when the deploy ends and the
  *   mount answers, `recover` brings the lanes back or names what was lost.
@@ -32,6 +33,7 @@ import { moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
+import { recordRunSpend, recordUsage } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, pump } from "./crewTasks.ts";
@@ -157,6 +159,7 @@ const turnEnded = (
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     const open = openTaskOf(tasks, stint.member);
     if (open !== undefined) yield* recordCost(core, open, event.payload.totalCostUsd);
+    yield* recordRunSpend(core, event.payload.totalCostUsd);
     if (member.row.kind === "writer") {
       yield* commitAndPolice(
         core,
@@ -287,6 +290,7 @@ export const makeTurnHandler = (core: CrewCore) => {
       ) {
         yield* moveClaim(core, personDevServer, "person-dev-server");
       }
+      if (event.type === "account.rate-limits.updated") yield* recordUsage(core, event);
       if (stint === undefined) return;
       switch (event.type) {
         case "turn.started":

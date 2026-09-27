@@ -135,6 +135,7 @@ const stint = (
 
 const base = (fields: Partial<AppliedSnapshotInput> = {}): AppliedSnapshotInput => ({
   seq: 7,
+  run: null,
   definition,
   briefVersion: 3,
   members: definition.members.map((member) => memberRow(member)),

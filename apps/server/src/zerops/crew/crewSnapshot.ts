@@ -24,6 +24,7 @@ import {
   type CrewDevHost,
   type CrewLaneState,
   type CrewLogin,
+  type CrewRun,
   type CrewServed,
   type CrewSnapshot,
   type CrewStint,
@@ -163,6 +164,8 @@ export const EMPTY_RUNTIME: SnapshotRuntime = {
 
 export interface AppliedSnapshotInput {
   readonly seq: number;
+  /** The crew's latest run with its meters; `null` before its first. */
+  readonly run: CrewRun | null;
   /** The crew home as applied. */
   readonly definition: CrewDefinition;
   readonly briefVersion: number;
@@ -447,7 +450,7 @@ export const appliedSnapshot = (input: AppliedSnapshotInput): CrewSnapshot => {
       };
     }),
     board: { tasks: tasks.map((row) => toTask(row, input)) },
-    run: null,
+    run: input.run,
     attention: [
       ...tasks.flatMap((row) => taskAttention(row, input.runtime) ?? []),
       ...claimAttention,
