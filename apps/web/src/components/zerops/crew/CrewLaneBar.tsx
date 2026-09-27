@@ -60,11 +60,14 @@ export function CrewLaneBar({
     useDiffPanelStore.getState().selectBranchBaseRef(threadRef, null);
     useRightPanelStore.getState().open(threadRef, "diff");
   };
+  // Every draft for Fen goes where the section's go: into this chat when it is
+  // a person chat, else the main one — from a crewmate's chat, the main one.
+  const askFen = (draft: string) => askMate(projectId, draft, { threadId: threadRef.threadId });
   const addCrewPorts = (host: string, count: number) => {
     void command.send({ _tag: "addCrewPorts", host, count }).then((result) => {
       if (result?._tag !== "crewPorts") return;
       setPortsHost(null);
-      askMate(projectId, crewPortsAsk(result.host, result.ports));
+      askFen(crewPortsAsk(result.host, result.ports));
     });
   };
   const commitEdit = model.commitEdit;
@@ -209,16 +212,13 @@ export function CrewLaneBar({
         }}
         pending={command.pending}
       />
-      {/* Your tree is yours: the Mate commits your edit in your chat — from a
-          crewmate's chat, that is the main one. */}
+      {/* Your tree is yours: the Mate commits your edit, asked as every draft is. */}
       <ZeropsAskDialog
         ask={commitEdit?.ask ?? ""}
         mateName={mate?.name}
         onConfirm={() => {
           setAskingCommit(false);
-          if (commitEdit !== null) {
-            askMate(projectId, commitEdit.ask, { threadId: threadRef.threadId });
-          }
+          if (commitEdit !== null) askFen(commitEdit.ask);
         }}
         onOpenChange={setAskingCommit}
         open={askingCommit && commitEdit !== null}
