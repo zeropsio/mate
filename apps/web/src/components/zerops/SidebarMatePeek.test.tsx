@@ -1,8 +1,10 @@
+import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { MatePeekCard, type MatePeekCardProps } from "./SidebarMatePeek";
-import { askedLabelFor } from "./SidebarMatePeek.logic";
+import { MatePeekCard, useMatePeekKeys, type MatePeekCardProps } from "./SidebarMatePeek";
+import { askedLabelFor, type MatePeekChoice } from "./SidebarMatePeek.logic";
 
 const card = (props: Partial<MatePeekCardProps> = {}) =>
   renderToStaticMarkup(
@@ -165,5 +167,93 @@ describe("MatePeekCard — what the Mate waits on, answered in place", () => {
     const html = card({ decision: { kind: "reading" }, name: "Kai" });
     expect(html).toContain(">Kai waits on you<");
     expect(html.match(/data-slot="skeleton"/gu)?.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("useMatePeekKeys — the peek's keys, wherever it stands", () => {
+  const CHOICES: ReadonlyArray<MatePeekChoice> = [
+    { label: "Sink to the bottom", value: "sink", primary: false },
+    { label: "Hide behind a toggle", value: "hide", primary: false },
+  ];
+  let mounted: ReactTestRenderer | undefined;
+  afterEach(() => {
+    act(() => {
+      mounted?.unmount();
+    });
+    vi.unstubAllGlobals();
+  });
+  function Keys(props: Parameters<typeof useMatePeekKeys>[0]) {
+    useMatePeekKeys(props);
+    return null;
+  }
+  const press = (key: string, extra: Record<string, unknown> = {}) => {
+    const event = Object.assign(new Event("keydown", { cancelable: true }), { key, ...extra });
+    act(() => {
+      window.dispatchEvent(event);
+    });
+    return event.defaultPrevented;
+  };
+  const keys = (answerable: boolean, canStop = true) => {
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("HTMLElement", function none() {});
+    const done = { chose: [] as string[], stopped: 0, closed: 0 };
+    act(() => {
+      mounted = create(
+        <Keys
+          answerable={answerable}
+          choices={CHOICES}
+          onChoose={(choice) => {
+            done.chose.push(choice.value);
+          }}
+          onClose={() => {
+            done.closed += 1;
+          }}
+          onStop={
+            canStop
+              ? () => {
+                  done.stopped += 1;
+                }
+              : undefined
+          }
+        />,
+      );
+    });
+    return done;
+  };
+
+  it.each([
+    { case: "a number picks its choice", key: "2", answerable: true, chose: ["hide"], taken: true },
+    {
+      case: "a number past the choices is nobody's",
+      key: "3",
+      answerable: true,
+      chose: [],
+      taken: false,
+    },
+    {
+      case: "a number where it may not answer is nobody's",
+      key: "1",
+      answerable: false,
+      chose: [],
+      taken: false,
+    },
+  ])("$case", ({ key, answerable, chose, taken }) => {
+    const done = keys(answerable);
+    expect(press(key)).toBe(taken);
+    expect(done.chose).toEqual(chose);
+  });
+
+  it("stops the run on x, puts the peek away on Escape, and leaves a modified key alone", () => {
+    const done = keys(true);
+    press("x");
+    press("Escape");
+    press("1", { metaKey: true });
+    expect(done).toEqual({ chose: [], stopped: 1, closed: 1 });
+  });
+
+  it("does not stop a Mate at rest", () => {
+    const done = keys(true, false);
+    expect(press("x")).toBe(false);
+    expect(done.stopped).toBe(0);
   });
 });

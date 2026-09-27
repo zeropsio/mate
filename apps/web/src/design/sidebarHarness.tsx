@@ -43,10 +43,18 @@ import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountC
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
-import { MatePeekCard } from "~/components/zerops/SidebarMatePeek";
-import type { MatePeekDecision, MatePeekStep } from "~/components/zerops/SidebarMatePeek.logic";
+import { MatePeekCard, useMatePeekKeys } from "~/components/zerops/SidebarMatePeek";
+import type {
+  MatePeekChoice,
+  MatePeekDecision,
+  MatePeekStep,
+} from "~/components/zerops/SidebarMatePeek.logic";
 import { askedLabelFor } from "~/components/zerops/SidebarMatePeek.logic";
-import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
+import {
+  SidebarZeropsTree,
+  type SidebarPeekRender,
+  type SidebarProjectFlow,
+} from "~/components/zerops/SidebarZeropsTree";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
@@ -678,6 +686,59 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
 ]);
 
 const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
+
+/** What the peek's keys and buttons did, for the audit browser to read. */
+const peekActions: string[] = [];
+(window as unknown as { __peekActions?: string[] }).__peekActions = peekActions;
+
+/** A peek drawn from fixtures, with the app's own keys (`useMatePeekKeys`). */
+function HarnessPeek({ peek }: { readonly peek: SidebarPeekRender<ZeropsCandidate> }) {
+  const decision = PEEK_DECISIONS.get(peek.candidate.project.id);
+  const choose = (choice: MatePeekChoice) => {
+    peekActions.push(`${peek.name}: ${choice.label}`);
+  };
+  const stop =
+    peek.face === "working"
+      ? () => {
+          peekActions.push(`${peek.name}: stop`);
+        }
+      : undefined;
+  useMatePeekKeys({
+    choices: decision?.kind === "question" || decision?.kind === "approval" ? decision.choices : [],
+    answerable: true,
+    onChoose: choose,
+    onStop: stop,
+    onClose: peek.onClose,
+  });
+  return (
+    <MatePeekCard
+      appUrl={peek.appUrl ?? "https://example.com"}
+      askedLabel={askedLabelFor(peek.owner)}
+      change={peek.change}
+      decision={decision}
+      face={peek.face}
+      lastWords={peek.activity?.snippet}
+      name={peek.name}
+      onChoose={choose}
+      onMore={peek.onMore}
+      onOpen={peek.onOpen}
+      onStop={stop}
+      onText={(text) => {
+        peekActions.push(`${peek.name}: “${text}”`);
+      }}
+      projectName={peek.projectName}
+      responding={false}
+      steps={PEEK_STEPS.get(peek.candidate.project.id)}
+      stepsLabel={
+        peek.activity?.pausedUntil === undefined ? "Plan" : "Plan, paused at a usage limit"
+      }
+      task={peek.activity?.task}
+      time={peek.time}
+      tint={peek.tint}
+      waitingOn={undefined}
+    />
+  );
+}
 const showAll = () => true;
 
 const ACCOUNT = zeropsAccountDisplay({
@@ -751,32 +812,7 @@ function SidebarFrame({ width, phone }: { readonly width: number; readonly phone
           onSelect={() => {}}
           activeProjectId="links-enzo"
           phone={phone}
-          renderPeek={(peek) => (
-            <MatePeekCard
-              appUrl={peek.appUrl ?? "https://example.com"}
-              askedLabel={askedLabelFor(peek.owner)}
-              change={peek.change}
-              decision={PEEK_DECISIONS.get(peek.candidate.project.id)}
-              face={peek.face}
-              lastWords={peek.activity?.snippet}
-              name={peek.name}
-              onChoose={() => {}}
-              onMore={peek.onMore}
-              onOpen={peek.onOpen}
-              onStop={peek.face === "working" ? () => {} : undefined}
-              onText={() => {}}
-              projectName={peek.projectName}
-              responding={false}
-              steps={PEEK_STEPS.get(peek.candidate.project.id)}
-              stepsLabel={
-                peek.activity?.pausedUntil === undefined ? "Plan" : "Plan, paused at a usage limit"
-              }
-              task={peek.activity?.task}
-              time={peek.time}
-              tint={peek.tint}
-              waitingOn={undefined}
-            />
-          )}
+          renderPeek={(peek) => <HarnessPeek peek={peek} />}
           timestampFormat="24-hour"
         />
       </div>

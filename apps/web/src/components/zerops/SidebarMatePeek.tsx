@@ -14,7 +14,7 @@
  */
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -23,7 +23,60 @@ import { Popover, PopoverPopup } from "../ui/popover";
 import { Sheet, SheetPopup, SheetTitle } from "../ui/sheet";
 import { Skeleton } from "../ui/skeleton";
 import { KeyChip, MateFace, StepGlyph } from "./primitives";
-import type { MatePeekChoice, MatePeekDecision, MatePeekStep } from "./SidebarMatePeek.logic";
+import {
+  matePeekKey,
+  type MatePeekChoice,
+  type MatePeekDecision,
+  type MatePeekStep,
+} from "./SidebarMatePeek.logic";
+
+/** A key typed into a field is text, never the peek's. */
+function typedIntoField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
+/**
+ * While a peek stands, its keys (`matePeekKey`): a number picks that choice,
+ * x stops the run, Escape puts the peek away. Where the viewer may not answer
+ * — or an answer is on its way — the numbers are nobody's.
+ */
+export function useMatePeekKeys(input: {
+  readonly choices: ReadonlyArray<MatePeekChoice>;
+  readonly answerable: boolean;
+  readonly onChoose: (choice: MatePeekChoice) => void;
+  readonly onStop: (() => void) | undefined;
+  readonly onClose: () => void;
+}): void {
+  const { choices, answerable, onChoose, onStop, onClose } = input;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const action = matePeekKey({
+        key: event.key,
+        modified: event.metaKey || event.ctrlKey || event.altKey,
+        typing: typedIntoField(event.target),
+        choices: answerable ? choices.length : 0,
+        canStop: onStop !== undefined,
+      });
+      if (action === undefined) return;
+      if (action.kind === "close") {
+        onClose();
+        return;
+      }
+      event.preventDefault();
+      if (action.kind === "stop") onStop?.();
+      else {
+        const choice = choices[action.index];
+        if (choice !== undefined) onChoose(choice);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [answerable, choices, onChoose, onClose, onStop]);
+}
 
 export interface MatePeekCardProps {
   readonly name: string;

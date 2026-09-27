@@ -31,7 +31,7 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { deriveActivePlanState } from "~/session-logic";
 import { threadEnvironment, useEnvironmentThread } from "~/state/threads";
@@ -43,11 +43,10 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { resolveZeropsConversationReadOnly } from "../ChatView.logic";
 import { toastManager } from "../ui/toast";
-import { MatePeekCard } from "./SidebarMatePeek";
+import { MatePeekCard, useMatePeekKeys } from "./SidebarMatePeek";
 import {
   askedLabelFor,
   matePeekDecision,
-  matePeekKey,
   matePeekSteps,
   type MatePeekChoice,
 } from "./SidebarMatePeek.logic";
@@ -55,11 +54,8 @@ import type { SidebarPeekRender } from "./SidebarZeropsTree";
 
 const isApprovalDecision = Schema.is(ProviderApprovalDecision);
 
-/** A key the peek's keys have no claim on: typed into a field, it is text. */
-function typedIntoField(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
+/** A peek whose Mate waits on no choice offers none. */
+const NO_CHOICES: ReadonlyArray<MatePeekChoice> = [];
 
 export function SidebarMatePeekLive({
   peek,
@@ -198,34 +194,15 @@ export function SidebarMatePeekLive({
         };
 
   // While the peek stands, its keys (`matePeekKey`).
-  useEffect(() => {
-    const choices =
-      decision?.kind === "question" || decision?.kind === "approval" ? decision.choices : [];
-    const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      const action = matePeekKey({
-        key: event.key,
-        modified: event.metaKey || event.ctrlKey || event.altKey,
-        typing: typedIntoField(event.target),
-        choices: readOnly || responding ? 0 : choices.length,
-        canStop: stop !== undefined,
-      });
-      if (action === undefined) return;
-      if (action.kind === "close") {
-        peek.onClose();
-        return;
-      }
-      event.preventDefault();
-      if (action.kind === "stop") stop?.();
-      else {
-        const choice = choices[action.index];
-        if (choice !== undefined) choose(choice);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-    };
+  useMatePeekKeys({
+    choices:
+      decision?.kind === "question" || decision?.kind === "approval"
+        ? decision.choices
+        : NO_CHOICES,
+    answerable: !readOnly && !responding,
+    onChoose: choose,
+    onStop: stop,
+    onClose: peek.onClose,
   });
 
   return (
