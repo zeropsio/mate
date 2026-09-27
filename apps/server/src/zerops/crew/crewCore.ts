@@ -147,8 +147,11 @@ export interface EngineMemory {
   readonly usage: Map<string, number>;
   /** How each crew thread's last turn ended (`turn.completed`'s state). */
   readonly endings: Map<string, string>;
-  /** Crew threads whose turn a pausing run interrupted, to carry on when it goes on. */
-  readonly runInterrupted: Set<string>;
+  /**
+   * Crew threads a running run carries their task on in, with why: a turn
+   * its own pause stopped, a new conversation after an overflow.
+   */
+  readonly carryOn: Map<string, string>;
   /** Task attempts a run has nudged once (`<assignment>:<attempt>`). */
   readonly nudged: Set<string>;
   /** What the lead was woken for, per lead, while that turn runs. */
@@ -209,7 +212,7 @@ export const makeMemory = (): EngineMemory => ({
   runTick: false,
   usage: new Map(),
   endings: new Map(),
-  runInterrupted: new Set(),
+  carryOn: new Map(),
   nudged: new Set(),
   leadWakes: new Map(),
   woken: new Set(),

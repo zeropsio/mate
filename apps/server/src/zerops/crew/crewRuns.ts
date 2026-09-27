@@ -50,6 +50,9 @@ import { CREW_ID } from "./CrewHome.ts";
 import { runTransition, type RunEvent } from "./crewMachines.ts";
 import type { CrewRunRow } from "./CrewStore.ts";
 
+/** Why a turn stopped by a run's pause goes on when the run does. */
+export const RUN_PAUSED = "The run was paused, which stopped your last turn; it goes on now.";
+
 /** How often a running run records its time and checks its limits. */
 const RUN_TICK = Duration.seconds(15);
 
@@ -170,7 +173,7 @@ const interruptCrewTurns = (core: CrewCore, applied: AppliedCrew) =>
     const now = yield* core.now;
     for (const stint of applied.stints) {
       if (stint.retiredAt !== null || !core.memory.working.has(stint.threadId)) continue;
-      core.memory.runInterrupted.add(stint.threadId);
+      core.memory.carryOn.set(stint.threadId, RUN_PAUSED);
       yield* asRefusal(
         core.orchestration.dispatch({
           type: "thread.turn.interrupt",

@@ -274,6 +274,28 @@ export type TaskStep =
   | Illegal<CrewTaskState>;
 
 /**
+ * How a crew turn ended, by the driver's terminal reason (SPI 2.5; CONCEPT
+ * §5 *Endings*): the context overflowed (`rotation`: a new conversation
+ * takes the task on), the provider or the session setup failed
+ * (`infrastructure`: the task queues again once), the run's budget ran out
+ * (`budget`: the run pauses), or the agent ended it (`agent`). A reason this
+ * build does not know is the agent's.
+ */
+export type TurnEnding = "rotation" | "infrastructure" | "budget" | "agent";
+
+const TURN_ENDINGS: Readonly<Record<string, TurnEnding>> = {
+  prompt_too_long: "rotation",
+  rapid_refill_breaker: "rotation",
+  api_error: "infrastructure",
+  model_error: "infrastructure",
+  turn_setup_failed: "infrastructure",
+  budget_exhausted: "budget",
+};
+
+export const turnEndingOf = (terminalReason: string | undefined): TurnEnding =>
+  (terminalReason === undefined ? undefined : TURN_ENDINGS[terminalReason]) ?? "agent";
+
+/**
  * A lead's plan waits for the person's Start unless the run lets the lead
  * start tasks without asking (PRD §5.4); every other task is queued.
  */

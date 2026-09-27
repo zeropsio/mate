@@ -14,6 +14,7 @@ import {
   TASK_START,
   initialTaskState,
   taskTransition,
+  turnEndingOf,
   type ClaimEvent,
   type TaskCounters,
   type TaskEvent,
@@ -193,6 +194,24 @@ describe("stintTransition", () => {
         });
       }
     }
+  });
+});
+
+describe("turnEndingOf", () => {
+  it.each([
+    [undefined, "agent"],
+    ["completed", "agent"],
+    ["max_turns", "agent"],
+    ["aborted_streaming", "agent"],
+    ["prompt_too_long", "rotation"],
+    ["rapid_refill_breaker", "rotation"],
+    ["api_error", "infrastructure"],
+    ["model_error", "infrastructure"],
+    ["turn_setup_failed", "infrastructure"],
+    ["budget_exhausted", "budget"],
+    ["a-reason-a-later-cli-adds", "agent"],
+  ] as const)("a turn ending with %s is an %s ending", (reason, ending) => {
+    expect(turnEndingOf(reason)).toBe(ending);
   });
 });
 

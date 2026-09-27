@@ -112,7 +112,7 @@ describe("CrewEngine runs", () => {
               paused: [paused.state, paused.reason],
               interrupts,
               resumed: [resumed.state, resumed.reason],
-              carryOn: carryOn.includes("· carry on"),
+              carryOn: carryOn.includes("The run was paused"),
               stopped: stopped.state,
               again: again.reason,
             },
