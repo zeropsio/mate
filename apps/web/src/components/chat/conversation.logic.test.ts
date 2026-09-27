@@ -10,6 +10,7 @@ import {
   deriveConversationStructure,
   deriveOutcome,
   formatWorkDuration,
+  latestFinishedWordsAt,
   messageReceipt,
   namedToolCall,
   noteLine,
@@ -40,6 +41,7 @@ function structure(
     live?: string;
     latest?: { id: string; state: string; completed: boolean };
     working?: boolean;
+    nowMs?: number;
   } = {},
 ) {
   const latestTurn = options.latest
@@ -56,6 +58,7 @@ function structure(
     runningTurnId: options.live ? turn(options.live) : null,
     isWorking: options.working ?? options.live !== undefined,
     activeTurnStartedAt: options.live ? at(0) : null,
+    ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
   });
 }
 
@@ -595,6 +598,70 @@ describe("deriveConversationStructure", () => {
   });
 });
 
+// Words that just finished, with nothing after them, wait a moment before
+// they are placed: the turn nearly always settles within it, so a short
+// answer goes straight under the card instead of popping into the panel as a
+// note and moving (13 of 56 recorded answers did).
+describe("the live turn's last words", () => {
+  const words = (streaming: boolean) => assistant("a1", "t1", 2, "Done.", { streaming });
+  it.each([
+    { name: "still streaming", tail: [words(true)], nowMs: undefined, held: true },
+    { name: "just finished", tail: [words(false)], nowMs: Date.parse(at(2, 2)), held: true },
+    {
+      name: "finished a while ago",
+      tail: [words(false)],
+      nowMs: Date.parse(at(2, 5)),
+      held: false,
+    },
+    {
+      name: "a step after them",
+      tail: [words(false), tool("w2", "t1", 2)],
+      nowMs: Date.parse(at(2, 2)),
+      held: false,
+    },
+    { name: "no clock to tell", tail: [words(false)], nowMs: undefined, held: false },
+  ])("$name: held $held", ({ tail, nowMs, held }) => {
+    const result = structure([user("m0", 0), tool("w1", "t1", 1), ...tail], {
+      live: "t1",
+      ...(nowMs === undefined ? {} : { nowMs }),
+    });
+    expect(result.turns.at(-1)?.writing?.id ?? null).toBe(held ? "a1" : null);
+  });
+});
+
+describe("latestFinishedWordsAt", () => {
+  // When the newest wait for a running turn's last words runs out: the page
+  // derives again then.
+  it.each([
+    {
+      name: "a finished last word while working",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Done.")],
+      working: true,
+      at: Date.parse(at(2, 1)),
+    },
+    {
+      name: "still streaming",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Do", { streaming: true })],
+      working: true,
+      at: null,
+    },
+    {
+      name: "a step after the words",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Done."), tool("w1", "t1", 3)],
+      working: true,
+      at: null,
+    },
+    {
+      name: "not working",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Done.")],
+      working: false,
+      at: null,
+    },
+  ])("$name", ({ entries, working, at: expected }) => {
+    expect(latestFinishedWordsAt(entries, working)).toBe(expected);
+  });
+});
+
 describe("messageReceipt", () => {
   it.each([
     {
@@ -1041,6 +1108,28 @@ describe("deriveOutcome", () => {
       notDone: [],
     });
   });
+
+  // Once the Mate is writing its answer the work is done: the report takes
+  // its place then, so the answer streams where it will stand. Before that,
+  // a running turn has no report.
+  it.each([
+    { answering: false, reported: false },
+    { answering: true, reported: true },
+  ])(
+    "reports a running turn only while its answer is written ($answering)",
+    ({ answering, reported }) => {
+      const running = structure(
+        [
+          user("m0", 0),
+          operation("d1", "t1", 1, { kind: "deploy" }),
+          assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
+        ],
+        { live: "t1" },
+      );
+      const outcome = deriveOutcome({ turn: running.turns[0]!, landed: [], diff: null, answering });
+      expect(outcome !== null).toBe(reported);
+    },
+  );
 
   it("has nothing to say for a turn that produced nothing, or one a limit refused", () => {
     const quiet = structure(

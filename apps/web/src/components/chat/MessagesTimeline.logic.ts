@@ -41,6 +41,7 @@ import {
   type SlashCommand,
   type Stretch,
   type WorkLineFace,
+  stretchOperations,
 } from "./conversation.logic";
 
 export type TimelineLatestTurn = Pick<
@@ -391,6 +392,8 @@ type MessagesTimelineRowBody =
       imageOnly: boolean;
       showAssistantMeta: boolean;
       revertTurnCount?: number | undefined;
+      /** The Mate's last word under a run that has nothing to report: see `FoldsFrom`. */
+      foldsFrom?: FoldsFrom;
     }
   | {
       /**
@@ -471,6 +474,8 @@ type MessagesTimelineRowBody =
        * a run's last words, with no answer after them, in the answer's hand.
        */
       hand: "bubble" | "prose";
+      /** A run's last words, under a run that has nothing to report: see `FoldsFrom`. */
+      foldsFrom?: FoldsFrom;
     }
   | {
       /**
@@ -620,6 +625,18 @@ type MessagesTimelineRowBody =
  * moves what is under it, nothing else does).
  */
 export type RowGap = "none" | "tight" | "line" | "block" | "turn";
+
+/**
+ * The run whose Mate at work stood where this row now begins: a run with
+ * nothing to report settles into its line alone, and the Mate's last word
+ * under it eases up from where the panel stood instead of jumping. Whether it
+ * does is the page's to know — only a panel it just drew folds.
+ */
+export interface FoldsFrom {
+  readonly turnKey: string;
+  /** The panel's card closed with it: its bottom edge is gone too. */
+  readonly cardClosed: boolean;
+}
 
 /**
  * Where a row sits in its stretch's card — the one frame a stretch of work
@@ -1360,6 +1377,8 @@ export function deriveMessagesTimelineRows(
     newSince?: string | null;
     /** The server's word on work that outlived the turn, while it runs on. */
     afterTurnWork?: "working" | "monitoring" | null;
+    /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
+    nowMs?: number;
   } & ConversationView,
 ): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
@@ -1369,6 +1388,7 @@ export function deriveMessagesTimelineRows(
     runningTurnId: input.runningTurnId ?? null,
     isWorking: input.isWorking,
     activeTurnStartedAt: input.activeTurnStartedAt,
+    ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
 
@@ -1697,6 +1717,23 @@ export function deriveMessagesTimelineRows(
     // card for a frame, and the answer jumped up as it went (Nova,
     // 2026-09-26).
     const answeredAlone = turn.live && !hasLog && answer !== null;
+    // Once the Mate writes its answer its work is done: a run with a report
+    // to give takes that form there and then, so the answer streams where it
+    // will stand and nothing above it moves at the end (a tall panel folding
+    // into its report at the settle threw a streamed answer 470 px, Nova,
+    // 2026-09-27). Work still running keeps the panel; so does a run with
+    // nothing to report yet — the files it changed are known only at the
+    // settle, and a card folded away would come back for them.
+    const stillRunning = turn.stretches.some((stretch) =>
+      stretchOperations(stretch).some((operation) => operation.phase === "running"),
+    );
+    const diff = turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null);
+    const landed = landedByTurnKey.get(turn.key) ?? [];
+    const answeringReport =
+      turn.live && answer !== null && !answeredAlone && !stillRunning
+        ? deriveOutcome({ turn, landed, diff, answering: true })
+        : null;
+    const folded = answeringReport !== null;
 
     // What the person and the Mate said to each other while the run went on
     // stands on the page, in the order it was said: each message the person
@@ -1769,7 +1806,7 @@ export function deriveMessagesTimelineRows(
         : cardRows.filter((row) => !(row.kind === "event" && row.event.type === "landed"))),
     );
 
-    if (last.live && !answeredAlone) {
+    if (last.live && !answeredAlone && !folded) {
       // Under the person's answer the Mate at work starts afresh: its own
       // panel, so the window of what it said before the question is gone.
       const answeredBy = latestAnswer(last);
@@ -1787,15 +1824,13 @@ export function deriveMessagesTimelineRows(
       });
     }
 
-    // Settled, the Mate at work becomes the run's report — the same pills,
-    // where it was — and the Mate's answer follows it.
-    if (!turn.live) {
-      const outcome = deriveOutcome({
-        turn,
-        landed: landedByTurnKey.get(turn.key) ?? [],
-        diff: turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null),
-      });
+    // Settled — or folded, its answer on the way — the Mate at work becomes
+    // the run's report, the same pills where it was, and the answer follows.
+    let reported = false;
+    if (!turn.live || folded) {
+      const outcome = answeringReport ?? deriveOutcome({ turn, landed, diff });
       if (outcome !== null) {
+        reported = true;
         rows.push({
           kind: "outcome",
           id: outcome.key,
@@ -1808,7 +1843,14 @@ export function deriveMessagesTimelineRows(
     // conversation's own edge, as the person's messages do. A line with
     // nothing under it is no card — a closed log of a run that came to no
     // report is one quiet line, not an empty box.
-    if (rows[cardStart]?.kind === "work-line" && rows.length > cardStart + 1) {
+    const carded = rows[cardStart]?.kind === "work-line" && rows.length > cardStart + 1;
+    // With nothing to report, the Mate's last word under the run eases up
+    // from where its panel stood.
+    const foldsFrom: FoldsFrom | undefined =
+      reported || (turn.live && !answeredAlone)
+        ? undefined
+        : { turnKey: turn.key, cardClosed: !carded };
+    if (carded) {
       rows.push({
         kind: "card-end",
         id: `card-end:${first.key}`,
@@ -1829,6 +1871,7 @@ export function deriveMessagesTimelineRows(
         createdAt: speech.createdAt,
         message: speech.message,
         hand: "prose",
+        ...(foldsFrom === undefined ? {} : { foldsFrom }),
       });
     }
     // The answer follows the card, settled or still streaming.
@@ -1842,6 +1885,7 @@ export function deriveMessagesTimelineRows(
         aside: false,
         imageOnly: false,
         showAssistantMeta: !answer.message.streaming,
+        ...(foldsFrom === undefined ? {} : { foldsFrom }),
       });
     }
     lastEnd = last.endedAt ?? last.startedAt;
@@ -2011,6 +2055,10 @@ export function computeStableMessagesTimelineRows(
  * compare by identity (a streamed message is a new object); everything the
  * derivation rebuilds compares by value.
  */
+function sameFold(a: FoldsFrom | undefined, b: FoldsFrom | undefined): boolean {
+  return a?.turnKey === b?.turnKey && a?.cardClosed === b?.cardClosed;
+}
+
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
   if (
     a.kind !== b.kind ||
@@ -2030,13 +2078,16 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.aside === bm.aside &&
         a.imageOnly === bm.imageOnly &&
         a.showAssistantMeta === bm.showAssistantMeta &&
-        a.revertTurnCount === bm.revertTurnCount
+        a.revertTurnCount === bm.revertTurnCount &&
+        sameFold(a.foldsFrom, bm.foldsFrom)
       );
     }
     case "log-note":
       return a.message === (b as typeof a).message;
-    case "speech":
-      return a.message === (b as typeof a).message;
+    case "speech": {
+      const bs = b as typeof a;
+      return a.message === bs.message && a.hand === bs.hand && sameFold(a.foldsFrom, bs.foldsFrom);
+    }
     case "log-reasoning": {
       const br = b as typeof a;
       return (

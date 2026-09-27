@@ -515,12 +515,41 @@ function unnamedRunningTurnId(
   return null;
 }
 
+/**
+ * How long a running turn's last words wait, once finished, before they are
+ * placed: the turn nearly always settles within it.
+ */
+export const LAST_WORDS_GRACE_MS = 1500;
+
+/**
+ * When a running turn's newest words finished, if they are the last thing
+ * said and nothing followed them — the wait `LAST_WORDS_GRACE_MS` runs from
+ * there, and the page derives again once it has run out.
+ */
+export function latestFinishedWordsAt(
+  entries: ReadonlyArray<TimelineEntry>,
+  isWorking: boolean,
+): number | null {
+  if (!isWorking) return null;
+  const last = entries.at(-1);
+  if (
+    last === undefined ||
+    last.kind !== "message" ||
+    last.message.role !== "assistant" ||
+    last.message.streaming === true
+  )
+    return null;
+  return parseMs(last.message.updatedAt ?? last.createdAt);
+}
+
 export function deriveConversationStructure(input: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly latestTurn: TimelineLatestTurnLike | null;
   readonly runningTurnId: TurnId | null;
   readonly isWorking: boolean;
   readonly activeTurnStartedAt: string | null;
+  /** The clock the last words' wait is read against; without it nothing waits. */
+  readonly nowMs?: number;
 }): ConversationStructure {
   const entries = input.timelineEntries;
   const unsettledTurnId =
@@ -626,13 +655,23 @@ export function deriveConversationStructure(input: {
         !isTaskReport(entry) &&
         !(entry.kind === "message" && entry.message.text.trim().length === 0),
     );
+    // Words that have just finished wait a moment more: the turn nearly
+    // always settles within it, and a short answer then goes straight under
+    // the card instead of into the panel and out again.
+    const terminal = span.terminalEntry;
+    const justFinished =
+      terminal !== null &&
+      input.nowMs !== undefined &&
+      input.nowMs -
+        (parseMs(terminal.message.updatedAt ?? terminal.createdAt) ?? Number.NEGATIVE_INFINITY) <
+        LAST_WORDS_GRACE_MS;
     const writing =
       live &&
       answer === null &&
-      span.terminalEntry !== null &&
-      lastEntry === span.terminalEntry &&
-      span.terminalEntry.message.streaming === true
-        ? span.terminalEntry
+      terminal !== null &&
+      lastEntry === terminal &&
+      (terminal.message.streaming === true || justFinished)
+        ? terminal
         : null;
     // The limit speaks as Claude's own last words, or as the server's error row.
     const limit =
@@ -1422,9 +1461,11 @@ export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
   readonly landed: ReadonlyArray<ChangeLandedEntry>;
   readonly diff: TurnDiffSummary | null;
+  /** A running turn writing its answer: the work is done, its report stands. */
+  readonly answering?: boolean;
 }): OutcomeModel | null {
   const { turn } = input;
-  if (turn.live || turn.limitOnly) return null;
+  if (turn.limitOnly || (turn.live && input.answering !== true)) return null;
   const operations = turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy);
   const settled = operations.filter((operation) => operation.phase !== "running");
 

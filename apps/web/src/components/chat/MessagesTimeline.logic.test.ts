@@ -656,10 +656,14 @@ describe("deriveMessagesTimelineRows", () => {
       stream: ["~ thinking about it", "Deploying.", "~ thinking about it"],
     },
     {
-      name: "words that read as the answer leave the stream: they stream under the card",
+      name: "words that read as the answer leave the stream while work still runs: they stream under the card",
       entries: [
         assistant("a1", "t1", 1, "Deploying."),
-        tool("w1", "t1", 2),
+        operation("d1", "t1", 2, {
+          kind: "deploy",
+          phase: "running",
+          settledAt: undefined as never,
+        }),
         assistant("a2", "t1", 3, "It is live.\n\n**What changed**"),
       ],
       stream: ["Deploying."],
@@ -1400,24 +1404,72 @@ describe("a stretch's card", () => {
     expect(cards(framed(scene))).toEqual(expected);
   });
 
-  it("streams a running turn's answer under its card, the panel saying nothing of its own", () => {
+  // Once the Mate writes its answer the work is done: the card takes the form
+  // it will settle in there and then, so the answer streams where it will
+  // stand and nothing above it moves at the end (a tall panel folding into
+  // its report at the settle threw a streamed answer 470 px, Nova,
+  // 2026-09-27). Work still running keeps the panel.
+  it.each([
+    {
+      case: "a report to give: the report under the line",
+      middle: [operation("d1", "t1", 1, { kind: "deploy" })],
+      expected: ["message", "work-line:top", "outcome:middle", "card-end:bottom", "message"],
+    },
+    {
+      case: "work still running: the panel stays",
+      middle: [
+        operation("d1", "t1", 1, {
+          kind: "deploy",
+          phase: "running",
+          settledAt: undefined as never,
+        }),
+      ],
+      expected: ["message", "work-line:top", "working:middle", "card-end:bottom", "message"],
+    },
+    {
+      case: "nothing to report yet: the panel stays until the run settles",
+      middle: [tool("w1", "t1", 1)],
+      expected: ["message", "work-line:top", "working:middle", "card-end:bottom", "message"],
+    },
+  ])("streams a running turn's answer where it will stand — $case", ({ middle, expected }) => {
     const list = framed({
       entries: [
         user("m0", 0),
-        tool("w1", "t1", 1),
+        ...middle,
         assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
       ],
       live: "t1",
     });
-    expect(cards(list)).toEqual([
-      "message",
-      "work-line:top",
-      "working:middle",
-      "card-end:bottom",
-      "message",
-    ]);
+    expect(cards(list)).toEqual(expected);
     expect(list.at(-1)).toMatchObject({ kind: "message", id: "a1" });
-    expect(list.find((row) => row.kind === "working")).toMatchObject({ answering: true });
+  });
+
+  // A run with nothing to report settles into its line alone: the answer
+  // under it eases up from where the panel stood.
+  it("folds a run with nothing to report into its line, the answer easing up from the panel", () => {
+    const list = framed({
+      entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+      settled: "t1",
+    });
+    expect(list.at(-1)).toMatchObject({
+      kind: "message",
+      id: "a1",
+      foldsFrom: { turnKey: "msg:m0", cardClosed: true },
+    });
+  });
+
+  it("keeps the report it settles into: the same row from the answer's first words", () => {
+    const entries = [
+      user("m0", 0),
+      operation("d1", "t1", 1, { kind: "deploy" }),
+      assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
+    ];
+    const answering = framed({ entries, live: "t1" });
+    const settled = framed({ entries, settled: "t1" });
+    const report = (list: MessagesTimelineRow[]) =>
+      frame(list).filter((drawn) => drawn.startsWith("outcome:"));
+    expect(report(answering)).toEqual(report(settled));
+    expect(report(answering)).toHaveLength(1);
   });
 
   it("keeps the room after a card that the card's last row kept", () => {
