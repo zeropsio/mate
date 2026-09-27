@@ -54,7 +54,9 @@ through it would make the two directories import each other.
   a process's own startup or resume `SessionStart` before the SDK has registered any callback
   (CLI 2.1.283, measured), so that start arrives with the process's first prompt through a
   `UserPromptSubmit` hook and its context rides on that prompt, while compaction and `/clear` arrive
-  through `SessionStart` itself (a fork as a resume) and summaries through `PostCompact`; its tools are served as an in-process `crew`
+  through `SessionStart` itself (a fork as a resume) and summaries through `PostCompact` — and should
+  a compaction's `SessionStart` not arrive (auto-compaction is unmeasured), `PreCompact` marks it and
+  the next prompt hands it over, once; its tools are served as an in-process `crew`
   MCP server with their JSON Schemas as given; its spend cap becomes `maxBudgetUsd`; the dialog
   kinds are dropped. The profile's model and effort override the thread's selection at session
   start and again at every turn, so a change applies from the thread's next turn.

@@ -318,26 +318,32 @@ describe("a thread with a tool profile, on the Claude adapter", () => {
   // registered any callback (CLI 2.1.283), so a process's start reaches the
   // extension with its first prompt instead — once, whichever arrives first.
   const TRANSCRIPT = "/home/zerops/.claude/projects/x/session-1.jsonl";
-  const hookInput = (event: "UserPromptSubmit" | "SessionStart", source?: string) =>
-    event === "UserPromptSubmit"
-      ? {
-          hook_event_name: event,
-          prompt: "work",
-          session_id: "session-1",
-          transcript_path: TRANSCRIPT,
-          cwd: "/var/www/.crew/backend",
-        }
-      : {
-          hook_event_name: event,
-          source,
-          session_id: "session-1",
-          transcript_path: TRANSCRIPT,
-          cwd: "/var/www/.crew/backend",
-        };
+  type SessionHook = "UserPromptSubmit" | "SessionStart" | "PreCompact";
+  const hookInput = (event: SessionHook, source?: string) => ({
+    hook_event_name: event,
+    session_id: "session-1",
+    transcript_path: TRANSCRIPT,
+    cwd: "/var/www/.crew/backend",
+    ...(event === "UserPromptSubmit" ? { prompt: "work" } : {}),
+    ...(event === "SessionStart" ? { source } : {}),
+    ...(event === "PreCompact" ? { trigger: "auto", custom_instructions: null } : {}),
+  });
+  const promptContext = (source: string) => ({
+    hookSpecificOutput: {
+      hookEventName: "UserPromptSubmit",
+      additionalContext: `context for ${source}`,
+    },
+  });
+  const sessionStartContext = (source: string) => ({
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: `context for ${source}`,
+    },
+  });
   const FIRST_PROMPT_CASES: ReadonlyArray<{
     readonly name: string;
     readonly resumed: boolean;
-    readonly calls: ReadonlyArray<readonly ["UserPromptSubmit" | "SessionStart", string?]>;
+    readonly calls: ReadonlyArray<readonly [SessionHook, string?]>;
     readonly seen: ReadonlyArray<string>;
     readonly outputs: ReadonlyArray<unknown>;
   }> = [
@@ -404,6 +410,39 @@ describe("a thread with a tool profile, on the Claude adapter", () => {
           },
         },
       ],
+    },
+    // A compaction whose SessionStart never arrives: PreCompact marks it,
+    // and the next prompt hands it over instead — once, whichever comes first.
+    {
+      name: "a compaction without its SessionStart arrives with the next prompt, once",
+      resumed: false,
+      calls: [["UserPromptSubmit"], ["PreCompact"], ["UserPromptSubmit"], ["UserPromptSubmit"]],
+      seen: ["startup", "compact"],
+      outputs: [promptContext("startup"), {}, promptContext("compact"), {}],
+    },
+    {
+      name: "a compaction whose SessionStart arrives is not handed over again with the next prompt",
+      resumed: false,
+      calls: [
+        ["UserPromptSubmit"],
+        ["PreCompact"],
+        ["SessionStart", "compact"],
+        ["UserPromptSubmit"],
+      ],
+      seen: ["startup", "compact"],
+      outputs: [promptContext("startup"), {}, sessionStartContext("compact"), {}],
+    },
+    {
+      name: "a compaction's SessionStart after the prompt handed it over adds nothing",
+      resumed: false,
+      calls: [
+        ["UserPromptSubmit"],
+        ["PreCompact"],
+        ["UserPromptSubmit"],
+        ["SessionStart", "compact"],
+      ],
+      seen: ["startup", "compact"],
+      outputs: [promptContext("startup"), {}, promptContext("compact"), {}],
     },
   ];
 
