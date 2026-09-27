@@ -18,6 +18,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import { requestConfirmDialog } from "../../../confirmDialog";
+import { useServerConfigs } from "../../../state/entities";
 import { buildThreadRouteParams } from "../../../threadRoutes";
 import { hasCrewSurface, useCrew } from "../../../zerops/crew/useCrew";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
@@ -87,6 +88,7 @@ function CrewSectionFor({
   const askMate = useAskMate();
   const projectId = useEnvironmentProjectRef(environmentId)?.projectId;
   const services = useEnvironmentTopology(environmentId).view?.services;
+  const treeCwd = useServerConfigs().get(environmentId)?.cwd ?? null;
   const [setupOpen, setSetupOpen] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
   const [homeVersion, setHomeVersion] = useState(0);
@@ -175,6 +177,7 @@ function CrewSectionFor({
         <CrewSectionEmpty onSetUp={() => setSetupOpen(true)} />
       ) : (
         <CrewSection
+          environmentId={environmentId}
           error={commands.error}
           onAddCrewPorts={setPortsHost}
           onAddLead={() => setEditor({ kind: "crewmate", target: { handle: null, lead: true } })}
@@ -193,6 +196,7 @@ function CrewSectionFor({
           send={commands.send}
           snapshot={snapshot}
           tell={tell}
+          treeCwd={treeCwd}
           view={view}
         />
       )}
