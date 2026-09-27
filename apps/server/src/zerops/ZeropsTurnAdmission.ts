@@ -5,7 +5,7 @@
  * A turn starts only on an agent that is signed in on this project, and only
  * for the person who signed it in. Every path that dispatches a command a
  * client or a person caused asks here first, with the principal the turn is
- * for.
+ * for; `scripts/turn-start-sites.test.ts` pins which paths those are.
  *
  * The agent is resolved from the command's own model selection, or from the
  * thread's when the command names none. An agent Mate never signs anybody in
