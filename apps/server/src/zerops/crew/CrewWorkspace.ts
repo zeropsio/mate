@@ -208,6 +208,17 @@ export interface SweepOutcome {
   readonly brokenRefs: ReadonlyArray<string>;
 }
 
+export type CleanupOutcome =
+  | { readonly _tag: "removed" }
+  /** Unlanded commits or uncommitted edits: listed with *Discard*, which only the person presses. */
+  | { readonly _tag: "kept"; readonly unlanded: number; readonly dirty: boolean };
+
+/** A `crew/*` branch no lane on the host owns: a lost run's work, offered for *Adopt*. */
+export interface OrphanBranch {
+  readonly handle: string;
+  readonly unlanded: number;
+}
+
 /** Widens one outcome literal to the union, so a generator's returns agree. */
 const laneCommit = (commit: LaneCommit): LaneCommit => commit;
 
@@ -242,6 +253,18 @@ export interface CrewWorkspaceService {
    * did not write.
    */
   readonly sweep: (host: string) => Effect.Effect<SweepOutcome, CrewWorkspaceError>;
+  /**
+   * Finish or *Remove from crew*: a clean lane goes (`worktree remove --force`,
+   * `branch -D`); one with unlanded work stays unless `discard` is set.
+   */
+  readonly cleanup: (
+    key: LaneKey,
+    options?: { readonly discard?: boolean | undefined },
+  ) => Effect.Effect<CleanupOutcome, CrewWorkspaceError>;
+  /** The explicit *Look for lost crew work* action; never run on its own. */
+  readonly orphanScan: (
+    host: string,
+  ) => Effect.Effect<ReadonlyArray<OrphanBranch>, CrewWorkspaceError>;
   /** Turn end: the lane-commit precondition, then `wip(<task>): turn <n>`. */
   readonly commitTurn: (
     key: LaneKey,
@@ -662,6 +685,54 @@ export const make = Effect.gen(function* () {
       return { lanes: swept, brokenRefs } satisfies SweepOutcome;
     });
 
+  const cleanup: CrewWorkspaceService["cleanup"] = (key, options) =>
+    Effect.gen(function* () {
+      const row = yield* laneRow(key, "cleanup");
+      const directory = shellQuote(laneDirectory(row.lane));
+      const branch = `refs/heads/${laneBranch(row.lane)}`;
+      const out = yield* runLane(
+        row.host,
+        "cleanup",
+        `tip=$(${git("integration", ["rev-parse", "-q", "--verify", branch])}) || tip=\n` +
+          (options?.discard === true
+            ? ""
+            : `dirty=0; [ ! -d ${directory} ] || [ -z "$(${git({ lane: row.lane }, ["status", "--porcelain"])})" ] || dirty=1\n` +
+              `unlanded=0; [ -z "$tip" ] || unlanded=$(${git("integration", ["rev-list", "--count", "HEAD..refs/heads/" + laneBranch(row.lane)])}) || exit 1\n` +
+              `if [ "$dirty" = 1 ] || [ "$unlanded" -gt 0 ]; then printf 'status\\tkept\\nunlanded\\t%s\\ndirty\\t%s\\n' "$unlanded" "$dirty"; exit 0; fi\n`) +
+          `[ ! -d ${directory} ] || ${git("integration", ["worktree", "remove", "--force", laneDirectory(row.lane)])} || exit 1\n` +
+          `${git("integration", ["worktree", "prune"])} || exit 1\n` +
+          `[ -z "$tip" ] || ${git("integration", ["branch", "-q", "-D", laneBranch(row.lane)])} || exit 1\n` +
+          `printf 'status\\tremoved\\n'\n`,
+      );
+      if (field(out, "status") === "kept") {
+        return {
+          _tag: "kept",
+          unlanded: Number(field(out, "unlanded")),
+          dirty: field(out, "dirty") === "1",
+        } satisfies CleanupOutcome;
+      }
+      yield* store.deleteLane(row.crew, row.lane);
+      return { _tag: "removed" } satisfies CleanupOutcome;
+    });
+
+  const orphanScan: CrewWorkspaceService["orphanScan"] = (host) =>
+    Effect.gen(function* () {
+      const known = new Set((yield* store.lanesOnHost(host)).map((row) => row.lane));
+      const out = yield* runLane(
+        host,
+        "orphanScan",
+        `for handle in $(${git("integration", ["for-each-ref", "--format=%(refname:strip=3)", "refs/heads/crew/"])}); do\n` +
+          `  printf 'branch\\t%s\\t%s\\n' "$handle" "$(${git("integration", ["rev-list", "--count"])} "HEAD..refs/heads/crew/$handle")"\n` +
+          `done\n`,
+      );
+      return fieldsOf(out, "branch")
+        .map((value) => {
+          const [handle = "", unlanded = "0"] = value.split("\t");
+          return { handle, unlanded: Number(unlanded) };
+        })
+        .filter((branch) => !known.has(branch.handle));
+    });
+
   const create: CrewWorkspaceService["create"] = (spec) =>
     Effect.gen(function* () {
       const directory = shellQuote(laneDirectory(spec.handle));
@@ -733,6 +804,8 @@ export const make = Effect.gen(function* () {
     unfreeze,
     recover,
     sweep,
+    cleanup,
+    orphanScan,
     commitTurn,
     keepAndReset,
   });

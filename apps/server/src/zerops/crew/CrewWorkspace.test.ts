@@ -503,4 +503,57 @@ describe("CrewWorkspace", () => {
       }),
     ),
   );
+
+  it.effect("removes a clean lane, keeps one with unlanded work until the person discards it", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        const store = yield* CrewStore.CrewStore;
+        const FRONTEND = { ...BACKEND, handle: "frontend" };
+        yield* workspace.create(BACKEND);
+        yield* workspace.create(FRONTEND);
+        write(root, ".crew/frontend/src/ui.ts", "export {};\n");
+        yield* workspace.commitTurn(FRONTEND, { assignment: "a-2", turn: 1 });
+        const clean = yield* workspace.cleanup(BACKEND);
+        const unlanded = yield* workspace.cleanup(FRONTEND);
+        const discarded = yield* workspace.cleanup(FRONTEND, { discard: true });
+        assert.deepStrictEqual(
+          {
+            clean,
+            unlanded,
+            discarded,
+            branches: git(root, ["for-each-ref", "--format=%(refname)", "refs/heads/crew/"]),
+            directories: [exists(root, ".crew/backend"), exists(root, ".crew/frontend")],
+            rows: (yield* store.lanes("game")).length,
+          },
+          {
+            clean: { _tag: "removed" },
+            unlanded: { _tag: "kept", unlanded: 1, dirty: false },
+            discarded: { _tag: "removed" },
+            branches: "",
+            directories: [false, false],
+            rows: 0,
+          },
+        );
+      }),
+    ),
+  );
+
+  it.effect("finds crew branches no lane owns, with their unlanded commits", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        git(root, ["worktree", "add", "-q", ".crew/map", "-b", "crew/map"]);
+        for (const n of [1, 2]) {
+          write(root, `.crew/map/src/map-${n}.ts`, "export {};\n");
+          git(`${root}/.crew/map`, ["add", "-A"]);
+          git(`${root}/.crew/map`, ["commit", "-q", "-m", `map ${n}`]);
+        }
+        assert.deepStrictEqual(yield* workspace.orphanScan(TEST_HOST), [
+          { handle: "map", unlanded: 2 },
+        ]);
+      }),
+    ),
+  );
 });
