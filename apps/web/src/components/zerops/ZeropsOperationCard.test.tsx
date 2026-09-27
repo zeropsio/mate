@@ -351,6 +351,15 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     expect(durationOf(headerOf(html))).toBe("1m 14s");
   });
 
+  // A git push has no build of its own to read: it is its one push step,
+  // never "Calculating steps from zerops.yml" for a pipeline that is not coming.
+  it("a running git push reads no pipeline", () => {
+    const pushing = deploy({ input: { targetService: "weatherdash", strategy: "git-push" } });
+    const html = render(pushing, observedOf(readout({ status: "WAITING_TO_BUILD", build: {} })));
+    expect(html).not.toContain("Calculating steps from zerops.yml");
+    expect(rowsOf(html)).toHaveLength(0);
+  });
+
   it("the provenance is one quiet line, only once the feed is not answering", () => {
     const quiet = render(running, observedOf(building));
     const silent = render(running, {

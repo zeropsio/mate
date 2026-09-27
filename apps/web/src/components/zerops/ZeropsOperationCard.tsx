@@ -224,9 +224,13 @@ function CardHeader({
   );
 }
 
-/** A deploy card reads its pipeline; a batch deploy keeps one segment per target. */
+/**
+ * A deploy card reads its pipeline; a batch deploy keeps one segment per
+ * target, and a git push — its one step the push — has no build to read.
+ */
 function readsPipeline(operation: ZeropsOperation): boolean {
-  return operation.kind === "deploy" && operation.batch !== true;
+  const pushOnly = operation.steps.length === 1 && operation.steps[0]?.id === "push";
+  return operation.kind === "deploy" && operation.batch !== true && !pushOnly;
 }
 
 const PIPELINE_DOT_TONE: Readonly<Record<PipelineTone, ServiceStatusToneId>> = {
