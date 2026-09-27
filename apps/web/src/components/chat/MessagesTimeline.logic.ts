@@ -43,6 +43,14 @@ import {
   type WorkLineFace,
   stretchOperations,
 } from "./conversation.logic";
+import {
+  foldSteps,
+  NO_TRACKED_COMMANDS,
+  stepOf,
+  trackCommands,
+  type TrackedCommands,
+  type WorkStep,
+} from "./workSteps.logic";
 
 export type TimelineLatestTurn = Pick<
   OrchestrationLatestTurn,
@@ -367,7 +375,8 @@ export type TurnHeaderActivity =
   | { readonly kind: "writing" }
   /** It asked the person something and waits for the answer. */
   | { readonly kind: "waiting" }
-  | { readonly kind: "tool"; readonly entry: WorkLogEntry }
+  /** A call it is making, as the step it is. */
+  | { readonly kind: "step"; readonly step: WorkStep }
   | { readonly kind: "operation"; readonly operation: ZeropsOperation };
 
 export type ConversationEvent =
@@ -517,22 +526,31 @@ type MessagesTimelineRowBody =
       message: ChatMessage;
     }
   | {
-      /** The tool calls between two notes, as one line; opened, each call below it. */
-      kind: "log-activity";
+      /**
+       * A step in an opened log: a tool call in words, its command after
+       * them, how long; opened, the whole command and what it printed.
+       */
+      kind: "log-step";
       id: string;
       createdAt: string;
-      entries: ReadonlyArray<WorkLogEntry>;
-      summary: string;
-      failed: boolean;
+      step: WorkStep;
+      /** The short thinking that led to it: no line of its own, opened with the step. */
+      thought: LogThought | null;
       expanded: boolean;
     }
   | {
-      /** Thinking in an opened log, in order with the rest of what the stretch did. */
+      /**
+       * A stretch of thinking in an opened log: one quiet line, "Thought for
+       * 48s", that opens its paragraphs.
+       */
       kind: "log-reasoning";
       id: string;
       createdAt: string;
       messages: ReadonlyArray<ChatMessage>;
       live: boolean;
+      /** How long it thought, to what came next; null while it still thinks. */
+      durationMs: number | null;
+      expanded: boolean;
     }
   | {
       /** A platform operation in an opened log: one line, the full card one click away. */
@@ -668,6 +686,19 @@ export interface FoldsFrom {
  */
 export type CardSlice = "top" | "middle" | "bottom";
 
+/** A stretch of thinking and how long it took, from what came before it to what came next. */
+export interface LogThought {
+  readonly messages: ReadonlyArray<ChatMessage>;
+  readonly durationMs: number;
+}
+
+/**
+ * Thinking this long is a line of an opened log; shorter, it is the step it
+ * led to — a "Thought" line between every two steps walled the steps in (a
+ * forty-minute run, 2026-09-27).
+ */
+export const THOUGHT_LINE_MIN_MS = 10_000;
+
 export type MessagesTimelineRow = MessagesTimelineRowBody & {
   readonly gap?: RowGap;
   readonly card?: CardSlice;
@@ -677,7 +708,7 @@ function isLogRowBody(row: MessagesTimelineRow): boolean {
   switch (row.kind) {
     case "log-person":
     case "log-note":
-    case "log-activity":
+    case "log-step":
     case "log-reasoning":
     case "log-operation":
       return true;
@@ -819,7 +850,11 @@ function waitedOnPerson(turn: ConversationTurn): { waitedMs: number; waitingSinc
 }
 
 /** What the Mate's hands are on: waiting for an answer, the running operation or tool, thinking, writing. */
-function liveActivity(stretch: Stretch, writing: MessageEntry | null): TurnHeaderActivity | null {
+function liveActivity(
+  stretch: Stretch,
+  writing: MessageEntry | null,
+  tracked: TrackedCommands,
+): TurnHeaderActivity | null {
   if (pendingQuestion(stretch) !== null) return { kind: "waiting" };
   if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
@@ -834,7 +869,7 @@ function liveActivity(stretch: Stretch, writing: MessageEntry | null): TurnHeade
     ) {
       return isQuestionToolCall(entry.entry)
         ? { kind: "waiting" }
-        : { kind: "tool", entry: entry.entry };
+        : { kind: "step", step: stepOf(entry.entry, tracked, true) };
     }
     if (entry.kind === "message") {
       return entry.message.role === "reasoning" ? { kind: "thinking" } : null;
@@ -894,14 +929,19 @@ export type WorkingStreamItem =
       readonly streaming: boolean;
     }
   | { readonly kind: "note"; readonly key: string; readonly message: ChatMessage }
+  /** A call it made, once it returned: the work streams with the words. */
+  | { readonly kind: "step"; readonly key: string; readonly step: WorkStep }
+  /** A platform operation that finished on the way: its bar has left the panel. */
+  | { readonly kind: "operation"; readonly key: string; readonly operation: ZeropsOperation }
   | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure }
   | { readonly kind: "question"; readonly key: string; readonly questions: ReadonlyArray<string> };
 
 /**
  * How much of a stretch's stream the Mate at work keeps to scroll back
- * through: every word of an ordinary stretch; a runaway one its latest.
+ * through: every word and step of an ordinary stretch; a runaway one its
+ * latest.
  */
-const STREAM_DEPTH = 60;
+const STREAM_DEPTH = 120;
 
 /**
  * What a live stretch streams, oldest first: the Mate's words, each step
@@ -950,13 +990,32 @@ function stretchStream(
   stretch: Stretch,
   answer: MessageEntry | null,
   writing: MessageEntry | null,
+  tracked: TrackedCommands,
 ): WorkingStreamItem[] {
   const items: WorkingStreamItem[] = [];
   const answered = latestAnswer(stretch);
   const answeredAt = answered === null ? -1 : stretch.entries.indexOf(answered);
+  // The calls since the last words, streamed as steps once they returned —
+  // the one still running is what the Mate's hands are on, under the newest.
+  let calls: WorkLogEntry[] = [];
+  const flushCalls = () => {
+    for (const step of foldSteps(calls, tracked, stretch.live)) {
+      if (step.state !== "running") items.push({ kind: "step", key: `step:${step.key}`, step });
+    }
+    calls = [];
+  };
   stretch.entries.forEach((entry, index) => {
     // What came before the person's answer stands above it.
     if (index <= answeredAt) return;
+    if (
+      (entry.kind === "work" || entry.kind === "generic-call") &&
+      isActivityWork(entry.entry) &&
+      !isQuestionToolCall(entry.entry)
+    ) {
+      calls.push(entry.entry);
+      return;
+    }
+    flushCalls();
     const later = stretch.entries.slice(index + 1);
     if (entry.kind === "message") {
       // The answer streams where it will stand, under the card; words not
@@ -986,14 +1045,16 @@ function stretchStream(
     }
     if (entry.kind === "operation") {
       const op = entry.operation;
-      if (
-        op.phase !== "failed" ||
-        DOCKED_KINDS.has(op.kind) ||
-        op.kind === "browser" ||
-        op.kind === "devServer"
-      ) {
+      // A check shows in the browser drawer, a dev server in its incident.
+      if (op.kind === "browser" || op.kind === "devServer") return;
+      // What finished on the way is a line of the stream: a deploy's bar
+      // leaves the panel when it lands.
+      if (op.phase === "done") {
+        items.push({ kind: "operation", key: op.key, operation: op });
         return;
       }
+      // A deploy that failed keeps its bar.
+      if (op.phase !== "failed" || DOCKED_KINDS.has(op.kind)) return;
       items.push({
         kind: "failure",
         key: op.key,
@@ -1013,10 +1074,12 @@ function stretchStream(
       });
       return;
     }
+    // A command's own task failing is its step failing: said once, there.
     if (
       entry.kind === "work" &&
       entry.entry.tone === "error" &&
-      isTaskActivityKind(entry.entry.sourceActivityKind)
+      isTaskActivityKind(entry.entry.sourceActivityKind) &&
+      !tracked.trackers.has(entry.entry.id)
     ) {
       const label = entry.entry.label;
       items.push({
@@ -1038,6 +1101,7 @@ function stretchStream(
       });
     }
   });
+  flushCalls();
   const question = pendingQuestion(stretch);
   if (question !== null) {
     items.push({
@@ -1054,8 +1118,8 @@ function stretchStream(
  * the stretch only ever grows at its bottom. Closed, only what stays visible:
  * the browser strip, an incident, a failure, an error, a landing, a
  * compaction, the person's answers to a question, a plan to approve. Opened,
- * the log interleaves with them: notes in full, tool calls as one line per
- * run, thinking, operations one line each.
+ * the log interleaves with them: notes in full, each call a step, each
+ * stretch of thinking one line, operations one line each.
  */
 function stretchContentRows(input: {
   stretch: Stretch;
@@ -1065,6 +1129,9 @@ function stretchContentRows(input: {
   open: boolean;
   view: ConversationView;
   pauseRow: MessagesTimelineRow | null;
+  tracked: TrackedCommands;
+  /** The run goes on — a message sent into it closed this stretch, not the run. */
+  turnLive: boolean;
 }): MessagesTimelineRow[] {
   const { stretch, open, view } = input;
   const expanded = view.expandedIds ?? new Set<string>();
@@ -1085,63 +1152,88 @@ function stretchContentRows(input: {
   let activityStart: TimelineEntry | null = null;
   let reasoning: ChatMessage[] = [];
   let reasoningStart: TimelineEntry | null = null;
+  // Thinking starts where what came before it ended: the Mate often says its
+  // thought only as it acts on it.
+  let lastEndAt = stretch.startedAt;
+  let thinkingFrom = stretch.startedAt;
+  let pendingThought: LogThought | null = null;
   const flushActivity = () => {
     if (activityStart === null) return;
     const entries = omitSupersededLifecycleMarkers(
       activity.filter((entry) => workEntryIsVisibleInGroup(entry, stretch.live)),
       (entry) => entry,
     );
-    const start = activityStart;
     activity = [];
     activityStart = null;
+    const thought = pendingThought;
+    pendingThought = null;
     if (!open || entries.length === 0) return;
-    const id = `log-activity:${start.id}`;
-    const isExpanded = expanded.has(id);
-    const last = entries.at(-1)!;
-    push(start.createdAt, [
-      {
-        kind: "log-activity",
-        id,
-        createdAt: start.createdAt,
-        entries,
-        summary: summarizeActivity(entries),
-        failed: workEntryDisplayIndicatesToolFailure(last),
-        expanded: isExpanded,
-      },
-      ...(isExpanded
-        ? entries.map((entry): MessagesTimelineRow => ({
-            kind: "work",
-            id: `log-entry:${entry.id}`,
-            createdAt: entry.createdAt,
-            groupedEntries: [entry],
-            isExpandedToolGroupEntry: true,
-          }))
-        : []),
-    ]);
+    foldSteps(entries, input.tracked, stretch.live).forEach((step, index) => {
+      const id = `log-step:${step.key}`;
+      const at = step.entries[0]!.createdAt;
+      push(at, [
+        {
+          kind: "log-step",
+          id,
+          createdAt: at,
+          step,
+          thought: index === 0 ? thought : null,
+          expanded: expanded.has(id),
+        },
+      ]);
+    });
   };
-  const flushReasoning = () => {
+  /**
+   * A stretch of thinking ends where what came next began; one still going
+   * has no end yet. A short one that led to a step is that step's.
+   */
+  const flushReasoning = (endedAt: string | null, leadsToStep = false) => {
     if (reasoningStart === null) return;
     const start = reasoningStart;
     const messages = reasoning;
     reasoning = [];
     reasoningStart = null;
     if (!open) return;
+    const id = `log-reasoning:${start.id}`;
+    const live = stretch.live && messages.some((message) => message.streaming);
+    const measured =
+      live || endedAt === null ? null : Math.max(0, Date.parse(endedAt) - Date.parse(thinkingFrom));
+    const durationMs = measured !== null && Number.isFinite(measured) ? measured : null;
+    // A live log keeps every line it drew: a thought folds into its step
+    // only once the run is over, when the card re-forms anyway.
+    if (!input.turnLive && leadsToStep && durationMs !== null && durationMs < THOUGHT_LINE_MIN_MS) {
+      pendingThought = { messages, durationMs };
+      return;
+    }
     push(start.createdAt, [
       {
         kind: "log-reasoning",
-        id: `log-reasoning:${start.id}`,
+        id,
         createdAt: start.createdAt,
         messages,
-        live: stretch.live && messages.some((message) => message.streaming),
+        live,
+        durationMs,
+        expanded: expanded.has(id),
       },
     ]);
   };
-  const flush = () => {
-    flushReasoning();
+  const flush = (at: string | null) => {
+    flushReasoning(at);
     flushActivity();
   };
 
+  let previous: TimelineEntry | null = null;
   for (const entry of stretch.entries) {
+    if (
+      previous !== null &&
+      !(previous.kind === "message" && previous.message.role === "reasoning")
+    ) {
+      const end = timelineEntryEnd(previous);
+      if (Date.parse(end) > Date.parse(lastEndAt)) lastEndAt = end;
+    }
+    previous = entry;
+    // Words not placed yet split nothing: a block of thinking drawn around
+    // them would have the note land between its halves once it is known.
     if (entry === input.answer || entry === input.writing) continue;
     // The Mate's question tool: its question and the person's answer stand
     // in the run as bubbles, so the call itself is never a line of its own.
@@ -1150,11 +1242,15 @@ function stretchContentRows(input: {
     if (entry.kind === "message") {
       if (entry.message.role === "reasoning") {
         flushActivity();
-        if (reasoningStart === null) reasoningStart = entry;
+        if (reasoningStart === null) {
+          reasoningStart = entry;
+          thinkingFrom =
+            Date.parse(lastEndAt) < Date.parse(entry.createdAt) ? lastEndAt : entry.createdAt;
+        }
         reasoning.push(entry.message);
         continue;
       }
-      flush();
+      flush(entry.createdAt);
       if (open && entry.message.text.trim().length > 0) {
         push(entry.createdAt, [
           {
@@ -1168,12 +1264,14 @@ function stretchContentRows(input: {
       continue;
     }
     if ((entry.kind === "work" || entry.kind === "generic-call") && isActivityWork(entry.entry)) {
-      flushReasoning();
+      flushReasoning(entry.createdAt, true);
       if (activityStart === null) activityStart = entry;
       activity.push(entry.entry);
       continue;
     }
-    flush();
+    // A command's own task is the command's step: no row of its own.
+    if (entry.kind === "work" && input.tracked.trackers.has(entry.entry.id)) continue;
+    flush(entry.createdAt);
     switch (entry.kind) {
       case "operation": {
         const op = entry.operation;
@@ -1340,7 +1438,8 @@ function stretchContentRows(input: {
         break;
     }
   }
-  flush();
+  // A run's last thinking ended with the run; a live one's is still going.
+  flush(stretch.live ? null : stretch.endedAt);
   if (input.pauseRow) push(input.pauseRow.createdAt, [input.pauseRow]);
 
   return items
@@ -1411,6 +1510,12 @@ export function deriveMessagesTimelineRows(
     ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
+  // Which tasks are the commands they track: a command's words, and no row of their own.
+  const tracked = trackCommands(
+    entries.flatMap((entry) =>
+      entry.kind === "work" || entry.kind === "generic-call" ? [entry.entry] : [],
+    ),
+  );
 
   const diffByTurnId = new Map<TurnId, TurnDiffSummary>();
   const diffByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
@@ -1821,6 +1926,8 @@ export function deriveMessagesTimelineRows(
         open,
         view: input,
         pauseRow: stretch === last ? pause : null,
+        tracked,
+        turnLive: turn.live,
       })) {
         (row.kind === "answer" ? exchanges : cardRows).push(row);
       }
@@ -1870,8 +1977,8 @@ export function deriveMessagesTimelineRows(
         stretchKey: last.key,
         turnKey: turn.key,
         cardKey: first.key,
-        stream: stretchStream(last, turn.answer, turn.writing),
-        activity: liveActivity(last, turn.writing),
+        stream: stretchStream(last, turn.answer, turn.writing, tracked),
+        activity: liveActivity(last, turn.writing, tracked),
         answering: answer !== null,
         strip: browserStrip(last),
         incidents: stretchIncidents(last),

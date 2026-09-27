@@ -1227,7 +1227,7 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain('data-zerops-primitive="mate-face"');
     expect(markup).toContain("The shop builds.");
     // The log stays closed: no tool rows, no "Work Log".
-    expect(markup).not.toContain('data-timeline-row-kind="log-activity"');
+    expect(markup).not.toContain('data-timeline-row-kind="log-step"');
     expect(markup).not.toContain("Work Log");
   });
 
@@ -1257,8 +1257,10 @@ describe("MessagesTimeline — the conversation", () => {
         ]}
       />,
     );
-    expect(markup).toContain('data-timeline-row-kind="log-activity"');
-    expect(markup).toContain("Ran 1 command");
+    // Each call a step: the command itself, never a count of commands.
+    expect(markup).toContain('data-timeline-row-kind="log-step"');
+    expect(markup).toContain("pnpm build");
+    expect(markup).not.toContain("Ran 1 command");
     expect(markup).toContain('data-timeline-row-kind="log-note"');
     expect(markup).toContain('aria-expanded="true"');
   });
@@ -1320,9 +1322,11 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup.match(/data-stream-bubble="note"/g)).toHaveLength(2);
     expect(markup).toContain('data-stream-bubble="failed"');
     expect(markup).toContain("Run the type check failed");
-    // Oldest first: the newest bubble is last, and the only one of age 0.
+    // Oldest first, the step it took last: its newest words stay fresh under
+    // it — a step fades only what came before it, never the Mate's last words.
     expect(markup.indexOf("Checking the build.")).toBeLessThan(markup.indexOf("Fixing the types."));
-    expect(markup.match(/data-stream-age="0"/g)).toHaveLength(1);
+    expect(markup.indexOf("Fixing the types.")).toBeLessThan(markup.indexOf('data-step="command"'));
+    expect(markup.match(/data-stream-age="0"/g)).toHaveLength(2);
     const newest = markup.slice(markup.indexOf('data-stream-age="0"'));
     expect(newest).toContain("Fixing the types.");
     expect(newest).not.toContain("Checking the build.");
@@ -1357,15 +1361,18 @@ describe("MessagesTimeline — the conversation", () => {
     },
   });
 
-  it("says what the Mate is on beside its face, once, and never a call's arguments", () => {
+  // The step it is taking, in words and with what it is on — the page it
+  // reads, the command it runs (the owner, 2026-09-27: "why isn't the chat
+  // showing even the commands it runs?") — once, beside its face.
+  it("says the step the Mate is taking beside its face, once, with what it is on", () => {
     const markup = liveTimeline([
       assistant("a1", 5, "Reading the docs first."),
-      call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev"}'),
+      call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev/guides"}'),
     ]);
-    expect(markup).toContain('data-stream-activity="doing"');
+    expect(markup).toContain('data-stream-activity="step"');
     // The panel says it; the line above keeps to its clock.
-    expect(markup.match(/Reading a web page/g)).toHaveLength(1);
-    expect(markup).not.toContain("docs.example.dev");
+    expect(markup.match(/Reading docs\.example\.dev\/guides/g)).toHaveLength(1);
+    expect(markup).not.toContain("WebFetch");
   });
 
   it("waits on the person when the Mate asked with its question tool", () => {

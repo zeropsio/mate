@@ -1058,10 +1058,11 @@ export function isQuestionToolCall(
   );
 }
 
-/** A work entry that is a tool call on the way — the log's activity lines. */
+/** A work entry that is a tool call on the way — the log's steps. A task is none: it runs one. */
 export function isActivityWork(entry: WorkLogEntry): boolean {
   return (
     entry.agentSpawn === undefined &&
+    entry.sourceActivityKind?.startsWith("task.") !== true &&
     entry.questionAnswer === undefined &&
     entry.sourceActivityKind !== "context-compaction" &&
     entry.tone !== "error" &&
