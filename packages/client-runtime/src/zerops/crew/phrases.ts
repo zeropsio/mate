@@ -9,6 +9,7 @@
  */
 import type {
   CrewAttention,
+  CrewCheck,
   CrewRefusalReason,
   CrewRun,
   CrewSnapshot,
@@ -111,6 +112,18 @@ export function crewTaskWord(task: CrewTask, context: CrewTaskWordContext): stri
       return task.reason === null ? "Stopped" : `Stopped: ${task.reason}`;
     case "discarded":
       return "Discarded";
+  }
+}
+
+/** A check's outcome (PRD §4.5, §5.2): the board's cards and sheet and the lane bar say it alike. */
+export function crewCheckWord(check: CrewCheck): string {
+  switch (check.state) {
+    case "running":
+      return "Checking";
+    case "passed":
+      return "Check passed";
+    case "failed":
+      return "Check failed";
   }
 }
 

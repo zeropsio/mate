@@ -171,6 +171,8 @@ import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
+import { CrewBoardPanel } from "./zerops/crew/CrewBoardPanel";
+import { useCrew } from "../zerops/crew/useCrew";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepBanner } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
@@ -3755,6 +3757,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "git");
   }, [activeThreadRef]);
+  const addCrewSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "crew");
+  }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
       if (!activeThreadRef) return;
@@ -3790,6 +3796,8 @@ export default function ChatView(props: ChatViewProps) {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
   });
+  // The crew board's tab exists only while the crew feed says a crew is, or could be, set up.
+  const crewStatus = useCrew(activeThreadEnvironmentId).status;
   // The band's sign-in request lands here: the first agent that needs a
   // sign-in gets the dialog, without a detour through the panel.
   const openAgentAuthDialog = useCallback(() => {
@@ -7591,6 +7599,7 @@ export default function ChatView(props: ChatViewProps) {
     gitRepo: isGitRepo,
     serverThread: isServerThread,
     zeropsPanel: zeropsChrome.panel,
+    crewStatus,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {
@@ -7614,6 +7623,9 @@ export default function ChatView(props: ChatViewProps) {
         return;
       case "git":
         addGitSurface();
+        return;
+      case "crew":
+        addCrewSurface();
         return;
     }
     kind satisfies never;
@@ -7705,6 +7717,8 @@ export default function ChatView(props: ChatViewProps) {
                 });
             case "git":
               return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
+            case "crew":
+              return <CrewBoardPanel environmentId={activeThreadRef.environmentId} />;
             case "change":
               return (
                 <ZeropsChangeDetailPage

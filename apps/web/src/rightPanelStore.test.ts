@@ -576,6 +576,20 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("opens the crew board as a singleton surface beside what is open", () => {
+    useRightPanelStore.getState().open(refA, "zerops");
+    useRightPanelStore.getState().open(refA, "crew");
+    useRightPanelStore.getState().open(refA, "crew");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "crew",
+      surfaces: [
+        { id: "zerops", kind: "zerops" },
+        { id: "crew", kind: "crew" },
+      ],
+    });
+  });
+
   it("replaces the standalone explorer with peer file surfaces", () => {
     useRightPanelStore.getState().open(refA, "files");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");

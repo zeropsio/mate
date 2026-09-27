@@ -53,6 +53,8 @@ export type RightPanelSurface =
   | { id: `service:${string}`; kind: "browser"; service: string; url: string }
   | { id: "data"; kind: "data" }
   | { id: "git"; kind: "git" }
+  /** The crew's board, opened from the Crew section of the Zerops tab. */
+  | { id: "crew"; kind: "crew" }
   /**
    * One change, drawn where the reader already is.
    *
@@ -82,7 +84,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v15 adds the "browser" surface kind (S8b — the container's own live browser view).
 // v16 adds the "data" surface kind (S-dataconsole — the project's managed data services).
 // v17 keys data surfaces by service (`data:<hostname>`), the singleton being the service picker.
-const RIGHT_PANEL_STORAGE_VERSION = 17;
+// v18 adds the "crew" surface kind (the crew's board).
+const RIGHT_PANEL_STORAGE_VERSION = 18;
 
 /** Legacy shared review-workspace panel keys are discarded during migration. */
 const isPullRequestsPanelKey = (threadKey: string) => threadKey.endsWith(":pull-requests-panel");
@@ -156,6 +159,8 @@ const singletonSurface = (
       return { id: "data", kind };
     case "git":
       return { id: "git", kind };
+    case "crew":
+      return { id: "crew", kind };
   }
 };
 
