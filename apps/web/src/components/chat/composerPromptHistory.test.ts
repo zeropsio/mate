@@ -6,7 +6,11 @@ import {
 } from "../../lib/terminalContext";
 import { appendReviewCommentsToPrompt, buildFileReviewComment } from "../../reviewCommentContext";
 import { buildPlanImplementationPrompt } from "../../proposedPlan";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
+import {
+  CREW_CARD_OPENER,
+  IMAGE_ONLY_BOOTSTRAP_PROMPT,
+  USAGE_LIMIT_RESUME_PROMPT,
+} from "@t3tools/shared/userAsk";
 import {
   buildComposerPromptHistoryEntries,
   recallableComposerPrompt,
@@ -106,6 +110,12 @@ describe("recallableComposerPrompt", () => {
     expect(recallableComposerPrompt(IMAGE_ONLY_BOOTSTRAP_PROMPT)).toBe("");
     expect(recallableComposerPrompt(USAGE_LIMIT_RESUME_PROMPT)).toBe("");
     expect(recallableComposerPrompt(buildPlanImplementationPrompt("# Plan\n1. do it"))).toBe("");
+  });
+
+  it("returns an empty string for a crew task card: the engine wrote it, not the person", () => {
+    expect(
+      recallableComposerPrompt(`${CREW_CARD_OPENER}\n#12 Camera rig\nDone when: it follows`),
+    ).toBe("");
   });
 });
 
