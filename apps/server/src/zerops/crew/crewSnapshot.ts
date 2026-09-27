@@ -261,6 +261,7 @@ const toTask = (row: CrewAssignmentRow, input: AppliedSnapshotInput): CrewTask =
     fresh: row.fresh,
     brief: card?.brief ?? "",
     doneWhen: card?.doneWhen ?? "",
+    note: card?.note ?? null,
     attempts: row.attempt,
     reason: row.state === "rework" || row.state === "parked" ? (wait?.reason ?? null) : null,
     question: row.state === "blocked" ? (report?.question ?? null) : null,

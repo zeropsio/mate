@@ -282,4 +282,20 @@ describe("crew snapshot", () => {
       ["cant-start:t-5", "cant-start", "not the login's signer", []],
     ]);
   });
+
+  it("a task carries its card's note: a fan-out task's word on the rest of the message", () => {
+    const note = "Also sent to @frontend. Your part is what is addressed to @backend.";
+    const snapshot = appliedSnapshot(
+      base({
+        tasks: [
+          task("t-1", 1, { source: "message", card: { brief: "Rework it", doneWhen: "", note } }),
+          task("t-2", 2),
+        ],
+      }),
+    );
+    expect(snapshot.board.tasks.map((entry) => [entry.id, entry.note])).toEqual([
+      ["t-1", note],
+      ["t-2", null],
+    ]);
+  });
 });
