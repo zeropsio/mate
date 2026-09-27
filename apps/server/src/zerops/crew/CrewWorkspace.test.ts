@@ -321,4 +321,58 @@ describe("CrewWorkspace", () => {
       }),
     ),
   );
+
+  it.effect("resets a lane whose tip is its last landing to the current head at dispatch", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        const store = yield* CrewStore.CrewStore;
+        yield* workspace.create(BACKEND);
+        const landed = git(root, ["rev-parse", "crew/backend"]);
+        yield* store.updateLane("game", "backend", (row) => ({ ...row, lastLanding: landed }));
+        write(root, "docs/person.md", "the person's own commit\n");
+        git(root, ["add", "-A"]);
+        git(root, ["commit", "-q", "-m", "person"]);
+        const head = git(root, ["rev-parse", "HEAD"]);
+        const first = yield* workspace.prepareDispatch(BACKEND);
+        const second = yield* workspace.prepareDispatch(BACKEND);
+        assert.deepStrictEqual(
+          { first, second, lane: git(root, ["rev-parse", "crew/backend"]) },
+          {
+            first: { _tag: "ready", dispatchCommit: head, reset: true },
+            second: { _tag: "ready", dispatchCommit: head, reset: false },
+            lane: head,
+          },
+        );
+      }),
+    ),
+  );
+
+  it.effect("writes nothing into a frozen host's lanes until it is unfrozen", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        write(root, ".crew/backend/src/api.ts", "export {};\n");
+        const frozen = yield* workspace.freeze(TEST_HOST);
+        const whileFrozen = [
+          (yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 }))._tag,
+          (yield* workspace.prepareDispatch(BACKEND))._tag,
+        ];
+        const untouched =
+          git(root, ["rev-parse", "crew/backend"]) === git(root, ["rev-parse", "HEAD"]);
+        yield* workspace.unfreeze(TEST_HOST);
+        const after = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+        assert.deepStrictEqual(
+          { frozen, whileFrozen, untouched, after: after._tag },
+          {
+            frozen: [{ crew: "game", handle: "backend" }],
+            whileFrozen: ["frozen", "frozen"],
+            untouched: true,
+            after: "committed",
+          },
+        );
+      }),
+    ),
+  );
 });

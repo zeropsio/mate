@@ -42,6 +42,7 @@
  * @module CrewWorkspace
  */
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -62,11 +63,16 @@ import {
   script,
   shellVariable,
   type CrewShellError,
+  type ShellVariable,
 } from "./CrewShell.ts";
 import { CrewStore, type CrewLaneRow, type CrewStoreError } from "./CrewStore.ts";
 
 /** The integration HEAD a lane script read into `$H`. */
 const H = shellVariable("H");
+
+/** Git lines in one crewmate's lane. */
+const laneGit = (lane: string) => (args: ReadonlyArray<string | ShellVariable>) =>
+  git({ lane }, args);
 
 /** A staged blob larger than this parks the lane unless the crewmate raises it. */
 export const DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024;
@@ -156,6 +162,12 @@ export type KeepOutcome =
 export const attemptRef = (input: Pick<KeepInput, "run" | "assignment" | "attempt">): string =>
   `refs/t3/crew/${input.run ?? "manual"}/${input.assignment}/${input.attempt}`;
 
+export type DispatchOutcome =
+  | { readonly _tag: "ready"; readonly dispatchCommit: string; readonly reset: boolean }
+  | { readonly _tag: "parked"; readonly reason: "unknown-tip"; readonly tip: string }
+  | { readonly _tag: "frozen" }
+  | { readonly _tag: "lane-missing" };
+
 /** Widens one outcome literal to the union, so a generator's returns agree. */
 const laneCommit = (commit: LaneCommit): LaneCommit => commit;
 
@@ -167,6 +179,14 @@ export interface CrewWorkspaceService {
     key: LaneKey,
     input: KeepInput,
   ) => Effect.Effect<KeepOutcome, CrewWorkspaceError>;
+  /**
+   * Before a task's first turn: a lane whose tip is its last landing is reset
+   * to the current head (stated in the card); records the dispatch commit.
+   */
+  readonly prepareDispatch: (key: LaneKey) => Effect.Effect<DispatchOutcome, CrewWorkspaceError>;
+  /** A self-deploy started on `host`: no lane writes, setup or resets there. */
+  readonly freeze: (host: string) => Effect.Effect<ReadonlyArray<LaneKey>, CrewWorkspaceError>;
+  readonly unfreeze: (host: string) => Effect.Effect<void, CrewWorkspaceError>;
   /** Turn end: the lane-commit precondition, then `wip(<task>): turn <n>`. */
   readonly commitTurn: (
     key: LaneKey,
@@ -244,7 +264,7 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       if (row.frozenSince !== null) return laneCommit({ _tag: "frozen" });
       const lane = shellQuote(laneDirectory(row.lane));
-      const lg = (args: ReadonlyArray<string>) => git({ lane: row.lane }, args);
+      const lg = laneGit(row.lane);
       const out = yield* runLane(
         row.host,
         "commitTurn",
@@ -321,7 +341,7 @@ export const make = Effect.gen(function* () {
   const keepAndReset: CrewWorkspaceService["keepAndReset"] = (key, input) =>
     Effect.gen(function* () {
       const row = yield* laneRow(key, "keepAndReset");
-      const lg = (args: ReadonlyArray<string>) => git({ lane: row.lane }, args);
+      const lg = laneGit(row.lane);
       if (input.abortMerge === true && row.frozenSince === null) {
         yield* runLane(
           row.host,
@@ -358,6 +378,60 @@ export const make = Effect.gen(function* () {
       }));
       return { _tag: "kept", ref, tip: committed.tip } satisfies KeepOutcome;
     });
+
+  const prepareDispatch: CrewWorkspaceService["prepareDispatch"] = (key) =>
+    Effect.gen(function* () {
+      const row = yield* laneRow(key, "prepareDispatch");
+      if (row.frozenSince !== null) return { _tag: "frozen" } satisfies DispatchOutcome;
+      const lane = shellQuote(laneDirectory(row.lane));
+      const lg = laneGit(row.lane);
+      const out = yield* runLane(
+        row.host,
+        "prepareDispatch",
+        `[ -d ${lane} ] || { printf 'status\\tlane-missing\\n'; exit 0; }\n` +
+          `H=$(${git("integration", ["rev-parse", "HEAD"])}) || exit 1\n` +
+          `tip=$(${lg(["rev-parse", "HEAD"])}) || exit 1\n` +
+          `[ "$tip" = ${shellQuote(row.recordedTip ?? "")} ] || { printf 'status\\tunknown-tip\\ntip\\t%s\\n' "$tip"; exit 0; }\n` +
+          `reset=0\n` +
+          `if [ "$tip" = ${shellQuote(row.lastLanding ?? "")} ] && [ "$tip" != "$H" ]; then\n` +
+          `  ${lg(["reset", "-q", "--hard", H])} || exit 1\n` +
+          `  tip=$H; reset=1\n` +
+          `fi\n` +
+          `printf 'status\\tready\\ntip\\t%s\\nreset\\t%s\\n' "$tip" "$reset"\n`,
+      );
+      const status = field(out, "status");
+      const tip = field(out, "tip") ?? "";
+      if (status === "lane-missing") return { _tag: "lane-missing" } satisfies DispatchOutcome;
+      if (status === "unknown-tip") {
+        yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
+        return { _tag: "parked", reason: "unknown-tip", tip } satisfies DispatchOutcome;
+      }
+      yield* store.updateLane(row.crew, row.lane, (lane) => ({
+        ...lane,
+        dispatchCommit: tip,
+        recordedTip: tip,
+      }));
+      return {
+        _tag: "ready",
+        dispatchCommit: tip,
+        reset: field(out, "reset") === "1",
+      } satisfies DispatchOutcome;
+    });
+
+  const setFrozen = (host: string, frozenSince: string | null) =>
+    Effect.gen(function* () {
+      const lanes = yield* store.lanesOnHost(host);
+      yield* Effect.forEach(lanes, (row) =>
+        store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, frozenSince })),
+      );
+      return lanes.map((row): LaneKey => ({ crew: row.crew, handle: row.lane }));
+    });
+
+  const freeze: CrewWorkspaceService["freeze"] = (host) =>
+    DateTime.now.pipe(Effect.flatMap((now) => setFrozen(host, DateTime.formatIso(now))));
+
+  const unfreeze: CrewWorkspaceService["unfreeze"] = (host) =>
+    setFrozen(host, null).pipe(Effect.asVoid);
 
   const create: CrewWorkspaceService["create"] = (spec) =>
     Effect.gen(function* () {
@@ -423,7 +497,14 @@ export const make = Effect.gen(function* () {
       ) satisfies CreateOutcome;
     });
 
-  return CrewWorkspace.of({ create, commitTurn, keepAndReset });
+  return CrewWorkspace.of({
+    create,
+    prepareDispatch,
+    freeze,
+    unfreeze,
+    commitTurn,
+    keepAndReset,
+  });
 });
 
 export const layer = Layer.effect(CrewWorkspace, make);
