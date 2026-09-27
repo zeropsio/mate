@@ -23,7 +23,7 @@
  * Fixtures only. Nothing here ships in the app bundle — `design.html` is not
  * `index.html`, and no route imports this module.
  */
-import { StrictMode } from "react";
+import { StrictMode, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -58,6 +58,7 @@ import {
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
+import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
@@ -739,7 +740,6 @@ function HarnessPeek({ peek }: { readonly peek: SidebarPeekRender<ZeropsCandidat
     />
   );
 }
-const showAll = () => true;
 
 const ACCOUNT = zeropsAccountDisplay({
   email: "ada@example.com",
@@ -755,10 +755,17 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
  * `?w=` sets its width; the owner runs it near 368, the default is 256.
  */
 function SidebarFrame({ width, phone }: { readonly width: number; readonly phone: boolean }) {
+  // Mine / Everyone, from the account menu, as the app reads it.
+  const [scope] = useMateScope();
+  const shown = useCallback(
+    (item: ZeropsCandidate) =>
+      shownInScope(scope, OWNERS.get(item.project.id), item.project.id === "links-enzo"),
+    [scope],
+  );
   const waiting = useSidebarWaiting({
     candidates: CANDIDATES,
     activityOf: activityOfCandidate,
-    shown: showAll,
+    shown,
     activeProjectId: "links-enzo",
     enabled: true,
   });
@@ -797,7 +804,10 @@ function SidebarFrame({ width, phone }: { readonly width: number; readonly phone
             toggleUnread: () => {},
             copyLink: () => {},
             rename: {
-              initialValue: "",
+              initialValue:
+                item.project.tagList
+                  ?.find((tag) => tag.startsWith("mate:bot:"))
+                  ?.slice("mate:bot:".length) ?? item.project.name,
               validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
               commit: () => {},
             },
@@ -813,6 +823,7 @@ function SidebarFrame({ width, phone }: { readonly width: number; readonly phone
           activeProjectId="links-enzo"
           phone={phone}
           renderPeek={(peek) => <HarnessPeek peek={peek} />}
+          shown={shown}
           timestampFormat="24-hour"
         />
       </div>
