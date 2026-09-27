@@ -9,7 +9,7 @@
  * | `report_json`  | {@link TaskReport} | the crewmate's last `crew_report`                     |
  * | `check_json`   | `CrewCheck`      | the last check on the tree that would land              |
  * | `review_json`  | `CrewReview`     | the last review (phase C)                               |
- * | `waiting_json` | {@link TaskWait} | why it is not moving: rework, park, or your tree's paths |
+ * | `waiting_json` | {@link TaskWait} | why it is not moving: rework, park, or your tree's files |
  *
  * A column that does not decode reads as absent: a row written by a later
  * build never stops a snapshot.
@@ -39,20 +39,17 @@ export const TaskReport = Schema.Struct({
 export type TaskReport = typeof TaskReport.Type;
 
 /**
- * Why a task waits. `reason` is a code the attention rows read (`conflict`,
- * `check-failed`) or the park's own words; `paths` are the conflicting files
- * or your tree's files a landing waits on.
+ * Why a task is not moving: its crewmate resolves a merge-in's conflicts or
+ * fixes the check (`rework`), a landing waits on files in your tree, or the
+ * engine stopped it for triage (`parked`). `reason` is the board's words after
+ * "Rework:" or "Stopped:"; `paths` are the conflicting files or your tree's.
  */
 export const TaskWait = Schema.Struct({
+  on: Schema.Literals(["conflict", "check-failed", "your-tree", "triage"]),
   reason: Schema.NullOr(Schema.String),
   paths: Schema.Array(Schema.String),
 });
 export type TaskWait = typeof TaskWait.Type;
-
-/** A merge-in stopped on conflicts: the task went back to its crewmate naming the files. */
-export const WAIT_CONFLICT = "conflict";
-/** The check failed on the tree that would land. */
-export const WAIT_CHECK_FAILED = "check-failed";
 
 const read =
   <A>(decode: (value: unknown) => Option.Option<A>) =>
