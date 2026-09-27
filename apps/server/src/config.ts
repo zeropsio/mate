@@ -103,6 +103,13 @@ export class ServerConfig extends Context.Service<
      * `isZeropsEnvironment` rather than testing this field by hand.
      */
     readonly zerops: ZeropsEnvironment | undefined;
+    /**
+     * Crew mode's switch (`T3CODE_ZEROPS_CREW`, on unless turned off). An env
+     * variable and never a `serve` flag: zcp passes flags unconditionally, and
+     * an unknown one crash-loops the unit. It only matters inside a Zerops
+     * project, and with no crew applied a Mate stays byte-identical.
+     */
+    readonly zeropsCrew: boolean;
     readonly noBrowser: boolean;
     readonly startupPresentation: StartupPresentation;
     readonly desktopBootstrapToken: string | undefined;
@@ -248,6 +255,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     devAllowedOrigins: [],
     zeropsFixtures: undefined,
     zerops: undefined,
+    zeropsCrew: true,
     noBrowser: false,
     startupPresentation: "browser",
   });

@@ -656,6 +656,7 @@ const buildAppUnderTest = (options?: {
       devAllowedOrigins: [],
       zerops: undefined,
       zeropsFixtures: undefined,
+      zeropsCrew: false,
       noBrowser: true,
       startupPresentation: "browser",
       desktopBootstrapToken: defaultDesktopBootstrapToken,
