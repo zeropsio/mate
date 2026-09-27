@@ -19,6 +19,7 @@ import {
   type OperationStatusWordContext,
 } from "../../operations/phrases.ts";
 import type {
+  ZeropsBrowserRead,
   ZeropsBrowserViewport,
   ZeropsCall,
   ZeropsOperationBrowserSummary,
@@ -75,6 +76,8 @@ export interface BuiltCardFields {
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
+  /** `browser` only: what the check read of the page, when it took no picture. */
+  readonly browserRead?: ZeropsBrowserRead;
   /** `browser` only. */
   readonly viewport?: ZeropsBrowserViewport;
   /** `browser` only: the device the agent emulated (`set device <name>`), as agent-browser names it. */

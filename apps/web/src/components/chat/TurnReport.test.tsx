@@ -67,10 +67,19 @@ const OUTCOME: OutcomeModel = {
   created: ["db"],
   removed: ["cache"],
   notDone: ["Enable the subdomain"],
+  activity: [
+    { kind: "command", count: 5, words: "Ran 5 commands", entries: [] },
+    { kind: "helpers", count: 11, words: "Started 11 helpers", entries: [] },
+  ],
 };
 
 const markup = renderToStaticMarkup(
-  <TurnReport onOpenImage={() => undefined} onOpenTurnDiff={() => undefined} outcome={OUTCOME} />,
+  <TurnReport
+    onOpenActivity={() => undefined}
+    onOpenImage={() => undefined}
+    onOpenTurnDiff={() => undefined}
+    outcome={OUTCOME}
+  />,
 );
 
 /** The class list of every opening tag that carries `marker`, in document order. */
@@ -99,6 +108,18 @@ describe("TurnReport", () => {
       expect(pill).toContain("text-line");
       expect(pill).not.toContain("text-xs");
     }
+  });
+
+  // What its calls came to is a pill like the rest of the result, and it
+  // opens what it counts (the owner, 2026-09-27: "why isn't [it] in the
+  // result style?"). Its words say it: no mark in front of them.
+  it.each(["Ran 5 commands", "Started 11 helpers"])("opens %s from its pill", (words) => {
+    const pill = new RegExp(
+      `<button[^>]*aria-label="${words}. Show them"[^>]*>(.*?)</button>`,
+    ).exec(markup);
+    expect(pill?.[0]).toContain("data-pill");
+    expect(pill?.[1]).not.toContain("rounded-full");
+    expect(pill?.[1]).toContain(words);
   });
 
   // A text action in the conversation is said in its link ink, as the

@@ -27,7 +27,6 @@ const storage = {
   },
 };
 import { DROPPED_RIGHT_PANEL_KINDS, type RightPanelKind } from "./rightPanelKinds";
-import { resolveDefaultZeropsPanel, type DefaultZeropsPanelInput } from "./zerops/defaultPanel";
 
 export type RightPanelSurface =
   | {
@@ -82,7 +81,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v15 adds the "browser" surface kind (S8b — the container's own live browser view).
 // v16 adds the "data" surface kind (S-dataconsole — the project's managed data services).
 // v17 keys data surfaces by service (`data:<hostname>`), the singleton being the service picker.
-const RIGHT_PANEL_STORAGE_VERSION = 17;
+// v18 drops v13's Zerops default record: the panel opens only when the person opens it.
+const RIGHT_PANEL_STORAGE_VERSION = 18;
 
 /** Legacy shared review-workspace panel keys are discarded during migration. */
 const isPullRequestsPanelKey = (threadKey: string) => threadKey.endsWith(":pull-requests-panel");
@@ -95,11 +95,6 @@ export interface ThreadRightPanelState {
 
 interface RightPanelStoreState {
   byThreadKey: Record<string, ThreadRightPanelState>;
-  zeropsDefaultHandledByThreadKey: Record<string, true>;
-  ensureZeropsDefault: (
-    ref: ScopedThreadRef,
-    input: Pick<DefaultZeropsPanelInput, "topology" | "usesSheet">,
-  ) => void;
   open: (ref: ScopedThreadRef, kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
   openService: (ref: ScopedThreadRef, service: string, url: string) => void;
   /** One Data tab per service, opened from the service's card or the picker; the singleton `data` picker is replaced when it is the one open. */
@@ -246,10 +241,9 @@ export function serviceBrowserTabs(
 
 export function migratePersistedRightPanelState(persistedState: unknown): {
   byThreadKey: Record<string, ThreadRightPanelState>;
-  zeropsDefaultHandledByThreadKey: Record<string, true>;
 } {
   if (!persistedState || typeof persistedState !== "object") {
-    return { byThreadKey: {}, zeropsDefaultHandledByThreadKey: {} };
+    return { byThreadKey: {} };
   }
   const byThreadKey =
     "byThreadKey" in persistedState &&
@@ -362,58 +356,13 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
             }),
         )
       : {};
-  const persistedHandledByThreadKey =
-    "zeropsDefaultHandledByThreadKey" in persistedState &&
-    persistedState.zeropsDefaultHandledByThreadKey &&
-    typeof persistedState.zeropsDefaultHandledByThreadKey === "object"
-      ? Object.fromEntries(
-          Object.entries(
-            persistedState.zeropsDefaultHandledByThreadKey as Record<string, unknown>,
-          ).filter((entry): entry is [string, true] => entry[1] === true),
-        )
-      : {};
-  return {
-    byThreadKey,
-    // Any persisted panel state is already a user choice. Treating legacy
-    // entries as untouched would let the new default reopen a panel on upgrade.
-    zeropsDefaultHandledByThreadKey: {
-      ...persistedHandledByThreadKey,
-      ...Object.fromEntries(
-        Object.keys(byThreadKey).map((threadKey) => [threadKey, true as const]),
-      ),
-    },
-  };
+  return { byThreadKey };
 }
 
 export const useRightPanelStore = create<RightPanelStoreState>()(
   persist(
     (set) => ({
       byThreadKey: {},
-      zeropsDefaultHandledByThreadKey: {},
-      ensureZeropsDefault: (ref, input) =>
-        set((state) => {
-          const threadKey = scopedThreadKey(ref);
-          const decision = resolveDefaultZeropsPanel({
-            ...input,
-            handled: state.zeropsDefaultHandledByThreadKey[threadKey] === true,
-            hasPriorPanelChoice: threadKey in state.byThreadKey,
-          });
-          if (decision === "wait") return state;
-
-          const zeropsDefaultHandledByThreadKey = {
-            ...state.zeropsDefaultHandledByThreadKey,
-            [threadKey]: true as const,
-          };
-          if (decision === "remember") {
-            return { zeropsDefaultHandledByThreadKey };
-          }
-          return {
-            zeropsDefaultHandledByThreadKey,
-            byThreadKey: updateThread(state.byThreadKey, threadKey, (current) =>
-              upsertSurface(current, singletonSurface("zerops")),
-            ),
-          };
-        }),
       open: (ref, kind) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
@@ -616,9 +565,8 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           ),
         })),
       closeSurface: (ref, surfaceId) =>
-        set((state) => {
-          const threadKey = scopedThreadKey(ref);
-          const byThreadKey = updateThread(state.byThreadKey, threadKey, (current) => {
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             const index = current.surfaces.findIndex((surface) => surface.id === surfaceId);
             if (index < 0) return current;
             const surfaces = current.surfaces.filter((surface) => surface.id !== surfaceId);
@@ -632,16 +580,8 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               surfaces,
               activeSurfaceId: fallback?.id ?? null,
             };
-          });
-          if (byThreadKey === state.byThreadKey) return state;
-          return {
-            byThreadKey,
-            zeropsDefaultHandledByThreadKey: {
-              ...state.zeropsDefaultHandledByThreadKey,
-              [threadKey]: true,
-            },
-          };
-        }),
+          }),
+        })),
       closeOtherSurfaces: (ref, surfaceId) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
@@ -672,22 +612,13 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           }),
         })),
       closeAllSurfaces: (ref) =>
-        set((state) => {
-          const threadKey = scopedThreadKey(ref);
-          const byThreadKey = updateThread(state.byThreadKey, threadKey, (current) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
             current.surfaces.length === 0
               ? current
               : { ...current, isOpen: false, surfaces: [], activeSurfaceId: null },
-          );
-          if (byThreadKey === state.byThreadKey) return state;
-          return {
-            byThreadKey,
-            zeropsDefaultHandledByThreadKey: {
-              ...state.zeropsDefaultHandledByThreadKey,
-              [threadKey]: true,
-            },
-          };
-        }),
+          ),
+        })),
       reconcileFileSurfaces: (ref, workspaceAvailable) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
@@ -743,19 +674,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       removeThread: (ref) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
-          if (
-            !(threadKey in state.byThreadKey) &&
-            !(threadKey in state.zeropsDefaultHandledByThreadKey)
-          ) {
-            return state;
-          }
+          if (!(threadKey in state.byThreadKey)) return state;
           const { [threadKey]: _removed, ...rest } = state.byThreadKey;
-          const { [threadKey]: _removedDefault, ...remainingDefaults } =
-            state.zeropsDefaultHandledByThreadKey;
-          return {
-            byThreadKey: rest,
-            zeropsDefaultHandledByThreadKey: remainingDefaults,
-          };
+          return { byThreadKey: rest };
         }),
     }),
     {
@@ -763,10 +684,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       version: RIGHT_PANEL_STORAGE_VERSION,
       skipHydration: true,
       storage: createJSONStorage(() => storage),
-      partialize: (state) => ({
-        byThreadKey: state.byThreadKey,
-        zeropsDefaultHandledByThreadKey: state.zeropsDefaultHandledByThreadKey,
-      }),
+      partialize: (state) => ({ byThreadKey: state.byThreadKey }),
       migrate: migratePersistedRightPanelState,
     },
   ),

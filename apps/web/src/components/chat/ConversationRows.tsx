@@ -14,7 +14,6 @@
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
-  ChevronRightIcon,
   CircleAlertIcon,
   ClockIcon,
   GitMergeIcon,
@@ -28,7 +27,7 @@ import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
+import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
 
 type WorkLineRow = Extract<MessagesTimelineRow, { kind: "work-line" }>;
@@ -113,54 +112,52 @@ function spanText(startedAt: string, endedAt: string | null, waitedMs = 0): stri
 }
 
 /**
- * The line for one stretch of the Mate's work: how long, and one click to
- * everything the stretch did under it, thinking included — "Working for
- * 1m 12s" while it runs, "Worked for 2m 57s", "Thought for 16s" once done.
- * What the Mate is on right now is the Mate at work's to say, beside its
- * face, never the line's. The line never changes height.
+ * A run's heading, the top of its card: who, and what the run is — working,
+ * worked, stopped — with its time in the card's time column, on the right
+ * edge every line of the record keeps its time on. The time is the Mate's
+ * own: it stands still while a question waits on the person. Its tooltip
+ * keeps the run's whole span.
  */
 export function WorkLine({
   row,
   speaker,
-  summarized,
   timestampFormat,
-  onToggle,
 }: {
   readonly row: WorkLineRow;
   /** Who worked: a line that says only "Worked" says nobody did (the owner, 2026-09-26: "'worked' who where?"). */
   readonly speaker: ConversationSpeaker;
-  /** A line with nothing under it says what the work came to; a card's body says it itself. */
-  readonly summarized: boolean;
   readonly timestampFormat: TimestampFormat;
-  readonly onToggle: () => void;
 }) {
   const live = row.live;
-  // A stretch that did nothing but think says so, and nothing more.
-  const thoughtOnly = !live && !row.worked && row.note === null && row.fallback === null;
   const verb = live
-    ? "is working ·"
+    ? "is working"
     : row.face === "stopped"
-      ? "stopped after"
-      : thoughtOnly
-        ? "thought for"
-        : "worked for";
-  const summary = summarized && !live ? row.summary : null;
-  const words = (
-    <>
+      ? "stopped"
+      : row.face === "paused"
+        ? "stopped at the usage limit"
+        : row.worked
+          ? "worked"
+          : "thought";
+  return (
+    <div
+      className="flex min-h-7 min-w-0 items-center gap-2.5 text-line text-muted-foreground"
+      data-work-line={row.face}
+      role={live ? "status" : undefined}
+    >
+      <span className="min-w-0 flex-1 truncate">
+        {speaker.name} {verb}
+      </span>
       <Tooltip>
-        <TooltipTrigger render={<span className="shrink-0 tabular-nums" data-work-line-clock />}>
-          {speaker.name} {verb}{" "}
+        <TooltipTrigger
+          render={<span className="w-14 shrink-0 text-end tabular-nums" data-work-line-clock />}
+        >
           {live ? (
-            // The Mate's own time: it stands still while a question waits on
-            // the person, so it never drops as the run settles.
             <ElapsedSince
               leftOutMs={row.waitedMs}
               since={row.startedAt}
               standingSince={row.waitingSince}
             />
           ) : (
-            // How long the Mate worked: the time its questions waited on the
-            // person is theirs. The tooltip keeps the run's whole span.
             spanText(row.startedAt, row.endedAt, row.waitedMs)
           )}
         </TooltipTrigger>
@@ -169,46 +166,6 @@ export function WorkLine({
           {row.endedAt ? ` – ${formatDayAwareTimestamp(row.endedAt, timestampFormat)}` : ""}
         </TooltipPopup>
       </Tooltip>
-      {summary === null ? null : (
-        // A clause of the line's sentence, after its clock.
-        <span className="min-w-0 truncate" data-work-line-summary>
-          · {summary.charAt(0).toLowerCase() + summary.slice(1)}
-        </span>
-      )}
-      {row.hasLog ? (
-        <ChevronRightIcon
-          aria-hidden="true"
-          className={cn(
-            "size-3.5 shrink-0 opacity-70 transition-transform duration-150",
-            row.open && "rotate-90",
-          )}
-        />
-      ) : null}
-    </>
-  );
-  const className =
-    "inline-flex min-h-7 max-w-full min-w-0 items-center gap-1.5 text-left text-line text-muted-foreground";
-  return (
-    <div className="relative flex min-h-7 min-w-0 items-center" data-work-line={row.face}>
-      {row.hasLog ? (
-        <button
-          type="button"
-          aria-expanded={row.open}
-          aria-label={`${speaker.name} ${verb} ${spanText(row.startedAt, row.endedAt, row.waitedMs)}${summary === null ? "" : `, ${summary.charAt(0).toLowerCase() + summary.slice(1)}`}. ${row.open ? "Hide" : "Show"} what it did`}
-          className={cn(
-            className,
-            "cursor-pointer rounded-sm transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-          )}
-          data-scroll-anchor-ignore
-          onClick={onToggle}
-        >
-          {words}
-        </button>
-      ) : (
-        <div className={className} role={live ? "status" : undefined}>
-          {words}
-        </div>
-      )}
     </div>
   );
 }
@@ -570,30 +527,6 @@ export function PauseBlock({
           Resume by itself at the reset
         </label>
       ) : null}
-    </div>
-  );
-}
-
-const INCIDENT_TONE = {
-  attention: { dot: "bg-status-attention", text: "text-status-attention-text" },
-  ok: { dot: "bg-status-ok", text: "text-muted-foreground" },
-  failed: { dot: "bg-status-failed", text: "text-status-failed-text" },
-} as const;
-
-/** A service that stopped answering, as one line: its history at its start, its state at its end. */
-export function IncidentLine({ incident }: { readonly incident: IncidentModel }) {
-  const tone = INCIDENT_TONE[incident.tone];
-  return (
-    <div
-      className="relative flex min-h-7 min-w-0 items-center gap-1.5 text-line"
-      data-conversation-incident={incident.tone}
-      role={incident.tone === "ok" ? undefined : "status"}
-    >
-      <LineMark>
-        <span className={cn("size-1.5 rounded-full", tone.dot)} />
-      </LineMark>
-      <span className="shrink-0 font-medium text-foreground">{incident.hostname}</span>
-      <span className={cn("min-w-0 truncate", tone.text)}>{incident.phases.join(" · ")}</span>
     </div>
   );
 }

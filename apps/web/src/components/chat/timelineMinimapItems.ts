@@ -35,7 +35,29 @@ function workLineAfter(
   return null;
 }
 
-function markOf(line: Extract<MessagesTimelineRow, { kind: "work-line" }> | null) {
+/** The Mate's latest words in the run's record, one line: what a preview quotes of its work. */
+function lastNoteOf(
+  rows: ReadonlyArray<MessagesTimelineRow>,
+  line: MessagesTimelineRow,
+): string | null {
+  const index = rows.indexOf(line);
+  const record = rows[index + 1];
+  if (record?.kind !== "record") return null;
+  const note = record.items.findLast((item) => item.kind === "note");
+  if (note?.kind !== "note") return null;
+  const first =
+    note.message.text
+      .trim()
+      .split("\n")[0]
+      ?.replace(/[*_`#>]/g, "")
+      .trim() ?? "";
+  return first.length > 0 ? first : null;
+}
+
+function markOf(
+  rows: ReadonlyArray<MessagesTimelineRow>,
+  line: Extract<MessagesTimelineRow, { kind: "work-line" }> | null,
+) {
   if (line === null) return { tone: "quiet" as const, weight: 0 as const, note: null };
   const tone: TimelineMinimapTone =
     line.face === "failed"
@@ -49,7 +71,7 @@ function markOf(line: Extract<MessagesTimelineRow, { kind: "work-line" }> | null
   // How long the Mate worked, as the line says it: its waits on the person are theirs.
   const minutes = (endMs - Date.parse(line.startedAt) - line.waitedMs) / 60_000;
   const weight = !Number.isFinite(minutes) || minutes < 10 ? 0 : minutes < 60 ? 1 : 2;
-  return { tone, weight: weight as 0 | 1 | 2, note: line.note ?? line.fallback };
+  return { tone, weight: weight as 0 | 1 | 2, note: lastNoteOf(rows, line) };
 }
 
 /** Keep full source text untouched until a minimap preview is opened. */
@@ -70,7 +92,7 @@ export function deriveTimelineMinimapItems(
       userText: row.message.text,
       assistantText: row.aside ? null : resolveFinalAssistantTextForTurn(rows, index),
       aside: row.aside,
-      ...markOf(row.aside ? null : workLineAfter(rows, index)),
+      ...markOf(rows, row.aside ? null : workLineAfter(rows, index)),
     });
   }
   return items;

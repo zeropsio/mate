@@ -384,38 +384,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> stroke-[1.8] in \"block size-3.5 shrink-0 stroke-[1.8] opacity-70\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"w-3 shrink-0 text-center font-mono text-[10px]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[12px] in \"flex items-baseline gap-2 text-[12px] leading-5\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[12px] in \"flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-0.5 py-0.5 text-left text-[12px] leading-5 transition-colors duration-150 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"cursor-pointer mt-1 text-[11px] font-medium text-foreground/70 underline-offset-2 hover:text-foreground hover:underline\"",
