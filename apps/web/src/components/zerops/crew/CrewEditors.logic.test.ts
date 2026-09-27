@@ -8,6 +8,7 @@ import {
   crewApplyProgress,
   crewRewriteBlockers,
   crewDevHosts,
+  crewServiceHint,
   crewEffortOptions,
   crewLoginNote,
   crewLoginOptions,
@@ -193,30 +194,58 @@ describe("CREW_SAVE_CHOICES", () => {
 });
 
 describe("crewDevHosts", () => {
-  const services = [
-    { hostname: "appdev", group: "runtimes" as const },
-    { hostname: "appstage", group: "runtimes" as const },
-    { hostname: "web", group: "runtimes" as const },
-    { hostname: "db", group: "data" as const },
-    { hostname: "zcp", group: "infrastructure" as const },
-  ];
-  const crew = (hosts: ReadonlyArray<string>) => ({ hosts: hosts.map((host) => ({ host })) });
-
   it("offers the dev services the engine names, and every host the crew already names", () => {
-    const devHosts = [
-      { host: "web", database: "db" },
-      { host: "appdev", database: null },
-    ];
-    expect(crewDevHosts({ ...crew(["apidev"]), devHosts }, services)).toEqual([
-      "web",
-      "appdev",
-      "apidev",
+    expect(
+      crewDevHosts({
+        devHosts: [
+          { host: "appdev", database: true },
+          { host: "webdev", database: null },
+        ],
+        hosts: [{ host: "apidev" }, { host: "appdev" }],
+      }),
+    ).toEqual([
+      { host: "appdev", database: true },
+      { host: "webdev", database: null },
+      { host: "apidev", database: null },
     ]);
   });
+});
 
-  it("guesses the dev halves by their suffix only while the engine names none", () => {
-    expect(crewDevHosts(crew(["apidev", "appdev"]), services)).toEqual(["appdev", "apidev"]);
-    expect(crewDevHosts(crew(["apidev"]), undefined)).toEqual(["apidev"]);
+describe("crewServiceHint", () => {
+  const devHosts = [
+    { host: "appdev", database: true },
+    { host: "webdev", database: false },
+    { host: "apidev", database: null },
+  ] as const;
+
+  it.each<{
+    readonly name: string;
+    readonly host: string;
+    readonly crewPort: number | null;
+    readonly hint: string | undefined;
+  }>([
+    {
+      name: "a service with a database",
+      host: "appdev",
+      crewPort: 3001,
+      hint: "Crew port 3001 · Has a database",
+    },
+    { name: "a service without one", host: "webdev", crewPort: null, hint: "No database" },
+    {
+      name: "a service not read yet is unknown, never no",
+      host: "apidev",
+      crewPort: null,
+      hint: "Database unknown",
+    },
+    {
+      name: "a host the engine does not name is unknown too",
+      host: "olddev",
+      crewPort: null,
+      hint: "Database unknown",
+    },
+    { name: "no service picked yet", host: "", crewPort: null, hint: undefined },
+  ])("says $name", ({ host, crewPort, hint }) => {
+    expect(crewServiceHint(devHosts, host, crewPort)).toBe(hint);
   });
 });
 

@@ -23,7 +23,7 @@ import { buildThreadRouteParams } from "../../../threadRoutes";
 import { hasCrewSurface, useCrew } from "../../../zerops/crew/useCrew";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useAskMate } from "../../../zerops/useAskMate";
-import { useEnvironmentProjectRef, useEnvironmentTopology } from "../../../zerops/useZeropsFeeds";
+import { useEnvironmentProjectRef } from "../../../zerops/useZeropsFeeds";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { CrewBriefSheet } from "./CrewBriefSheet";
 import { crewDevHosts } from "./CrewEditors.logic";
@@ -87,7 +87,6 @@ function CrewSectionFor({
   const navigate = useNavigate();
   const askMate = useAskMate();
   const projectId = useEnvironmentProjectRef(environmentId)?.projectId;
-  const services = useEnvironmentTopology(environmentId).view?.services;
   const treeCwd = useServerConfigs().get(environmentId)?.cwd ?? null;
   const [setupOpen, setSetupOpen] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
@@ -96,7 +95,7 @@ function CrewSectionFor({
   const [runOpen, setRunOpen] = useState(false);
   const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);
   const mateName = mate?.name ?? "the Mate";
-  const devHosts = crewDevHosts(snapshot, services);
+  const devHosts = crewDevHosts(snapshot).map((host) => host.host);
 
   const openThread = useCallback(
     (threadId: ThreadId) => {

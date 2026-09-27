@@ -11,11 +11,16 @@
 import {
   agentIdForProviderInstance,
   type CrewApplyChoice,
+  type CrewDevHost,
   type CrewLogin,
+  type CrewSnapshot,
   type Crewmate,
   type ServerProvider,
 } from "@t3tools/contracts";
-import { crewApplyWord } from "@t3tools/client-runtime/zerops/crew/phrases";
+import {
+  crewApplyWord,
+  crewDevHostDatabaseWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import type { CrewDefinition, CrewDefinitionIssue } from "@t3tools/shared/crewHome";
 
@@ -137,34 +142,41 @@ export function crewEffortOptions(
 }
 
 /**
- * The crew's side of the Service picker: the hosts it already names, and the
- * dev services the engine reads off the repository's `zerops.yaml`
- * (`devHosts`, arriving with the engine's contract — absent until then).
+ * Where a crewmate's copy may live: the dev services the engine names, with
+ * whether each reaches a database, and any host the crew already names, so an
+ * edit never loses one (its database unknown).
  */
-export interface CrewDevHostsSource {
-  readonly hosts: ReadonlyArray<{ readonly host: string }>;
-  readonly devHosts?: ReadonlyArray<{ readonly host: string }> | undefined;
+export function crewDevHosts(
+  crew: Pick<CrewSnapshot, "devHosts"> & {
+    readonly hosts: ReadonlyArray<{ readonly host: string }>;
+  },
+): ReadonlyArray<CrewDevHost> {
+  const named = new Set(crew.devHosts.map((host) => host.host));
+  return [
+    ...crew.devHosts,
+    ...crew.hosts
+      .filter((host) => !named.has(host.host))
+      .map((host): CrewDevHost => ({ host: host.host, database: null })),
+  ];
 }
 
 /**
- * Where a crewmate's copy may live: the dev services the engine names, and
- * any host the crew already names, so an edit never loses one. Without the
- * engine's list, the dev half of each runtime by its name (a Mate's pairs are
- * `<name>dev`/`<name>stage`, D12) — only the crew's own hosts while the
- * topology is unread (`undefined`).
+ * What the *Service* field says under the picked service: its crew port, and
+ * whether it reaches a database — "unknown" while the engine has not read it,
+ * never "no" (a writer there must declare `env:` or `database: shared`).
  */
-export function crewDevHosts(
-  crew: CrewDevHostsSource,
-  services: ReadonlyArray<{ readonly hostname: string; readonly group: string }> | undefined,
-): ReadonlyArray<string> {
-  const known = crew.hosts.map((host) => host.host);
-  const dev =
-    crew.devHosts !== undefined
-      ? crew.devHosts.map((host) => host.host)
-      : (services ?? [])
-          .filter((service) => service.group === "runtimes" && service.hostname.endsWith("dev"))
-          .map((service) => service.hostname);
-  return [...new Set([...dev, ...known])];
+export function crewServiceHint(
+  devHosts: ReadonlyArray<CrewDevHost>,
+  host: string,
+  crewPort: number | null,
+): string | undefined {
+  if (host === "") return undefined;
+  const database = devHosts.find((candidate) => candidate.host === host)?.database ?? null;
+  const parts = [
+    crewPort === null ? null : `Crew port ${crewPort}`,
+    crewDevHostDatabaseWord(database),
+  ];
+  return parts.filter((part) => part !== null).join(" · ");
 }
 
 export interface CrewApplyStep {
