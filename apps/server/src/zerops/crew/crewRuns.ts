@@ -81,6 +81,19 @@ export const runLimitReached = (facts: RunLimitFacts): "budget" | "time" | "usag
         ? "usage"
         : undefined;
 
+/**
+ * A passed check goes to the lead's review first: a run is on, its landing
+ * is *The lead lands after its review*, and the crew has a lead.
+ */
+export const leadReviews = (applied: AppliedCrew): boolean => {
+  const run = applied.run;
+  return (
+    (run?.state === "running" || run?.state === "paused") &&
+    runOptionsOf(run)?.landing === "lead" &&
+    [...applied.members.values()].some((row) => row.kind === "lead")
+  );
+};
+
 /** Wall time the run has run, paused time excluded, at `nowMs`. */
 const elapsedMs = (core: CrewCore, run: CrewRunRow, nowMs: number): number =>
   run.wallMs +

@@ -24,6 +24,7 @@ import {
   currentStint,
   dispatchPrincipal,
   isWorking,
+  leadOf,
   memberOf,
   runningRun,
   type AppliedCrew,
@@ -32,9 +33,10 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { land, reworkCard } from "./crewLanding.ts";
+import { wakeLead } from "./crewLead.ts";
 import { pauseRun, runOptionsOf } from "./crewRuns.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
-import { readTaskWait } from "./crewTaskData.ts";
+import { readTaskReview, readTaskWait } from "./crewTaskData.ts";
 import { continueTask, openTaskOf, pump } from "./crewTasks.ts";
 
 /** One turn of the run into an open task; a refusal from admission pauses the run. */
@@ -64,14 +66,16 @@ const carryOn = (
     switch (task.state) {
       case "rework": {
         const on = readTaskWait(task.waiting)?.on;
-        if (on === "conflict" || on === "check-failed") {
+        if (on === "conflict" || on === "check-failed" || on === "review") {
           yield* runTurn(core, applied, member, task, reworkCard(member, task, on));
         }
         return;
       }
       case "ready": {
         const run = runningRun(applied);
-        if (run === undefined || runOptionsOf(run)?.landing !== "check") return;
+        const landing = run === undefined ? undefined : runOptionsOf(run)?.landing;
+        const accepted = readTaskReview(task.review)?.verdict === "accept";
+        if (landing !== "check" && !(landing === "lead" && accepted)) return;
         // A landing held (your chat is working, the service redeploys) waits for the next free moment.
         yield* land(core, dispatchPrincipal(applied, task), task.assignment).pipe(
           Effect.catchTag("CrewCommandError", () => Effect.void),
@@ -107,10 +111,16 @@ export const advance = (core: CrewCore, handle: string) =>
     const applied = yield* core.applied;
     if (applied === undefined) return;
     const member = memberOf(applied, handle);
-    if (member === undefined || isWorking(core, applied, handle)) return;
-    const open = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
-    if (open === undefined) return yield* pump(core, handle);
-    if (runningRun(applied) !== undefined) yield* carryOn(core, applied, member, open);
+    if (member === undefined) return;
+    if (member.row.kind === "lead") return yield* wakeLead(core, applied, member);
+    if (!isWorking(core, applied, handle)) {
+      const open = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
+      if (open === undefined) yield* pump(core, handle);
+      else if (runningRun(applied) !== undefined) yield* carryOn(core, applied, member, open);
+    }
+    // What this crewmate did may wait on the lead now: a review, a question.
+    const lead = leadOf(applied);
+    if (lead !== undefined) yield* wakeLead(core, (yield* core.applied) ?? applied, lead);
     yield* core.changed;
   });
 

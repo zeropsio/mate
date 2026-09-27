@@ -13,7 +13,9 @@
  *   **restart the dev server** after a landing, **show** the copy on dev and
  *   **give dev back**;
  * - a run's own turns: the **nudge** after a turn that ended without a
- *   report, and **carry on** when a paused run goes on;
+ *   report, **carry on** when a paused run goes on, the **rework** a review
+ *   sent back, and the lead's wakes — a task to **review**, a crewmate's
+ *   **question** — and the lead's **answer** to its crewmate;
  * - the **carried** card a new conversation's first turn on an open task
  *   starts from, so every stint begins with a card for its seam line.
  *
@@ -101,6 +103,39 @@ export const fixCard = (
     "```",
     "Fix it in your copy, then report with crew_report.",
   ]);
+
+export const reviewReworkCard = (task: CardTask & { readonly note: string }): string =>
+  card(task, "rework after review", [
+    "The review sent it back:",
+    task.note.trim(),
+    "Change it in your copy, then report with crew_report.",
+  ]);
+
+/** The lead's wake for a task in review (PRD §5.4 step 6). */
+export const reviewCard = (
+  task: CardTask & { readonly owner: string; readonly report: string | null },
+): string =>
+  card(task, `review @${task.owner}'s work`, [
+    ...(task.report === null ? [] : [`@${task.owner} reports: ${task.report}`]),
+    "Its check passed on the tree that would land.",
+    `Read its changes with crew_diff (handle ${task.owner}) and give your verdict on #${task.number} ` +
+      "with crew_review.",
+  ]);
+
+/** The lead's wake for a crewmate's question (PRD §5.4 step 8). */
+export const questionCard = (
+  task: CardTask & { readonly owner: string; readonly question: string },
+): string =>
+  card(task, `@${task.owner} asks`, [
+    task.question.trim(),
+    "",
+    `Your reply goes to @${task.owner} as the answer. If only the person can answer it, call ` +
+      "crew_report with status blocked and the question instead.",
+  ]);
+
+/** The lead's answer, as its crewmate's next turn. */
+export const answerCard = (task: CardTask & { readonly lead: string; readonly answer: string }) =>
+  card(task, `answer from @${task.lead}`, [task.answer.trim()]);
 
 /** The one nudge a run sends when a turn ended without a report (CONCEPT §5 *Endings*). */
 export const nudgeCard = (task: CardTask): string =>

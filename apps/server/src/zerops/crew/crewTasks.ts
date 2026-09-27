@@ -19,7 +19,7 @@
  *
  * @module crewTasks
  */
-import type { ChatAttachment, CrewTaskSource } from "@t3tools/contracts";
+import type { ChatAttachment, CrewTaskSource, CrewTaskState } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -162,6 +162,10 @@ export const createTask = (
     readonly createdBy: string;
     readonly card: TaskCard;
     readonly dependsOn: ReadonlyArray<string>;
+    /** `queued` unless the lead proposes it (PRD §5.4). */
+    readonly state?: CrewTaskState;
+    /** The run it was created in; `null` outside one. */
+    readonly run?: string | null;
   },
 ) =>
   core.numbered(
@@ -169,7 +173,7 @@ export const createTask = (
       const now = yield* core.now;
       const row: CrewAssignmentRow = {
         assignment: `task-${yield* core.uuid}`,
-        run: null,
+        run: input.run ?? null,
         crew: CREW_ID,
         member: input.owner,
         number: yield* asRefusal(core.store.nextTaskNumber(CREW_ID)),
@@ -180,7 +184,7 @@ export const createTask = (
         pending: null,
         dependsOn: input.dependsOn,
         fresh: false,
-        state: "queued",
+        state: input.state ?? "queued",
         attempt: 0,
         reworks: 0,
         remerges: 0,
@@ -393,6 +397,22 @@ export const continueTask = (
     return working;
   });
 
+/** A turn of the lead's, outside any task: the person's message, or a wake as the run's starter. */
+export const leadTurn = (
+  core: CrewCore,
+  applied: AppliedCrew,
+  lead: CrewMember,
+  principal: TurnPrincipal,
+  text: string,
+  attachments: ReadonlyArray<ChatAttachment> = [],
+) =>
+  Effect.gen(function* () {
+    const stint =
+      currentStint(applied, lead.row.handle) ??
+      (yield* openStint(core, applied, lead, { reason: null, seed: null }));
+    yield* sendTurn(core, lead, stint, principal, text, attachments);
+  });
+
 /* ------------------------------------------------------------ the queue */
 
 const landed = (tasks: ReadonlyArray<CrewAssignmentRow>, id: string) =>
@@ -456,6 +476,11 @@ export const message = (
     const current = currentStint(applied, input.handle);
     if (current !== undefined && core.memory.working.has(current.threadId)) {
       yield* sendTurn(core, member, current, principal, input.text, input.attachments);
+      return;
+    }
+    if (member.row.kind === "lead") {
+      core.memory.leadSpokenBy = principalUser(principal);
+      yield* leadTurn(core, applied, member, principal, input.text, input.attachments);
       return;
     }
     if (open !== undefined) {

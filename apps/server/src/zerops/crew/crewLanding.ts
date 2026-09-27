@@ -23,7 +23,13 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
-import { afterLandCard, fixCard, landedSeamWords, resolveCard } from "./crewCards.ts";
+import {
+  afterLandCard,
+  fixCard,
+  landedSeamWords,
+  resolveCard,
+  reviewReworkCard,
+} from "./crewCards.ts";
 import {
   asRefusal,
   currentStint,
@@ -40,6 +46,7 @@ import { claimShown } from "./crewClaims.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { dropHandoff } from "./crewMemoryCommands.ts";
 import { readDeclaredPorts } from "./crewPorts.ts";
+import { leadReviews } from "./crewRuns.ts";
 import { appendSeam } from "./crewSeamLines.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { readTaskCheck, readTaskWait } from "./crewTaskData.ts";
@@ -94,8 +101,9 @@ export const restartApp = (core: CrewCore, member: CrewMember) =>
 const runCheck = (core: CrewCore, member: CrewMember, task: CrewAssignmentRow) =>
   Effect.gen(function* () {
     const command = member.spec.check;
+    const reviewed = leadReviews(yield* requireApplied(core));
     if (command === undefined || member.row.host === null) {
-      return yield* stepTask(core, task, { type: "check-passed", reviewed: false });
+      return yield* stepTask(core, task, { type: "check-passed", reviewed });
     }
     let checking = yield* saveTask(core, { ...task, check: { state: "running", output: "" } });
     yield* core.changed;
@@ -117,15 +125,10 @@ const runCheck = (core: CrewCore, member: CrewMember, task: CrewAssignmentRow) =
       checking = current;
       switch (outcome._tag) {
         case "passed":
-          return yield* stepTask(
-            core,
-            checking,
-            { type: "check-passed", reviewed: false },
-            (next) => ({
-              ...next,
-              check: { state: "passed", output: outcome.tail },
-            }),
-          );
+          return yield* stepTask(core, checking, { type: "check-passed", reviewed }, (next) => ({
+            ...next,
+            check: { state: "passed", output: outcome.tail },
+          }));
         case "failed":
           return yield* stepTask(core, checking, { type: "check-failed" }, (next) => ({
             ...next,
@@ -171,7 +174,10 @@ const integrateMerging = (core: CrewCore, task: CrewAssignmentRow) =>
     const member = yield* requireMember(applied, task.member);
     if (member.row.kind !== "writer") {
       const clean = yield* stepTask(core, task, { type: "merge-clean" });
-      return yield* stepTask(core, clean, { type: "check-passed", reviewed: false });
+      return yield* stepTask(core, clean, {
+        type: "check-passed",
+        reviewed: leadReviews(applied),
+      });
     }
     const key = { crew: CREW_ID, handle: member.row.handle };
     const merged = yield* asRefusal(core.integration.mergeIn(key));
@@ -467,24 +473,37 @@ export const landNow = (core: CrewCore, principal: TurnPrincipal, taskId: string
     }
   });
 
-/** The turn a task back as rework goes to its crewmate with: resolve the conflicts, or fix the check. */
+/**
+ * The turn a task back as rework goes to its crewmate with: resolve the
+ * conflicts, fix the check, or take the review's note.
+ */
 export const reworkCard = (
   member: CrewMember,
   task: CrewAssignmentRow,
-  on: "conflict" | "check-failed",
-): string =>
-  on === "conflict"
-    ? resolveCard({
+  on: "conflict" | "check-failed" | "review",
+): string => {
+  switch (on) {
+    case "conflict":
+      return resolveCard({
         number: task.number,
         title: task.title,
         paths: readTaskWait(task.waiting)?.paths ?? [],
-      })
-    : fixCard({
+      });
+    case "check-failed":
+      return fixCard({
         number: task.number,
         title: task.title,
         command: member.spec.check ?? "the check",
         output: readTaskCheck(task.check)?.output ?? "",
       });
+    case "review":
+      return reviewReworkCard({
+        number: task.number,
+        title: task.title,
+        note: readTaskWait(task.waiting)?.reason ?? "",
+      });
+  }
+};
 
 /** *Ask to resolve* a merge-in's conflicts, or *Ask to fix* a failed check: one turn as the person. */
 export const askRework = (

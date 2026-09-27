@@ -150,7 +150,28 @@ export interface EngineMemory {
   readonly runInterrupted: Set<string>;
   /** Task attempts a run has nudged once (`<assignment>:<attempt>`). */
   readonly nudged: Set<string>;
+  /** What the lead was woken for, per lead, while that turn runs. */
+  readonly leadWakes: Map<string, LeadWake>;
+  /** Wakes already sent: `review:<assignment>:<attempt>`, `question:<assignment>:<asked at>`. */
+  readonly woken: Set<string>;
+  /** Wakes each run has spent, capped per run (CONCEPT §5 caps). */
+  readonly wakeCounts: Map<string, number>;
+  /** Questions the lead passed on to the person: shown at once, not after 15 minutes. */
+  readonly escalated: Set<string>;
+  /** The lead's own question for the person, per lead. */
+  readonly leadQuestions: Map<string, { readonly text: string; readonly at: string }>;
+  /** A crew thread's last assistant message, and the one streaming in. */
+  readonly lastText: Map<string, string>;
+  readonly textBuffer: Map<string, string>;
+  /** Who last spoke to the lead; its proposed tasks start as them outside a run. */
+  leadSpokenBy: string | null;
   lastError: string | null;
+}
+
+/** Why the engine woke the lead: a task to review, or a crewmate's question. */
+export interface LeadWake {
+  readonly kind: "review" | "question";
+  readonly taskId: string;
 }
 
 export interface MemoryClaim {
@@ -187,6 +208,14 @@ export const makeMemory = (): EngineMemory => ({
   endings: new Map(),
   runInterrupted: new Set(),
   nudged: new Set(),
+  leadWakes: new Map(),
+  woken: new Set(),
+  wakeCounts: new Map(),
+  escalated: new Set(),
+  leadQuestions: new Map(),
+  lastText: new Map(),
+  textBuffer: new Map(),
+  leadSpokenBy: null,
   lastError: null,
 });
 
@@ -205,6 +234,8 @@ export const runtimeOf = (
   served: memory.served,
   integration: memory.integration,
   logins,
+  escalated: memory.escalated,
+  leadQuestions: memory.leadQuestions,
   devHosts: memory.devHosts,
   lastError: memory.lastError,
 });
@@ -466,6 +497,12 @@ export const laterPrincipal = (task: Pick<CrewAssignmentRow, "createdBy">): Turn
   kind: "crew",
   startedBy: task.createdBy,
 });
+
+/** The crew's lead, when it has one. */
+export const leadOf = (applied: AppliedCrew): CrewMember | undefined => {
+  const row = [...applied.members.values()].find((candidate) => candidate.kind === "lead");
+  return row === undefined ? undefined : memberOf(applied, row.handle);
+};
 
 /** The run that lets the crew start its own turns now; `undefined` when none runs. */
 export const runningRun = (applied: AppliedCrew): CrewRunRow | undefined =>

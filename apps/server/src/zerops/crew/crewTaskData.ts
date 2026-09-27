@@ -35,13 +35,14 @@ export const TaskReport = Schema.Struct({
 export type TaskReport = typeof TaskReport.Type;
 
 /**
- * Why a task is not moving: its crewmate resolves a merge-in's conflicts or
- * fixes the check (`rework`), a landing waits on files in your tree, or the
- * engine stopped it for triage (`parked`). `reason` is the board's words after
- * "Rework:" or "Stopped:"; `paths` are the conflicting files or your tree's.
+ * Why a task is not moving: its crewmate resolves a merge-in's conflicts,
+ * fixes the check or takes a review's note (`rework`), a landing waits on
+ * files in your tree, or the engine stopped it for triage (`parked`).
+ * `reason` is the board's words after "Rework:" or "Stopped:"; `paths` are the
+ * conflicting files or your tree's.
  */
 export const TaskWait = Schema.Struct({
-  on: Schema.Literals(["conflict", "check-failed", "your-tree", "triage"]),
+  on: Schema.Literals(["conflict", "check-failed", "review", "your-tree", "triage"]),
   reason: Schema.NullOr(Schema.String),
   paths: Schema.Array(Schema.String),
 });

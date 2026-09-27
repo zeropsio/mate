@@ -38,6 +38,7 @@ import { recordRunSpend, recordUsage } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask } from "./crewTasks.ts";
+import { settleLeadWake } from "./crewLead.ts";
 import { advance, advanceAll } from "./crewRunFlow.ts";
 
 const GUARD_WORDS = {
@@ -189,6 +190,7 @@ const turnEnded = (
     } else {
       yield* releaseAfterTurn(core, handle);
     }
+    if (member.row.kind === "lead") yield* settleLeadWake(core, applied, member);
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
     if (after?.state === "merging") {
       yield* core.background(
@@ -198,6 +200,31 @@ const turnEnded = (
       yield* advance(core, handle);
     }
   });
+
+/** Keeps a thread's last assistant message: the streamed text, closed by its item's end. */
+const recordLeadText = (core: CrewCore, stint: CrewStintRow, event: SpiEvent) => {
+  const { lastText, textBuffer } = core.memory;
+  switch (event.type) {
+    case "turn.started":
+      lastText.delete(stint.threadId);
+      textBuffer.delete(stint.threadId);
+      return;
+    case "content.delta":
+      if (event.payload.streamKind === "assistant_text") {
+        textBuffer.set(
+          stint.threadId,
+          (textBuffer.get(stint.threadId) ?? "") + event.payload.delta,
+        );
+      }
+      return;
+    case "item.completed":
+      if (event.payload.itemType === "assistant_message") {
+        lastText.set(stint.threadId, event.payload.detail ?? textBuffer.get(stint.threadId) ?? "");
+        textBuffer.delete(stint.threadId);
+      }
+      return;
+  }
+};
 
 /** A deploy's target when it replaces a service that holds lanes. */
 const deployTarget = (applied: AppliedCrew, event: SpiEvent): string | undefined => {
@@ -301,6 +328,8 @@ export const makeTurnHandler = (core: CrewCore) => {
         }
         return;
       }
+      // The lead's words, for the answer its question wake carries back (`crewLead`).
+      if (applied.members.get(stint.member)?.kind === "lead") recordLeadText(core, stint, event);
       switch (event.type) {
         case "turn.started":
           core.memory.working.add(stint.threadId);
