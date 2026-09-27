@@ -1888,14 +1888,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"px-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/routes/__root.tsx",
     "kind": "Literal",
     "fingerprint": "<> bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)] in \"absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]\"",
