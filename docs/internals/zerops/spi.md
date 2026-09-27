@@ -75,7 +75,9 @@ through it would make the two directories import each other.
   after the session context in `developerInstructions`: the crew sets it for a writer, whose
   commands the gate allows unchanged only in their lane form, byte for byte (`ssh` to its host,
   `cd` into its copy, its port and `env:`, a timeout, the command for `sh -c`), and gives the model
-  that exact form. Its permission and MCP elicitation requests are declined unasked. The deny reason does not reach the
+  that exact form. The form carries the crewmate's `env:` values, so they reach the model's
+  instructions; they are the dev service's own values, which the agent can read there anyway. Its
+  permission and MCP elicitation requests are declined unasked. The deny reason does not reach the
   model; Codex reports a plain rejection. Its `request_user_input` questions still wait for the
   person, in the crewmate's chat, which is the person's surface — unlike Claude, whose gate denies
   `AskUserQuestion` and sends the crewmate to `crew_report`.
