@@ -109,7 +109,17 @@ export const makeClaudeAdapterHarness = Effect.fn("makeClaudeAdapterHarness")(fu
   yield* Stream.runForEach(adapter.streamEvents, (event) =>
     Effect.sync(() => events.push(event)),
   ).pipe(Effect.forkScoped);
-  return { adapter, sessions, events };
+  /** The first event of a type, once the collector fiber has taken it in. */
+  const firstEvent = <T extends ProviderRuntimeEvent["type"]>(type: T) =>
+    Effect.gen(function* () {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const found = events.find((event) => event.type === type);
+        if (found) return found as Extract<ProviderRuntimeEvent, { readonly type: T }>;
+        yield* Effect.yieldNow;
+      }
+      return yield* Effect.die(new Error(`the adapter emitted no ${type} event`));
+    });
+  return { adapter, sessions, events, firstEvent };
 });
 
 export const claudeAdapterHarnessLayer = Layer.mergeAll(

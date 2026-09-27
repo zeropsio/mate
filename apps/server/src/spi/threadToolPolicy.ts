@@ -89,6 +89,17 @@ export const makeInstallSlot = <P>(): Effect.Effect<InstallSlot<P>> =>
     current: Ref.get(slot),
   }));
 
+/** A thread's profile, from whatever policy is installed now; none installed means none. */
+export const threadProfileFor = (
+  policies: Option.Option<InstallSlot<ThreadToolPolicy>>,
+  thread: Parameters<ThreadToolPolicy["profileFor"]>[0],
+): Effect.Effect<ThreadToolProfile | undefined> =>
+  Option.isNone(policies)
+    ? Effect.succeed(undefined)
+    : Effect.flatMap(policies.value.current, (policy) =>
+        Option.isNone(policy) ? Effect.succeed(undefined) : policy.value.profileFor(thread),
+      );
+
 export class ThreadToolPolicyRegistry extends Context.Service<
   ThreadToolPolicyRegistry,
   InstallSlot<ThreadToolPolicy>

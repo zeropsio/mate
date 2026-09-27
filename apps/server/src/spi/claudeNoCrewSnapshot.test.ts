@@ -4,8 +4,9 @@
  *
  * The golden next to this test was written from the adapter as it stood
  * before the thread tool policy seam (ARCHITECTURE seam 8) existed. Every
- * registry setup below must still produce it byte for byte — a thread with
- * no profile runs on exactly today's options. Regenerate only with
+ * registry setup below — none provided, provided but empty, a policy with
+ * no profile for the thread — must still produce it byte for byte: a
+ * thread with no profile runs on exactly today's options. Regenerate only with
  * `SPI_UPDATE_GOLDENS=1` and a reason in the commit message.
  */
 import * as NodePath from "node:path";
@@ -20,6 +21,8 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import type * as Scope from "effect/Scope";
 
 import { buildRuntimeInstructions } from "../provider/RuntimeInstructions.ts";
 import {
@@ -31,6 +34,11 @@ import {
   SYNTHETIC_CLAUDE_CAPABLE_MODEL,
   SYNTHETIC_CLAUDE_THINKING_MODEL,
 } from "./claudeProviderTest.ts";
+import {
+  type ClaudeThreadExtensions,
+  ClaudeThreadExtensionRegistry,
+} from "./claudeThreadProfile.ts";
+import { ThreadToolPolicyRegistry } from "./threadToolPolicy.ts";
 import { checkOrUpdateGolden, describeFirstDivergence } from "./replay/goldenCheck.ts";
 import { redact } from "./replay/redact.ts";
 
@@ -98,8 +106,8 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
 
 const recordScenario = (scenario: Scenario) =>
   Effect.gen(function* () {
-    const { adapter, sessions, events } = yield* makeClaudeAdapterHarness(scenario.settings);
-    const threadId = ThreadId.make(`claude-options-${sessions.length}`);
+    const { adapter, sessions, firstEvent } = yield* makeClaudeAdapterHarness(scenario.settings);
+    const threadId = ThreadId.make("claude-options");
     yield* adapter.startSession({
       threadId,
       provider: ProviderDriverKind.make("claudeAgent"),
@@ -118,35 +126,89 @@ const recordScenario = (scenario: Scenario) =>
       });
     }
     const [session] = sessions;
-    const configured = events.find((event) => event.type === "session.configured");
+    const configured = yield* firstEvent("session.configured");
     return {
       scenario: scenario.name,
       queryOptions: toComparable(session?.options),
-      sessionConfigured: configured?.payload,
+      sessionConfigured: configured.payload,
       setModelCalls: session?.query.setModelCalls,
       setPermissionModeCalls: session?.query.setPermissionModeCalls,
     };
-  }).pipe(Effect.scoped);
+  });
+
+const extensionForEveryThread: ClaudeThreadExtensions = {
+  extensionFor: () =>
+    Effect.succeed({
+      settings: { autoMemoryEnabled: false, disableAllHooks: false },
+      onSessionStart: () => Effect.succeed("never appended"),
+      onPostCompact: () => Effect.void,
+    }),
+};
+
+const withRegistries =
+  (
+    install: Effect.Effect<
+      void,
+      never,
+      Scope.Scope | ThreadToolPolicyRegistry | ClaudeThreadExtensionRegistry
+    >,
+  ) =>
+  (scenario: Scenario) =>
+    Effect.andThen(install, recordScenario(scenario)).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.merge(ThreadToolPolicyRegistry.layer, ClaudeThreadExtensionRegistry.layer),
+      ),
+    );
+
+// Three ways a thread ends up without a profile. An extension alone changes
+// nothing: only a profile opts a thread in.
+const REGISTRY_SETUPS = [
+  {
+    name: "no registries",
+    record: (scenario: Scenario) => Effect.scoped(recordScenario(scenario)),
+  },
+  { name: "empty registries", record: withRegistries(Effect.void) },
+  {
+    name: "a policy with no profile for the thread",
+    record: withRegistries(
+      Effect.gen(function* () {
+        yield* (yield* ThreadToolPolicyRegistry).install({
+          profileFor: () => Effect.succeed(undefined),
+        });
+        yield* (yield* ClaudeThreadExtensionRegistry).install(extensionForEveryThread);
+      }),
+    ),
+  },
+];
 
 // Through JSON once, so the comparison sees exactly what the golden file can hold.
-const recordAll = Effect.forEach(SCENARIOS, recordScenario).pipe(
-  Effect.map((records): ReadonlyArray<Record<string, unknown>> =>
-    JSON.parse(
-      JSON.stringify(redact(records, { ids: [{ fields: ["sessionId"], prefix: "session" }] })),
-      (_key, value) => (value === RUNTIME_INSTRUCTIONS ? RUNTIME_INSTRUCTIONS_MARKER : value),
+const recordAll = (setup: (typeof REGISTRY_SETUPS)[number]) =>
+  Effect.forEach(SCENARIOS, setup.record).pipe(
+    Effect.map((records): ReadonlyArray<Record<string, unknown>> =>
+      JSON.parse(
+        JSON.stringify(redact(records, { ids: [{ fields: ["sessionId"], prefix: "session" }] })),
+        (_key, value) => (value === RUNTIME_INSTRUCTIONS ? RUNTIME_INSTRUCTIONS_MARKER : value),
+      ),
     ),
-  ),
-);
+    Effect.provide(claudeAdapterHarnessLayer),
+  );
 
 describe("the Claude adapter without a crew", () => {
   it.effect("builds today's query options, session config and permission calls", () =>
     Effect.gen(function* () {
-      const records = yield* recordAll;
+      const [baseline, ...others] = yield* Effect.forEach(REGISTRY_SETUPS, (setup) =>
+        Effect.map(recordAll(setup), (records) => ({ setup: setup.name, records })),
+      );
+      for (const other of others) {
+        assert.deepStrictEqual(other.records, baseline!.records, other.setup);
+      }
+      const records = baseline!.records;
       const { updated, expected } = checkOrUpdateGolden(GOLDEN_DIR, GOLDEN_NAME, records);
       if (updated) return;
       const divergence = describeFirstDivergence(GOLDEN_NAME, records, expected);
       assert.isUndefined(divergence, divergence);
       assert.deepStrictEqual(records, expected);
-    }).pipe(Effect.provide(claudeAdapterHarnessLayer)),
+    }),
   );
 });
