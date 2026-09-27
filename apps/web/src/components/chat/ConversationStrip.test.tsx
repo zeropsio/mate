@@ -43,6 +43,7 @@ import {
   ConversationStrip,
   ConversationStripView,
   useAlsoWorkingBanner,
+  useLoneChatNewChat,
 } from "./ConversationStrip";
 
 function shell(
@@ -116,6 +117,43 @@ describe("ConversationStrip", () => {
     expect(html).toContain('aria-disabled="true" aria-label="Close Fen"');
     expect(html).toContain('aria-label="Close Logs"');
     expect(html).toContain("New chat");
+  });
+});
+
+describe("useLoneChatNewChat", () => {
+  function newChat(currentThreadId: string | null): (() => void) | null {
+    const found: Array<(() => void) | null> = [];
+    function Probe() {
+      found.push(
+        useLoneChatNewChat({
+          environmentId: FEN,
+          projectId: ProjectId.make("project-1"),
+          currentThreadId: currentThreadId === null ? null : ThreadId.make(currentThreadId),
+        }),
+      );
+      return null;
+    }
+    renderToStaticMarkup(<Probe />);
+    return found[0] ?? null;
+  }
+
+  it("is the header's one way to a second chat while the Mate has one", () => {
+    state.shells = [shell("main")];
+    const start = newChat("main");
+    expect(start).toBeTypeOf("function");
+    start?.();
+    expect(state.newThread).toHaveBeenCalledWith(
+      { environmentId: FEN, projectId: "project-1" },
+      { chat: true },
+    );
+  });
+
+  it("gives way to the strip's own New chat once there are two chats", () => {
+    state.shells = [
+      shell("main", { latestUserMessageAt: "2026-09-05T12:00:00.000Z" }),
+      shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" }),
+    ];
+    expect(newChat("main")).toBeNull();
   });
 });
 

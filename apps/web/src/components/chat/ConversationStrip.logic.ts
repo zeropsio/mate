@@ -200,6 +200,18 @@ export function stripShown(
 }
 
 /**
+ * Where the row is not drawn, the one way to a second chat: a single New chat
+ * button in the header row, for a Mate whose one chat is on screen. Not for a
+ * first chat still being written — that one is the Mate's only conversation.
+ */
+export function loneChatNewChatShown(
+  chats: ReadonlyArray<ConversationStripEntry>,
+  extraGroups: ReadonlyArray<ConversationStripGroup>,
+): boolean {
+  return !stripShown(chats, extraGroups) && chats.length === 1 && chats[0]!.threadId !== null;
+}
+
+/**
  * The quiet line over the composer while you type in one chat and the Mate is
  * at work in another: nothing is refused — two chats are two terminals on one
  * tree — but the person should know both are changing the same files. The

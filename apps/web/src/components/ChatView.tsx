@@ -322,7 +322,11 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
-import { ConversationStrip, useAlsoWorkingBanner } from "./chat/ConversationStrip";
+import {
+  ConversationStrip,
+  useAlsoWorkingBanner,
+  useLoneChatNewChat,
+} from "./chat/ConversationStrip";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -5241,6 +5245,12 @@ export default function ChatView(props: ChatViewProps) {
     currentThreadId: isServerThread ? threadId : null,
     typing: composerHasUnsentContent,
   });
+  // The header's New chat while the Mate has one chat and so no strip.
+  const startSecondChat = useLoneChatNewChat({
+    environmentId,
+    projectId: activeThread?.projectId ?? null,
+    currentThreadId: isServerThread ? threadId : null,
+  });
 
   const feedbackBannerItems = useMemo(
     () =>
@@ -7801,6 +7811,7 @@ export default function ChatView(props: ChatViewProps) {
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}
+            {...(startSecondChat === null ? {} : { onNewChat: startSecondChat })}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
               : {})}

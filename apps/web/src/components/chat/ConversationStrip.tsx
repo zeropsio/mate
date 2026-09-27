@@ -3,6 +3,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
@@ -28,6 +29,7 @@ import {
   alsoWorkingLine,
   chatEntries,
   foldStrip,
+  loneChatNewChatShown,
   mateChats,
   stripShown,
   type ConversationStripEntry,
@@ -265,6 +267,57 @@ export interface ConversationStripProps {
 
 const NO_GROUPS: ReadonlyArray<ConversationStripGroup> = [];
 
+/** The Mate's chats, main first, and their entries; null where no Mate lives. */
+function useMateChatEntries(
+  environmentId: EnvironmentId,
+  currentThreadId: ThreadId | null,
+): {
+  readonly chats: ReadonlyArray<EnvironmentThreadShell>;
+  readonly entries: ReadonlyArray<ConversationStripEntry>;
+} | null {
+  const whoLivesHere = useZeropsMate(environmentId);
+  const shells = useThreadShells();
+  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : null;
+  return useMemo(() => {
+    if (mate === null) return null;
+    const chats = mateChats(shells.filter((thread) => thread.environmentId === environmentId));
+    const entries = chatEntries({
+      chats,
+      currentThreadId,
+      startingChat: currentThreadId === null,
+      mate: { name: mate.name, tint: mate.tint, connected: mate.connected },
+      lastVisitedAtById,
+    });
+    return { chats, entries };
+  }, [currentThreadId, environmentId, lastVisitedAtById, mate, shells]);
+}
+
+/**
+ * New chat for the header of a Mate with one chat, where no strip is drawn to
+ * hold one; null wherever the strip has its own, or no Mate lives here.
+ */
+export function useLoneChatNewChat({
+  environmentId,
+  projectId,
+  currentThreadId,
+  extraGroups = NO_GROUPS,
+}: Omit<ConversationStripProps, "projectId"> & {
+  /** Null while the conversation's project is not known yet. */
+  readonly projectId: ProjectId | null;
+}): (() => void) | null {
+  const mateChatEntries = useMateChatEntries(environmentId, currentThreadId);
+  const handleNewThread = useNewThreadHandler();
+  if (
+    projectId === null ||
+    mateChatEntries === null ||
+    !loneChatNewChatShown(mateChatEntries.entries, extraGroups)
+  ) {
+    return null;
+  }
+  return () => void handleNewThread(scopeProjectRef(environmentId, projectId), { chat: true });
+}
+
 /**
  * A Mate's chats over its conversation. Nothing where no Mate lives, and
  * nothing for a Mate with one chat: the row appears with a second one.
@@ -275,9 +328,7 @@ export function ConversationStrip({
   currentThreadId,
   extraGroups = NO_GROUPS,
 }: ConversationStripProps) {
-  const whoLivesHere = useZeropsMate(environmentId);
-  const shells = useThreadShells();
-  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const mateChatEntries = useMateChatEntries(environmentId, currentThreadId);
   const pinningSupported =
     useEnvironment(environmentId)?.serverConfig?.environment.capabilities.threadPinning === true;
   const router = useRouter();
@@ -295,20 +346,8 @@ export function ConversationStrip({
     return () => observer.disconnect();
   }, [row]);
 
-  const chats = useMemo(
-    () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
-    [environmentId, shells],
-  );
-  if (whoLivesHere.kind !== "mate") return null;
-  const mate = whoLivesHere.mate;
-  const entries = chatEntries({
-    chats,
-    currentThreadId,
-    startingChat: currentThreadId === null,
-    mate: { name: mate.name, tint: mate.tint, connected: mate.connected },
-    lastVisitedAtById,
-  });
-  if (!stripShown(entries, extraGroups)) return null;
+  if (mateChatEntries === null || !stripShown(mateChatEntries.entries, extraGroups)) return null;
+  const { chats, entries } = mateChatEntries;
 
   const open = (threadId: ThreadId) => {
     void router.navigate({

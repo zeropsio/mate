@@ -7,6 +7,7 @@ import {
   chatEntries,
   chatStatus,
   foldStrip,
+  loneChatNewChatShown,
   mainChatToPin,
   mateChats,
   stripShown,
@@ -262,6 +263,45 @@ describe("stripShown", () => {
   for (const row of cases) {
     it(`${row.shown ? "shows" : "hides"} the chip row for ${row.name}`, () => {
       expect(stripShown(row.chats, row.extra)).toBe(row.shown);
+    });
+  }
+});
+
+describe("loneChatNewChatShown", () => {
+  const entry = (key: string, threadId: string | null = key) => ({
+    key,
+    threadId: threadId === null ? null : ThreadId.make(threadId),
+    label: key,
+    status: null,
+    current: true,
+    close: "none" as const,
+    canMakeMain: false,
+  });
+  const crew = { id: "crew", label: "Crew", entries: [entry("backend")] };
+  const cases = [
+    { name: "a Mate's only chat", chats: [entry("main")], extra: [], shown: true },
+    {
+      name: "two chats, where the row has its own",
+      chats: [entry("main"), entry("logs")],
+      extra: [],
+      shown: false,
+    },
+    {
+      name: "a Mate's first chat not sent yet",
+      chats: [entry("starting", null)],
+      extra: [],
+      shown: false,
+    },
+    {
+      name: "one chat beside a crew, where the row has its own",
+      chats: [entry("main")],
+      extra: [crew],
+      shown: false,
+    },
+  ];
+  for (const row of cases) {
+    it(`${row.shown ? "offers" : "does not offer"} the header's New chat for ${row.name}`, () => {
+      expect(loneChatNewChatShown(row.chats, row.extra)).toBe(row.shown);
     });
   }
 });

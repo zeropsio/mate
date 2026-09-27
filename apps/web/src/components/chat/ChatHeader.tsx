@@ -11,7 +11,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
-import { ChevronDownIcon, EllipsisIcon, SquarePenIcon } from "lucide-react";
+import { ChevronDownIcon, EllipsisIcon, PlusIcon, SquarePenIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -82,6 +82,11 @@ interface ChatHeaderProps {
   onNewThreadInProject: () => void;
   /** Archives the Mate's conversation and opens a fresh one in its place. */
   onStartFresh: () => void;
+  /**
+   * Starts a second chat beside the Mate's one. Absent where the conversation
+   * strip carries its own New chat, and where no Mate lives.
+   */
+  onNewChat?: (() => void) | undefined;
   onOpenProjectSettings?: (() => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
@@ -190,6 +195,26 @@ function StartFreshButton({ onStartFresh }: { readonly onStartFresh: () => void 
   );
 }
 
+/**
+ * Another chat beside the Mate's one, for a Mate with a single chat — once
+ * there are two, the conversation strip carries it. A glyph only, like its
+ * neighbour; its name is the tooltip.
+ */
+function NewChatButton({ onNewChat }: { readonly onNewChat: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button aria-label="New chat" onClick={onNewChat} size="icon-xs" variant="outline" />
+        }
+      >
+        <PlusIcon />
+      </TooltipTrigger>
+      <TooltipPopup side="top">New chat</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
   activeThreadId,
@@ -209,6 +234,7 @@ export const ChatHeader = memo(function ChatHeader({
   gitCwd,
   onNewThreadInProject,
   onStartFresh,
+  onNewChat,
   onOpenProjectSettings,
   onRunProjectScript,
   onAddProjectScript,
@@ -607,6 +633,7 @@ export const ChatHeader = memo(function ChatHeader({
           <>
             {/* The Mate's version and its update live with its body in the
                 right panel's Zerops view, not over the conversation. */}
+            {onNewChat === undefined ? null : <NewChatButton onNewChat={onNewChat} />}
             <StartFreshButton onStartFresh={onStartFresh} />
             <ZeropsProjectLink projectUrl={mate.projectUrl} />
           </>
