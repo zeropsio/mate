@@ -186,6 +186,28 @@ export type RecoverOutcome =
       readonly wip: ReadonlyArray<{ readonly handle: string; readonly since: string }>;
     };
 
+/** One lane's state as the boot sweep read it from git. */
+export type SweepLane = { readonly handle: string } & (
+  | { readonly _tag: "clean"; readonly tip: string }
+  | { readonly _tag: "committed"; readonly tip: string }
+  /** An open merge; its conflicted files go back as rework. */
+  | { readonly _tag: "merging"; readonly paths: ReadonlyArray<string> }
+  | {
+      readonly _tag: "parked";
+      readonly reason: LaneParkReason | "unreadable-ref";
+      readonly paths: ReadonlyArray<string>;
+    }
+  | { readonly _tag: "frozen" }
+  /** The directory is gone: `recover` brings it back. */
+  | { readonly _tag: "missing" }
+);
+
+export interface SweepOutcome {
+  readonly lanes: ReadonlyArray<SweepLane>;
+  /** Refs git ignores as broken (a 0-byte file from an unclean restart). */
+  readonly brokenRefs: ReadonlyArray<string>;
+}
+
 /** Widens one outcome literal to the union, so a generator's returns agree. */
 const laneCommit = (commit: LaneCommit): LaneCommit => commit;
 
@@ -214,6 +236,12 @@ export interface CrewWorkspaceService {
     host: string,
     specs: ReadonlyArray<LaneSpec>,
   ) => Effect.Effect<RecoverOutcome, CrewWorkspaceError>;
+  /**
+   * Boot: lane state from git, not from the tables - a WIP commit for a dirty
+   * lane that is not merging, a park for an unreadable ref or a tip the engine
+   * did not write.
+   */
+  readonly sweep: (host: string) => Effect.Effect<SweepOutcome, CrewWorkspaceError>;
   /** Turn end: the lane-commit precondition, then `wip(<task>): turn <n>`. */
   readonly commitTurn: (
     key: LaneKey,
@@ -535,6 +563,105 @@ export const make = Effect.gen(function* () {
       return { _tag: "recovered", readded, setups } satisfies RecoverOutcome;
     });
 
+  const sweep: CrewWorkspaceService["sweep"] = (host) =>
+    Effect.gen(function* () {
+      const lanes = yield* store.lanesOnHost(host);
+      const out = yield* runLane(
+        host,
+        "sweep",
+        `${git("integration", ["for-each-ref", "--format=%(refname)"])} 2>&1 >/dev/null | sed -n 's/^warning: ignoring broken ref /broken\t/p'\n` +
+          lanes
+            .map((row) => {
+              const lg = laneGit(row.lane);
+              const handle = shellQuote(row.lane);
+              return (
+                `if [ -d ${shellQuote(laneDirectory(row.lane))} ]; then\n` +
+                `  tip=$(${lg(["rev-parse", "-q", "--verify", "HEAD"])} 2>/dev/null) || tip=\n` +
+                `  merging=0; ${lg(["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null 2>&1 && merging=1\n` +
+                `  dirty=0; [ -z "$(${lg(["status", "--porcelain"])} 2>/dev/null)" ] || dirty=1\n` +
+                `  printf 'lane\\t%s\\t%s\\t%s\\t%s\\n' ${handle} "$tip" "$merging" "$dirty"\n` +
+                `  [ "$merging" = 0 ] || ${lg(["diff", "--name-only", "--diff-filter=U"])} | sed 's/^/unmerged\t${row.lane}\t/'\n` +
+                `else\n` +
+                `  printf 'missing\\t%s\\n' ${handle}\n` +
+                `fi\n`
+              );
+            })
+            .join(""),
+      );
+      const brokenRefs = fieldsOf(out, "broken");
+      const missing = new Set(fieldsOf(out, "missing"));
+      const read = new Map(
+        fieldsOf(out, "lane").map((value) => {
+          const [handle = "", tip = "", merging = "", dirty = ""] = value.split("\t");
+          return [handle, { tip, merging: merging === "1", dirty: dirty === "1" }] as const;
+        }),
+      );
+      const unmerged = fieldsOf(out, "unmerged").map((value) => {
+        const tab = value.indexOf("\t");
+        return [value.slice(0, tab), value.slice(tab + 1)] as const;
+      });
+      const park = (row: CrewLaneRow) =>
+        store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
+      const swept = yield* Effect.forEach(lanes, (row) =>
+        Effect.gen(function* () {
+          const handle = row.lane;
+          const state = read.get(handle);
+          if (missing.has(handle) || state === undefined) {
+            return { handle, _tag: "missing" } satisfies SweepLane;
+          }
+          if (state.tip === "" || brokenRefs.includes(`refs/heads/${laneBranch(handle)}`)) {
+            yield* park(row);
+            return {
+              handle,
+              _tag: "parked",
+              reason: "unreadable-ref",
+              paths: [],
+            } satisfies SweepLane;
+          }
+          if (state.tip !== row.recordedTip) {
+            yield* park(row);
+            return {
+              handle,
+              _tag: "parked",
+              reason: "unknown-tip",
+              paths: [state.tip],
+            } satisfies SweepLane;
+          }
+          if (state.merging) {
+            const paths = unmerged.filter(([lane]) => lane === handle).map(([, path]) => path);
+            return { handle, _tag: "merging", paths } satisfies SweepLane;
+          }
+          if (!state.dirty) return { handle, _tag: "clean", tip: state.tip } satisfies SweepLane;
+          const committed = yield* commitLane(
+            row,
+            "wip(sweep): lane work left uncommitted at boot",
+            DEFAULT_MAX_BLOB_BYTES,
+          );
+          switch (committed._tag) {
+            case "committed":
+            case "unchanged":
+              return { handle, _tag: "committed", tip: committed.tip } satisfies SweepLane;
+            case "rework":
+              return { handle, _tag: "merging", paths: committed.paths } satisfies SweepLane;
+            case "parked":
+              return {
+                handle,
+                _tag: "parked",
+                reason: committed.reason,
+                paths: committed.reason === "unknown-tip" ? [committed.tip] : committed.paths,
+              } satisfies SweepLane;
+            case "frozen":
+            case "lane-missing":
+              return {
+                handle,
+                _tag: committed._tag === "frozen" ? "frozen" : "missing",
+              } satisfies SweepLane;
+          }
+        }),
+      );
+      return { lanes: swept, brokenRefs } satisfies SweepOutcome;
+    });
+
   const create: CrewWorkspaceService["create"] = (spec) =>
     Effect.gen(function* () {
       const directory = shellQuote(laneDirectory(spec.handle));
@@ -605,6 +732,7 @@ export const make = Effect.gen(function* () {
     freeze,
     unfreeze,
     recover,
+    sweep,
     commitTurn,
     keepAndReset,
   });

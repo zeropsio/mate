@@ -460,4 +460,47 @@ describe("CrewWorkspace", () => {
       }),
     ),
   );
+
+  it.effect("sweeps at boot: WIP for a dirty lane, rework left open, a 0-byte ref parks", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        const store = yield* CrewStore.CrewStore;
+        const lanes = ["backend", "frontend", "map", "quiet"] as const;
+        for (const handle of lanes) yield* workspace.create({ ...BACKEND, handle });
+        write(root, ".crew/backend/src/api.ts", "export {};\n");
+        write(root, ".crew/frontend/README.md", "lane\n");
+        yield* workspace.commitTurn(
+          { crew: "game", handle: "frontend" },
+          { assignment: "a-2", turn: 1 },
+        );
+        write(root, "README.md", "person\n");
+        git(root, ["commit", "-q", "-am", "person"]);
+        gitExit(`${root}/.crew/frontend`, ["merge", "-q", "main"]);
+        NodeFS.writeFileSync(`${root}/.git/refs/heads/crew/map`, "");
+        const swept = yield* workspace.sweep(TEST_HOST);
+        assert.deepStrictEqual(
+          {
+            lanes: swept.lanes.map((lane) => [lane.handle, lane._tag]),
+            merging: swept.lanes.find((lane) => lane.handle === "frontend"),
+            broken: swept.brokenRefs,
+            mapState: Option.getOrUndefined(yield* store.getLane("game", "map"))?.state,
+            backendClean: git(`${root}/.crew/backend`, ["status", "--porcelain"]),
+          },
+          {
+            lanes: [
+              ["backend", "committed"],
+              ["frontend", "merging"],
+              ["map", "parked"],
+              ["quiet", "clean"],
+            ],
+            merging: { handle: "frontend", _tag: "merging", paths: ["README.md"] },
+            broken: ["refs/heads/crew/map"],
+            mapState: "parked",
+            backendClean: "",
+          },
+        );
+      }),
+    ),
+  );
 });
