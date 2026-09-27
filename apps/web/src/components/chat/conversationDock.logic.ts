@@ -86,11 +86,17 @@ function payloadString(payload: Record<string, unknown>, key: string): string | 
 
 const STOPPED_STATUSES: ReadonlySet<string> = new Set(["stopped", "cancelled", "interrupted"]);
 
+/** A task and its command's call that ended together: the task was the call. */
+const TRACKED_TOLERANCE_MS = 3_000;
+
 /**
  * The thread's background tasks, from their lifecycle: each by what it was
  * asked to do, running until it ends done, failed or stopped. Helpers are
  * the helpers panel's, a helper's own shells its own, and plan bookkeeping
- * no one's.
+ * no one's. Claude Code also tracks any command that runs past a few seconds
+ * as a task: while the Mate waits on its call the task is the call — a step
+ * of its run, never a background task; only a command whose call returned
+ * while its task ran on went to the background.
  */
 export function foldBackgroundTasks(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
@@ -103,7 +109,22 @@ export function foldBackgroundTasks(
     turnId: string | null;
     startedAt: string;
     endedAt: string | null;
+    toolUseId: string | undefined;
   };
+  // Each command's call, and when it returned.
+  const callEndedAt = new Map<string, number | null>();
+  for (const activity of activities) {
+    if (!activity.kind.startsWith("tool.")) continue;
+    const payload =
+      activity.payload !== null && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    if (payload === null || payload.itemType !== "command_execution") continue;
+    const callId = payloadString(payload, "toolCallId");
+    if (callId === undefined) continue;
+    const ended = activity.kind === "tool.completed" ? Date.parse(activity.createdAt) : null;
+    if (!callEndedAt.has(callId) || ended !== null) callEndedAt.set(callId, ended);
+  }
   const byId = new Map<string, Draft>();
   for (const activity of activities) {
     if (
@@ -125,6 +146,7 @@ export function foldBackgroundTasks(
     const title =
       payloadString(payload, "title") ??
       (activity.kind === "task.started" ? payloadString(payload, "detail") : undefined);
+    const toolUseId = payloadString(payload, "toolUseId");
     let draft = byId.get(taskId);
     if (draft === undefined) {
       draft = {
@@ -135,10 +157,12 @@ export function foldBackgroundTasks(
         turnId: activity.turnId,
         startedAt: activity.createdAt,
         endedAt: null,
+        toolUseId,
       };
       byId.set(taskId, draft);
-    } else if (draft.title === undefined) {
-      draft.title = title;
+    } else {
+      if (draft.title === undefined) draft.title = title;
+      if (draft.toolUseId === undefined) draft.toolUseId = toolUseId;
     }
     if (activity.kind === "task.completed") {
       const status = payloadString(payload, "status");
@@ -151,10 +175,18 @@ export function foldBackgroundTasks(
       draft.endedAt = activity.createdAt;
     }
   }
-  return [...byId.values()].map((draft) => ({
-    ...draft,
-    title: draft.title ?? "A background task",
-  }));
+  const tracksACall = (draft: Draft): boolean => {
+    if (draft.toolUseId === undefined || !callEndedAt.has(draft.toolUseId)) return false;
+    const returned = callEndedAt.get(draft.toolUseId) ?? null;
+    if (returned === null) return true;
+    return draft.endedAt !== null && Date.parse(draft.endedAt) - returned <= TRACKED_TOLERANCE_MS;
+  };
+  return [...byId.values()]
+    .filter((draft) => !tracksACall(draft))
+    .map(({ toolUseId: _toolUseId, ...draft }) => ({
+      ...draft,
+      title: draft.title ?? "A background task",
+    }));
 }
 
 function backgroundGroup(tasks: ReadonlyArray<DockBackgroundTask>): DockModel["background"] {
@@ -250,16 +282,19 @@ export function deriveDock(input: {
     };
   }
 
-  // The running turn's pipelines, finished ones included: a deploy that
-  // landed mid-turn keeps its row, final word and all, until the turn's
-  // outcome takes over. A batch deploy is a row per service.
+  // A bar stands for what runs: the running turn's pipelines while they run,
+  // and one that failed until the turn ends. A finished one leaves — its
+  // line stays in the stream, its result goes to the report. A batch deploy
+  // is a row per service.
   const operations =
     input.isWorking && input.runningTurnId !== null
       ? input.timelineEntries.flatMap((entry) =>
           entry.kind === "operation" &&
           DOCKED_KINDS.has(entry.operation.kind) &&
           entry.operation.turnId === input.runningTurnId
-            ? splitBatchDeploy(entry.operation)
+            ? splitBatchDeploy(entry.operation).filter(
+                (operation) => operation.phase === "running" || operation.phase === "failed",
+              )
             : [],
         )
       : [];
@@ -267,21 +302,21 @@ export function deriveDock(input: {
   const rows = input.isWorking
     ? dockHelpers(input.agentPanelModel, input.turnStartedAt ?? null)
     : [];
-  const helpers =
-    rows.length === 0
-      ? null
-      : {
-          rows,
-          working: rows.filter((row) => row.tone === "busy" || row.tone === "attention").length,
-          done: rows.filter((row) => row.tone === "ok").length,
-          failed: rows.filter((row) => row.tone === "failed").length,
-        };
+  const helpers = !rows.some((row) => row.tone === "busy" || row.tone === "attention")
+    ? null
+    : {
+        rows,
+        working: rows.filter((row) => row.tone === "busy" || row.tone === "attention").length,
+        done: rows.filter((row) => row.tone === "ok").length,
+        failed: rows.filter((row) => row.tone === "failed").length,
+      };
 
   const plan = input.plan;
   const tasks =
     input.isWorking &&
     plan !== null &&
     plan.steps.length > 1 &&
+    plan.steps.some((step) => step.status !== "completed") &&
     (input.runningTurnId === null || plan.turnId === input.runningTurnId)
       ? {
           steps: plan.steps,
@@ -293,14 +328,16 @@ export function deriveDock(input: {
         }
       : null;
 
-  // The running turn's background tasks, finished ones included, and any
-  // from before that still run.
+  // What runs in the background, from this turn or before, and the running
+  // turn's that failed.
   const background = input.isWorking
     ? backgroundGroup(
         backgroundTasks.filter(
           (task) =>
             task.state === "running" ||
-            (input.runningTurnId !== null && task.turnId === input.runningTurnId),
+            (task.state === "failed" &&
+              input.runningTurnId !== null &&
+              task.turnId === input.runningTurnId),
         ),
       )
     : null;

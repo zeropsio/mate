@@ -106,7 +106,84 @@ function task(
   };
 }
 
+/** A command's call: its start, or its end once it returned. */
+function call(
+  kind: "tool.started" | "tool.completed",
+  toolCallId: string,
+  minute: number,
+  second = 0,
+): OrchestrationThreadActivity {
+  return {
+    id: EventId.make(`${kind}:${toolCallId}:${minute}:${second}`),
+    tone: "tool",
+    kind,
+    summary: "Command run",
+    payload: {
+      itemType: "command_execution",
+      toolCallId,
+      status: kind === "tool.completed" ? "completed" : "inProgress",
+    },
+    turnId: TurnId.make("t1"),
+    createdAt: new Date(Date.parse(at(minute)) + second * 1000).toISOString(),
+  };
+}
+
 describe("foldBackgroundTasks", () => {
+  // Claude Code tracks any command that runs past a few seconds as a task
+  // named by the command's description. The Mate waits on such a command:
+  // it is a step of the run, never a background task (27 of 27 on one run).
+  it.each([
+    {
+      name: "a command the Mate waits on, while it runs",
+      activities: [
+        call("tool.started", "toolu_1", 1),
+        task("task.started", "b1", 1, { detail: "Screenshot the home page", toolUseId: "toolu_1" }),
+      ],
+    },
+    {
+      name: "a command the Mate waited on, once it returned with its task",
+      activities: [
+        call("tool.started", "toolu_1", 1),
+        task("task.started", "b1", 1, { detail: "Screenshot the home page", toolUseId: "toolu_1" }),
+        call("tool.completed", "toolu_1", 2),
+        task("task.completed", "b1", 2, { status: "completed", toolUseId: "toolu_1" }),
+      ],
+    },
+  ])("leaves out $name", ({ activities }) => {
+    expect(foldBackgroundTasks(activities)).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "running on after its call returned",
+      activities: [
+        call("tool.started", "toolu_2", 1),
+        task("task.started", "b2", 1, { detail: "Start the dev server", toolUseId: "toolu_2" }),
+        call("tool.completed", "toolu_2", 1, 2),
+      ],
+      tasks: [{ id: "b2", title: "Start the dev server", state: "running", endedAt: null }],
+    },
+    {
+      name: "done long after its call returned",
+      activities: [
+        call("tool.started", "toolu_2", 1),
+        task("task.started", "b2", 1, { detail: "Run the suite", toolUseId: "toolu_2" }),
+        call("tool.completed", "toolu_2", 1, 2),
+        task("task.completed", "b2", 9, { status: "completed", toolUseId: "toolu_2" }),
+      ],
+      tasks: [{ id: "b2", title: "Run the suite", state: "done", endedAt: at(9) }],
+    },
+  ])("keeps a command sent to the background: $name", ({ activities, tasks }) => {
+    expect(
+      foldBackgroundTasks(activities).map(({ id, title, state, endedAt }) => ({
+        id,
+        title,
+        state,
+        endedAt,
+      })),
+    ).toEqual(tasks);
+  });
+
   it.each([
     {
       name: "a shell running in the background, by what it was asked to do",
@@ -177,7 +254,7 @@ describe("deriveDock", () => {
     pause: null,
   };
 
-  it("holds the running turn's background tasks, and any still running from before", () => {
+  it("holds the running turn's running and failed background tasks, and any still running from before", () => {
     const dock = deriveDock({
       ...base,
       backgroundTasks: foldBackgroundTasks([
@@ -186,6 +263,8 @@ describe("deriveDock", () => {
         task("task.started", "old-running", 0, { detail: "Watch" }, "t0"),
         task("task.started", "b1", 2, { detail: "Typecheck" }),
         task("task.completed", "b1", 3, { status: "failed" }),
+        task("task.started", "b0", 2, { detail: "Lint" }),
+        task("task.completed", "b0", 3, { status: "completed" }),
         task("task.started", "b2", 4, { detail: "Test" }),
       ]),
     });
@@ -217,17 +296,37 @@ describe("deriveDock", () => {
     expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["b2"]);
   });
 
-  it("holds the running turn's pipelines, finished ones too, not quick calls or older turns", () => {
+  // A bar stands for what runs: a finished one leaves the panel — its line
+  // stays in the stream and its result goes to the report — and one that
+  // failed stays until the turn ends.
+  it("holds the running turn's running and failed pipelines, not finished ones, quick calls or older turns", () => {
     const dock = deriveDock({
       ...base,
       timelineEntries: [
         operation("d0", "t1", 0, { kind: "deploy", phase: "done" }),
         operation("d1", "t1", 1, { kind: "deploy", phase: "running" }),
+        operation("d3", "t1", 1, { kind: "deploy", phase: "failed" }),
         operation("v1", "t1", 2, { kind: "verify", phase: "running" }),
         operation("d2", "t0", 2, { kind: "deploy", phase: "running" }),
       ],
     });
-    expect(dock?.operations.map((op) => op.key)).toEqual(["op:d0", "op:d1"]);
+    expect(dock?.operations.map((op) => op.key)).toEqual(["op:d1", "op:d3"]);
+  });
+
+  it("drops the helpers' bar once none works, and the task list's once all is done", () => {
+    const dock = deriveDock({
+      ...base,
+      agentPanelModel: panel([agent("h1", "completed", "a"), agent("h2", "completed", "b")]),
+      plan: {
+        createdAt: at(0),
+        turnId: TurnId.make("t1"),
+        steps: [
+          { step: "Wire the shields", status: "completed" },
+          { step: "Scale the titans", status: "completed" },
+        ],
+      },
+    });
+    expect(dock).toBeNull();
   });
 
   it("gives each service of a batch deploy its own status bar", () => {
