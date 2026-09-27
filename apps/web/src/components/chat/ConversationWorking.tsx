@@ -1093,7 +1093,7 @@ export function ConversationAfterWork({
   return (
     <section
       aria-label={`${speaker.name} at work in the background`}
-      className="@container/panel animate-panel-in rounded-3xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60 motion-reduce:animate-none"
+      className="@container/panel animate-panel-in rounded-3xl border border-border/70 bg-card text-card-foreground motion-reduce:animate-none"
       data-conversation-after-work={state}
     >
       <div className="flex min-h-12 min-w-0 items-center gap-2.5 px-4 py-2">
@@ -1105,15 +1105,18 @@ export function ConversationAfterWork({
           {stopping ? "Stopping…" : "Stop"}
         </Button>
       </div>
-      <Instruments
-        dock={dock}
-        environmentId={environmentId}
-        incidents={EMPTY_INCIDENTS}
-        onOpenAgents={onOpenAgents}
-        onToggle={toggle}
-        open={open}
-        threadRef={threadRef}
-      />
+      {/* The panel's bars span its card from inside its padding: the same here. */}
+      <div className="px-4">
+        <Instruments
+          dock={dock}
+          environmentId={environmentId}
+          incidents={EMPTY_INCIDENTS}
+          onOpenAgents={onOpenAgents}
+          onToggle={toggle}
+          open={open}
+          threadRef={threadRef}
+        />
+      </div>
     </section>
   );
 }
