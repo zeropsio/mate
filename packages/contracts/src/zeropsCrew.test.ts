@@ -94,6 +94,7 @@ const appliedSnapshot = {
         fresh: false,
         brief: "Add pagination to /api/items",
         doneWhen: "",
+        note: "Also sent to @frontend. Your part is what is addressed to @backend.",
         attempts: 1,
         reason: null,
         question: null,

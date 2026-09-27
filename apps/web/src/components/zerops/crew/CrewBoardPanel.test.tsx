@@ -256,7 +256,7 @@ describe("CrewTaskSheetBody", () => {
     },
   });
   const view = viewOf(snapshot);
-  const sheet = crewTaskSheet(view, "task-13")!;
+  const sheet = crewTaskSheet(snapshot, view, "task-13")!;
   const task = view.tasks.find((row) => row.task.id === "task-13")!.task;
 
   function renderSheet(onSend = () => undefined, onOpenChat = () => undefined) {
@@ -288,6 +288,25 @@ describe("CrewTaskSheetBody", () => {
         "Land Discard Edit",
       ].join(" "),
     );
+  });
+
+  it("reads a fan-out task's note before its brief", () => {
+    const note = "Also sent to @frontend. Your part is what is addressed to @backend.";
+    const text = textOf(
+      renderToStaticMarkup(
+        <Sheet open>
+          <CrewTaskSheetBody
+            sheet={{ ...sheet, note, owner: { ...sheet.owner, tint: null } }}
+            task={task}
+            canAct
+            error={null}
+            onSend={() => undefined}
+            onOpenChat={() => undefined}
+          />
+        </Sheet>,
+      ),
+    );
+    expect(text).toContain(`Note ${note} Brief HUD shows the ammo count`);
   });
 
   it("lands, discards and opens the owner's chat", async () => {

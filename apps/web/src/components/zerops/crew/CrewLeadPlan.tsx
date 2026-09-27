@@ -35,7 +35,7 @@ export function CrewLeadPlan({ environmentId }: { readonly environmentId: Enviro
 
   const canAct = current && !crewCommand.pending;
   const send = (command: CrewCommand) => void crewCommand.send(command);
-  const sheet = openTaskId === null ? null : crewTaskSheet(view, openTaskId);
+  const sheet = openTaskId === null ? null : crewTaskSheet(snapshot, view, openTaskId);
   const sheetTask =
     sheet === null ? null : (view.tasks.find((row) => row.task.id === sheet.taskId)?.task ?? null);
   const openChat = (threadId: ThreadId) => {

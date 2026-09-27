@@ -272,6 +272,12 @@ export const CrewTask = Schema.Struct({
   brief: Schema.String,
   /** Empty when none was given. */
   doneWhen: Schema.String,
+  /**
+   * What the task's card says beside its brief — for one task of a fan-out,
+   * who else the message went to and which part is this crewmate's (PRD §5.3);
+   * `null` when the card says nothing more.
+   */
+  note: Schema.NullOr(Schema.String),
   attempts: NonNegativeInt,
   /** Why it went to `rework` or `parked`. */
   reason: Schema.NullOr(Schema.String),

@@ -78,6 +78,24 @@ export interface CrewTaskWordContext {
    * working task's word is its thread's, and only that resolver writes one (R5).
    */
   readonly threadStatusWord: string;
+  /** The owner's open task (`Crewmate.openTaskId`), which a queued task of its waits behind. */
+  readonly ownerOpenTaskId: string | null;
+}
+
+/**
+ * Why a queued task has not started: `after #11`, a dependency that has not
+ * landed, before `waits for #13`, the task its owner is on; `null` for neither.
+ */
+export function crewQueuedReason(
+  task: CrewTask,
+  context: Pick<CrewTaskWordContext, "tasks" | "ownerOpenTaskId">,
+): string | null {
+  const dependency = task.dependsOn
+    .map((id) => context.tasks.find((candidate) => candidate.id === id))
+    .find((candidate) => candidate !== undefined && candidate.state !== "landed");
+  if (dependency !== undefined) return `after #${dependency.number}`;
+  const current = context.tasks.find((candidate) => candidate.id === context.ownerOpenTaskId);
+  return current === undefined || current.id === task.id ? null : `waits for #${current.number}`;
 }
 
 /** A task's state word (PRD §6.3). */
@@ -86,10 +104,8 @@ export function crewTaskWord(task: CrewTask, context: CrewTaskWordContext): stri
     case "proposed":
       return "Proposed";
     case "queued": {
-      const waitsFor = task.dependsOn
-        .map((id) => context.tasks.find((candidate) => candidate.id === id))
-        .find((dependency) => dependency !== undefined && dependency.state !== "landed");
-      return waitsFor === undefined ? "Queued" : `Queued · after #${waitsFor.number}`;
+      const reason = crewQueuedReason(task, context);
+      return reason === null ? "Queued" : `Queued · ${reason}`;
     }
     case "working":
       return context.threadStatusWord;

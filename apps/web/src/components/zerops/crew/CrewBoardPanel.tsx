@@ -101,7 +101,7 @@ export function CrewBoardPanel({ environmentId }: { readonly environmentId: Envi
     });
   };
 
-  const sheet = open?.kind === "task" ? crewTaskSheet(view, open.taskId) : null;
+  const sheet = open?.kind === "task" ? crewTaskSheet(snapshot, view, open.taskId) : null;
   const sheetTask =
     sheet === null ? null : (view.tasks.find((row) => row.task.id === sheet.taskId)?.task ?? null);
   // A task that left the board (discarded, or gone from the feed) takes its sheet with it,
@@ -437,6 +437,11 @@ export function CrewTaskSheetBody(props: {
       >
         {draft === null ? (
           <>
+            {sheet.note === null ? null : (
+              <SheetSection label="Note">
+                <p className="whitespace-pre-wrap">{sheet.note}</p>
+              </SheetSection>
+            )}
             <SheetSection label="Brief">
               <p className="whitespace-pre-wrap">{sheet.brief}</p>
             </SheetSection>

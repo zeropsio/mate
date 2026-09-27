@@ -171,6 +171,7 @@ const task = (
   fresh: false,
   brief: fields.title,
   doneWhen: "",
+  note: null,
   attempts: 1,
   reason: null,
   question: null,

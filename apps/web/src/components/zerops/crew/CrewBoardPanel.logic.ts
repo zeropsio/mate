@@ -11,6 +11,7 @@ import {
   crewAttentionSentence,
   crewCheckWord,
   crewDiffStatWord,
+  crewQueuedReason,
   crewTaskSourceWord,
   type CrewBoardColumnId,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -59,7 +60,7 @@ export interface CrewBoardCard {
   readonly owner: CrewBoardFace;
   /** `null` for a working task whose owner's thread has no word (idle): a dot never stands alone. */
   readonly status: CrewBoardStatus | null;
-  /** The question, the check, the change or the landing commit, and where the task came from. */
+  /** The question, the check, the change or the landing commit, where the task came from, and its note. */
   readonly detail: string;
 }
 
@@ -162,6 +163,7 @@ function detailLine(task: CrewTask): string {
   if (task.state === "blocked" && task.question !== null) parts.push(task.question);
   else if (task.diffStat !== null) parts.push(crewDiffStatWord(task.diffStat));
   parts.push(crewTaskSourceWord(task.source));
+  if (task.note !== null) parts.push(task.note);
   return parts.join(" · ");
 }
 
@@ -174,14 +176,6 @@ function boardCard(row: CrewTaskView): CrewBoardCard {
     status: crewTaskStatus(row),
     detail: detailLine(row.task),
   };
-}
-
-/** `after #13`: the first dependency that has not landed, as `crewTaskWord` names it for a queued task. */
-function afterDependency(task: CrewTask, tasks: ReadonlyArray<CrewTask>): string | null {
-  const waitsFor = task.dependsOn
-    .map((id) => tasks.find((candidate) => candidate.id === id))
-    .find((dependency) => dependency !== undefined && dependency.state !== "landed");
-  return waitsFor === undefined ? null : `after #${waitsFor.number}`;
 }
 
 /** The lead's proposed tasks as one plan card — the board's and the lead's chat's; `null` while none. */
@@ -197,7 +191,8 @@ export function crewPlanCard(snapshot: CrewSnapshot, view: CrewView): CrewPlanCa
       number: task.number,
       title: task.title,
       owner: crewBoardFace(task.owner, owner),
-      after: afterDependency(task, snapshot.board.tasks),
+      // A plan row names only its dependency: its owner's current task is no reason yet.
+      after: crewQueuedReason(task, { tasks: snapshot.board.tasks, ownerOpenTaskId: null }),
     })),
   };
 }
@@ -266,6 +261,8 @@ export interface CrewTaskSheet {
   readonly brief: string;
   /** `null` when none was given. */
   readonly doneWhen: string | null;
+  /** The card's note: for a fan-out task, who else got the message and which part is this one (PRD §5.3). */
+  readonly note: string | null;
   readonly attempts: string;
   readonly report: string | null;
   readonly check: {
@@ -334,7 +331,22 @@ function taskActions(row: CrewTaskView): ReadonlyArray<CrewTaskAction> {
   return actions;
 }
 
-export function crewTaskSheet(view: CrewView, taskId: string): CrewTaskSheet | null {
+/** `Not started`, `Attempt 2`; a queued task's with what it waits for (`· waits for #13`). */
+function attemptsLine(task: CrewTask, owner: CrewmateView | null, tasks: ReadonlyArray<CrewTask>) {
+  const attempts = task.attempts === 0 ? "Not started" : `Attempt ${task.attempts}`;
+  if (task.state !== "queued") return attempts;
+  const reason = crewQueuedReason(task, {
+    tasks,
+    ownerOpenTaskId: owner?.crewmate.openTaskId ?? null,
+  });
+  return reason === null ? attempts : `${attempts} · ${reason}`;
+}
+
+export function crewTaskSheet(
+  snapshot: CrewSnapshot,
+  view: CrewView,
+  taskId: string,
+): CrewTaskSheet | null {
   const row = view.tasks.find((candidate) => candidate.task.id === taskId);
   if (row === undefined) return null;
   const { task, owner } = row;
@@ -347,7 +359,8 @@ export function crewTaskSheet(view: CrewView, taskId: string): CrewTaskSheet | n
     source: crewTaskSourceWord(task.source),
     brief: task.brief,
     doneWhen: task.doneWhen === "" ? null : task.doneWhen,
-    attempts: task.attempts === 0 ? "Not started" : `Attempt ${task.attempts}`,
+    note: task.note,
+    attempts: attemptsLine(task, owner, snapshot.board.tasks),
     report: task.report,
     check:
       task.check === null

@@ -194,6 +194,19 @@ describe("crewBoardModel cards", () => {
       },
     },
     {
+      name: "a fan-out task's card carries its note",
+      snapshot: withTask("task-12", {
+        note: "Also sent to @frontend. Your part is what is addressed to @backend.",
+      }),
+      number: 12,
+      card: {
+        owner: { handle: "backend", name: "Backend", tint: "sky", face: "working" },
+        status: { word: "Working", tone: "busy", pulse: true },
+        detail:
+          "+214 \u221212 · from a message · Also sent to @frontend. Your part is what is addressed to @backend.",
+      },
+    },
+    {
       name: "a working task whose owner's thread is idle has no status word to show",
       snapshot: withTask("task-13", { state: "working" }),
       number: 13,
@@ -230,6 +243,16 @@ describe("crewBoardModel cards", () => {
       card: {
         owner: { handle: "frontend", name: "Frontend", tint: "coral", face: "idle" },
         status: { word: "Queued · after #12", tone: "off", pulse: false },
+        detail: "from lead",
+      },
+    },
+    {
+      name: "a queued task with no dependency names the task its owner is on",
+      snapshot: withTask("task-15", { dependsOn: [] }),
+      number: 15,
+      card: {
+        owner: { handle: "frontend", name: "Frontend", tint: "coral", face: "idle" },
+        status: { word: "Queued · waits for #13", tone: "off", pulse: false },
         detail: "from lead",
       },
     },
@@ -381,7 +404,7 @@ describe("crewBoardModel plan", () => {
 describe("crewTaskSheet", () => {
   const fixture = crewSnapshotFixture();
   const sheetOf = (snapshot: CrewSnapshot, taskId: string) =>
-    crewTaskSheet(viewOf(snapshot), taskId);
+    crewTaskSheet(snapshot, viewOf(snapshot), taskId);
 
   it("reads a landed task in full", () => {
     const sheet = sheetOf(fixture, "task-11");
@@ -394,6 +417,7 @@ describe("crewTaskSheet", () => {
       source: "from lead",
       brief: "Health endpoint for the load balancer",
       doneWhen: "GET /health answers 200",
+      note: null,
       attempts: "Attempt 1",
       report: "Added GET /health with a database ping.",
       check: { word: "Check passed", tone: "ok", output: "Tests  46 passed (46)" },
@@ -408,12 +432,27 @@ describe("crewTaskSheet", () => {
 
   it.each([
     {
-      name: "a task not started yet, with nothing to report",
+      name: "a task not started yet, with nothing to report, after its dependency",
       taskId: "task-15",
       fields: {},
       read: {
         doneWhen: "The camera follows the player; npm test passes",
-        attempts: "Not started",
+        attempts: "Not started · after #12",
+        report: null,
+        check: null,
+        review: null,
+        changes: null,
+        landedCommit: null,
+        editable: true,
+      },
+    },
+    {
+      name: "a task not started yet, behind the task its owner is on",
+      taskId: "task-15",
+      fields: { dependsOn: [] },
+      read: {
+        doneWhen: "The camera follows the player; npm test passes",
+        attempts: "Not started · waits for #13",
         report: null,
         check: null,
         review: null,
@@ -480,6 +519,18 @@ describe("crewTaskSheet", () => {
     ).toEqual(read);
   });
 
+  it("reads a fan-out task's note", () => {
+    const note = "Also sent to @frontend. Your part is what is addressed to @backend.";
+    const snapshot = crewSnapshotFixture({
+      board: {
+        tasks: fixture.board.tasks.map((task) =>
+          task.id === "task-12" ? { ...task, note } : task,
+        ),
+      },
+    });
+    expect(sheetOf(snapshot, "task-12")?.note).toBe(note);
+  });
+
   it("is null for a task the board does not show", () => {
     expect(sheetOf(fixture, "task-9")).toBeNull();
     expect(sheetOf(fixture, "task-404")).toBeNull();
@@ -502,7 +553,7 @@ describe("crewTaskSheet actions", () => {
       },
     });
   const actionsOf = (snapshot: CrewSnapshot, taskId: string) =>
-    crewTaskSheet(viewOf(snapshot), taskId)?.actions.map(({ label, tone, command }) => ({
+    crewTaskSheet(snapshot, viewOf(snapshot), taskId)?.actions.map(({ label, tone, command }) => ({
       label,
       tone,
       command,
