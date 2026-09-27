@@ -372,6 +372,13 @@ describe("snippetAround — the words around a match, not the conversation's ope
     },
     { case: "whitespace folded", text: "one\n\ntwo   three", query: "two", out: "one two three" },
     {
+      // Cut first, the name would fall away and leave "hunter2026 the basket".
+      case: "a credential masked before the cut can part it from its name",
+      text: `${"x".repeat(40)} DB_PASSWORD=hunter2026 the basket keeps`,
+      query: "basket",
+      out: "…DB_PASSWORD=•••••• the basket keeps",
+    },
+    {
       case: "markdown's marks dropped, the way the rows quote it",
       text: "Done: - **Checkout moved:** the `cart` is [live](https://x.dev)",
       query: "done",

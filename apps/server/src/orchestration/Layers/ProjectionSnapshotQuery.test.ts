@@ -2111,7 +2111,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             'thread-active',
             'turn-active',
             'user',
-            'Please find this USER needle in an old prompt.',
+            'Please find this USER needle in an old prompt, password=hunter2026.',
             0,
             '2026-05-01T00:00:12.000Z',
             '2026-05-01T00:00:12.000Z'
@@ -2212,6 +2212,8 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
       const user = yield* snapshotQuery.searchThreads({ query: "user needle" });
       assert.equal(user.matches[0]?.source, "user");
       assert.match(user.matches[0]?.snippet ?? "", /USER needle/);
+      // What was pasted into a conversation is found, never quoted.
+      assert.match(user.matches[0]?.snippet ?? "", /password=••••••\./);
 
       const assistant = yield* snapshotQuery.searchThreads({ query: "FINAL NEEDLE" });
       assert.equal(assistant.matches[0]?.source, "assistant");

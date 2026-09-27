@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { maskSecrets } from "@t3tools/shared/messagePreview";
 import * as Option from "effect/Option";
 import {
   CircleAlertIcon,
@@ -177,7 +178,7 @@ function EnvironmentNotifications({
         const toastId = toastManager.add({
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
           title,
-          description: thread.title,
+          description: maskSecrets(thread.title),
           data: {
             hideCopyButton: true,
             leadingIcon: (
@@ -212,7 +213,7 @@ function EnvironmentNotifications({
         continue;
       try {
         const notification = new Notification(title, {
-          body: thread.title,
+          body: maskSecrets(thread.title),
           tag: `${environmentId}:${thread.id}`,
           silent: true,
         });

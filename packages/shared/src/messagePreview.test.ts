@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MESSAGE_PREVIEW_MAX_LENGTH, messagePreviewText, messageWords } from "./messagePreview.ts";
+import {
+  maskSecrets,
+  MESSAGE_PREVIEW_MAX_LENGTH,
+  messagePreviewText,
+  messageWords,
+  SECRET_MASK,
+} from "./messagePreview.ts";
 
 describe("messagePreviewText", () => {
   it.each([
@@ -54,5 +60,80 @@ describe("messageWords", () => {
   it("drops markdown's marks the way a preview does, and keeps every word", () => {
     const long = `**Done.** ${"word ".repeat(60)}\n\n- the \`end\``;
     expect(messageWords(long)).toBe(`Done. ${"word ".repeat(60)}the end`);
+  });
+});
+
+// Made-up credentials, put together here so that no scanner of this public
+// repository mistakes a test for a leak.
+const PASSWORD = ["xK93mPq", "Lw2vNt8RzY4a"].join("_");
+const GITHUB_TOKEN = ["ghp", "abcdefghijklmnopqrstuvwxyz0123"].join("_");
+const JWT = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiIxIn0", "abcDEF123_x"].join(".");
+const ANTHROPIC_KEY = ["sk", "ant", "api03", "AbCdEfGhIjKlMnOpQrStUv"].join("-");
+const AWS_KEY_ID = ["AKIA", "IOSFODNN7EXAMPLE"].join("");
+const PRIVATE_KEY = [
+  "-----BEGIN RSA PRIVATE",
+  "KEY----- MIIEow -----END RSA PRIVATE",
+  "KEY-----",
+].join(" ");
+
+describe("maskSecrets", () => {
+  const M = SECRET_MASK;
+  it.each([
+    [
+      "a value after a password's name",
+      "SHOP_API_PASSWORD hunter2026 SHOP_API_USER ShopAdmin",
+      `SHOP_API_PASSWORD ${M} SHOP_API_USER ShopAdmin`,
+    ],
+    [
+      "a password in Czech, after a colon",
+      `Účet vera@shop.test, Heslo: ${PASSWORD} pro stage`,
+      `Účet vera@shop.test, Heslo: ${M} pro stage`,
+    ],
+    [
+      "an assignment, its comma kept",
+      "password=abc123, then the rest",
+      `password=${M}, then the rest`,
+    ],
+    ["a quoted value with a space in it", "DB_PASS='s3cr3t pass' next", `DB_PASS=${M} next`],
+    ["a quote left open", "DB_PASS='s3cr3t next", `DB_PASS=${M} next`],
+    ["a name in camel case", "apiKey: AbC123xyz and more", `apiKey: ${M} and more`],
+    ["a token by its own shape", `use ${GITHUB_TOKEN} for it`, `use ${M} for it`],
+    ["a token after its name", `export GITHUB_TOKEN=${GITHUB_TOKEN}`, `export GITHUB_TOKEN=${M}`],
+    ["a bearer token", "Authorization: Bearer abc.def-ghi_jkl", `Authorization: Bearer ${M}`],
+    [
+      "a password in a URL",
+      "clone https://ales:tajne123@git.example.com/repo",
+      `clone https://ales:${M}@git.example.com/repo`,
+    ],
+    ["a JSON web token", JWT, M],
+    ["an API key by its shape", `key ${ANTHROPIC_KEY}`, `key ${M}`],
+    ["an AWS access key", `${AWS_KEY_ID} is the id`, `${M} is the id`],
+    ["a password said in a sentence", "the password is hunter2", `the password is ${M}`],
+    ["a Czech sentence", "heslo je Tajne2026", `heslo je ${M}`],
+    ["a private key", PRIVATE_KEY, M],
+  ])("masks %s", (_, text, masked) => {
+    expect(maskSecrets(text)).toBe(masked);
+  });
+
+  it.each([
+    "the password is too long",
+    "pass the tests first",
+    "author: Jan, tokenizer: fast",
+    "primary key: id",
+    "Merge #2 into main at a1b2c3d4e5f6",
+    "open zXUaCquAQyu1Jld65n1UFQ in Zerops",
+    "Note: the password must be long",
+    "const apiKey = process.env.SHOP_KEY",
+    "PRD je hotový v jednom souboru",
+  ])("leaves %j alone", (text) => {
+    expect(maskSecrets(text)).toBe(text);
+  });
+});
+
+describe("messagePreviewText, masked", () => {
+  it("never quotes a password", () => {
+    expect(messagePreviewText("Here it is. **Heslo:** `Xy7_abcdefgh12` for dev.")).toBe(
+      `Here it is. Heslo: ${SECRET_MASK} for dev.`,
+    );
   });
 });

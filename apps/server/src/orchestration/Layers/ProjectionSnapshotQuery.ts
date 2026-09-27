@@ -34,6 +34,7 @@ import {
   ThreadUsagePauseState,
   type ThreadUsagePause,
 } from "@t3tools/contracts";
+import { maskSecrets } from "@t3tools/shared/messagePreview";
 import { userAskOf } from "@t3tools/shared/userAsk";
 import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
@@ -297,7 +298,8 @@ function foldAsciiCase(value: string): string {
 }
 
 function buildSearchSnippet(text: string, query: string): string {
-  const normalizedText = text.replace(/\s+/g, " ").trim();
+  // Masked before the cut, so no cut can part a credential from its name.
+  const normalizedText = maskSecrets(text.replace(/\s+/g, " ").trim());
   if (normalizedText.length <= 240) {
     return normalizedText;
   }

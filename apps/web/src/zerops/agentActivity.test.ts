@@ -1,5 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import { SECRET_MASK } from "@t3tools/shared/messagePreview";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -208,6 +209,28 @@ describe("agentActivitySubject", () => {
         "working",
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("a row's words never quote a credential", () => {
+  it("masks one in what was asked, and in what the Mate last said", () => {
+    const pasted = shell({
+      latestUserMessagePreview: {
+        role: "user",
+        text: "log in with SHOP_PASSWORD hunter2026 please",
+        createdAt: "2026-09-05T10:00:00.000Z",
+      },
+      latestMessagePreview: {
+        role: "assistant",
+        // A made-up password, put together so no scanner takes it for a leak.
+        text: `Signed in. Heslo: ${["xK93mPq", "Lw2vNt8RzY4a"].join("_")} works on dev.`,
+        createdAt: "2026-09-05T10:05:00.000Z",
+      },
+    });
+    expect(agentActivitySubject(pasted, "idle")).toBe(
+      `log in with SHOP_PASSWORD ${SECRET_MASK} please`,
+    );
+    expect(agentActivitySnippet(pasted)).toBe(`Signed in. Heslo: ${SECRET_MASK} works on dev.`);
   });
 });
 
