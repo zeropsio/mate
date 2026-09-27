@@ -31,6 +31,7 @@ import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -165,6 +166,8 @@ export interface EngineMemory {
   readonly textBuffer: Map<string, string>;
   /** Who last spoke to the lead; its proposed tasks start as them outside a run. */
   leadSpokenBy: string | null;
+  /** Memory, a task or the run changed since the crew-state ref was last written. */
+  stateBehind: boolean;
   lastError: string | null;
 }
 
@@ -216,6 +219,7 @@ export const makeMemory = (): EngineMemory => ({
   lastText: new Map(),
   textBuffer: new Map(),
   leadSpokenBy: null,
+  stateBehind: false,
   lastError: null,
 });
 
@@ -318,6 +322,7 @@ export const makeCrewCore = Effect.gen(function* () {
   });
 
   const observer = yield* ZeropsWorkspaceObserver;
+  const fileSystem = yield* FileSystem.FileSystem;
 
   /**
    * Verifies every writer's service this process has not verified yet — a
@@ -422,6 +427,8 @@ export const makeCrewCore = Effect.gen(function* () {
     applied: Ref.get(cache),
     reload,
     verify,
+    /** Whether a file on this Mate's own disk exists; unreadable counts as present. */
+    fileExists: (path: string) => fileSystem.exists(path).pipe(Effect.orElseSucceed(() => true)),
     recordDevHosts,
     listDevHosts,
     probeDevHosts,

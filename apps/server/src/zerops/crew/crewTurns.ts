@@ -39,6 +39,8 @@ import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask } from "./crewTasks.ts";
 import { settleLeadWake } from "./crewLead.ts";
+import { flushState } from "./crewState.ts";
+import { CREW_ROTATE_AFTER_DEFAULT } from "./rotationDecision.ts";
 import { advance, advanceAll } from "./crewRunFlow.ts";
 
 const GUARD_WORDS = {
@@ -191,6 +193,7 @@ const turnEnded = (
       yield* releaseAfterTurn(core, handle);
     }
     if (member.row.kind === "lead") yield* settleLeadWake(core, applied, member);
+    yield* core.background(flushState(core));
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
     if (after?.state === "merging") {
       yield* core.background(
@@ -346,10 +349,15 @@ export const makeTurnHandler = (core: CrewCore) => {
           break;
         case "thread.state.changed":
           if (event.payload.state === "compacted") {
+            const spec = applied.definition.members.find((entry) => entry.handle === stint.member);
+            const rotateAfter = spec?.rotateAfter ?? CREW_ROTATE_AFTER_DEFAULT;
+            // rotateAfter compactions: the stint rotates at its crewmate's next task (CONCEPT §3A.4).
             yield* asRefusal(
               core.store.updateStint(stint.crew, stint.member, stint.stint, (row) => ({
                 ...row,
                 compactions: row.compactions + 1,
+                rotatePending:
+                  row.rotatePending || (rotateAfter > 0 && row.compactions + 1 >= rotateAfter),
               })),
             );
             yield* asRefusal(core.reload);

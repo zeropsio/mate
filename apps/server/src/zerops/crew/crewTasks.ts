@@ -55,7 +55,11 @@ import { isOpenTask } from "./crewSnapshot.ts";
 import { openStint, rotate } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { readTaskCard, type TaskCard, type TaskWait } from "./crewTaskData.ts";
-import { rotationDecision, type RotationMoment } from "./rotationDecision.ts";
+import {
+  CREW_ROTATE_AFTER_DEFAULT,
+  rotationDecision,
+  type RotationMoment,
+} from "./rotationDecision.ts";
 
 /* ------------------------------------------------------------ task rows */
 
@@ -218,13 +222,19 @@ export const stintForTurn = (
       return yield* openStint(core, applied, member, { reason: null, seed: null });
     }
     const login = member.row.login ?? "";
+    // A resume needs the transcript its session wrote; one gone (a redeploy) starts a new stint.
+    const transcriptMissing =
+      moment !== "idle" &&
+      stint.sessionId !== null &&
+      stint.transcriptPath !== null &&
+      !(yield* core.fileExists(stint.transcriptPath));
     const decision = rotationDecision({
       moment,
-      transcriptMissing: false,
+      transcriptMissing,
       resumeFailed: false,
       ...optionalReason(core.memory.terminalReasons.get(stint.threadId)),
       compactions: stint.compactions,
-      rotateAfter: 0,
+      rotateAfter: member.spec.rotateAfter ?? CREW_ROTATE_AFTER_DEFAULT,
       stintPrincipal: "",
       principal: "",
       running: { brief: stint.briefVersion, job: stint.jobVersion },
@@ -236,6 +246,15 @@ export const stintForTurn = (
       startFresh: false,
       rotationsThisAttempt: 0,
     });
+    if (decision.kind === "pending" && !stint.rotatePending) {
+      yield* asRefusal(
+        core.store.updateStint(stint.crew, stint.member, stint.stint, (row) => ({
+          ...row,
+          rotatePending: true,
+        })),
+      );
+      yield* asRefusal(core.reload);
+    }
     return decision.kind === "rotate" || decision.kind === "park"
       ? yield* rotate(core, applied, member, decision.reason)
       : stint;

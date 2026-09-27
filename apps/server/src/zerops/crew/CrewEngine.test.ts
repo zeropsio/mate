@@ -136,12 +136,14 @@ describe("CrewEngine", () => {
           const member = Option.getOrThrow(
             yield* (yield* CrewThreadDirectory).memberFor(created[0]!.threadId),
           );
-          const seed = yield* (yield* CrewToolHost).sessionStart(member, {
+          const transcript = NodePath.join(world.workspace, "session-1.jsonl");
+          NodeFS.writeFileSync(transcript, "{}\n");
+          const packet = yield* (yield* CrewToolHost).sessionStart(member, {
             source: "startup",
             sessionId: "session-1",
-            transcriptPath: "/home/zerops/.claude/projects/x/session-1.jsonl",
+            transcriptPath: transcript,
           });
-          assert.isUndefined(seed);
+          assert.isTrue(packet?.startsWith("crew-state seq"));
           yield* eventually(
             Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active"),
           );
@@ -1153,7 +1155,7 @@ describe("CrewEngine", () => {
                   true,
                   true,
                   false,
-                  ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev"],
+                  ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev", "crew_memory"],
                 ],
                 person: undefined,
                 retired: [true, 0],

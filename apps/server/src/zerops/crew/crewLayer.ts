@@ -99,6 +99,7 @@ import {
   tell,
 } from "./crewTasks.ts";
 import { makeTurnHandler } from "./crewTurns.ts";
+import { MIRRORED_TABLES } from "./crewState.ts";
 import { advanceAll } from "./crewRunFlow.ts";
 import {
   finishRun,
@@ -410,7 +411,9 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     const hub = yield* SubscriptionRef.make<CrewSnapshot>(yield* rebuild);
     const dirty = yield* Queue.dropping<void>(1);
     yield* Stream.merge(
-      Stream.map(core.store.changes, () => undefined),
+      Stream.map(core.store.changes, (change) => {
+        if (MIRRORED_TABLES.has(change.table)) core.memory.stateBehind = true;
+      }),
       core.signals,
     ).pipe(
       Stream.runForEach(() => Queue.offer(dirty, undefined)),
