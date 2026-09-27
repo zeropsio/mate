@@ -178,6 +178,7 @@ import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
+import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
 import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { useCrew } from "../zerops/crew/useCrew";
@@ -5268,6 +5269,12 @@ export default function ChatView(props: ChatViewProps) {
     currentThreadId: isServerThread ? threadId : null,
     view: crew.view,
   });
+  const activeCrewOrigin = activeThreadShell?.crew ?? null;
+  const activeCrewmate =
+    activeCrewOrigin === null
+      ? null
+      : (crew.view?.crewmates.find((row) => row.crewmate.handle === activeCrewOrigin.crewmate) ??
+        null);
   // The header's New chat while the Mate has one chat and so no strip.
   const startSecondChat = useLoneChatNewChat({
     environmentId,
@@ -7900,15 +7907,21 @@ export default function ChatView(props: ChatViewProps) {
           currentThreadId={isServerThread ? activeThread.id : null}
           extraGroups={crewStripGroups}
         />
-        <ZeropsLifecycleStrip
-          agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
-          onOpenAgentAuth={openAgentAuthDialog}
-          pendingUserInput={activePendingUserInput !== null}
-          running={zeropsThreadModel.running}
-          session={zeropsThreadModel.session}
-          threadRef={zeropsChrome.threadRef}
-          zeropsPanelOpen={activeRightPanelKind === "zerops"}
-        />
+        {/* A crewmate with a copy of the code shows it where a person's chat
+            shows its lifecycle (seam S7); a reader and the lead have none. */}
+        {activeCrewmate?.crewmate.lane != null && activeThreadRef !== null ? (
+          <CrewLaneBar handle={activeCrewmate.crewmate.handle} threadRef={activeThreadRef} />
+        ) : (
+          <ZeropsLifecycleStrip
+            agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
+            onOpenAgentAuth={openAgentAuthDialog}
+            pendingUserInput={activePendingUserInput !== null}
+            running={zeropsThreadModel.running}
+            session={zeropsThreadModel.session}
+            threadRef={zeropsChrome.threadRef}
+            zeropsPanelOpen={activeRightPanelKind === "zerops"}
+          />
+        )}
         {zeropsSignInDialog.dialog}
 
         <ThreadErrorBanner
