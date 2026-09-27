@@ -29,6 +29,7 @@ import {
 } from "@t3tools/shared/threadEnvMode";
 import {
   readEnvironmentAllowsWorktrees,
+  readEnvironmentSupportsPinning,
   readThreadShell,
   readThreadShells,
   useProjects,
@@ -37,6 +38,9 @@ import {
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefaults";
 import { primaryServerSettingsAtom } from "../state/server";
+import { threadEnvironment } from "../state/threads";
+import { useAtomCommand } from "../state/use-atom-command";
+import { mainChatToPin } from "../components/chat/ConversationStrip.logic";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import { zeropsMateAt } from "../zerops/mateIdentities";
 import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
@@ -78,8 +82,9 @@ export function useNewThreadHandler() {
   const primaryServerSettings = useAtomValue(primaryServerSettingsAtom);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   // Which environments a Mate lives in: there, a request for a new thread
-  // opens the one conversation instead.
+  // opens the Mate's main chat instead.
   const mates = useZeropsMateDirectory();
+  const pinThread = useAtomCommand(threadEnvironment.pin, { reportFailure: false });
   const router = useRouter();
   const getCurrentRouteTarget = useCallback(() => {
     const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
@@ -109,6 +114,12 @@ export function useNewThreadHandler() {
          * otherwise read a projection that may not know yet and reopen it.
          */
         fresh?: boolean;
+        /**
+         * Another chat beside the Mate's main one: create a thread where a
+         * Mate lives, pinning the main chat first when none is pinned, so the
+         * one it was stays the one every caller opens.
+         */
+        chat?: boolean;
       },
       // Which draft the thread ended up in, so a caller that has something to put in it — a
       // prepared checkout, a task to write — addresses that one rather than looking the project
@@ -126,18 +137,21 @@ export function useNewThreadHandler() {
         setModelSelection,
       } = useComposerDraftStore.getState();
       const currentRouteTarget = getCurrentRouteTarget();
-      // One environment is one conversation where a Mate lives: a request for
-      // a new thread in a Mate's project opens the conversation the Mate
-      // already has — typed content following when the caller carries it — and
-      // creates nothing, because a second thread would be a second Mate.
+      // Where a Mate lives, a request for a new thread opens the Mate's main
+      // chat — typed content following when the caller carries it — and
+      // creates nothing: another chat is started on purpose, from the
+      // conversation strip (`chat`), never by a surface that meant "a thread".
       // Where that is not known yet — a Zerops environment the candidate list
       // has not reached, or one whose server has not said where it runs — a
       // conversation already there opens too: opening one is undone by a
-      // click, a second Mate is not. An environment whose server runs outside
+      // click, a stray chat is not. An environment whose server runs outside
       // Zerops is nobody's (`withEnvironmentsOutsideZerops`) and gets its
       // new thread.
+      const startsChat = options?.chat === true;
       const mateConversation =
-        options?.fresh !== true && zeropsMateAt(mates, projectRef.environmentId).kind !== "nobody"
+        options?.fresh !== true &&
+        !startsChat &&
+        zeropsMateAt(mates, projectRef.environmentId).kind !== "nobody"
           ? resolvePrimaryConversation(
               readThreadShells().filter(
                 (thread) => thread.environmentId === projectRef.environmentId,
@@ -162,6 +176,17 @@ export function useNewThreadHandler() {
           });
           return null;
         })();
+      }
+      if (startsChat && readEnvironmentSupportsPinning(projectRef.environmentId)) {
+        const mainChat = mainChatToPin(
+          readThreadShells().filter((thread) => thread.environmentId === projectRef.environmentId),
+        );
+        if (mainChat !== null) {
+          void pinThread({
+            environmentId: projectRef.environmentId,
+            input: { threadId: mainChat },
+          });
+        }
       }
       // A new thread carries the user's *working mode* from the thread being
       // viewed: model (including options like reasoning effort and context
@@ -504,6 +529,7 @@ export function useNewThreadHandler() {
     [
       getCurrentRouteTarget,
       mates,
+      pinThread,
       primaryServerSettings,
       projectGroupingSettings,
       projects,

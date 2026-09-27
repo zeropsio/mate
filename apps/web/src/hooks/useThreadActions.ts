@@ -608,7 +608,11 @@ export function useThreadActions() {
   );
 
   const unpinThread = useCallback(
-    async (target: ScopedThreadRef) => {
+    async (
+      target: ScopedThreadRef,
+      // Moving the main chat unpins the old one as a step, not as an act to undo.
+      opts: { undoToast?: boolean } = {},
+    ) => {
       if (!readEnvironmentSupportsPinning(target.environmentId)) {
         return AsyncResult.failure(
           Cause.fail(
@@ -626,7 +630,7 @@ export function useThreadActions() {
         environmentId: target.environmentId,
         input: { threadId: target.threadId },
       });
-      if (result._tag === "Success" && action.isCurrent()) {
+      if (result._tag === "Success" && action.isCurrent() && opts.undoToast !== false) {
         showUndoToast({
           title: "Thread unpinned",
           description: thread?.title,

@@ -322,6 +322,7 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
+import { ConversationStrip } from "./chat/ConversationStrip";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -7799,6 +7800,11 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
+        <ConversationStrip
+          environmentId={activeThread.environmentId}
+          projectId={activeThread.projectId}
+          currentThreadId={isServerThread ? activeThread.id : null}
+        />
         <ZeropsLifecycleStrip
           agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
           onOpenAgentAuth={openAgentAuthDialog}
