@@ -17,6 +17,8 @@ const state = vi.hoisted(() => ({
   approval: false,
   sessionError: false,
   turnError: false,
+  muted: [] as string[],
+  title: "Fix the login form",
   add: vi.fn(
     (_toast: { title: string; description: string; actionProps: { onClick: () => void } }) =>
       "toast-1",
@@ -36,7 +38,7 @@ vi.mock("@effect/atom-react", () => ({
       threads: [
         {
           id: "thread-1",
-          title: "Fix the login form",
+          title: state.title,
           archivedAt: state.archivedAt,
           hasPendingUserInput: state.input,
           hasPendingApprovals: state.approval,
@@ -82,6 +84,9 @@ vi.mock("../threadNotifications", async (importOriginal) => ({
   playNotificationSound: state.sound,
   setNotificationBadge: vi.fn(),
 }));
+vi.mock("../zerops/mutedMates", () => ({
+  useMutedMates: () => ({ muted: state.muted, toggle: vi.fn() }),
+}));
 vi.mock("./ui/toast", () => ({
   toastManager: { add: state.add, close: state.close },
 }));
@@ -117,6 +122,8 @@ beforeEach(() => {
     approval: false,
     sessionError: false,
     turnError: false,
+    muted: [],
+    title: "Fix the login form",
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", new EventTarget());
@@ -138,6 +145,33 @@ afterEach(async () => {
 });
 
 describe("thread notifications", () => {
+  it("rings nothing for a Mate its viewer muted: no toast, no sound, no desktop alert", async () => {
+    state.mode = "notifications-and-sound";
+    state.muted = ["env-1"];
+    await render();
+    await complete();
+    state.input = true;
+    await render();
+    state.focused = false;
+    state.approval = true;
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+  });
+
+  it("rings again once the Mate is unmuted, for what happens after — never for what it missed", async () => {
+    state.muted = ["env-1"];
+    await render();
+    await complete();
+    state.muted = [];
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+    state.input = true;
+    await render();
+    expect(state.add).toHaveBeenCalledTimes(1);
+  });
+
   it("alerts once with system alerts off and opens the completed thread", async () => {
     await render();
     await complete();
@@ -198,6 +232,19 @@ describe("thread notifications", () => {
       tag: "env-1:thread-1",
       silent: true,
     });
+  });
+
+  it("never quotes a credential the conversation's title carries, in a toast or on the desktop", async () => {
+    state.title = "log in as admin, password=hunter2026";
+    state.mode = "notifications-and-sound";
+    await render();
+    await complete();
+    await render();
+    expect(state.add.mock.calls[0]?.[0].description).toBe("log in as admin, password=••••••");
+    state.focused = false;
+    state.input = true;
+    await render();
+    expect(state.notification.mock.calls[0]?.[1].body).toBe("log in as admin, password=••••••");
   });
 
   it("keeps background desktop alerts when in-app notifications are disabled", async () => {

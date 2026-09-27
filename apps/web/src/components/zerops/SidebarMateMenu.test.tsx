@@ -1,0 +1,162 @@
+import { act, createElement as h } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { create } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { Menu } from "../ui/menu";
+import { MateMenuItems, MateRenameField, type MateRowActions } from "./SidebarMateMenu";
+
+const ACTIONS: MateRowActions = {
+  muted: false,
+  toggleMute: () => {},
+  toggleUnread: () => {},
+  copyLink: () => {},
+  rename: { initialValue: "Nova", validate: () => undefined, commit: () => {} },
+  entries: [
+    { id: "restart", label: "Restart", onSelect: () => {} },
+    { id: "quick", separator: true },
+    { id: "assign", label: "Hand over…", onSelect: () => {} },
+    { id: "move", label: "Move to project…", onSelect: () => {} },
+  ],
+};
+
+const items = (props: Partial<Parameters<typeof MateMenuItems>[0]> = {}) =>
+  renderToStaticMarkup(
+    <Menu>
+      <MateMenuItems
+        actions={ACTIONS}
+        appUrl="https://app.example"
+        onOpenMate={() => {}}
+        onPeek={() => {}}
+        onRename={() => {}}
+        shortcuts
+        unread={false}
+        {...props}
+      />
+    </Menu>,
+  );
+const order = (html: string) =>
+  [...html.matchAll(/data-zerops-mate-menu="([^"]+)"/gu)].map((match) => match[1]);
+
+describe("MateMenuItems — a Mate's own menu", () => {
+  it("lists the ways in, what this viewer keeps, the shared verbs, then the stop", () => {
+    expect(order(items({ actions: { ...ACTIONS, stop: () => {} } }))).toEqual([
+      "open",
+      "peek",
+      "open-app",
+      "copy-link",
+      "mute",
+      "unread",
+      "rename",
+      "restart",
+      "assign",
+      "move",
+      "stop",
+    ]);
+  });
+
+  it("offers no snooze and no pin, anywhere", () => {
+    const html = items({ actions: { ...ACTIONS, stop: () => {} } }).toLowerCase();
+    expect(html).not.toContain("snooze");
+    expect(html).not.toContain(">pin");
+  });
+
+  it.each([
+    {
+      case: "muted",
+      actions: { ...ACTIONS, muted: true },
+      unread: false,
+      says: "Unmute notifications",
+    },
+    { case: "ringing", actions: ACTIONS, unread: false, says: "Mute notifications" },
+    { case: "unread", actions: ACTIONS, unread: true, says: "Mark as read" },
+    { case: "read", actions: ACTIONS, unread: false, says: "Mark as unread" },
+  ])("says the opposite of what it is: $case", ({ actions, unread, says }) => {
+    expect(items({ actions, unread })).toContain(`>${says}<`);
+  });
+
+  it("opens the app as a link where there is one, and says there is none where there is not", () => {
+    expect(items()).toMatch(/<a[^>]*href="https:\/\/app\.example"[^>]*target="_blank"/u);
+    const none = items({ appUrl: undefined });
+    expect(none).not.toContain("<a ");
+    expect(none).toMatch(
+      /data-disabled=""[^>]*data-zerops-mate-menu="open-app"|data-zerops-mate-menu="open-app"[^>]*data-disabled=""/u,
+    );
+  });
+
+  it("offers Stop the run only while it works, and Rename only where it may be renamed", () => {
+    expect(order(items())).not.toContain("stop");
+    expect(order(items({ actions: { ...ACTIONS, rename: undefined } }))).not.toContain("rename");
+  });
+
+  it("shows the keys the list answers beside their items", () => {
+    const html = items({ actions: { ...ACTIONS, stop: () => {} } });
+    for (const key of ["↵", "Space", "E", "X"]) expect(html).toContain(`>${key}</kbd>`);
+    expect(items({ shortcuts: false })).not.toContain("<kbd");
+  });
+});
+
+describe("MateRenameField — the name, edited where it stands", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const mountField = (validate: (value: string) => string | undefined) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const commit = vi.fn();
+    const onDone = vi.fn();
+    let renderer: ReturnType<typeof create> | undefined;
+    act(() => {
+      renderer = create(
+        h(MateRenameField, { rename: { initialValue: "Nova", validate, commit }, onDone }),
+        { createNodeMock: () => ({ focus: () => {}, select: () => {} }) },
+      );
+    });
+    const input = () => renderer!.root.findByType("input");
+    const type = (value: string) => {
+      act(() => {
+        input().props.onChange({ currentTarget: { value } });
+      });
+    };
+    const key = (name: string) => {
+      act(() => {
+        input().props.onKeyDown({ key: name, preventDefault: () => {}, stopPropagation: () => {} });
+      });
+    };
+    return { commit, onDone, type, key, input, renderer: () => renderer! };
+  };
+
+  it("writes the new name on Enter and hands the row back", () => {
+    const field = mountField(() => undefined);
+    field.type("Vega");
+    field.key("Enter");
+    expect(field.commit).toHaveBeenCalledWith("Vega");
+    expect(field.onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the name as it was on Escape", () => {
+    const field = mountField(() => undefined);
+    field.type("Vega");
+    field.key("Escape");
+    expect(field.commit).not.toHaveBeenCalled();
+    expect(field.onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the field open with the reason under it when the name will not do", () => {
+    const field = mountField((value) =>
+      value === "Kai" ? "Another Mate is called Kai." : undefined,
+    );
+    field.type("Kai");
+    field.key("Enter");
+    expect(field.commit).not.toHaveBeenCalled();
+    expect(field.onDone).not.toHaveBeenCalled();
+    const alert = field.renderer().root.find((node) => node.props.role === "alert");
+    expect(alert.children.join("")).toBe("Another Mate is called Kai.");
+  });
+
+  it("writes nothing when the name did not change", () => {
+    const field = mountField(() => undefined);
+    field.key("Enter");
+    expect(field.commit).not.toHaveBeenCalled();
+    expect(field.onDone).toHaveBeenCalledTimes(1);
+  });
+});

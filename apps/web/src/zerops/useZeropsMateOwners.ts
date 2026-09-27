@@ -26,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
+import { menuMemory, rememberMenu, withMembers } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A Mate's owner, as a face in the corner of the Mate's own draws them. */
@@ -33,6 +34,8 @@ export interface ZeropsMateOwner {
   readonly name: string;
   readonly initials: string;
   readonly avatarUrl: string | null;
+  /** The owner is the person looking: "You asked", and *Mine* keeps this Mate. */
+  readonly isViewer: boolean;
 }
 
 /**
@@ -42,11 +45,18 @@ export interface ZeropsMateOwner {
  */
 export function zeropsMateOwner(
   member: ZeropsOrganizationMember | undefined,
+  viewerUserId?: string | null,
 ): ZeropsMateOwner | undefined {
   const name = member === undefined ? undefined : mateMemberName(member);
   if (member?.user === undefined || name === undefined) return undefined;
   const display = zeropsAccountDisplay(member.user);
-  return { name, initials: display.initials, avatarUrl: display.avatarUrl };
+  const userId = member.user.id;
+  return {
+    name,
+    initials: display.initials,
+    avatarUrl: display.avatarUrl,
+    isViewer: userId !== undefined && viewerUserId !== undefined && userId === viewerUserId,
+  };
 }
 
 /**
@@ -64,13 +74,18 @@ export function useZeropsOrganizationMembersRead(input: {
   readonly status: ZeropsOrganizationMembersStatus;
 } {
   const { client } = useZeropsSession();
-  const [members, setMembers] = useState<ReadonlyArray<ZeropsOrganizationMember>>([]);
+  const { clientId, enabled } = input;
+  // The members this browser read last, until they are read again: whose
+  // each Mate is — its face's badge, *Mine* — from the first paint
+  // (`menuMemory.ts`). What waits for the read itself waits on `status`.
+  const [members, setMembers] = useState<ReadonlyArray<ZeropsOrganizationMember>>(() =>
+    clientId === undefined ? [] : (menuMemory().members[clientId] ?? []),
+  );
   const [settled, setSettled] = useState<{
     readonly clientId: string;
     readonly failed: boolean;
   } | null>(null);
   const read = useRef<string | null>(null);
-  const { clientId, enabled } = input;
 
   useEffect(() => {
     if (!enabled || clientId === undefined) return;
@@ -78,21 +93,29 @@ export function useZeropsOrganizationMembersRead(input: {
     read.current = clientId;
 
     const controller = new AbortController();
+    let answered = false;
     void client
       .listOrganizationMembers(clientId, controller.signal)
       .then((answer) => {
+        answered = true;
         if (controller.signal.aborted) return;
         setMembers(answer);
         setSettled({ clientId, failed: false });
+        rememberMenu((memory) => withMembers(memory, clientId, answer));
       })
       .catch(() => {
+        answered = true;
+        if (controller.signal.aborted) return;
         // No names, and the rows say the same thing without them.
         read.current = null;
-        if (!controller.signal.aborted) setSettled({ clientId, failed: true });
+        setSettled({ clientId, failed: true });
       });
 
     return () => {
       controller.abort();
+      // A read put away before it answered was never had: the effect that
+      // runs next — a remount's, a hot update's — reads again.
+      if (!answered) read.current = null;
     };
   }, [client, clientId, enabled]);
 
@@ -124,7 +147,8 @@ export function useZeropsMateOwners(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly enabled: boolean;
 }): (candidate: ZeropsCandidate) => ZeropsMateOwner | undefined {
-  const { activeOrganization } = useZeropsSession();
+  const { activeOrganization, user } = useZeropsSession();
+  const viewerUserId = user?.id;
   const members = useZeropsOrganizationMembers({
     clientId: activeOrganization?.id,
     enabled:
@@ -137,7 +161,7 @@ export function useZeropsMateOwners(input: {
   });
   return useCallback(
     (candidate: ZeropsCandidate) =>
-      zeropsMateOwner(resolveMateOwner({ project: candidate.project, members })),
-    [members],
+      zeropsMateOwner(resolveMateOwner({ project: candidate.project, members }), viewerUserId),
+    [members, viewerUserId],
   );
 }

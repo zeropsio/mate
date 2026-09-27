@@ -358,14 +358,24 @@ export interface ZeropsGroupTree {
  * `newest` groups by creation time (a group's is the earliest among its
  * members — the moment it was born, unmoved by a stage added later) and
  * ungroups the same way, newest first; `name` is today's order, display name
- * then id. There is no default: every caller states which one a viewer sees.
+ * then id; `custom` is the viewer's own arrangement of the groups
+ * (`customOrder`), the ungrouped left newest first — a person arranges their
+ * projects, not the loose environments under them. There is no default:
+ * every caller states which one a viewer sees.
  */
-export type ZeropsProjectOrder = "newest" | "name";
+export type ZeropsProjectOrder = "newest" | "name" | "custom";
 
 export interface DeriveZeropsGroupsOptions {
   /** Group id → display name, as read from the recipe store. */
   readonly names?: Readonly<Record<string, string>>;
   readonly order: ZeropsProjectOrder;
+  /**
+   * `custom` only: group ids in the order the viewer put them. A group it
+   * does not name — one created since, or never placed — follows the named
+   * ones, newest first, so a new project never pushes an arranged one down;
+   * an id the listing no longer holds takes no place.
+   */
+  readonly customOrder?: ReadonlyArray<string>;
   /** The account's creations under way that know their group. */
   readonly births?: ReadonlyArray<ZeropsPlacedBirth>;
 }
@@ -403,6 +413,16 @@ function groupBornAt(group: ZeropsGroup): number | undefined {
   }
   const createdAt = earliest === undefined ? Number.NaN : Date.parse(earliest);
   return Number.isNaN(createdAt) ? group.pending[0]?.startedAt : createdAt;
+}
+
+/**
+ * Ascending by the place the viewer gave a group; a group given none sorts
+ * after every placed one and leaves the tie to the next key.
+ */
+function byPlace(left: number | undefined, right: number | undefined): number {
+  if (left === undefined) return right === undefined ? 0 : 1;
+  if (right === undefined) return -1;
+  return left - right;
 }
 
 /** Descending, missing always last — {@link byCreatedNewestFirst} over wall ms. */
@@ -520,10 +540,17 @@ export function deriveZeropsGroups(
     } satisfies ZeropsGroup;
   });
 
-  if (options.order === "newest") {
+  if (options.order === "newest" || options.order === "custom") {
     const bornByGroupId = new Map(groups.map((group) => [group.groupId, groupBornAt(group)]));
+    const placed = new Map(
+      (options.order === "custom" ? (options.customOrder ?? []) : []).map((groupId, index) => [
+        groupId,
+        index,
+      ]),
+    );
     groups.sort(
       (left, right) =>
+        byPlace(placed.get(left.groupId), placed.get(right.groupId)) ||
         byBornNewestFirst(bornByGroupId.get(left.groupId), bornByGroupId.get(right.groupId)) ||
         byName(left.name, right.name) ||
         byName(left.groupId, right.groupId),

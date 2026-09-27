@@ -27,7 +27,12 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
+import {
+  PROJECT_ORDER_CHOICES,
+  readProjectsOnScreen,
+  useProjectOrder,
+  useProjectOrderOptions,
+} from "~/zerops/projectOrderPreference";
 import {
   applyProjectCreationVerdict,
   normalizeOrigin,
@@ -517,29 +522,22 @@ function SignedOutNotice({ message }: { readonly message: string }) {
  * under the title either: the projects below say what the page is.
  */
 
-const PROJECT_ORDER_OPTIONS: ReadonlyArray<{
-  readonly value: ZeropsProjectOrder;
-  readonly label: string;
-}> = [
-  { value: "newest", label: "Newest first" },
-  { value: "name", label: "Name" },
-];
-
 /**
  * How the page and the left sidebar tree (`SidebarZeropsTree.tsx`) order
  * their projects — a per-browser preference, not project state
  * (`projectOrderPreference.ts`), read and written live so both surfaces turn
- * around together the moment it changes.
+ * around together the moment it changes. *Custom* starts from the order on
+ * screen; the account menu offers the same three.
  */
 function ZeropsProjectOrderControl() {
-  const [order, setOrder] = useProjectOrderPreference();
+  const control = useProjectOrder();
   return (
     <Select
       onValueChange={(value) => {
-        const option = PROJECT_ORDER_OPTIONS.find((entry) => entry.value === value);
-        if (option !== undefined) setOrder(option.value);
+        const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);
+        if (choice !== undefined) control.choose(choice.value, readProjectsOnScreen());
       }}
-      value={order}
+      value={control.order}
     >
       <SelectTrigger
         aria-label="Sort projects"
@@ -549,13 +547,13 @@ function ZeropsProjectOrderControl() {
       >
         <ArrowDownUpIcon className="size-3.5" />
         <SelectValue>
-          {PROJECT_ORDER_OPTIONS.find((option) => option.value === order)?.label}
+          {PROJECT_ORDER_CHOICES.find((choice) => choice.value === control.order)?.label}
         </SelectValue>
       </SelectTrigger>
       <SelectPopup align="end">
-        {PROJECT_ORDER_OPTIONS.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
+        {PROJECT_ORDER_CHOICES.map((choice) => (
+          <SelectItem key={choice.value} value={choice.value}>
+            {choice.label}
           </SelectItem>
         ))}
       </SelectPopup>
@@ -1066,12 +1064,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       clearInterval(timer);
     };
   }, [creationRunning]);
-  const [projectOrder] = useProjectOrderPreference();
+  const projectOrder = useProjectOrderOptions();
   // A creation the platform accepted is drawn in its group before the
   // listing holds its project — the same placing the left menu reads.
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
-    order: projectOrder,
+    ...projectOrder,
     births: placedBirthsIn(births.births, activeOrganization?.id),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);

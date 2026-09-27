@@ -48,7 +48,7 @@ import { projectTagsWrite, registerMateInGroup } from "./brokerGrant";
 import { useAccountGitea } from "./giteaProject";
 import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
-import { useProjectOrderPreference } from "./projectOrderPreference";
+import { useProjectOrderOptions } from "./projectOrderPreference";
 import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
 import { intendContainer } from "./zeropsContainers";
@@ -75,10 +75,25 @@ export interface MateActions {
   ) => ReadonlyArray<ZeropsMenuEntry>;
   /** Mounted once by the caller: rename, hand over, move. */
   readonly dialogs: ReactNode;
+  /**
+   * *Rename Mate* without its dialog, for a surface that renames in place:
+   * the same validation and the same write. `undefined` where this person
+   * may not rename the Mate.
+   */
+  readonly renameInPlace: (candidate: ZeropsCandidatePresentation) => MateRenameInPlace | undefined;
   /** Which Mate has a write in flight, so its own row says so and takes no second press. */
   readonly busyKey: string | null;
   /** Why the last write failed; `null` when none did. */
   readonly trouble: string | null;
+}
+
+/** One Mate's name, edited where it stands. */
+export interface MateRenameInPlace {
+  readonly initialValue: string;
+  /** Why this name will not do, or `undefined` when it will. */
+  readonly validate: (value: string) => string | undefined;
+  /** Writes the name — trimmed, inner spaces collapsed, as the dialog writes it. */
+  readonly commit: (value: string) => void;
 }
 
 /**
@@ -111,14 +126,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // The same preference the projects screen's sort control writes — the
   // "move to" dialog's group choices should read the way the person set up
   // their own list, not a fixed order of their own.
-  const [projectOrder] = useProjectOrderPreference();
+  const projectOrder = useProjectOrderOptions();
 
   const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
         rank: rankZeropsCandidateForListing,
-        order: projectOrder,
+        ...projectOrder,
       }),
     [candidates, projectOrder],
   );
@@ -471,6 +486,24 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     ],
   );
 
+  const renameInPlace = useCallback(
+    (candidate: ZeropsCandidatePresentation): MateRenameInPlace | undefined => {
+      const allowed =
+        viewer === null ? true : resolveMateVerbs({ project: candidate.project, viewer }).rename;
+      if (!allowed) return undefined;
+      const current = readZeropsGroupTags(candidate.project.tagList).bot;
+      return {
+        initialValue: current ?? "",
+        validate: (value) =>
+          validateBotName(value, taken, current === undefined ? {} : { current }),
+        commit: (value) => {
+          rename(candidate, value.replace(/\s+/g, " ").trim());
+        },
+      };
+    },
+    [rename, taken, viewer],
+  );
+
   const mintGroupId = useCallback(
     () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
     [],
@@ -544,5 +577,5 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     </>
   );
 
-  return { actionsFor, dialogs, busyKey, trouble };
+  return { actionsFor, dialogs, busyKey, trouble, renameInPlace };
 }

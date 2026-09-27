@@ -142,6 +142,19 @@ export function mateMarkStateForThreadStatus(kind: ThreadStatusKind): MateMarkSt
   }
 }
 
+/**
+ * The face for a thread that may be paused at a usage limit
+ * (`OrchestrationThreadShell.usagePause`): asleep until the limit resets,
+ * whatever its last turn said — it will do nothing before then, and the
+ * resume picks its work up without anybody. What waits on a person still
+ * does: an approval or a question is answered whether or not the limit has
+ * reset. Otherwise the status's own face, from the one mapping above.
+ */
+export function mateMarkStateForThread(kind: ThreadStatusKind, paused: boolean): MateMarkState {
+  if (paused && kind !== "approval" && kind !== "input") return "sleep";
+  return mateMarkStateForThreadStatus(kind);
+}
+
 export function kindForAwarenessPhase(
   phase: Exclude<RelayAgentAwarenessPhase, "stale">,
 ): Exclude<ThreadStatusKind, "idle">;

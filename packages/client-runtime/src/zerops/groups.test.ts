@@ -769,3 +769,52 @@ describe("withZeropsGroupTags preserves what it was not asked to change", () => 
     expect(after).not.toContain("mate:name:Beviro CRM");
   });
 });
+
+describe("deriveZeropsGroups — the viewer's own order", () => {
+  const PROJECTS = [
+    project("crm-dev", ["mate:g:aaa", "mate:name:Crm"], "crm-dev", "2024-01-01T00:00:00Z"),
+    project("shop-dev", ["mate:g:bbb", "mate:name:Shop"], "shop-dev", "2024-03-01T00:00:00Z"),
+    project("blog-dev", ["mate:g:ccc", "mate:name:Blog"], "blog-dev", "2024-02-01T00:00:00Z"),
+    project("new-old", [], "loose-old", "2024-01-01T00:00:00Z"),
+    project("new-new", [], "loose-new", "2024-06-01T00:00:00Z"),
+  ];
+
+  it.each([
+    {
+      case: "every group named, in the viewer's order",
+      customOrder: ["ccc", "aaa", "bbb"],
+      groups: ["ccc", "aaa", "bbb"],
+    },
+    {
+      case: "a group the order does not name follows the named ones",
+      customOrder: ["aaa", "ccc"],
+      groups: ["aaa", "ccc", "bbb"],
+    },
+    {
+      case: "unnamed groups follow newest first, as a new project would",
+      customOrder: ["ccc"],
+      groups: ["ccc", "bbb", "aaa"],
+    },
+    {
+      case: "an id the listing no longer holds takes no place",
+      customOrder: ["gone", "bbb", "aaa", "ccc"],
+      groups: ["bbb", "aaa", "ccc"],
+    },
+    {
+      case: "no order yet reads as newest first",
+      customOrder: undefined,
+      groups: ["bbb", "ccc", "aaa"],
+    },
+  ])("orders the groups as the viewer arranged them: $case", ({ customOrder, groups }) => {
+    const result = deriveZeropsGroups(PROJECTS, {
+      order: "custom",
+      ...(customOrder === undefined ? {} : { customOrder }),
+    });
+    expect(result.groups.map((group) => group.groupId)).toEqual(groups);
+  });
+
+  it("keeps the ungrouped projects newest first — only groups are arranged by hand", () => {
+    const result = deriveZeropsGroups(PROJECTS, { order: "custom", customOrder: ["aaa"] });
+    expect(result.ungrouped.map((entry) => entry.id)).toEqual(["loose-new", "loose-old"]);
+  });
+});

@@ -522,55 +522,7 @@
   {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
-    "fingerprint": "<SidebarMenuButton> font-medium in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarMenuButton> gap-2 in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarMenuButton> hover:text-sidebar-foreground in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> ps-[calc(var(--sidebar-row-content-inset)-1px)] in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarMenuButton> px-2 in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarMenuButton> text-sidebar-muted-foreground in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarMenuButton> text-sm in \"h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"

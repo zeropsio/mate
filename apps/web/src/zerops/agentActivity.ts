@@ -31,8 +31,10 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
+import { maskSecrets } from "@t3tools/shared/messagePreview";
 import {
-  mateMarkStateForThreadStatus,
+  hasUnseenCompletion,
+  mateMarkStateForThread,
   resolveThreadStatus,
   type ThreadStatusKind,
 } from "@t3tools/shared/threadStatus";
@@ -69,6 +71,34 @@ export interface ZeropsAgentActivity {
    * (the subject already says it), and on a server that keeps no preview.
    */
   readonly snippet: string | undefined;
+  /**
+   * The plan's steps while it works, counted — what the ring around a
+   * working face is drawn from, one segment a step. Absent while it rests
+   * and where the server reports no plan: a ring nobody can fill is not
+   * drawn.
+   */
+  readonly progress: { readonly completed: number; readonly total: number } | undefined;
+  /**
+   * The Mate finished something this device has not looked at since
+   * (`hasUnseenCompletion`, the resolver's own fact): its row is bold until
+   * its conversation is opened.
+   */
+  readonly unread: boolean;
+  /** When the usage limit pausing it resets; absent while it is not paused. */
+  readonly pausedUntil: string | undefined;
+  /** The conversation's scoped key — what its unsent draft is kept under. */
+  readonly threadKey: string;
+  /**
+   * The last task as the person asked it, whatever the row's subject says
+   * meanwhile — a peek's "You asked" while the row names the step it is on.
+   */
+  readonly task: string | undefined;
+  /**
+   * What this browser remembered the row saying (`menuMemory.ts`), standing
+   * until the Mate's own conversation is read: its words and its time, at
+   * rest, with nothing only true now.
+   */
+  readonly remembered?: true;
 }
 
 /**
@@ -91,7 +121,8 @@ export function agentActivitySnippet(
 ): string | undefined {
   const preview = thread.latestMessagePreview;
   if (preview === undefined || preview === null || preview.role !== "assistant") return undefined;
-  return preview.text;
+  // A server from before previews were masked still hands over what was pasted.
+  return maskSecrets(preview.text);
 }
 
 export function agentActivityAt(
@@ -116,18 +147,20 @@ export function agentActivitySubject(
 ): string | undefined {
   if (kind !== "idle") {
     const step = thread.planProgress?.step.trim();
-    if (step !== undefined && step.length > 0) return step;
+    if (step !== undefined && step.length > 0) return maskSecrets(step);
   }
   // The last task, as the person put it — never a command to the harness or
   // the client's own placeholder for an image-only message, which a server
   // from before it knew better may still hand over as the latest words.
   const asked = thread.latestUserMessagePreview;
-  if (asked !== undefined && asked !== null && isPersonsWords(asked.text)) return asked.text;
+  if (asked !== undefined && asked !== null && isPersonsWords(asked.text)) {
+    return maskSecrets(asked.text);
+  }
   // A conversation nobody has spoken into has a placeholder for a title, not
   // a subject: a Mate that was never asked anything has nothing it is about.
   if (thread.latestUserMessageAt === null) return undefined;
   const title = thread.title.trim();
-  return title.length > 0 && isPersonsWords(title) ? title : undefined;
+  return title.length > 0 && isPersonsWords(title) ? maskSecrets(title) : undefined;
 }
 
 function isPersonsWords(text: string): boolean {
@@ -154,20 +187,28 @@ export function deriveZeropsAgentActivity(
   for (const [environmentId, shells] of shellsByEnvironment) {
     const { primary } = resolvePrimaryConversation(shells);
     if (primary === undefined) continue;
-    const lastVisitedAt =
-      lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))];
-    const resolved = resolveThreadStatus({
-      ...primary,
-      ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
-    });
+    const threadKey = scopedThreadKey(scopeThreadRef(environmentId, primary.id));
+    const lastVisitedAt = lastVisitedAtById[threadKey];
+    const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
+    const resolved = resolveThreadStatus({ ...primary, ...visited });
+    const pause = primary.usagePause ?? undefined;
+    const plan = primary.planProgress ?? undefined;
     activity.set(environmentId, {
       threadId: primary.id,
       kind: resolved.kind,
       status: threadStatusPill(resolved),
-      face: mateMarkStateForThreadStatus(resolved.kind),
+      face: mateMarkStateForThread(resolved.kind, pause !== undefined),
       subject: agentActivitySubject(primary, resolved.kind),
       at: agentActivityAt(primary),
       snippet: agentActivitySnippet(primary),
+      progress:
+        resolved.kind === "working" && plan !== undefined && plan.totalSteps > 0
+          ? { completed: plan.completedSteps, total: plan.totalSteps }
+          : undefined,
+      unread: hasUnseenCompletion({ latestTurn: primary.latestTurn, ...visited }),
+      pausedUntil: pause?.resetsAt,
+      threadKey,
+      task: agentActivitySubject(primary, "idle"),
     });
   }
   return activity;

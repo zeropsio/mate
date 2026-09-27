@@ -1,5 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import { SECRET_MASK } from "@t3tools/shared/messagePreview";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -211,6 +212,28 @@ describe("agentActivitySubject", () => {
   });
 });
 
+describe("a row's words never quote a credential", () => {
+  it("masks one in what was asked, and in what the Mate last said", () => {
+    const pasted = shell({
+      latestUserMessagePreview: {
+        role: "user",
+        text: "log in with SHOP_PASSWORD hunter2026 please",
+        createdAt: "2026-09-05T10:00:00.000Z",
+      },
+      latestMessagePreview: {
+        role: "assistant",
+        // A made-up password, put together so no scanner takes it for a leak.
+        text: `Signed in. Heslo: ${["xK93mPq", "Lw2vNt8RzY4a"].join("_")} works on dev.`,
+        createdAt: "2026-09-05T10:05:00.000Z",
+      },
+    });
+    expect(agentActivitySubject(pasted, "idle")).toBe(
+      `log in with SHOP_PASSWORD ${SECRET_MASK} please`,
+    );
+    expect(agentActivitySnippet(pasted)).toBe(`Signed in. Heslo: ${SECRET_MASK} works on dev.`);
+  });
+});
+
 describe("agentActivitySnippet", () => {
   it("quotes the Mate's last words", () => {
     expect(
@@ -306,5 +329,97 @@ describe("mateFaceFor", () => {
 
   it.each(cases)("wears $face when connected=$connected", ({ activity, connected, face }) => {
     expect(mateFaceFor(connected, activity)).toBe(face);
+  });
+});
+
+describe("what a Mate's row says without words", () => {
+  const COMPLETED = {
+    turnId: TurnId.make("turn-1"),
+    state: "completed" as const,
+    requestedAt: "2026-09-05T10:01:00.000Z",
+    startedAt: "2026-09-05T10:01:00.000Z",
+    completedAt: "2026-09-05T10:05:00.000Z",
+    assistantMessageId: null,
+  };
+  const key = "env-fen:thread-1";
+
+  it.each([
+    {
+      case: "a working plan, counted",
+      shell: shell({
+        ...RUNNING,
+        planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
+      }),
+      progress: { completed: 2, total: 5 },
+    },
+    {
+      case: "no plan while it works",
+      shell: RUNNING,
+      progress: undefined,
+    },
+    {
+      case: "a plan left over from a settled turn — never drawn",
+      shell: shell({
+        latestTurn: COMPLETED,
+        planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
+      }),
+      progress: undefined,
+    },
+  ])("counts the plan's steps only while it works: $case", ({ shell: thread, progress }) => {
+    expect(deriveZeropsAgentActivity([thread], {}).get(FEN)?.progress).toEqual(progress);
+  });
+
+  it.each([
+    {
+      case: "a completion after the last visit",
+      visited: "2026-09-05T10:04:00.000Z",
+      unread: true,
+    },
+    { case: "a completion seen since", visited: "2026-09-05T10:06:00.000Z", unread: false },
+    { case: "never visited on this device", visited: undefined, unread: false },
+  ])("is unread for $case", ({ visited, unread }) => {
+    const activity = deriveZeropsAgentActivity(
+      [shell({ latestTurn: COMPLETED })],
+      visited === undefined ? {} : { [key]: visited },
+    );
+    expect(activity.get(FEN)?.unread).toBe(unread);
+  });
+
+  it("sleeps through a usage limit and says when it wakes", () => {
+    const paused = shell({
+      latestTurn: COMPLETED,
+      usagePause: {
+        resetsAt: "2026-09-05T14:20:00.000Z",
+        window: "5-hour",
+        held: 0,
+        pausedAt: "2026-09-05T10:05:00.000Z",
+        autoResume: true,
+      },
+    });
+    const activity = deriveZeropsAgentActivity([paused], {}).get(FEN);
+    expect(activity?.face).toBe("sleep");
+    expect(activity?.pausedUntil).toBe("2026-09-05T14:20:00.000Z");
+    expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.pausedUntil).toBeUndefined();
+  });
+
+  it("names its conversation by the key a draft is kept under", () => {
+    expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.threadKey).toBe(key);
+  });
+});
+
+describe("the task as the person asked it", () => {
+  it("keeps the ask while the row says the running plan step", () => {
+    const working = shell({
+      ...RUNNING,
+      latestUserMessagePreview: {
+        role: "user",
+        text: "Add a /status page",
+        createdAt: "2026-09-05T10:00:00.000Z",
+      },
+      planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
+    });
+    const activity = deriveZeropsAgentActivity([working], {}).get(FEN);
+    expect(activity?.subject).toBe("Run the build");
+    expect(activity?.task).toBe("Add a /status page");
   });
 });

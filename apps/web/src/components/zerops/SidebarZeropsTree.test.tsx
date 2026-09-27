@@ -12,12 +12,24 @@ import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
-import { act, type ReactElement } from "react";
+import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+
+import { useComposerDraftStore } from "~/composerDraftStore";
+import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { activityFromMemory } from "~/zerops/menuMemory";
+import {
+  PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+  PROJECT_ORDER_STORAGE_KEY,
+  ProjectCustomOrderSchema,
+  ProjectOrderSchema,
+} from "~/zerops/projectOrderPreference";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 
 // The projects a person collapsed, as storage would hand them back, and what
@@ -33,6 +45,12 @@ vi.mock("~/zerops/collapsedProjects", () => ({
   },
 }));
 afterEach(() => {
+  // A tree left mounted would answer the next test's asks of the one menu.
+  for (const tree of mountedTrees.splice(0)) {
+    act(() => {
+      tree.unmount();
+    });
+  }
   stored.collapsed = new Set();
   stored.written = undefined;
   vi.unstubAllGlobals();
@@ -44,7 +62,16 @@ import {
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
-import { ProjectHeader, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
+import { PortalGate } from "../ui/portal-gate";
+import { useSidebarJump } from "~/zerops/sidebarJump";
+import { useSidebarPeek } from "~/zerops/sidebarPeek";
+import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
+import {
+  ProjectHeader,
+  SidebarZeropsTree,
+  type SidebarDrawn,
+  type SidebarProjectFlow,
+} from "./SidebarZeropsTree";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 
 function candidate(
@@ -135,6 +162,7 @@ const stop = (html: string, id: string) =>
  * node is a DOM element; there is no DOM here, so an event target stands in
  * for the window and nothing is an element.
  */
+const mountedTrees: ReactTestRenderer[] = [];
 function mount(element: ReactElement): ReactTestRenderer {
   const noDom = Object.fromEntries(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
@@ -145,6 +173,7 @@ function mount(element: ReactElement): ReactTestRenderer {
   act(() => {
     tree = create(element);
   });
+  mountedTrees.push(tree!);
   return tree!;
 }
 
@@ -202,7 +231,8 @@ describe("SidebarZeropsTree", () => {
     const row = html.slice(html.lastIndexOf("<button", rowAt), rowAt);
     expect(row).toContain("w-full");
     expect(row).toContain("rounded-md");
-    expect(row).toContain("hover:bg-sidebar-row-hover");
+    // Lit from its row, so it stays lit while the pointer is on its menu.
+    expect(row).toContain("group-hover/mate:bg-sidebar-row-hover");
     expect(row).not.toContain("border");
   });
 
@@ -241,6 +271,11 @@ describe("SidebarZeropsTree", () => {
       subject: "Fix the login redirect",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
       snippet: undefined,
+      progress: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread",
+      task: undefined,
     };
     const html = render([connected], { getActivity: () => idle });
     expect(html).toContain('data-mate-face-state="idle"');
@@ -262,6 +297,11 @@ describe("SidebarZeropsTree", () => {
       subject: "give it optimistic updates",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
       snippet: "Deploying and verifying now.",
+      progress: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread",
+      task: undefined,
     };
     const html = render([connected], { getActivity: () => spoken });
     const subjectAt = html.indexOf('data-zerops-surface="sidebar-mate-subject"');
@@ -808,6 +848,11 @@ describe("the project's flow under it", () => {
       subject: "Something already asked",
       at: new Date().toISOString(),
       snippet: undefined,
+      progress: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread",
+      task: undefined,
     };
     const getActivity = () => activity;
     const withMergedCode = flow({ pullRequests: [], merged: [pull(4, { merged: true })], missing });
@@ -1415,6 +1460,11 @@ describe("the project's flow under it", () => {
         subject: "Ship it",
         at: new Date().toISOString(),
         snippet: undefined,
+        progress: undefined,
+        unread: false,
+        pausedUntil: undefined,
+        threadKey: "env:thread",
+        task: undefined,
       };
       const html = render([CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD], {
         getActivity: () => talked,
@@ -1760,6 +1810,11 @@ describe("the Mate's card", () => {
     subject: "Reviewing the migration",
     at: "2026-09-06T10:00:00.000Z",
     snippet: undefined,
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: undefined,
   };
 
   it("leads with the agent's name — not the project's, not its tag", () => {
@@ -1927,5 +1982,896 @@ describe("the sidebar and the projects page read one group the same way", () => 
     const dot = /data-zerops-surface="sidebar-project-next-step"[^>]*/u.exec(html)?.[0];
     if (page.kind === "none") expect(dot).toBeUndefined();
     else expect(dot).toContain(`aria-label="${page.text}"`);
+  });
+});
+
+describe("arranging the projects by hand", () => {
+  const SHOP_MATE = named("shop-dev", "Shop - dev", [
+    "mate",
+    "mate:g:shop",
+    "mate:name:Shop",
+    "mate:role:dev",
+  ]);
+  const order = (html: string) =>
+    [...html.matchAll(/data-zerops-group="([^"]+)"/gu)].map((match) => match[1]);
+  afterEach(() => {
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
+    setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [], ProjectCustomOrderSchema);
+  });
+
+  it.each([
+    { order: "name", custom: [], expected: ["links", "shop"] },
+    { order: "custom", custom: ["shop", "links"], expected: ["shop", "links"] },
+    { order: "custom", custom: ["links", "shop"], expected: ["links", "shop"] },
+  ] as const)(
+    "draws the projects in the $order order: $expected",
+    ({ order: mode, custom, expected }) => {
+      setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, mode, ProjectOrderSchema);
+      setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [...custom], ProjectCustomOrderSchema);
+      expect(order(render([LINKS_MATE, SHOP_MATE]))).toEqual(expected);
+    },
+  );
+
+  it("gives a heading a grip only in the Custom order, in the gutter, named for its project", () => {
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
+    expect(render([LINKS_MATE, SHOP_MATE])).not.toContain("sidebar-project-grip");
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
+    const html = render([LINKS_MATE, SHOP_MATE]);
+    const grip =
+      /<button[^>]*data-zerops-surface="sidebar-project-grip"[^>]*>/u.exec(html)?.[0] ?? "";
+    expect(grip).toContain('aria-label="Move Links: drag, or use the arrow keys"');
+    // In the gutter and invisible at rest, so the name never moves for it.
+    expect(grip).toContain("absolute");
+    expect(grip).toContain("opacity-0");
+    expect(grip).toContain("group-hover/project:opacity-100");
+  });
+
+  it("moves a project with the grip's arrow keys, writing the order on screen with it moved", () => {
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
+    setLocalStorageItem(
+      PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+      ["links", "shop"],
+      ProjectCustomOrderSchema,
+    );
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[LINKS_MATE, SHOP_MATE]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const grips = mounted.root.findAll(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-project-grip",
+    );
+    act(() => {
+      grips[1]!.props.onKeyDown({ key: "ArrowUp", preventDefault: () => {} });
+    });
+    expect(getLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, ProjectCustomOrderSchema)).toEqual(
+      ["shop", "links"],
+    );
+    const spoken = mounted.root.find(
+      (node) => typeof node.type === "string" && node.props.role === "status",
+    );
+    expect(text(spoken)).toBe("Shop moved to 1 of 2.");
+  });
+});
+
+describe("a Mate's row says more without words", () => {
+  const live = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Add a /status page with the build number",
+    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    snippet: "The handler reads the build number from the environment.",
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env-crm-dev:thread-1",
+    task: undefined,
+    ...overrides,
+  });
+  const row = (activity: ZeropsAgentActivity, props: Record<string, unknown> = {}) =>
+    render([CRM_DEV_CONNECTED], { getActivity: () => activity, ...props });
+  const working = (overrides: Partial<ZeropsAgentActivity> = {}) =>
+    live({
+      kind: "working",
+      face: "working",
+      subject: "Run the build",
+      at: new Date(Date.now() - 192_000).toISOString(),
+      progress: { completed: 2, total: 5 },
+      ...overrides,
+    });
+  const slot = (html: string) =>
+    /<span[^>]*data-zerops-surface="sidebar-mate-time"[^>]*>(.*?)<\/span>/u.exec(html)?.[0] ?? "";
+
+  it("rings a working face with its plan, one segment a step", () => {
+    const html = row(working());
+    expect(html).toContain('data-zerops-surface="sidebar-mate-ring"');
+    expect(html.match(/data-plan-ring-segment=/gu)).toHaveLength(5);
+    expect(html.match(/data-plan-ring-segment="done"/gu)).toHaveLength(2);
+  });
+
+  it.each([
+    { case: "a resting Mate", activity: live() },
+    { case: "a working one with no plan", activity: working({ progress: undefined }) },
+  ])("draws no ring on $case", ({ activity }) => {
+    expect(row(activity)).not.toContain("sidebar-mate-ring");
+  });
+
+  it("counts up how long it has been working, in the busy blue, where its age was", () => {
+    const time = slot(row(working()));
+    expect(time).toContain("3:12");
+    expect(time).toContain("text-status-busy-text");
+    expect(slot(row(live()))).toContain(">2h<");
+  });
+
+  it("sleeps through a usage limit, and says in the time slot when it picks up", () => {
+    const resets = new Date(2026, 8, 27, 14, 20).toISOString();
+    const html = row(live({ face: "sleep", pausedUntil: resets }), { timestampFormat: "24-hour" });
+    expect(html).toContain('data-mate-face-state="sleep"');
+    const time = slot(html);
+    expect(time).toContain('data-zerops-surface="sidebar-mate-paused"');
+    expect(time).toContain(">14:20<");
+    expect(time).not.toContain(">2h<");
+  });
+
+  it("sets an unread Mate's name and task in bold, and a read one in the usual weight", () => {
+    const name = (html: string) =>
+      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-name"/u.exec(html)?.[1] ?? "";
+    const subject = (html: string) =>
+      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-subject"/u.exec(html)?.[1] ?? "";
+    const unread = row(live({ unread: true }));
+    expect(name(unread)).toContain("font-bold");
+    expect(subject(unread)).toContain("text-sidebar-foreground");
+    expect(subject(unread)).toContain("font-medium");
+    const read = row(live());
+    expect(name(read)).toContain("font-medium");
+    expect(name(read)).not.toContain("font-bold");
+    expect(subject(read)).toContain("text-sidebar-muted-foreground");
+  });
+
+  describe("an unsent draft", () => {
+    const ref = scopeThreadRef(EnvironmentId.make("env-crm-dev"), ThreadId.make("thread-1"));
+    afterEach(() => {
+      useComposerDraftStore.getState().setPrompt(ref, "");
+    });
+
+    it("leads the last line with Draft:, in place of the last words", () => {
+      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+      // Mounted, not drawn once: a store read on the server answers with its
+      // first state, never the draft written since.
+      const mounted = mount(
+        <SidebarZeropsTree
+          candidates={[CRM_DEV_CONNECTED]}
+          complete
+          getActivity={() => live()}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />,
+      );
+      const snippet = text(surface(mounted, "sidebar-mate-snippet"));
+      expect(snippet).toBe("Draft: also check the thumbnails");
+    });
+
+    it("never grows a row that has no last words: the composer holds the draft", () => {
+      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+      const html = row(live({ snippet: undefined }));
+      expect(html).not.toContain("sidebar-mate-snippet");
+      expect(html).not.toContain("Draft:");
+    });
+  });
+});
+
+describe("a Mate's own menu, in its row", () => {
+  const ACTIONS: MateRowActions = { muted: false, entries: [] };
+  const spoken: ZeropsAgentActivity = {
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Add a /status page",
+    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    snippet: undefined,
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: undefined,
+  };
+  const row = (actions: MateRowActions | undefined) =>
+    render([CRM_DEV_CONNECTED], {
+      getActivity: () => spoken,
+      ...(actions === undefined ? {} : { getMateActions: () => actions }),
+    });
+
+  it("gives the time slot to the menu on hover and focus, in a slot reserved so nothing moves", () => {
+    const html = row(ACTIONS);
+    const actions =
+      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-actions"/u.exec(html)?.[1] ?? "";
+    expect(actions).toContain("absolute");
+    expect(actions).toContain("opacity-0");
+    expect(actions).toContain("group-hover/mate:opacity-100");
+    expect(actions).toContain("group-has-[:focus-visible]/mate:opacity-100");
+    // The time stands in a slot at least the menu's width, and steps aside.
+    const slotClass = /<span class="([^"]*min-w-11[^"]*)"/u.exec(html)?.[1] ?? "";
+    expect(slotClass).toContain("min-w-11");
+    expect(slotClass).toContain("group-hover/mate:opacity-0");
+    expect(html).toContain('aria-label="More for crm-dev"');
+  });
+
+  it("gives a working Mate's time slot a stop, beside its menu", () => {
+    expect(row({ ...ACTIONS, stop: () => {} })).toContain(
+      'data-zerops-surface="sidebar-mate-stop"',
+    );
+    expect(row({ ...ACTIONS, stop: () => {} })).toContain('aria-label="Stop crm-dev"');
+    expect(row(ACTIONS)).not.toContain("sidebar-mate-stop");
+  });
+
+  it("carries no menu where nobody supplied its verbs", () => {
+    expect(row(undefined)).not.toContain("sidebar-mate-actions");
+  });
+
+  it("follows a muted Mate's name with a crossed bell, and nothing for one that rings", () => {
+    expect(row({ ...ACTIONS, muted: true })).toContain('data-zerops-surface="sidebar-mate-muted"');
+    expect(row(ACTIONS)).not.toContain("sidebar-mate-muted");
+  });
+
+  it("opens the same menu at the pointer on a right-click", () => {
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ACTIONS}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(mounted.root.findByType(MateMenu).props.open).toBe(false);
+    act(() => {
+      surface(mounted, "sidebar-mate-row").props.onContextMenu({
+        preventDefault: () => {},
+        clientX: 120,
+        clientY: 340,
+      });
+    });
+    const menu = mounted.root.findByType(MateMenu);
+    expect(menu.props.open).toBe(true);
+    expect(menu.props.at).toEqual({ x: 120, y: 340 });
+  });
+});
+
+describe("a Mate's peek", () => {
+  const spoken: ZeropsAgentActivity = {
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Add a /status page",
+    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    snippet: "Done. /status answers on stage.",
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: "Add a /status page",
+  };
+  const renderPeek = vi.fn((_peek: unknown) => null);
+  const mounted = () =>
+    mount(
+      <PortalGate closed>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV_CONNECTED]}
+          complete
+          getActivity={() => spoken}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          renderPeek={renderPeek}
+        />
+      </PortalGate>,
+    );
+  const row = (tree: ReactTestRenderer) => surface(tree, "sidebar-mate-row");
+  const peek = () => useSidebarPeek.getState().peek;
+  afterEach(() => {
+    act(() => {
+      useSidebarPeek.getState().close();
+    });
+    renderPeek.mockClear();
+    vi.useRealTimers();
+  });
+
+  it("opens after half a second's rest on the row, and closes once the pointer has left", () => {
+    vi.useFakeTimers();
+    const tree = mounted();
+    act(() => {
+      row(tree).props.onPointerEnter({ pointerType: "mouse" });
+    });
+    act(() => {
+      vi.advanceTimersByTime(499);
+    });
+    expect(peek()).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(peek()).toEqual({ projectId: "crm-dev", mode: "hover" });
+    expect(renderPeek).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: "crm-dev", projectName: "Beviro CRM" }),
+    );
+    // Lit while its peek is open.
+    expect(surface(tree, "sidebar-mate").props.className).toContain("bg-sidebar-row-hover");
+    act(() => {
+      row(tree).props.onPointerLeave({ pointerType: "mouse" });
+    });
+    act(() => {
+      vi.advanceTimersByTime(220);
+    });
+    expect(peek()).toBeNull();
+  });
+
+  it("never opens for a pointer that only passes over the row", () => {
+    vi.useFakeTimers();
+    const tree = mounted();
+    act(() => {
+      row(tree).props.onPointerEnter({ pointerType: "mouse" });
+      vi.advanceTimersByTime(300);
+      row(tree).props.onPointerLeave({ pointerType: "mouse" });
+      vi.advanceTimersByTime(1000);
+    });
+    expect(peek()).toBeNull();
+  });
+
+  it("is offered in the Mate's own menu, which pins it open", () => {
+    const tree = mount(
+      <PortalGate closed>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV_CONNECTED]}
+          complete
+          getActivity={() => spoken}
+          getMateActions={() => ({ muted: false, entries: [] })}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          renderPeek={renderPeek}
+        />
+      </PortalGate>,
+    );
+    const menu = tree.root.findByType(MateMenu);
+    expect(menu.props.onPeek).toBeTypeOf("function");
+    act(() => {
+      menu.props.onPeek();
+    });
+    expect(peek()).toEqual({ projectId: "crm-dev", mode: "pinned" });
+  });
+
+  it("opens with Space and keeps it, and Space again puts it away — never pressing the row", () => {
+    const tree = mounted();
+    let prevented = 0;
+    const space = { key: " ", preventDefault: () => (prevented += 1) };
+    act(() => {
+      surface(tree, "sidebar-mate").props.onKeyDown(space);
+    });
+    expect(peek()).toEqual({ projectId: "crm-dev", mode: "pinned" });
+    expect(prevented).toBe(1);
+    act(() => {
+      row(tree).props.onPointerLeave({ pointerType: "mouse" });
+    });
+    expect(peek()?.mode).toBe("pinned");
+    act(() => {
+      surface(tree, "sidebar-mate").props.onKeyDown(space);
+    });
+    expect(peek()).toBeNull();
+  });
+
+  it("gives no peek where nobody draws one", () => {
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    act(() => {
+      surface(tree, "sidebar-mate").props.onKeyDown({ key: " ", preventDefault: () => {} });
+    });
+    expect(peek()).toBeNull();
+  });
+});
+
+describe("a long list, kept scannable", () => {
+  const QUIET_MATE = {
+    ...named("crm-old", "CRM - old", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Olga"]),
+    group: "connected",
+  } as ZeropsCandidate;
+  const act = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Something",
+    at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    snippet: undefined,
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: undefined,
+    ...overrides,
+  });
+  const fortnight = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const activities = (id: string) =>
+    id === "crm-old" ? act({ at: fortnight, subject: "Try a new renderer" }) : act();
+  const names = (html: string) =>
+    [...html.matchAll(/data-zerops-surface="sidebar-mate-name"[^>]*>([^<]+)</gu)].map(
+      (match) => match[1],
+    );
+
+  it("folds a Mate untouched for a week behind its count at the end of the Mates", () => {
+    const html = render([CRM_DEV_CONNECTED, QUIET_MATE, CRM_STAGE], {
+      getActivity: (item: ZeropsCandidate) => activities(item.project.id),
+    });
+    expect(names(html)).toEqual(["crm-dev"]);
+    expect(html).toContain(">1 quiet Mate<");
+    // After the Mates, before the stops.
+    expect(html.indexOf("sidebar-quiet-mates")).toBeLessThan(
+      html.indexOf('data-zerops-surface="sidebar-environment"'),
+    );
+  });
+
+  it("unfolds the quiet Mates under the fold, which stays where it is", () => {
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED, QUIET_MATE]}
+        complete
+        getActivity={(item) => activities(item.project.id)}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    press(tree, "sidebar-quiet-mates");
+    const rendered = tree.root
+      .findAll(
+        (node) =>
+          typeof node.type === "string" && typeof node.props["data-zerops-surface"] === "string",
+      )
+      .map((node) => node.props["data-zerops-surface"] as string)
+      .filter((name) => name === "sidebar-mate" || name === "sidebar-quiet-mates");
+    expect(rendered).toEqual(["sidebar-mate", "sidebar-quiet-mates", "sidebar-mate"]);
+    expect(surface(tree, "sidebar-quiet-mates").props["aria-expanded"]).toBe(true);
+  });
+
+  it("never folds the Mate whose conversation is open", () => {
+    const html = render([CRM_DEV_CONNECTED, QUIET_MATE], {
+      getActivity: (item: ZeropsCandidate) => activities(item.project.id),
+      activeProjectId: "crm-old",
+    });
+    expect(names(html)).toEqual(["Olga", "crm-dev"]);
+    expect(html).not.toContain("quiet Mate");
+  });
+
+  it("lists only the Mates the viewer asked for, and leaves out a project where none remains", () => {
+    const LINKS_CONNECTED = { ...LINKS_MATE, group: "connected" } as ZeropsCandidate;
+    const html = render([CRM_DEV_CONNECTED, LINKS_CONNECTED], {
+      getActivity: () => act(),
+      shown: (item: ZeropsCandidate) => item.project.id === "links-dev",
+    });
+    expect(names(html)).toEqual(["Links - dev"]);
+    expect(html).not.toContain('data-zerops-group="aaa"');
+  });
+
+  it("stops a working Mate with x and marks one read or unread with e, from its row", () => {
+    const stop = vi.fn();
+    const toggleUnread = vi.fn();
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => act({ kind: "working", face: "working" })}
+        getMateActions={() => ({ muted: false, entries: [], stop, toggleUnread })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const key = (name: string) => {
+      act_(() => {
+        surface(tree, "sidebar-mate").props.onKeyDown({
+          key: name,
+          preventDefault: () => {},
+          metaKey: false,
+          ctrlKey: false,
+          altKey: false,
+        });
+      });
+    };
+    key("x");
+    key("e");
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(toggleUnread).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows each Mate's number in its time slot while Option is held", () => {
+    const LINKS_CONNECTED = { ...LINKS_MATE, group: "connected" } as ZeropsCandidate;
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED, LINKS_CONNECTED]}
+        complete
+        getActivity={() => act()}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const chips = () =>
+      tree.root
+        .findAll(
+          (node) =>
+            typeof node.type === "string" &&
+            node.props["data-zerops-surface"] === "sidebar-mate-number",
+        )
+        .map((node) => text(node));
+    expect(chips()).toEqual([]);
+    act_(() => {
+      window.dispatchEvent(Object.assign(new Event("keydown"), { key: "Alt" }));
+    });
+    expect(chips()).toEqual(["1", "2"]);
+    act_(() => {
+      window.dispatchEvent(Object.assign(new Event("keyup"), { key: "Alt" }));
+    });
+    expect(chips()).toEqual([]);
+  });
+});
+
+describe("a surface's ask to show a Mate", () => {
+  const tree = () => (
+    <SidebarZeropsTree
+      candidates={[CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD]}
+      complete
+      onBrowseProjects={() => {}}
+      onSelect={() => {}}
+    />
+  );
+
+  it("opens the Mate's collapsed project and answers the ask once", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const mounted = mount(tree());
+    const mateRows = () =>
+      mounted.root.findAll(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate",
+      );
+    expect(mateRows()).toHaveLength(0);
+    act(() => {
+      useSidebarPeek.getState().reveal({ kind: "mate", projectId: "crm-dev" });
+    });
+    expect(mateRows()).toHaveLength(1);
+    // Answered: a menu drawn again later has nothing left to show.
+    expect(useSidebarPeek.getState().revealing).toBeNull();
+  });
+
+  it("leaves an ask for a Mate it does not hold standing until one does", () => {
+    mount(tree());
+    act(() => {
+      useSidebarPeek.getState().reveal({ kind: "mate", projectId: "elsewhere" });
+    });
+    expect(useSidebarPeek.getState().revealing?.target).toEqual({
+      kind: "mate",
+      projectId: "elsewhere",
+    });
+    act(() => {
+      useSidebarPeek.getState().answerReveal(useSidebarPeek.getState().revealing!.seq);
+    });
+  });
+});
+
+describe("what the jump box finds in the menu", () => {
+  const linksFlow = (pullRequests: ReadonlyArray<FlowPullRequest>): SidebarProjectFlow => ({
+    pullRequests,
+    environments: new Map([
+      ["links-stage", { ...stageRow, projectId: "links-stage" }],
+      ["links-prod", { ...productionRow, projectId: "links-prod" }],
+    ]),
+    releaseOffered: false,
+    merging: () => false,
+    releasing: false,
+    onMerge: () => {},
+    onRelease: () => {},
+    onOpenChange: () => {},
+    onOpenStop: () => {},
+  });
+  const OWN = pull(4, { mateProjectId: "links-dev", title: "Add a search box" });
+  const ADAS = pull(6, { mateProjectId: undefined, author: "ada", title: "Bump the linter" });
+  const tree = (props: Record<string, unknown> = {}) => (
+    <SidebarZeropsTree
+      candidates={[LINKS_MATE, LINKS_STAGE, LINKS_PROD]}
+      complete
+      getFlow={() => linksFlow([OWN, ADAS])}
+      onBrowseProjects={() => {}}
+      onOpenGroup={() => {}}
+      onSelect={() => {}}
+      {...props}
+    />
+  );
+  const index = () => useSidebarJump.getState().index;
+
+  afterEach(() => {
+    useSidebarJump.setState({ index: null, showable: false });
+  });
+
+  it("publishes the menu's Mates, projects, changes and stops, each as its row says it", () => {
+    const mounted = mount(tree());
+    expect(index()?.mates.map((mate) => [mate.projectId, mate.projectName])).toEqual([
+      ["links-dev", "Links"],
+    ]);
+    expect(
+      index()?.projects.map((project) => [project.groupId, project.name, project.mates]),
+    ).toEqual([["links", "Links", 1]]);
+    expect(
+      index()?.changes.map((change) => [
+        change.key,
+        change.label,
+        change.mateProjectId,
+        change.whose,
+      ]),
+    ).toEqual([
+      ["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name],
+      ["appdev#6", "#6 Bump the linter · ada", undefined, "ada"],
+    ]);
+    expect(index()?.stops.map((stop) => [stop.projectId, stop.title])).toEqual([
+      ["links-stage", "Links stage"],
+      ["links-prod", "Links production"],
+    ]);
+    act_(() => {
+      mounted.unmount();
+    });
+    // A phone's menu put away: what it held stays findable.
+    expect(index()?.mates).toHaveLength(1);
+  });
+
+  it("finds a collapsed project's rows too: a jump opens the project", () => {
+    stored.collapsed = new Set(["links"]);
+    mount(tree());
+    expect(index()?.mates).toHaveLength(1);
+    expect(index()?.changes).toHaveLength(2);
+    expect(index()?.stops).toHaveLength(2);
+  });
+
+  it("finds nothing the viewer asked not to see, nor a hidden Mate's changes", () => {
+    const THEO = named("links-theo", "Links - theo", ["mate", ...LINKS_TAGS, "mate:role:dev"]);
+    const theirs = pull(9, { mateProjectId: "links-theo", title: "Theirs" });
+    mount(
+      tree({
+        candidates: [LINKS_MATE, THEO, LINKS_STAGE, LINKS_PROD],
+        getFlow: () => linksFlow([OWN, theirs]),
+        shown: (item: ZeropsCandidate) => item.project.id !== "links-theo",
+      }),
+    );
+    expect(index()?.mates.map((mate) => mate.projectId)).toEqual(["links-dev"]);
+    expect(index()?.changes.map((change) => change.key)).toEqual(["appdev#4"]);
+  });
+
+  it("opens a collapsed project a jump shows, and answers the ask once", () => {
+    stored.collapsed = new Set(["links"]);
+    const mounted = mount(tree());
+    const mateRows = () =>
+      mounted.root.findAll(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate",
+      );
+    expect(mateRows()).toHaveLength(0);
+    act_(() => {
+      useSidebarPeek.getState().reveal({ kind: "project", groupId: "links" });
+    });
+    expect(mateRows()).toHaveLength(1);
+    expect(useSidebarPeek.getState().revealing).toBeNull();
+  });
+
+  it("opens a Mate's folded changes when a jump lands on one of them", () => {
+    const many = [1, 2, 3, 4].map((number) => pull(number, { mateProjectId: "links-dev" }));
+    const mounted = mount(tree({ getFlow: () => linksFlow(many) }));
+    const changeRows = () =>
+      mounted.root.findAll(
+        (node) =>
+          typeof node.type === "string" &&
+          node.props["data-zerops-surface"] === "sidebar-pull-request",
+      );
+    const folded = changeRows().length;
+    expect(folded).toBeLessThan(4);
+    act_(() => {
+      useSidebarPeek.getState().reveal({
+        kind: "change",
+        groupId: "links",
+        key: "appdev#1",
+        mateProjectId: "links-dev",
+      });
+    });
+    expect(changeRows()).toHaveLength(4);
+    expect(changeRows().map((row) => row.props["data-zerops-change"])).toContain("appdev#1");
+  });
+
+  it("shows the change a jump asked for in its Mate's peek, and the newest otherwise", () => {
+    const older = pull(2, { mateProjectId: "links-dev", title: "Older change" });
+    const newer = pull(3, { mateProjectId: "links-dev", title: "Newer change" });
+    const peeks: Array<{ readonly change: unknown }> = [];
+    const mounted = mount(
+      <PortalGate closed>
+        {tree({
+          getFlow: () => linksFlow([older, newer]),
+          renderPeek: (peek: { readonly change: unknown }) => {
+            peeks.push(peek);
+            return null;
+          },
+        })}
+      </PortalGate>,
+    );
+    const shown = () => {
+      const change = peeks.at(-1)?.change as ReactElement<{ pull: FlowPullRequest }> | undefined;
+      return change?.props.pull.number;
+    };
+    act_(() => {
+      useSidebarPeek.getState().open("links-dev", "pinned", "appdev#2");
+    });
+    expect(shown()).toBe(2);
+    act_(() => {
+      useSidebarPeek.getState().open("links-dev", "pinned");
+    });
+    expect(shown()).toBe(3);
+    act_(() => {
+      useSidebarPeek.getState().close();
+      mounted.unmount();
+    });
+  });
+});
+
+describe("a reload paints what the menu last drew (menuMemory)", () => {
+  const known = (label: string): Shown<Deployment> => ({
+    state: "known",
+    value: {
+      kind: "running",
+      activatedAt: null,
+      version: {
+        name: label,
+        commit: "3f9c1b2",
+        sha: "3f9c1b2000000000000000000000000000000000",
+        taggedBy: undefined,
+        label,
+      },
+    },
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const flowOf = (overrides: Partial<SidebarProjectFlow>): SidebarProjectFlow => ({
+    pullRequests: [],
+    environments: new Map(),
+    releaseOffered: false,
+    merging: () => false,
+    releasing: false,
+    onMerge: () => {},
+    onRelease: () => {},
+    ...overrides,
+  });
+  const remembering = (changes: ReadonlyArray<FlowPullRequest> | undefined, stop?: string) => ({
+    changes: () => changes,
+    stop: () => stop,
+  });
+  const running = (label: string) =>
+    ({
+      deployments: new Map([["crm-prod", known(label)]]),
+      flows: new Map(),
+    }) as unknown as ZeropsProjectFlowValue;
+  const RUNS_V230 = running("v2.3.0");
+  const RUNS_V250 = running("v2.5.0");
+  const withRunning = (runs: ZeropsProjectFlowValue, props: Record<string, unknown>) =>
+    renderToStaticMarkup(
+      <ZeropsProjectFlowContext.Provider value={runs}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, CRM_PROD]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          {...props}
+        />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+
+  it("draws a Mate whose socket is not open with the words this browser remembers — asleep, offering nothing", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getActivity: () =>
+        activityFromMemory({
+          subject: "Add a /status page",
+          snippet: "The page reads the build number.",
+          at: "2026-09-27T10:00:00.000Z",
+          unread: false,
+          threadId: "thread-1",
+          threadKey: "env-crm-dev:thread-1",
+        }),
+    });
+    expect(html).toContain("Add a /status page");
+    expect(html).toContain("The page reads the build number.");
+    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).not.toContain('data-zerops-surface="sidebar-mate-stop"');
+  });
+
+  it("still draws nothing it heard through a socket that is not open now", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getActivity: (): ZeropsAgentActivity => ({
+        ...activityFromMemory({
+          subject: "Add a /status page",
+          at: "2026-09-27T10:00:00.000Z",
+          unread: false,
+          threadId: "thread-1",
+          threadKey: "env-crm-dev:thread-1",
+        }),
+        remembered: undefined as never,
+      }),
+    });
+    expect(html).not.toContain("Add a /status page");
+  });
+
+  it("draws the change rows it remembers until Gitea answers: their titles, and no verb", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getFlow: () => flowOf({ changesKnown: false }),
+      remembered: remembering([pull(14, { title: "Add a /status page" })]),
+    });
+    expect(html).toContain("#14 Add a /status page");
+    expect(html).not.toContain('data-zerops-primary-action="Merge"');
+    expect(html).not.toContain('aria-label="Passing"');
+  });
+
+  it("draws Gitea's change rows once it answered, and never the remembered ones", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getFlow: () => flowOf({ changesKnown: true, pullRequests: [pull(15, { title: "Live" })] }),
+      remembered: remembering([pull(14, { title: "Remembered" })]),
+    });
+    expect(html).toContain("#15 Live");
+    expect(html).not.toContain("Remembered");
+    expect(html).toContain('data-zerops-primary-action="Merge"');
+  });
+
+  it("says what a stop last ran until it is read, rather than Checking", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getFlow: () => flowOf({ changesKnown: false }),
+      remembered: remembering(undefined, "v2.4.0"),
+    });
+    expect(stop(html, "crm-prod")).toContain(">v2.4.0<");
+    // Its badge still says it is being read: only the line stands on memory.
+    expect(stop(html, "crm-prod")).not.toContain(">Checking what runs here…<");
+  });
+
+  it("keeps the name it last saw until Gitea answers, which may name the release instead", () => {
+    const unread = withRunning(RUNS_V230, {
+      getFlow: () => flowOf({ changesKnown: false }),
+      remembered: remembering(undefined, "v2.4.0"),
+    });
+    expect(stop(unread, "crm-prod")).toContain("v2.4.0");
+    expect(stop(unread, "crm-prod")).not.toContain("v2.3.0");
+    const answered = withRunning(RUNS_V250, {
+      getFlow: () => flowOf({ changesKnown: true }),
+      remembered: remembering(undefined, "v2.4.0"),
+    });
+    expect(stop(answered, "crm-prod")).toContain("v2.5.0");
+  });
+
+  it("reports what it drew of what it read, for the memory to keep", () => {
+    const drawn: SidebarDrawn[] = [];
+    const change = pull(4);
+    mount(
+      <ZeropsProjectFlowContext.Provider value={RUNS_V250}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, CRM_PROD]}
+          complete
+          getFlow={() => flowOf({ changesKnown: true, pullRequests: [change] })}
+          onBrowseProjects={() => {}}
+          onDrawn={(next: SidebarDrawn) => drawn.push(next)}
+          onSelect={() => {}}
+        />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+    expect(drawn.at(-1)).toEqual({ changes: { aaa: [change] }, stops: { "crm-prod": "v2.5.0" } });
   });
 });

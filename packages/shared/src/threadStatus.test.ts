@@ -4,6 +4,7 @@ import { TurnId } from "@t3tools/contracts";
 import {
   hasUnseenCompletion,
   kindForAwarenessPhase,
+  mateMarkStateForThread,
   mateMarkStateForThreadStatus,
   resolveThreadStatus,
   type ThreadStatusKind,
@@ -46,6 +47,31 @@ describe("mateMarkStateForThreadStatus", () => {
       expect(mateMarkStateForThreadStatus(resolveThreadStatus(vector.input).kind)).toBeDefined();
     }
   });
+});
+
+describe("mateMarkStateForThread — a thread paused at a usage limit", () => {
+  it.each([
+    // Asleep until the limit resets: it will not do anything before then,
+    // and the resume picks its work up without anybody.
+    ["working", true, "sleep"],
+    ["failed", true, "sleep"],
+    ["done", true, "sleep"],
+    ["idle", true, "sleep"],
+    ["monitoring", true, "sleep"],
+    // What waits on a person still does, paused or not.
+    ["approval", true, "needs"],
+    ["input", true, "needs"],
+    // Not paused: the status's own face.
+    ["working", false, "working"],
+    ["failed", false, "needs"],
+    ["done", false, "done"],
+    ["idle", false, "idle"],
+  ] as const satisfies ReadonlyArray<readonly [ThreadStatusKind, boolean, string]>)(
+    "%s, paused %s, wears the %s face",
+    (kind, paused, face) => {
+      expect(mateMarkStateForThread(kind, paused)).toBe(face);
+    },
+  );
 });
 
 describe("thread status facts", () => {

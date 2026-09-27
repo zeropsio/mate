@@ -602,6 +602,39 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     outline: none;
   }
 
+  /* The left menu's row a jump landed on — a project's heading, a stop, a
+     change — rings once where it stands, so the eye finds it after the
+     scroll. Once, never a loop. While it rings, the focus ring of the
+     control in it waits, and takes over once it is done; with reduced motion
+     the focus ring says it alone. */
+  @keyframes zerops-reveal-flash {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+    18%,
+    55% {
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-ring) 60%, transparent);
+    }
+  }
+
+  [data-zerops-flash] {
+    border-radius: var(--radius-md);
+    animation: zerops-reveal-flash 1.3s ease-out 1;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    [data-zerops-flash] :focus-visible {
+      box-shadow: none !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-zerops-flash] {
+      animation: none;
+    }
+  }
+
   .chat-composer-shoulder-tab {
     border-color: var(
       --chat-composer-outline,

@@ -588,6 +588,11 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
     subject,
     at: "2026-09-24T10:00:00.000Z",
     snippet: undefined,
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: undefined,
   });
   const cases: ReadonlyArray<
     [
