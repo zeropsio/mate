@@ -7,6 +7,7 @@
  * each time it opens (`useCrewHome` in the contents, never in the frame).
  */
 import type { CrewApplyChoice } from "@t3tools/contracts";
+import type { CrewDefinitionIssue } from "@t3tools/shared/crewHome";
 import { ChevronDownIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -152,5 +153,22 @@ export function CrewSheetReading({ error }: { readonly error: string | null }) {
       </CrewSheetBody>
       <CrewSheetFooter error={error}>{null}</CrewSheetFooter>
     </>
+  );
+}
+
+/** The crew home's issues, each in the format's own words. */
+export function CrewIssues({ issues }: { readonly issues: ReadonlyArray<CrewDefinitionIssue> }) {
+  if (issues.length === 0) return null;
+  return (
+    <ul className="space-y-1" role="alert">
+      {issues.map((issue) => (
+        <li
+          className="text-xs text-status-failed-text"
+          key={`${issue.code}:${issue.path}:${issue.handle ?? ""}`}
+        >
+          {issue.message}
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   CREW_SAVE_CHOICES,
   crewApplyProgress,
+  crewRewriteBlockers,
   crewDevHosts,
   crewEffortOptions,
   crewLoginOptions,
@@ -242,5 +243,20 @@ describe("crewApplyProgress", () => {
       { id: "frontend", label: "Frontend", state: "running", stateLabel: "Running npm ci" },
       { id: "erik", label: "Erik", state: "failed", stateLabel: "No free disk on appdev" },
     ]);
+  });
+});
+
+describe("crewRewriteBlockers", () => {
+  it("keeps an editor from rewriting crew.yaml over what it could not read", () => {
+    const issue = (code: "field-unknown" | "field-type" | "host-missing") => ({
+      code,
+      path: "crew.yaml",
+      message: code,
+    });
+    expect(
+      crewRewriteBlockers([issue("host-missing"), issue("field-unknown"), issue("field-type")]).map(
+        (blocker) => blocker.code,
+      ),
+    ).toEqual(["field-unknown", "field-type"]);
   });
 });

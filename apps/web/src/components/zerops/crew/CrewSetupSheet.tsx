@@ -6,7 +6,7 @@
  */
 import type { Crewmate } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
-import { renderCrewHome, type CrewDefinitionIssue } from "@t3tools/shared/crewHome";
+import { renderCrewHome } from "@t3tools/shared/crewHome";
 import { crewFromTemplate, type CrewTemplateId } from "@t3tools/shared/crewTemplates";
 import { useState } from "react";
 
@@ -16,7 +16,7 @@ import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome } from "../../../zerops/crew/useCrewHome";
 import { MateFace, Pill, ProcessSteps } from "../primitives";
 import { crewApplyProgress } from "./CrewEditors.logic";
-import { CrewSheet, CrewSheetBody, CrewSheetFooter } from "./CrewSheetParts";
+import { CrewIssues, CrewSheet, CrewSheetBody, CrewSheetFooter } from "./CrewSheetParts";
 
 const TEMPLATES: ReadonlyArray<{
   readonly id: CrewTemplateId;
@@ -195,21 +195,5 @@ function CrewSetupDraft({
         />
       </CrewSheetFooter>
     </>
-  );
-}
-
-function CrewIssues({ issues }: { readonly issues: ReadonlyArray<CrewDefinitionIssue> }) {
-  if (issues.length === 0) return null;
-  return (
-    <ul className="space-y-1" role="alert">
-      {issues.map((issue) => (
-        <li
-          className="text-xs text-status-failed-text"
-          key={`${issue.code}:${issue.path}:${issue.handle ?? ""}`}
-        >
-          {issue.message}
-        </li>
-      ))}
-    </ul>
   );
 }

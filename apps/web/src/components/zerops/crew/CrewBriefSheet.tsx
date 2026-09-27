@@ -10,6 +10,7 @@ import {
   CREW_BRIEF_MAX_CHARS,
   CREW_HOME_FILE,
   type CrewDefinition,
+  type CrewDefinitionIssue,
 } from "@t3tools/shared/crewHome";
 import { useState } from "react";
 
@@ -18,9 +19,10 @@ import { Textarea } from "../../ui/textarea";
 import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome, type CrewHomeRead } from "../../../zerops/crew/useCrewHome";
 import { Pill } from "../primitives";
-import { CREW_APPLY_COST_LINE, withBrief } from "./CrewEditors.logic";
+import { CREW_APPLY_COST_LINE, crewRewriteBlockers, withBrief } from "./CrewEditors.logic";
 import {
   CrewField,
+  CrewIssues,
   CrewSaveButton,
   CrewSheet,
   CrewSheetBody,
@@ -59,7 +61,12 @@ function CrewBriefContents(props: BriefSheetProps) {
   return home.definition === null ? (
     <CrewSheetReading error={props.commands.error} />
   ) : (
-    <CrewBriefForm {...props} definition={home.definition} save={home.save} />
+    <CrewBriefForm
+      {...props}
+      blockers={crewRewriteBlockers(home.issues)}
+      definition={home.definition}
+      save={home.save}
+    />
   );
 }
 
@@ -67,9 +74,11 @@ function CrewBriefForm({
   onOpenChange,
   commands,
   version,
+  blockers,
   definition,
   save,
 }: BriefSheetProps & {
+  readonly blockers: ReadonlyArray<CrewDefinitionIssue>;
   readonly definition: CrewDefinition;
   readonly save: CrewHomeRead["save"];
 }) {
@@ -77,7 +86,7 @@ function CrewBriefForm({
   const [text, setText] = useState(definition.brief.text);
   const [choice, setChoice] = useState<CrewApplyChoice>("nextTurn");
   const tooLong = text.length > CREW_BRIEF_MAX_CHARS;
-  const blocked = tooLong || title.trim() === "" || commands.pending;
+  const blocked = tooLong || title.trim() === "" || blockers.length > 0 || commands.pending;
 
   const submit = async (apply: CrewApplyChoice) => {
     if (blocked) return;
@@ -108,6 +117,7 @@ function CrewBriefForm({
         </CrewField>
       </CrewSheetBody>
       <CrewSheetFooter error={commands.error}>
+        <CrewIssues issues={blockers} />
         {version === null ? (
           <Pill disabled={blocked} label="Save" onClick={() => void submit("nextTurn")} />
         ) : (

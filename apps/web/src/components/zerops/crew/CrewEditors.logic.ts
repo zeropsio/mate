@@ -16,7 +16,12 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
-import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "@t3tools/shared/crewHome";
+import {
+  parseBrief,
+  type CrewDefinition,
+  type CrewDefinitionIssue,
+  type CrewMemberSpec,
+} from "@t3tools/shared/crewHome";
 
 export interface CrewSaveChoice {
   readonly apply: CrewApplyChoice;
@@ -188,4 +193,15 @@ export function crewApplyProgress(
         return { ...step, state: "done", stateLabel: "Ready" };
     }
   });
+}
+
+/**
+ * The issues an editor must not save over: an editor writes crew.yaml back
+ * from the parsed definition, so a field it could not read would be dropped.
+ * Every other issue is one an editor exists to fix.
+ */
+export function crewRewriteBlockers(
+  issues: ReadonlyArray<CrewDefinitionIssue>,
+): ReadonlyArray<CrewDefinitionIssue> {
+  return issues.filter((issue) => issue.code === "field-unknown" || issue.code === "field-type");
 }

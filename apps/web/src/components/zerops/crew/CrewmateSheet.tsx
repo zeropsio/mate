@@ -15,6 +15,7 @@ import {
   CREW_HOME_FILE,
   crewJobFile,
   type CrewDefinition,
+  type CrewDefinitionIssue,
   type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
 import { useState } from "react";
@@ -30,12 +31,14 @@ import {
   crewEffortOptions,
   crewLoginOptions,
   crewModelOptions,
+  crewRewriteBlockers,
   freeTints,
   jobChangedMostly,
   withMember,
 } from "./CrewEditors.logic";
 import {
   CrewField,
+  CrewIssues,
   CrewSaveButton,
   CrewSheet,
   CrewSheetBody,
@@ -168,7 +171,12 @@ function CrewmateContents(props: CrewmateSheetProps) {
   return home.definition === null ? (
     <CrewSheetReading error={props.commands.error} />
   ) : (
-    <CrewmateForm {...props} definition={home.definition} save={home.save} />
+    <CrewmateForm
+      {...props}
+      blockers={crewRewriteBlockers(home.issues)}
+      definition={home.definition}
+      save={home.save}
+    />
   );
 }
 
@@ -181,9 +189,11 @@ function CrewmateForm({
   devHosts,
   mateTint,
   crewPort,
+  blockers,
   definition,
   save,
 }: CrewmateSheetProps & {
+  readonly blockers: ReadonlyArray<CrewDefinitionIssue>;
   readonly definition: CrewDefinition;
   readonly save: CrewHomeRead["save"];
 }) {
@@ -216,7 +226,8 @@ function CrewmateForm({
     (member) => member.handle === draft.handle && member.handle !== target.handle,
   );
   const handleValid = CREW_HANDLE_PATTERN.test(draft.handle) && !handleTaken;
-  const ready = draft.displayName.trim() !== "" && handleValid && !commands.pending;
+  const ready =
+    draft.displayName.trim() !== "" && handleValid && blockers.length === 0 && !commands.pending;
 
   const submit = async (apply: CrewApplyChoice) => {
     if (!ready) return;
@@ -448,6 +459,7 @@ function CrewmateForm({
         ) : null}
       </CrewSheetBody>
       <CrewSheetFooter error={commands.error}>
+        <CrewIssues issues={blockers} />
         {rewritten && !loginChanged ? (
           <p className="text-xs text-muted-foreground">
             A large change to the job — a fresh conversation follows it better.
