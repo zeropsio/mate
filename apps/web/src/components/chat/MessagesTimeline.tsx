@@ -1464,6 +1464,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "after-work" ? <AfterWorkTimelineRow row={row} /> : null}
       {row.kind === "speech" ? <SpeechTimelineRow row={row} /> : null}
       {row.kind === "log-note" ? <LogNoteTimelineRow row={row} /> : null}
+      {row.kind === "log-person" ? <LogPersonTimelineRow row={row} /> : null}
       {row.kind === "log-activity" ? <LogActivityTimelineRow row={row} /> : null}
       {row.kind === "log-reasoning" ? <LogThoughtTimelineRow row={row} /> : null}
       {row.kind === "log-operation" ? <LogOperationTimelineRow row={row} /> : null}
@@ -1863,6 +1864,22 @@ function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-no
       <div className={MATE_BUBBLE_CLASS.note}>
         <NoteWords message={row.message} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Where the person's message reached the Mate, in an opened log: their words,
+ * one line, on their side, in their bubble's fill — the message itself stands
+ * on the page above the card.
+ */
+function LogPersonTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-person" }> }) {
+  const words = row.message.text.trim().split("\n")[0] ?? "";
+  return (
+    <div className="flex justify-end" data-log-person>
+      <p className="max-w-4/5 truncate rounded-2xl bg-message px-3.5 py-1 text-line text-message-foreground">
+        {words.length > 0 ? words : "Image"}
+      </p>
     </div>
   );
 }

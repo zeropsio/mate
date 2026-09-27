@@ -1260,6 +1260,10 @@ describe("deriveMessagesTimelineRows", () => {
       "log-note:log-note:a1",
     ]);
     expect(list.find((row) => row.kind === "speech")).toMatchObject({ hand: "bubble" });
+    // The log marks where the person's message reached the Mate: its record
+    // said "The user also wants the heading green" with no word of it (Nova,
+    // 2026-09-27).
+    expect(shape(list).slice(7, 9)).toEqual(["log-person:log-person:m1", "working:working:msg:m1"]);
   });
 
   it.each([

@@ -493,6 +493,17 @@ type MessagesTimelineRowBody =
       }>;
     }
   | {
+      /**
+       * Where a message the person sent into the run reached the Mate, in an
+       * opened log: their words, one line, on their side — the message itself
+       * stands on the page above the card.
+       */
+      kind: "log-person";
+      id: string;
+      createdAt: string;
+      message: ChatMessage;
+    }
+  | {
       /** A progress note in an opened log: the Mate's words on the way, in full. */
       kind: "log-note";
       id: string;
@@ -656,6 +667,7 @@ export type MessagesTimelineRow = MessagesTimelineRowBody & {
 
 function isLogRowBody(row: MessagesTimelineRow): boolean {
   switch (row.kind) {
+    case "log-person":
     case "log-note":
     case "log-activity":
     case "log-reasoning":
@@ -1786,7 +1798,16 @@ export function deriveMessagesTimelineRows(
           });
         }
         if (stretch.lead !== null && stretch.leadIndex !== null) {
-          exchanges.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
+          const person = personRow(stretch.lead, stretch.leadIndex, stretch.aside);
+          exchanges.push(person);
+          if (open && person.kind === "message") {
+            cardRows.push({
+              kind: "log-person",
+              id: `log-person:${stretch.lead.id}`,
+              createdAt: stretch.lead.createdAt,
+              message: stretch.lead.message,
+            });
+          }
         }
       }
       for (const row of stretchContentRows({
@@ -2108,6 +2129,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       );
     }
     case "log-note":
+    case "log-person":
       return a.message === (b as typeof a).message;
     case "speech": {
       const bs = b as typeof a;
