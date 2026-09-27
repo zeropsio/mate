@@ -130,6 +130,6 @@ describe("replayClaude", () => {
 
   it("stops at a hook line when the replay installed no profile, naming the gap", async () => {
     const fixture = loadFixture(fixturesDir, "crew-hooks");
-    await expect(replayClaude(fixture)).rejects.toThrow(/no SessionStart hook/);
+    await expect(replayClaude(fixture)).rejects.toThrow(/no UserPromptSubmit hook/);
   }, 20_000);
 });

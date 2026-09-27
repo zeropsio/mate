@@ -50,8 +50,11 @@ through it would make the two directories import each other.
   args and runtime mode, so every default-mode turn restores it; its session context follows the
   runtime instructions; its settings carry the profile's context window as `autoCompactWindow`; a
   `PreToolUse` hook turns `decideTool` into the tool decision and denies when it fails or stays
-  silent for 15 s; the extension's `SessionStart` and `PostCompact` hooks carry session starts (a
-  fork arrives as a resume) and compaction summaries; its tools are served as an in-process `crew`
+  silent for 15 s; the extension receives each session start and compaction summary — the CLI runs
+  a process's own startup or resume `SessionStart` before the SDK has registered any callback
+  (CLI 2.1.283, measured), so that start arrives with the process's first prompt through a
+  `UserPromptSubmit` hook and its context rides on that prompt, while compaction and `/clear` arrive
+  through `SessionStart` itself (a fork as a resume) and summaries through `PostCompact`; its tools are served as an in-process `crew`
   MCP server with their JSON Schemas as given; its spend cap becomes `maxBudgetUsd`; the dialog
   kinds are dropped. The profile's model and effort override the thread's selection at session
   start and again at every turn, so a change applies from the thread's next turn.
@@ -97,7 +100,10 @@ through it would make the two directories import each other.
   setups; `codexThreadProfile.contract.test.ts` pins what a profile changes. Both run the real
   adapter and session runtime against `codexAdapterHarness.ts`, an app-server peer in memory.
 - **What only a live CLI settles.** That `dontAsk` plus a `PreToolUse` allow runs a tool without a
-  prompt, and that `SessionStart` context reaches the model, are CLI behavior: probes 1, 2, 14 and 15. The tests pin the options the adapter hands the SDK.
+  prompt is CLI behavior: probes 1, 2, 14 and 15. The tests pin the options the adapter hands the SDK.
+  `claudeSessionStartCliProbe.test.ts` (opt-in, `T3_CLAUDE_CLI_PROBE=1`, one Haiku turn on the local
+  login) runs the real adapter against the real CLI: the extension sees the session start once,
+  with the CLI's session id and transcript path, and the model answers from its context.
   For Codex, probe 25: that the dotted `config` key turns zcp's server off for that thread alone
   (no `zerops_*` tool listed) and the compaction limit applies, whether `untrusted` sends every command and patch as an approval
   request or runs the commands Codex holds known-safe unasked, past the gate, that the thread's
@@ -232,7 +238,7 @@ deep-equal the recorded one, or the replay stops naming the line. Hooks exist on
 so a fixture with hook lines replays with a `ClaudeReplayPolicy` (`replay/crewReplayPolicy.ts`).
 
 Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `claude-opus-5[1m]`),
-1 synthetic Claude crew fixture (`crew-hooks`: a gate allow and deny, a session start, a
+1 synthetic Claude crew fixture (`crew-hooks`: a gate allow and deny, a first-prompt session start, a
 `terminal_reason`), 1 Codex fixture (`multi-agent-wire`, converted once from the upstream
 ported-zone test fixture `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) and 4 live
 baselines (cursor, grok, antigravity, opencode, each `synthetic: true`) = 10 goldens total. The

@@ -5010,7 +5010,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const queryOptions = threadSetup
         ? applyClaudeQueryOptionsPatch(
             baseQueryOptions,
-            claudeQueryOptionsPatch(threadSetup.profile, threadSetup.extension, runPromise),
+            claudeQueryOptionsPatch(
+              threadSetup.profile,
+              threadSetup.extension,
+              runPromise,
+              existingResumeSessionId === undefined ? "startup" : "resume",
+            ),
           )
         : baseQueryOptions;
 
