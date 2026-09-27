@@ -1036,6 +1036,79 @@ describe("resolveZeropsProviderAvailability", () => {
     });
   });
 
+  // MA-12 per login: a login beyond the defaults is gated on its own state and
+  // its own signer, as the server's admission gates it — never its agent's.
+  describe("a login beyond the defaults", () => {
+    const work = claudeEntry("claudeAgent-work");
+    const claude = claudeEntry("claudeAgent");
+    const feed = (signedInBy: string | undefined): ZeropsAgentAuthSnapshot => ({
+      ...claudeAgentAuth({
+        credPresent: true,
+        flagOAuth: true,
+        providerAuth: "authenticated",
+        state: "authorized",
+        authorizedBy: { subject: "user-jan" },
+      }),
+      logins: [
+        {
+          id: "claudeAgent-work",
+          agent: "claude-code",
+          label: "work",
+          kind: "subscription",
+          default: false,
+          state: "authorized",
+          token: false,
+          ...(signedInBy === undefined ? {} : { signedInBy }),
+        },
+      ],
+    });
+    const availability = (input: {
+      readonly signedInBy: string | undefined;
+      readonly viewer: string;
+      readonly localSigners?: Readonly<Record<string, string>>;
+      readonly recordFailed?: ReadonlySet<string>;
+    }) =>
+      resolveZeropsProviderAvailability({
+        entries: [claude, work],
+        agentAuth: knownAgentAuth(feed(input.signedInBy)),
+        viewerSubject: input.viewer,
+        localSigners: input.localSigners ?? {},
+        recordFailed: input.recordFailed ?? new Set(),
+      });
+
+    it("is runnable for its own signer while its agent's own login is not", () => {
+      const map = availability({ signedInBy: "user-eva", viewer: "user-eva" });
+      expect(map?.get(work.instanceId)).toEqual({ kind: "ready" });
+      expect(map?.get(claude.instanceId)).toEqual({
+        kind: "someone-else",
+        signerId: "user-jan",
+      });
+    });
+
+    it("is someone else's for the signer of its agent's own login", () => {
+      expect(
+        availability({ signedInBy: "user-eva", viewer: "user-jan" })?.get(work.instanceId),
+      ).toEqual({ kind: "someone-else", signerId: "user-eva" });
+    });
+
+    it("reads this browser's own record of it, and its own failed write", () => {
+      expect(
+        availability({
+          signedInBy: undefined,
+          viewer: "user-eva",
+          localSigners: { "claudeAgent-work": "user-eva" },
+        })?.get(work.instanceId),
+      ).toEqual({ kind: "ready" });
+      expect(
+        availability({
+          signedInBy: undefined,
+          viewer: "user-eva",
+          recordFailed: new Set(["claudeAgent-work"]),
+        })?.get(work.instanceId),
+      ).toEqual({ kind: "unrecorded" });
+    });
+  });
+
   it("maps a second instance of the driver to the same agent's availability", () => {
     const work = claudeEntry("claudeAgent_work");
     const map = resolveZeropsProviderAvailability({
