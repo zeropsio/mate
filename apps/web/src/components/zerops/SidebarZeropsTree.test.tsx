@@ -58,6 +58,7 @@ afterEach(() => {
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
+  nextStepAwaitsSomebody,
   nextStepTone,
   productionAddable,
   type GroupFlowReads,
@@ -828,7 +829,10 @@ describe("the project's flow under it", () => {
     expect(withFlow([CRM_DEV])).not.toContain('data-zerops-surface="sidebar-environment-missing"');
   });
 
-  it("agrees with the page: a merged change offers Add production here too", () => {
+  // A project needs no production (the owner, 2026-09-28: "production not
+  // required, this shouldn't be there"): the page may offer it, the menu
+  // never marks it as something waiting.
+  it("never dots a project for the production it does not have", () => {
     const missing = [
       {
         kind: "missing-environment" as const,
@@ -875,8 +879,8 @@ describe("the project's flow under it", () => {
       getActivity,
       getFlow: () => withMergedCode,
     });
-    expect(html).toContain('data-zerops-surface="sidebar-project-next-step"');
-    expect(html).toContain("main has code, no production yet");
+    expect(html).not.toContain('data-zerops-surface="sidebar-project-next-step"');
+    expect(html).not.toContain("main has code, no production yet");
   });
 
   it("says what Release would put in front of people, in the words they asked for", () => {
@@ -1486,7 +1490,7 @@ describe("the project's flow under it", () => {
       merge: { dot: true },
       unblock: { dot: true },
       release: { dot: true },
-      "add-production": { dot: true },
+      "add-production": { dot: false },
       "first-task": { dot: false },
       none: { dot: false },
     };
@@ -1980,7 +1984,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
     };
     const html = render(candidates, { getFlow: () => sidebar, health, mayCreate });
     const dot = /data-zerops-surface="sidebar-project-next-step"[^>]*/u.exec(html)?.[0];
-    if (page.kind === "none") expect(dot).toBeUndefined();
+    if (!nextStepAwaitsSomebody(page.kind)) expect(dot).toBeUndefined();
     else expect(dot).toContain(`aria-label="${page.text}"`);
   });
 });
