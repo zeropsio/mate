@@ -703,7 +703,7 @@ describe("a creation under way in the menu", () => {
       return html.slice(html.lastIndexOf("<li", at)).split("</li>")[0]!;
     };
     const production = row("crm-prod-new");
-    expect(/^<li[^>]*>/u.exec(production)?.[0]).toContain("h-7");
+    expect(/^<li[^>]*>/u.exec(production)?.[0]).toContain("h-8");
     expect(production).toContain('data-zerops-surface="role-tag"');
     expect(production).toContain(">prod<");
     // The name says the role the pill already says, so only the pill does.
@@ -1261,7 +1261,7 @@ describe("the project's flow under it", () => {
     it("is one line: badge, role pill, name, what runs, the chip, then the verb", () => {
       const html = drawn();
       const at = html.indexOf('data-zerops-project="crm-prod"');
-      expect(html.slice(html.lastIndexOf("<li", at), at)).toContain("h-7");
+      expect(html.slice(html.lastIndexOf("<li", at), at)).toContain("h-8");
       const production = stop(html, "crm-prod");
       expect(production).not.toContain("py-2");
       const order = [
