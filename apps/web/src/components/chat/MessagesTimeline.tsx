@@ -1833,7 +1833,9 @@ function RecordItemView({ item }: { readonly item: RecordItem }) {
         </div>
       );
     case "person":
-      return <PersonMark item={item} />;
+      // Where the person spoke into the run the card breaks: their words stand
+      // on the page, never in the record.
+      return null;
     case "operation":
       return <OperationLine operation={item.operation} />;
     case "helpers":
@@ -2093,23 +2095,6 @@ function ChecksLine({ strip }: { readonly strip: BrowserStripModel }) {
       time={Number.isFinite(tookMs) && tookMs >= 1000 ? formatWorkDuration(tookMs) : null}
       words={words}
     />
-  );
-}
-
-/**
- * Where the person's words reached the Mate: one line in their bubble's fill,
- * on their side — the words themselves stand on the page.
- */
-function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind: "person" }> }) {
-  const words =
-    item.words ?? (item.imageOnly ? "" : (item.message?.text.trim().split("\n")[0] ?? ""));
-  const images = item.message?.attachments?.filter(isImageAttachment).length ?? 0;
-  return (
-    <div className="flex justify-end py-1" data-record-person>
-      <p className="max-w-4/5 truncate rounded-2xl bg-message px-3.5 py-1 text-line text-message-foreground">
-        {words.length > 0 ? words : images > 1 ? `${images} images` : "An image"}
-      </p>
-    </div>
   );
 }
 

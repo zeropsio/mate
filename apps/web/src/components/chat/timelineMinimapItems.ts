@@ -36,22 +36,31 @@ function workLineAfter(
 }
 
 /** The Mate's latest words in the run's record, one line: what a preview quotes of its work. */
+/**
+ * What the Mate said last on its way, from its run's record: every part of it,
+ * the card breaking where the person wrote into the run, up to the next run.
+ */
 function lastNoteOf(
   rows: ReadonlyArray<MessagesTimelineRow>,
   line: MessagesTimelineRow,
 ): string | null {
-  const index = rows.indexOf(line);
-  const record = rows[index + 1];
-  if (record?.kind !== "record") return null;
-  const note = record.items.findLast((item) => item.kind === "note");
-  if (note?.kind !== "note") return null;
-  const first =
-    note.message.text
-      .trim()
-      .split("\n")[0]
-      ?.replace(/[*_`#>]/g, "")
-      .trim() ?? "";
-  return first.length > 0 ? first : null;
+  let said: string | null = null;
+  for (let index = rows.indexOf(line) + 1; index < rows.length; index += 1) {
+    const row = rows[index]!;
+    if (row.kind === "work-line") break;
+    if (row.kind === "message" && row.message.role === "user" && !row.aside) break;
+    if (row.kind !== "record") continue;
+    const note = row.items.findLast((item) => item.kind === "note");
+    if (note?.kind !== "note") continue;
+    const first =
+      note.message.text
+        .trim()
+        .split("\n")[0]
+        ?.replace(/[*_`#>]/g, "")
+        .trim() ?? "";
+    if (first.length > 0) said = first;
+  }
+  return said;
 }
 
 function markOf(
