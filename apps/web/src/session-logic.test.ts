@@ -2053,6 +2053,32 @@ describe("deriveWorkLogEntries context window handling", () => {
   });
 });
 
+describe("deriveWorkLogEntries crew seams", () => {
+  it("carries a crew seam's payload, the line its words", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "seam-1",
+        kind: "crew.seam",
+        summary: "Started fresh by you",
+        tone: "info",
+        payload: { seam: "stint", previousThreadId: "thread-crew-backend-1" },
+      }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      label: "Started fresh by you",
+      crewSeam: { seam: "stint", previousThreadId: "thread-crew-backend-1" },
+    });
+  });
+
+  it("carries nothing for a seam whose payload it cannot read", () => {
+    const [entry] = deriveWorkLogEntries([
+      makeActivity({ id: "seam-2", kind: "crew.seam", summary: "Odd", payload: { seam: "?" } }),
+    ]);
+    expect(entry?.crewSeam).toBeUndefined();
+  });
+});
+
 describe("deriveActiveWorkStartedAt", () => {
   const latestTurn = {
     turnId: TurnId.make("turn-1"),

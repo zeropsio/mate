@@ -1,7 +1,12 @@
 import * as Equal from "effect/Equal";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
+import {
+  type CrewSeam,
+  type MessageId,
+  type OrchestrationLatestTurn,
+  type TurnId,
+} from "@t3tools/contracts";
 
 import {
   inferCheckpointTurnCountByTurnId,
@@ -575,6 +580,8 @@ type MessagesTimelineRowBody =
   | { kind: "event"; id: string; createdAt: string; event: ConversationEvent }
   /** The task the server handed a crewmate: its card, never the person's bubble. */
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
+  /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
+  | { kind: "crew-seam"; id: string; createdAt: string; seam: CrewSeam; words: string }
   | {
       /** The bottom edge of a stretch's card: nothing but the frame closing. */
       kind: "card-end";
@@ -718,8 +725,8 @@ export function rowGap(
 ): RowGap {
   if (previous === undefined) return "none";
   if (isLogRowBody(row)) return "tight";
-  if (row.kind === "seam") return "turn";
-  if (previous.kind === "seam") return "block";
+  if (row.kind === "seam" || row.kind === "crew-seam") return "turn";
+  if (previous.kind === "seam" || previous.kind === "crew-seam") return "block";
   if (isPersonRow(row)) {
     if (isPersonRow(previous)) return "tight";
     if (isMateProse(previous)) return "block";
@@ -1228,7 +1235,9 @@ function stretchContentRows(input: {
         // What the Mate asked waits above the composer while it waits, and
         // stands over the person's answer once given: never a row of its own.
         if (work.inputQuestions !== undefined && work.inputAnswers === undefined) break;
-        if (work.sourceActivityKind === "context-compaction") {
+        if (work.crewSeam !== undefined) {
+          push(entry.createdAt, [crewSeamRow(entry.id, work, work.crewSeam)]);
+        } else if (work.sourceActivityKind === "context-compaction") {
           push(entry.createdAt, [
             {
               kind: "event",
@@ -1381,6 +1390,15 @@ function localDayKey(iso: string): string | null {
   if (!Number.isFinite(ms)) return null;
   const date = new Date(ms);
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+/** A crew seam's line, placed where the engine drew it. */
+function crewSeamRow(
+  id: string,
+  work: WorkLogEntry,
+  seam: CrewSeam,
+): Extract<MessagesTimelineRow, { kind: "crew-seam" }> {
+  return { kind: "crew-seam", id, createdAt: work.createdAt, seam, words: work.label };
 }
 
 /** A quiet stretch of the conversation this long draws its own seam. */
@@ -1585,7 +1603,8 @@ export function deriveMessagesTimelineRows(
       (candidate.entry.tone !== "error" ||
         isTaskActivityKind(candidate.entry.sourceActivityKind)) &&
       candidate.entry.questionAnswer === undefined &&
-      candidate.entry.sourceActivityKind !== "context-compaction"
+      candidate.entry.sourceActivityKind !== "context-compaction" &&
+      candidate.entry.crewSeam === undefined
     );
   };
   const expandedIds = input.expandedIds ?? new Set<string>();
@@ -2013,6 +2032,8 @@ export function deriveMessagesTimelineRows(
           createdAt: entry.createdAt,
           event: { type: "landed", event: entry.event },
         });
+      } else if (entry.kind === "work" && entry.entry.crewSeam !== undefined) {
+        rows.push(crewSeamRow(entry.id, entry.entry, entry.entry.crewSeam));
       } else if (entry.kind === "work" && isErrorEntry(entry)) {
         rows.push({ kind: "error", id: entry.id, createdAt: entry.createdAt, entry: entry.entry });
       } else if (entry.kind === "operation") {

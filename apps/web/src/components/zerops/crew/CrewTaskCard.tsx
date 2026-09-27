@@ -2,14 +2,18 @@
  * The task card in a crewmate's chat (PRD §4.5, seam 19): the engine's
  * message that hands the crewmate its task, drawn as a task — never as the
  * person's bubble. Above a stint's first card stands the seam that says why
- * this conversation began and links the one before it.
+ * this conversation began and links the one before it, unless the engine drew
+ * that seam itself; the engine's seams (`crew.seam`) are `CrewSeamActivity`.
  *
  * The timeline knows only the card's text; the crew facts it needs — the
  * board, the stint's origin — come from `CrewTimelineContext`, which the chat
  * provides for a crew thread and nothing provides elsewhere.
  */
-import { CREW_PREVIOUS_STINT_LINK } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewTask, ThreadId } from "@t3tools/contracts";
+import {
+  CREW_PREVIOUS_STINT_LINK,
+  crewLandedAsWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { CrewSeam, CrewTask, ThreadId } from "@t3tools/contracts";
 import { createContext, use, useMemo } from "react";
 
 import type { CrewCard } from "../../chat/conversation.logic";
@@ -69,5 +73,35 @@ export function CrewTaskCard({ id, card }: { readonly id: string; readonly card:
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * A seam the crew engine drew across the chat (`crew.seam`): a landing by its
+ * short sha, a save in the engine's words, and a new conversation linked to
+ * the one before it.
+ */
+export function CrewSeamActivity({
+  seam,
+  words,
+}: {
+  readonly seam: CrewSeam;
+  readonly words: string;
+}) {
+  const crew = use(CrewTimelineContext);
+  const previous = seam.seam === "stint" ? seam.previousThreadId : null;
+  return (
+    <CrewSeamLine
+      link={
+        previous === null || crew === null
+          ? undefined
+          : { label: CREW_PREVIOUS_STINT_LINK, onOpen: () => crew.onOpenThread(previous) }
+      }
+      text={
+        seam.seam === "landed"
+          ? crewLandedAsWord({ number: seam.number, landedCommit: seam.commit })
+          : words
+      }
+    />
   );
 }

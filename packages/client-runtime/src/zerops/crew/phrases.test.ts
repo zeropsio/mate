@@ -467,10 +467,13 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
     );
   });
 
-  it("names a landing by its task and commit", () => {
+  it("names a landing by its task and its commit's short sha", () => {
     expect(crewLandedAsWord({ number: 11, landedCommit: "a1b2c3d" })).toBe(
       "Task #11 landed as a1b2c3d",
     );
+    expect(
+      crewLandedAsWord({ number: 11, landedCommit: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" }),
+    ).toBe("Task #11 landed as a1b2c3d");
   });
 
   it.each([
