@@ -163,10 +163,23 @@ describe("crewAttentionActions", () => {
       ],
     },
     { kind: "parked" as const, actions: [] },
-    { kind: "cant-start" as const, actions: [] },
+    {
+      kind: "cant-start" as const,
+      actions: [
+        { kind: "command", label: "Try again", command: { _tag: "taskRetry", taskId: "task-12" } },
+      ],
+    },
   ])("$kind", ({ kind, actions }) => {
     const input = attention({ kind, paths: ["src/ui/hud.ts"], host: "appdev" });
     expect(crewAttentionActions(input, snapshot, { board: true })).toEqual(actions);
+  });
+
+  it("offers Try again on a crewmate that could not start only with its task", () => {
+    expect(
+      crewAttentionActions(attention({ kind: "cant-start", taskId: null }), snapshot, {
+        board: true,
+      }),
+    ).toEqual([]);
   });
 
   it("offers no press that could do nothing", () => {

@@ -393,6 +393,7 @@ export const CREW_ATTENTION_VERBS = {
   reviewPlan: "Review plan",
   allow: "Allow",
   notNow: "Not now",
+  tryAgain: "Try again",
 } as const;
 
 export const crewAskToResolveWord = (name: string): string => `Ask ${name} to resolve`;
