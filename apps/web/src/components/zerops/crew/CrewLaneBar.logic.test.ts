@@ -271,30 +271,55 @@ describe("crewLaneBarModel", () => {
   it.each<{
     readonly name: string;
     readonly claim: CrewHost["claim"];
+    readonly working?: boolean;
     readonly showOnDev: CrewLaneBarModel["showOnDev"];
   }>([
     {
-      name: "grants the Show-on-dev its crewmate asked for",
+      name: "shows its work on dev at your press, asked for or not",
+      claim: { state: "none", handle: null },
+      showOnDev: { kind: "showOnDev", host: "appdev", label: "Show on dev", enabled: true },
+    },
+    {
+      name: "shows it at your press when it asked first",
       claim: { state: "requested", handle: "backend" },
-      showOnDev: { kind: "claimGrant", host: "appdev", label: "Show on dev" },
+      showOnDev: { kind: "showOnDev", host: "appdev", label: "Show on dev", enabled: true },
+    },
+    {
+      name: "shows it in place of another crewmate's request",
+      claim: { state: "requested", handle: "frontend" },
+      showOnDev: { kind: "showOnDev", host: "appdev", label: "Show on dev", enabled: true },
+    },
+    {
+      name: "waits for its turn to end before showing its work",
+      claim: { state: "none", handle: null },
+      working: true,
+      showOnDev: { kind: "showOnDev", host: "appdev", label: "Show on dev", enabled: false },
     },
     {
       name: "gives dev back to your tree while its crewmate's work is shown",
       claim: { state: "held", handle: "backend" },
-      showOnDev: { kind: "claimRelease", host: "appdev", label: "Back to my tree" },
+      showOnDev: { kind: "claimRelease", host: "appdev", label: "Back to my tree", enabled: true },
     },
     {
-      name: "has nothing to press for another crewmate's claim",
+      name: "has nothing to press while another crewmate's work is shown",
       claim: { state: "held", handle: "frontend" },
       showOnDev: null,
     },
     {
-      name: "has nothing to press without a claim",
-      claim: { state: "none", handle: null },
+      name: "has nothing to press while dev is going back to your tree",
+      claim: { state: "releasing", handle: "backend" },
       showOnDev: null,
     },
-  ])("$name", ({ claim, showOnDev }) => {
-    expect(backend({ host: { claim } })?.showOnDev).toEqual(showOnDev);
+  ])("$name", ({ claim, working, showOnDev }) => {
+    expect(
+      backend({ host: { claim }, ...(working === undefined ? {} : { working }) })?.showOnDev,
+    ).toEqual(showOnDev);
+  });
+
+  it("diffs its copy against the tip of your tree, once the engine has read it", () => {
+    const head = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+    expect(backend({ host: { integration: { branch: "main", head } } })?.changesBase).toBe(head);
+    expect(backend({ host: { integration: null } })?.changesBase).toBeNull();
   });
 
   it("asks the Mate to commit your edit a landing waits on, and nothing otherwise", () => {

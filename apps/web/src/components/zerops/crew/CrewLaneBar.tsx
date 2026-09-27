@@ -59,7 +59,8 @@ export function CrewLaneBar({
   // A press acts on what is shown: nothing is pressed on a stale snapshot.
   const busy = command.pending || !current;
   const openChanges = () => {
-    useDiffPanelStore.getState().selectBranchBaseRef(threadRef, null);
+    // The thread's worktree is the copy, so the branch diff runs in it.
+    useDiffPanelStore.getState().selectBranchBaseRef(threadRef, model.changesBase);
     useRightPanelStore.getState().open(threadRef, "diff");
   };
   // Every draft for Fen goes where the section's go: into this chat when it is
@@ -176,9 +177,13 @@ export function CrewLaneBar({
           )}
           {model.showOnDev === null ? null : (
             <Button
-              disabled={busy}
+              disabled={busy || !model.showOnDev.enabled}
               onClick={() =>
-                void command.send({ _tag: model.showOnDev!.kind, host: model.showOnDev!.host })
+                void command.send(
+                  model.showOnDev?.kind === "claimRelease"
+                    ? { _tag: "claimRelease", host: model.showOnDev.host }
+                    : { _tag: "showOnDev", handle },
+                )
               }
               size="xs"
               variant="outline"
