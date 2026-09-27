@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
+import { parseBrief } from "@t3tools/shared/crewHome";
 
-import { crewLane, parseBrief } from "./CrewDefinition.ts";
+import { crewLane } from "./CrewDefinition.ts";
 import { crewSessionContext, type CrewPromptInput } from "./crewPrompt.ts";
 
 const brief = parseBrief(

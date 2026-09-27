@@ -12,8 +12,7 @@
  * @module crewVersions
  */
 import type { CrewApplyChoice } from "@t3tools/contracts";
-
-import type { CrewDefinition } from "./CrewDefinition.ts";
+import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 export interface PromptVersions {
   readonly brief: number;
