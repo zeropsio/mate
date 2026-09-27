@@ -23,9 +23,16 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import type { CrewMemberKind, CrewTaskSource, CrewTaskState } from "@t3tools/contracts";
 
-import { PersistenceDecodeError, PersistenceSqlError } from "../../persistence/Errors.ts";
-
-export type CrewStoreError = PersistenceSqlError | PersistenceDecodeError;
+/** A crew table could not be read or written, or held a row this build cannot decode. */
+export class CrewStoreError extends Schema.TaggedError<CrewStoreError>()("CrewStoreError", {
+  operation: Schema.String,
+  kind: Schema.Literals(["sql", "decode"]),
+  cause: Schema.Defect(),
+}) {
+  override get message(): string {
+    return `Crew store ${this.operation} failed (${this.kind})`;
+  }
+}
 
 /** A lane operation named a lane the store has no row for. */
 export class CrewLaneNotRecorded extends Schema.TaggedError<CrewLaneNotRecorded>()(
@@ -270,9 +277,9 @@ export const make = Effect.gen(function* () {
   const changes = yield* PubSub.unbounded<CrewStoreChange>();
 
   const sqlError = (operation: string) => (cause: unknown) =>
-    new PersistenceSqlError({ operation: `CrewStore.${operation}`, cause });
+    new CrewStoreError({ operation, kind: "sql", cause });
   const decodeError = (operation: string) => (cause: Schema.SchemaError) =>
-    PersistenceDecodeError.fromSchemaError(`CrewStore.${operation}`, cause);
+    new CrewStoreError({ operation, kind: "decode", cause });
   const publish = (change: CrewStoreChange) => PubSub.publish(changes, change).pipe(Effect.asVoid);
 
   const laneFromSql = (row: LaneSqlRow) =>
