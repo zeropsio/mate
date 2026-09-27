@@ -32,6 +32,7 @@ import {
   currentStint,
   memberOf,
   refuse,
+  requireApplied,
   type AppliedCrew,
   type CrewCore,
   type CrewMember,
@@ -111,6 +112,18 @@ export const openStint = (
     yield* asRefusal(core.reload);
     return row;
   });
+
+/** A crewmate's current conversation, or its first when it has none yet. */
+export const currentOrFirstStint = (core: CrewCore, member: CrewMember) =>
+  core.opening(
+    Effect.gen(function* () {
+      const applied = yield* requireApplied(core);
+      return (
+        currentStint(applied, member.row.handle) ??
+        (yield* openStint(core, applied, member, { reason: null, seed: null }))
+      );
+    }),
+  );
 
 /**
  * Points each writer's current conversation at its copy where its thread

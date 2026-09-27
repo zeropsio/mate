@@ -54,7 +54,7 @@ import { CREW_ID, refusalOf } from "./CrewHome.ts";
 import { assignCrewPorts, proposeCrewPorts, readDeclaredPorts } from "./crewPorts.ts";
 import { flushState } from "./crewState.ts";
 import { appendSeam } from "./crewSeamLines.ts";
-import { openStint, retireStint, rotateBetweenTurns } from "./CrewStints.ts";
+import { currentOrFirstStint, retireStint, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewMemberRow } from "./CrewStore.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
 import { saveTask } from "./crewTasks.ts";
@@ -223,8 +223,7 @@ const openFirstStint = (core: CrewCore, handle: string) =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
     const member = memberOf(applied, handle);
-    if (member === undefined || currentStint(applied, handle) !== undefined) return;
-    yield* openStint(core, applied, member, { reason: null, seed: null });
+    if (member !== undefined) yield* currentOrFirstStint(core, member);
   });
 
 /** Makes the writers' copies the tables do not have yet, with Apply's progress, then mirrors the home. */
