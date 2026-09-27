@@ -22,13 +22,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { resolveAgentOwnership } from "@t3tools/client-runtime/zerops";
-import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
-import {
-  agentIdForProviderInstance,
-  ApprovalRequestId,
-  ProviderApprovalDecision,
-} from "@t3tools/contracts";
+import { ApprovalRequestId, ProviderApprovalDecision } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { useMemo, useState } from "react";
@@ -36,12 +30,9 @@ import { useMemo, useState } from "react";
 import { deriveActivePlanState } from "~/session-logic";
 import { threadEnvironment, useEnvironmentThread } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { resolveAgentAuthorizer, useLocalAgentSigners } from "~/zerops/useZeropsAgentSigner";
+import { useMateReadOnly } from "~/zerops/useMateReadOnly";
 import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
-import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
-import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
-import { resolveZeropsConversationReadOnly } from "../ChatView.logic";
 import { toastManager } from "../ui/toast";
 import { MatePeekCard, useMatePeekKeys } from "./SidebarMatePeek";
 import {
@@ -105,23 +96,7 @@ export function SidebarMatePeekLive({
         });
 
   // Who may answer it: the conversation's own rule (D6), read the same way.
-  const agentAuth = zeropsAgentAuthView(useZeropsAgentAuth(environmentId));
-  const localSigners = useLocalAgentSigners();
-  const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  const agentId = agentIdForProviderInstance(detail?.modelSelection.instanceId);
-  const agent = agentAuth.snapshot?.agents.find((entry) => entry.agentId === agentId);
-  const readOnly =
-    resolveZeropsConversationReadOnly({
-      agent,
-      ownership: resolveAgentOwnership({
-        credPresent: agent?.credPresent ?? false,
-        authorizedBy:
-          agent === undefined
-            ? undefined
-            : resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, localSigners),
-        viewerSubject,
-      }),
-    }) !== null;
+  const readOnly = useMateReadOnly(environmentId, detail?.modelSelection.instanceId);
   const waitingOn = !readOnly
     ? undefined
     : peek.owner !== undefined && !peek.owner.isViewer
