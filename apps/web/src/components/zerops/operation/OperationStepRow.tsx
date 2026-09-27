@@ -15,7 +15,21 @@ import type { JSX } from "react";
 import { CheckIcon, ClockIcon, PlayIcon, XIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
-import { formatStepDuration, type ProcessStep, type ProcessStepState } from "../primitives";
+import {
+  formatStepDuration,
+  StepGlyph,
+  type ProcessStep,
+  type ProcessStepState,
+  type StepGlyphState,
+} from "../primitives";
+
+/** A segment's mark is every step list's: `StepGlyph`. */
+const SEGMENT_GLYPH: Record<ProcessStepState, StepGlyphState> = {
+  queued: "waiting",
+  running: "running",
+  done: "done",
+  failed: "failed",
+};
 
 const STEP_GLYPH: Record<
   ProcessStepState,
@@ -71,7 +85,6 @@ export function PipelineSegments({
       }
     >
       {steps.map((step) => {
-        const { Icon, className } = STEP_GLYPH[step.state];
         const footnote = segmentFootnote(step);
         return (
           <li
@@ -84,15 +97,14 @@ export function PipelineSegments({
             key={step.id}
           >
             <span className="min-w-0 break-words font-medium text-xs leading-4">
-              <Icon
-                aria-hidden="true"
-                className={cn("me-1 inline size-3 align-[-1px]", className)}
-                data-zerops-segment-glyph={step.state}
+              <StepGlyph
+                className="me-1 inline size-3 align-[-1px]"
+                state={SEGMENT_GLYPH[step.state]}
               />
               {step.label}
             </span>
             {footnote !== undefined ? (
-              <span className="text-[11px] text-muted-foreground tabular-nums">{footnote}</span>
+              <span className="text-muted-foreground text-xs tabular-nums">{footnote}</span>
             ) : (
               <span className="sr-only">{step.stateLabel}</span>
             )}

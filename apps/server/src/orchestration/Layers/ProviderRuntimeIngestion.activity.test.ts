@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import { runtimeEventToActivities } from "./ProviderRuntimeIngestion.ts";
 
 const base = {
@@ -120,6 +121,42 @@ describe("runtimeEventToActivities tool streaming persistence", () => {
     expect(data.rawOutput).toEqual({ content: "first line of output" });
     expect(data.content).toBeUndefined();
     expect(JSON.stringify(data).length).toBeLessThan(1_000);
+  });
+
+  it("persists a tool.updated that keeps the call's own words through the projection", () => {
+    const event = {
+      ...base,
+      provider: ProviderDriverKind.make("claudeAgent"),
+      type: "item.updated",
+      eventId: EventId.make("evt-tool-described-updated"),
+      payload: {
+        itemType: "command_execution",
+        status: "inProgress",
+        title: "Ran command",
+        data: {
+          toolName: "Bash",
+          input: {
+            command: "vp test run src/app.test.ts",
+            description: "Run the app tests",
+          },
+          result: {
+            type: "tool_result",
+            tool_use_id: "toolu_1",
+            content: [{ type: "text", text: accumulatedStdout }],
+          },
+        },
+      },
+    } satisfies ProviderRuntimeEvent;
+
+    const activities = runtimeEventToActivities(event);
+
+    expect(activities).toHaveLength(1);
+    const persisted = activities[0]!;
+    for (const activity of [persisted, projectActivityPayload(persisted)]) {
+      const data = (activity.payload as { data: Record<string, unknown> }).data;
+      expect(data.input).toEqual({ description: "Run the app tests" });
+      expect(data.command).toBe("vp test run src/app.test.ts");
+    }
   });
 
   it("persists the full terminal payload on tool.completed", () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { TimelineEntry } from "../../session-logic";
 import type { TurnDiffSummary } from "../../types";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   browserCheckCaption,
   browserCheckFailure,
@@ -14,6 +15,7 @@ import {
   messageReceipt,
   namedToolCall,
   noteLine,
+  operationLineWords,
   readSlashCommand,
   readsAsAnswer,
   splitBatchDeploy,
@@ -1293,6 +1295,98 @@ describe("deriveOutcome", () => {
       diff: null,
     });
     expect(outcome?.notDone).toEqual(["Importing gitea: Gitea isn't connected yet"]);
+  });
+
+  // A call that failed on the way is a stumble the log keeps, never an
+  // outcome: a run that went on past a workflow asked for a service that is
+  // not there read "not done" in red under a finished deploy (Nova,
+  // 2026-09-27). Its words were the voice's sentence with a colon after it.
+  it("names no call that failed on the way, and never doubles a sentence's stop", () => {
+    const entries = [
+      user("m0", 0),
+      operation("e1", "t1", 1, {
+        kind: "error",
+        subject: "Workflow",
+        phase: "failed",
+        voice: "Workflow failed.",
+        statusWord: "Failed",
+        explanation: { reason: "scope contains unknown hostnames" },
+      }),
+      operation("i1", "t1", 2, {
+        kind: "import",
+        subject: "gitea",
+        phase: "failed",
+        voice: "Creating gitea.",
+        statusWord: "Import failed",
+        explanation: { reason: "Gitea isn't connected yet." },
+      }),
+      assistant("a1", "t1", 3),
+    ];
+    const outcome = deriveOutcome({
+      turn: structure(entries, settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.notDone).toEqual(["Creating gitea: Gitea isn't connected yet"]);
+  });
+});
+
+describe("operationLineWords", () => {
+  const op = (overrides: Partial<ZeropsOperation> & Pick<ZeropsOperation, "kind">) =>
+    (operation("x", "t1", 1, overrides) as Extract<TimelineEntry, { kind: "operation" }>).operation;
+  it.each([
+    {
+      kind: "deploy",
+      phase: "running",
+      voice: "Deploying app.",
+      statusWord: "Deploying",
+      words: "Deploying app",
+    },
+    {
+      kind: "deploy",
+      phase: "done",
+      voice: "Deploying app.",
+      statusWord: "Deployed",
+      words: "Deployed app",
+    },
+    {
+      kind: "deploy",
+      phase: "failed",
+      voice: "Deploying app.",
+      statusWord: "Failed",
+      words: "Deploy to app failed",
+    },
+    {
+      kind: "verify",
+      phase: "done",
+      voice: "Checking app.",
+      statusWord: "Healthy",
+      words: "app is healthy",
+    },
+    {
+      kind: "verify",
+      phase: "failed",
+      voice: "Checking app.",
+      statusWord: "Checks failed",
+      words: "app: checks failed",
+    },
+    {
+      kind: "error",
+      phase: "failed",
+      voice: "Workflow failed.",
+      statusWord: "Failed",
+      words: "Workflow failed",
+      subject: "Workflow",
+    },
+    {
+      kind: "logs",
+      phase: "done",
+      voice: "Reading the app log.",
+      statusWord: "Read",
+      words: "Read the app log",
+    },
+  ] as const)("$kind $phase: $words", ({ words, ...fields }) => {
+    expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
   });
 });
 

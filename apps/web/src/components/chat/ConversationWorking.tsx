@@ -56,25 +56,34 @@ import { StatusBar, StatusDisc, type BarTone, type DiscTone } from "./Conversati
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import type { WorkingFailure } from "./MessagesTimeline.logic";
 import { ElapsedSince, MATE_BUBBLE_FILL, type ConversationSpeaker } from "./ConversationRows";
+import { OperationStepLine, STEP_LINE_CLASS, WorkStepLine } from "./WorkStepLine";
+import type { WorkStep } from "./workSteps.logic";
 
 /**
- * A bubble in the Mate's stream: what it thinks, its words, rendered; a step
- * that failed on the way; or the question it asked and waits on.
+ * A place in the Mate's stream: what it thinks, its words, rendered; a step
+ * it took or an operation that finished on the way, as a line; a step that
+ * failed; or the question it asked and waits on.
  */
 export type WorkingBubble =
   | { readonly kind: "thought"; readonly key: string; readonly body: ReactNode }
   | { readonly kind: "note"; readonly key: string; readonly body: ReactNode }
+  | { readonly kind: "step"; readonly key: string; readonly step: WorkStep }
+  | { readonly kind: "operation"; readonly key: string; readonly operation: ZeropsOperation }
   | { readonly kind: "failure"; readonly key: string; readonly failure: WorkingFailure }
   /** Its question, rendered, as its words are. */
   | { readonly kind: "question"; readonly key: string; readonly body: ReactNode };
 
 /**
  * What the Mate's hands are on right now, under its newest words: thinking,
- * a few words for the call it is making, or the person's answer it waits on.
+ * writing, the step it is taking or the operation it runs, a few words for
+ * what has no step (condensing the context), or the person's answer it
+ * waits on.
  */
 export type WorkingActivity =
   | { readonly kind: "thinking" }
   | { readonly kind: "writing" }
+  | { readonly kind: "step"; readonly step: WorkStep }
+  | { readonly kind: "operation"; readonly operation: ZeropsOperation }
   | { readonly kind: "doing"; readonly words: string }
   | { readonly kind: "waiting" };
 
@@ -129,8 +138,30 @@ const AGE_CLASS: Record<"said" | "thought", ReadonlyArray<string>> = {
 };
 
 export function ageClass(kind: WorkingBubble["kind"], age: number): string {
-  const steps = AGE_CLASS[kind === "thought" ? "thought" : "said"];
+  const steps =
+    AGE_CLASS[kind === "thought" || kind === "step" || kind === "operation" ? "thought" : "said"];
   return steps[Math.min(age, steps.length - 1)]!;
+}
+
+/** A line of the stream, not a bubble: what the Mate did rather than what it said. */
+const isLine = (bubble: WorkingBubble) => bubble.kind === "step" || bubble.kind === "operation";
+
+/**
+ * How far each place in the stream has receded: a line by everything after
+ * it, the Mate's words only by words after them — five steps in a row never
+ * fade what it last said to the person.
+ */
+export function streamAges(bubbles: ReadonlyArray<WorkingBubble>): number[] {
+  const ages: number[] = Array.from({ length: bubbles.length }, () => 0);
+  let after = 0;
+  let wordsAfter = 0;
+  for (let index = bubbles.length - 1; index >= 0; index -= 1) {
+    const bubble = bubbles[index]!;
+    ages[index] = isLine(bubble) ? after : wordsAfter;
+    after += 1;
+    if (!isLine(bubble)) wordsAfter += 1;
+  }
+  return ages;
 }
 
 function TypingDots({ className }: { readonly className?: string }) {
@@ -163,6 +194,14 @@ export const THOUGHT_WORDS_CLASS = "text-line leading-5 text-muted-foreground";
 
 function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
   const pop = useArrivedLive() ? "animate-bubble-pop motion-reduce:animate-none" : null;
+  if (bubble.kind === "step") {
+    return <WorkStepLine className={cn("origin-bottom-left", pop)} step={bubble.step} />;
+  }
+  if (bubble.kind === "operation") {
+    return (
+      <OperationStepLine className={cn("origin-bottom-left", pop)} operation={bubble.operation} />
+    );
+  }
   if (bubble.kind === "thought" || bubble.kind === "note" || bubble.kind === "question") {
     return (
       <div
@@ -236,13 +275,27 @@ function StreamActivity({ activity }: { readonly activity: WorkingActivity }) {
       </div>
     );
   }
+  // The step it is taking, as the stream will keep it once taken: its mark
+  // stepping in the busy blue, the step in words, its clock (the owner,
+  // 2026-09-27, of "Running cd": "is this really the best we can do?").
+  if (activity.kind === "step") {
+    return (
+      <div data-stream-activity="step">
+        <WorkStepLine className="h-8" step={activity.step} />
+      </div>
+    );
+  }
+  if (activity.kind === "operation") {
+    return (
+      <div data-stream-activity="operation">
+        <OperationStepLine className="h-8" operation={activity.operation} />
+      </div>
+    );
+  }
   return (
-    <div
-      className="inline-flex h-8 max-w-full items-center gap-2 rounded-2xl rounded-es-md border border-border/70 border-dashed px-3 text-line text-muted-foreground"
-      data-stream-activity="doing"
-    >
-      <TypingDots className="shrink-0 scale-75" />
-      <span className="min-w-0 truncate">{activity.words}</span>
+    <div className={cn(STEP_LINE_CLASS, "h-8")} data-stream-activity="doing">
+      <TypingDots className="-ms-1 shrink-0 scale-75" />
+      <span className="min-w-0 truncate text-foreground">{activity.words}</span>
     </div>
   );
 }
@@ -314,10 +367,14 @@ function Stream({
   const [reading, setReading] = useState(false);
   const newestKey = bubbles.at(-1)?.key ?? "none";
   const older = bubbles.length > 1;
-  // Nothing said and nothing named yet: the Mate is composing.
+  const ages = streamAges(bubbles);
+  // Nothing said and nothing running, or a step just taken: the Mate is
+  // composing what comes next.
+  const newestBubble = bubbles.at(-1);
   const shown: WorkingActivity | null = answering
     ? null
-    : (activity ?? (bubbles.length === 0 ? { kind: "thinking" } : null));
+    : (activity ??
+      (newestBubble === undefined || isLine(newestBubble) ? { kind: "thinking" } : null));
 
   const grownForKeyRef = useRef<string | null>(null);
   useLayoutEffect(() => {
@@ -352,13 +409,20 @@ function Stream({
     const scroller = scrollerRef.current;
     const content = contentRef.current;
     if (scroller === null || content === null) return;
-    // Following the newest: held at the bottom as words arrive and the
-    // window grows, unless the person scrolled back to read.
-    const pin = () => {
-      if (followingRef.current) scroller.scrollTop = scroller.scrollHeight;
+    // The window runs from its bottom (it is a reversed column), so the
+    // newest is where it starts: a panel mounted, moved or reset opens on the
+    // newest, whatever order its layout settles in. Following, it stays
+    // there as words arrive; scrolled back to read, it holds still — what
+    // grows below is taken off the scroll, so the words being read stay put.
+    let height = content.getBoundingClientRect().height;
+    const hold = () => {
+      const next = content.getBoundingClientRect().height;
+      if (followingRef.current) scroller.scrollTop = 0;
+      else scroller.scrollTop -= next - height;
+      height = next;
     };
-    pin();
-    const observer = new ResizeObserver(pin);
+    hold();
+    const observer = new ResizeObserver(hold);
     observer.observe(content);
     observer.observe(scroller);
     return () => observer.disconnect();
@@ -374,7 +438,8 @@ function Stream({
   const onScroll = () => {
     const scroller = scrollerRef.current;
     if (scroller === null) return;
-    const atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 2;
+    // A reversed column's scroll starts at 0 at its bottom and goes negative up.
+    const atBottom = Math.abs(scroller.scrollTop) <= 2;
     if (atBottom) {
       followingRef.current = true;
       setReading(false);
@@ -382,7 +447,7 @@ function Stream({
       followingRef.current = false;
       setReading(true);
     } else if (followingRef.current) {
-      scroller.scrollTop = scroller.scrollHeight;
+      scroller.scrollTop = 0;
     }
   };
 
@@ -394,7 +459,7 @@ function Stream({
         aria-label={`What ${speaker.name} said while working`}
         aria-live="polite"
         className={cn(
-          "min-w-0 flex-1 overflow-y-auto scrollbar-none transition-[height] duration-500 ease-out motion-reduce:transition-none",
+          "flex min-w-0 flex-1 flex-col-reverse overflow-y-auto scrollbar-none transition-[height] duration-500 ease-out motion-reduce:transition-none",
           older && !reading && "stream-fade",
         )}
         data-stream-reading={reading ? "true" : undefined}
@@ -407,13 +472,18 @@ function Stream({
       >
         <div ref={contentRef} className="flex min-h-full flex-col justify-end">
           {bubbles.map((bubble, index) => {
-            const age = bubbles.length - 1 - index;
+            const age = ages[index]!;
+            const newestPlace = index === bubbles.length - 1;
             return (
               <StreamRoom key={bubble.key} age={age}>
                 <div
-                  ref={age === 0 ? setNewest : undefined}
+                  ref={newestPlace ? setNewest : undefined}
                   className={cn(
-                    "origin-bottom-left pt-2 transition duration-500",
+                    "origin-bottom-left transition duration-500",
+                    // Lines follow each other close, as a list; words take a breath.
+                    isLine(bubble) && (index === 0 || isLine(bubbles[index - 1]!))
+                      ? "pt-0.5"
+                      : "pt-2",
                     !reading && ageClass(bubble.kind, age),
                   )}
                 >
@@ -669,7 +739,8 @@ function OperationDetail({
   readonly threadRef: ScopedThreadRef | null;
 }) {
   const regions = useOperationCard(operation, environmentId);
-  return <ZeropsOperationCard operation={operation} threadRef={threadRef} {...regions} />;
+  // Its bar is its head: under it, the pipeline alone.
+  return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
 }
 
 /** A step's key: its words, and how many times the same words came before it. */
@@ -800,7 +871,7 @@ function Instruments({
             operation={operation}
           />
           {open === operation.key ? (
-            <div className="px-2 pt-1 pb-2" data-working-detail="operation">
+            <div className="ps-12 pe-2 pt-1 pb-2" data-working-detail="operation">
               <OperationDetail
                 environmentId={environmentId}
                 operation={operation}

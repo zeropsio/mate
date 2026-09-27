@@ -1058,10 +1058,11 @@ export function isQuestionToolCall(
   );
 }
 
-/** A work entry that is a tool call on the way — the log's activity lines. */
+/** A work entry that is a tool call on the way — the log's steps. A task is none: it runs one. */
 export function isActivityWork(entry: WorkLogEntry): boolean {
   return (
     entry.agentSpawn === undefined &&
+    entry.sourceActivityKind?.startsWith("task.") !== true &&
     entry.questionAnswer === undefined &&
     entry.sourceActivityKind !== "context-compaction" &&
     entry.tone !== "error" &&
@@ -1070,6 +1071,39 @@ export function isActivityWork(entry: WorkLogEntry): boolean {
 }
 
 export type WorkLineFace = "working" | "idle" | "produced" | "failed" | "paused" | "stopped";
+
+/**
+ * A platform operation as a step's words: running, its own voice ("Deploying
+ * app"); settled, what it came to in a sentence — "Deployed app", "app is
+ * healthy", "Workflow failed" — never its status word before its name
+ * ("Failed Workflow", 2026-09-27).
+ */
+export function operationLineWords(operation: ZeropsOperation): string {
+  const voice = operation.voice.replace(/\.$/, "");
+  const { subject, statusWord } = operation;
+  if (operation.kind === "error" || operation.phase === "running") return voice;
+  const failed = operation.phase === "failed";
+  switch (operation.kind) {
+    case "verify":
+      return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${subject} is healthy`;
+    case "deploy":
+      return failed && !isGitPushOnly(operation)
+        ? `Deploy to ${subject} failed`
+        : `${statusWord} ${subject}`;
+    case "subdomain":
+      return failed
+        ? `The subdomain of ${subject} failed`
+        : `${statusWord} the subdomain of ${subject}`;
+    case "logs":
+      return `Read the ${subject} log`;
+    case "events":
+      return `Read the events of ${subject}`;
+    case "discover":
+      return `Looked at ${subject}`;
+    default:
+      return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
+  }
+}
 
 /** A setback the turn did not come back from, on the operation's own target. */
 export function unrecoveredFailures(
@@ -1561,6 +1595,10 @@ export function deriveOutcome(input: {
   const removed = settled.flatMap((operation) =>
     operation.kind === "delete" && operation.phase === "done" ? [operation.subject] : [],
   );
+  // What the turn set out to do and did not: a push, a service it could not
+  // create, remove or change. A call that failed on the way (the "error"
+  // kind — a workflow asked for a service that is not there) is a stumble
+  // the log keeps, never an outcome: the run went on past it.
   const notDone = unrecoveredFailures(settled)
     .filter(
       (operation) =>
@@ -1568,9 +1606,10 @@ export function deriveOutcome(input: {
         operation.kind !== "verify" &&
         operation.kind !== "devServer" &&
         operation.kind !== "browser" &&
+        operation.kind !== "error" &&
         !isReadOperationKind(operation.kind),
     )
-    .map((operation) => `${operation.voice}: ${failureWords(operation)}`);
+    .map((operation) => `${operation.voice.replace(/\.$/, "")}: ${failureWords(operation)}`);
 
   const files =
     input.diff && input.diff.files.length > 0 && input.diff.turnId

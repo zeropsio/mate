@@ -1696,14 +1696,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/operation/OperationStepRow.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground tabular-nums\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/operation/OperationSubjectLine.tsx",
     "kind": "Literal",
     "fingerprint": "<> rounded-[var(--zerops-chip-radius)] in \"me-1.5 inline-flex rounded-[var(--zerops-chip-radius)] bg-muted px-1.5 font-medium text-foreground\"",
@@ -1859,22 +1851,6 @@
     "path": "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"shrink-0 pt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] text-muted-foreground tabular-nums\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"min-w-0 flex-1 text-[13px] leading-5 text-foreground\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

@@ -76,7 +76,6 @@ import {
   CircleAlertIcon,
   ClockIcon,
   EyeIcon,
-  GitCommitHorizontalIcon,
   GlobeIcon,
   HammerIcon,
   LayersIcon,
@@ -151,14 +150,11 @@ import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
 import {
   formatWorkDuration,
-  isGitPushOnly,
-  isQuestionToolCall,
   LAST_WORDS_GRACE_MS,
   latestFinishedWordsAt,
-  namedToolCall,
-  toolCallWords,
 } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
+import { LogStepButton, OperationStepLine, StepDetail, ThoughtLine } from "./WorkStepLine";
 import {
   ConversationAfterWork,
   ConversationWorking,
@@ -172,7 +168,6 @@ import {
   EventLine,
   LineMark,
   IncidentLine,
-  MateSpeech,
   MessageReceipt,
   PauseBlock,
   Seam,
@@ -181,7 +176,7 @@ import {
   type ServerUsagePause,
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
-import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
+import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
@@ -1472,7 +1467,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "speech" ? <SpeechTimelineRow row={row} /> : null}
       {row.kind === "log-note" ? <LogNoteTimelineRow row={row} /> : null}
       {row.kind === "log-person" ? <LogPersonTimelineRow row={row} /> : null}
-      {row.kind === "log-activity" ? <LogActivityTimelineRow row={row} /> : null}
+      {row.kind === "log-step" ? <LogStepTimelineRow row={row} /> : null}
       {row.kind === "log-reasoning" ? <LogThoughtTimelineRow row={row} /> : null}
       {row.kind === "log-operation" ? <LogOperationTimelineRow row={row} /> : null}
       {row.kind === "work" ? (
@@ -1765,7 +1760,7 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
         activity={
           isCompacting
             ? { kind: "doing", words: "Condensing the context" }
-            : workingActivity(row.activity, ctx.workspaceRoot)
+            : workingActivity(row.activity)
         }
         browser={
           row.strip === null ? null : (
@@ -1823,26 +1818,19 @@ function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "afte
 }
 
 /**
- * The Mate's words the person answered, on the page above the run's card:
- * beside its face in its bubble, as the panel said them, with the person's
- * message under them. A run's last words, with no answer after them, stand
- * after its card in the answer's hand.
+ * The Mate's words on the page, in its prose, as its answers stand: the note
+ * the person answered, above their message, and a run's last words after its
+ * card. On the page the Mate never speaks from a bubble — bubbles are the
+ * card's, where it speaks while it works (the owner, 2026-09-27, of its
+ * question in a bubble beside its face: "out of place, when it's the only
+ * place where the AI gets its own chat item bubble").
  */
 function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech" }> }) {
-  const ctx = use(TimelineRowCtx);
-  if (row.hand === "prose") {
-    return (
-      <>
-        <FoldRoom fold={row.foldsFrom} />
-        <MateProse message={row.message} showMeta />
-      </>
-    );
-  }
   return (
-    <MateSpeech speaker={ctx.speaker}>
-      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-      <NoteWords message={row.message} />
-    </MateSpeech>
+    <>
+      {row.hand === "prose" ? <FoldRoom fold={row.foldsFrom} /> : null}
+      <MateProse message={row.message} showMeta={row.hand === "prose"} />
+    </>
   );
 }
 
@@ -1856,14 +1844,14 @@ function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech"
 const LOG_COLUMN = "ps-9.5";
 
 /**
- * Its thinking in an opened log: a record to scan, so quieter than the panel
- * that popped it live — muted paragraphs on one hairline, each to three
- * lines, a click opening it in full. A forty-minute stretch opened onto walls
- * of full thoughts. In italics, as the panel thinks, so a thought reads as
- * one live and after.
+ * Its thinking in an opened log: one quiet line — "Thought for 48s" — that
+ * opens its paragraphs. The log is the record of what the Mate did; its
+ * thinking, forty minutes of it on a long run, walled the steps out (the
+ * owner, 2026-09-27, of the log: "what's the diff in the expanded group and
+ * our actual chat?"). Opened, the paragraphs in the italics the panel thinks in.
  */
 function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-reasoning" }> }) {
-  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
+  const ctx = use(TimelineRowCtx);
   const paragraphs = row.messages.flatMap((message) => {
     const said = thoughtParagraphs(message.text);
     return said.map((text, index) => ({
@@ -1875,40 +1863,22 @@ function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log
     }));
   });
   if (paragraphs.length === 0) return null;
-  const toggle = (key: string) =>
-    setOpened((current) => {
-      const next = new Set(current);
-      if (!next.delete(key)) next.add(key);
-      return next;
-    });
   return (
     <div className={LOG_COLUMN} data-log-thought>
-      <div className="grid gap-1.5 ps-3.5 italic">
-        {paragraphs.map((thought) => {
-          const open = opened.has(thought.key);
-          return (
-            <div
-              key={thought.key}
-              aria-expanded={open}
-              className={cn(
-                "cursor-pointer rounded-sm text-start transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-                !open && "line-clamp-3",
-              )}
-              data-scroll-anchor-ignore
-              onClick={() => toggle(thought.key)}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                toggle(thought.key);
-              }}
-              role="button"
-              tabIndex={0}
-            >
-              <ThoughtWords thought={thought} />
-            </div>
-          );
-        })}
-      </div>
+      <ThoughtLine
+        durationMs={row.durationMs}
+        expanded={row.expanded}
+        live={row.live}
+        onToggle={() => ctx.onToggleLogItem(row.id, row.id)}
+        since={row.createdAt}
+      />
+      {row.expanded ? (
+        <div className="grid gap-1.5 ps-9 pt-0.5 pb-2 italic">
+          {paragraphs.map((thought) => (
+            <ThoughtWords key={thought.key} thought={thought} />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1930,8 +1900,8 @@ function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-no
  * on the page above the card.
  */
 function LogPersonTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-person" }> }) {
-  const words = row.imageOnly ? "" : (row.message.text.trim().split("\n")[0] ?? "");
-  const images = row.message.attachments?.filter(isImageAttachment).length ?? 0;
+  const words = row.words ?? (row.imageOnly ? "" : (row.message?.text.trim().split("\n")[0] ?? ""));
+  const images = row.message?.attachments?.filter(isImageAttachment).length ?? 0;
   return (
     <div className="flex justify-end" data-log-person>
       <p className="max-w-4/5 truncate rounded-2xl bg-message px-3.5 py-1 text-line text-message-foreground">
@@ -1941,80 +1911,61 @@ function LogPersonTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-
   );
 }
 
-/** A quiet line in an opened log that opens what it stands for; its chevron shows on hover or open. */
-const LOG_LINE =
-  "group/log-line inline-flex min-h-6 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md text-left text-line text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70";
-
-function LogLineChevron({ open }: { readonly open: boolean }) {
-  return (
-    <ChevronRightIcon
-      aria-hidden="true"
-      className={cn(
-        "size-3 shrink-0 transition duration-150",
-        open ? "rotate-90 opacity-70" : "opacity-0 group-hover/log-line:opacity-70",
-      )}
-    />
-  );
-}
-
-function LogActivityTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-activity" }> }) {
+/**
+ * A step in an opened log: a call in words; opened, the thinking that led to
+ * it, its command and what it printed.
+ */
+function LogStepTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-step" }> }) {
   const ctx = use(TimelineRowCtx);
-  const last = row.entries.at(-1);
-  const iconName = row.failed ? "x" : last ? workEntryIconName(last) : "hammer";
+  const thoughts =
+    row.expanded && row.thought !== null
+      ? row.thought.messages.flatMap((message) =>
+          thoughtParagraphs(message.text).map((text, index) => ({
+            kind: "thought" as const,
+            key: `${message.id}:${index}`,
+            text,
+            createdAt: message.createdAt,
+            streaming: false,
+          })),
+        )
+      : [];
   return (
-    <div className={LOG_COLUMN}>
-      <button
-        type="button"
-        aria-expanded={row.expanded}
-        aria-label={row.failed ? `${row.summary}, the last call failed` : undefined}
-        className={LOG_LINE}
-        data-scroll-anchor-ignore
-        onClick={() => ctx.onToggleLogItem(row.id, row.id)}
-      >
-        <WorkEntryIconSvg name={iconName} className="size-3.5 shrink-0 opacity-70" />
-        <span className="min-w-0 truncate">{row.summary}</span>
-        <LogLineChevron open={row.expanded} />
-      </button>
+    <div className={LOG_COLUMN} data-log-step>
+      <LogStepButton
+        expanded={row.expanded}
+        onToggle={() => ctx.onToggleLogItem(row.id, row.id)}
+        step={row.step}
+      />
+      {thoughts.length > 0 ? (
+        <div className="grid gap-1.5 ps-9 pt-0.5 pb-1 italic" data-step-thought>
+          {thoughts.map((thought) => (
+            <ThoughtWords key={thought.key} thought={thought} />
+          ))}
+        </div>
+      ) : null}
+      {row.expanded ? <StepDetail step={row.step} /> : null}
     </div>
   );
 }
 
+/** A platform operation in an opened log: a step's line that opens its card's body. */
 function LogOperationTimelineRow({
   row,
 }: {
   row: Extract<TimelineRow, { kind: "log-operation" }>;
 }) {
   const ctx = use(TimelineRowCtx);
-  const { operation } = row;
-  const running = operation.phase === "running";
   return (
     <div className={LOG_COLUMN}>
       <button
         type="button"
         aria-expanded={row.expanded}
-        className={LOG_LINE}
-        data-log-operation={operation.kind}
+        className="group/step w-full cursor-pointer rounded-md text-start transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+        data-log-operation={row.operation.kind}
         data-scroll-anchor-ignore
         onClick={() => ctx.onToggleLogItem(row.id, row.id)}
       >
-        {isGitPushOnly(operation) ? (
-          <GitCommitHorizontalIcon
-            aria-hidden="true"
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-        ) : (
-          <KindGlyph kind={operation.kind} />
-        )}
-        <span className={cn("shrink-0", running ? "text-foreground" : "text-foreground/85")}>
-          {operation.statusWord}
-        </span>
-        <span className="min-w-0 truncate">{operation.subject}</span>
-        {operation.settledAt ? (
-          <span className="shrink-0 tabular-nums">
-            · {formatWorkDurationBetween(operation.anchorAt, operation.settledAt)}
-          </span>
-        ) : null}
-        <LogLineChevron open={row.expanded} />
+        <OperationStepLine chevron={row.expanded ? "open" : true} operation={row.operation} />
       </button>
     </div>
   );
@@ -2159,26 +2110,19 @@ function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> 
   return <Seam row={row} timestampFormat={ctx.timestampFormat} />;
 }
 
-function formatWorkDurationBetween(startIso: string, endIso: string): string | null {
-  const ms = Date.parse(endIso) - Date.parse(startIso);
-  return Number.isFinite(ms) ? formatWorkDuration(ms) : null;
-}
-
 /**
  * A question the Mate asked and the person's answer, each in its speaker's
  * place: the question in the Mate's bubble beside its face, the answer in
  * the person's own bubble on their side.
  */
 function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer" }> }) {
-  const ctx = use(TimelineRowCtx);
   return (
     <div className="grid gap-3" data-person-answer>
       {row.pairs.map((pair) => (
         <Fragment key={pair.key}>
-          <MateSpeech speaker={ctx.speaker}>
-            <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-            <MateWords text={pair.question} />
-          </MateSpeech>
+          <div data-mate-question>
+            <MateProseWords at={row.createdAt} streaming={false} text={pair.question} />
+          </div>
           <div className="flex justify-end">
             <div className="max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground">
               <MessageAuthorHeading>You</MessageAuthorHeading>
@@ -2479,10 +2423,7 @@ function TimelineRowTimestamp({
  * shown there alone; the question tool waits on the person, whatever its
  * arguments.
  */
-function workingActivity(
-  activity: TurnHeaderActivity | null,
-  workspaceRoot: string | undefined,
-): WorkingActivity | null {
+function workingActivity(activity: TurnHeaderActivity | null): WorkingActivity | null {
   switch (activity?.kind) {
     case undefined:
       return null;
@@ -2492,15 +2433,13 @@ function workingActivity(
       return { kind: "writing" };
     case "waiting":
       return { kind: "waiting" };
-    case "tool":
-      return isQuestionToolCall(activity.entry)
-        ? { kind: "waiting" }
-        : { kind: "doing", words: liveWorkEntryLabel(activity.entry, workspaceRoot) };
+    case "step":
+      return { kind: "step", step: activity.step };
     case "operation": {
       const { operation } = activity;
+      // A deploy has its bar, a check the browser: neither is said twice.
       if (operation.kind === "browser" || DOCKED_KINDS.has(operation.kind)) return null;
-      // The voice is a sentence; beside the face it is a phrase, so it drops the full stop.
-      return { kind: "doing", words: operation.voice.replace(/\.$/, "") };
+      return { kind: "operation", operation };
     }
   }
 }
@@ -2524,6 +2463,38 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
  * and no edge clips them (the owner, 2026-09-26: "placement of this utterly
  * sucks + its even cut of overflow").
  */
+/** The Mate's words in its prose hand: the answer's type, links and chips. */
+function MateProseWords({
+  text,
+  at,
+  streaming,
+}: {
+  readonly text: string;
+  /** When they were said: the moment a change chip reads its state at. */
+  readonly at: string;
+  readonly streaming: boolean;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <>
+      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
+      <ChangeChipMomentContext value={at}>
+        <ChatMarkdown
+          variant="answer"
+          text={text}
+          cwd={ctx.markdownCwd}
+          threadRef={ctx.threadRef ?? undefined}
+          isStreaming={streaming}
+          lineBreaks={shouldPreserveAssistantLineBreaks(text)}
+          skills={ctx.skills}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          onRunShellCommand={ctx.onRunShellCommand}
+        />
+      </ChangeChipMomentContext>
+    </>
+  );
+}
+
 function MateProse({
   message,
   showMeta,
@@ -2540,20 +2511,11 @@ function MateProse({
   });
   return (
     <div className="min-w-0">
-      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-      <ChangeChipMomentContext value={message.createdAt}>
-        <ChatMarkdown
-          variant="answer"
-          text={messageText}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          isStreaming={Boolean(message.streaming)}
-          lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
-          skills={ctx.skills}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onRunShellCommand={ctx.onRunShellCommand}
-        />
-      </ChangeChipMomentContext>
+      <MateProseWords
+        at={message.createdAt}
+        streaming={Boolean(message.streaming)}
+        text={messageText}
+      />
       {showMeta ? (
         <div
           className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
@@ -2702,9 +2664,15 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
 }) {
   const ctx = use(TimelineRowCtx);
   const regions = useOperationCard(row.operation, ctx.activeThreadEnvironmentId);
+  // Opened from its log line, the card is its body, under the line's words.
   return (
-    <div className="min-w-0 px-1 py-0.5">
-      <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+    <div className={cn("min-w-0", row.headless ? "ps-9 pe-1 pt-0.5 pb-2" : "px-1 py-0.5")}>
+      <ZeropsOperationCard
+        headless={row.headless === true}
+        operation={row.operation}
+        threadRef={ctx.threadRef}
+        {...regions}
+      />
     </div>
   );
 });
@@ -3234,196 +3202,6 @@ function workEntryRawCommand(
     return null;
   }
   return rawCommand === workEntry.command.trim() ? null : rawCommand;
-}
-
-type CommandWrapper = "env" | "sudo";
-
-const COMMAND_WRAPPER_OPTIONS_WITH_VALUE: Record<CommandWrapper, ReadonlySet<string>> = {
-  env: new Set(["-C", "--chdir", "-S", "--split-string", "-u", "--unset"]),
-  sudo: new Set(["-C", "--close-from", "-D", "--chdir", "-g", "--group", "-u", "--user"]),
-};
-
-const COMMAND_WRAPPER_FLAGS: Record<CommandWrapper, ReadonlySet<string>> = {
-  env: new Set(["-0", "--null", "-i", "--ignore-environment", "--debug", "-v"]),
-  sudo: new Set(["-A", "--askpass", "-b", "--background", "-E", "-H", "-i", "-n", "-S"]),
-};
-
-function tokenizeShellCommand(command: string): string[] | null {
-  const input = command.trim();
-  const tokens: string[] = [];
-  let current = "";
-  let quote: '"' | "'" | null = null;
-  let escaping = false;
-  let substitutionDepth = 0;
-  let tokenStarted = false;
-
-  for (let index = 0; index < input.length; index += 1) {
-    const character = input[index]!;
-    if (escaping) {
-      current += character;
-      escaping = false;
-      tokenStarted = true;
-      continue;
-    }
-    if (character === "\\" && quote !== "'") {
-      const nextCharacter = input[index + 1];
-      const isWindowsDrivePath = quote === null && /^[A-Za-z]:/.test(current);
-      if (
-        (quote === '"' || isWindowsDrivePath) &&
-        nextCharacter !== undefined &&
-        nextCharacter !== '"' &&
-        nextCharacter !== "\\" &&
-        nextCharacter !== "$" &&
-        nextCharacter !== "`" &&
-        nextCharacter !== "\n"
-      ) {
-        current += character;
-        tokenStarted = true;
-        continue;
-      }
-      escaping = true;
-      tokenStarted = true;
-      continue;
-    }
-    if (quote !== null) {
-      if (character === quote) {
-        quote = null;
-      } else {
-        current += character;
-      }
-      tokenStarted = true;
-      continue;
-    }
-    if (character === "$" && input[index + 1] === "(") {
-      current += "$(";
-      substitutionDepth += 1;
-      tokenStarted = true;
-      index += 1;
-      continue;
-    }
-    if (character === ")" && substitutionDepth > 0) {
-      current += character;
-      substitutionDepth -= 1;
-      tokenStarted = true;
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      quote = character;
-      tokenStarted = true;
-      continue;
-    }
-    if (/\s/u.test(character)) {
-      if (substitutionDepth > 0) {
-        current += character;
-        tokenStarted = true;
-        continue;
-      }
-      if (tokenStarted) {
-        tokens.push(current);
-        current = "";
-        tokenStarted = false;
-      }
-      continue;
-    }
-    current += character;
-    tokenStarted = true;
-  }
-
-  if (quote !== null || escaping || substitutionDepth > 0) return null;
-  if (tokenStarted) tokens.push(current);
-  return tokens;
-}
-
-function commandProgramName(command: string, depth = 0): string | null {
-  if (depth >= 8) return null;
-  const tokens = tokenizeShellCommand(command);
-  if (tokens === null) return null;
-  let index = 0;
-  let wrapper: CommandWrapper | null = null;
-
-  while (index < tokens.length) {
-    const token = tokens[index];
-    if (!token) return null;
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
-      index += 1;
-      continue;
-    }
-    const tokenProgram = token.split(/[\\/]/).at(-1);
-    if (tokenProgram === "env" || tokenProgram === "sudo") {
-      wrapper = tokenProgram;
-      index += 1;
-      continue;
-    }
-    if (wrapper !== null && token === "--") {
-      wrapper = null;
-      index += 1;
-      continue;
-    }
-    if (wrapper !== null && token.startsWith("-")) {
-      if (wrapper === "env" && (token === "-S" || token === "--split-string")) {
-        const splitCommand = tokens[index + 1];
-        return splitCommand ? commandProgramName(splitCommand, depth + 1) : null;
-      }
-      if (wrapper === "env" && token.startsWith("--split-string=")) {
-        return commandProgramName(token.slice("--split-string=".length), depth + 1);
-      }
-      if (COMMAND_WRAPPER_OPTIONS_WITH_VALUE[wrapper].has(token)) {
-        if (tokens[index + 1] === undefined) return null;
-        index += 2;
-        continue;
-      }
-      if (COMMAND_WRAPPER_FLAGS[wrapper].has(token)) {
-        index += 1;
-        continue;
-      }
-      const equalsIndex = token.indexOf("=");
-      if (token.startsWith("--") && equalsIndex > 2) {
-        if (!COMMAND_WRAPPER_OPTIONS_WITH_VALUE[wrapper].has(token.slice(0, equalsIndex))) {
-          return null;
-        }
-        index += 1;
-        continue;
-      }
-      if (/^-[A-Za-z].+/.test(token) && !token.startsWith("--")) {
-        let consumesNextToken = false;
-        for (const [optionIndex, option] of token.slice(1).split("").entries()) {
-          const shortOption = `-${option}`;
-          if (COMMAND_WRAPPER_OPTIONS_WITH_VALUE[wrapper].has(shortOption)) {
-            consumesNextToken = optionIndex === token.length - 2;
-            break;
-          }
-          if (!COMMAND_WRAPPER_FLAGS[wrapper].has(shortOption)) return null;
-        }
-        if (consumesNextToken && tokens[index + 1] === undefined) return null;
-        index += consumesNextToken ? 2 : 1;
-        continue;
-      }
-      return null;
-    }
-    return token.split(/[\\/]/).at(-1) || null;
-  }
-
-  return null;
-}
-
-function liveWorkEntryLabel(
-  workEntry: TimelineWorkEntry,
-  workspaceRoot: string | undefined,
-): string {
-  const command = workEntry.command?.trim();
-  if (command) {
-    // This row describes the active parent turn, not the command lifecycle.
-    // Keep its live "Running" copy until the turn or contiguous tool run settles.
-    const program = commandProgramName(command);
-    if (program) return `Running ${program}`;
-    return "Running command";
-  }
-  // A call known only as a "Tool call" carries its name and arguments in its
-  // detail: say the name in words, never the arguments.
-  const named = namedToolCall(workEntry);
-  if (named !== null) return toolCallWords(named, workEntry.detail);
-
-  return workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
 }
 
 /**

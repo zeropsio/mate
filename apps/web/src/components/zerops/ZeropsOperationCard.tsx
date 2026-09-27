@@ -8,13 +8,17 @@
  * Every card heads with one compact row: a kind glyph, then either the
  * status word as the verb label beside the subject (a card that names one
  * service or page, `operationSubject`) or the voice line with the status
- * word at the right; the clock closes the row. A deploy's header reads its
- * pipeline instead, in sentence case: the pipeline's word, the service, and
- * the overall line ("Running for 1m 12s") where the clock would be. Under
+ * word at the right; the clock closes the row. A deploy's header says its
+ * own word in sentence case — "Deploying", "Deployed", "Failed" — the
+ * service, and how long, the pipeline's own time once it read one. Under
  * it, one dense body per kind — a browser check's thumbnail beside its
  * figures, a deploy's pipeline as one row per step in the Zerops GUI's
  * words, an import's as one segmented row, a verify's checks as one row of
  * chips — then one quiet row with the result, the version and the links.
+ *
+ * Under the line that already names it — its status bar in the Mate at
+ * work, its step in an opened log — a card is its body alone (`headless`):
+ * the header would say that line a second time.
  *
  * A card is born with its kind's final structure and only fills in: the
  * subject line is held by a placeholder until the input names the target; a
@@ -25,7 +29,7 @@
  *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
-import { useState, type JSX, type ReactNode } from "react";
+import { useState, type ComponentProps, type JSX, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   AppWindowIcon,
@@ -257,10 +261,11 @@ function operationDurationText(operation: ZeropsOperation, now: number): string 
 }
 
 /**
- * A deploy's header: the pipeline's word and overall line while the deploy
- * runs, and once the pipeline itself has ended; a settled card whose last
- * reading stopped mid-way, or that never read one, keeps the result's word
- * and the operation's own time.
+ * A deploy's header: its own word — "Deploying", "Deployed", "Failed", never
+ * the pipeline's "Running" beside a "Running for" — and how long: the
+ * pipeline's own time while it runs and once it ended, else the operation's.
+ * One word, one time (the owner, 2026-09-27, of "● Running · Running for
+ * 12s": "font sizes, indicators etc. are pretty poorly done").
  */
 function deployHeader(
   operation: ZeropsOperation,
@@ -271,20 +276,19 @@ function deployHeader(
     pipeline !== undefined &&
     (operation.phase === "running" ||
       (pipeline.status.tone !== "waiting" && pipeline.status.tone !== "running"));
-  if (!pipelineSpeaks) {
-    return {
-      status: { word: operation.statusWord, tone: operationTone(operation) },
-      durationText: operationDurationText(operation, now),
-    };
-  }
-  const overall = pipeline.overall;
-  const overallTime = overall === undefined ? undefined : formatDuration(overall.durationMs);
+  const overall = pipelineSpeaks ? pipeline.overall : undefined;
   return {
-    status: { word: pipeline.status.word, tone: PIPELINE_DOT_TONE[pipeline.status.tone] },
+    status: {
+      word: operation.statusWord,
+      tone:
+        pipelineSpeaks && operation.phase === "running"
+          ? PIPELINE_DOT_TONE[pipeline.status.tone]
+          : operationTone(operation),
+    },
     durationText:
-      overall === undefined || overallTime === undefined
+      overall === undefined
         ? operationDurationText(operation, now)
-        : `${overall.label} ${overallTime}`,
+        : formatDuration(overall.durationMs),
   };
 }
 
@@ -655,10 +659,13 @@ export function ZeropsOperationCard(props: {
   readonly threadRef?: ScopedThreadRef | null;
   /** For tests; defaults to a clock that moves once a second while running — a text update, never an animation (R6). */
   readonly now?: number;
+  /** Under the line that names it — its status bar, its log step: the body alone. */
+  readonly headless?: boolean;
 }): JSX.Element {
   const {
     browserScreenshot,
     devServerUrl,
+    headless = false,
     live = false,
     liveFrame,
     observed,
@@ -676,7 +683,7 @@ export function ZeropsOperationCard(props: {
   const durationText =
     deploy === undefined ? headerDurationText(operation, now) : deploy.durationText;
   const subject = operationSubject(operation, subjectHost);
-  const header = (
+  const header = headless ? null : (
     <CardHeader
       durationText={durationText}
       operation={operation}
@@ -700,11 +707,13 @@ export function ZeropsOperationCard(props: {
   const closing = drawnClosing(operation);
   const hasResultRow = closing !== undefined || version !== undefined || links.length > 0;
 
+  const Frame = headless ? HeadlessFrame : FlatCard;
   return (
-    <FlatCard
+    <Frame
       className={cn(
-        "@container flex flex-col gap-2 overflow-hidden px-3.5 py-3",
-        tone === "failed" && "border-[var(--zerops-status-failed)]/35",
+        "@container flex flex-col gap-2 overflow-hidden",
+        !headless && "px-3.5 py-3",
+        !headless && tone === "failed" && "border-[var(--zerops-status-failed)]/35",
       )}
       data-zerops-card
       data-zerops-card-kind={operation.kind}
@@ -765,6 +774,15 @@ export function ZeropsOperationCard(props: {
           ) : null}
         </>
       )}
-    </FlatCard>
+    </Frame>
+  );
+}
+
+/** A headless card's frame: no surface of its own, the line above it is its head. */
+function HeadlessFrame({ className, children, ...props }: ComponentProps<"div">) {
+  return (
+    <div className={className} data-zerops-card-headless {...props}>
+      {children}
+    </div>
   );
 }

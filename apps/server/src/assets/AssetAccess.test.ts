@@ -21,7 +21,12 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { assetFileResponse } from "../http.ts";
-import { ASSET_ROUTE_PREFIX, issueAssetUrl, resolveAsset } from "./AssetAccess.ts";
+import {
+  ASSET_ROUTE_PREFIX,
+  issueAssetUrl,
+  OutsideWorkspaceImageRoots,
+  resolveAsset,
+} from "./AssetAccess.ts";
 import { openMediaFile } from "./MediaFile.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -830,6 +835,178 @@ describe("AssetAccess", () => {
       expect(error.message).toBe("Failed to resolve project favicon.");
       expect(error._tag).toBe("AssetProjectFaviconResolutionError");
       expect(error.cause).toBe(resolutionCause);
+    }).pipe(Effect.provide(testLayer)),
+  );
+});
+
+/**
+ * A Mate's container is the person's own dev box: an image the Mate saved in
+ * its home or the temp dir and put in its reply is served, though it sits
+ * outside the workspace root. Nothing else outside the root is: not another
+ * kind of file, not an image elsewhere on the host, not a link out of those
+ * directories, not a link that dresses a key as an image.
+ */
+describe("AssetAccess — an image outside the workspace", () => {
+  interface Fixture {
+    readonly workspace: string;
+    readonly home: string;
+    readonly tmp: string;
+    readonly elsewhere: string;
+  }
+
+  const makeFixture = Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const base = yield* fs.makeTempDirectoryScoped({ prefix: "t3-asset-outside-image-" });
+    const fixture: Fixture = {
+      workspace: path.join(base, "workspace"),
+      home: path.join(base, "home"),
+      tmp: path.join(base, "tmp"),
+      elsewhere: path.join(base, "elsewhere"),
+    };
+    for (const directory of [
+      path.join(fixture.workspace, "assets"),
+      path.join(fixture.home, "shots"),
+      path.join(fixture.home, ".ssh"),
+      fixture.tmp,
+      fixture.elsewhere,
+    ]) {
+      yield* fs.makeDirectory(directory, { recursive: true });
+    }
+    yield* fs.writeFileString(path.join(fixture.workspace, "assets", "icon.png"), "workspace");
+    yield* fs.writeFileString(path.join(fixture.home, "shots", "home.png"), "home image");
+    yield* fs.writeFileString(path.join(fixture.home, "shots", "shot.png#x.txt"), "text");
+    yield* fs.writeFileString(path.join(fixture.home, "notes.txt"), "notes");
+    yield* fs.writeFileString(path.join(fixture.home, ".ssh", "id_ed25519"), "private key");
+    yield* fs.writeFileString(path.join(fixture.tmp, "v1.png"), "temp image");
+    yield* fs.writeFileString(path.join(fixture.elsewhere, "leak.png"), "elsewhere");
+    yield* fs.symlink(
+      path.join(fixture.elsewhere, "leak.png"),
+      path.join(fixture.home, "shots", "escape.png"),
+    );
+    yield* fs.symlink(
+      path.join(fixture.home, ".ssh", "id_ed25519"),
+      path.join(fixture.home, "shots", "key.png"),
+    );
+    return fixture;
+  });
+
+  const tokenAndName = (relativeUrl: string) => {
+    const suffix = relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+    const separator = suffix.indexOf("/");
+    return { token: suffix.slice(0, separator), name: suffix.slice(separator + 1) };
+  };
+
+  it.effect.each<{
+    readonly name: string;
+    readonly at: (fixture: Fixture, path: Path.Path) => string;
+    readonly expected:
+      | { readonly outcome: "served"; readonly body: string }
+      | { readonly outcome: "workspace" }
+      | { readonly outcome: "refused"; readonly error: string };
+  }>([
+    {
+      name: "an image in the home directory is served",
+      at: (fixture, path) => path.join(fixture.home, "shots", "home.png"),
+      expected: { outcome: "served", body: "home image" },
+    },
+    {
+      name: "an image in the temp directory is served",
+      at: (fixture, path) => path.join(fixture.tmp, "v1.png"),
+      expected: { outcome: "served", body: "temp image" },
+    },
+    {
+      name: "an image inside the workspace resolves as it did",
+      at: (fixture, path) => path.join(fixture.workspace, "assets", "icon.png"),
+      expected: { outcome: "workspace" },
+    },
+    {
+      name: "a non-image in the home directory is refused",
+      at: (fixture, path) => path.join(fixture.home, "notes.txt"),
+      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+    },
+    {
+      name: "a system file is refused",
+      at: () => "/etc/passwd",
+      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+    },
+    {
+      name: "an image outside the home and temp directories is refused",
+      at: (fixture, path) => path.join(fixture.elsewhere, "leak.png"),
+      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+    },
+    {
+      name: "a symlink in home that points out of it is refused",
+      at: (fixture, path) => path.join(fixture.home, "shots", "escape.png"),
+      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+    },
+    {
+      name: "a symlink in home that dresses a key as an image is refused",
+      at: (fixture, path) => path.join(fixture.home, "shots", "key.png"),
+      expected: { outcome: "refused", error: "AssetPreviewTypeValidationError" },
+    },
+    {
+      name: "a name that only ends like an image is refused",
+      at: (fixture, path) => path.join(fixture.home, "shots", "shot.png#x.txt"),
+      expected: { outcome: "refused", error: "AssetPreviewTypeValidationError" },
+    },
+    {
+      name: "a missing image in the home directory is not found",
+      at: (fixture, path) => path.join(fixture.home, "shots", "gone.png"),
+      expected: { outcome: "refused", error: "AssetWorkspaceAssetNotFoundError" },
+    },
+  ])("$name", ({ at, expected }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture;
+      const filePath = at(fixture, path);
+      const issue = issueAssetUrl({
+        resource: { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: filePath },
+        workspaceRoot: fixture.workspace,
+      }).pipe(Effect.provideService(OutsideWorkspaceImageRoots, [fixture.home, fixture.tmp]));
+
+      if (expected.outcome === "refused") {
+        expect((yield* Effect.flip(issue))._tag).toBe(expected.error);
+        return;
+      }
+      const { token, name } = tokenAndName((yield* issue).relativeUrl);
+      const asset = yield* resolveAsset(token, name);
+      const canonicalFile = yield* fs.realPath(filePath);
+      if (expected.outcome === "workspace") {
+        expect(asset).toEqual({ kind: "file", path: canonicalFile });
+        return;
+      }
+      expect(asset).toMatchObject({ kind: "file", path: canonicalFile, mimeType: "image/png" });
+      if (!asset) throw new Error("Expected the image to resolve");
+      const response = HttpServerResponse.toWeb(yield* assetFileResponse(asset));
+      expect(yield* Effect.promise(() => response.text())).toBe(expected.body);
+      expect(yield* resolveAsset(token, "sibling.png")).toBeNull();
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("serves an image from the real temp directory by default", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspace = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-asset-default-workspace-",
+      });
+      const shots = yield* fs.makeTempDirectoryScoped({ prefix: "t3-asset-default-shots-" });
+      const imagePath = path.join(shots, "v1.png");
+      yield* fs.writeFileString(imagePath, "temp image");
+
+      const { relativeUrl } = yield* issueAssetUrl({
+        resource: { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: imagePath },
+        workspaceRoot: workspace,
+      });
+      const { token, name } = tokenAndName(relativeUrl);
+
+      expect(yield* resolveAsset(token, name)).toMatchObject({
+        kind: "file",
+        path: yield* fs.realPath(imagePath),
+        mimeType: "image/png",
+      });
     }).pipe(Effect.provide(testLayer)),
   );
 });

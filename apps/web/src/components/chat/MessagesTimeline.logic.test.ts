@@ -174,7 +174,7 @@ describe("deriveMessagesTimelineRows", () => {
       kind: "working",
       turnKey: "msg:m0",
       stream: [{ kind: "note", key: "a1", message: expect.objectContaining({ id: "a1" }) }],
-      activity: { kind: "tool" },
+      activity: { kind: "step" },
       strip: null,
       incidents: [],
     });
@@ -271,7 +271,7 @@ describe("deriveMessagesTimelineRows", () => {
           sourceActivityKind: "tool.started",
         }),
       ],
-      activity: { kind: "tool" },
+      activity: { kind: "step" },
     },
     {
       name: "writing: the dots, its words held until they are known",
@@ -335,6 +335,7 @@ describe("deriveMessagesTimelineRows", () => {
     const working = after.find((row) => row.kind === "working");
     expect(working?.kind === "working" ? working.stream.map((item) => item.key) : null).toEqual([
       "a2",
+      "step:w9",
     ]);
     // Everything above the live card is drawn as it was: the answer lands
     // under it, and the card goes on under the answer.
@@ -404,7 +405,7 @@ describe("deriveMessagesTimelineRows", () => {
     const line = list.find((row) => row.kind === "work-line");
     expect(line?.kind === "work-line" ? line.summary : null).not.toMatch(/AskUserQuestion|tool/);
     const logged = list.flatMap((row) =>
-      row.kind === "log-activity" ? row.entries.map((entry) => entry.id) : [],
+      row.kind === "log-step" ? row.step.entries.map((entry) => entry.id) : [],
     );
     expect(logged).toContain("w1");
     expect(logged).not.toContain("c1");
@@ -469,7 +470,7 @@ describe("deriveMessagesTimelineRows", () => {
       entries: [...before, assistant("a2", "t1", 3, "Checking /status next.", { streaming: true })],
       live: "t1",
     });
-    expect(streamOf(writing)).toEqual({ keys: ["a1"], activity: { kind: "writing" } });
+    expect(streamOf(writing)).toEqual({ keys: ["a1", "step:w1"], activity: { kind: "writing" } });
     expect(writing.some((row) => row.id === "a2")).toBe(false);
     // An opened log holds them too: they stream nowhere until known.
     const opened = rows({
@@ -483,17 +484,17 @@ describe("deriveMessagesTimelineRows", () => {
       entries: [...before, assistant("a2", "t1", 3, "Checking /status next.")],
       live: "t1",
     });
-    expect(streamOf(written)?.keys).toEqual(["a1", "a2"]);
+    expect(streamOf(written)?.keys).toEqual(["a1", "step:w1", "a2"]);
     const movedOn = rows({
       entries: [...before, assistant("a2", "t1", 3, "Checking /status next."), tool("w2", "t1", 4)],
       live: "t1",
     });
-    expect(streamOf(movedOn)?.keys).toEqual(["a1", "a2"]);
+    expect(streamOf(movedOn)?.keys).toEqual(["a1", "step:w1", "a2", "step:w2"]);
     const answering = rows({
       entries: [...before, assistant("a2", "t1", 3, "All three pass.\n\nThe routes:")],
       live: "t1",
     });
-    expect(streamOf(answering)?.keys).toEqual(["a1"]);
+    expect(streamOf(answering)?.keys).toEqual(["a1", "step:w1"]);
     expect(answering.at(-1)?.id).toBe("a2");
   });
 
@@ -671,7 +672,17 @@ describe("deriveMessagesTimelineRows", () => {
         assistant("a7", "t1", 8, "Seven."),
         tool("w2", "t1", 9),
       ],
-      stream: ["One.", "Two.", "Three.", "Four.", "Five.", "Six.", "Seven."],
+      stream: [
+        "One.",
+        "· pnpm test",
+        "Two.",
+        "Three.",
+        "Four.",
+        "Five.",
+        "Six.",
+        "Seven.",
+        "· pnpm test",
+      ],
     },
     {
       name: "what it thinks streams too, in order with what it says",
@@ -681,7 +692,7 @@ describe("deriveMessagesTimelineRows", () => {
         assistant("a1", "t1", 3, "Deploying."),
         reasoning("r2", "t1", 4),
       ],
-      stream: ["~ thinking about it", "Deploying.", "~ thinking about it"],
+      stream: ["~ thinking about it", "· pnpm test", "Deploying.", "~ thinking about it"],
     },
     {
       name: "words that read as the answer leave the stream while work still runs: they stream under the card",
@@ -704,7 +715,7 @@ describe("deriveMessagesTimelineRows", () => {
         assistant("a2", "t1", 3, "Fixing the types."),
         tool("w1", "t1", 4),
       ],
-      stream: ["Type checking.", "✗ Run the type check failed", "Fixing the types."],
+      stream: ["Type checking.", "✗ Run the type check failed", "Fixing the types.", "· pnpm test"],
     },
     {
       name: "a failure a later attempt came back from says so, in place",
@@ -716,19 +727,19 @@ describe("deriveMessagesTimelineRows", () => {
       stream: ["↺ Run the type check failed · then passed", "Fixed."],
     },
     {
-      name: "a failed operation streams; a deploy, a check and a dev server carry their own",
+      name: "a failed operation streams, a finished one is a line; a deploy, a check and a dev server carry their own",
       entries: [
         operation("v1", "t1", 1, { kind: "verify", phase: "failed", statusWord: "Unhealthy" }),
         operation("d1", "t1", 2, { kind: "deploy", phase: "failed", statusWord: "Failed" }),
         operation("b1", "t1", 3, { kind: "browser", phase: "failed", statusWord: "Failed" }),
         operation("v2", "t1", 4, { kind: "verify", phase: "done", statusWord: "Healthy" }),
       ],
-      stream: ["↺ appdev Unhealthy · came back"],
+      stream: ["↺ appdev Unhealthy · came back", "✓ Healthy appdev"],
     },
     {
-      name: "words that are only space are no note, and nothing said yet is an empty stream",
+      name: "words that are only space are no note; a step it took is a line",
       entries: [assistant("a1", "t1", 1, "  "), tool("w1", "t1", 2)],
-      stream: [],
+      stream: ["· pnpm test"],
     },
   ])("$name", ({ entries, stream }) => {
     const working = rows({ entries: [user("m0", 0), ...entries], live: "t1" }).find(
@@ -743,7 +754,11 @@ describe("deriveMessagesTimelineRows", () => {
                 ? `~ ${item.text}`
                 : item.kind === "question"
                   ? `? ${item.questions.join(" ")}`
-                  : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
+                  : item.kind === "step"
+                    ? `· ${item.step.words ?? item.step.code}`
+                    : item.kind === "operation"
+                      ? `✓ ${item.operation.statusWord} ${item.operation.subject}`
+                      : `${item.failure.recovered ? "↺" : "✗"} ${[item.failure.subject, item.failure.words].filter(Boolean).join(" ")}${item.failure.recovered ? ` · ${item.failure.recovered}` : ""}`,
           )
         : null,
     ).toEqual(stream);
@@ -788,7 +803,7 @@ describe("deriveMessagesTimelineRows", () => {
     ).toEqual(speech);
   });
 
-  it("opens a line into its log: thinking, notes in full, tool calls as one line per run", () => {
+  it("opens a line into its log: thinking, notes in full, each call a step", () => {
     const scene: Scene = {
       entries: [
         user("m0", 0),
@@ -809,21 +824,95 @@ describe("deriveMessagesTimelineRows", () => {
       "message:m0",
       "work-line:work-line:msg:m0",
       "log-reasoning:log-reasoning:r1",
-      "log-activity:log-activity:w1",
+      "log-step:log-step:w1",
       "log-reasoning:log-reasoning:r2",
-      "log-activity:log-activity:w2",
+      "log-step:log-step:w2",
       "log-note:log-note:a1",
-      "log-activity:log-activity:w3",
+      "log-step:log-step:w3",
       "message:a2",
     ]);
-    expect(rows(scene)[6]).toMatchObject({ summary: "Edited 1 file" });
+    expect(rows(scene)[6]).toMatchObject({ step: { kind: "edit", words: "Edited app.ts" } });
+    expect(rows(scene)[4]).toMatchObject({
+      step: { kind: "command", words: null, code: "pnpm test" },
+    });
+    // Thinking runs from where what came before it ended to where what came
+    // next began: from the person's message to the first call here.
+    expect(rows(scene)[3]).toMatchObject({
+      kind: "log-reasoning",
+      durationMs: 60_000,
+      expanded: false,
+    });
 
-    // An opened activity line lists its calls under it.
-    expect(shape(rows({ ...scene, expanded: ["log-activity:w3"] })).slice(8, 11)).toEqual([
-      "log-activity:log-activity:w3",
-      "work:log-entry:w3",
-      "message:a2",
-    ]);
+    // An opened step holds its own detail: no rows under it.
+    const opened = rows({ ...scene, expanded: ["log-step:w3"] });
+    expect(shape(opened).slice(8, 10)).toEqual(["log-step:log-step:w3", "message:a2"]);
+    expect(opened[8]).toMatchObject({ expanded: true });
+  });
+
+  // A "Thought" line between every two steps walled the steps in: thinking
+  // shorter than THOUGHT_LINE_MIN_MS is the step it led to, opened with it.
+  it.each([
+    { name: "a short thought is the step it led to", seconds: 4, line: false },
+    { name: "a long one is a line of its own", seconds: 25, line: true },
+  ])("$name", ({ seconds, line }) => {
+    const withSeconds = (entry: TimelineEntry, second: number): TimelineEntry =>
+      entry.kind === "message"
+        ? {
+            ...entry,
+            createdAt: at(1, second),
+            message: { ...entry.message, createdAt: at(1, second), updatedAt: at(1, second) },
+          }
+        : entry.kind === "work"
+          ? {
+              ...entry,
+              createdAt: at(1, second),
+              entry: { ...entry.entry, createdAt: at(1, second) },
+            }
+          : entry;
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        withSeconds(tool("w1", "t1", 1), 0),
+        withSeconds(reasoning("r1", "t1", 1), seconds - 1),
+        withSeconds(tool("w2", "t1", 1), seconds),
+        assistant("a1", "t1", 3, "Done."),
+      ],
+      settled: "t1",
+      open: ["msg:m0"],
+    });
+    expect(list.some((row) => row.kind === "log-reasoning")).toBe(line);
+    expect(list.find((row) => row.id === "log-step:w2")).toMatchObject({
+      thought: line ? null : { durationMs: seconds * 1000 },
+    });
+  });
+
+  // A command Claude Code tracked as a task is one step, in the task's words;
+  // the task is no row of its own (27 of 27 on one real run).
+  it("says a tracked command in its task's words, and draws its task nowhere", () => {
+    const scene: Scene = {
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1, { command: "cd /tmp && ./capture.sh", toolCallId: "toolu_1" }),
+        tool("k1", "t1", 1, {
+          label: "Screenshot the home page",
+          toolTitle: "Screenshot the home page",
+          tone: "info",
+          command: undefined as never,
+          sourceActivityKind: "task.completed",
+          taskId: "bk1",
+          taskToolUseId: "toolu_1",
+          isBackgroundTask: true,
+        } as never),
+        assistant("a1", "t1", 2, "Done."),
+      ],
+      settled: "t1",
+      open: ["msg:m0"],
+    };
+    const list = rows(scene);
+    expect(list.some((row) => row.id === "k1" || row.id.endsWith(":k1"))).toBe(false);
+    expect(list.find((row) => row.kind === "log-step")).toMatchObject({
+      step: { words: "Screenshot the home page", code: "./capture.sh" },
+    });
   });
 
   // Starting a helper is work: a run that only launched one read "Nova
@@ -982,7 +1071,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(shape(list).slice(1, 5)).toEqual([
       "message:m0",
       "work-line:work-line:msg:m0",
-      "log-activity:log-activity:w1",
+      "log-step:log-step:w1",
       "strip:strip:op:b1",
     ]);
   });
@@ -1323,7 +1412,7 @@ describe("deriveMessagesTimelineRows", () => {
       "speech:speech:msg:m0",
       "message:m1",
       "work-line:work-line:msg:m0",
-      "log-activity:log-activity:w1",
+      "log-step:log-step:w1",
       "log-note:log-note:a1",
     ]);
     expect(list.find((row) => row.kind === "speech")).toMatchObject({ hand: "bubble" });
@@ -1331,6 +1420,44 @@ describe("deriveMessagesTimelineRows", () => {
     // said "The user also wants the heading green" with no word of it (Nova,
     // 2026-09-27).
     expect(shape(list).slice(7, 9)).toEqual(["log-person:log-person:m1", "working:working:msg:m1"]);
+  });
+
+  // An answer to the Mate's question is marked where it reached the Mate, as
+  // a message sent into the run is: the thinking it split stood as two lines
+  // side by side with nothing between them (Nova, 2026-09-27).
+  it("marks where the person's answer reached the Mate in the opened log", () => {
+    const answered = tool("rs", "t1", 3, {
+      tone: "info",
+      label: "User input submitted",
+      command: undefined as never,
+      toolCallId: undefined as never,
+      toolLifecycleStatus: undefined as never,
+      sourceActivityKind: "user-input.resolved",
+      inputRequestId: "req-1",
+      inputAnswers: [{ key: "accent", answer: "Teal" }],
+    });
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        reasoning("r1", "t1", 1),
+        asked("q1", 2),
+        answered,
+        reasoning("r2", "t1", 4),
+        tool("w1", "t1", 5),
+        assistant("a1", "t1", 6, "Done."),
+      ],
+      settled: "t1",
+      open: ["msg:m0"],
+    });
+    expect(
+      list.flatMap((row) =>
+        row.kind === "log-person"
+          ? [`person: ${row.words}`]
+          : row.kind.startsWith("log-")
+            ? [row.kind]
+            : [],
+      ),
+    ).toEqual(["log-reasoning", "person: Teal", "log-reasoning", "log-step"]);
   });
 
   // An image sent into the run is marked as the image it is, never the
@@ -1462,7 +1589,7 @@ describe("a stretch's card", () => {
         "message",
         "work-line:top",
         "log-reasoning:middle",
-        "log-activity:middle",
+        "log-step:middle",
         "log-note:middle",
         "card-end:bottom",
         "message",

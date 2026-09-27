@@ -26,7 +26,6 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
-import { MateFace } from "../zerops/primitives";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
@@ -215,41 +214,12 @@ export function WorkLine({
 }
 
 /**
- * The Mate's bubble fill, wherever its words to the person stand — the panel,
- * an opened log, the page: a share of the ink over whatever it sits on, so
- * both palettes show it (muted and secondary all but vanish on one card or
- * the other).
+ * The Mate's bubble fill, wherever it speaks from a bubble — the panel and an
+ * opened log, never the page, where its words are prose: a share of the ink
+ * over whatever it sits on, so both palettes show it (muted and secondary all
+ * but vanish on one card or the other).
  */
 export const MATE_BUBBLE_FILL = "bg-foreground/8";
-
-/**
- * The Mate's words the person answered: its face and the words in full in a
- * bubble beside it — the mirror of the person's bubbles on the right — drawn
- * as the Mate at work drew its newest words, and left where they were said.
- */
-export function MateSpeech({
-  speaker,
-  children,
-}: {
-  readonly speaker: ConversationSpeaker;
-  readonly children: ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 items-end gap-2.5" data-mate-speech="said">
-      <span aria-hidden="true" className="mb-0.5 shrink-0">
-        <MateFace size="md" state="idle" tint={speaker.tint} />
-      </span>
-      <div
-        className={cn(
-          "min-w-0 max-w-full rounded-2xl rounded-es-md px-3.5 py-2 text-foreground",
-          MATE_BUBBLE_FILL,
-        )}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
 
 /**
  * A message the Mate has not read yet: a small clock beside it, gone once the
