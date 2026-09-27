@@ -206,6 +206,10 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-gitea",
   "zerops-new-project",
   "zerops-settings",
+  "zerops-crew-section",
+  "zerops-crew-editors",
+  "zerops-crew-board",
+  "zerops-crew-chat",
   "manual-link",
 ] as const;
 

@@ -1084,6 +1084,421 @@
       "captures": []
     },
     {
+      "id": "zerops-crew-section",
+      "title": "Crew section",
+      "components": [
+        "apps/web/src/components/zerops/crew/CrewSectionHost.tsx",
+        "apps/web/src/components/zerops/crew/CrewSection.tsx",
+        "apps/web/src/components/zerops/crew/CrewSection.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
+        "apps/web/src/components/zerops/crew/CrewTellComposer.logic.ts",
+        "apps/web/src/zerops/crew/useCrew.ts",
+        "apps/web/src/zerops/crew/useCrewCommand.ts",
+        "apps/web/src/zerops/crew/crewCommands.ts",
+        "packages/client-runtime/src/zerops/projections/crew.ts",
+        "packages/client-runtime/src/zerops/crew/phrases.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ZeropsPanel, after the coding agents' card, while the crew feed says none or applied"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "subscribeZeropsCrew",
+        "zerops.crew.command",
+        "@t3tools/client-runtime/zerops/projections/crew",
+        "@t3tools/client-runtime/zerops/crew/phrases"
+      ],
+      "reverseStates": [
+        {
+          "action": "Tell the crew",
+          "reverse": "none: each task it opens leaves the board by Discard."
+        },
+        {
+          "action": "Answer",
+          "reverse": "none: an answer is a message in the crewmate's chat."
+        },
+        {
+          "action": "Allow",
+          "reverse": "Back to my tree"
+        },
+        {
+          "action": "Not now",
+          "reverse": "none: the crewmate asks again when it needs dev."
+        },
+        {
+          "action": "Back to my tree",
+          "reverse": "none: dev serves your tree again until a crewmate asks and you allow it."
+        },
+        {
+          "action": "Land",
+          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
+        },
+        {
+          "action": "Commit my edit",
+          "reverse": "none: it drafts a message to the Mate in your chat; nothing runs until you send it."
+        },
+        {
+          "action": "Ask <crewmate> to resolve",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
+        },
+        {
+          "action": "Ask <crewmate> to fix",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
+        },
+        {
+          "action": "Start fresh",
+          "reverse": "none: the previous conversation stays readable and is never resumed."
+        },
+        {
+          "action": "Remove from crew",
+          "reverse": "none: a crewmate added again is a new one with a new copy of the code."
+        },
+        {
+          "action": "Deliver",
+          "reverse": "none: it drafts a message to the Mate, whose pipeline delivers; nothing runs until you send it."
+        },
+        {
+          "action": "Start run",
+          "reverse": "Stop"
+        },
+        {
+          "action": "Pause",
+          "reverse": "Resume"
+        },
+        {
+          "action": "Resume",
+          "reverse": "Pause"
+        },
+        {
+          "action": "Stop",
+          "reverse": "none: a stopped run ends; another run is started with Start run."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents crew mode yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/crew/CrewSection.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewSection.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewTellComposer.logic.test.ts",
+        "apps/web/src/zerops/crew/useCrewCommand.test.ts",
+        "apps/web/src/zerops/feeds.test.ts",
+        "packages/client-runtime/src/zerops/projections/crew.test.ts",
+        "packages/client-runtime/src/zerops/crew/phrases.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-crew-editors",
+      "title": "Crew editors",
+      "components": [
+        "apps/web/src/components/zerops/crew/CrewSheetParts.tsx",
+        "apps/web/src/components/zerops/crew/CrewSetupSheet.tsx",
+        "apps/web/src/components/zerops/crew/CrewBriefSheet.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateEditor.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateSheet.tsx",
+        "apps/web/src/components/zerops/crew/CrewEditors.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewPortsDialog.tsx",
+        "apps/web/src/components/zerops/crew/CrewRunDialog.tsx",
+        "apps/web/src/components/zerops/crew/CrewRunDialog.logic.ts",
+        "apps/web/src/zerops/crew/useCrewHome.ts",
+        "apps/web/src/zerops/crew/crewHome.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "overlay",
+          "value": "Crew section: Set up a crew, the brief's Edit, a crewmate's Edit job, + Add crewmate, + Add lead"
+        },
+        {
+          "kind": "overlay",
+          "value": "Crewmate chat header: Edit job"
+        },
+        {
+          "kind": "overlay",
+          "value": "Crew section and lane bar: Add crew ports"
+        },
+        {
+          "kind": "overlay",
+          "value": "Crew section: Start run; the board's plan: Start while no run is on"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "zerops.crew.files.get",
+        "zerops.crew.files.put",
+        "zerops.crew.command",
+        "subscribeZeropsCrew",
+        "@t3tools/client-runtime/zerops/crew/phrases"
+      ],
+      "reverseStates": [
+        {
+          "action": "Ask <Mate>",
+          "reverse": "none: it drafts a message to the Mate, who writes the crew files; nothing runs until you send it."
+        },
+        {
+          "action": "Save",
+          "reverse": "none: a save is a new version; the earlier text comes back only by saving it again."
+        },
+        {
+          "action": "Save and apply now",
+          "reverse": "none: a save is a new version; the earlier text comes back only by saving it again."
+        },
+        {
+          "action": "Save and start fresh",
+          "reverse": "none: a save is a new version; the earlier text comes back only by saving it again."
+        },
+        {
+          "action": "Apply",
+          "reverse": "none: Apply creates each writer's copy of the code; a crewmate leaves by Remove from crew."
+        },
+        {
+          "action": "Ask <Mate> to add them",
+          "reverse": "none: the Mate declares the crew ports in zerops.yaml and redeploys the service; taking them out is another change asked of the Mate."
+        },
+        {
+          "action": "Start",
+          "reverse": "none: a run is stopped from the Crew section's Stop."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents crew mode yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/crew/CrewEditors.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewRunDialog.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewRunDialog.logic.test.ts",
+        "apps/web/src/zerops/crew/crewHome.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-crew-board",
+      "title": "Crew board",
+      "components": [
+        "apps/web/src/components/zerops/crew/CrewBoardPanel.tsx",
+        "apps/web/src/components/zerops/crew/CrewBoardPanel.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Crew (shortcut C), while the crew feed says none or applied"
+        },
+        {
+          "kind": "inline",
+          "value": "Crew section footer: Board · N tasks"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "subscribeZeropsCrew",
+        "zerops.crew.command",
+        "@t3tools/client-runtime/zerops/projections/crew",
+        "@t3tools/client-runtime/zerops/crew/phrases"
+      ],
+      "reverseStates": [
+        {
+          "action": "Create task",
+          "reverse": "Discard"
+        },
+        {
+          "action": "Discard",
+          "reverse": "none: a discarded task leaves the board; the same work is a new task."
+        },
+        {
+          "action": "Save",
+          "reverse": "none: an edit replaces the task's text; the earlier text comes back only by editing again."
+        },
+        {
+          "action": "Land",
+          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
+        },
+        {
+          "action": "Land now",
+          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
+        },
+        {
+          "action": "Ask <crewmate> to resolve",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
+        },
+        {
+          "action": "Ask <crewmate> to fix",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
+        },
+        {
+          "action": "Start",
+          "reverse": "Discard"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents crew mode yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/crew/CrewBoardPanel.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewBoardPanel.logic.test.ts",
+        "apps/web/src/rightPanelKinds.test.ts",
+        "apps/web/src/rightPanelStore.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-crew-chat",
+      "title": "Crewmate chat",
+      "components": [
+        "apps/web/src/components/zerops/crew/CrewmateHeader.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateHeader.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewmateHeaderDialogs.tsx",
+        "apps/web/src/components/zerops/crew/CrewLaneBar.tsx",
+        "apps/web/src/components/zerops/crew/CrewLaneBar.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewTaskCard.tsx",
+        "apps/web/src/components/zerops/crew/CrewTaskCard.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewSeamLine.tsx",
+        "apps/web/src/components/zerops/crew/crewChatNotices.ts",
+        "apps/web/src/components/zerops/crew/crewComposerSend.ts",
+        "apps/web/src/components/zerops/crew/SidebarCrewFaces.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "sidebar-item",
+          "value": "Crew faces on the Mate row"
+        },
+        {
+          "kind": "inline",
+          "value": "Crew section: a crewmate's row"
+        },
+        {
+          "kind": "inline",
+          "value": "Conversation strip: the crew group"
+        },
+        {
+          "kind": "inline",
+          "value": "ChatHeader, the lifecycle strip's slot and MessagesTimeline, in a crewmate's chat"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "subscribeZeropsCrew",
+        "zerops.crew.command",
+        "@t3tools/client-runtime/zerops/projections/crew",
+        "@t3tools/client-runtime/zerops/crew/phrases"
+      ],
+      "reverseStates": [
+        {
+          "action": "Send",
+          "reverse": "none: a message stays in the conversation; the crewmate reads it at its next turn or steers by it now."
+        },
+        {
+          "action": "Run",
+          "reverse": "Stop"
+        },
+        {
+          "action": "Stop",
+          "reverse": "Run"
+        },
+        {
+          "action": "Open",
+          "reverse": "none: The action opens an external URL and does not mutate application state."
+        },
+        {
+          "action": "Show on dev",
+          "reverse": "Back to my tree"
+        },
+        {
+          "action": "Back to my tree",
+          "reverse": "Show on dev"
+        },
+        {
+          "action": "Land",
+          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
+        },
+        {
+          "action": "Land now",
+          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
+        },
+        {
+          "action": "Ask <crewmate> to resolve",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
+        },
+        {
+          "action": "Ask <crewmate> to fix",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
+        },
+        {
+          "action": "Commit my edit",
+          "reverse": "none: it drafts a message to the Mate in your chat; nothing runs until you send it."
+        },
+        {
+          "action": "New task…",
+          "reverse": "none: the task leaves the board by Discard."
+        },
+        {
+          "action": "Start fresh",
+          "reverse": "none: the previous conversation stays readable under Previous conversations and is never resumed."
+        },
+        {
+          "action": "Remove from crew…",
+          "reverse": "none: a crewmate added again is a new one with a new copy of the code."
+        },
+        {
+          "action": "Forget memory…",
+          "reverse": "none: forgotten entries are gone; the crewmate records new ones as it works."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents crew mode yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/crew/CrewmateHeader.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateHeader.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewLaneBar.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewLaneBar.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewTaskCard.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewTaskCard.logic.test.ts",
+        "apps/web/src/components/zerops/crew/crewChatNotices.test.ts",
+        "apps/web/src/components/zerops/crew/crewComposerSend.test.ts",
+        "apps/web/src/components/zerops/crew/SidebarCrewFaces.test.tsx"
+      ],
+      "captures": []
+    },
+    {
       "id": "manual-link",
       "title": "Retained inactive native connection source",
       "components": [
