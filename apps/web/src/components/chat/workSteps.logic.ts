@@ -18,6 +18,20 @@ export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" |
 
 export type StepState = "running" | "done" | "failed";
 
+/**
+ * A call said plainly, in its parts: what it did and what it did it to — the
+ * files, the pattern, the page — so a bubble can set the names apart from
+ * the verb ("Read" + `page.tsx`). Past three names only the first two stand,
+ * and `more` counts the rest.
+ */
+export interface StepPhrase {
+  readonly verb: string;
+  readonly targets: ReadonlyArray<string>;
+  readonly more: number;
+  /** The targets are names the code knows — files, patterns, addresses — set in mono. */
+  readonly code: boolean;
+}
+
 export interface WorkStep {
   /** Its first call's entry id: stable from the call's first sight. */
   readonly key: string;
@@ -28,8 +42,12 @@ export interface WorkStep {
    * its command is its words.
    */
   readonly words: string | null;
+  /** Its words in parts, where the call was said plainly; null where it described itself. */
+  readonly phrase: StepPhrase | null;
   /** The command it ran, as shown: its `cd … &&` preamble dropped, its first line. */
   readonly code: string | null;
+  /** The command whole, every line of it, its preamble dropped. */
+  readonly script: string | null;
   /** How many lines the command is — a script written into it is more than its first. */
   readonly codeLines: number;
   readonly state: StepState;
@@ -75,6 +93,16 @@ export function commandShown(command: string): string {
   const line = (value: string) => (value.split("\n")[0] ?? "").replace(/\s+/g, " ").trim();
   const shown = line(rest);
   return shown.length > 0 ? shown : line(command);
+}
+
+/** A command whole, as a bubble draws it: its preamble dropped, every line kept. */
+export function commandWhole(command: string): string {
+  let rest = command;
+  for (let match = STATEMENT_PREAMBLE.exec(rest); match; match = STATEMENT_PREAMBLE.exec(rest)) {
+    rest = rest.slice(match[0].length);
+  }
+  const whole = rest.trimEnd();
+  return whole.trim().length > 0 ? whole.trim() : command.trim();
 }
 
 function isTask(entry: WorkLogEntry): boolean {
@@ -192,6 +220,12 @@ function listed(names: ReadonlyArray<string>): string {
   return `${names[0]}, ${names[1]} and ${names.length - 2 === 1 ? names[2] : `${names.length - 2} more`}`;
 }
 
+/** A verb and the names it takes, the first two standing past three, as `listed` says them. */
+function phraseOf(verb: string, names: ReadonlyArray<string>, code = true): StepPhrase {
+  if (names.length <= 3) return { verb, targets: names, more: 0, code };
+  return { verb, targets: names.slice(0, 2), more: names.length - 2, code };
+}
+
 /** Zerops tools no card shows, said by what they did. */
 const ZEROPS_WORDS: Readonly<Record<string, readonly [running: string, done: string]>> = {
   zerops_workflow: ["Checking the workflow", "Checked the workflow"],
@@ -237,6 +271,79 @@ function editWords(entries: ReadonlyArray<WorkLogEntry>, running: boolean): stri
     files.length === 0 ? "a file" : files.length > 3 ? `${files.length} files` : listed(files);
   if (wrote) return running ? `Writing ${what}` : `Wrote ${what}`;
   return running ? `Editing ${what}` : `Edited ${what}`;
+}
+
+/** Edits in parts: the verb, and each file once — past three, only how many. */
+function editPhrase(entries: ReadonlyArray<WorkLogEntry>, running: boolean): StepPhrase {
+  const files = editedFiles(entries);
+  const wrote = entries.every(
+    (entry) => (namedToolCall(entry) ?? detailToolName(entry.detail)) === "Write",
+  );
+  const verb = wrote ? (running ? "Writing" : "Wrote") : running ? "Editing" : "Edited";
+  if (files.length === 0) return { verb: `${verb} a file`, targets: [], more: 0, code: false };
+  if (files.length > 3) {
+    return { verb: `${verb} ${files.length} files`, targets: [], more: 0, code: false };
+  }
+  return phraseOf(verb, files);
+}
+
+/** A call said plainly, in parts: `plainWords` is this phrase read out. */
+function plainPhrase(entry: WorkLogEntry, kind: StepKind, running: boolean): StepPhrase | null {
+  const say = (now: string, then: string) => (running ? now : then);
+  const input = entry.callInput;
+  const alone = (verb: string): StepPhrase => ({ verb, targets: [], more: 0, code: false });
+  switch (kind) {
+    case "command":
+      return null;
+    case "look": {
+      const path = lookedAt(entry);
+      return path === null
+        ? alone(say("Looking at a picture", "Looked at a picture"))
+        : phraseOf(say("Looking at", "Looked at"), [basename(path)]);
+    }
+    case "read": {
+      const file = input?.filePath ?? detailFile(entry.detail) ?? entry.changedFiles?.[0];
+      return file === undefined || file === null
+        ? alone(say("Reading a file", "Read a file"))
+        : phraseOf(say("Reading", "Read"), [basename(file)]);
+    }
+    case "edit":
+      return editPhrase([entry], running);
+    case "search": {
+      const named = namedToolCall(entry);
+      const pattern = input?.pattern ?? detailField(entry.detail, "pattern");
+      if (named === "Glob") {
+        return pattern === null
+          ? alone(say("Looking for files", "Looked for files"))
+          : phraseOf(say("Looking for", "Looked for"), [pattern]);
+      }
+      return pattern === null
+        ? alone(say("Searching the code", "Searched the code"))
+        : phraseOf(say("Searching the code for", "Searched the code for"), [pattern]);
+    }
+    case "web": {
+      const url = input?.url ?? detailField(entry.detail, "url");
+      if (url !== null) return phraseOf(say("Reading", "Read"), [webTarget(url)]);
+      const query = input?.query ?? detailField(entry.detail, "query");
+      return query === null
+        ? alone(say("Searching the web", "Searched the web"))
+        : phraseOf(say("Searching the web for", "Searched the web for"), [query], false);
+    }
+    case "tool": {
+      const words = plainWords(entry, kind, running);
+      return words === null ? null : alone(words);
+    }
+  }
+}
+
+/** A phrase read out: "Read a.ts", "Edited a.ts and b.ts", "Looked at a, b and 3 more". */
+export function phraseWords(phrase: StepPhrase): string {
+  if (phrase.targets.length === 0) return phrase.verb;
+  const names =
+    phrase.more > 0
+      ? `${phrase.targets.join(", ")} and ${phrase.more} more`
+      : listed(phrase.targets);
+  return `${phrase.verb} ${names}`;
 }
 
 /** A call said plainly, as it runs ("Reading a.ts") or once done ("Read a.ts"). */
@@ -314,11 +421,14 @@ export function stepOf(
   const codeLines =
     code === null ? 0 : (entry.rawCommand ?? entry.command ?? "").trim().split("\n").length;
   const look = kind === "look" ? lookedAt(entry) : null;
+  const described = entry.callInput?.description ?? track?.description ?? null;
   return {
     key: entry.id,
     kind,
-    words: entry.callInput?.description ?? track?.description ?? plainWords(entry, kind, running),
+    words: described ?? plainWords(entry, kind, running),
+    phrase: described === null ? plainPhrase(entry, kind, running) : null,
     code,
+    script: code === null ? null : commandWhole(entry.rawCommand ?? entry.command ?? ""),
     codeLines,
     state,
     startedAt: entry.startedAt ?? entry.createdAt,
@@ -361,6 +471,15 @@ export function foldSteps(
               ? "Looking at pictures"
               : "Looked at pictures"
             : `${running ? "Looking at" : "Looked at"} ${listed(names)}`,
+        phrase:
+          names.length === 0
+            ? {
+                verb: running ? "Looking at pictures" : "Looked at pictures",
+                targets: [],
+                more: 0,
+                code: false,
+              }
+            : phraseOf(running ? "Looking at" : "Looked at", names),
         state: step.state,
         endedAt: step.endedAt,
         entries: [...previous.entries, entry],
@@ -381,6 +500,7 @@ export function foldSteps(
       steps[steps.length - 1] = {
         ...previous,
         words: editWords(merged, step.state === "running"),
+        phrase: editPhrase(merged, step.state === "running"),
         state: step.state,
         endedAt: step.endedAt,
         entries: merged,

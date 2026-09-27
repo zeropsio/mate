@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
-import { commandShown, foldSteps, stepOf, trackCommands } from "./workSteps.logic";
+import { commandShown, commandWhole, foldSteps, stepOf, trackCommands } from "./workSteps.logic";
 
 function entry(partial: Partial<WorkLogEntry> & { id: string }): WorkLogEntry {
   return {
@@ -60,6 +60,20 @@ describe("commandShown", () => {
   });
 });
 
+describe("commandWhole", () => {
+  it.each([
+    ["cd /var/www/app && npm run build", "npm run build"],
+    [
+      "cd /var/www/app && python3 - <<'EOF'\nimport sys\nprint(1)\nEOF",
+      "python3 - <<'EOF'\nimport sys\nprint(1)\nEOF",
+    ],
+    ["export CI=1 && pnpm test  \n", "pnpm test"],
+    ["cd app", "cd app"],
+  ])("%j reads %j, every line of it", (input, expected) => {
+    expect(commandWhole(input)).toBe(expected);
+  });
+});
+
 describe("trackCommands", () => {
   it("links a task to the command it names, and marks it as no row of its own", () => {
     const run = command("1", "cd /tmp && ./capture.sh");
@@ -107,6 +121,7 @@ describe("stepOf", () => {
       words: "Run the tests",
       code: "npm test",
       kind: "command",
+      phrase: null,
     },
     {
       name: "a command that said nothing of itself",
@@ -114,6 +129,7 @@ describe("stepOf", () => {
       words: null,
       code: "git status",
       kind: "command",
+      phrase: null,
     },
     {
       name: "a look at a screenshot",
@@ -121,6 +137,7 @@ describe("stepOf", () => {
       words: "Looked at v1.png",
       code: null,
       kind: "look",
+      phrase: { verb: "Looked at", targets: ["v1.png"], more: 0, code: true },
     },
     {
       name: "a read, by the file its detail names",
@@ -128,6 +145,7 @@ describe("stepOf", () => {
       words: "Read page.tsx",
       code: null,
       kind: "read",
+      phrase: { verb: "Read", targets: ["page.tsx"], more: 0, code: true },
     },
     {
       name: "a written file",
@@ -140,6 +158,7 @@ describe("stepOf", () => {
       words: "Wrote AGENTS.md",
       code: null,
       kind: "edit",
+      phrase: { verb: "Wrote", targets: ["AGENTS.md"], more: 0, code: true },
     },
     {
       name: "edits to two files",
@@ -151,6 +170,7 @@ describe("stepOf", () => {
       words: "Edited a.ts and b.ts",
       code: null,
       kind: "edit",
+      phrase: { verb: "Edited", targets: ["a.ts", "b.ts"], more: 0, code: true },
     },
     {
       name: "a code search",
@@ -158,6 +178,12 @@ describe("stepOf", () => {
       words: "Searched the code for content-container",
       code: null,
       kind: "search",
+      phrase: {
+        verb: "Searched the code for",
+        targets: ["content-container"],
+        more: 0,
+        code: true,
+      },
     },
     {
       name: "a page read on the web",
@@ -170,6 +196,7 @@ describe("stepOf", () => {
       words: "Read example.test/docs/zerops-yml",
       code: null,
       kind: "web",
+      phrase: { verb: "Read", targets: ["example.test/docs/zerops-yml"], more: 0, code: true },
     },
     {
       name: "a Zerops tool no card shows",
@@ -177,10 +204,47 @@ describe("stepOf", () => {
       words: "Checked the workflow",
       code: null,
       kind: "tool",
+      phrase: { verb: "Checked the workflow", targets: [], more: 0, code: false },
     },
-  ])("says $name", ({ entry: call, words, code, kind }) => {
+    {
+      name: "a search of the web, its query in words",
+      entry: entry({
+        id: "1",
+        callInput: { query: "zerops yaml build" },
+        itemType: "web_search",
+        toolTitle: "WebSearch",
+      }),
+      words: "Searched the web for zerops yaml build",
+      code: null,
+      kind: "web",
+      phrase: {
+        verb: "Searched the web for",
+        targets: ["zerops yaml build"],
+        more: 0,
+        code: false,
+      },
+    },
+  ])("says $name", ({ entry: call, words, code, kind, phrase }) => {
     const step = stepOf(call);
-    expect({ words: step.words, code: step.code, kind: step.kind }).toEqual({ words, code, kind });
+    expect({ words: step.words, code: step.code, kind: step.kind, phrase: step.phrase }).toEqual({
+      words,
+      code,
+      kind,
+      phrase,
+    });
+  });
+
+  // A bubble draws a command whole, folded past its eighth line; its line of
+  // words in the record kept only the first.
+  it("keeps a command's whole script, its preamble dropped", () => {
+    const step = stepOf(
+      command("1", "cd /var/www/app && python3 - <<'EOF'\nimport sys\nprint(1)\nEOF"),
+    );
+    expect(step).toMatchObject({
+      code: "python3 - <<'EOF'",
+      script: "python3 - <<'EOF'\nimport sys\nprint(1)\nEOF",
+      codeLines: 4,
+    });
   });
 
   it("says a running call in its running words, and a live one runs", () => {
@@ -260,6 +324,12 @@ describe("foldSteps", () => {
     ]);
     expect(steps[1]?.images).toEqual(["/tmp/home.png", "/tmp/cart.png", "/tmp/checkout.png"]);
     expect(steps[1]?.key).toBe("2");
+    expect(steps[1]?.phrase).toEqual({
+      verb: "Looked at",
+      targets: ["home.png", "cart.png", "checkout.png"],
+      more: 0,
+      code: true,
+    });
   });
 
   it("folds edits in a row into one step naming each file once", () => {
@@ -283,6 +353,12 @@ describe("foldSteps", () => {
       ["npm test", 1],
       ["Edited a.ts and b.ts", 2],
     ]);
+    expect(steps[2]?.phrase).toEqual({
+      verb: "Edited",
+      targets: ["a.ts", "b.ts"],
+      more: 0,
+      code: true,
+    });
   });
 
   it("counts past three pictures", () => {
@@ -290,5 +366,11 @@ describe("foldSteps", () => {
       ["a", "b", "c", "d", "e"].map((name, index) => look(`${index}`, `/tmp/${name}.png`)),
     );
     expect(steps.map((step) => step.words)).toEqual(["Looked at a.png, b.png and 3 more"]);
+    expect(steps[0]?.phrase).toEqual({
+      verb: "Looked at",
+      targets: ["a.png", "b.png"],
+      more: 3,
+      code: true,
+    });
   });
 });

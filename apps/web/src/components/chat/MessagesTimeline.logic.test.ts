@@ -342,16 +342,24 @@ describe("deriveMessagesTimelineRows", () => {
   });
 
   it.each([
-    { name: "nothing yet: it thinks", entries: [], now: { kind: "thinking", messages: [] } },
     {
-      name: "thinking after its words: the thought it is thinking",
+      name: "nothing yet: it thinks",
+      entries: [],
+      now: { kind: "thinking", key: null, messages: [] },
+    },
+    {
+      name: "thinking after its words: the thought it is thinking, keyed as the record will key it",
       entries: [assistant("a1", "t1", 1, "Looking."), reasoning("r1", "t1", 2)],
-      now: { kind: "thinking", messages: [expect.objectContaining({ id: "r1" })] },
+      now: {
+        kind: "thinking",
+        key: "thought:r1",
+        messages: [expect.objectContaining({ id: "r1" })],
+      },
     },
     {
       name: "a call returned after its thought: between steps",
       entries: [reasoning("r1", "t1", 1), tool("w1", "t1", 2)],
-      now: { kind: "thinking", messages: [] },
+      now: { kind: "thinking", key: null, messages: [] },
     },
     {
       name: "a call running: its hands are on it",
@@ -399,6 +407,10 @@ describe("deriveMessagesTimelineRows", () => {
       live: "t1",
     });
     expect(lines(moved)).toEqual(["· pnpm test", "~ thinking about it", "Found it."]);
+    // The same bubble, live and after: the key it wore beside the face is the one it keeps.
+    const key = recordOf(thinking)?.now;
+    expect(key?.kind === "thinking" ? key.key : null).toBe("thought:r1");
+    expect(allItems(moved).map((item) => item.key)).toContain("thought:r1");
   });
 
   // A call is first seen when it starts, and the Mate's words before it can
@@ -1043,12 +1055,13 @@ describe("deriveMessagesTimelineRows", () => {
     expect(items[3]).toMatchObject({ step: { kind: "edit", words: "Edited app.ts" } });
   });
 
-  // A "Thought" line between every two steps walled the steps in: thinking
-  // shorter than THOUGHT_LINE_MIN_MS is the step it led to, opened with it.
+  // The run reads as a chat (the owner, 2026-09-27: "have the whole thing
+  // look like a chat"): every thought is a bubble of its own, however short,
+  // and no step hides the thinking that led to it.
   it.each([
-    { name: "a short thought is the step it led to", seconds: 4, line: false },
-    { name: "a long one is a line of its own", seconds: 25, line: true },
-  ])("$name", ({ seconds, line }) => {
+    { name: "a short thought is a bubble of its own", seconds: 4 },
+    { name: "and so is a long one", seconds: 25 },
+  ])("$name", ({ seconds }) => {
     const withSeconds = (entry: TimelineEntry, second: number): TimelineEntry =>
       entry.kind === "message"
         ? {
@@ -1075,10 +1088,12 @@ describe("deriveMessagesTimelineRows", () => {
         ...(scene === "live" ? { live: "t1" } : { settled: "t1" }),
       });
       const items = recordOf(list)?.items ?? [];
-      expect(items.some((item) => item.kind === "thought")).toBe(line);
-      expect(items.find((item) => item.key === "step:w2")).toMatchObject({
-        thought: line ? null : { durationMs: seconds * 1000 },
-      });
+      expect(
+        items.flatMap((item) =>
+          item.kind === "step" || item.kind === "thought" ? [item.key] : [],
+        ),
+      ).toEqual(["step:w1", "thought:r1", "step:w2"]);
+      expect(items.find((item) => item.key === "step:w2")).not.toHaveProperty("thought");
     }
   });
 

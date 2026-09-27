@@ -1,4 +1,6 @@
+import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { IncidentModel } from "./conversation.logic";
@@ -96,7 +98,8 @@ function barsOf(markup: string) {
   return [...list.matchAll(/<(button|div)([^>]*)aria-label="([^"]*)"[^>]*>(.*?)<\/\1>/gs)].map(
     ([, tag, attributes = "", label = "", body = ""]) => ({
       tag,
-      opens: attributes.includes('aria-haspopup="dialog"') || tag === "button",
+      opens: tag === "button",
+      attributes,
       label,
       text: body
         .replace(/<[^>]*>/g, " ")
@@ -127,20 +130,74 @@ describe("what runs alongside the Mate", () => {
 
   // "No unnecessary icons, make the use obvious from the component": the
   // bar's name says what it is, no mark in front of it.
-  it("puts no icon on a bar", () => {
-    for (const { body } of barsOf(render(DOCK, [INCIDENT]))) expect(body).not.toContain("<svg");
+  // No mark at rest: a bar's name says what it is. One that opens shows a
+  // chevron on hover and while it is open, nothing more.
+  it("wears no icon at rest, and a chevron only where it opens", () => {
+    for (const { body, opens } of barsOf(render(DOCK, [INCIDENT]))) {
+      if (!opens) {
+        expect(body).not.toContain("<svg");
+        continue;
+      }
+      const chevron = /<svg[^>]*class="([^"]*)"/.exec(body)?.[1]?.split(" ") ?? [];
+      expect(chevron).toEqual(expect.arrayContaining(["opacity-0", "group-hover/bar:opacity-100"]));
+    }
   });
 
-  // A bar with more behind it opens it in a modal; nothing opens in place.
+  // A bar with more behind it opens it in place, under it — never a dialog
+  // (the owner, 2026-09-27: "so much better expandable inline").
   it.each([
     { name: "apidev", opens: false },
     { name: "Tasks", opens: true },
     { name: "Helpers", opens: true },
     { name: "Background", opens: true },
-  ])("opens $name's detail in a modal: $opens", ({ name, opens }) => {
+  ])("opens $name's detail in place: $opens", ({ name, opens }) => {
     const bar = barsOf(render(DOCK, [INCIDENT])).find(({ label }) => label.startsWith(name));
     expect(bar?.opens).toBe(opens);
-    expect(bar?.body).not.toContain("aria-expanded");
+    if (opens) expect(bar?.attributes).toContain('aria-expanded="false"');
+    expect(bar?.attributes).not.toContain("aria-haspopup");
+  });
+
+  it("shows the list under its bar when the person opens it, and folds it when they close it", () => {
+    const observers = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = create(
+          <ConversationWorking
+            browser={null}
+            dock={DOCK}
+            environmentId={null}
+            incidents={[]}
+            onOpenAgents={() => undefined}
+            threadRef={null}
+          />,
+        );
+      });
+      const tasks = () =>
+        renderer.root.find(
+          (node) => node.type === "button" && String(node.props["aria-label"]).startsWith("Tasks"),
+        );
+      const details = () =>
+        renderer.root.findAll(
+          (node) => node.type === "div" && node.props["data-working-detail"] !== undefined,
+        );
+      expect(details()).toHaveLength(0);
+      act(() => tasks().props.onClick());
+      expect(tasks().props["aria-expanded"]).toBe(true);
+      expect(details()).toHaveLength(1);
+      expect(
+        details()[0]!.findAll((node) => node.props["data-plan-step"] !== undefined),
+      ).toHaveLength(3);
+      act(() => tasks().props.onClick());
+      expect(details()).toHaveLength(0);
+    } finally {
+      globalThis.ResizeObserver = observers;
+    }
   });
 
   // One right edge for every time in the card: the heading's, each line's
