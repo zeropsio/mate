@@ -289,11 +289,15 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
   return input.members.find((entry) => entry.user?.id === signer);
 }
 
-/** The user id the first `mate:signer:{agent}:{userId}` tag names. */
+/** The agents whose own signer speaks for the Mate; a login added beside them names only who uses it. */
+const MATE_OWNER_SIGNER_KEYS: ReadonlySet<string> = new Set(["claude-code", "codex"]);
+
+/** The user id the first `mate:signer:{agent}:{userId}` tag of an agent's own login names. */
 function mateSignerUserId(tagList: ReadonlyArray<string> | undefined): string | undefined {
   for (const tag of tagList ?? []) {
     if (!tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:`)) continue;
-    const userId = tag.split(":")[3];
+    const [, , key, userId] = tag.split(":");
+    if (key === undefined || !MATE_OWNER_SIGNER_KEYS.has(key)) continue;
     if (userId !== undefined && userId.length > 0) return userId;
   }
   return undefined;
