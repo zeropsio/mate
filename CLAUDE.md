@@ -18,6 +18,7 @@ the spec or the ledger. To answer a question, go to the home:
 | Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                                  |
 | Measured facts (dated, one writer)                                                                                       | the ledger: `docs/internals/zerops/{verified,questions,hacks,map,poc-findings}.md` |
 | Client design system — vocabulary, glossary, icon map, rules R1–R8 with their tests, exception ledgers                   | `docs/internals/zerops/design-system.md`                                           |
+| Crew mode — levels, code map, switch, crew home, RPCs, seams                                                             | `docs/internals/zerops/crew.md`                                                    |
 | Behavior invariant                                                                                                       | a test                                                                             |
 | Transient roadmap / journal                                                                                              | `../zcp/plans/` (never cite as a source)                                           |
 | Upstream agent guide (still accurate below the banner)                                                                   | `AGENTS.md`                                                                        |
