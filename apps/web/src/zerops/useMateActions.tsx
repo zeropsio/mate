@@ -48,7 +48,7 @@ import { projectTagsWrite, registerMateInGroup } from "./brokerGrant";
 import { useAccountGitea } from "./giteaProject";
 import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
-import { useProjectOrderPreference } from "./projectOrderPreference";
+import { useProjectOrderOptions } from "./projectOrderPreference";
 import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
 import { intendContainer } from "./zeropsContainers";
@@ -111,14 +111,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // The same preference the projects screen's sort control writes — the
   // "move to" dialog's group choices should read the way the person set up
   // their own list, not a fixed order of their own.
-  const [projectOrder] = useProjectOrderPreference();
+  const projectOrder = useProjectOrderOptions();
 
   const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
         rank: rankZeropsCandidateForListing,
-        order: projectOrder,
+        ...projectOrder,
       }),
     [candidates, projectOrder],
   );

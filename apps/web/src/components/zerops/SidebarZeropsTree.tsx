@@ -106,16 +106,26 @@ import {
   PlusIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
-import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
+import {
+  movedBefore,
+  rememberProjectsOnScreen,
+  useProjectOrder,
+} from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { Avatar, MateFace, StatusDot } from "./primitives";
@@ -124,6 +134,12 @@ import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { stopNameSaysOnlyRole } from "./SidebarZeropsTree.logic";
+import {
+  keyboardTarget,
+  movedAnnouncement,
+  ProjectGrip,
+  useProjectReorder,
+} from "./SidebarProjectReorder";
 import {
   comingMateLine,
   groupFlowInputOf,
@@ -409,10 +425,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     setSeenGroupId(activeGroupId);
     if (activeGroupId !== undefined) setCollapsed(withCollapsed(collapsed, activeGroupId, false));
   }
-  // Same preference the projects screen's sort control writes
-  // (`projectOrderPreference.ts`) — read here too so the two surfaces stay in
-  // step without either one owning the other.
-  const [projectOrder] = useProjectOrderPreference();
+  // Same preference the projects screen's sort control and the account menu
+  // write (`projectOrderPreference.ts`) — read here too so the surfaces stay
+  // in step without either one owning the other. In *Custom* the headings
+  // take a grip, and every heading's menu moves its project up or down.
+  const projectOrder = useProjectOrder();
+  const treeRef = useRef<HTMLElement>(null);
+  const reorder = useProjectReorder(treeRef);
   // What each stop runs, read once per render and handed to `groupFlow` and
   // to every stop's own row, so the two can never read two different answers
   // for the same project.
@@ -467,9 +486,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   ];
   const view = buildZeropsGroupTree(everyEnvironment, {
     rank: rankZeropsCandidateForListing,
-    order: projectOrder,
+    order: projectOrder.order,
+    ...(projectOrder.customOrder === undefined ? {} : { customOrder: projectOrder.customOrder }),
     births,
   });
+  // Every project the order holds, drawn or not: what a move is written into,
+  // and what choosing *Custom* elsewhere starts from.
+  const onScreen = view.groups.map(({ group }) => group.groupId);
+  rememberProjectsOnScreen(onScreen);
   const tints = assignCandidateMateTints(candidates);
 
   const toggle = (key: string) => {
@@ -659,14 +683,41 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
   const ungroupedMates = ungrouped.some(({ item }) => hasMate(item));
 
+  // The projects drawn, in order: a move by keyboard or by drag names its
+  // place by these neighbours, and the order it writes still holds the rest.
+  const drawn = groups.map(({ group }) => group.groupId);
+  const moveProject = (groupId: string, before: string | null, name: string) => {
+    const next = movedBefore(onScreen, groupId, before).filter((id) => drawn.includes(id));
+    projectOrder.move(groupId, before, onScreen);
+    reorder.announce(movedAnnouncement(name, next.indexOf(groupId) + 1, next.length));
+  };
+  const moveByKey = (groupId: string, name: string, direction: "up" | "down", refocus: boolean) => {
+    const before = keyboardTarget(drawn, groupId, direction);
+    if (before === undefined) return;
+    moveProject(groupId, before, name);
+    if (!refocus) return;
+    // The section moves in the DOM, and a moved node can drop its focus.
+    requestAnimationFrame(() => {
+      treeRef.current?.querySelector<HTMLElement>(`[data-zerops-grip="${groupId}"]`)?.focus();
+    });
+  };
+
   return (
     <nav
       aria-label="Mates"
-      className={cn("flex flex-col gap-4", className)}
+      className={cn("relative flex flex-col gap-4", className)}
       data-zerops-surface="sidebar-environments"
+      ref={treeRef}
     >
-      {groups.map(({ group, environments }) => (
-        <section className="flex flex-col" data-zerops-group={group.groupId} key={group.groupId}>
+      {groups.map(({ group, environments }, index) => (
+        <section
+          className={cn(
+            "flex flex-col transition-opacity",
+            reorder.dragging === group.groupId && "opacity-40",
+          )}
+          data-zerops-group={group.groupId}
+          key={group.groupId}
+        >
           {section(
             group.groupId,
             environments,
@@ -688,6 +739,23 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 onToggle={() => {
                   const { groupId } = group;
                   setCollapsed((current) => withCollapsed(current, groupId, !current.has(groupId)));
+                }}
+                reorder={{
+                  custom: projectOrder.order === "custom",
+                  canMoveUp: index > 0,
+                  canMoveDown: index < groups.length - 1,
+                  onMove: (direction, fromGrip) => {
+                    moveByKey(group.groupId, group.name, direction, fromGrip);
+                  },
+                  onGripPointerDown: (event) => {
+                    reorder.startDrag(
+                      { groupId: group.groupId, name: group.name },
+                      event,
+                      (groupId, before) => {
+                        moveProject(groupId, before, group.name);
+                      },
+                    );
+                  },
                 }}
               />
             ),
@@ -718,6 +786,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {/* Rows already held, and the listing not all read: they may not be all
           the Mates there are, so the notice stays under them (§3.4). */}
       {notice === null ? null : <ListingNotice notice={notice} onAct={onNoticeAct} />}
+      {reorder.overlay}
     </nav>
   );
 }
@@ -796,6 +865,7 @@ export function ProjectHeader({
   onOpen,
   collapsed = false,
   onToggle,
+  reorder,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
@@ -817,14 +887,30 @@ export function ProjectHeader({
   readonly collapsed?: boolean;
   /** Collapses or expands the project. Absent for the ungrouped heading, which is not a project. */
   readonly onToggle?: (() => void) | undefined;
+  /**
+   * Moving the project among the others: *Move up* and *Move down* in its
+   * menu from any order, and in *Custom* a grip to drag it by. Absent for the
+   * ungrouped heading, which always stands last.
+   */
+  readonly reorder?: ProjectHeaderReorder | undefined;
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
   return (
     <div
-      className="group/project mb-0.5 flex h-8 min-w-0 items-center gap-1 px-2.5"
+      className="group/project relative mb-0.5 flex h-8 min-w-0 items-center gap-1 px-2.5"
       data-zerops-surface="sidebar-project"
     >
+      {reorder?.custom === true && group !== undefined ? (
+        <ProjectGrip
+          groupId={group.groupId}
+          name={title}
+          onMove={(direction) => {
+            reorder.onMove(direction, true);
+          }}
+          onPointerDown={reorder.onGripPointerDown}
+        />
+      ) : null}
       {/* A name, not a label: no uppercase and no `MicroLabel`. The weight
           comes from size and room instead — at 13px it was *smaller* than the
           Mate names beneath it, which is a heading losing to its own contents
@@ -903,6 +989,32 @@ export function ProjectHeader({
                   not open it (the owner, 2026-09-19); now that the heading's
                   name collapses the project, this is the way in. */}
               <MenuItem onClick={onOpen ?? onBrowseProjects}>Open project</MenuItem>
+              {reorder === undefined ? null : (
+                <>
+                  <MenuSeparator />
+                  {/* The keyboard's way to arrange the list, and the pointer's
+                      where the grip is not offered: from *Name* or *Creation
+                      date* a move makes the order *Custom*, starting from the
+                      one on screen. */}
+                  <MenuItem
+                    disabled={!reorder.canMoveUp}
+                    onClick={() => {
+                      reorder.onMove("up", false);
+                    }}
+                  >
+                    Move up
+                  </MenuItem>
+                  <MenuItem
+                    disabled={!reorder.canMoveDown}
+                    onClick={() => {
+                      reorder.onMove("down", false);
+                    }}
+                  >
+                    Move down
+                  </MenuItem>
+                  <MenuSeparator />
+                </>
+              )}
               {missing.map((row) => (
                 <MenuItem key={row.tier} onClick={onBrowseProjects}>
                   {`Set up ${row.name.toLocaleLowerCase()}`}
@@ -938,6 +1050,17 @@ export function ProjectHeader({
 }
 
 const NO_MISSING_TIERS: ReadonlyArray<MissingEnvironmentRow> = [];
+
+/** What a heading needs to move its project; see {@link ProjectHeader}'s `reorder`. */
+export interface ProjectHeaderReorder {
+  /** The *Custom* order is on, so the heading wears a grip. */
+  readonly custom: boolean;
+  readonly canMoveUp: boolean;
+  readonly canMoveDown: boolean;
+  /** `fromGrip`: the grip keeps the focus through the move. */
+  readonly onMove: (direction: "up" | "down", fromGrip: boolean) => void;
+  readonly onGripPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+}
 
 /** The hover affordances on a heading and on a stop: the same control. */
 const HEADING_CLASS =

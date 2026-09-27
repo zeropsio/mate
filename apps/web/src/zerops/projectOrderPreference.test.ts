@@ -10,8 +10,13 @@ import {
 } from "../hooks/useLocalStorage";
 import {
   DEFAULT_PROJECT_ORDER,
+  movedBefore,
+  movedInOrder,
+  PROJECT_CUSTOM_ORDER_STORAGE_KEY,
   PROJECT_ORDER_STORAGE_KEY,
+  ProjectCustomOrderSchema,
   ProjectOrderSchema,
+  projectOrderOptionsOf,
 } from "./projectOrderPreference";
 
 describe("project order preference — the pure read/parse", () => {
@@ -27,9 +32,19 @@ describe("project order preference — the pure read/parse", () => {
     expect(DEFAULT_PROJECT_ORDER).toBe("newest");
   });
 
-  it.each([{ order: "newest" }, { order: "name" }] as const)("round-trips $order", ({ order }) => {
-    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
-    expect(getLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema)).toBe(order);
+  it.each([{ order: "newest" }, { order: "name" }, { order: "custom" }] as const)(
+    "round-trips $order",
+    ({ order }) => {
+      setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
+      expect(getLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema)).toBe(order);
+    },
+  );
+
+  it("round-trips the viewer's own arrangement", () => {
+    setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, ["b", "a"], ProjectCustomOrderSchema);
+    expect(getLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, ProjectCustomOrderSchema)).toEqual(
+      ["b", "a"],
+    );
   });
 
   // `next-step` is the order removed on 2026-09-24; `oldest` was never one.
@@ -83,5 +98,77 @@ describe("useProjectOrderPreference — a browser that stored the removed order"
       seen?.[1]("name");
     });
     expect(seen?.[0]).toBe("name");
+  });
+});
+
+describe("projectOrderOptionsOf — what a tree is built in", () => {
+  it.each([
+    { order: "newest", custom: ["a"], expected: { order: "newest" } },
+    { order: "name", custom: ["a"], expected: { order: "name" } },
+    { order: "custom", custom: ["b", "a"], expected: { order: "custom", customOrder: ["b", "a"] } },
+    { order: "custom", custom: [], expected: { order: "custom", customOrder: [] } },
+  ] as const)(
+    "reads $order with the arrangement only where it counts",
+    ({ order, custom, expected }) => {
+      expect(projectOrderOptionsOf(order, custom)).toEqual(expected);
+    },
+  );
+});
+
+describe("movedInOrder — one project taken to a new place", () => {
+  it.each([
+    { case: "up one", order: ["a", "b", "c"], id: "b", to: 0, expected: ["b", "a", "c"] },
+    { case: "down one", order: ["a", "b", "c"], id: "b", to: 2, expected: ["a", "c", "b"] },
+    { case: "to the top", order: ["a", "b", "c"], id: "c", to: 0, expected: ["c", "a", "b"] },
+    { case: "to the end", order: ["a", "b", "c"], id: "a", to: 2, expected: ["b", "c", "a"] },
+    {
+      case: "where it already is",
+      order: ["a", "b", "c"],
+      id: "b",
+      to: 1,
+      expected: ["a", "b", "c"],
+    },
+    {
+      case: "past the end, clamped",
+      order: ["a", "b", "c"],
+      id: "a",
+      to: 9,
+      expected: ["b", "c", "a"],
+    },
+    {
+      case: "before the start, clamped",
+      order: ["a", "b", "c"],
+      id: "c",
+      to: -3,
+      expected: ["c", "a", "b"],
+    },
+    {
+      case: "an id the order does not hold",
+      order: ["a", "b"],
+      id: "x",
+      to: 0,
+      expected: ["a", "b"],
+    },
+  ])("moves it $case", ({ order, id, to, expected }) => {
+    expect(movedInOrder(order, id, to)).toEqual(expected);
+  });
+});
+
+describe("movedBefore — one project put in front of another, or last", () => {
+  // `h` is drawn nowhere (a project with no Mate): a move among the drawn
+  // ones must never lose it or leap it for no reason.
+  it.each([
+    { case: "up past its drawn neighbour", before: "a", id: "b", expected: ["b", "a", "h", "c"] },
+    { case: "down past its drawn neighbour", before: "c", id: "a", expected: ["h", "b", "a", "c"] },
+    { case: "to the end", before: null, id: "a", expected: ["h", "b", "c", "a"] },
+    { case: "in front of itself — nowhere", before: "b", id: "b", expected: ["a", "h", "b", "c"] },
+    {
+      case: "in front of one the order lacks — last",
+      before: "x",
+      id: "a",
+      expected: ["h", "b", "c", "a"],
+    },
+  ])("puts it $case", ({ before, id, expected }) => {
+    expect(movedBefore(["a", "h", "b", "c"], id, before)).toEqual(expected);
   });
 });

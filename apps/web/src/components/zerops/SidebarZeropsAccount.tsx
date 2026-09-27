@@ -20,6 +20,11 @@ import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { cn } from "~/lib/utils";
+import {
+  PROJECT_ORDER_CHOICES,
+  readProjectsOnScreen,
+  useProjectOrder,
+} from "~/zerops/projectOrderPreference";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useSidebar } from "../ui/sidebar";
 import {
@@ -131,9 +136,9 @@ export function SidebarZeropsAccount({
 }
 
 /**
- * The menu's body: who, then which organization, then where to go, then the
- * way out. Split from the trigger so it can be rendered — and read — without
- * a popup being open.
+ * The menu's body: who, then how the list above reads, then which
+ * organization, then where to go, then the way out. Split from the trigger so
+ * it can be rendered — and read — without a popup being open.
  */
 export function SidebarZeropsAccountMenu({
   account,
@@ -148,6 +153,7 @@ export function SidebarZeropsAccountMenu({
   signOutError = null,
 }: Omit<SidebarZeropsAccountProps, "collapsed">) {
   const choices = sidebarAccountOrganizationChoices(organizations);
+  const projectOrder = useProjectOrder();
   return (
     <>
       <div className="flex items-center gap-3 px-2 py-2" data-zerops-account-identity="true">
@@ -161,6 +167,31 @@ export function SidebarZeropsAccountMenu({
           )}
         </div>
       </div>
+
+      {/* How the projects above are ordered — set once and left alone, so it
+          lives here rather than as chrome over the list; moving one project is
+          the project's own heading and menu. *Custom* starts from the order on
+          screen (`projectOrderPreference.ts`). */}
+      <MenuSeparator />
+      <MenuRadioGroup
+        onValueChange={(value) => {
+          const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);
+          if (choice !== undefined) projectOrder.choose(choice.value, readProjectsOnScreen());
+        }}
+        value={projectOrder.order}
+      >
+        <MenuGroupLabel>Order</MenuGroupLabel>
+        {PROJECT_ORDER_CHOICES.map((choice) => (
+          <MenuRadioItem
+            closeOnClick
+            data-zerops-account-order={choice.value}
+            key={choice.value}
+            value={choice.value}
+          >
+            {choice.label}
+          </MenuRadioItem>
+        ))}
+      </MenuRadioGroup>
 
       {choices.length === 0 ? null : (
         <>

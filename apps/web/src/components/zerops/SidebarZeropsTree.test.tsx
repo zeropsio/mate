@@ -17,7 +17,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+  PROJECT_ORDER_STORAGE_KEY,
+  ProjectCustomOrderSchema,
+  ProjectOrderSchema,
+} from "~/zerops/projectOrderPreference";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 
 // The projects a person collapsed, as storage would hand them back, and what
@@ -1927,5 +1934,80 @@ describe("the sidebar and the projects page read one group the same way", () => 
     const dot = /data-zerops-surface="sidebar-project-next-step"[^>]*/u.exec(html)?.[0];
     if (page.kind === "none") expect(dot).toBeUndefined();
     else expect(dot).toContain(`aria-label="${page.text}"`);
+  });
+});
+
+describe("arranging the projects by hand", () => {
+  const SHOP_MATE = named("shop-dev", "Shop - dev", [
+    "mate",
+    "mate:g:shop",
+    "mate:name:Shop",
+    "mate:role:dev",
+  ]);
+  const order = (html: string) =>
+    [...html.matchAll(/data-zerops-group="([^"]+)"/gu)].map((match) => match[1]);
+  afterEach(() => {
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
+    setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [], ProjectCustomOrderSchema);
+  });
+
+  it.each([
+    { order: "name", custom: [], expected: ["links", "shop"] },
+    { order: "custom", custom: ["shop", "links"], expected: ["shop", "links"] },
+    { order: "custom", custom: ["links", "shop"], expected: ["links", "shop"] },
+  ] as const)(
+    "draws the projects in the $order order: $expected",
+    ({ order: mode, custom, expected }) => {
+      setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, mode, ProjectOrderSchema);
+      setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [...custom], ProjectCustomOrderSchema);
+      expect(order(render([LINKS_MATE, SHOP_MATE]))).toEqual(expected);
+    },
+  );
+
+  it("gives a heading a grip only in the Custom order, in the gutter, named for its project", () => {
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
+    expect(render([LINKS_MATE, SHOP_MATE])).not.toContain("sidebar-project-grip");
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
+    const html = render([LINKS_MATE, SHOP_MATE]);
+    const grip =
+      /<button[^>]*data-zerops-surface="sidebar-project-grip"[^>]*>/u.exec(html)?.[0] ?? "";
+    expect(grip).toContain('aria-label="Move Links: drag, or use the arrow keys"');
+    // In the gutter and invisible at rest, so the name never moves for it.
+    expect(grip).toContain("absolute");
+    expect(grip).toContain("opacity-0");
+    expect(grip).toContain("group-hover/project:opacity-100");
+  });
+
+  it("moves a project with the grip's arrow keys, writing the order on screen with it moved", () => {
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
+    setLocalStorageItem(
+      PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+      ["links", "shop"],
+      ProjectCustomOrderSchema,
+    );
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[LINKS_MATE, SHOP_MATE]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const grips = mounted.root.findAll(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-project-grip",
+    );
+    act(() => {
+      grips[1]!.props.onKeyDown({ key: "ArrowUp", preventDefault: () => {} });
+    });
+    expect(getLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, ProjectCustomOrderSchema)).toEqual(
+      ["shop", "links"],
+    );
+    const spoken = mounted.root.find(
+      (node) => typeof node.type === "string" && node.props.role === "status",
+    );
+    expect(text(spoken)).toBe("Shop moved to 1 of 2.");
   });
 });

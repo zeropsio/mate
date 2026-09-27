@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
+
+import { setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 
 import { Menu } from "../ui/menu";
 import { SidebarZeropsAccount, SidebarZeropsAccountMenu } from "./SidebarZeropsAccount";
@@ -120,6 +123,42 @@ describe("SidebarZeropsAccountMenu", () => {
     const html = renderMenu({ organizations: [ZEROPS, ACME] });
     expect(html).toContain("Organization");
     expect(html).toContain(">Acme<");
+  });
+
+  describe("the order of the projects above", () => {
+    afterEach(() => {
+      setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
+    });
+    const checked = (html: string, order: string) =>
+      new RegExp(
+        `<[^>]*aria-checked="true"[^>]*data-zerops-account-order="${order}"|<[^>]*data-zerops-account-order="${order}"[^>]*aria-checked="true"`,
+        "u",
+      ).test(html);
+
+    it("offers Name, Creation date and Custom, in the words the projects page uses", () => {
+      const html = renderMenu();
+      expect(html).toContain(">Order<");
+      for (const [order, label] of [
+        ["name", "Name"],
+        ["newest", "Creation date"],
+        ["custom", "Custom"],
+      ]) {
+        expect(html).toContain(`data-zerops-account-order="${order}"`);
+        expect(html).toContain(`>${label}<`);
+      }
+    });
+
+    it.each(["name", "newest", "custom"] as const)(
+      "checks %s when it is the order chosen",
+      (order) => {
+        setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
+        const html = renderMenu();
+        expect(checked(html, order)).toBe(true);
+        for (const other of ["name", "newest", "custom"].filter((entry) => entry !== order)) {
+          expect(checked(html, other)).toBe(false);
+        }
+      },
+    );
   });
 
   it("keeps the item while a sign-out runs, and says where a failed one landed", () => {
