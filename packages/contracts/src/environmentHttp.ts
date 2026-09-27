@@ -74,6 +74,9 @@ export const EnvironmentOperationForbiddenReason = Schema.Literals([
   "zerops_read_only",
   "origin_not_allowed",
   "browser_session_unsupported",
+  // D6: the command would start a turn on an agent this session may not run
+  // — not signed in, or signed in by somebody else.
+  "zerops_turn_refused",
 ]);
 export type EnvironmentOperationForbiddenReason = typeof EnvironmentOperationForbiddenReason.Type;
 
@@ -335,6 +338,7 @@ const EnvironmentOrchestrationThreadSnapshotErrors = [
 const EnvironmentOrchestrationDispatchErrors = [
   EnvironmentRequestInvalidError,
   EnvironmentScopeRequiredError,
+  EnvironmentOperationForbiddenError,
   EnvironmentInternalError,
 ] as const;
 

@@ -2419,6 +2419,60 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  // D6 over HTTP: the dispatch route admits a turn as the caller's session,
+  // exactly as the socket does, and says so as a refusal, not a failure.
+  it.effect("refuses an HTTP turn on an agent the caller did not sign in", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { zerops: zeropsTestEnvironment() },
+        layers: {
+          zeropsAgentAuth: {
+            latest: Effect.succeed({
+              available: true,
+              agents: [
+                {
+                  agentId: "claude-code",
+                  credPresent: true,
+                  flagOAuth: true,
+                  flagToken: false,
+                  providerAuth: "authenticated",
+                  state: "authorized",
+                },
+              ],
+            }),
+          },
+        },
+      });
+
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/api/orchestration/dispatch"), {
+        method: "POST",
+        headers: {
+          authorization: yield* getAuthenticatedAuthorizationHeader(),
+          "content-type": "application/json",
+        },
+        body: jsonRequestBody({
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-http-turn-refused"),
+          threadId: defaultThreadId,
+          message: {
+            messageId: MessageId.make("msg-http-turn-refused"),
+            role: "user",
+            text: "hello",
+            attachments: [],
+          },
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "m" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: "2026-09-27T10:00:00.000Z",
+        }),
+      });
+      const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
+
+      assert.equal(response.status, 403);
+      assert.equal(body.reason, "zerops_turn_refused");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("compresses large JSON responses through the composed routes", () =>
     Effect.gen(function* () {
       const descriptor = {
