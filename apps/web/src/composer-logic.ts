@@ -2,7 +2,7 @@ import type { ClientSettings } from "@t3tools/contracts/settings";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
-export type ComposerTriggerKind = "path" | "slash-command" | "skill";
+export type ComposerTriggerKind = "path" | "slash-command" | "skill" | "crewmate";
 export type ComposerSlashCommand = "model" | "plan" | "default";
 export type ComposerSubmissionIntent = "foreground" | "background";
 
@@ -234,7 +234,19 @@ export function isCollapsedCursorAdjacentToInlineToken(
 
 export const isCollapsedCursorAdjacentToMention = isCollapsedCursorAdjacentToInlineToken;
 
-export function detectComposerTrigger(text: string, cursorInput: number): ComposerTrigger | null {
+export interface ComposerTriggerOptions {
+  /**
+   * What `@` offers. Only *Tell the crew* offers crewmates (PRD §5.3); a chat's
+   * composer — a person's or a crewmate's — keeps `@` for files and data.
+   */
+  readonly mentions?: "path" | "crewmate";
+}
+
+export function detectComposerTrigger(
+  text: string,
+  cursorInput: number,
+  options?: ComposerTriggerOptions,
+): ComposerTrigger | null {
   const cursor = clampCursor(text, cursorInput);
   const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
   const linePrefix = text.slice(lineStart, cursor);
@@ -268,7 +280,7 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
   }
 
   return {
-    kind: "path",
+    kind: options?.mentions ?? "path",
     query: token.slice(1),
     rangeStart: tokenStart,
     rangeEnd: cursor,
