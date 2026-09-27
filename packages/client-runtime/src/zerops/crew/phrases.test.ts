@@ -67,7 +67,7 @@ describe("crewBoardColumn", () => {
 });
 
 describe("crewTaskWord", () => {
-  const context = { tasks, hasLead: true, threadStatusWord: null };
+  const context = { tasks, hasLead: true, threadStatusWord: "Connecting" };
 
   it.each([
     ["proposed", {}, "Proposed"],
@@ -110,7 +110,6 @@ describe("crewTaskWord", () => {
     expect(crewTaskWord(working, { ...context, threadStatusWord: "Pending Approval" })).toBe(
       "Pending Approval",
     );
-    expect(crewTaskWord(working, context)).toBe("Working");
   });
 
   it("says who reviews only when the crew has a lead", () => {

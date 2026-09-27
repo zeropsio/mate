@@ -65,11 +65,12 @@ export interface CrewTaskWordContext {
   readonly tasks: ReadonlyArray<CrewTask>;
   /** A crew with a lead reviews through it: "In review by lead". */
   readonly hasLead: boolean;
-  /** The owner's thread status word from `resolveThreadStatus`, which a working task shows. */
-  readonly threadStatusWord: string | null;
+  /**
+   * The owner's current thread status word from `resolveThreadStatus`: a
+   * working task's word is its thread's, and only that resolver writes one (R5).
+   */
+  readonly threadStatusWord: string;
 }
-
-const WORKING_COLUMN_TITLE = CREW_BOARD_COLUMNS[1].title;
 
 /** A task's state word (PRD §6.3). */
 export function crewTaskWord(task: CrewTask, context: CrewTaskWordContext): string {
@@ -83,7 +84,7 @@ export function crewTaskWord(task: CrewTask, context: CrewTaskWordContext): stri
       return waitsFor === undefined ? "Queued" : `Queued · after #${waitsFor.number}`;
     }
     case "working":
-      return context.threadStatusWord ?? WORKING_COLUMN_TITLE;
+      return context.threadStatusWord;
     case "rework":
       return task.reason === null ? "Rework" : `Rework: ${task.reason}`;
     case "blocked":
