@@ -89,11 +89,38 @@ describe("CrewSection", () => {
     expect(manual).not.toContain("Pause");
     expect(manual).not.toContain("Spend ");
     expect(manual).not.toContain("Send to lead");
-    expect(manual).not.toContain("+ Add lead");
     expect(render(snapshot)).toContain("Send to lead");
     expect(render(snapshot)).toContain("Pause");
     expect(render(snapshot)).not.toContain("Start run");
     expect(render({ ...snapshot, run: null })).toContain("Start run");
+  });
+
+  it("reads a paused run, offers Resume and Stop, and meters a budget without a limit", () => {
+    const snapshot = crewSnapshotFixture();
+    const paused = render({
+      ...snapshot,
+      run: {
+        ...snapshot.run!,
+        state: "paused",
+        reason: "budget",
+        options: { ...snapshot.run!.options, budgetUsd: "unlimited" },
+      },
+    });
+
+    expect(paused).toContain("Paused · budget reached");
+    expect(paused).toContain(">Resume<");
+    expect(paused).toContain(">Stop<");
+    expect(paused).not.toContain(">Pause<");
+    expect(paused).toContain("Spend $6.40 · no limit · Time 1 h 12 m of 8 h");
+  });
+
+  it("offers + Add lead exactly while the crew has no lead", () => {
+    const snapshot = crewSnapshotFixture();
+    const leadless = { ...snapshot, crewmates: snapshot.crewmates.slice(1) };
+
+    expect(render(snapshot)).not.toContain("+ Add lead");
+    expect(render(leadless)).toContain("+ Add lead");
+    expect(render({ ...leadless, run: null })).toContain("+ Add lead");
   });
 
   it("opens the board only where there is one to open", () => {

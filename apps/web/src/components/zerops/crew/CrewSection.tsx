@@ -142,7 +142,7 @@ export function CrewSection(props: CrewSectionProps) {
         <Button onClick={() => props.onEditCrewmate(null)} size="xs" variant="ghost">
           + Add crewmate
         </Button>
-        {view.lead === null && run !== null ? (
+        {view.lead === null ? (
           <Button onClick={props.onAddLead} size="xs" variant="ghost">
             + Add lead
           </Button>
