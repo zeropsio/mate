@@ -196,7 +196,9 @@ const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
   check:
     "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-sm py-1 ps-2 pe-4 text-base text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   segment:
-    "flex min-h-6 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
+    // Each as wide as its words, the room left shared out: "Creation date"
+    // never cut to fit beside "Name".
+    "flex min-h-6 flex-auto items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
 };
 
 function MenuRadioItem({
@@ -238,9 +240,7 @@ function MenuRadioItem({
           <span className="col-start-2 min-w-0 truncate">{children}</span>
         </>
       ) : (
-        <span className={cn("min-w-0", variant === "segment" ? "truncate" : "flex-1")}>
-          {children}
-        </span>
+        <span className={variant === "segment" ? undefined : "min-w-0 flex-1"}>{children}</span>
       )}
     </MenuPrimitive.RadioItem>
   );
