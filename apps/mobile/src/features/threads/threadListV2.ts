@@ -539,7 +539,9 @@ export function buildThreadListV2Items(input: {
   let nextSnoozeWakeAt: string | null = null;
   for (const thread of input.threads) {
     // Callers pass live (unarchived) shells; settled threads are among them
-    // and partition into the tail via effectiveSettled.
+    // and partition into the tail via effectiveSettled. A crewmate's thread is
+    // the crew's, never a row of the person's list.
+    if (thread.crew !== undefined) continue;
     if (input.environmentId !== null && thread.environmentId !== input.environmentId) continue;
     if (projectKeys !== null && !projectKeys.has(`${thread.environmentId}:${thread.projectId}`)) {
       continue;

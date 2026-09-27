@@ -444,6 +444,31 @@ describe("sortThreadsForListV2", () => {
 });
 
 describe("buildThreadListV2Items", () => {
+  it.each([
+    { shelf: "active", extra: {} },
+    { shelf: "pinned", extra: { pinnedAt: "2026-06-01T12:00:00.000Z" } },
+    { shelf: "settled", extra: { settledOverride: "settled" as const } },
+    { shelf: "snoozed", extra: { snoozedUntil: "2026-06-03T00:00:00.000Z" } },
+  ])("never lists a crewmate's thread, not even as $shelf", ({ extra }) => {
+    const layout = buildThreadListV2Items({
+      threads: [
+        makeThread({ id: ThreadId.make("person"), title: "Checkout flow" }),
+        makeThread({
+          id: ThreadId.make("stint"),
+          title: "backend",
+          crew: { crew: "shop", crewmate: "backend", stint: 1 },
+          ...extra,
+        }),
+      ],
+      environmentId: null,
+      searchQuery: "",
+      snoozedShelfExpanded: true,
+      now: NOW,
+    });
+
+    expect(layout.items.map((item) => item.thread.id)).toEqual(["person"]);
+  });
+
   it("ignores checkout pull request state when a static pull request is linked", () => {
     const thread = makeThread({
       id: ThreadId.make("linked"),

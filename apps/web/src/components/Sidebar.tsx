@@ -2319,9 +2319,11 @@ export default function Sidebar() {
     // memo exactly at the next wake boundary.
     void snoozeWakeTick;
     const preciseNow = new Date().toISOString();
+    // A crewmate's thread is the crew's, never an ordinary row.
     const visible = threads.filter(
       (thread) =>
         thread.archivedAt === null &&
+        thread.crew === undefined &&
         !zeropsEnvironmentIds.has(thread.environmentId) &&
         (scopedProjectKeys === null ||
           scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
