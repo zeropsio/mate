@@ -3,10 +3,10 @@
  * the receipt on a message it has not read yet, the quiet seams between days,
  * events, errors, a usage-limit pause and an incident.
  *
- * One grammar: the Mate's side of the column has a gutter, and a row's mark
- * (a live dot, an event's icon, a failure) hangs in it, so every row's words
- * start on the same edge as the answer's. Routine is grey and small; only a
- * pause is amber and only a failure is red.
+ * One grammar: a row stands on the text edge the answer starts on, its mark
+ * (an event's icon, a failure, a pause) first and its words after it, so
+ * every row's words share one edge. Routine is grey and small; only a pause
+ * is amber and only a failure is red.
  *
  * Presentational: every word comes from the row. Every row here has its final
  * height from its first frame; only words and fixed-size marks change in place.
@@ -342,7 +342,7 @@ export function Seam({
   );
 }
 
-/** An event's line: its icon in the gutter, its words on the text edge, its time on hover. */
+/** An event's line: its icon on the text edge, its words after it, its time on hover. */
 function EventShell({
   icon,
   children,
@@ -416,6 +416,7 @@ export function EventLine({
       );
     case "command": {
       const { command } = event;
+      const condensing = command.name === "compact" && !event.done;
       const words =
         command.name === "compact"
           ? event.done
@@ -435,6 +436,14 @@ export function EventLine({
           timestampFormat={timestampFormat}
         >
           {words}
+          {condensing ? (
+            // It runs for minutes: its clock, the work line's, is its sign of
+            // life. Done, the line says what it came to and nothing more.
+            <>
+              {" · "}
+              <ElapsedSince since={at} />
+            </>
+          ) : null}
         </EventShell>
       );
     }
@@ -442,9 +451,9 @@ export function EventLine({
 }
 
 /**
- * What stopped the turn, in the failure tone: the icon in the gutter, the
- * words on the text edge. Only a turn-ending error reaches here — a step that
- * failed on the way stays in the log it belongs to.
+ * What stopped the turn, in the failure tone: its icon on the text edge, its
+ * words after it. Only a turn-ending error reaches here — a step that failed
+ * on the way stays in the log it belongs to.
  */
 export function ErrorLine({
   label,
@@ -487,16 +496,17 @@ function untilText(resetsAt: string, nowMs: number): string {
   return rest === 0 ? `in ${hours}h` : `in ${hours}h ${rest}m`;
 }
 
-/**
- * A usage limit as one pause — amber while it holds, quiet once the Mate
- * picked up again — however many attempts the limit refused.
- */
 /** The server's own reading of a pause, when it keeps one: the reset and the thread's switch. */
 export interface ServerUsagePause {
   readonly resetsAt: string;
   readonly autoResume: boolean;
 }
 
+/**
+ * A usage limit as one pause — amber while it holds, quiet once the Mate
+ * picked up again — however many attempts the limit refused. Both are one
+ * block: its mark and words in one size, and what it says under its words.
+ */
 export function PauseBlock({
   row,
   speaker,
@@ -533,24 +543,22 @@ export function PauseBlock({
     <div
       className={cn(
         // Resumed, the same block goes quiet — history, not a state to act
-        // on, its mark in the gutter and its words on the text edge — and
-        // keeps its height: newer rows may already sit under it.
+        // on: a line like an event's, its mark on the text edge — and keeps
+        // its height: newer rows may already sit under it.
         "relative grid gap-1 rounded-xl border py-2.5",
         resumed
-          ? "border-transparent text-muted-foreground"
+          ? "border-x-0 border-transparent text-muted-foreground"
           : "border-status-attention/40 bg-status-attention-surface px-3.5",
       )}
       data-conversation-pause={resumed ? "resumed" : "paused"}
       role="status"
     >
-      <div className={cn("flex min-w-0 items-center gap-2", resumed ? "text-line" : "text-sm")}>
-        {resumed ? (
-          <LineMark>
-            <PauseIcon className="size-3.5 text-muted-foreground" />
-          </LineMark>
-        ) : (
-          <PauseIcon aria-hidden="true" className="size-4 shrink-0 text-status-attention" />
-        )}
+      <div className="flex min-w-0 items-center gap-1.5 text-line" data-pause-head>
+        <LineMark>
+          <PauseIcon
+            className={cn("size-3.5", resumed ? "text-muted-foreground" : "text-status-attention")}
+          />
+        </LineMark>
         <span
           className={cn(
             "font-medium",
@@ -576,9 +584,15 @@ export function PauseBlock({
           </Tooltip>
         ) : null}
       </div>
-      <p className={cn("text-line text-muted-foreground", resumed ? null : "ps-6")}>{detail}</p>
+      {/* Under its words: past the mark's w-4 and the head's gap-1.5. */}
+      <p className="ps-5.5 text-line text-muted-foreground" data-pause-detail>
+        {detail}
+      </p>
       {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
-        <label className="flex w-fit cursor-pointer items-center gap-2 ps-7 text-line text-foreground">
+        <label
+          className="flex w-fit cursor-pointer items-center gap-2 ps-5.5 text-line text-foreground"
+          data-pause-switch
+        >
           <Switch
             checked={serverPause.autoResume}
             onCheckedChange={(checked) => onAutoResumeChange(checked)}

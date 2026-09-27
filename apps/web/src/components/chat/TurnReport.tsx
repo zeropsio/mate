@@ -4,8 +4,9 @@
  * status bar wore, now in the tone it ended in. Each service it left live
  * with its link, a failure it came back from, the changes that landed, the
  * files it changed, the checks with every take in its device's shape, what
- * it created and removed, and what it could not do — pills on one small tray
- * that hugs them, where the panel was, under the line and before the answer.
+ * it created and removed, and what it could not do — pills and takes on the
+ * run's card, on its text edge, where the panel was: under the line and
+ * before the answer.
  */
 import type { TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -63,7 +64,7 @@ function compactCount(value: number): string {
 }
 
 const SERVICE_PILL_CLASS =
-  "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-card ps-1 pe-2.5 text-xs";
+  "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-card ps-1 pe-2.5 text-line";
 
 function ServicePill({ service }: { readonly service: OutcomeService }) {
   const Icon = SERVICE_ICON[service.tone];
@@ -132,8 +133,10 @@ function Takes({
   );
   if (shots.length === 0) return null;
   return (
+    // The first take on the text edge: the room its scroller keeps for a
+    // take's ring and the focus ring hangs outside it.
     <div
-      className="flex min-w-0 items-end gap-2 overflow-x-auto px-1 pb-0.5 scrollbar-none"
+      className="-m-1 flex min-w-0 items-end gap-2 overflow-x-auto p-1 scrollbar-none"
       data-report-takes
     >
       {takes.map((take) => {
@@ -147,7 +150,7 @@ function Takes({
             key={take.key}
             aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : ""}. Open the screenshot`}
             className={cn(
-              "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+              "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
               TAKE_CLASS[device],
               state === "failed"
                 ? "border-status-failed ring-1 ring-status-failed"
@@ -192,7 +195,7 @@ export function TurnReport({
       )}
       data-turn-report
     >
-      <div className="flex min-w-0 flex-wrap gap-1.5">
+      <div className="flex min-w-0 flex-wrap gap-1.5" data-report-pills>
         {outcome.live.map((service) => (
           <ServicePill key={service.hostname} service={service} />
         ))}
@@ -239,6 +242,7 @@ export function TurnReport({
             <span className="shrink-0 text-diff-deletion-foreground tabular-nums">
               −{compactCount(outcome.files.deletions)}
             </span>
+            {/* A text action in the conversation's link ink, as its markdown links are. */}
             <span className="shrink-0 text-info-foreground">Review</span>
           </Pill>
         ) : null}

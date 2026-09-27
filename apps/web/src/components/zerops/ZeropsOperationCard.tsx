@@ -68,14 +68,7 @@ import {
 import { OperationSubjectLine } from "./operation/OperationSubjectLine";
 import { operationSubject, type OperationSubject } from "./operation/subject";
 import { versionLabel } from "./operation/version";
-import {
-  FlatCard,
-  formatStepDuration,
-  MicroLabel,
-  ProcessSteps,
-  StatusDot,
-  type ProcessStep,
-} from "./primitives";
+import { FlatCard, MicroLabel, ProcessSteps, StatusDot, type ProcessStep } from "./primitives";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadResultBody } from "./ZeropsToolResultCards";
@@ -116,42 +109,45 @@ export function KindGlyph({ kind }: { readonly kind: ZeropsOperationKind }) {
   );
 }
 
-/** `m:ss` — the running clock, ticking once a second. */
-function formatElapsedClock(ms: number): string {
-  const totalSeconds = Math.max(0, Math.round(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-/** `0:42` while running, `1m 12s` once settled — undefined when neither timestamp resolves. */
+/**
+ * The conversation's one duration ("42s", "1m 12s"), to now while it runs and
+ * to its result once settled — undefined when neither timestamp resolves.
+ * `formatDuration` writes the chat's `formatWorkDuration` format — a
+ * render-only root may not reach the chat's module graph, which holds the
+ * platform client (R2) — and, like it, never says less than a second.
+ */
 function headerDurationText(operation: ZeropsOperation, now: number): string | undefined {
   const startedAtMs = Date.parse(operation.anchorAt);
-  if (!Number.isFinite(startedAtMs)) {
-    return undefined;
-  }
-  if (operation.phase === "running") {
-    return formatElapsedClock(Math.max(0, now - startedAtMs));
-  }
-  if (operation.settledAt === undefined) {
-    return undefined;
-  }
-  const settledAtMs = Date.parse(operation.settledAt);
-  return Number.isFinite(settledAtMs)
-    ? formatStepDuration(Math.max(0, settledAtMs - startedAtMs))
+  const endedAtMs =
+    operation.phase === "running"
+      ? now
+      : operation.settledAt === undefined
+        ? Number.NaN
+        : Date.parse(operation.settledAt);
+  return Number.isFinite(startedAtMs) && Number.isFinite(endedAtMs)
+    ? formatDuration(Math.max(1_000, endedAtMs - startedAtMs))
     : undefined;
 }
 
-/** The clock after the status word — led by a middle dot unless it opens the cluster. */
+/**
+ * The clock after the status word — led by a middle dot unless it opens the
+ * cluster. It holds the room of its widest reading, "9m 59s", so a clock
+ * that grows never pushes the header onto a second line: at the row's end
+ * always, where the room is out of sight; after a status word only while it
+ * runs, so a settled word still meets the card's edge.
+ */
 function HeaderMeta({
   durationText,
   led,
+  running,
 }: {
   readonly durationText: string | undefined;
   readonly led: boolean;
+  readonly running: boolean;
 }) {
+  const room = led ? (running ? "min-w-12" : null) : "min-w-11 text-end";
   return durationText !== undefined ? (
-    <span className="tabular-nums" data-zerops-operation-duration>
+    <span className={cn("tabular-nums", room)} data-zerops-operation-duration>
       {led ? "· " : ""}
       {durationText}
     </span>
@@ -182,6 +178,7 @@ function CardHeader({
   readonly subject: OperationSubject | undefined;
 }) {
   const tone = operationTone(operation);
+  const running = operation.phase === "running";
   if (subject !== undefined) {
     const dotTone = status?.tone ?? tone;
     return (
@@ -199,10 +196,10 @@ function CardHeader({
             sentence={status !== undefined}
             tone={dotTone}
           />
-          <OperationSubjectLine running={operation.phase === "running"} subject={subject} />
+          <OperationSubjectLine running={running} subject={subject} />
         </div>
         <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs">
-          <HeaderMeta durationText={durationText} led={false} />
+          <HeaderMeta durationText={durationText} led={false} running={running} />
         </span>
       </header>
     );
@@ -221,7 +218,7 @@ function CardHeader({
         role="status"
       >
         <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
-        <HeaderMeta durationText={durationText} led />
+        <HeaderMeta durationText={durationText} led running={running} />
       </span>
     </header>
   );
@@ -426,7 +423,7 @@ function BrowserThumbnail({
         render={
           <button
             aria-label={label}
-            className="block w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-muted p-0 max-h-60 @[22rem]:w-[168px] @[22rem]:max-h-32 @[36rem]:w-[200px] @[36rem]:max-h-40"
+            className="block w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-foreground/5 p-0 max-h-60 @[22rem]:w-[168px] @[22rem]:max-h-32 @[36rem]:w-[200px] @[36rem]:max-h-40"
             data-zerops-browser-viewport
             onClick={image !== undefined ? onOpenImage : onOpenPanel}
             style={{ aspectRatio }}
@@ -492,7 +489,7 @@ function BrowserCard({
             className={cn(
               "tabular-nums",
               summary.errorCount + summary.failedRequestCount > 0
-                ? "text-destructive-foreground"
+                ? "text-status-failed-text"
                 : "text-muted-foreground",
             )}
             data-zerops-browser-metrics

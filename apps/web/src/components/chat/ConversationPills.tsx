@@ -35,8 +35,9 @@ export function Pill({
   readonly tone?: PillTone;
   readonly children: ReactNode;
 }) {
+  // The live status bars' size: a 20 px line in the 28 px pill, beside its 20 px disc.
   const className = cn(
-    "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border ps-1 pe-2.5 text-xs transition-colors",
+    "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border ps-1 pe-2.5 text-line transition-colors",
     TONE_CLASS[tone],
   );
   const action = onToggle ?? onClick;
@@ -66,7 +67,7 @@ export function Pill({
         <ChevronDownIcon
           aria-hidden="true"
           className={cn(
-            "size-3 shrink-0 opacity-60 transition-transform duration-150",
+            "size-3.5 shrink-0 opacity-70 transition-transform duration-150",
             open && "rotate-180",
           )}
         />
@@ -82,7 +83,8 @@ const DISC_CLASS: Record<DiscTone, string> = {
   ok: "bg-status-ok-surface text-status-ok-text",
   failed: "bg-status-failed-surface text-status-failed-text",
   attention: "bg-status-attention-surface text-status-attention-text",
-  idle: "bg-muted text-muted-foreground",
+  // A share of the ink, as the Mate's bubble: `muted` all but vanishes on the dark card.
+  idle: "bg-foreground/8 text-muted-foreground",
 };
 
 /**

@@ -248,7 +248,10 @@ export function BrowserStrip({
       className={cn(
         "@container/strip min-w-0 overflow-hidden",
         staged ? (bare ? "h-66" : "h-72") : "max-h-66",
-        !bare && "rounded-2xl bg-muted/50 p-3",
+        // A light share of the ink, both palettes show it: `muted` all but
+        // vanishes on the dark card, and a surface this large sits a step
+        // under the Mate's bubble.
+        !bare && "rounded-2xl bg-foreground/5 p-3",
       )}
       data-browser-strip
       data-browser-strip-device={device}
@@ -265,7 +268,7 @@ export function BrowserStrip({
                       : "Open the Browser panel"
                   }
                   className={cn(
-                    "relative flex min-h-0 flex-1 shrink-0 cursor-pointer flex-col self-center overflow-hidden border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 @xl/strip:h-66 @xl/strip:flex-none",
+                    "relative flex min-h-0 flex-1 shrink-0 cursor-pointer flex-col self-center overflow-hidden border border-border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 @xl/strip:h-66 @xl/strip:flex-none",
                     FRAME_CLASS[device],
                     stageState === "failed" && "border-status-failed",
                     stageState === "retried" && "border-status-attention",
@@ -281,7 +284,7 @@ export function BrowserStrip({
                   <span className="size-1.5 rounded-full bg-muted-foreground/30" />
                   <span className="size-1.5 rounded-full bg-muted-foreground/30" />
                   <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-                  <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-muted px-2 text-start text-2xs text-muted-foreground leading-4">
+                  <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-2xs text-muted-foreground leading-4">
                     {caption}
                   </span>
                 </span>
@@ -303,8 +306,10 @@ export function BrowserStrip({
                 )}
               </span>
               {running && onStage === latest ? (
-                <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 text-2xs text-foreground leading-5 shadow-sm">
-                  <span className="size-1.5 animate-status-pulse rounded-full bg-status-failed motion-reduce:animate-none" />
+                // Live is busy, never failure: the blue its take pulses in the
+                // list. A hairline, not a shadow, keeps it off the page under it.
+                <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 text-2xs text-foreground leading-5">
+                  <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
                   Live
                 </span>
               ) : null}
@@ -317,7 +322,7 @@ export function BrowserStrip({
         <div className="flex min-w-0 flex-none flex-col gap-0.5 @xl/strip:flex-1 @xl/strip:py-1">
           <p
             className={cn(
-              "truncate font-medium text-sm",
+              "truncate font-medium text-line",
               failedOnStage ? "text-status-failed-text" : "text-foreground",
             )}
             data-browser-strip-title
