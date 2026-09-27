@@ -12,9 +12,9 @@
  *   for a new stint's seed.
  * - **Your tree**: its dirty paths (*Deliver*'s draft names them) and which
  *   landing commits a remote branch already holds (delivered).
- * - **The dev server** zcp started on the service (`/tmp/zcp-dev-server.log.pid`,
+ * - **The dev server** zcp started on the service (`DEV_SERVER_PIDFILE`,
  *   written by `zerops_dev_server` before it execs the command): its command
- *   line, which the after-land turn restarts it with.
+ *   line, which a shaped turn restarts it with.
  * - **A crewmate's changes** for `crew_diff`, cut to what a tool answer carries.
  *
  * @module CrewReads
@@ -25,6 +25,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
+import { DEV_SERVER_PIDFILE } from "./CrewRuntime.ts";
 import {
   CrewShell,
   field,
@@ -45,9 +46,6 @@ export interface LaneStats {
   readonly insertions: number;
   readonly deletions: number;
 }
-
-/** The pidfile `zerops_dev_server` writes before it execs the dev server (zcp `ops/dev_server_start.go`). */
-export const ZCP_DEV_SERVER_PIDFILE = "/tmp/zcp-dev-server.log.pid";
 
 /** What a `crew_diff` answer carries at most. */
 export const DIFF_MAX_CHARS = 40_000;
@@ -183,9 +181,11 @@ export const make = Effect.gen(function* () {
     read(
       host,
       "devServerCommand",
-      `pid=$(cat ${ZCP_DEV_SERVER_PIDFILE} 2>/dev/null) || exit 0\n` +
-        `[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || exit 0\n` +
-        `printf 'command\\t%s\\n' "$(tr '\\0' ' ' < /proc/$pid/cmdline | sed 's/ *$//')"\n`,
+      `pid=$(cat ${shellQuote(DEV_SERVER_PIDFILE)} 2>/dev/null) || exit 0\n` +
+        `case "$pid" in ''|*[!0-9]*) exit 0 ;; esac\n` +
+        `kill -0 "$pid" 2>/dev/null || exit 0\n` +
+        `command=$(tr '\\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || command=$(ps -o command= -p "$pid")\n` +
+        `printf 'command\\t%s\\n' "$(printf '%s' "$command" | sed 's/ *$//')"\n`,
     ).pipe(
       Effect.map((out) => {
         const command = field(out, "command")?.trim();

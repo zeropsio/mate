@@ -1,9 +1,16 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
-import type { CrewSnapshot, OrchestrationCommand, ThreadId } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  ThreadId as ThreadIdSchema,
+  type CrewSnapshot,
+  type OrchestrationCommand,
+  type ThreadId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -12,8 +19,11 @@ import * as Stream from "effect/Stream";
 import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
+import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { CrewEngine } from "./CrewEngine.ts";
+import { DEV_SERVER_PIDFILE } from "./CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
+import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import {
   eventually,
   runningPersonThread,
@@ -888,6 +898,158 @@ describe("CrewEngine", () => {
             ],
           );
         }),
+      ),
+  );
+
+  /** zcp's dev server, faked: a process started in `cwd` whose pid is in zcp's pidfile. */
+  const startDevServer = (cwd: string) => {
+    const child = NodeChildProcess.spawn("sleep", ["60"], { cwd, detached: true, stdio: "ignore" });
+    child.unref();
+    NodeFS.writeFileSync(DEV_SERVER_PIDFILE, `${child.pid}\n`);
+    return child.pid!;
+  };
+
+  it.live(
+    "Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases",
+    () => {
+      const started: Array<number> = [];
+      return withCrewEngine((world) =>
+        Effect.gen(function* () {
+          write(
+            world.root,
+            "zerops.yaml",
+            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
+          );
+          git(world.root, ["add", "-A"]);
+          git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
+          yield* applied(world);
+          started.push(startDevServer(world.root));
+          const thread = yield* firstTurn(world, () => undefined);
+          const directory = yield* CrewThreadDirectory;
+          const member = Option.getOrThrow(yield* directory.memberFor(thread));
+          const asked = yield* (yield* CrewToolHost).showOnDev(member, { reason: "see the HUD" });
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const requested = yield* snapshotWhere((snapshot) =>
+            snapshot.attention.some((row) => row.kind === "show-on-dev"),
+          );
+          yield* eventually(
+            command({ _tag: "claimGrant", host: "appdev" }).pipe(
+              Effect.as(true),
+              Effect.orElseSucceed(() => false),
+            ),
+          );
+          const claimTurn = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
+          const shaped = Option.getOrThrow(yield* directory.memberFor(thread)).gate;
+          started.push(startDevServer(NodePath.join(world.root, ".crew/backend")));
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const held = yield* snapshotWhere(
+            (snapshot) => snapshot.hosts[0]?.claim.state === "held",
+          );
+          const gate = Option.getOrThrow(yield* directory.memberFor(thread)).gate;
+          const blocked = yield* Effect.flip(
+            command({ _tag: "landNow", taskId: held.board.tasks[0]!.id }),
+          );
+          yield* command({ _tag: "claimRelease", host: "appdev" });
+          const releaseTurn = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
+          started.push(startDevServer(world.root));
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const released = yield* snapshotWhere(
+            (snapshot) => snapshot.hosts[0]?.claim.state === "none",
+          );
+          assert.deepStrictEqual(
+            {
+              asked: asked.isError,
+              attention: requested.attention.find((row) => row.kind === "show-on-dev")?.host,
+              claimCard: claimTurn.message.text.split("\n")[1],
+              claimWorkDir: claimTurn.message.text.includes(`workDir=${world.root}/.crew/backend`),
+              shaped: shaped.kind === "live" ? [shaped.turn, shaped.devServer?.port] : null,
+              served: held.hosts[0]!.served,
+              holdsClaim: gate.kind === "live" && gate.holdsClaim,
+              blocked: blocked.reason,
+              releaseCard: releaseTurn.message.text.split("\n")[1],
+              servedAfter: released.hosts[0]!.served,
+            },
+            {
+              asked: false,
+              attention: "appdev",
+              claimCard: "Show your work on appdev",
+              claimWorkDir: true,
+              shaped: ["claim-start", 3000],
+              served: { by: "crewmate", handle: "backend" },
+              holdsClaim: true,
+              blocked: "wrong-state",
+              releaseCard: "Give appdev back",
+              servedAfter: { by: "tree" },
+            },
+          );
+        }),
+      ).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            for (const pid of started) {
+              try {
+                process.kill(pid);
+              } catch {}
+            }
+            NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
+          }),
+        ),
+      );
+    },
+  );
+
+  it.live(
+    "the crew's thread policy: installed at Apply, a profile for the live stint, deny-all once retired, none for a person",
+    () =>
+      withCrewEngine(
+        (world) =>
+          Effect.gen(function* () {
+            const registry = yield* ThreadToolPolicyRegistry;
+            const before = yield* registry.current;
+            yield* applied(world);
+            const thread = yield* firstTurn(world, () => undefined);
+            yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+            const policy = Option.getOrThrow(yield* registry.current);
+            const profileOf = (threadId: string) =>
+              policy.profileFor({
+                threadId: ThreadIdSchema.make(threadId),
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+              });
+            const live = yield* profileOf(thread);
+            const person = yield* profileOf("person-thread");
+            yield* eventually(
+              command({ _tag: "startFresh", handle: "backend" }).pipe(
+                Effect.as(true),
+                Effect.orElseSucceed(() => false),
+              ),
+            );
+            const retired = yield* profileOf(thread);
+            assert.deepStrictEqual(
+              {
+                before: Option.isNone(before),
+                live: [
+                  live?.sessionContext.includes("You are @backend"),
+                  live?.sessionContext.includes("# Brief v1: Space shooter"),
+                  live?.readOnly,
+                  live?.tools.map((tool) => tool.name),
+                ],
+                person,
+                retired: [retired?.readOnly, retired?.tools.length],
+              },
+              {
+                before: true,
+                live: [
+                  true,
+                  true,
+                  false,
+                  ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev"],
+                ],
+                person: undefined,
+                retired: [true, 0],
+              },
+            );
+          }),
+        { installer: () => installCrewThreadPolicy },
       ),
   );
 });

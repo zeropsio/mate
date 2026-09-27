@@ -35,11 +35,8 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
-import { asRefusal, refuse, type CrewCore } from "./crewCore.ts";
+import { asRefusal, DEFAULT_CREW_LOGIN, refuse, type CrewCore } from "./crewCore.ts";
 import type { CrewMemberRow } from "./CrewStore.ts";
-
-/** A crewmate's login when its `crew.yaml` names none: the project's default. */
-export const DEFAULT_CREW_LOGIN = "claudeAgent";
 
 /** The login and model a crewmate's turns run on (PRD §2.3 *Runs on*). */
 export const modelSelectionFor = (core: CrewCore, member: Pick<CrewMemberRow, "login" | "model">) =>

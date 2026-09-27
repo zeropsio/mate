@@ -35,6 +35,7 @@ import {
   type CrewCore,
   type CrewMember,
 } from "./crewCore.ts";
+import { claimShown } from "./crewClaims.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { readDeclaredPorts } from "./crewPorts.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
@@ -49,6 +50,9 @@ import {
   stepTask,
   stintForTurn,
 } from "./crewTasks.ts";
+
+/** A copy shown on dev does not land: dev would keep serving work that is now also your tree's. */
+const ON_DEV = "its work is on dev; take dev back to your tree first";
 
 /** How many times a check stopped by its timeout or a signal runs again before the task parks. */
 const CHECK_RERUNS = 1;
@@ -303,6 +307,9 @@ export const land = (
     if (lane?.frozenSince !== undefined && lane.frozenSince !== null) {
       return yield* refuse("wrong-state", `${lane.host} is redeploying`);
     }
+    if (claimShown(core, member.row.handle)) {
+      return yield* refuse("wrong-state", ON_DEV);
+    }
     const landing = yield* stepTask(core, task, {
       type: "land",
       facts: { personTurnRunning: false, hostFrozen: false, laneShown: false, lockTaken: true },
@@ -416,6 +423,9 @@ export const landNow = (core: CrewCore, principal: TurnPrincipal, taskId: string
       return yield* refuse("wrong-state", `#${task.number} is ${task.state}`);
     if (isWorking(core, applied, member.row.handle)) {
       return yield* refuse("wrong-state", `@${member.row.handle}'s turn is running`);
+    }
+    if (claimShown(core, member.row.handle)) {
+      return yield* refuse("wrong-state", ON_DEV);
     }
     if (member.row.kind === "writer") {
       const committed = yield* asRefusal(

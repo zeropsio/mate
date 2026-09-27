@@ -232,7 +232,8 @@ export type CrewEngineServices =
   | CrewThreadDirectory
   | CrewToolHost
   | ServerCommandReadiness
-  | CrewStore;
+  | CrewStore
+  | ThreadToolPolicyRegistry;
 
 /**
  * Runs each phase against its own live crew engine, one after another, over

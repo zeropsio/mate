@@ -39,6 +39,7 @@ import type { PromptChange } from "./crewCards.ts";
 import {
   asRefusal,
   currentStint,
+  DEFAULT_CREW_LOGIN,
   isWorking,
   principalUser,
   refuse,
@@ -48,7 +49,6 @@ import {
   type CrewCore,
   type CrewMember,
 } from "./crewCore.ts";
-import { DEFAULT_CREW_LOGIN } from "./CrewDispatch.ts";
 import { CREW_ID, refusalOf } from "./CrewHome.ts";
 import { assignCrewPorts, proposeCrewPorts, readDeclaredPorts } from "./crewPorts.ts";
 import { retireStint, rotate } from "./CrewStints.ts";

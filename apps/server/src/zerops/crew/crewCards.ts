@@ -94,7 +94,7 @@ export const afterLandCard = (
   task: CardTask & {
     readonly commit: string;
     readonly host: string;
-    readonly devServer: { readonly port: number; readonly command: string };
+    readonly devServer: DevServerShape;
   },
 ): string =>
   card(task, "restart the dev server", [
@@ -102,6 +102,42 @@ export const afterLandCard = (
       `with zerops_dev_server: action=restart hostname=${task.host} port=${task.devServer.port} ` +
       `processMatch="${task.devServer.command}", no workDir. Nothing else.`,
   ]);
+
+/** A dev server's restart shape: the port and full command the gate lets through (CONCEPT §3.3). */
+export interface DevServerShape {
+  readonly port: number;
+  readonly command: string;
+}
+
+/** A card without a task: its title line is its only heading. */
+const noticeCard = (title: string, text: string): string =>
+  [CREW_CARD_OPENER, title, text].join("\n");
+
+/** The claim turn after the person granted *Show on dev*. */
+export const claimStartCard = (input: {
+  readonly host: string;
+  readonly devServer: DevServerShape;
+  readonly workDir: string;
+}): string =>
+  noticeCard(
+    `Show your work on ${input.host}`,
+    `The person lets ${input.host}'s dev server run from your copy. Restart it with zerops_dev_server: ` +
+      `action=restart hostname=${input.host} port=${input.devServer.port} ` +
+      `processMatch="${input.devServer.command}" command="${input.devServer.command}" ` +
+      `workDir=${input.workDir}. Nothing else.`,
+  );
+
+/** The release turn: *Back to my tree*, a report, or a timeout. */
+export const claimReleaseCard = (input: {
+  readonly host: string;
+  readonly devServer: DevServerShape;
+}): string =>
+  noticeCard(
+    `Give ${input.host} back`,
+    `${input.host}'s dev server goes back to the person's tree. Restart it with zerops_dev_server: ` +
+      `action=restart hostname=${input.host} port=${input.devServer.port} ` +
+      `processMatch="${input.devServer.command}", no workDir. Nothing else.`,
+  );
 
 const ROTATION_WHY: Readonly<Record<RotationReason, string>> = {
   "prompt-changed": "the brief or your job changed",

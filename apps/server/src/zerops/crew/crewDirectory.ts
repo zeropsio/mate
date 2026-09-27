@@ -27,6 +27,7 @@ import { crewLane } from "./CrewDefinition.ts";
 import {
   asRefusal,
   currentStint,
+  laterPrincipal,
   memberOf,
   refuse,
   requireApplied,
@@ -36,6 +37,8 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { crewRefusedRoots, type GateContext } from "./CrewPolicy.ts";
+import { holdsClaim } from "./CrewRuntime.ts";
+import { releaseClaim, showOnDev } from "./crewClaims.ts";
 import type { CrewPromptMember } from "./crewPrompt.ts";
 import type {
   CrewReportInput,
@@ -88,7 +91,7 @@ const gateFor = (
     realpath: realpathOrNearest,
     workspaceRoot: core.config.cwd,
     turn: shaped?.turn ?? "work",
-    holdsClaim: false,
+    holdsClaim: row.host !== null && holdsClaim(core.memory.claims.get(row.host), row.handle),
     ...(shaped?.devServer === undefined ? {} : { devServer: shaped.devServer }),
     payloadTimeoutSeconds: CREW_PAYLOAD_TIMEOUT_SECONDS,
   } as const;
@@ -151,6 +154,7 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
         job: spec.job,
         jobVersion: row.jobVersion,
         memory: false,
+        crewTools: applied.drivers.get(row.handle) !== "codex",
       },
       contextWindow: spec.context ?? CREW_CONTEXT_DEFAULT,
       ...(row.model === null ? {} : { model: row.model }),
@@ -196,13 +200,18 @@ export const report = (core: CrewCore, member: CrewThreadMember, input: CrewRepo
           return text(
             "Your question is with the person. Stop here; the answer arrives as a message.",
           );
-        case "done":
+        case "done": {
           yield* stepTask(core, reported, { type: "report-done" });
+          const host = (yield* requireApplied(core)).members.get(member.handle)?.host ?? null;
+          if (host !== null && holdsClaim(core.memory.claims.get(host), member.handle)) {
+            yield* releaseClaim(core, laterPrincipal(open), host, "report");
+          }
           yield* core.changed;
           return text(
             "Reported. When this turn ends the engine commits your work, merges your tree's head into " +
               "your copy and runs the check; the person lands it. Stop here.",
           );
+        }
       }
     }),
   );
@@ -307,6 +316,10 @@ export const postCompact = (core: CrewCore, member: CrewThreadMember, summary: s
     }))
     .pipe(Effect.andThen(core.reload), Effect.andThen(core.changed), Effect.ignore);
 
-/** Tools of later phases, and Show on dev until its claims arrive: answered, never run. */
+/** `crew_show_on_dev` (CONCEPT §3.3): asks the person to show the crewmate's copy on its service. */
+export const showOnDevTool = (core: CrewCore, member: CrewThreadMember) =>
+  answered(showOnDev(core, member));
+
+/** Tools of later phases: answered, never run. */
 export const notYet = (tool: string) =>
   Effect.succeed(error(`${tool} is not available to this crew yet.`));

@@ -19,6 +19,7 @@ import * as Option from "effect/Option";
 
 import { ThreadId } from "@t3tools/contracts";
 
+import { settleAllClaims } from "./crewClaims.ts";
 import { asRefusal, memberOf, type CrewCore } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
@@ -135,6 +136,7 @@ export const boot = (core: CrewCore) =>
         else core.memory.apps.set(handle, status.state);
       }
     }
+    yield* settleAllClaims(core);
     yield* pumpAll(core);
     yield* core.changed;
   });

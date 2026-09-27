@@ -28,6 +28,7 @@ import {
   type CrewMember,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
@@ -141,6 +142,7 @@ const turnEnded = (
 ) =>
   Effect.gen(function* () {
     const { memory } = core;
+    const shaped = memory.shaped.get(stint.threadId);
     memory.working.delete(stint.threadId);
     memory.shaped.delete(stint.threadId);
     if (event.payload.terminalReason !== undefined) {
@@ -172,6 +174,12 @@ const turnEnded = (
       yield* rotate(core, applied, member, "prompt-changed");
       if (pendingContinue !== undefined) yield* continueAfterSave(core, handle, pendingContinue);
     }
+    const host = member.row.host;
+    if (host !== null && (shaped?.turn === "claim-start" || shaped?.turn === "claim-release")) {
+      yield* core.background(settleClaim(core, host));
+    } else {
+      yield* releaseAfterTurn(core, handle);
+    }
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
     if (after?.state === "merging") {
       yield* core.background(
@@ -194,6 +202,18 @@ const deployTarget = (applied: AppliedCrew, event: SpiEvent): string | undefined
   return typeof target === "string" && applied.repositories.has(target) ? target : undefined;
 };
 
+/** The service a person's own `zerops_dev_server` call restarts; the person wins a held claim. */
+const personDevServerHost = (event: SpiEvent): string | undefined => {
+  const call = event.toolCall;
+  if (event.type !== "item.started" || call?.name !== "zerops_dev_server") return undefined;
+  const args = call.arguments;
+  const host =
+    typeof args === "object" && args !== null && "hostname" in args
+      ? (args as { readonly hostname?: unknown }).hostname
+      : undefined;
+  return typeof host === "string" ? host : undefined;
+};
+
 /** Handles one provider event; `deploys` remembers which running deploy froze which service. */
 export const makeTurnHandler = (core: CrewCore) => {
   const deploys = new Map<string, string>();
@@ -201,6 +221,9 @@ export const makeTurnHandler = (core: CrewCore) => {
   const freeze = (applied: AppliedCrew, host: string) =>
     Effect.gen(function* () {
       yield* asRefusal(core.workspace.freeze(host));
+      if (core.memory.claims.get(host)?.state === "held") {
+        yield* moveClaim(core, host, "self-deploy");
+      }
       const now = yield* core.now;
       for (const stint of applied.stints) {
         const member = applied.members.get(stint.member);
@@ -254,6 +277,13 @@ export const makeTurnHandler = (core: CrewCore) => {
         }
       }
       const stint = applied.stints.find((row) => row.threadId === event.threadId);
+      const personDevServer = stint === undefined ? personDevServerHost(event) : undefined;
+      if (
+        personDevServer !== undefined &&
+        core.memory.claims.get(personDevServer)?.state === "held"
+      ) {
+        yield* moveClaim(core, personDevServer, "person-dev-server");
+      }
       if (stint === undefined) return;
       switch (event.type) {
         case "turn.started":

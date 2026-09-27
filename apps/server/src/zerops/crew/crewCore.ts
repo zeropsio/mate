@@ -16,7 +16,13 @@
  *
  * @module crewCore
  */
-import { CrewCommandError, type CrewApplyChoice, type CrewRefusalReason } from "@t3tools/contracts";
+import {
+  CrewCommandError,
+  type CrewApplyChoice,
+  type CrewClaimState,
+  type CrewRefusalReason,
+  type CrewServed,
+} from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -44,6 +50,7 @@ import { CrewChecks } from "./CrewChecks.ts";
 import { CREW_ID, CrewHome } from "./CrewHome.ts";
 import { CrewIntegration } from "./CrewIntegration.ts";
 import { CrewReads } from "./CrewReads.ts";
+import { CrewRuntime } from "./CrewRuntime.ts";
 import { CrewShell } from "./CrewShell.ts";
 import { CrewStateRef } from "./CrewStateRef.ts";
 import {
@@ -58,6 +65,9 @@ import type { LaneProgress, SnapshotRuntime } from "./crewSnapshot.ts";
 import type { PromptChange } from "./crewCards.ts";
 import type { LaneStats } from "./CrewReads.ts";
 
+/** A crewmate's login when neither `crew.yaml` nor the project names one. */
+export const DEFAULT_CREW_LOGIN = "claudeAgent";
+
 /** The applied crew, as the tables hold it. */
 export interface AppliedCrew {
   readonly definition: CrewDefinition;
@@ -69,6 +79,8 @@ export interface AppliedCrew {
   readonly stints: ReadonlyArray<CrewStintRow>;
   /** The verified repository of every writer's host. */
   readonly repositories: ReadonlyMap<string, ZeropsRepository>;
+  /** Each crewmate's login's driver kind; a Codex crewmate hosts no crew tools (PRD §2.3). */
+  readonly drivers: ReadonlyMap<string, string | undefined>;
 }
 
 /** A shaped turn the gate lets through one tool shape for (CONCEPT §3.3). */
@@ -106,7 +118,18 @@ export interface CrewMemory {
   readonly turns: Map<string, number>;
   /** Tasks whose merge-in and check are running, so a second ask waits for the first. */
   readonly integrating: Set<string>;
+  /** Each dev service's Show-on-dev claim, as the gate's `holdsClaim` reads it. */
+  readonly claims: Map<string, MemoryClaim>;
+  /** What each dev service's dev server served when last read. */
+  readonly served: Map<string, CrewServed>;
   lastError: string | null;
+}
+
+export interface MemoryClaim {
+  readonly state: CrewClaimState;
+  readonly handle: string | null;
+  readonly grantedBy: string | null;
+  readonly requestedAt: string;
 }
 
 export const makeMemory = (): CrewMemory => ({
@@ -125,6 +148,8 @@ export const makeMemory = (): CrewMemory => ({
   continueAtTurnEnd: new Map(),
   turns: new Map(),
   integrating: new Set(),
+  claims: new Map(),
+  served: new Map(),
   lastError: null,
 });
 
@@ -140,7 +165,7 @@ export const runtimeOf = (
   context: memory.context,
   delivered: memory.delivered,
   cantStart: memory.cantStart,
-  served: new Map(),
+  served: memory.served,
   logins,
   lastError: memory.lastError,
 });
@@ -165,6 +190,7 @@ export const makeCrewCore = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const repositories = yield* ZeropsRepositorySource;
   const shell = yield* CrewShell;
+  const instances = yield* ProviderInstances;
   const cache = yield* Ref.make<AppliedCrew | undefined>(undefined);
   const signals = yield* PubSub.unbounded<void>();
   const memory = makeMemory();
@@ -193,7 +219,12 @@ export const makeCrewCore = Effect.gen(function* () {
       const repository = yield* Effect.option(shell.repository(host));
       if (Option.isSome(repository)) known.set(host, repository.value);
     }
+    const drivers = new Map<string, string | undefined>();
+    for (const member of members.values()) {
+      drivers.set(member.handle, yield* instances.driverKindOf(member.login ?? DEFAULT_CREW_LOGIN));
+    }
     yield* Ref.set(cache, {
+      drivers,
       definition,
       briefVersion: row.value.briefVersion,
       seq: row.value.seq,
@@ -245,11 +276,12 @@ export const makeCrewCore = Effect.gen(function* () {
     app: yield* CrewApp,
     stateRef: yield* CrewStateRef,
     reads: yield* CrewReads,
+    runtime: yield* CrewRuntime,
     orchestration: yield* OrchestrationEngineService,
     projection: yield* ProjectionSnapshotQuery,
     admission: yield* ZeropsTurnAdmission,
     observer,
-    instances: yield* ProviderInstances,
+    instances,
     memory,
     applied: Ref.get(cache),
     reload,

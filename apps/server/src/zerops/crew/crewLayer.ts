@@ -58,8 +58,9 @@ import {
   startFresh,
 } from "./crewApply.ts";
 import { boot } from "./crewBoot.ts";
+import { grantClaim, moveClaim, releaseClaim } from "./crewClaims.ts";
 import * as CrewChecks from "./CrewChecks.ts";
-import { makeCrewCore, refuse, runtimeOf, type CrewCore } from "./crewCore.ts";
+import { DEFAULT_CREW_LOGIN, makeCrewCore, refuse, runtimeOf, type CrewCore } from "./crewCore.ts";
 import {
   board,
   diff,
@@ -68,18 +69,20 @@ import {
   postCompact,
   report,
   sessionStart,
+  showOnDevTool,
 } from "./crewDirectory.ts";
-import { DEFAULT_CREW_LOGIN } from "./CrewDispatch.ts";
 import { CrewEngine, inertCrewEngine, type CrewEngineService } from "./CrewEngine.ts";
 import * as CrewHome from "./CrewHome.ts";
 import * as CrewIntegration from "./CrewIntegration.ts";
 import { askRework, land, landNow } from "./crewLanding.ts";
 import * as CrewReads from "./CrewReads.ts";
+import * as CrewRuntime from "./CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
 import * as CrewShell from "./CrewShell.ts";
 import { appliedSnapshot, crewNoneSnapshot } from "./crewSnapshot.ts";
 import * as CrewStateRef from "./CrewStateRef.ts";
 import * as CrewStore from "./CrewStore.ts";
+import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import { discard, editTask, markFresh, message, newTask, retryTask, tell } from "./crewTasks.ts";
 import { makeTurnHandler } from "./crewTurns.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
@@ -142,7 +145,11 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
       stints: yield* store.stints(CrewHome.CREW_ID),
       tasks: yield* store.assignments(CrewHome.CREW_ID),
       hosts: hostRows,
-      claims: [],
+      claims: [...core.memory.claims].flatMap(([host, claim]) =>
+        claim.handle === null
+          ? []
+          : [{ host, member: claim.handle, state: claim.state, requestedAt: claim.requestedAt }],
+      ),
       runtime: runtimeOf(core.memory, yield* loginsOf(core, members)),
     });
   });
@@ -228,8 +235,14 @@ const run = (
         yield* adopt(core, command.host, command.branch);
         return done;
       case "claimGrant":
+        yield* grantClaim(core, principal, command.host);
+        return done;
       case "claimDeny":
+        yield* moveClaim(core, command.host, "deny");
+        return done;
       case "claimRelease":
+        yield* releaseClaim(core, principal, command.host, "press");
+        return done;
       case "start":
       case "pause":
       case "resume":
@@ -259,7 +272,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       report: (member, input) => report(core, member, input),
       board: () => board(core),
       diff: (member, input) => diff(core, member, input),
-      showOnDev: () => notYet("crew_show_on_dev"),
+      showOnDev: (member) => showOnDevTool(core, member),
       propose: () => notYet("crew_propose"),
       review: () => notYet("crew_review"),
       finish: () => notYet("crew_finish"),
@@ -353,6 +366,7 @@ export const crewServicesLayer = Layer.mergeAll(
   CrewApp.layer,
   CrewReads.layer,
   CrewHome.layer,
+  CrewRuntime.layer,
 ).pipe(
   Layer.provideMerge(CrewChecks.layer),
   Layer.provideMerge(CrewShell.layer),
@@ -393,3 +407,9 @@ export const makeCrewLayer = (installer: CrewPolicyInstaller) =>
       return Layer.effectContext(makeCrewEngine(installer)).pipe(Layer.provide(crewServicesLayer));
     }),
   );
+
+/**
+ * Crew mode behind its gates: the thread policy for crew threads
+ * (`CrewThreadPolicy`) is installed once a crew is applied, never before.
+ */
+export const crewLayer = makeCrewLayer(installCrewThreadPolicy);
