@@ -212,6 +212,7 @@ describe("crewDevHosts", () => {
       { hostname: "zcp", group: "infrastructure" as const },
     ];
     expect(crewDevHosts(services, ["apidev", "appdev"])).toEqual(["appdev", "apidev"]);
+    expect(crewDevHosts(undefined, ["apidev"])).toEqual(["apidev"]);
   });
 });
 

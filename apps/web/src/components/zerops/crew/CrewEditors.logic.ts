@@ -137,12 +137,14 @@ export function crewEffortOptions(
 /**
  * Where a crewmate's copy may live: the dev half of each runtime (a Mate's
  * pairs are `<name>dev`/`<name>stage`, D12), and any host the crew already
- * names, so an edit never loses one the topology has not read yet.
+ * names, so an edit never loses one the topology has not read yet — only
+ * those while the topology is unread (`undefined`).
  */
 export function crewDevHosts(
-  services: ReadonlyArray<{ readonly hostname: string; readonly group: string }>,
+  services: ReadonlyArray<{ readonly hostname: string; readonly group: string }> | undefined,
   known: ReadonlyArray<string>,
 ): ReadonlyArray<string> {
+  if (services === undefined) return known;
   const dev = services
     .filter((service) => service.group === "runtimes" && service.hostname.endsWith("dev"))
     .map((service) => service.hostname);

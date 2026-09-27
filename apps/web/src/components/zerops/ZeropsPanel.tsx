@@ -194,7 +194,6 @@ export function ZeropsPanel({
           <CrewSectionHost
             mate={mate === undefined ? undefined : { name: mate.name, tint: mate.tint }}
             onOpenBoard={null}
-            services={topology.view?.services}
             threadRef={threadRef}
           />
         </div>

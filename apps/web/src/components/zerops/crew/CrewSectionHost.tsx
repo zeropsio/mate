@@ -11,30 +11,24 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import type {
-  CrewSnapshot,
-  EnvironmentId,
-  ScopedThreadRef,
-  ServerProvider,
-  ThreadId,
-} from "@t3tools/contracts";
+import type { CrewSnapshot, EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import { requestConfirmDialog } from "../../../confirmDialog";
-import { useServerConfigs } from "../../../state/entities";
 import { buildThreadRouteParams } from "../../../threadRoutes";
 import { hasCrewSurface, useCrew } from "../../../zerops/crew/useCrew";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useAskMate } from "../../../zerops/useAskMate";
-import { useEnvironmentProjectRef } from "../../../zerops/useZeropsFeeds";
+import { useEnvironmentProjectRef, useEnvironmentTopology } from "../../../zerops/useZeropsFeeds";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { CrewBriefSheet } from "./CrewBriefSheet";
 import { crewDevHosts } from "./CrewEditors.logic";
 import { crewDeliverAsk, crewPortsAsk } from "./CrewSection.logic";
 import { CrewSection, CrewSectionEmpty } from "./CrewSection";
-import { CrewmateSheet, type CrewmateSheetTarget } from "./CrewmateSheet";
+import { CrewmateEditor } from "./CrewmateEditor";
+import type { CrewmateSheetTarget } from "./CrewmateSheet";
 import { CrewPortsDialog } from "./CrewPortsDialog";
 import { CrewSetupSheet } from "./CrewSetupSheet";
 
@@ -46,10 +40,6 @@ type Editor =
 interface HostProps {
   /** The Mate who lives here: Fen, in its tint. */
   readonly mate: { readonly name: string; readonly tint: MateTintId } | undefined;
-  /** The project's services, for the dev services a crewmate's copy may live on; `undefined` while unread. */
-  readonly services:
-    | ReadonlyArray<{ readonly hostname: string; readonly group: string }>
-    | undefined;
   /** Opens the board (right-panel kind `crew`); `null` while there is none to open. */
   readonly onOpenBoard: (() => void) | null;
 }
@@ -78,7 +68,6 @@ function CrewSectionFor({
   snapshot,
   view,
   mate,
-  services,
   onOpenBoard,
 }: HostProps & {
   readonly environmentId: EnvironmentId;
@@ -92,8 +81,7 @@ function CrewSectionFor({
   const navigate = useNavigate();
   const askMate = useAskMate();
   const projectId = useEnvironmentProjectRef(environmentId)?.projectId;
-  const providers: ReadonlyArray<ServerProvider> | undefined =
-    useServerConfigs().get(environmentId)?.providers;
+  const services = useEnvironmentTopology(environmentId).view?.services;
   const [setupOpen, setSetupOpen] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
   const [homeVersion, setHomeVersion] = useState(0);
@@ -101,10 +89,9 @@ function CrewSectionFor({
   const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);
   const mateName = mate?.name ?? "the Mate";
   const devHosts = crewDevHosts(
-    services ?? [],
+    services,
     snapshot.hosts.map((host) => host.host),
   );
-  const applied = new Set(snapshot.crewmates.map((row) => row.handle));
 
   const openThread = useCallback(
     (threadId: ThreadId) => {
@@ -167,10 +154,6 @@ function CrewSectionFor({
     });
   };
 
-  const crewmateTarget = editor?.kind === "crewmate" ? editor.target : null;
-  const crewPort =
-    snapshot.crewmates.find((row) => row.handle === crewmateTarget?.handle)?.app?.port ?? null;
-
   return (
     <section data-zerops-crew>
       {view === null ? (
@@ -222,19 +205,11 @@ function CrewSectionFor({
         open={editor?.kind === "brief"}
         version={view?.crew?.briefVersion ?? null}
       />
-      {crewmateTarget === null ? null : (
-        <CrewmateSheet
-          applied={applied}
-          commands={editorCommands}
-          crewPort={crewPort}
-          devHosts={devHosts}
-          mateTint={mate?.tint}
-          onOpenChange={closeEditor}
-          open
-          providers={providers}
-          target={crewmateTarget}
-        />
-      )}
+      <CrewmateEditor
+        environmentId={environmentId}
+        onClose={() => closeEditor(false)}
+        target={editor?.kind === "crewmate" ? editor.target : null}
+      />
       <CrewPortsDialog
         error={commands.error}
         host={portsHost}
