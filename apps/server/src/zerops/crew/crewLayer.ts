@@ -154,6 +154,7 @@ const run = (
   installPolicies: Effect.Effect<void>,
 ) =>
   Effect.gen(function* () {
+    core.memory.lastError = null;
     const done = { _tag: "done" } satisfies CrewCommandResult as CrewCommandResult;
     switch (command._tag) {
       case "apply":
@@ -381,12 +382,15 @@ export const crewLayerInert = Layer.succeedContext(
   ),
 );
 
+/** Crew mode runs live only inside a Zerops project, with its switch on (ARCHITECTURE §1 gates 1–2). */
+export const crewModeOn = (config: ServerConfig["Service"]): boolean =>
+  isZeropsEnvironment(config) && config.zeropsCrew;
+
 /** The live engine behind gates 1 and 2, with `installer` for the thread policies. */
 export const makeCrewLayer = (installer: CrewPolicyInstaller) =>
   Layer.unwrap(
     Effect.gen(function* () {
-      const config = yield* ServerConfig;
-      if (!isZeropsEnvironment(config) || !config.zeropsCrew) return crewLayerInert;
+      if (!crewModeOn(yield* ServerConfig)) return crewLayerInert;
       return Layer.effectContext(makeCrewEngine(installer)).pipe(Layer.provide(crewServicesLayer));
     }),
   );

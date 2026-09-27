@@ -29,7 +29,8 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
-import type { LaneSpec } from "./CrewWorkspace.ts";
+import { crewStateRef } from "./CrewStateRef.ts";
+import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
 import { rotate } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, pump } from "./crewTasks.ts";
@@ -57,7 +58,27 @@ export const laneSpecsOn = (applied: AppliedCrew, host: string): ReadonlyArray<L
     ];
   });
 
-const commitAndPolice = (core: CrewCore, member: CrewMember, task: CrewAssignmentRow | undefined) =>
+/**
+ * Every ref the engine itself writes on a service, which ref policing must not
+ * blame on a turn: the crew-state mirror, each task's kept attempts and its
+ * landing anchor (another crewmate's landing may be mid-way).
+ */
+export const engineRefs = (tasks: ReadonlyArray<CrewAssignmentRow>): ReadonlyArray<string> => [
+  crewStateRef(CREW_ID),
+  ...tasks.flatMap((task) => [
+    `refs/t3/crew/landing/${task.assignment}`,
+    ...Array.from({ length: Math.max(1, task.attempt) }, (_, index) =>
+      attemptRef({ run: task.run, assignment: task.assignment, attempt: index + 1 }),
+    ),
+  ]),
+];
+
+const commitAndPolice = (
+  core: CrewCore,
+  member: CrewMember,
+  task: CrewAssignmentRow | undefined,
+  tasks: ReadonlyArray<CrewAssignmentRow>,
+) =>
   Effect.gen(function* () {
     const key = { crew: CREW_ID, handle: member.row.handle };
     const turnKey = task === undefined ? "" : `${task.assignment}:${task.attempt}`;
@@ -84,7 +105,7 @@ const commitAndPolice = (core: CrewCore, member: CrewMember, task: CrewAssignmen
         return;
       case "committed":
       case "unchanged": {
-        const changes = yield* asRefusal(core.integration.police(key));
+        const changes = yield* asRefusal(core.integration.police(key, engineRefs(tasks)));
         if (changes.length > 0 && task !== undefined) {
           yield* parkTask(
             core,
@@ -139,6 +160,7 @@ const turnEnded = (
         core,
         member,
         open ?? tasks.findLast((row) => row.member === stint.member),
+        tasks,
       );
       yield* refreshLaneStats(core, member);
     }

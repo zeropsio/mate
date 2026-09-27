@@ -35,6 +35,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../../../config.ts";
+import * as ProcessRunner from "../../../processRunner.ts";
 import { OrchestrationEngineService } from "../../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { runMigrations } from "../../../persistence/Migrations.ts";
@@ -82,6 +83,8 @@ export interface CrewWorld {
   /** Threads the projection reports, for the landing gate and the boot sweep. */
   readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
   readonly installs: Ref.Ref<number>;
+  /** ssh sessions the crew opened. */
+  readonly sshCalls: Ref.Ref<number>;
   readonly publish: (event: SpiEvent) => Effect.Effect<void>;
 }
 
@@ -186,22 +189,44 @@ const fakes = (world: Omit<CrewWorld, "publish">, events: PubSub.PubSub<SpiEvent
     ServerCommandReadiness.layer,
   );
 
+/** The local ssh shim, counting every session. */
+const countingSsh = (calls: Ref.Ref<number>) =>
+  Layer.effect(
+    ProcessRunner.ProcessRunner,
+    Effect.gen(function* () {
+      const runner = yield* ProcessRunner.ProcessRunner;
+      return ProcessRunner.ProcessRunner.of({
+        run: (input) =>
+          (input.command === "ssh" ? Ref.update(calls, (count) => count + 1) : Effect.void).pipe(
+            Effect.andThen(runner.run(input)),
+          ),
+      });
+    }),
+  ).pipe(Layer.provide(localSshProcessRunnerLayer(TEST_IDENTITY)));
+
 /** Counts installs instead of installing the tools slice's policy. */
 const countingInstaller = (installs: Ref.Ref<number>): CrewPolicyInstaller =>
   Ref.update(installs, (count) => count + 1);
 
+export type CrewEngineServices =
+  | CrewEngine
+  | CrewThreadDirectory
+  | CrewToolHost
+  | ServerCommandReadiness
+  | CrewStore;
+
+/** A world plus `restart`: the same repository and database under a fresh engine, as after a server restart. */
+export interface CrewRig extends CrewWorld {
+  readonly restart: <A, E>(body: Effect.Effect<A, E, CrewEngineServices>) => Effect.Effect<A, E>;
+}
+
 /**
  * Runs `body` against a live crew engine over a fresh service repository and
- * a fresh workspace (the zcp container's `/var/www`, holding the crew home).
+ * a fresh workspace (the zcp container's `/var/www`, holding the crew home
+ * and the crew database). `restart` builds another engine over both.
  */
 export const withCrewEngine = <A, E>(
-  body: (
-    world: CrewWorld,
-  ) => Effect.Effect<
-    A,
-    E,
-    CrewEngine | CrewThreadDirectory | CrewToolHost | ServerCommandReadiness | CrewStore
-  >,
+  body: (rig: CrewRig) => Effect.Effect<A, E, CrewEngineServices>,
   options: { readonly installer?: (installs: Ref.Ref<number>) => CrewPolicyInstaller } = {},
 ) =>
   Effect.gen(function* () {
@@ -220,27 +245,36 @@ export const withCrewEngine = <A, E>(
       refusal: yield* Ref.make<string | undefined>(undefined),
       threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([]),
       installs: yield* Ref.make(0),
+      sshCalls: yield* Ref.make(0),
       publish: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
     };
     const installer = (options.installer ?? countingInstaller)(world.installs);
-    const base = Layer.mergeAll(
-      fakes(world, events),
-      localSshProcessRunnerLayer(TEST_IDENTITY),
-      ServerConfig.layer({
-        cwd: workspace,
-        zerops: ZEROPS,
-        zeropsCrew: true,
-      } as ServerConfig.ServerConfig["Service"]),
-      Layer.effectDiscard(runMigrations()).pipe(
-        Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),
-      ),
-    ).pipe(Layer.provideMerge(NodeServices.layer));
-    const engine = Layer.effectContext(makeCrewEngine(installer)).pipe(
-      Layer.provideMerge(crewServicesLayer),
-      Layer.provideMerge(base),
-    );
-    return yield* body(world).pipe(
-      Effect.provide(engine),
+    const engine = () =>
+      Layer.effectContext(makeCrewEngine(installer)).pipe(
+        Layer.provideMerge(crewServicesLayer),
+        Layer.provideMerge(
+          Layer.mergeAll(
+            fakes(world, events),
+            countingSsh(world.sshCalls),
+            ServerConfig.layer({
+              cwd: workspace,
+              zerops: ZEROPS,
+              zeropsCrew: true,
+            } as ServerConfig.ServerConfig["Service"]),
+            Layer.effectDiscard(runMigrations()).pipe(
+              Layer.provideMerge(
+                NodeSqliteClient.layer({ filename: NodePath.join(workspace, "crew.sqlite") }),
+              ),
+            ),
+          ).pipe(Layer.provideMerge(NodeServices.layer)),
+        ),
+      );
+    const rig: CrewRig = {
+      ...world,
+      restart: (next) => next.pipe(Effect.provide(engine().pipe(Layer.orDie))),
+    };
+    return yield* body(rig).pipe(
+      Effect.provide(engine()),
       Effect.ensuring(
         Effect.sync(() => {
           removeServiceRepository(root);
