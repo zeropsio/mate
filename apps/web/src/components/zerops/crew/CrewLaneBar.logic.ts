@@ -87,9 +87,22 @@ const CHECK_TONE: Readonly<Record<CrewCheck["state"], ServiceStatusToneId>> = {
   failed: "failed",
 };
 
+/**
+ * The project's services as the topology reads them: a crew port's public URL
+ * is its service's route for that port (`servicePortOrigin`'s rule), since the
+ * engine does not know the subdomain; `undefined` while the topology is unread.
+ */
+export type CrewLaneServices =
+  | ReadonlyArray<{
+      readonly hostname: string;
+      readonly routes: ReadonlyArray<{ readonly port: number; readonly url: string }>;
+    }>
+  | undefined;
+
 export function crewLaneBarModel(
   snapshot: Pick<CrewSnapshot, "hosts" | "board" | "attention" | "crewmates">,
   row: Pick<CrewmateView, "crewmate" | "openTask" | "working">,
+  services: CrewLaneServices,
 ): CrewLaneBarModel | null {
   const { crewmate, openTask } = row;
   const lane = crewmate.lane;
@@ -165,12 +178,17 @@ export function crewLaneBarModel(
       return { kind: "no-free-port", label: crewAppWord({ kind: "no-free-port" }) };
     }
     switch (crewmate.app.state) {
-      case "running":
+      case "running": {
+        const port = crewmate.app.port;
+        const route = services
+          ?.find((service) => service.hostname === crewmate.host)
+          ?.routes.find((candidate) => candidate.port === port);
         return {
           kind: "running",
-          label: crewAppWord({ kind: "running", port: crewmate.app.port }),
-          url: crewmate.app.url,
+          label: crewAppWord({ kind: "running", port }),
+          url: crewmate.app.url ?? route?.url ?? null,
         };
+      }
       case "stopped":
         return { kind: "stopped", label: crewAppWord({ kind: "stopped" }) };
       case "none":

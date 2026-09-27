@@ -137,19 +137,33 @@ export function crewEffortOptions(
 }
 
 /**
- * Where a crewmate's copy may live: the dev half of each runtime (a Mate's
- * pairs are `<name>dev`/`<name>stage`, D12), and any host the crew already
- * names, so an edit never loses one the topology has not read yet — only
- * those while the topology is unread (`undefined`).
+ * The crew's side of the Service picker: the hosts it already names, and the
+ * dev services the engine reads off the repository's `zerops.yaml`
+ * (`devHosts`, arriving with the engine's contract — absent until then).
+ */
+export interface CrewDevHostsSource {
+  readonly hosts: ReadonlyArray<{ readonly host: string }>;
+  readonly devHosts?: ReadonlyArray<{ readonly host: string }> | undefined;
+}
+
+/**
+ * Where a crewmate's copy may live: the dev services the engine names, and
+ * any host the crew already names, so an edit never loses one. Without the
+ * engine's list, the dev half of each runtime by its name (a Mate's pairs are
+ * `<name>dev`/`<name>stage`, D12) — only the crew's own hosts while the
+ * topology is unread (`undefined`).
  */
 export function crewDevHosts(
+  crew: CrewDevHostsSource,
   services: ReadonlyArray<{ readonly hostname: string; readonly group: string }> | undefined,
-  known: ReadonlyArray<string>,
 ): ReadonlyArray<string> {
-  if (services === undefined) return known;
-  const dev = services
-    .filter((service) => service.group === "runtimes" && service.hostname.endsWith("dev"))
-    .map((service) => service.hostname);
+  const known = crew.hosts.map((host) => host.host);
+  const dev =
+    crew.devHosts !== undefined
+      ? crew.devHosts.map((host) => host.host)
+      : (services ?? [])
+          .filter((service) => service.group === "runtimes" && service.hostname.endsWith("dev"))
+          .map((service) => service.hostname);
   return [...new Set([...dev, ...known])];
 }
 

@@ -23,6 +23,7 @@ function backend(input: {
   readonly host?: Partial<CrewHost>;
   readonly attention?: ReadonlyArray<CrewAttention>;
   readonly working?: boolean;
+  readonly services?: Parameters<typeof crewLaneBarModel>[2];
 }): CrewLaneBarModel | null {
   const crewmate: Crewmate = {
     ...BACKEND,
@@ -45,7 +46,7 @@ function backend(input: {
     throw new Error("no shells here");
   });
   const row = view.crewmates.find(({ crewmate: { handle } }) => handle === "backend")!;
-  return crewLaneBarModel(snapshot, { ...row, working: input.working ?? false });
+  return crewLaneBarModel(snapshot, { ...row, working: input.working ?? false }, input.services);
 }
 
 describe("crewLaneBarModel", () => {
@@ -243,6 +244,28 @@ describe("crewLaneBarModel", () => {
         ...(host === undefined ? {} : { host }),
       })?.app,
     ).toEqual(expected);
+  });
+
+  it("opens a running app at its crew port's route when the engine sends no URL", () => {
+    const app = { state: "running", port: 3001, url: null } as const;
+    const services = [
+      {
+        hostname: "appdev",
+        routes: [
+          { port: 3000, url: "https://appdev-1df2-3000.prg1.zerops.app" },
+          { port: 3001, url: "https://appdev-1df2-3001.prg1.zerops.app" },
+        ],
+      },
+    ];
+    expect(backend({ crewmate: { app }, services })?.app).toEqual({
+      kind: "running",
+      label: "App on :3001",
+      url: "https://appdev-1df2-3001.prg1.zerops.app",
+    });
+    expect(
+      backend({ crewmate: { app }, services: [{ hostname: "appdev", routes: [] }] })?.app,
+    ).toMatchObject({ url: null });
+    expect(backend({ crewmate: { app } })?.app).toMatchObject({ url: null });
   });
 
   it.each<{
