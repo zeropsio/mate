@@ -36,6 +36,7 @@ import {
 import { MateMark } from "./MateMark";
 import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
 
@@ -290,6 +291,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       </Sidebar>
       {children}
       <SidebarControl />
+      {/* A reveal asked from outside the menu — the jump box's — brings it out. */}
+      <SidebarRevealBridge showable={!isOnSettings} />
       <NavigationHistoryShortcuts />
       <MainAppLocationTracker />
     </SidebarProvider>

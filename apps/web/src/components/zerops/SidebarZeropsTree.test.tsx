@@ -62,6 +62,7 @@ import {
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { PortalGate } from "../ui/portal-gate";
+import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import { ProjectHeader, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
@@ -2539,7 +2540,7 @@ describe("a surface's ask to show a Mate", () => {
       );
     expect(mateRows()).toHaveLength(0);
     act(() => {
-      useSidebarPeek.getState().reveal("crm-dev");
+      useSidebarPeek.getState().reveal({ kind: "mate", projectId: "crm-dev" });
     });
     expect(mateRows()).toHaveLength(1);
     // Answered: a menu drawn again later has nothing left to show.
@@ -2549,11 +2550,173 @@ describe("a surface's ask to show a Mate", () => {
   it("leaves an ask for a Mate it does not hold standing until one does", () => {
     mount(tree());
     act(() => {
-      useSidebarPeek.getState().reveal("elsewhere");
+      useSidebarPeek.getState().reveal({ kind: "mate", projectId: "elsewhere" });
     });
-    expect(useSidebarPeek.getState().revealing?.projectId).toBe("elsewhere");
+    expect(useSidebarPeek.getState().revealing?.target).toEqual({
+      kind: "mate",
+      projectId: "elsewhere",
+    });
     act(() => {
       useSidebarPeek.getState().answerReveal(useSidebarPeek.getState().revealing!.seq);
+    });
+  });
+});
+
+describe("what the jump box finds in the menu", () => {
+  const linksFlow = (pullRequests: ReadonlyArray<FlowPullRequest>): SidebarProjectFlow => ({
+    pullRequests,
+    environments: new Map([
+      ["links-stage", { ...stageRow, projectId: "links-stage" }],
+      ["links-prod", { ...productionRow, projectId: "links-prod" }],
+    ]),
+    releaseOffered: false,
+    merging: () => false,
+    releasing: false,
+    onMerge: () => {},
+    onRelease: () => {},
+    onOpenChange: () => {},
+    onOpenStop: () => {},
+  });
+  const OWN = pull(4, { mateProjectId: "links-dev", title: "Add a search box" });
+  const ADAS = pull(6, { mateProjectId: undefined, author: "ada", title: "Bump the linter" });
+  const tree = (props: Record<string, unknown> = {}) => (
+    <SidebarZeropsTree
+      candidates={[LINKS_MATE, LINKS_STAGE, LINKS_PROD]}
+      complete
+      getFlow={() => linksFlow([OWN, ADAS])}
+      onBrowseProjects={() => {}}
+      onOpenGroup={() => {}}
+      onSelect={() => {}}
+      {...props}
+    />
+  );
+  const index = () => useSidebarJump.getState().index;
+
+  afterEach(() => {
+    useSidebarJump.setState({ index: null, showable: false });
+  });
+
+  it("publishes the menu's Mates, projects, changes and stops, each as its row says it", () => {
+    const mounted = mount(tree());
+    expect(index()?.mates.map((mate) => [mate.projectId, mate.projectName])).toEqual([
+      ["links-dev", "Links"],
+    ]);
+    expect(
+      index()?.projects.map((project) => [project.groupId, project.name, project.mates]),
+    ).toEqual([["links", "Links", 1]]);
+    expect(
+      index()?.changes.map((change) => [
+        change.key,
+        change.label,
+        change.mateProjectId,
+        change.whose,
+      ]),
+    ).toEqual([
+      ["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name],
+      ["appdev#6", "#6 Bump the linter · ada", undefined, "ada"],
+    ]);
+    expect(index()?.stops.map((stop) => [stop.projectId, stop.title])).toEqual([
+      ["links-stage", "Links stage"],
+      ["links-prod", "Links production"],
+    ]);
+    act_(() => {
+      mounted.unmount();
+    });
+    // A phone's menu put away: what it held stays findable.
+    expect(index()?.mates).toHaveLength(1);
+  });
+
+  it("finds a collapsed project's rows too: a jump opens the project", () => {
+    stored.collapsed = new Set(["links"]);
+    mount(tree());
+    expect(index()?.mates).toHaveLength(1);
+    expect(index()?.changes).toHaveLength(2);
+    expect(index()?.stops).toHaveLength(2);
+  });
+
+  it("finds nothing the viewer asked not to see, nor a hidden Mate's changes", () => {
+    const THEO = named("links-theo", "Links - theo", ["mate", ...LINKS_TAGS, "mate:role:dev"]);
+    const theirs = pull(9, { mateProjectId: "links-theo", title: "Theirs" });
+    mount(
+      tree({
+        candidates: [LINKS_MATE, THEO, LINKS_STAGE, LINKS_PROD],
+        getFlow: () => linksFlow([OWN, theirs]),
+        shown: (item: ZeropsCandidate) => item.project.id !== "links-theo",
+      }),
+    );
+    expect(index()?.mates.map((mate) => mate.projectId)).toEqual(["links-dev"]);
+    expect(index()?.changes.map((change) => change.key)).toEqual(["appdev#4"]);
+  });
+
+  it("opens a collapsed project a jump shows, and answers the ask once", () => {
+    stored.collapsed = new Set(["links"]);
+    const mounted = mount(tree());
+    const mateRows = () =>
+      mounted.root.findAll(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate",
+      );
+    expect(mateRows()).toHaveLength(0);
+    act_(() => {
+      useSidebarPeek.getState().reveal({ kind: "project", groupId: "links" });
+    });
+    expect(mateRows()).toHaveLength(1);
+    expect(useSidebarPeek.getState().revealing).toBeNull();
+  });
+
+  it("opens a Mate's folded changes when a jump lands on one of them", () => {
+    const many = [1, 2, 3, 4].map((number) => pull(number, { mateProjectId: "links-dev" }));
+    const mounted = mount(tree({ getFlow: () => linksFlow(many) }));
+    const changeRows = () =>
+      mounted.root.findAll(
+        (node) =>
+          typeof node.type === "string" &&
+          node.props["data-zerops-surface"] === "sidebar-pull-request",
+      );
+    const folded = changeRows().length;
+    expect(folded).toBeLessThan(4);
+    act_(() => {
+      useSidebarPeek.getState().reveal({
+        kind: "change",
+        groupId: "links",
+        key: "appdev#1",
+        mateProjectId: "links-dev",
+      });
+    });
+    expect(changeRows()).toHaveLength(4);
+    expect(changeRows().map((row) => row.props["data-zerops-change"])).toContain("appdev#1");
+  });
+
+  it("shows the change a jump asked for in its Mate's peek, and the newest otherwise", () => {
+    const older = pull(2, { mateProjectId: "links-dev", title: "Older change" });
+    const newer = pull(3, { mateProjectId: "links-dev", title: "Newer change" });
+    const peeks: Array<{ readonly change: unknown }> = [];
+    const mounted = mount(
+      <PortalGate closed>
+        {tree({
+          getFlow: () => linksFlow([older, newer]),
+          renderPeek: (peek: { readonly change: unknown }) => {
+            peeks.push(peek);
+            return null;
+          },
+        })}
+      </PortalGate>,
+    );
+    const shown = () => {
+      const change = peeks.at(-1)?.change as ReactElement<{ pull: FlowPullRequest }> | undefined;
+      return change?.props.pull.number;
+    };
+    act_(() => {
+      useSidebarPeek.getState().open("links-dev", "pinned", "appdev#2");
+    });
+    expect(shown()).toBe(2);
+    act_(() => {
+      useSidebarPeek.getState().open("links-dev", "pinned");
+    });
+    expect(shown()).toBe(3);
+    act_(() => {
+      useSidebarPeek.getState().close();
+      mounted.unmount();
     });
   });
 });

@@ -229,6 +229,7 @@ import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
+import { SidebarJumpRow } from "./zerops/SidebarJumpRow";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
@@ -3837,16 +3838,21 @@ export default function Sidebar() {
           <SidebarGroup className="z-[1] gap-1">
             {rosterOnly ? (
               // Every environment is in the roster: there is no thread list to
-              // search and no project to start a thread in. The one thing to
-              // make from here is another project.
-              <SidebarMenuButton
-                type="button"
-                className="h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground"
-                onClick={navigateToNewZeropsProject}
-              >
-                <PlusIcon className="size-4 shrink-0" />
-                <span>New project</span>
-              </SidebarMenuButton>
+              // search and no project to start a thread in. The jump box finds
+              // anything the menu holds, and the one thing to make from here
+              // is another project.
+              <SidebarJumpRow
+                onJump={() => {
+                  // A phone's menu steps aside for the box, and comes back
+                  // to show what is found in it (`SidebarRevealBridge`).
+                  if (isMobile) setOpenMobile(false);
+                  openCommandPalette();
+                }}
+                onNewProject={navigateToNewZeropsProject}
+                shortcut={
+                  shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined
+                }
+              />
             ) : (
               <div className="flex items-center gap-1">
                 <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">

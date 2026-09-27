@@ -7,6 +7,8 @@ import { Kbd, KbdGroup } from "./ui/kbd";
 type CommandPaletteContentProps = Omit<ComponentProps<typeof Command>, "children"> & {
   readonly children: ReactNode;
   readonly escapeLabel?: ReactNode;
+  /** The keys a mode answers in its own way, in place of the default ones. */
+  readonly footerKeys?: ReactNode;
   readonly footerActionLabel?: ReactNode;
   readonly footerTrailing?: ReactNode;
   readonly inputAccessory?: ReactNode;
@@ -28,6 +30,7 @@ type CommandPaletteContentProps = Omit<ComponentProps<typeof Command>, "children
 export function CommandPaletteContent({
   children,
   escapeLabel = "Close",
+  footerKeys,
   footerActionLabel,
   footerTrailing,
   inputAccessory,
@@ -65,33 +68,35 @@ export function CommandPaletteContent({
           {children}
         </CommandPanel>
         <CommandFooter className="max-sm:flex-col max-sm:items-start">
-          <div className="flex items-center gap-3">
-            <KbdGroup>
-              <Kbd>
-                <ArrowUpIcon />
-              </Kbd>
-              <Kbd>
-                <ArrowDownIcon />
-              </Kbd>
-              <span>Navigate</span>
-            </KbdGroup>
-            {footerActionLabel !== undefined ? (
+          {footerKeys ?? (
+            <div className="flex items-center gap-3">
               <KbdGroup>
-                <Kbd>Enter</Kbd>
-                <span>{footerActionLabel}</span>
+                <Kbd>
+                  <ArrowUpIcon />
+                </Kbd>
+                <Kbd>
+                  <ArrowDownIcon />
+                </Kbd>
+                <span>Navigate</span>
               </KbdGroup>
-            ) : null}
-            {showBackHint ? (
+              {footerActionLabel !== undefined ? (
+                <KbdGroup>
+                  <Kbd>Enter</Kbd>
+                  <span>{footerActionLabel}</span>
+                </KbdGroup>
+              ) : null}
+              {showBackHint ? (
+                <KbdGroup>
+                  <Kbd>Backspace</Kbd>
+                  <span>Back</span>
+                </KbdGroup>
+              ) : null}
               <KbdGroup>
-                <Kbd>Backspace</Kbd>
-                <span>Back</span>
+                <Kbd>Esc</Kbd>
+                <span>{escapeLabel}</span>
               </KbdGroup>
-            ) : null}
-            <KbdGroup>
-              <Kbd>Esc</Kbd>
-              <span>{escapeLabel}</span>
-            </KbdGroup>
-          </div>
+            </div>
+          )}
           {footerTrailing}
         </CommandFooter>
       </Command>

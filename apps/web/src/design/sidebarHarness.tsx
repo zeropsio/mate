@@ -23,7 +23,7 @@
  * Fixtures only. Nothing here ships in the app bundle — `design.html` is not
  * `index.html`, and no route imports this module.
  */
-import { StrictMode, useCallback } from "react";
+import { StrictMode, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -36,9 +36,22 @@ import {
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
-import { PlusIcon } from "lucide-react";
-
+import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { MateLockup } from "~/components/MateLockup";
+import { CommandDialog, CommandDialogPopup } from "~/components/ui/command";
+import {
+  chooseJumpItem,
+  JumpBoxView,
+  jumpSearchText,
+  useJumpBoxModel,
+  useJumpBoxState,
+} from "~/components/zerops/JumpBox";
+import {
+  jumpWritePlan,
+  type JumpHit,
+  type SidebarJumpIndex,
+} from "~/components/zerops/JumpBox.logic";
+import { SidebarJumpRow } from "~/components/zerops/SidebarJumpRow";
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
@@ -59,6 +72,10 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
+import { isMacPlatform } from "~/lib/utils";
+import { formatShortTimestamp } from "~/timestampFormat";
+import { slashKeyOpensJumpBox } from "~/zerops/jumpSlash";
+import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
@@ -97,6 +114,8 @@ function candidate(
     key: `${id}:zcp`,
     project: { id, name, status: "ACTIVE", tagList: tags },
     group: connected ? ("connected" as const) : ("ready" as const),
+    // Where its conversation lives: what the jump box searches.
+    ...(connected && container ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),
   };
   const withRoutes = theRoutes === undefined ? base : { ...base, routes: theRoutes };
   return container
@@ -754,7 +773,15 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
  * module store, as in the app), and each one's peek lands over the other.
  * `?w=` sets its width; the owner runs it near 368, the default is 256.
  */
-function SidebarFrame({ width, phone }: { readonly width: number; readonly phone: boolean }) {
+function SidebarFrame({
+  width,
+  phone,
+  onJump,
+}: {
+  readonly width: number;
+  readonly phone: boolean;
+  readonly onJump: () => void;
+}) {
   // Mine / Everyone, from the account menu, as the app reads it.
   const [scope] = useMateScope();
   const shown = useCallback(
@@ -782,13 +809,7 @@ function SidebarFrame({ width, phone }: { readonly width: number; readonly phone
         </div>
       </header>
       <div className="shrink-0 px-2 pb-2">
-        <button
-          className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-          type="button"
-        >
-          <PlusIcon className="size-4 shrink-0" />
-          <span>New project</span>
-        </button>
+        <SidebarJumpRow onJump={onJump} onNewProject={() => {}} shortcut={JUMP_KEY} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto ps-2.25 pe-2 pb-1">
         <SidebarZeropsTree
@@ -847,13 +868,179 @@ function SidebarFrame({ width, phone }: { readonly width: number; readonly phone
   );
 }
 
+const JUMP_KEY = isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K";
+
+/**
+ * Who may write to whom, as the conversation's rule (D6) would read it here:
+ * Vera's agent is Petra's own login, so only Petra writes to Vera, and `@`
+ * never offers her; Theo's is the project's token, so anyone may.
+ */
+const READ_ONLY_MATES: ReadonlySet<string> = new Set(["todo-vera"]);
+
+/**
+ * The server's search of the conversations, as the harness has them: the
+ * last words and the task of each Mate, and one message further back.
+ */
+function harnessHits(text: string): ReadonlyArray<JumpHit> {
+  if (text.length < 2) return [];
+  const needle = text.toLocaleLowerCase();
+  const history = [
+    ["shop-mira", "Keep the saved basket across a reload, even when signed out"],
+    ["links-theo", "Is the previews table still read by the export job?"],
+  ] as const;
+  return [
+    ...[...ACTIVITY.entries()].flatMap(([projectId, entry]) =>
+      [entry.snippet, entry.task]
+        .filter((said): said is string => said !== undefined)
+        .map((said) => [projectId, said] as const),
+    ),
+    ...history,
+  ]
+    .filter(([, said]) => said.toLocaleLowerCase().includes(needle))
+    .map(([projectId, said]) => ({
+      environmentId: `env-${projectId}`,
+      threadId: String(ACTIVITY.get(projectId)?.threadId ?? `thread-${projectId}`),
+      source: "user" as const,
+      snippet: said,
+    }));
+}
+
+/** What the harness's jump box did, for the audit browser to read. */
+const jumpActions: string[] = [];
+(window as unknown as { __jumpActions?: string[] }).__jumpActions = jumpActions;
+
+/** The jump box over the harness's menu: its index, fixture hits, and a send that is recorded. */
+function HarnessJumpBox({
+  index,
+  onClose,
+}: {
+  readonly index: SidebarJumpIndex;
+  readonly onClose: () => void;
+}) {
+  const showable = useSidebarJump((store) => store.showable);
+  const state = useJumpBoxState();
+  const searchText = jumpSearchText(state);
+  const hits = useMemo(() => harnessHits(searchText), [searchText]);
+  const model = useJumpBoxModel(state, index, hits, READ_ONLY_MATES);
+  const { target } = model;
+  const plan =
+    target?.conversation === undefined
+      ? undefined
+      : jumpWritePlan({
+          name: target.name,
+          owner: target.owner,
+          conversation: target.conversation,
+          pausedUntilLabel:
+            target.pausedUntil === undefined
+              ? undefined
+              : formatShortTimestamp(target.pausedUntil, "24-hour"),
+          started: true,
+          readOnly: READ_ONLY_MATES.has(target.projectId),
+          decision: PEEK_DECISIONS.get(target.projectId),
+        });
+  const enter: Record<string, string | undefined> = {
+    send: "Send without opening",
+    answer: "Answer",
+    "open-and-send": "Open and send",
+    open: "Open",
+    wait: "Send without opening",
+    none: undefined,
+  };
+  const pages = {
+    openMate: (mate: { readonly name: string }) => {
+      jumpActions.push(`open ${mate.name}`);
+    },
+    openProject: (groupId: string) => {
+      jumpActions.push(`page ${groupId}`);
+    },
+    openStop: (stop: { readonly projectId: string }) => {
+      jumpActions.push(`page ${stop.projectId}`);
+    },
+    openChange: (change: { readonly key: string }) => {
+      jumpActions.push(`page ${change.key}`);
+    },
+  };
+  return (
+    <JumpBoxView
+      model={model}
+      onChoose={(item) => {
+        jumpActions.push(`choose ${item.value}`);
+        chooseJumpItem(item, { model, showable, close: onClose, pages });
+      }}
+      onCommands={(value) => {
+        jumpActions.push(`commands ${value}`);
+      }}
+      onSend={(text) => {
+        if (target === undefined || plan === undefined || plan.action === "none") return;
+        if (text.trim().length === 0) return;
+        jumpActions.push(`${plan.action} ${target.name}: ${text.trim()}`);
+        onClose();
+      }}
+      searching={false}
+      write={
+        plan === undefined
+          ? undefined
+          : { hint: plan.hint, enter: enter[plan.action], error: undefined, sending: false }
+      }
+    />
+  );
+}
+
 function Harness() {
   const params = new URLSearchParams(location.search);
   const width = Number(params.get("w") ?? 256);
   const phone = window.matchMedia("(max-width: 767px)").matches;
+  const [jumping, setJumping] = useState(false);
+  const index = useSidebarJump((store) => store.index);
+  // ⌘K, "/" and the menu's own row open the box, as in the app.
+  useEffect(() => {
+    const stop = onOpenCommandPalette(() => {
+      setJumping(true);
+    });
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setJumping((open) => !open);
+        return;
+      }
+      if (slashKeyOpensJumpBox(event)) {
+        event.preventDefault();
+        setJumping(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      stop();
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
   return (
     <div className="flex min-h-screen bg-background">
-      <SidebarFrame phone={phone} width={phone ? window.innerWidth : width} />
+      <CommandDialog onOpenChange={setJumping} open={jumping}>
+        {index === null ? null : (
+          <CommandDialogPopup
+            aria-label="Jump to"
+            data-command-palette="true"
+            onBackdropPointerDown={() => {
+              setJumping(false);
+            }}
+          >
+            <HarnessJumpBox
+              index={index}
+              onClose={() => {
+                setJumping(false);
+              }}
+            />
+          </CommandDialogPopup>
+        )}
+      </CommandDialog>
+      <SidebarFrame
+        onJump={() => {
+          setJumping(true);
+        }}
+        phone={phone}
+        width={phone ? window.innerWidth : width}
+      />
       {phone ? null : (
         <main className="flex min-w-0 flex-1 items-start justify-center p-10">
           <p className="max-w-md text-sm text-muted-foreground">
@@ -887,6 +1074,9 @@ useComposerDraftStore
     scopeThreadRef(EnvironmentId.make("env-notes-iris"), ThreadId.make("thread-notes-iris")),
     "also count the title",
   );
+
+// The menu is always on screen here: a find is shown in it, as on a desktop.
+useSidebarJump.getState().setShowable(true);
 
 // A handle for the audit browser: which Mate is peeked, and how.
 (window as unknown as { __sidebarPeek?: typeof useSidebarPeek }).__sidebarPeek = useSidebarPeek;

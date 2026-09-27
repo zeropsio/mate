@@ -88,7 +88,7 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
     );
     if (target === undefined) return;
     beforeReveal?.();
-    reveal(target);
+    reveal({ kind: "mate", projectId: target });
   }, [activeProjectId, beforeReveal, mates]);
 
   useEffect(() => {

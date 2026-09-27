@@ -32,6 +32,21 @@ describe("useSidebarPeek — the one Mate peeked at", () => {
     expect(useSidebarPeek.getState().peek?.projectId).toBe("kai");
   });
 
+  it("pins a peek on the change it was asked for, and keeps it while pinned", () => {
+    const { open, pin } = useSidebarPeek.getState();
+    open("kai", "pinned", "appdev#41");
+    expect(useSidebarPeek.getState().peek).toEqual({
+      projectId: "kai",
+      mode: "pinned",
+      change: "appdev#41",
+    });
+    pin();
+    expect(useSidebarPeek.getState().peek?.change).toBe("appdev#41");
+    // The same Mate asked for without a change shows its own first again.
+    open("kai", "pinned");
+    expect(useSidebarPeek.getState().peek).toEqual({ projectId: "kai", mode: "pinned" });
+  });
+
   it("pins a hover peek once somebody works in it", () => {
     const { open, pin } = useSidebarPeek.getState();
     open("nova", "hover");
@@ -41,23 +56,38 @@ describe("useSidebarPeek — the one Mate peeked at", () => {
 
   it("asks the tree to show a Mate, each ask its own, even for the same Mate twice", () => {
     const { reveal } = useSidebarPeek.getState();
-    reveal("nova");
+    reveal({ kind: "mate", projectId: "nova" });
     const first = useSidebarPeek.getState().revealing;
-    reveal("nova");
+    reveal({ kind: "mate", projectId: "nova" });
     const second = useSidebarPeek.getState().revealing;
-    expect(first?.projectId).toBe("nova");
-    expect(second?.projectId).toBe("nova");
+    expect(first?.target).toEqual({ kind: "mate", projectId: "nova" });
+    expect(second?.target).toEqual({ kind: "mate", projectId: "nova" });
     expect(second?.seq).not.toBe(first?.seq);
+  });
+
+  it.each([
+    { case: "a project", target: { kind: "project", groupId: "shop" } },
+    { case: "a stop", target: { kind: "stop", groupId: "shop", projectId: "shop-prod" } },
+    {
+      case: "a change under its Mate",
+      target: { kind: "change", groupId: "shop", key: "appdev#41", mateProjectId: "shop-kai" },
+    },
+  ] as const)("asks the tree to show $case", ({ target }) => {
+    useSidebarPeek.getState().reveal(target);
+    expect(useSidebarPeek.getState().revealing?.target).toEqual(target);
   });
 
   it("forgets an ask once the tree answered it, and only that ask", () => {
     const { reveal, answerReveal } = useSidebarPeek.getState();
-    reveal("nova");
+    reveal({ kind: "mate", projectId: "nova" });
     const first = useSidebarPeek.getState().revealing!;
-    reveal("kai");
+    reveal({ kind: "project", groupId: "shop" });
     // A late answer to an older ask leaves the newer one standing.
     answerReveal(first.seq);
-    expect(useSidebarPeek.getState().revealing?.projectId).toBe("kai");
+    expect(useSidebarPeek.getState().revealing?.target).toEqual({
+      kind: "project",
+      groupId: "shop",
+    });
     answerReveal(useSidebarPeek.getState().revealing!.seq);
     expect(useSidebarPeek.getState().revealing).toBeNull();
   });
