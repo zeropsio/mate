@@ -139,6 +139,29 @@ function isPersonsWords(text: string): boolean {
   );
 }
 
+/**
+ * What the Mate is up to in one chat: the same answer the environment's
+ * entry gives for its main chat, for any chat — a conversation's header
+ * speaks for the chat it heads.
+ */
+export function threadAgentActivity(
+  thread: EnvironmentThreadShell,
+  lastVisitedAt: string | undefined,
+): ZeropsAgentActivity {
+  const resolved = resolveThreadStatus(
+    lastVisitedAt === undefined ? thread : { ...thread, lastVisitedAt },
+  );
+  return {
+    threadId: thread.id,
+    kind: resolved.kind,
+    status: threadStatusPill(resolved),
+    face: mateMarkStateForThreadStatus(resolved.kind),
+    subject: agentActivitySubject(thread, resolved.kind),
+    at: agentActivityAt(thread),
+    snippet: agentActivitySnippet(thread),
+  };
+}
+
 export function deriveZeropsAgentActivity(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   lastVisitedAtById: Readonly<Record<string, string>>,
@@ -154,21 +177,13 @@ export function deriveZeropsAgentActivity(
   for (const [environmentId, shells] of shellsByEnvironment) {
     const { primary } = resolvePrimaryConversation(shells);
     if (primary === undefined) continue;
-    const lastVisitedAt =
-      lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))];
-    const resolved = resolveThreadStatus({
-      ...primary,
-      ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
-    });
-    activity.set(environmentId, {
-      threadId: primary.id,
-      kind: resolved.kind,
-      status: threadStatusPill(resolved),
-      face: mateMarkStateForThreadStatus(resolved.kind),
-      subject: agentActivitySubject(primary, resolved.kind),
-      at: agentActivityAt(primary),
-      snippet: agentActivitySnippet(primary),
-    });
+    activity.set(
+      environmentId,
+      threadAgentActivity(
+        primary,
+        lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))],
+      ),
+    );
   }
   return activity;
 }

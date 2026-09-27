@@ -46,7 +46,7 @@ import { ProjectFavicon } from "../ProjectFavicon";
 import { MateFace } from "../zerops/primitives";
 import { useThreadShell } from "../../state/entities";
 import { mateFaceFor } from "~/zerops/agentActivity";
-import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
+import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
@@ -307,17 +307,18 @@ export const ChatHeader = memo(function ChatHeader({
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
     [activeThreadEnvironmentId, activeThreadId],
   );
-  // The face the lists draw, by the same rule: a Mate is known from its
-  // project's tags and its container's origin — before its socket is up — so
-  // an unconnected one sleeps here too
-  // rather than wearing an idle face it has not earned.
-  const mateActivity = useZeropsAgentActivity().get(activeThreadEnvironmentId);
+  // The face the lists draw, by the same rule, for the chat this heads — in a
+  // second chat, what the Mate does there, not in its main one. A Mate is
+  // known from its project's tags and its container's origin — before its
+  // socket is up — so an unconnected one sleeps here too rather than wearing
+  // an idle face it has not earned.
+  const mateActivity = useZeropsThreadActivity(activeThreadRef);
   const mateFace = mateFaceFor(mate?.connected === true, mateActivity);
   const spoken = useThreadShell(activeThreadRef)?.latestUserMessageAt != null;
-  // A Mate's conversation is headed by what the Mate is on — the same subject
-  // its row shows (`agentActivity.ts`): the last task as the person put it,
-  // not the conversation's title, which with one conversation per environment
-  // names the first task forever. The title stays the rename target.
+  // A Mate's chat is headed by what the Mate is on in it — the subject its
+  // row shows for the main chat (`agentActivity.ts`): the last task as the
+  // person put it, not the chat's title, which names its first task forever.
+  // The title stays the rename target.
   const headline =
     mate === undefined ? activeThreadTitle : (mateActivity?.subject ?? activeThreadTitle);
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
