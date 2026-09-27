@@ -5,11 +5,15 @@ import {
   CrewCommand,
   CrewCommandError,
   CrewCommandResult,
+  CrewFeedFrame,
   CrewFiles,
   CrewSnapshot,
 } from "./zeropsCrew.ts";
 
 const decodeSnapshot = Schema.decodeUnknownSync(CrewSnapshot);
+const decodeFrame = Schema.decodeUnknownSync(CrewFeedFrame);
+const encodeFrame = Schema.encodeSync(CrewFeedFrame);
+const encodeSnapshot = Schema.encodeSync(CrewSnapshot);
 const decodeCommand = Schema.decodeUnknownSync(CrewCommand);
 const decodeFiles = Schema.decodeUnknownSync(CrewFiles);
 const decodeResult = Schema.decodeUnknownSync(CrewCommandResult);
@@ -209,6 +213,63 @@ const commandSamples = [
   { _tag: "appRun", handle: "backend" },
   { _tag: "appStop", handle: "backend" },
 ] as const;
+
+/**
+ * The snapshot as the first contract's server sent it: none of the fields
+ * added since (`dirty`, `integration`, `routed` null, `note`, `devHosts`).
+ */
+const firstContractSnapshot = (() => {
+  const { devHosts: _devHosts, ...snapshot } = appliedSnapshot;
+  const [mate] = appliedSnapshot.crewmates;
+  const { dirty: _dirty, ...lane } = mate!.lane;
+  const [host] = appliedSnapshot.hosts;
+  const { integration: _integration, ...hostFields } = host!;
+  const [task] = appliedSnapshot.board.tasks;
+  const { note: _note, ...taskFields } = task!;
+  return {
+    ...snapshot,
+    crewmates: [{ ...mate, lane }],
+    hosts: [{ ...hostFields, crewPorts: [{ port: 3001 }] }],
+    board: { tasks: [taskFields] },
+  };
+})();
+
+describe("CrewSnapshot from an older server", () => {
+  it("decodes a snapshot without every field added since the first contract, to their defaults", () => {
+    const decoded = decodeSnapshot(firstContractSnapshot);
+
+    expect(decoded.crewmates[0]?.lane?.dirty).toBe(false);
+    expect(decoded.hosts[0]?.integration).toBeNull();
+    expect(decoded.hosts[0]?.crewPorts).toEqual([{ port: 3001, routed: null }]);
+    expect(decoded.board.tasks[0]?.note).toBeNull();
+    expect(decoded.devHosts).toEqual([]);
+  });
+});
+
+describe("CrewFeedFrame", () => {
+  it("decodes a snapshot as it is", () => {
+    expect(decodeFrame(appliedSnapshot)).toEqual(appliedSnapshot);
+  });
+
+  it("decodes a frame this build cannot read as undecodable, never as a failure", () => {
+    const table = [
+      { name: "a status from a newer server", frame: { ...appliedSnapshot, status: "paused" } },
+      { name: "a missing field without a default", frame: { ...appliedSnapshot, seq: undefined } },
+      { name: "not a snapshot at all", frame: "hello" },
+    ];
+    for (const row of table) {
+      expect([row.name, decodeFrame(row.frame)]).toEqual([
+        row.name,
+        { _tag: "CrewFrameUndecodable" },
+      ]);
+    }
+  });
+
+  it("encodes a snapshot the way the snapshot itself encodes", () => {
+    const snapshot = decodeSnapshot(appliedSnapshot);
+    expect(encodeFrame(snapshot)).toEqual(encodeSnapshot(snapshot));
+  });
+});
 
 describe("CrewCommand", () => {
   it("has exactly one member per tag the sources name", () => {

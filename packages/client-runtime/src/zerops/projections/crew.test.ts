@@ -354,6 +354,20 @@ describe("crewFeedRead", () => {
         { status: "off", snapshot: null, current: false },
       ],
       [
+        "a Mate whose crew frames this client cannot read",
+        {
+          state: "failed",
+          failure: {
+            kind: "malformed",
+            detail: "subscribeZeropsCrew sent a frame this client cannot read",
+          },
+          atMs: 0,
+          attempt: 1,
+          retryAtMs: null,
+        },
+        { status: "off", snapshot: null, current: false },
+      ],
+      [
         "a failed read",
         {
           state: "failed",

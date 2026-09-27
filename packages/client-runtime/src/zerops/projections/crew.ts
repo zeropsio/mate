@@ -216,7 +216,8 @@ export function deriveCrewView<S extends CrewShellInput>(
 export interface CrewFeedRead {
   /**
    * `null` while nothing is known yet or the read failed; `off` also for a Mate
-   * without the crew feed, which has no crew to show.
+   * without the crew feed, and for one whose frames this client cannot read
+   * (a server newer or older than it): neither has a crew this client can show.
    */
   readonly status: CrewStatus | null;
   /** The latest snapshot, kept while the feed is stale. */
@@ -231,7 +232,10 @@ export function crewFeedRead(read: Known<CrewSnapshot> | undefined): CrewFeedRea
     const stale = read.freshness.kind === "stale" || read.freshness.kind === "paused";
     return { status: read.value.status, snapshot: read.value, current: !stale };
   }
-  if (read?.state === "failed" && read.failure.kind === "unsupported") {
+  if (
+    read?.state === "failed" &&
+    (read.failure.kind === "unsupported" || read.failure.kind === "malformed")
+  ) {
     return { status: "off", snapshot: null, current: false };
   }
   return { status: null, snapshot: null, current: false };
