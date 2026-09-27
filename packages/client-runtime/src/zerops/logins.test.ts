@@ -2,7 +2,15 @@ import type { ZeropsAgentAuthSnapshot, ZeropsLogin } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { crewSnapshotFixture } from "./crew/testing/fixtures.ts";
-import { mateLoginChoices, mateLoginRows, mateLoginSignerLine } from "./logins.ts";
+import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
+
+import {
+  mateLoginAsAgentRow,
+  mateLoginChoices,
+  mateLoginRows,
+  mateLoginSignerLine,
+  resolveSpentLogin,
+} from "./logins.ts";
 
 const EVA = "u-eva";
 const JAN = "u-jan";
@@ -116,5 +124,77 @@ describe("mateLoginChoices", () => {
   ])("%o → %o", (row, use) => {
     const [choice] = mateLoginChoices(mateLoginRows(snapshot([row]), null), EVA);
     expect(choice?.use).toEqual(use);
+  });
+});
+
+// Surfaces written against agent rows (ownership, the composer's gate) read a
+// login beyond the defaults through a row that classifies exactly as it does.
+describe("mateLoginAsAgentRow", () => {
+  it.each(["authorized", "registering", "reconnect", "needs-reauth", "not-authorized"] as const)(
+    "classifies as the login does when it is %s",
+    (state) => {
+      const row = mateLoginAsAgentRow(login({ id: "claudeAgent-work", state, signedInBy: EVA }));
+      expect(classifyZeropsAgentAuth(row).kind).toBe(state);
+      expect(row.flagToken).toBe(false);
+    },
+  );
+
+  it("carries the login's own signer and walker", () => {
+    const walking = {
+      phase: "menu",
+      terminalId: "agent-login-codex-home",
+      startedAt: "2026-09-27T10:00:00.000Z",
+    } as unknown as NonNullable<ZeropsLogin["login"]>;
+    const row = mateLoginAsAgentRow(
+      login({ id: "codex-home", agent: "codex", signedInBy: JAN, login: walking }),
+    );
+    expect(row.agentId).toBe("codex");
+    expect(row.authorizedBy).toEqual({ subject: JAN });
+    expect(row.login).toBe(walking);
+  });
+});
+
+// The instance a thread spends, as the server's admission resolves it: a
+// login beyond the defaults by its own row, anything else by its driver.
+describe("resolveSpentLogin", () => {
+  const feed: ZeropsAgentAuthSnapshot = {
+    available: true,
+    agents: [
+      {
+        agentId: "claude-code",
+        credPresent: true,
+        flagOAuth: true,
+        flagToken: false,
+        providerAuth: "authenticated",
+        state: "authorized",
+        authorizedBy: { subject: JAN },
+      },
+    ],
+    logins: [
+      login({ id: "claudeAgent", default: true, signedInBy: JAN }),
+      login({ id: "claudeAgent-work", signedInBy: EVA }),
+    ],
+  };
+  const providers = [
+    { instanceId: "claudeAgent", driver: "claudeAgent" },
+    { instanceId: "claudeAgent-work", driver: "claudeAgent" },
+    { instanceId: "claudeAgent_mine", driver: "claudeAgent" },
+  ];
+
+  it.each([
+    { instanceId: "claudeAgent-work", key: "claudeAgent-work", signer: EVA },
+    { instanceId: "claudeAgent", key: "claude-code", signer: JAN },
+    // Configured by hand, not a login Mate made: its driver's own login.
+    { instanceId: "claudeAgent_mine", key: "claude-code", signer: JAN },
+  ])("$instanceId spends $key", ({ instanceId, key, signer }) => {
+    const spent = resolveSpentLogin(instanceId, feed, providers);
+    expect(spent?.key).toBe(key);
+    expect(spent?.agent.authorizedBy?.subject).toBe(signer);
+  });
+
+  it("spends nothing Mate signs nobody in to, and nothing without a feed", () => {
+    expect(resolveSpentLogin("opencode", feed, providers)).toBeUndefined();
+    expect(resolveSpentLogin(undefined, feed, providers)).toBeUndefined();
+    expect(resolveSpentLogin("claudeAgent-work", null, providers)).toBeUndefined();
   });
 });
