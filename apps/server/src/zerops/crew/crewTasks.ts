@@ -19,7 +19,7 @@
  *
  * @module crewTasks
  */
-import type { ChatAttachment, CrewTaskSource } from "@t3tools/contracts";
+import type { ChatAttachment, CrewTaskSource, CrewTaskState } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -28,13 +28,14 @@ import { carriedCard, continueCard, taskCard } from "./crewCards.ts";
 import {
   asRefusal,
   currentStint,
+  dispatchPrincipal,
   isWorking,
-  laterPrincipal,
   memberOf,
   principalUser,
   refuse,
   requireApplied,
   requireMember,
+  runningRun,
   type AppliedCrew,
   type CrewCore,
   type CrewMember,
@@ -49,11 +50,16 @@ import {
 import { CREW_ID } from "./CrewHome.ts";
 import { taskTransition, type TaskCounters, type TaskEvent } from "./crewMachines.ts";
 import { implicitTaskTitle, routeCrewMessage } from "./crewRouting.ts";
+import { pauseRun } from "./crewRuns.ts";
 import { isOpenTask } from "./crewSnapshot.ts";
 import { openStint, rotate } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { readTaskCard, type TaskCard, type TaskWait } from "./crewTaskData.ts";
-import { rotationDecision, type RotationMoment } from "./rotationDecision.ts";
+import {
+  CREW_ROTATE_AFTER_DEFAULT,
+  rotationDecision,
+  type RotationMoment,
+} from "./rotationDecision.ts";
 
 /* ------------------------------------------------------------ task rows */
 
@@ -160,14 +166,18 @@ export const createTask = (
     readonly createdBy: string;
     readonly card: TaskCard;
     readonly dependsOn: ReadonlyArray<string>;
+    /** `queued` unless the lead proposes it (PRD §5.4). */
+    readonly state?: CrewTaskState;
   },
 ) =>
   core.numbered(
     Effect.gen(function* () {
       const now = yield* core.now;
+      const applied = yield* core.applied;
       const row: CrewAssignmentRow = {
         assignment: `task-${yield* core.uuid}`,
-        run: null,
+        // The run it was created in; `null` outside one.
+        run: (applied === undefined ? undefined : runningRun(applied)?.run) ?? null,
         crew: CREW_ID,
         member: input.owner,
         number: yield* asRefusal(core.store.nextTaskNumber(CREW_ID)),
@@ -178,7 +188,7 @@ export const createTask = (
         pending: null,
         dependsOn: input.dependsOn,
         fresh: false,
-        state: "queued",
+        state: input.state ?? "queued",
         attempt: 0,
         reworks: 0,
         remerges: 0,
@@ -212,13 +222,19 @@ export const stintForTurn = (
       return yield* openStint(core, applied, member, { reason: null, seed: null });
     }
     const login = member.row.login ?? "";
+    // A resume needs the transcript its session wrote; one gone (a redeploy) starts a new stint.
+    const transcriptMissing =
+      moment !== "idle" &&
+      stint.sessionId !== null &&
+      stint.transcriptPath !== null &&
+      !(yield* core.fileExists(stint.transcriptPath));
     const decision = rotationDecision({
       moment,
-      transcriptMissing: false,
+      transcriptMissing,
       resumeFailed: false,
       ...optionalReason(core.memory.terminalReasons.get(stint.threadId)),
       compactions: stint.compactions,
-      rotateAfter: 0,
+      rotateAfter: member.spec.rotateAfter ?? CREW_ROTATE_AFTER_DEFAULT,
       stintPrincipal: "",
       principal: "",
       running: { brief: stint.briefVersion, job: stint.jobVersion },
@@ -230,6 +246,15 @@ export const stintForTurn = (
       startFresh: false,
       rotationsThisAttempt: 0,
     });
+    if (decision.kind === "pending" && !stint.rotatePending) {
+      yield* asRefusal(
+        core.store.updateStint(stint.crew, stint.member, stint.stint, (row) => ({
+          ...row,
+          rotatePending: true,
+        })),
+      );
+      yield* asRefusal(core.reload);
+    }
     return decision.kind === "rotate" || decision.kind === "park"
       ? yield* rotate(core, applied, member, decision.reason)
       : stint;
@@ -385,10 +410,28 @@ export const continueTask = (
     const working = yield* stepTask(core, task, { type: "message" }, (next) =>
       task.state === "rework" ? { ...next, waiting: null } : next,
     );
+    // An answered question: its next one goes to the lead first again.
+    if (task.state === "blocked") core.memory.escalated.delete(task.assignment);
     const key = `${working.assignment}:${working.attempt}`;
     core.memory.turns.set(key, (core.memory.turns.get(key) ?? 0) + 1);
     yield* sendTurn(core, member, stint, principal, sent, attachments);
     return working;
+  });
+
+/** A turn of the lead's, outside any task: the person's message, or a wake as the run's starter. */
+export const leadTurn = (
+  core: CrewCore,
+  applied: AppliedCrew,
+  lead: CrewMember,
+  principal: TurnPrincipal,
+  text: string,
+  attachments: ReadonlyArray<ChatAttachment> = [],
+) =>
+  Effect.gen(function* () {
+    const stint =
+      currentStint(applied, lead.row.handle) ??
+      (yield* openStint(core, applied, lead, { reason: null, seed: null }));
+    yield* sendTurn(core, lead, stint, principal, text, attachments);
   });
 
 /* ------------------------------------------------------------ the queue */
@@ -399,7 +442,10 @@ const landed = (tasks: ReadonlyArray<CrewAssignmentRow>, id: string) =>
 /**
  * Starts the crewmate's oldest queued task whose dependencies landed, when
  * it is free. `now` names a task dispatched inside its creator's own call,
- * which runs as their session; every other runs as its creator later.
+ * which runs as their session; every other runs as the running run's
+ * starter, or without a run as its creator. The lead's tasks start only in
+ * a running run (PRD §5.4), and a run whose own dispatch admission refuses
+ * pauses with admission's words.
  */
 export const pump = (
   core: CrewCore,
@@ -413,33 +459,22 @@ export const pump = (
     if (member === undefined || isWorking(core, applied, handle)) return;
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     if (openTaskOf(tasks, handle) !== undefined) return;
+    const run = runningRun(applied);
     const next = tasks.find(
       (row) =>
         row.member === handle &&
         row.state === "queued" &&
+        (row.source !== "lead" || run !== undefined) &&
         row.dependsOn.every((id) => landed(tasks, id)),
     );
     if (next === undefined) return;
-    const principal =
-      now !== undefined && now.taskId === next.assignment ? now.principal : laterPrincipal(next);
-    yield* startTask(core, applied, member, next, principal);
-    yield* core.changed;
-  });
-
-/** Pumps every crewmate; a failure is the section's last error, never a stop. */
-export const pumpAll = (core: CrewCore) =>
-  Effect.gen(function* () {
-    const applied = yield* core.applied;
-    if (applied === undefined) return;
-    for (const handle of applied.members.keys()) {
-      yield* pump(core, handle).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            core.memory.lastError = error.message;
-          }),
-        ),
-      );
+    const ownCall = now !== undefined && now.taskId === next.assignment;
+    const principal = ownCall ? now.principal : dispatchPrincipal(applied, next);
+    const outcome = yield* startTask(core, applied, member, next, principal);
+    if (outcome._tag === "refused" && run !== undefined && !ownCall) {
+      yield* pauseRun(core, "refused", outcome.detail);
     }
+    yield* core.changed;
   });
 
 /* ------------------------------------------------------------ commands */
@@ -462,6 +497,11 @@ export const message = (
     const current = currentStint(applied, input.handle);
     if (current !== undefined && core.memory.working.has(current.threadId)) {
       yield* sendTurn(core, member, current, principal, input.text, input.attachments);
+      return;
+    }
+    if (member.row.kind === "lead") {
+      core.memory.leadSpokenBy = principalUser(principal);
+      yield* leadTurn(core, applied, member, principal, input.text, input.attachments);
       return;
     }
     if (open !== undefined) {

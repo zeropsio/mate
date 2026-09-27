@@ -31,6 +31,7 @@ import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -63,6 +64,7 @@ import {
   CrewStore,
   type CrewAssignmentRow,
   type CrewMemberRow,
+  type CrewRunRow,
   type CrewStintRow,
 } from "./CrewStore.ts";
 import { CrewWorkspace } from "./CrewWorkspace.ts";
@@ -88,6 +90,8 @@ export interface AppliedCrew {
   readonly repositories: ReadonlyMap<string, ZeropsRepository>;
   /** Each crewmate's login's coding agent; a Codex crewmate hosts no crew tools (PRD §2.3). */
   readonly agents: ReadonlyMap<string, ZeropsAgentId | undefined>;
+  /** The crew's latest run in any state; `undefined` before its first. */
+  readonly run: CrewRunRow | undefined;
 }
 
 /** A shaped turn the gate lets through one tool shape for (CONCEPT §3.3). */
@@ -135,7 +139,42 @@ export interface EngineMemory {
   readonly showReasons: Map<string, string>;
   /** The dev services this Mate mounts: whether each reaches a database, `null` until read. */
   readonly devHosts: Map<string, boolean | null>;
+  /** When the running run's time last started counting (clock ms); `null` while none runs. */
+  runningSince: number | null;
+  /** The run tick is forked (`crewRuns.ensureRunTick`). */
+  runTick: boolean;
+  /** Each login's fullest usage window, from the provider's rate-limit events. */
+  readonly usage: Map<string, number>;
+  /** How each crew thread's last turn ended (`turn.completed`'s state). */
+  readonly endings: Map<string, string>;
+  /** Crew threads whose turn a pausing run interrupted, to carry on when it goes on. */
+  readonly runInterrupted: Set<string>;
+  /** Task attempts a run has nudged once (`<assignment>:<attempt>`). */
+  readonly nudged: Set<string>;
+  /** What the lead was woken for, per lead, while that turn runs. */
+  readonly leadWakes: Map<string, LeadWake>;
+  /** Wakes already sent: `review:<assignment>:<attempt>`, `question:<assignment>:<asked at>`. */
+  readonly woken: Set<string>;
+  /** Wakes each run has spent, capped per run (CONCEPT §5 caps). */
+  readonly wakeCounts: Map<string, number>;
+  /** Questions the lead passed on to the person: shown at once, not after 15 minutes. */
+  readonly escalated: Set<string>;
+  /** The lead's own question for the person, per lead. */
+  readonly leadQuestions: Map<string, { readonly text: string; readonly at: string }>;
+  /** A crew thread's last assistant message, and the one streaming in. */
+  readonly lastText: Map<string, string>;
+  readonly textBuffer: Map<string, string>;
+  /** Who last spoke to the lead; its proposed tasks start as them outside a run. */
+  leadSpokenBy: string | null;
+  /** Memory, a task or the run changed since the crew-state ref was last written. */
+  stateBehind: boolean;
   lastError: string | null;
+}
+
+/** Why the engine woke the lead: a task to review, or a crewmate's question. */
+export interface LeadWake {
+  readonly kind: "review" | "question";
+  readonly taskId: string;
 }
 
 export interface MemoryClaim {
@@ -166,6 +205,21 @@ export const makeMemory = (): EngineMemory => ({
   integration: new Map(),
   showReasons: new Map(),
   devHosts: new Map(),
+  runningSince: null,
+  runTick: false,
+  usage: new Map(),
+  endings: new Map(),
+  runInterrupted: new Set(),
+  nudged: new Set(),
+  leadWakes: new Map(),
+  woken: new Set(),
+  wakeCounts: new Map(),
+  escalated: new Set(),
+  leadQuestions: new Map(),
+  lastText: new Map(),
+  textBuffer: new Map(),
+  leadSpokenBy: null,
+  stateBehind: false,
   lastError: null,
 });
 
@@ -184,6 +238,8 @@ export const runtimeOf = (
   served: memory.served,
   integration: memory.integration,
   logins,
+  escalated: memory.escalated,
+  leadQuestions: memory.leadQuestions,
   devHosts: memory.devHosts,
   lastError: memory.lastError,
 });
@@ -261,10 +317,12 @@ export const makeCrewCore = Effect.gen(function* () {
       members,
       stints: yield* store.stints(CREW_ID),
       repositories: known,
+      run: Option.getOrUndefined(yield* store.latestRun(CREW_ID)),
     });
   });
 
   const observer = yield* ZeropsWorkspaceObserver;
+  const fileSystem = yield* FileSystem.FileSystem;
 
   /**
    * Verifies every writer's service this process has not verified yet — a
@@ -369,6 +427,8 @@ export const makeCrewCore = Effect.gen(function* () {
     applied: Ref.get(cache),
     reload,
     verify,
+    /** Whether a file on this Mate's own disk exists; unreadable counts as present. */
+    fileExists: (path: string) => fileSystem.exists(path).pipe(Effect.orElseSucceed(() => true)),
     recordDevHosts,
     listDevHosts,
     probeDevHosts,
@@ -444,3 +504,25 @@ export const laterPrincipal = (task: Pick<CrewAssignmentRow, "createdBy">): Turn
   kind: "crew",
   startedBy: task.createdBy,
 });
+
+/** The crew's lead, when it has one. */
+export const leadOf = (applied: AppliedCrew): CrewMember | undefined => {
+  const row = [...applied.members.values()].find((candidate) => candidate.kind === "lead");
+  return row === undefined ? undefined : memberOf(applied, row.handle);
+};
+
+/** The run that lets the crew start its own turns now; `undefined` when none runs. */
+export const runningRun = (applied: AppliedCrew): CrewRunRow | undefined =>
+  applied.run?.state === "running" ? applied.run : undefined;
+
+/**
+ * Whom the engine's own dispatch of a task runs as: the running run's
+ * starter (ARCHITECTURE §2), else the person whose press or message made it.
+ */
+export const dispatchPrincipal = (
+  applied: AppliedCrew,
+  task: Pick<CrewAssignmentRow, "createdBy">,
+): TurnPrincipal => {
+  const run = runningRun(applied);
+  return run === undefined ? laterPrincipal(task) : { kind: "crew", startedBy: run.startedBy };
+};

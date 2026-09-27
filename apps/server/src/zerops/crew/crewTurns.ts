@@ -10,7 +10,8 @@
  *   turn); a task the crewmate reported done merges in and checks; a
  *   crewmate that freed up starts its next queued task. An interrupted turn
  *   ends like any other — its work is committed too.
- * - token usage and compaction are recorded for the section's context meter.
+ * - token usage and compaction are recorded for the section's context meter;
+ *   a turn's cost and the logins' usage windows move a run's meters.
  * - `zerops_deploy` onto a service with lanes (any thread) freezes the
  *   service's lanes and interrupts their turns; when the deploy ends and the
  *   mount answers, `recover` brings the lanes back or names what was lost.
@@ -23,6 +24,7 @@ import * as Effect from "effect/Effect";
 import {
   asRefusal,
   memberOf,
+  runningRun,
   type AppliedCrew,
   type CrewCore,
   type CrewMember,
@@ -32,9 +34,14 @@ import { moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
+import { recordRunSpend, recordUsage } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
-import { continueAfterSave, openTaskOf, parkTask, pump } from "./crewTasks.ts";
+import { continueAfterSave, openTaskOf, parkTask } from "./crewTasks.ts";
+import { settleLeadWake } from "./crewLead.ts";
+import { flushState } from "./crewState.ts";
+import { CREW_ROTATE_AFTER_DEFAULT } from "./rotationDecision.ts";
+import { advance, advanceAll } from "./crewRunFlow.ts";
 
 const GUARD_WORDS = {
   dependencies: "an unignored dependency directory",
@@ -144,6 +151,7 @@ const turnEnded = (
     const { memory } = core;
     const shaped = memory.shaped.get(stint.threadId);
     memory.working.delete(stint.threadId);
+    memory.endings.set(stint.threadId, event.payload.state);
     memory.shaped.delete(stint.threadId);
     if (event.payload.terminalReason !== undefined) {
       memory.terminalReasons.set(stint.threadId, event.payload.terminalReason);
@@ -157,6 +165,7 @@ const turnEnded = (
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     const open = openTaskOf(tasks, stint.member);
     if (open !== undefined) yield* recordCost(core, open, event.payload.totalCostUsd);
+    yield* recordRunSpend(core, event.payload.totalCostUsd);
     if (member.row.kind === "writer") {
       yield* commitAndPolice(
         core,
@@ -183,15 +192,42 @@ const turnEnded = (
     } else {
       yield* releaseAfterTurn(core, handle);
     }
+    if (member.row.kind === "lead") yield* settleLeadWake(core, applied, member);
+    yield* core.background(flushState(core));
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
     if (after?.state === "merging") {
       yield* core.background(
-        integrate(core, after.assignment).pipe(Effect.andThen(pump(core, handle))),
+        integrate(core, after.assignment).pipe(Effect.andThen(advance(core, handle))),
       );
-    } else if (after === undefined) {
-      yield* pump(core, handle);
+    } else {
+      yield* advance(core, handle);
     }
   });
+
+/** Keeps a thread's last assistant message: the streamed text, closed by its item's end. */
+const recordLeadText = (core: CrewCore, stint: CrewStintRow, event: SpiEvent) => {
+  const { lastText, textBuffer } = core.memory;
+  switch (event.type) {
+    case "turn.started":
+      lastText.delete(stint.threadId);
+      textBuffer.delete(stint.threadId);
+      return;
+    case "content.delta":
+      if (event.payload.streamKind === "assistant_text") {
+        textBuffer.set(
+          stint.threadId,
+          (textBuffer.get(stint.threadId) ?? "") + event.payload.delta,
+        );
+      }
+      return;
+    case "item.completed":
+      if (event.payload.itemType === "assistant_message") {
+        lastText.set(stint.threadId, event.payload.detail ?? textBuffer.get(stint.threadId) ?? "");
+        textBuffer.delete(stint.threadId);
+      }
+      return;
+  }
+};
 
 /** A deploy's target when it replaces a service that holds lanes. */
 const deployTarget = (applied: AppliedCrew, event: SpiEvent): string | undefined => {
@@ -263,7 +299,7 @@ export const makeTurnHandler = (core: CrewCore) => {
         return;
       }
       for (const handle of outcome.readded) core.memory.missingLanes.delete(handle);
-      for (const handle of applied.members.keys()) yield* pump(core, handle);
+      yield* advanceAll(core);
     });
 
   return (event: SpiEvent) =>
@@ -287,7 +323,16 @@ export const makeTurnHandler = (core: CrewCore) => {
       ) {
         yield* moveClaim(core, personDevServer, "person-dev-server");
       }
-      if (stint === undefined) return;
+      if (event.type === "account.rate-limits.updated") yield* recordUsage(core, event);
+      if (stint === undefined) {
+        // A landing a run holds while your chat works goes on once it is done.
+        if (event.type === "turn.completed" && runningRun(applied) !== undefined) {
+          yield* core.background(advanceAll(core));
+        }
+        return;
+      }
+      // The lead's words, for the answer its question wake carries back (`crewLead`).
+      if (applied.members.get(stint.member)?.kind === "lead") recordLeadText(core, stint, event);
       switch (event.type) {
         case "turn.started":
           core.memory.working.add(stint.threadId);
@@ -304,10 +349,15 @@ export const makeTurnHandler = (core: CrewCore) => {
           break;
         case "thread.state.changed":
           if (event.payload.state === "compacted") {
+            const spec = applied.definition.members.find((entry) => entry.handle === stint.member);
+            const rotateAfter = spec?.rotateAfter ?? CREW_ROTATE_AFTER_DEFAULT;
+            // rotateAfter compactions: the stint rotates at its crewmate's next task (CONCEPT §3A.4).
             yield* asRefusal(
               core.store.updateStint(stint.crew, stint.member, stint.stint, (row) => ({
                 ...row,
                 compactions: row.compactions + 1,
+                rotatePending:
+                  row.rotatePending || (rotateAfter > 0 && row.compactions + 1 >= rotateAfter),
               })),
             );
             yield* asRefusal(core.reload);

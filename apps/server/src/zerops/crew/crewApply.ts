@@ -51,6 +51,7 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID, refusalOf } from "./CrewHome.ts";
 import { assignCrewPorts, proposeCrewPorts, readDeclaredPorts } from "./crewPorts.ts";
+import { flushState } from "./crewState.ts";
 import { appendSeam } from "./crewSeamLines.ts";
 import { retireStint, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewMemberRow } from "./CrewStore.ts";
@@ -287,20 +288,6 @@ const createLanes = (core: CrewCore, applied: AppliedCrew) =>
       yield* core.changed;
     }
     yield* flushState(core);
-  });
-
-/** Mirrors the crew home onto the home service (`refs/t3/crew-state/main`), when it is behind. */
-export const flushState = (core: CrewCore) =>
-  Effect.gen(function* () {
-    const applied = yield* core.applied;
-    if (applied === undefined || applied.homeHost === null || applied.flushedSeq >= applied.seq) {
-      return;
-    }
-    const files = yield* core.home.read;
-    yield* asRefusal(
-      core.stateRef.flush({ crew: CREW_ID, host: applied.homeHost, seq: applied.seq, files }),
-    );
-    yield* asRefusal(core.reload);
   });
 
 const bumped = (core: CrewCore) =>

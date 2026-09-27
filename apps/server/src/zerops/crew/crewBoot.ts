@@ -24,7 +24,8 @@ import { asRefusal, memberOf, type CrewCore } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { laneSpecsOn } from "./crewTurns.ts";
-import { pumpAll, saveTask, stepTask } from "./crewTasks.ts";
+import { advanceAll } from "./crewRunFlow.ts";
+import { saveTask, stepTask } from "./crewTasks.ts";
 
 const sweepHost = (core: CrewCore, host: string) =>
   Effect.gen(function* () {
@@ -137,6 +138,6 @@ export const boot = (core: CrewCore) =>
       }
     }
     yield* settleAllClaims(core);
-    yield* pumpAll(core);
+    yield* advanceAll(core);
     yield* core.changed;
   });

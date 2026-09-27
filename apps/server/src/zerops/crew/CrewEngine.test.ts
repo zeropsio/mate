@@ -4,21 +4,13 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
-import {
-  ProviderInstanceId,
-  ThreadId as ThreadIdSchema,
-  type CrewSnapshot,
-  type OrchestrationCommand,
-  type ThreadId,
-} from "@t3tools/contracts";
+import { ProviderInstanceId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import type { MateLogin } from "../ZeropsLogins.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
-import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { CrewEngine } from "./CrewEngine.ts";
@@ -32,8 +24,19 @@ import {
   withCrewEngine,
   withCrewEngines,
   writeCrewHome,
-  type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
+import {
+  KAREL,
+  applied,
+  command,
+  dispatchedOf,
+  everyCopyReady,
+  firstTurn,
+  latest,
+  reportDone,
+  seamsOf,
+  snapshotWhere,
+} from "./testing/crewEngineSteps.ts";
 import { TEST_HOST, git, read, write } from "./testing/crewGitFixture.ts";
 
 const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): MateLogin => ({
@@ -44,48 +47,6 @@ const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): M
   home: `/home/zerops/.mate/logins/${id}`,
   keyStored: false,
 });
-
-const KAREL: TurnPrincipal = { kind: "session", subject: `${ZEROPS_SUBJECT_PREFIX}user-karel` };
-
-const latest = Effect.flatMap(CrewEngine, (engine) =>
-  engine.snapshot.pipe(Stream.take(1), Stream.runHead, Effect.map(Option.getOrThrow)),
-);
-
-const command = (input: Parameters<CrewEngine["Service"]["command"]>[0]) =>
-  Effect.flatMap(CrewEngine, (engine) => engine.command(input, KAREL));
-
-const dispatchedOf = <T extends OrchestrationCommand["type"]>(world: CrewWorld, type: T) =>
-  Effect.map(Ref.get(world.dispatched), (all) =>
-    all.filter(
-      (entry): entry is Extract<OrchestrationCommand, { readonly type: T }> => entry.type === type,
-    ),
-  );
-
-/** The seam lines the engine wrote into crewmates' chats: thread, words, payload. */
-const seamsOf = (world: CrewWorld) =>
-  Effect.map(dispatchedOf(world, "thread.activity.append"), (all) =>
-    all
-      .filter((entry) => entry.activity.kind === "crew.seam")
-      .map((entry) => [entry.threadId, entry.activity.summary, entry.activity.payload]),
-  );
-
-const everyCopyReady = (snapshot: CrewSnapshot) =>
-  snapshot.status === "applied" &&
-  snapshot.crewmates.every((mate) => mate.readOnly || mate.lane?.state === "ready");
-
-/** Applies the crew home and waits until every copy is ready. */
-const applied = (world: CrewWorld) =>
-  Effect.gen(function* () {
-    writeCrewHome(world.workspace);
-    yield* command({ _tag: "apply" });
-    yield* eventually(Effect.map(latest, everyCopyReady));
-  });
-
-const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
-  Effect.gen(function* () {
-    yield* eventually(Effect.map(latest, check));
-    return yield* latest;
-  });
 
 describe("CrewEngine", () => {
   it.live("with no crew applied: status none, no policy installed", () =>
@@ -175,12 +136,14 @@ describe("CrewEngine", () => {
           const member = Option.getOrThrow(
             yield* (yield* CrewThreadDirectory).memberFor(created[0]!.threadId),
           );
-          const seed = yield* (yield* CrewToolHost).sessionStart(member, {
+          const transcript = NodePath.join(world.workspace, "session-1.jsonl");
+          NodeFS.writeFileSync(transcript, "{}\n");
+          const packet = yield* (yield* CrewToolHost).sessionStart(member, {
             source: "startup",
             sessionId: "session-1",
-            transcriptPath: "/home/zerops/.claude/projects/x/session-1.jsonl",
+            transcriptPath: transcript,
           });
-          assert.isUndefined(seed);
+          assert.isTrue(packet?.startsWith("crew-state seq"));
           yield* eventually(
             Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active"),
           );
@@ -454,23 +417,6 @@ describe("CrewEngine", () => {
       }),
     ),
   );
-
-  /** Opens a task with a message and ends its first turn with `edit` made in the copy. */
-  const firstTurn = (world: CrewWorld, edit: () => void) =>
-    Effect.gen(function* () {
-      yield* command({ _tag: "message", handle: "backend", text: "Change a.txt", attachments: [] });
-      const [created] = yield* dispatchedOf(world, "thread.crew.create");
-      const thread = created!.threadId;
-      yield* world.publish(spiEvent("turn.started", thread, {}));
-      edit();
-      return thread;
-    });
-
-  const reportDone = (thread: ThreadId) =>
-    Effect.gen(function* () {
-      const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
-      yield* (yield* CrewToolHost).report(member, { status: "done", summary: "Done." });
-    });
 
   it.live("a message to a crewmate that asked a question answers its open task", () =>
     withCrewEngine((world) =>
@@ -1117,6 +1063,58 @@ describe("CrewEngine", () => {
     },
   );
 
+  it.live("a run that lets the crew show work on dev allows a request when its turn ends", () => {
+    const started: Array<number> = [];
+    return withCrewEngine((world) =>
+      Effect.gen(function* () {
+        write(
+          world.root,
+          "zerops.yaml",
+          "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
+        );
+        git(world.root, ["add", "-A"]);
+        git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
+        yield* applied(world);
+        yield* command({
+          _tag: "start",
+          budgetUsd: "unlimited",
+          timeLimitHours: "unlimited",
+          stopAtUsagePercent: null,
+          landing: "person",
+          devGrant: true,
+          leadMayStart: false,
+        });
+        started.push(startDevServer(world.root));
+        const thread = yield* firstTurn(world, () => undefined);
+        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+        yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const starting = yield* snapshotWhere(
+          (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
+        );
+        assert.deepStrictEqual(
+          [
+            starting.hosts[0]!.claim.handle,
+            (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
+            (yield* Ref.get(world.admitted)).at(-1)?.principal,
+          ],
+          ["backend", "Show your work on appdev", { kind: "crew", startedBy: "user-karel" }],
+        );
+      }),
+    ).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          for (const pid of started) {
+            try {
+              process.kill(pid);
+            } catch {}
+          }
+          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
+        }),
+      ),
+    );
+  });
+
   it.live("Show on dev pressed by you asks and allows at once, as you", () => {
     const started: Array<number> = [];
     return withCrewEngine((world) =>
@@ -1209,7 +1207,7 @@ describe("CrewEngine", () => {
                   true,
                   true,
                   false,
-                  ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev"],
+                  ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev", "crew_memory"],
                 ],
                 person: undefined,
                 retired: [true, 0],

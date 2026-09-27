@@ -31,6 +31,7 @@ import {
   memberOf,
   refuse,
   requireApplied,
+  runningRun,
   type AppliedCrew,
   type CrewCore,
   type CrewMember,
@@ -40,16 +41,21 @@ import { crewRefusedRoots, type GateContext } from "./CrewPolicy.ts";
 import { holdsClaim } from "./CrewRuntime.ts";
 import { releaseClaim, showOnDev } from "./crewClaims.ts";
 import type { CrewPromptMember } from "./crewPrompt.ts";
+import { finishTool, leadReport, propose, reviewTool } from "./crewLead.ts";
+import { advanceAll } from "./crewRunFlow.ts";
 import type {
   CrewMemoryOp,
+  CrewProposedTask,
   CrewReportInput,
+  CrewReviewInput,
   CrewSessionStart,
   CrewThreadMember,
   CrewToolText,
 } from "./crewSeams.ts";
 import { isOpenTask } from "./crewSnapshot.ts";
 import type { CrewStintRow } from "./CrewStore.ts";
-import { readTaskCard } from "./crewTaskData.ts";
+import type { CrewMemoryTask } from "./CrewMemory.ts";
+import { readTaskCard, readTaskCheck } from "./crewTaskData.ts";
 import { openTaskOf, saveTask, stepTask } from "./crewTasks.ts";
 
 /** A crew turn's commands run at most this long in the crewmate's copy. */
@@ -139,6 +145,7 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
     const current =
       stint.retiredAt === null && currentStint(applied, row.handle)?.threadId === threadId;
     const shaped = current ? gateFor(core, applied, member, stint) : undefined;
+    const budget = runningRun(applied)?.budgetUsd ?? null;
     return Option.some({
       crew: CREW_ID,
       handle: row.handle,
@@ -157,10 +164,15 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
         briefVersion: applied.briefVersion,
         job: spec.job,
         jobVersion: row.jobVersion,
-        memory: false,
+        // Phase C: a crewmate that hosts the crew tools keeps memory with crew_memory.
+        memory: applied.agents.get(row.handle) !== "codex",
         crewTools: applied.agents.get(row.handle) !== "codex",
       },
       contextWindow: spec.context ?? CREW_CONTEXT_DEFAULT,
+      // What the running run has left; a run with No limit sets none (PRD Δ16).
+      ...(budget === null
+        ? {}
+        : { maxBudgetUsd: Math.max(0, budget - (applied.run?.spentUsd ?? 0)) }),
       ...(row.model === null ? {} : { model: row.model }),
       ...(row.effort === null ? {} : { effort: row.effort }),
     });
@@ -177,6 +189,7 @@ const answered = <E extends { readonly message: string }>(effect: Effect.Effect<
 export const report = (core: CrewCore, member: CrewThreadMember, input: CrewReportInput) =>
   answered(
     Effect.gen(function* () {
+      if (member.kind === "lead") return yield* leadReport(core, member, input);
       const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
       const open = openTaskOf(tasks, member.handle);
       if (open === undefined) {
@@ -203,6 +216,8 @@ export const report = (core: CrewCore, member: CrewThreadMember, input: CrewRepo
             ...next,
             report: { ...reported.report, question: input.question ?? input.summary },
           }));
+          // In a run with a lead, the lead takes the question first.
+          yield* core.background(advanceAll(core));
           yield* core.changed;
           return text(
             "Your question is with the person. Stop here; the answer arrives as a message.",
@@ -304,6 +319,14 @@ export const sessionStart = (core: CrewCore, member: CrewThreadMember, event: Cr
         }))
         .pipe(Effect.andThen(core.reload), Effect.andThen(core.changed), Effect.ignore);
     }
+    if (member.prompt.memory) {
+      const task = yield* memoryTask(core, member.handle);
+      return yield* (
+        event.source === "resume"
+          ? core.crewMemory.delta(member, task)
+          : core.crewMemory.packet(member, task)
+      ).pipe(Effect.orElseSucceed(() => undefined));
+    }
     const seed = stint.seededFrom;
     return event.source === "startup" &&
       typeof seed === "object" &&
@@ -312,6 +335,36 @@ export const sessionStart = (core: CrewCore, member: CrewThreadMember, event: Cr
       typeof seed.text === "string"
       ? seed.text
       : undefined;
+  });
+
+/** The crewmate's open task as its state packet states it (CONCEPT §3A.3). */
+const memoryTask = (core: CrewCore, handle: string) =>
+  Effect.gen(function* () {
+    const task = openTaskOf(
+      yield* core.store.assignments(CREW_ID).pipe(Effect.orElseSucceed(() => [])),
+      handle,
+    );
+    if (task === undefined) return undefined;
+    const attempt = (yield* core.store
+      .attemptsOf(task.assignment)
+      .pipe(Effect.orElseSucceed(() => []))).at(-1);
+    const card = readTaskCard(task.card);
+    const check = readTaskCheck(task.check);
+    const lastLine = check?.output.trimEnd().split("\n").at(-1)?.trim();
+    return {
+      assignment: task.assignment,
+      number: task.number,
+      title: task.title,
+      brief: card?.brief ?? task.title,
+      doneWhen: card?.doneWhen ?? "",
+      state: task.state,
+      attempt: task.attempt,
+      dispatchCommit: attempt?.dispatchCommit ?? "",
+      ...(check === null
+        ? {}
+        : { lastCheck: lastLine ? `${check.state}: ${lastLine}` : check.state }),
+      resets: [],
+    } satisfies CrewMemoryTask;
   });
 
 /** Records a compaction's summary on the stint, for the compaction row's expansion. */
@@ -342,6 +395,23 @@ export const memoryTool = (core: CrewCore, member: CrewThreadMember, op: CrewMem
       return answer;
     }),
   );
+
+/** `crew_propose` (the lead): the plan onto the board; a run that allows it starts the tasks. */
+export const proposeTool = (
+  core: CrewCore,
+  member: CrewThreadMember,
+  tasks: ReadonlyArray<CrewProposedTask>,
+) =>
+  answered(propose(core, member, tasks).pipe(Effect.tap(() => core.background(advanceAll(core)))));
+
+/** `crew_review` (the lead or a reader): its verdict, and the task goes on. */
+export const reviewCrewTool = (core: CrewCore, member: CrewThreadMember, input: CrewReviewInput) =>
+  answered(
+    reviewTool(core, member, input).pipe(Effect.tap(() => core.background(advanceAll(core)))),
+  );
+
+/** `crew_finish` (the lead). */
+export const finishCrewTool = (core: CrewCore) => answered(finishTool(core));
 
 /** Tools of later phases: answered, never run. */
 export const notYet = (tool: string) =>

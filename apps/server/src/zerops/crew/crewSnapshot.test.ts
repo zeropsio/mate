@@ -135,6 +135,9 @@ const stint = (
 
 const base = (fields: Partial<AppliedSnapshotInput> = {}): AppliedSnapshotInput => ({
   seq: 7,
+  run: null,
+  leadAnswers: false,
+  nowMs: Date.parse("2026-09-27T10:00:00.000Z"),
   definition,
   briefVersion: 3,
   members: definition.members.map((member) => memberRow(member)),

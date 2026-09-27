@@ -58,18 +58,22 @@ import {
 import { boot } from "./crewBoot.ts";
 import { grantClaim, moveClaim, releaseClaim, showOnDevNow } from "./crewClaims.ts";
 import * as CrewChecks from "./CrewChecks.ts";
-import { DEFAULT_CREW_LOGIN, makeCrewCore, refuse, runtimeOf, type CrewCore } from "./crewCore.ts";
+import { DEFAULT_CREW_LOGIN, makeCrewCore, runtimeOf, type CrewCore } from "./crewCore.ts";
 import {
   board,
   diff,
+  finishCrewTool,
   memberFor,
   notYet,
   postCompact,
+  proposeTool,
   report,
+  reviewCrewTool,
   sessionStart,
   memoryTool,
   showOnDevTool,
 } from "./crewDirectory.ts";
+import { leadAnswered, leadAnswers, planAccept, planDiscard, reviewTask } from "./crewLead.ts";
 import { CrewEngine, inertCrewEngine, type CrewEngineService } from "./CrewEngine.ts";
 import * as CrewHome from "./CrewHome.ts";
 import * as CrewIntegration from "./CrewIntegration.ts";
@@ -84,8 +88,28 @@ import * as CrewStateRef from "./CrewStateRef.ts";
 import * as CrewStore from "./CrewStore.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import { editMemory, forgetMemory, removeMemory } from "./crewMemoryCommands.ts";
-import { discard, editTask, markFresh, message, newTask, retryTask, tell } from "./crewTasks.ts";
+import {
+  discard,
+  editTask,
+  markFresh,
+  message,
+  newTask,
+  requireTask,
+  retryTask,
+  tell,
+} from "./crewTasks.ts";
 import { makeTurnHandler } from "./crewTurns.ts";
+import { MIRRORED_TABLES } from "./crewState.ts";
+import { advanceAll } from "./crewRunFlow.ts";
+import {
+  finishRun,
+  pressPause,
+  resumeRun,
+  runOnAfterRestart,
+  runView,
+  startRun,
+  stopRun,
+} from "./crewRuns.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
@@ -144,9 +168,14 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
       const unfiled = rows.filter((entry) => entry.kind === "unfiled").length;
       memory.set(member.handle, { entries: rows.length - unfiled, unfiled });
     }
+    const applied = yield* core.applied;
+    const nowMs = yield* Clock.currentTimeMillis;
     return appliedSnapshot({
       memory,
       seq,
+      run: applied === undefined ? null : runView(core, applied, nowMs),
+      leadAnswers: applied !== undefined && leadAnswers(applied),
+      nowMs,
       definition: row.value.spec as CrewDefinition,
       briefVersion: row.value.briefVersion,
       members,
@@ -188,6 +217,7 @@ const run = (
         yield* message(core, principal, command);
         return done;
       case "answer":
+        if (command.taskId === null) yield* leadAnswered(core, command.handle);
         yield* message(core, principal, {
           handle: command.handle,
           text: command.text,
@@ -272,15 +302,38 @@ const run = (
       case "forgetMemory":
         yield* forgetMemory(core, command.handle);
         return done;
-      case "start":
+      case "start": {
+        const { _tag: _, ...options } = command;
+        yield* startRun(core, principal, options);
+        yield* advanceAll(core);
+        return done;
+      }
       case "pause":
+        yield* pressPause(core, command.runId);
+        return done;
       case "resume":
+        yield* resumeRun(core, command.runId);
+        yield* advanceAll(core);
+        return done;
       case "stop":
+        yield* stopRun(core, command.runId);
+        return done;
       case "finish":
+        yield* finishRun(core, command.runId);
+        return done;
       case "planAccept":
+        yield* planAccept(core, command.taskIds);
+        yield* advanceAll(core);
+        return done;
       case "planDiscard":
-      case "review":
-        return yield* refuse("unavailable", `${command._tag} is not in this build of crew mode`);
+        yield* planDiscard(core, command.taskIds);
+        return done;
+      case "review": {
+        const task = yield* requireTask(core, command.taskId);
+        yield* reviewTask(core, task, { verdict: command.verdict, note: command.note, by: null });
+        yield* advanceAll(core);
+        return done;
+      }
     }
   }).pipe(Effect.tap(() => core.changed));
 
@@ -299,9 +352,9 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       board: () => board(core),
       diff: (member, input) => diff(core, member, input),
       showOnDev: (member, input) => showOnDevTool(core, member, input),
-      propose: () => notYet("crew_propose"),
-      review: () => notYet("crew_review"),
-      finish: () => notYet("crew_finish"),
+      propose: (member, tasks) => proposeTool(core, member, tasks),
+      review: (member, input) => reviewCrewTool(core, member, input),
+      finish: () => finishCrewTool(core),
       memory: (member, op) => memoryTool(core, member, op),
       sessionStart: (member, event) => sessionStart(core, member, event),
       postCompact: (member, summary) => postCompact(core, member, summary),
@@ -332,7 +385,11 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     yield* Effect.flatMap(core.applied, (applied) =>
       applied === undefined
         ? Effect.void
-        : core.verify.pipe(Effect.andThen(readiness.await), Effect.andThen(boot(core))),
+        : core.verify.pipe(
+            Effect.andThen(runOnAfterRestart(core)),
+            Effect.andThen(readiness.await),
+            Effect.andThen(boot(core)),
+          ),
     ).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {
@@ -354,7 +411,9 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     const hub = yield* SubscriptionRef.make<CrewSnapshot>(yield* rebuild);
     const dirty = yield* Queue.dropping<void>(1);
     yield* Stream.merge(
-      Stream.map(core.store.changes, () => undefined),
+      Stream.map(core.store.changes, (change) => {
+        if (MIRRORED_TABLES.has(change.table)) core.memory.stateBehind = true;
+      }),
       core.signals,
     ).pipe(
       Stream.runForEach(() => Queue.offer(dirty, undefined)),

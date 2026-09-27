@@ -24,6 +24,7 @@ import {
   type CrewDevHost,
   type CrewLaneState,
   type CrewLogin,
+  type CrewRun,
   type CrewServed,
   type CrewSnapshot,
   type CrewStint,
@@ -43,6 +44,9 @@ import {
   readTaskReview,
   readTaskWait,
 } from "./crewTaskData.ts";
+
+/** How long a crewmate's question waits on the lead before the person sees it too (PRD §5.4). */
+export const QUESTION_TO_PERSON_MS = 15 * 60_000;
 
 /** What the feed sends where crew mode is not on. */
 export const CREW_OFF_SNAPSHOT: CrewSnapshot = {
@@ -141,6 +145,10 @@ export interface SnapshotRuntime {
   >;
   /** A crewmate's login as the section names it. */
   readonly logins: ReadonlyMap<string, CrewLogin>;
+  /** Crewmates' questions the lead passed on to the person. */
+  readonly escalated: ReadonlySet<string>;
+  /** The lead's own questions for the person. */
+  readonly leadQuestions: ReadonlyMap<string, { readonly text: string; readonly at: string }>;
   /** The dev services this Mate mounts: whether each reaches a database, `null` until read. */
   readonly devHosts: ReadonlyMap<string, boolean | null>;
   readonly lastError: string | null;
@@ -157,12 +165,20 @@ export const EMPTY_RUNTIME: SnapshotRuntime = {
   served: new Map(),
   integration: new Map(),
   logins: new Map(),
+  escalated: new Set(),
+  leadQuestions: new Map(),
   devHosts: new Map(),
   lastError: null,
 };
 
 export interface AppliedSnapshotInput {
   readonly seq: number;
+  /** The crew's latest run with its meters; `null` before its first. */
+  readonly run: CrewRun | null;
+  /** A running run with a lead: crewmates' questions go to the lead first. */
+  readonly leadAnswers: boolean;
+  /** The clock at this frame (ms), for how long a question has waited. */
+  readonly nowMs: number;
   /** The crew home as applied. */
   readonly definition: CrewDefinition;
   readonly briefVersion: number;
@@ -302,8 +318,9 @@ const toTask = (row: CrewAssignmentRow, input: AppliedSnapshotInput): CrewTask =
 /** One *Waiting on you* row per task that needs the person (PRD §5.5), in board order. */
 const taskAttention = (
   row: CrewAssignmentRow,
-  runtime: SnapshotRuntime,
+  input: AppliedSnapshotInput,
 ): CrewAttention | undefined => {
+  const { runtime } = input;
   const wait = readTaskWait(row.waiting);
   const attention = (
     kind: CrewAttention["kind"],
@@ -320,7 +337,12 @@ const taskAttention = (
   });
   switch (row.state) {
     case "blocked":
-      return attention("question", { text: readTaskReport(row.report)?.question ?? null });
+      // The lead takes the question first; the person sees it once the lead passes it on, or after 15 minutes.
+      return input.leadAnswers &&
+        !runtime.escalated.has(row.assignment) &&
+        input.nowMs - Date.parse(row.updatedAt) < QUESTION_TO_PERSON_MS
+        ? undefined
+        : attention("question", { text: readTaskReport(row.report)?.question ?? null });
     case "ready":
       return attention("ready-to-land");
     case "waiting-on-you":
@@ -404,6 +426,41 @@ const toCrewmate = (
   };
 };
 
+/** The lead's rows: its own questions, and its plan while tasks wait as proposed (PRD §5.4). */
+const leadAttention = (
+  input: AppliedSnapshotInput,
+  tasks: ReadonlyArray<CrewAssignmentRow>,
+): ReadonlyArray<CrewAttention> => {
+  const lead = input.members.find((row) => row.kind === "lead")?.handle ?? null;
+  const row = (
+    id: string,
+    kind: CrewAttention["kind"],
+    handle: string | null,
+    text: string | null,
+    at: string,
+  ): CrewAttention => ({ id, kind, handle, taskId: null, text, paths: [], host: null, at });
+  const proposed = tasks.filter((task) => task.state === "proposed");
+  return [
+    ...[...input.runtime.leadQuestions].map(([handle, question]) =>
+      row(`question:${handle}`, "question", handle, question.text, question.at),
+    ),
+    ...(proposed.length === 0
+      ? []
+      : [
+          row(
+            `plan:${lead ?? "crew"}`,
+            "plan",
+            lead,
+            null,
+            proposed
+              .map((task) => task.createdAt)
+              .toSorted()
+              .at(-1)!,
+          ),
+        ]),
+  ];
+};
+
 export const appliedSnapshot = (input: AppliedSnapshotInput): CrewSnapshot => {
   const rows = new Map(input.members.map((row) => [row.handle, row]));
   const ordered = [
@@ -447,9 +504,10 @@ export const appliedSnapshot = (input: AppliedSnapshotInput): CrewSnapshot => {
       };
     }),
     board: { tasks: tasks.map((row) => toTask(row, input)) },
-    run: null,
+    run: input.run,
     attention: [
-      ...tasks.flatMap((row) => taskAttention(row, input.runtime) ?? []),
+      ...tasks.flatMap((row) => taskAttention(row, input) ?? []),
+      ...leadAttention(input, tasks),
       ...claimAttention,
     ],
     devHosts: devHostsOf(input.runtime.devHosts),

@@ -8,7 +8,7 @@
  *
  * The git core reads and writes definition seq, crewmates, lanes, task
  * landings and dev-service crew ports; the crew tools Show-on-dev claims and
- * memory; the engine stints, attempts and the log. Runs are phase C's.
+ * memory; the engine stints, attempts, runs and the log.
  *
  * @module CrewStore
  */
@@ -24,6 +24,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type {
   CrewClaimState,
   CrewMemberKind,
+  CrewRunState,
   CrewTaskSource,
   CrewTaskState,
 } from "@t3tools/contracts";
@@ -220,6 +221,29 @@ export interface CrewStintRow {
   readonly retiredAt: string | null;
 }
 
+/**
+ * A run (`crew_run`, ARCHITECTURE §4 *Run*). `options` is the run dialog's
+ * choices; it and `reasonDetail` — a refusal's own words — share
+ * `options_json`, the table having no column for the words. `wallMs` is the
+ * time it ran, paused time excluded, as last recorded.
+ */
+export interface CrewRunRow {
+  readonly run: string;
+  readonly crew: string;
+  readonly startedBy: string;
+  /** `null`: *No limit*. */
+  readonly budgetUsd: number | null;
+  readonly spentUsd: number;
+  readonly options: unknown;
+  readonly reasonDetail: string | null;
+  readonly state: CrewRunState;
+  readonly reason: string | null;
+  readonly startedAt: string;
+  readonly wallMs: number;
+  readonly waitingMs: number;
+  readonly finishedAt: string | null;
+}
+
 /** One attempt at a task (`crew_attempt`): its dispatch, how it ended, what it cost. */
 export interface CrewAttemptRow {
   readonly assignment: string;
@@ -255,7 +279,8 @@ export interface CrewStoreChange {
     | "host"
     | "claim"
     | "memory"
-    | "stint";
+    | "stint"
+    | "run";
 }
 
 export interface CrewStoreService {
@@ -346,6 +371,9 @@ export interface CrewStoreService {
     assignment: string,
   ) => Effect.Effect<ReadonlyArray<CrewAttemptRow>, CrewStoreError>;
   readonly appendLog: (entry: CrewLogEntry) => Effect.Effect<void, CrewStoreError>;
+  readonly putRun: (row: CrewRunRow) => Effect.Effect<void, CrewStoreError>;
+  /** The crew's run started last, in any state. */
+  readonly latestRun: (crew: string) => Effect.Effect<Option.Option<CrewRunRow>, CrewStoreError>;
   readonly changes: Stream.Stream<CrewStoreChange>;
 }
 
@@ -362,6 +390,15 @@ interface DefinitionSqlRow extends Omit<CrewDefinitionRow, "spec"> {
 }
 
 const NullableJsonValue = Schema.NullOr(JsonValue);
+const RunOptionsJson = Schema.fromJsonString(
+  Schema.Struct({ options: Schema.Unknown, reasonDetail: Schema.NullOr(Schema.String) }),
+);
+const decodeRunOptions = Schema.decodeEffect(RunOptionsJson);
+const encodeRunOptions = Schema.encodeEffect(RunOptionsJson);
+
+interface RunSqlRow extends Omit<CrewRunRow, "options" | "reasonDetail"> {
+  readonly options: string;
+}
 const decodeNullableJson = Schema.decodeUnknownEffect(NullableJsonValue);
 const encodeNullableJson = Schema.encodeUnknownEffect(NullableJsonValue);
 const DependsOn = Schema.fromJsonString(Schema.Array(Schema.String));
@@ -1101,6 +1138,61 @@ export const make = Effect.gen(function* () {
           VALUES (${entry.crew}, ${entry.run}, ${entry.at}, ${entry.kind}, ${payload})
         `.pipe(Effect.mapError(sqlError("appendLog")));
       }),
+    putRun: (row) =>
+      Effect.gen(function* () {
+        const options = yield* decode(
+          "putRun",
+          encodeRunOptions({ options: row.options, reasonDetail: row.reasonDetail }),
+        );
+        yield* sql`
+          INSERT INTO crew_run (
+            run, crew, started_by, budget_usd, spent_usd, options_json, state, reason,
+            started_at, wall_ms, waiting_ms, finished_at
+          ) VALUES (
+            ${row.run}, ${row.crew}, ${row.startedBy}, ${row.budgetUsd}, ${row.spentUsd},
+            ${options}, ${row.state}, ${row.reason}, ${row.startedAt}, ${row.wallMs},
+            ${row.waitingMs}, ${row.finishedAt}
+          )
+          ON CONFLICT (run) DO UPDATE SET
+            budget_usd = excluded.budget_usd,
+            spent_usd = excluded.spent_usd,
+            options_json = excluded.options_json,
+            state = excluded.state,
+            reason = excluded.reason,
+            wall_ms = excluded.wall_ms,
+            waiting_ms = excluded.waiting_ms,
+            finished_at = excluded.finished_at
+        `.pipe(Effect.mapError(sqlError("putRun")));
+      }).pipe(Effect.andThen(publish({ crew: row.crew, table: "run" }))),
+    latestRun: (crew) =>
+      sql<RunSqlRow>`
+        SELECT
+          run, crew,
+          started_by AS "startedBy",
+          budget_usd AS "budgetUsd",
+          spent_usd AS "spentUsd",
+          options_json AS "options",
+          state, reason,
+          started_at AS "startedAt",
+          wall_ms AS "wallMs",
+          waiting_ms AS "waitingMs",
+          finished_at AS "finishedAt"
+        FROM crew_run
+        WHERE crew = ${crew}
+        ORDER BY started_at DESC
+        LIMIT 1
+      `.pipe(
+        Effect.mapError(sqlError("latestRun")),
+        Effect.flatMap((rows) =>
+          rows[0] === undefined
+            ? Effect.succeed(Option.none<CrewRunRow>())
+            : decode("latestRun", decodeRunOptions(rows[0].options)).pipe(
+                Effect.map(({ options, reasonDetail }) =>
+                  Option.some({ ...rows[0]!, options, reasonDetail }),
+                ),
+              ),
+        ),
+      ),
     changes: Stream.fromPubSub(changes),
   });
 });
