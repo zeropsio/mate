@@ -15,18 +15,18 @@ import { useAtomCommand } from "../state/use-atom-command";
 
 export function useAgentLoginSubmitCode(
   threadRef: ScopedThreadRef | null,
-): (agentId: ZeropsAgentId, code: string) => Promise<boolean> {
+): (agentId: ZeropsAgentId, code: string, loginId?: string) => Promise<boolean> {
   const submitCode = useAtomCommand(
     zeropsCommands.agentLoginSubmitCode,
     "zerops agent login submit code",
   );
 
   return useCallback(
-    async (agentId: ZeropsAgentId, code: string) => {
+    async (agentId: ZeropsAgentId, code: string, loginId?: string) => {
       if (threadRef === null) return false;
       const result = await submitCode({
         environmentId: threadRef.environmentId,
-        input: { agentId, code },
+        input: { agentId, code, ...(loginId === undefined ? {} : { loginId }) },
       });
       return result._tag === "Success";
     },

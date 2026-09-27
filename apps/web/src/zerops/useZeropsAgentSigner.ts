@@ -25,10 +25,15 @@
  * same write is not a real recovery, and it used to be the only one offered.
  * It is also retried on its own ({@link SIGNER_RECORD_RETRY_DELAYS_MS}), so a
  * passing network blip clears without anyone pressing anything.
+ *
+ * Every login carries its own record (D6 per login): an agent's default login
+ * under the agent id, and a login beyond the defaults (crew mode's *Runs on*)
+ * under its own id — `mate:signer:claudeAgent-work:{userId}`. That key is what
+ * every record, retry and failure here is by.
  */
 
 import type { RecordProjectRef } from "@t3tools/client-runtime/zerops/environments";
-import type { EnvironmentId, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
+import type { EnvironmentId, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import {
   useCallback,
   useContext,
@@ -55,7 +60,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
  * client remembers it for them, and forgets it the moment the snapshot says
  * the same thing.
  */
-export type LocalAgentSigners = Readonly<Partial<Record<ZeropsAgentId, string>>>;
+export type LocalAgentSigners = Readonly<Partial<Record<string, string>>>;
 
 let localAgentSigners: LocalAgentSigners = {};
 const localAgentSignerListeners = new Set<() => void>();
@@ -76,19 +81,31 @@ export function subscribeLocalAgentSigners(listener: () => void): () => void {
   };
 }
 
-export function rememberLocalAgentSigner(agentId: ZeropsAgentId, userId: string): void {
-  if (localAgentSigners[agentId] === userId) return;
-  setLocalAgentSigners({ ...localAgentSigners, [agentId]: userId });
+export function rememberLocalAgentSigner(key: string, userId: string): void {
+  if (localAgentSigners[key] === userId) return;
+  setLocalAgentSigners({ ...localAgentSigners, [key]: userId });
+}
+
+/** Every login's signer key and its record, as the snapshot carries them. */
+function recordedSigners(
+  snapshot: ZeropsAgentAuthSnapshot,
+): ReadonlyArray<readonly [string, string | undefined]> {
+  return [
+    ...snapshot.agents.map((agent) => [agent.agentId, agent.authorizedBy?.subject] as const),
+    ...(snapshot.logins ?? [])
+      .filter((login) => !login.default)
+      .map((login) => [login.id, login.signedInBy] as const),
+  ];
 }
 
 /** Forgets every entry the snapshot now carries itself: the server has caught up. */
 export function localSignersSettledBy(snapshot: ZeropsAgentAuthSnapshot): void {
-  const settled = snapshot.agents.filter(
-    (agent) => agent.authorizedBy !== undefined && localAgentSigners[agent.agentId] !== undefined,
+  const settled = recordedSigners(snapshot).filter(
+    ([key, signer]) => signer !== undefined && localAgentSigners[key] !== undefined,
   );
   if (settled.length === 0) return;
-  const next: Partial<Record<ZeropsAgentId, string>> = { ...localAgentSigners };
-  for (const agent of settled) delete next[agent.agentId];
+  const next: Partial<Record<string, string>> = { ...localAgentSigners };
+  for (const [key] of settled) delete next[key];
   setLocalAgentSigners(next);
 }
 
@@ -106,31 +123,32 @@ export function useLocalAgentSigners(): LocalAgentSigners {
  * yet, else nobody.
  */
 export function resolveAgentAuthorizer(
-  agentId: ZeropsAgentId,
+  key: string,
   authorizedBy: { readonly subject: string } | undefined,
   local: LocalAgentSigners,
 ): { readonly subject: string } | undefined {
   if (authorizedBy !== undefined) return { subject: authorizedBy.subject };
-  const subject = local[agentId];
+  const subject = local[key];
   return subject === undefined ? undefined : { subject };
 }
 
 /**
- * Which agents' signer records this person should write now: a login that
- * succeeded, that this person started, and whose record the snapshot does not
- * carry. State, not a transition — see the module header.
+ * Which logins' signer records this person should write now, by signer key: a
+ * login that succeeded, that this person started, and whose record the
+ * snapshot does not carry. State, not a transition — see the module header.
  *
  * An older server names nobody (`startedBy` absent). There the success this
  * client watched happen — a phase that was not `succeeded` in `previous`, or
- * no previous snapshot at all — is taken as this person's, as before.
+ * no previous snapshot at all — is taken as this person's, as before. A login
+ * beyond the defaults exists only on a server that names its starter.
  */
 export function agentSignersToRecord(
   snapshot: ZeropsAgentAuthSnapshot,
   viewerId: string | undefined,
   previous: ZeropsAgentAuthSnapshot | null,
-): ReadonlyArray<ZeropsAgentId> {
+): ReadonlyArray<string> {
   if (!viewerId) return [];
-  return snapshot.agents
+  const agents = snapshot.agents
     .filter((agent) => {
       if (agent.login?.phase !== "succeeded" || agent.authorizedBy?.subject === viewerId) {
         return false;
@@ -140,6 +158,16 @@ export function agentSignersToRecord(
       return before?.login?.phase !== "succeeded";
     })
     .map((agent) => agent.agentId);
+  const logins = (snapshot.logins ?? [])
+    .filter(
+      (login) =>
+        !login.default &&
+        login.login?.phase === "succeeded" &&
+        login.login.startedBy === viewerId &&
+        login.signedInBy !== viewerId,
+    )
+    .map((login) => login.id);
+  return [...agents, ...logins];
 }
 
 /** How long after a failed signer-record write it is tried again on its own. */
@@ -151,8 +179,8 @@ export interface ZeropsAgentSignerRecordState {
    * the person is signed in, but the record that lets the door — and D6 —
    * recognize them never landed. `retry` writes it again.
    */
-  readonly recordFailed: ReadonlySet<ZeropsAgentId>;
-  readonly retry: (agentId: ZeropsAgentId) => void;
+  readonly recordFailed: ReadonlySet<string>;
+  readonly retry: (key: string) => void;
 }
 
 const NO_RECORD_STATE: ZeropsAgentSignerRecordState = { recordFailed: new Set(), retry: () => {} };
@@ -200,14 +228,14 @@ export function useZeropsAgentSignerRecord(input: {
   const projectId = project?.projectId;
   const orgId = project?.orgId;
   const userId = user?.id;
-  const [recordFailed, setRecordFailed] = useState<ReadonlySet<ZeropsAgentId>>(new Set());
+  const [recordFailed, setRecordFailed] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     if (snapshot !== null) localSignersSettledBy(snapshot);
   }, [snapshot]);
 
   const writeRecord = useCallback(
-    async (agentId: ZeropsAgentId, signal: AbortSignal): Promise<boolean> => {
+    async (key: string, signal: AbortSignal): Promise<boolean> => {
       if (projectId === undefined || orgId === undefined || !userId || data === null) return false;
       try {
         // A patch the TagWriter applies to the project as it is now: a list that already names
@@ -215,15 +243,15 @@ export function useZeropsAgentSignerRecord(input: {
         await runZeropsCommand(
           data.runtime.commands.updateProjectTags(data.projectRef(orgId, projectId), {
             kind: "agent-signer",
-            agentId,
+            agentId: key,
             userId,
           }),
         );
-        rememberLocalAgentSigner(agentId, userId);
+        rememberLocalAgentSigner(key, userId);
         setRecordFailed((current) => {
-          if (!current.has(agentId)) return current;
+          if (!current.has(key)) return current;
           const next = new Set(current);
-          next.delete(agentId);
+          next.delete(key);
           return next;
         });
         return true;
@@ -232,7 +260,7 @@ export function useZeropsAgentSignerRecord(input: {
         // Surfaced (H13): the card says nobody is recorded and the agent
         // refuses the turn, and `retry` is how signing in again would have
         // fixed it anyway — offered without asking the person to sign out.
-        setRecordFailed((current) => new Set(current).add(agentId));
+        setRecordFailed((current) => new Set(current).add(key));
         return false;
       }
     },
@@ -284,33 +312,37 @@ export function useZeropsAgentSignerRecord(input: {
     }
     const previous = owner.previous;
     owner.previous = snapshot;
-    const due = agentSignersToRecord(snapshot, userId, previous).filter((agentId) => {
-      const startedAt = snapshot.agents.find((agent) => agent.agentId === agentId)?.login
-        ?.startedAt;
-      const key = `${projectId}:${agentId}:${startedAt === undefined ? "" : String(startedAt)}`;
-      if (owner.attempted.has(key)) return false;
-      owner.attempted.add(key);
+    const startedAtOf = (key: string) =>
+      (
+        snapshot.agents.find((agent) => agent.agentId === key)?.login ??
+        snapshot.logins?.find((login) => !login.default && login.id === key)?.login
+      )?.startedAt;
+    const due = agentSignersToRecord(snapshot, userId, previous).filter((key) => {
+      const startedAt = startedAtOf(key);
+      const attemptKey = `${projectId}:${key}:${startedAt === undefined ? "" : String(startedAt)}`;
+      if (owner.attempted.has(attemptKey)) return false;
+      owner.attempted.add(attemptKey);
       return true;
     });
     const { controller, timers } = owner;
-    const attempt = async (agentId: ZeropsAgentId, retriesLeft: ReadonlyArray<number>) => {
-      if (await writeRecord(agentId, controller.signal)) return;
+    const attempt = async (key: string, retriesLeft: ReadonlyArray<number>) => {
+      if (await writeRecord(key, controller.signal)) return;
       const [delay, ...rest] = retriesLeft;
       if (delay === undefined || controller.signal.aborted) return;
       const timer = window.setTimeout(() => {
         timers.delete(timer);
-        void attempt(agentId, rest);
+        void attempt(key, rest);
       }, delay);
       timers.add(timer);
     };
     void (async () => {
-      for (const agentId of due) await attempt(agentId, SIGNER_RECORD_RETRY_DELAYS_MS);
+      for (const key of due) await attempt(key, SIGNER_RECORD_RETRY_DELAYS_MS);
     })();
   }, [lifetimeOwner, projectId, snapshot, userId, writeRecord]);
 
   const retry = useCallback(
-    (agentId: ZeropsAgentId) => {
-      void writeRecord(agentId, new AbortController().signal);
+    (key: string) => {
+      void writeRecord(key, new AbortController().signal);
     },
     [writeRecord],
   );
@@ -318,12 +350,12 @@ export function useZeropsAgentSignerRecord(input: {
   // A record the project now carries for this person — another tab wrote it —
   // is no longer a failure here.
   const unsettledFailed = useMemo(() => {
-    const settled = (snapshot?.agents ?? []).filter(
-      (agent) => recordFailed.has(agent.agentId) && agent.authorizedBy?.subject === userId,
+    const settled = (snapshot === null ? [] : recordedSigners(snapshot)).filter(
+      ([key, signer]) => recordFailed.has(key) && signer === userId,
     );
     if (settled.length === 0) return recordFailed;
     const next = new Set(recordFailed);
-    for (const agent of settled) next.delete(agent.agentId);
+    for (const [key] of settled) next.delete(key);
     return next;
   }, [recordFailed, snapshot, userId]);
 

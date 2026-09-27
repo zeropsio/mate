@@ -1,8 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { ScopedThreadRef, ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
+import type { ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { CheckIcon, CopyIcon, ExternalLinkIcon, TerminalSquareIcon } from "lucide-react";
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useId, useMemo, useState, type ReactNode } from "react";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { TerminalViewport } from "~/components/ThreadTerminalDrawer";
@@ -16,6 +16,7 @@ import { useAgentLoginSubmitCode } from "~/zerops/useAgentLoginSubmitCode";
 import { ProcessSteps } from "./primitives";
 import {
   agentAcceptsCode,
+  type AgentAuthorizationSubject,
   resolveAgentAuthorizationDialog,
   resolveEffectiveAgentLogin,
   ZEROPS_AGENT_NAMES,
@@ -26,7 +27,9 @@ const COPY_FEEDBACK_DURATION_MS = 2_000;
 const NOOP = () => {};
 
 interface ZeropsAgentAuthorizationDialogSurfaceProps {
-  readonly agent: ZeropsAgentAuth;
+  readonly agent: AgentAuthorizationSubject;
+  /** What the dialog calls the login ("Claude Code · work"); its agent's name when absent. */
+  readonly title?: string | undefined;
   readonly projectName?: string | null | undefined;
   readonly terminal: ReactNode;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
@@ -42,6 +45,7 @@ interface ZeropsAgentAuthorizationDialogSurfaceProps {
 
 export function ZeropsAgentAuthorizationDialogSurface({
   agent,
+  title,
   projectName,
   terminal,
   onCancel,
@@ -49,7 +53,10 @@ export function ZeropsAgentAuthorizationDialogSurface({
   onStart,
   onSubmitCode,
 }: ZeropsAgentAuthorizationDialogSurfaceProps) {
-  const view = resolveAgentAuthorizationDialog(agent, { codeField: onSubmitCode !== undefined });
+  const view = resolveAgentAuthorizationDialog(agent, {
+    codeField: onSubmitCode !== undefined,
+    name: title,
+  });
   const login = agent.login;
 
   return (
@@ -121,6 +128,8 @@ export function ZeropsAgentAuthorizationDialogSurface({
 
 export function ZeropsAgentAuthorizationDialog({
   agent,
+  loginId,
+  title,
   open,
   projectName,
   threadRef,
@@ -128,7 +137,11 @@ export function ZeropsAgentAuthorizationDialog({
   onOpenChange,
   onStart,
 }: {
-  readonly agent: ZeropsAgentAuth;
+  readonly agent: AgentAuthorizationSubject;
+  /** A login beyond the agent's own: its code goes to that login's terminal. */
+  readonly loginId?: string | undefined;
+  /** What the dialog calls the login; its agent's name when absent. */
+  readonly title?: string | undefined;
   readonly open: boolean;
   readonly projectName?: string | null | undefined;
   readonly threadRef: ScopedThreadRef | null;
@@ -136,7 +149,11 @@ export function ZeropsAgentAuthorizationDialog({
   readonly onOpenChange: (open: boolean) => void;
   readonly onStart: (agentId: ZeropsAgentId) => void;
 }) {
-  const submitCode = useAgentLoginSubmitCode(threadRef);
+  const submitLoginCode = useAgentLoginSubmitCode(threadRef);
+  const submitCode = useCallback(
+    (agentId: ZeropsAgentId, code: string) => submitLoginCode(agentId, code, loginId),
+    [submitLoginCode, loginId],
+  );
   // An older Mate has no `zerops.agentLogin.submitCode`; missing means
   // unsupported, as for every capability.
   const codeField =
@@ -147,7 +164,7 @@ export function ZeropsAgentAuthorizationDialog({
   // "when this authorization attempt could first have started."
   const [openedAt] = useState(() => DateTime.nowUnsafe());
   const effectiveAgent = useMemo(
-    (): ZeropsAgentAuth => ({
+    (): AgentAuthorizationSubject => ({
       ...agent,
       login: resolveEffectiveAgentLogin({ login: agent.login, openedAt }),
     }),
@@ -156,14 +173,21 @@ export function ZeropsAgentAuthorizationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup
-        aria-label={`Authorize ${ZEROPS_AGENT_NAMES[agent.agentId]}`}
+        aria-label={`Authorize ${title ?? ZEROPS_AGENT_NAMES[agent.agentId]}`}
         bottomStickOnMobile={false}
         className="h-[min(1080px,calc(100dvh-3rem))] max-w-[min(1720px,calc(100vw-3rem))] overflow-hidden p-0"
       >
         <ZeropsAgentAuthorizationDialogSurface
           agent={effectiveAgent}
+          title={title}
           projectName={projectName}
-          terminal={<AgentAuthorizationTerminal agent={effectiveAgent} threadRef={threadRef} />}
+          terminal={
+            <AgentAuthorizationTerminal
+              agent={effectiveAgent}
+              threadRef={threadRef}
+              title={title}
+            />
+          }
           onCancel={onCancel}
           onClose={() => {
             onOpenChange(false);
@@ -211,7 +235,7 @@ function AgentIdentity({
   );
 }
 
-function BrowserAuthorizationCard({ agent }: { readonly agent: ZeropsAgentAuth }) {
+function BrowserAuthorizationCard({ agent }: { readonly agent: AgentAuthorizationSubject }) {
   const login = agent.login;
   if (login?.phase !== "awaiting-browser") return null;
 
@@ -342,7 +366,7 @@ function AuthorizationFooter({
   onStart,
 }: {
   readonly action: ReturnType<typeof resolveAgentAuthorizationDialog>["action"];
-  readonly agent: ZeropsAgentAuth;
+  readonly agent: AgentAuthorizationSubject;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   readonly onClose: () => void;
   readonly onStart: (agentId: ZeropsAgentId) => void;
@@ -415,9 +439,11 @@ function AuthorizationFooter({
 function AgentAuthorizationTerminal({
   agent,
   threadRef,
+  title,
 }: {
-  readonly agent: ZeropsAgentAuth;
+  readonly agent: AgentAuthorizationSubject;
   readonly threadRef: ScopedThreadRef | null;
+  readonly title?: string | undefined;
 }) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const login = agent.login;
@@ -451,7 +477,7 @@ function AgentAuthorizationTerminal({
       onSessionExited={NOOP}
       resizeEpoch={0}
       terminalId={login.terminalId}
-      terminalLabel={`${ZEROPS_AGENT_NAMES[agent.agentId]} authorization`}
+      terminalLabel={`${title ?? ZEROPS_AGENT_NAMES[agent.agentId]} authorization`}
       threadId={threadRef.threadId}
       threadRef={threadRef}
       visible

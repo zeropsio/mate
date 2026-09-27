@@ -7,6 +7,8 @@ import type {
   ZeropsAgentLoginState,
 } from "@t3tools/contracts";
 
+import type { MateLoginRow } from "@t3tools/client-runtime/zerops/logins";
+
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 
 const agent = (
@@ -789,5 +791,147 @@ describe("account actions once authorized (D6 round 5)", () => {
 
     expect(html).toContain("data-zerops-agent-sign-out-error");
     expect(html).toContain("The container could not be reached.");
+  });
+});
+
+// Crew mode's *Runs on* (PRD §4.3): the card lists logins, not two fixed
+// agents — each agent's further logins under it, whose each one is, the
+// crewmates that run on it, and *Add another login* under each agent.
+describe("logins", () => {
+  const VIEWER = "user-a";
+  const row = (overrides: Partial<MateLoginRow> & Pick<MateLoginRow, "id">): MateLoginRow => ({
+    agent: "claude-code",
+    label: "",
+    kind: "subscription",
+    default: false,
+    state: "authorized",
+    token: false,
+    title: "Claude Code",
+    crewmates: [],
+    ...overrides,
+  });
+  const agents = snapshot([
+    agent({
+      agentId: "claude-code",
+      state: "authorized",
+      providerAuth: "authenticated",
+      credPresent: true,
+      authorizedBy: { subject: VIEWER },
+    }),
+    agent({ agentId: "codex" }),
+  ]);
+  const LOGINS: ReadonlyArray<MateLoginRow> = [
+    row({ id: "claudeAgent", default: true, signedInBy: VIEWER, crewmates: ["backend"] }),
+    row({
+      id: "claudeAgent-work",
+      label: "work",
+      title: "Claude Code · work",
+      signedInBy: VIEWER,
+      crewmates: ["frontend", "erik"],
+    }),
+    row({
+      id: "claudeAgent-api-key",
+      kind: "apiKey",
+      title: "Claude API key",
+      signedInBy: VIEWER,
+    }),
+    row({
+      id: "claudeAgent-cleo",
+      label: "cleo",
+      title: "Claude Code · cleo",
+      signedInBy: "user-cleo",
+    }),
+    row({ id: "codex", agent: "codex", default: true, state: "not-authorized", title: "Codex" }),
+    row({
+      id: "codex-home",
+      agent: "codex",
+      label: "home",
+      state: "not-authorized",
+      title: "Codex · home",
+    }),
+  ];
+  const card = (props: Partial<Parameters<typeof ZeropsAgentAuthCard>[0]> = {}) =>
+    renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={agents}
+        viewerSubject={VIEWER}
+        logins={LOGINS}
+        nameOf={(userId) => (userId === "user-cleo" ? "Cleo" : undefined)}
+        onSignIn={noop}
+        onCancel={noop}
+        {...props}
+      />,
+    );
+  /** The markup of one login's row: from its id to whatever row follows it. */
+  const rowOf = (html: string, id: string) => {
+    const start = html.indexOf(`data-login-id="${id}"`);
+    if (start < 0) return "";
+    const rest = html.slice(start + 1);
+    const ends = [/data-login-id="/, /data-agent-id="/, /data-zerops-add-login=/]
+      .map((pattern) => rest.search(pattern))
+      .filter((index) => index >= 0);
+    return rest.slice(0, ends.length === 0 ? undefined : Math.min(...ends));
+  };
+
+  it("lists each agent's other logins under it, in the agent's order", () => {
+    const html = card();
+    const order = [...html.matchAll(/data-login-id="([^"]+)"/g)].map((match) => match[1]);
+    expect(order).toEqual([
+      "claudeAgent-work",
+      "claudeAgent-api-key",
+      "claudeAgent-cleo",
+      "codex-home",
+    ]);
+    expect(html.indexOf("Claude Code · work")).toBeLessThan(html.indexOf('data-agent-id="codex"'));
+  });
+
+  it("says whose each login is, and which crewmates run on it", () => {
+    const html = card();
+    expect(rowOf(html, "claudeAgent-work")).toContain("Signed in by you");
+    expect(rowOf(html, "claudeAgent-work")).toContain("Runs: frontend, erik");
+    expect(rowOf(html, "claudeAgent-api-key")).toContain("Added by you");
+    expect(rowOf(html, "codex-home")).toContain("Not signed in");
+    // The default login's crewmates ride its agent row.
+    expect(html).toContain("Runs: backend");
+  });
+
+  it("says a teammate's login serves only their crews (N9)", () => {
+    const cleo = rowOf(card(), "claudeAgent-cleo");
+    expect(cleo).toContain("Signed in by Cleo");
+    expect(cleo).toContain("Only Cleo&#x27;s crews can use it.");
+    const unnamed = rowOf(card({ nameOf: () => undefined }), "claudeAgent-cleo");
+    expect(unnamed).toContain("Signed in by another member");
+    expect(unnamed).toContain("Only their crews can use it.");
+  });
+
+  it("offers a login that is not signed in its own sign-in", () => {
+    const html = card({ onSignInLogin: noop });
+    expect(rowOf(html, "codex-home")).toContain("data-zerops-login-sign-in");
+    expect(rowOf(html, "claudeAgent-work")).not.toContain("data-zerops-login-sign-in");
+  });
+
+  it("offers your own account Sign out and Remove, and an API key only Remove", () => {
+    const html = card({ onSignOutLogin: noop, onRemoveLogin: noop });
+    expect(rowOf(html, "claudeAgent-work")).toContain("data-zerops-login-sign-out");
+    expect(rowOf(html, "claudeAgent-work")).toContain("data-zerops-login-remove");
+    expect(rowOf(html, "claudeAgent-api-key")).not.toContain("data-zerops-login-sign-out");
+    expect(rowOf(html, "claudeAgent-api-key")).toContain("data-zerops-login-remove");
+  });
+
+  it("offers Add another login under each agent only where the server keeps logins", () => {
+    expect(card({ onAddLogin: noop }).match(/data-zerops-add-login=/g)).toHaveLength(2);
+    expect(card()).not.toContain("data-zerops-add-login");
+  });
+
+  it("renders exactly as before when the server lists no logins", () => {
+    const before = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={agents}
+        viewerSubject={VIEWER}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(card({ logins: [] })).toBe(before);
   });
 });

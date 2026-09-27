@@ -9,6 +9,12 @@
  *   where the descriptor's `capabilities.agentSignOut` is true. Stops the
  *   agent's live provider sessions, runs the CLI's own logout and clears the
  *   platform flag — any client may end any agent's project sign-in.
+ * - `loginAdd` / `loginRemove` — server scope: `AuthTerminalOperateScope`;
+ *   offered only where the descriptor's `capabilities.mateLogins` is true.
+ *   Adds a login beyond the agents' defaults (crew mode's *Runs on*) — an
+ *   account signed in afterwards through `agentLoginStart` with its id, or a
+ *   Claude API key, which crosses the wire only here — or signs one out and
+ *   forgets it.
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
  * - `mateUpdate` — server scope `exec:operate`; offered only where the
  *   descriptor's `capabilities.mateUpdate` is true (spec-mate.md §2.9, MU-2).
@@ -52,6 +58,16 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsAgentLoginSignOut,
   });
 
+  const loginAdd = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:login:add",
+    tag: WS_METHODS.zeropsLoginAdd,
+  });
+
+  const loginRemove = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:login:remove",
+    tag: WS_METHODS.zeropsLoginRemove,
+  });
+
   const browserInput = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:zerops:browserInput",
     tag: WS_METHODS.zeropsBrowserInput,
@@ -79,6 +95,8 @@ export function createZeropsCommandAtoms<R, E>(
     agentLoginCancel,
     agentLoginSubmitCode,
     agentSignOut,
+    loginAdd,
+    loginRemove,
     browserInput,
     mateUpdate,
     mateCheckUpdate,

@@ -14,8 +14,20 @@
  * deciding whether the card is worth showing at all is
  * `zeropsAgentAuthNeedsAttention` (`@t3tools/client-runtime/zerops/agentLogin`), left to the
  * caller so this stays pure.
+ *
+ * Crew mode's *Runs on* (PRD §4.3) makes it a list of logins, not two fixed
+ * agents: under each agent's own row come its further logins — a second
+ * account, an API key — each saying whose it is and which crewmates run on it,
+ * then *Add another login* where the server keeps logins. Without `logins` the
+ * card is exactly the two agent rows it always was.
  */
-import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
+import type {
+  ZeropsAgentAuth,
+  ZeropsAgentAuthSnapshot,
+  ZeropsAgentId,
+  ZeropsLoginAddInput,
+  ZeropsLoginKind,
+} from "@t3tools/contracts";
 import {
   AGENT_OWNERSHIP_RETRY_RECORD_LABEL,
   agentOwnershipNeedsAttention,
@@ -24,8 +36,13 @@ import {
   type ZeropsAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 
+import { mateLoginSignerLine, type MateLoginRow } from "@t3tools/client-runtime/zerops/logins";
+import { Fragment, useId, useState } from "react";
+
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import {
   agentAuthAction,
   agentAuthLabel,
@@ -58,21 +75,22 @@ export function ZeropsAgentAuthCard({
   onSignOut,
   signOutPending,
   signOutError,
+  ...loginProps
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
   readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
-  /** Agents whose signer-record write this browser tried and watched fail (H13). */
-  readonly recordFailed?: ReadonlySet<ZeropsAgentId> | undefined;
+  /** Logins, by signer key, whose signer-record write this browser tried and watched fail (H13). */
+  readonly recordFailed?: ReadonlySet<string> | undefined;
   readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
   /** Whether the environment advertises `capabilities.agentSignOut`; absent or false hides Sign out (older servers). */
   readonly signOutSupported?: boolean | undefined;
   readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
   readonly signOutPending?: ReadonlySet<ZeropsAgentId> | undefined;
   readonly signOutError?: ReadonlyMap<ZeropsAgentId, string> | undefined;
-}) {
+} & ZeropsLoginsProps) {
   // This is where agents are managed, so it stays up as long as the feed is
   // available; the header alone stops demanding once nothing needs it.
   const needsAttention = zeropsAgentAuthNeedsAttention(snapshot);
@@ -97,15 +115,45 @@ export function ZeropsAgentAuthCard({
         signOutSupported={signOutSupported}
         snapshot={snapshot}
         viewerSubject={viewerSubject}
+        {...loginProps}
       />
     </FlatCard>
   );
 }
 
+/** No logins beyond the agent rows: a server that lists none. */
+const NO_LOGINS: ReadonlyArray<MateLoginRow> = [];
+
+/** A login's pending action and its last failure, from `useMateLogins`. */
+export interface ZeropsLoginActionStatus {
+  readonly pending: boolean;
+  readonly error: string | undefined;
+}
+
 /**
- * The rows alone — one per agent CLI — for a surface that already says why
- * they are there (an empty conversation asking for a sign-in) and needs no
- * card header repeating it.
+ * The logins beyond each agent's own (crew mode's *Runs on*). Every handler
+ * absent hides its action; `onAddLogin` absent — a server without
+ * `capabilities.mateLogins` — hides *Add another login*.
+ */
+interface ZeropsLoginsProps {
+  /** Every login, as `mateLoginRows` lists them; the defaults lend their crewmates to the agent rows. */
+  readonly logins?: ReadonlyArray<MateLoginRow> | undefined;
+  /** A signer's name, where the client knows it. */
+  readonly nameOf?: ((userId: string) => string | undefined) | undefined;
+  readonly onAddLogin?: ((input: ZeropsLoginAddInput) => void) | undefined;
+  /** Why the last add was refused. */
+  readonly addLoginError?: string | undefined;
+  readonly onSignInLogin?: ((login: MateLoginRow) => void) | undefined;
+  readonly onCancelLogin?: ((login: MateLoginRow) => void) | undefined;
+  readonly onSignOutLogin?: ((login: MateLoginRow) => void) | undefined;
+  readonly onRemoveLogin?: ((login: MateLoginRow) => void) | undefined;
+  readonly loginStatus?: ((loginId: string) => ZeropsLoginActionStatus) | undefined;
+}
+
+/**
+ * The rows alone — one per agent CLI, each followed by its further logins —
+ * for a surface that already says why they are there (an empty conversation
+ * asking for a sign-in) and needs no card header repeating it.
  */
 export function ZeropsAgentAuthRows({
   snapshot,
@@ -118,18 +166,27 @@ export function ZeropsAgentAuthRows({
   onSignOut,
   signOutPending,
   signOutError,
+  logins = NO_LOGINS,
+  nameOf,
+  onAddLogin,
+  addLoginError,
+  onSignInLogin,
+  onCancelLogin,
+  onSignOutLogin,
+  onRemoveLogin,
+  loginStatus,
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
-  readonly recordFailed?: ReadonlySet<ZeropsAgentId> | undefined;
+  readonly recordFailed?: ReadonlySet<string> | undefined;
   readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
   readonly signOutSupported?: boolean | undefined;
   readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
   readonly signOutPending?: ReadonlySet<ZeropsAgentId> | undefined;
   readonly signOutError?: ReadonlyMap<ZeropsAgentId, string> | undefined;
-}) {
+} & ZeropsLoginsProps) {
   // One authorized agent is enough to work: the other's row is then an
   // offer, not a demand (the audit run, 2026-09-17: Codex's "Action
   // required" stayed lit after Claude Code was signed in).
@@ -140,20 +197,42 @@ export function ZeropsAgentAuthRows({
   return (
     <div className="divide-y divide-border/60" data-zerops-agent-auth-rows>
       {snapshot.agents.map((agent) => (
-        <ZeropsAgentAuthRow
-          key={agent.agentId}
-          agent={agent}
-          onCancel={onCancel}
-          onRetryRecord={onRetryRecord}
-          onSignIn={onSignIn}
-          onSignOut={onSignOut}
-          quiet={anotherAuthorized(agent)}
-          recordFailed={recordFailed?.has(agent.agentId) ?? false}
-          signOutError={signOutError?.get(agent.agentId)}
-          signOutPending={signOutPending?.has(agent.agentId) ?? false}
-          signOutSupported={signOutSupported ?? false}
-          viewerSubject={viewerSubject}
-        />
+        <Fragment key={agent.agentId}>
+          <ZeropsAgentAuthRow
+            agent={agent}
+            crewmates={
+              logins.find((login) => login.default && login.agent === agent.agentId)?.crewmates
+            }
+            onCancel={onCancel}
+            onRetryRecord={onRetryRecord}
+            onSignIn={onSignIn}
+            onSignOut={onSignOut}
+            quiet={anotherAuthorized(agent)}
+            recordFailed={recordFailed?.has(agent.agentId) ?? false}
+            signOutError={signOutError?.get(agent.agentId)}
+            signOutPending={signOutPending?.has(agent.agentId) ?? false}
+            signOutSupported={signOutSupported ?? false}
+            viewerSubject={viewerSubject}
+          />
+          {logins
+            .filter((login) => !login.default && login.agent === agent.agentId)
+            .map((login) => (
+              <ZeropsLoginRow
+                key={login.id}
+                login={login}
+                nameOf={nameOf}
+                onCancel={onCancelLogin}
+                onRemove={onRemoveLogin}
+                onSignIn={onSignInLogin}
+                onSignOut={onSignOutLogin}
+                status={loginStatus?.(login.id)}
+                viewerSubject={viewerSubject}
+              />
+            ))}
+          {onAddLogin === undefined ? null : (
+            <AddLoginControl agentId={agent.agentId} error={addLoginError} onAdd={onAddLogin} />
+          )}
+        </Fragment>
       ))}
     </div>
   );
@@ -161,6 +240,7 @@ export function ZeropsAgentAuthRows({
 
 function ZeropsAgentAuthRow({
   agent,
+  crewmates,
   viewerSubject,
   quiet,
   recordFailed,
@@ -173,6 +253,8 @@ function ZeropsAgentAuthRow({
   signOutError,
 }: {
   readonly agent: ZeropsAgentAuth;
+  /** The crewmates that run on this agent's own login. */
+  readonly crewmates?: ReadonlyArray<string> | undefined;
   readonly viewerSubject?: string | undefined;
   /** Another agent is signed in, so this one's sign-in is an offer. */
   readonly quiet: boolean;
@@ -221,6 +303,7 @@ function ZeropsAgentAuthRow({
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{label}</span>
             )}
           </div>
+          <RunsOnLine crewmates={crewmates} />
         </div>
       </div>
       <div className="flex min-w-0 flex-col items-stretch gap-1.5 sm:items-end">
@@ -262,6 +345,326 @@ function ZeropsAgentAuthRow({
         )}
       </div>
     </div>
+  );
+}
+
+/** Which crewmates run on a login; nothing when none does. */
+function RunsOnLine({ crewmates }: { readonly crewmates?: ReadonlyArray<string> | undefined }) {
+  if (crewmates === undefined || crewmates.length === 0) return null;
+  return (
+    <p className="mt-0.5 text-xs leading-4 text-muted-foreground" data-zerops-login-crewmates>
+      Runs: {crewmates.join(", ")}
+    </p>
+  );
+}
+
+const LOGIN_IN_PROGRESS_PHASES: ReadonlySet<string> = new Set([
+  "starting",
+  "menu",
+  "awaiting-browser",
+  "awaiting-code",
+  "verifying-code",
+]);
+
+/** A further login's status: its login walker while one runs, else its own state. */
+function loginStatusPresentation(login: MateLoginRow): {
+  readonly label: string;
+  readonly tone: "attention" | "busy" | "failed" | "off" | "ok";
+} {
+  switch (login.login?.phase) {
+    case "starting":
+    case "menu":
+    case "verifying-code":
+      return { label: "Signing in", tone: "busy" };
+    case "awaiting-browser":
+    case "awaiting-code":
+      return { label: "Action required", tone: "attention" };
+    case "failed":
+      if (login.state !== "authorized") return { label: "Sign-in failed", tone: "failed" };
+      break;
+    default:
+      break;
+  }
+  switch (login.state) {
+    case "authorized":
+      return { label: login.kind === "apiKey" ? "Added" : "Authorized", tone: "ok" };
+    case "registering":
+      return { label: "Checking", tone: "busy" };
+    case "reconnect":
+    case "needs-reauth":
+      return { label: "Sign in again", tone: "attention" };
+    case "not-authorized":
+      return { label: login.kind === "apiKey" ? "No key" : "Not signed in", tone: "off" };
+  }
+}
+
+/**
+ * One login beyond its agent's own: whose it is, which crewmates run on it,
+ * and what can be done — sign it in, sign it out (your own account), remove
+ * it. A login somebody else signed in serves only their crews (N9).
+ */
+function ZeropsLoginRow({
+  login,
+  viewerSubject,
+  nameOf,
+  status,
+  onSignIn,
+  onCancel,
+  onSignOut,
+  onRemove,
+}: {
+  readonly login: MateLoginRow;
+  readonly viewerSubject?: string | undefined;
+  readonly nameOf?: ((userId: string) => string | undefined) | undefined;
+  readonly status?: ZeropsLoginActionStatus | undefined;
+  readonly onSignIn?: ((login: MateLoginRow) => void) | undefined;
+  readonly onCancel?: ((login: MateLoginRow) => void) | undefined;
+  readonly onSignOut?: ((login: MateLoginRow) => void) | undefined;
+  readonly onRemove?: ((login: MateLoginRow) => void) | undefined;
+}) {
+  const presentation = loginStatusPresentation(login);
+  const signer = mateLoginSignerLine(login, viewerSubject, nameOf);
+  const someoneElses = login.signedInBy !== undefined && login.signedInBy !== viewerSubject;
+  const signerName = login.signedInBy === undefined ? "" : (nameOf?.(login.signedInBy) ?? "");
+  const walking = login.login !== undefined && LOGIN_IN_PROGRESS_PHASES.has(login.login.phase);
+  const signedIn = login.state === "authorized" || login.state === "registering";
+  const pending = status?.pending ?? false;
+
+  return (
+    <div
+      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
+      data-login-id={login.id}
+      data-login-state={login.state}
+      data-zerops-login-row
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <AgentLogo agentId={login.agent} />
+        <div className="min-w-0">
+          <span className="block leading-5 font-medium text-foreground">{login.title}</span>
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <StatusDot label={presentation.label} tone={presentation.tone} />
+            {signer === presentation.label ? null : (
+              <span className="min-w-0 text-xs leading-4 text-muted-foreground">{signer}</span>
+            )}
+          </div>
+          <RunsOnLine crewmates={login.crewmates} />
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-col items-stretch gap-1.5 sm:items-end">
+        {someoneElses && signedIn ? (
+          <p className="text-xs leading-4 text-muted-foreground">
+            {signerName.trim().length === 0
+              ? "Only their crews can use it."
+              : `Only ${signerName.trim()}'s crews can use it.`}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {walking && onSignIn !== undefined ? (
+            <Button
+              data-zerops-login-sign-in
+              onClick={() => {
+                onSignIn(login);
+              }}
+              size="compact"
+              variant="pill"
+            >
+              Continue authorization
+            </Button>
+          ) : null}
+          {walking && onCancel !== undefined ? (
+            <Button
+              onClick={() => {
+                onCancel(login);
+              }}
+              size="compact"
+              variant="ghost"
+            >
+              Cancel
+            </Button>
+          ) : null}
+          {!walking && !signedIn && login.kind === "subscription" && onSignIn !== undefined ? (
+            <Button
+              data-zerops-login-sign-in
+              disabled={pending}
+              onClick={() => {
+                onSignIn(login);
+              }}
+              size="compact"
+              variant="pill"
+            >
+              Sign in
+            </Button>
+          ) : null}
+          {!walking &&
+          signedIn &&
+          login.kind === "subscription" &&
+          !someoneElses &&
+          onSignOut !== undefined ? (
+            <Button
+              data-zerops-login-sign-out
+              disabled={pending}
+              onClick={() => {
+                onSignOut(login);
+              }}
+              size="compact"
+              variant="ghost"
+            >
+              Sign out
+            </Button>
+          ) : null}
+          {onRemove === undefined ? null : (
+            <Button
+              data-zerops-login-remove
+              disabled={pending}
+              onClick={() => {
+                onRemove(login);
+              }}
+              size="compact"
+              variant="ghost"
+            >
+              {pending ? "Working…" : "Remove"}
+            </Button>
+          )}
+        </div>
+        {status?.error === undefined ? null : (
+          <p
+            className="w-full text-right text-xs leading-4 text-destructive"
+            data-zerops-login-error
+          >
+            {status.error}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * *Add another login* under an agent: for Claude a second account or an API
+ * key, for Codex a second account. An account is signed in right after it is
+ * added; a key is stored for that login alone.
+ */
+function AddLoginControl({
+  agentId,
+  error,
+  onAdd,
+}: {
+  readonly agentId: ZeropsAgentId;
+  readonly error?: string | undefined;
+  readonly onAdd: (input: ZeropsLoginAddInput) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<ZeropsLoginKind>("subscription");
+  const [label, setLabel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const labelId = useId();
+  const keyId = useId();
+  const needsKey = kind === "apiKey";
+  const ready = needsKey ? apiKey.trim().length > 0 : label.trim().length > 0;
+
+  if (!open) {
+    return (
+      <div className="px-4 py-2">
+        <Button
+          data-zerops-add-login={agentId}
+          onClick={() => {
+            setOpen(true);
+          }}
+          size="compact"
+          variant="ghost"
+        >
+          + Add another login
+        </Button>
+        {error === undefined ? null : <p className="text-xs leading-4 text-destructive">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="space-y-2 px-4 py-2.5"
+      data-zerops-add-login-form={agentId}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!ready) return;
+        onAdd({
+          agent: agentId,
+          kind,
+          label: label.trim(),
+          ...(needsKey ? { apiKey: apiKey.trim() } : {}),
+        });
+        setOpen(false);
+        setLabel("");
+        setApiKey("");
+      }}
+    >
+      {agentId === "claude-code" ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => {
+              setKind("subscription");
+            }}
+            size="compact"
+            type="button"
+            variant={kind === "subscription" ? "pill" : "outline"}
+          >
+            Another account
+          </Button>
+          <Button
+            onClick={() => {
+              setKind("apiKey");
+            }}
+            size="compact"
+            type="button"
+            variant={kind === "apiKey" ? "pill" : "outline"}
+          >
+            API key
+          </Button>
+        </div>
+      ) : null}
+      <div className="space-y-1">
+        <Label htmlFor={labelId}>{needsKey ? "Name (optional)" : "Name"}</Label>
+        <Input
+          id={labelId}
+          maxLength={32}
+          onChange={(event) => {
+            setLabel(event.target.value);
+          }}
+          placeholder="work"
+          value={label}
+        />
+      </div>
+      {needsKey ? (
+        <div className="space-y-1">
+          <Label htmlFor={keyId}>Anthropic API key</Label>
+          <Input
+            autoComplete="off"
+            id={keyId}
+            onChange={(event) => {
+              setApiKey(event.target.value);
+            }}
+            spellCheck={false}
+            type="password"
+            value={apiKey}
+          />
+        </div>
+      ) : null}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          onClick={() => {
+            setOpen(false);
+          }}
+          size="compact"
+          type="button"
+          variant="ghost"
+        >
+          Cancel
+        </Button>
+        <Button disabled={!ready} size="compact" type="submit" variant="pill">
+          {needsKey ? "Add key" : "Add and sign in"}
+        </Button>
+      </div>
+    </form>
   );
 }
 

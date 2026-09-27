@@ -15,9 +15,15 @@ import { useRightPanelStore } from "../../rightPanelStore";
  * project unread, or read and found without one — does the card stand on its
  * own under a heading. While the agent-auth feed has no snapshot, the card's
  * place says so instead of showing no agents.
+ *
+ * The card lists every login of the project (crew mode's *Runs on*): the
+ * crew feed says which crewmates run on each, and where the server keeps
+ * logins, *Add another login* adds one and signs an account in through the
+ * same dialog an agent's own login uses.
  */
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
+import { mateLoginRows } from "@t3tools/client-runtime/zerops/logins";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -28,6 +34,8 @@ import { useEnvironment } from "~/state/environments";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useAgentSignOut } from "../../zerops/useAgentSignOut";
+import { useCrew } from "../../zerops/crew/useCrew";
+import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsAgentSignerRecordState } from "../../zerops/useZeropsAgentSigner";
@@ -80,6 +88,17 @@ export function ZeropsPanel({
   const authorizationAgent = authorizationSnapshot?.agents.find(
     (agent) => agent.agentId === authorizationAgentId,
   );
+  // The logins beyond each agent's own, and the one being signed in.
+  const crew = useCrew(threadRef?.environmentId ?? null);
+  const logins = mateLoginRows(authorizationSnapshot, crew.snapshot);
+  const mateLogins = useMateLogins(threadRef?.environmentId ?? null);
+  const loginsSupported =
+    useEnvironment(threadRef?.environmentId ?? null)?.serverConfig?.environment?.capabilities
+      .mateLogins === true;
+  const [authorizationLoginId, setAuthorizationLoginId] = useState<string | null>(null);
+  const authorizationLogin = logins.find(
+    (login) => !login.default && login.id === authorizationLoginId,
+  );
   const mates = useZeropsMateDirectory();
   const activity = useZeropsAgentActivity();
   const environmentId = threadRef?.environmentId;
@@ -128,6 +147,29 @@ export function ZeropsPanel({
         signOutSupported={signOutSupported}
         snapshot={agentAuthCard}
         viewerSubject={viewerSubject}
+        logins={logins}
+        onAddLogin={
+          loginsSupported
+            ? (input) => {
+                void mateLogins.add(input).then((id) => {
+                  // An account is signed in right after it is added.
+                  if (id !== undefined && input.kind === "subscription") {
+                    setAuthorizationLoginId(id);
+                  }
+                });
+              }
+            : undefined
+        }
+        addLoginError={mateLogins.addError}
+        onSignInLogin={(login) => {
+          setAuthorizationLoginId(login.id);
+        }}
+        onCancelLogin={(login) => {
+          cancelAgentLogin(login.agent, login.id);
+        }}
+        onSignOutLogin={mateLogins.signOut}
+        onRemoveLogin={mateLogins.remove}
+        loginStatus={mateLogins.statusFor}
       />
     );
   const currentServiceId = mateIdentity?.serviceId;
@@ -200,6 +242,25 @@ export function ZeropsPanel({
             if (!open) setAuthorizationAgentId(null);
           }}
           onStart={startAgentLogin}
+          open
+          projectName={view?.project?.name ?? null}
+          threadRef={threadRef}
+        />
+      )}
+      {authorizationLogin === undefined ? null : (
+        <ZeropsAgentAuthorizationDialog
+          agent={{ agentId: authorizationLogin.agent, login: authorizationLogin.login }}
+          loginId={authorizationLogin.id}
+          title={authorizationLogin.title}
+          onCancel={(agentId) => {
+            cancelAgentLogin(agentId, authorizationLogin.id);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setAuthorizationLoginId(null);
+          }}
+          onStart={(agentId) => {
+            startAgentLogin(agentId, authorizationLogin.id);
+          }}
           open
           projectName={view?.project?.name ?? null}
           threadRef={threadRef}

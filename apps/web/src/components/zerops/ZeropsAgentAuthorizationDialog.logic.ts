@@ -38,6 +38,12 @@ export const ZEROPS_AGENT_NAMES = {
   codex: "Codex",
 } as const satisfies Record<ZeropsAgentAuth["agentId"], string>;
 
+/**
+ * What the dialog signs in: an agent's own login (its agent row), or a login
+ * beyond the defaults (crew mode's *Runs on*) — which agent, and its walker.
+ */
+export type AgentAuthorizationSubject = Pick<ZeropsAgentAuth, "agentId" | "login">;
+
 export type AgentAuthorizationDialogAction =
   | "cancel"
   | "close"
@@ -69,7 +75,7 @@ const CLAUDE_STEPS = [
   { id: "complete", label: "Complete" },
 ] as const;
 
-const activeStepFor = (agent: ZeropsAgentAuth): string => {
+const activeStepFor = (agent: AgentAuthorizationSubject): string => {
   switch (agent.login?.phase) {
     case undefined:
     case "cancelled":
@@ -98,11 +104,11 @@ const activeStepFor = (agent: ZeropsAgentAuth): string => {
  * prints its "Paste code here" prompt right under the URL, so the field is
  * there from the moment the page can be opened.
  */
-export const agentAcceptsCode = (agent: ZeropsAgentAuth): boolean =>
+export const agentAcceptsCode = (agent: AgentAuthorizationSubject): boolean =>
   agent.agentId === "claude-code" &&
   (agent.login?.phase === "awaiting-browser" || agent.login?.phase === "awaiting-code");
 
-const actionFor = (agent: ZeropsAgentAuth): AgentAuthorizationDialogAction => {
+const actionFor = (agent: AgentAuthorizationSubject): AgentAuthorizationDialogAction => {
   switch (agent.login?.phase) {
     case undefined:
     case "cancelled":
@@ -129,13 +135,15 @@ const actionFor = (agent: ZeropsAgentAuth): AgentAuthorizationDialogAction => {
  */
 export interface AgentAuthorizationDialogOptions {
   readonly codeField: boolean;
+  /** What the dialog calls the login; its agent's name when absent. */
+  readonly name?: string | undefined;
 }
 
 const descriptionFor = (
-  agent: ZeropsAgentAuth,
-  { codeField }: AgentAuthorizationDialogOptions,
+  agent: AgentAuthorizationSubject,
+  { codeField, name }: AgentAuthorizationDialogOptions,
 ): string => {
-  const agentName = ZEROPS_AGENT_NAMES[agent.agentId];
+  const agentName = name ?? ZEROPS_AGENT_NAMES[agent.agentId];
   switch (agent.login?.phase) {
     case undefined:
       return "The login command runs inside this isolated ZCP container. Start when you are ready; browser authorization remains under your control.";
@@ -165,7 +173,7 @@ const descriptionFor = (
 };
 
 const runningLabel = (
-  agent: ZeropsAgentAuth,
+  agent: AgentAuthorizationSubject,
   stepId: string,
   { codeField }: AgentAuthorizationDialogOptions,
 ): string => {
@@ -187,7 +195,7 @@ const runningLabel = (
 };
 
 export function resolveAgentAuthorizationDialog(
-  agent: ZeropsAgentAuth,
+  agent: AgentAuthorizationSubject,
   options: AgentAuthorizationDialogOptions = { codeField: true },
 ): AgentAuthorizationDialogView {
   const definitions = agent.agentId === "claude-code" ? CLAUDE_STEPS : CODEX_STEPS;
@@ -219,7 +227,7 @@ export function resolveAgentAuthorizationDialog(
   return {
     action: actionFor(agent),
     activeStepId,
-    agentName: ZEROPS_AGENT_NAMES[agent.agentId],
+    agentName: options.name ?? ZEROPS_AGENT_NAMES[agent.agentId],
     description: descriptionFor(agent, options),
     steps,
   };
