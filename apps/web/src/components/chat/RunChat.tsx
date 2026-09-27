@@ -198,7 +198,7 @@ interface ChatScrollApi {
    * opens, closes or folds — `reveal`, for what the person opened: show its
    * end too, as far as its top can stay in sight.
    */
-  readonly hold: (element: HTMLElement, reveal: boolean) => void;
+  readonly hold: (element: Element, reveal: boolean) => void;
   /** Whether the chat has been drawn once: a bubble mounting after it arrived live. */
   readonly shown: { readonly current: boolean };
 }
@@ -238,7 +238,7 @@ function ChatScroll({
   const gestureAtRef = useRef(Number.NEGATIVE_INFINITY);
   const tallestRef = useRef(0);
   const heldRef = useRef<{
-    readonly element: HTMLElement;
+    readonly element: Element;
     readonly top: number;
     readonly reveal: boolean;
   } | null>(null);
@@ -466,9 +466,8 @@ function useFold(eligible: boolean, newest: boolean): readonly [Fold, FoldWatch]
         if (entry === undefined || entry.isIntersecting || entry.rootBounds === null) return;
         // Wholly above what the person sees: folding it moves nothing in sight.
         if (entry.boundingClientRect.bottom > entry.rootBounds.top) return;
-        const row = element.closest<HTMLElement>("[data-chat-row]");
-        const below = row?.nextElementSibling;
-        if (below instanceof HTMLElement) api?.hold(below, false);
+        const below = element.closest("[data-chat-row]")?.nextElementSibling ?? null;
+        if (below !== null) api?.hold(below, false);
         setFolded(true);
       },
       { root },
@@ -693,9 +692,27 @@ function NoteWords({ message }: { readonly message: ChatMessage }) {
   );
 }
 
-/** A stretch of thinking, a paragraph at a time, the newest still coming. */
+/**
+ * A stretch of thinking. Settled, its words are read once, whole; still
+ * coming, a paragraph at a time, each keyed where it stands, so the ones
+ * written keep their place as the newest grows.
+ */
 function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const ctx = use(TimelineRowCtx);
+  if (!messages.some((message) => message.streaming)) {
+    return (
+      <div className="italic">
+        <ChatMarkdown
+          className="text-line leading-5 text-muted-foreground"
+          cwd={ctx.markdownCwd}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          skills={ctx.skills}
+          text={messages.flatMap((message) => thoughtParagraphs(message.text)).join("\n\n")}
+          threadRef={ctx.threadRef ?? undefined}
+        />
+      </div>
+    );
+  }
   const paragraphs = messages.flatMap((message) => {
     const said = thoughtParagraphs(message.text);
     return said.map((text, index) => ({
@@ -1719,6 +1736,14 @@ function ChatRow({
 }
 
 /**
+ * How many of a long run's bubbles its chat draws when it opens: the newest,
+ * where the chat opens. The ones before them wait above, a click away — a
+ * two-hour run drew nine hundred bubbles at once and froze the page for
+ * 0.7 s as it opened (Juno, 2026-09-27).
+ */
+const CHAT_OPENS_WITH = 40;
+
+/**
  * A run's chat in its card: every bubble in one scroll, and, while the Mate
  * works, its face beside what it is on at the end — the present shown once.
  */
@@ -1730,10 +1755,15 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     return line === null ? [] : [line];
   });
   if (row.live && !row.answering) lines.push(nowLine(row.now, isCompacting));
-  const firstOnSpine = lines.findIndex((line) => line.across !== true);
+  // Where the chat starts, fixed when it opens: what arrives after it only
+  // ever joins at the end, so the window grows and never slides.
+  const [from, setFrom] = useState(() => Math.max(0, lines.length - CHAT_OPENS_WITH));
+  const shown = from > 0 ? lines.slice(from) : lines;
+  const firstOnSpine = shown.findIndex((line) => line.across !== true);
   return (
     <ChatScroll label={`${ctx.speaker.name}'s work`} live={row.live}>
-      {lines.map((line, index) => (
+      {from > 0 ? <EarlierLine count={from} onShow={() => setFrom(0)} /> : null}
+      {shown.map((line, index) => (
         <ChatRow
           key={line.key}
           across={line.across === true}
@@ -1748,6 +1778,34 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         </ChatRow>
       ))}
     </ChatScroll>
+  );
+}
+
+/**
+ * The bubbles a long chat has not drawn yet, above the ones it opened with:
+ * a caption between hairlines that draws them, keeping in place what the
+ * person was reading.
+ */
+function EarlierLine({ count, onShow }: { readonly count: number; readonly onShow: () => void }) {
+  const api = use(ChatScrollContext);
+  return (
+    <li className="flex min-w-0 items-center gap-3 py-1 text-xs" data-chat-row>
+      <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
+      <button
+        className="shrink-0 cursor-pointer rounded-md px-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+        data-chat-earlier
+        data-scroll-anchor-ignore
+        onClick={(event) => {
+          const below = event.currentTarget.closest("li")?.nextElementSibling ?? null;
+          if (below !== null) api?.hold(below, false);
+          onShow();
+        }}
+        type="button"
+      >
+        {count === 1 ? "Show 1 earlier" : `Show ${count} earlier`}
+      </button>
+      <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
+    </li>
   );
 }
 

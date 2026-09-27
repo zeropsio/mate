@@ -250,6 +250,20 @@ describe("RunChat", () => {
     expect(markup).toContain(">Show all 16 lines<");
   });
 
+  // A two-hour run drew nine hundred bubbles as its conversation opened and
+  // froze the page for 0.7 s (Juno, 2026-09-27): it opens at its newest.
+  it("opens a long chat at its newest bubbles, the ones before them a click away", () => {
+    const many = Array.from({ length: 60 }, (_, index) =>
+      step(command(`w${index}`, `echo ${index}`)),
+    );
+    const markup = draw(record(many));
+    expect(bubbles(markup)).toHaveLength(40);
+    expect(markup).toContain(">Show 20 earlier<");
+    expect(markup).toContain(">echo 59<");
+    expect(markup).not.toContain(">echo 19<");
+    expect(draw(record(many.slice(0, 40)))).not.toContain("earlier<");
+  });
+
   it("opens nothing on a step that printed nothing", () => {
     const markup = draw(record([step(command("w1", "git status"))]));
     expect(markup).not.toContain("data-chat-disclose");
@@ -329,6 +343,24 @@ describe("RunChat, as the person uses it", () => {
       }),
     );
     expect(details()).toHaveLength(0);
+  });
+
+  it("draws the earlier bubbles when the person asks for them", () => {
+    const many = Array.from({ length: 50 }, (_, index) =>
+      step(command(`w${index}`, `echo ${index}`)),
+    );
+    const renderer = mount(record(many));
+    const rows = () =>
+      renderer.root.findAll(
+        (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+      );
+    expect(rows()).toHaveLength(40);
+    act(() =>
+      renderer.root
+        .find((node) => node.type === "button" && node.props["data-chat-earlier"] !== undefined)
+        .props.onClick({ currentTarget: { closest: () => null } }),
+    );
+    expect(rows()).toHaveLength(50);
   });
 
   it("unfolds a folded script in place, and folds it back", () => {
