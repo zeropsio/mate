@@ -2664,9 +2664,15 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
 }) {
   const ctx = use(TimelineRowCtx);
   const regions = useOperationCard(row.operation, ctx.activeThreadEnvironmentId);
+  // Opened from its log line, the card is its body, under the line's words.
   return (
-    <div className="min-w-0 px-1 py-0.5">
-      <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+    <div className={cn("min-w-0", row.headless ? "ps-9 pe-1 pt-0.5 pb-2" : "px-1 py-0.5")}>
+      <ZeropsOperationCard
+        headless={row.headless === true}
+        operation={row.operation}
+        threadRef={ctx.threadRef}
+        {...regions}
+      />
     </div>
   );
 });

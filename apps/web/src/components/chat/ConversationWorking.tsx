@@ -731,7 +731,8 @@ function OperationDetail({
   readonly threadRef: ScopedThreadRef | null;
 }) {
   const regions = useOperationCard(operation, environmentId);
-  return <ZeropsOperationCard operation={operation} threadRef={threadRef} {...regions} />;
+  // Its bar is its head: under it, the pipeline alone.
+  return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
 }
 
 /** A step's key: its words, and how many times the same words came before it. */
@@ -862,7 +863,7 @@ function Instruments({
             operation={operation}
           />
           {open === operation.key ? (
-            <div className="px-2 pt-1 pb-2" data-working-detail="operation">
+            <div className="ps-12 pe-2 pt-1 pb-2" data-working-detail="operation">
               <OperationDetail
                 environmentId={environmentId}
                 operation={operation}

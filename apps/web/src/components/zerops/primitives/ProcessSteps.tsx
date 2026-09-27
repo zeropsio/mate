@@ -4,6 +4,15 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 import { MicroLabel } from "./MicroLabel";
+import { StepGlyph, type StepGlyphState } from "./StepGlyph";
+
+/** A compact list's marks are every step list's: `StepGlyph`. */
+const COMPACT_GLYPH: Record<ProcessStepState, StepGlyphState> = {
+  queued: "waiting",
+  running: "running",
+  done: "done",
+  failed: "failed",
+};
 
 type ProcessStepState = "queued" | "running" | "done" | "failed";
 
@@ -18,14 +27,14 @@ type ProcessStep = Readonly<{
   durationMs?: number;
 }>;
 
-/** `4 s` under a minute, `1m` / `1m 12s` at or above it. Never negative. */
+/** `4s` under a minute, `1m` / `1m 12s` at or above it — the card's one format. Never negative. */
 function formatStepDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
-    return "0 s";
+    return "0s";
   }
   const totalSeconds = Math.round(durationMs / 1000);
   if (totalSeconds < 60) {
-    return `${totalSeconds} s`;
+    return `${totalSeconds}s`;
   }
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -110,16 +119,8 @@ function ProcessSteps({
               data-zerops-process-tone={tone}
               key={step.id}
             >
-              <Icon
-                aria-hidden="true"
-                className={cn(
-                  "size-3.5 shrink-0",
-                  glyphClassName,
-                  step.state === "running" && "animate-status-pulse motion-reduce:animate-none",
-                )}
-                data-zerops-process-icon={icon}
-              />
-              <span className="min-w-0 flex-1 text-[13px] leading-5 text-foreground">
+              <StepGlyph state={COMPACT_GLYPH[step.state]} />
+              <span className="min-w-0 flex-1 text-line leading-5 text-foreground">
                 {step.label}
                 {step.note !== undefined ? (
                   <span className="text-muted-foreground"> · {step.note}</span>
@@ -129,7 +130,7 @@ function ProcessSteps({
                 ) : null}
               </span>
               {step.durationMs !== undefined ? (
-                <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
                   {formatStepDuration(step.durationMs)}
                 </span>
               ) : null}

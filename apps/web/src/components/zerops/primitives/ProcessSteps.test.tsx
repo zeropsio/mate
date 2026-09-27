@@ -97,7 +97,7 @@ describe("ProcessSteps", () => {
       />,
     );
 
-    expect(html).toContain("4 s");
+    expect(html).toContain("4s");
     expect(html).toContain("tabular-nums");
   });
 
@@ -114,11 +114,11 @@ describe("ProcessSteps", () => {
 
 describe("formatStepDuration", () => {
   it.each([
-    [4_000, "4 s"],
-    [59_000, "59 s"],
+    [4_000, "4s"],
+    [59_000, "59s"],
     [72_000, "1m 12s"],
     [60_000, "1m"],
-    [0, "0 s"],
+    [0, "0s"],
   ])("formats %ims as %s", (durationMs, expected) => {
     expect(formatStepDuration(durationMs)).toBe(expected);
   });
@@ -161,7 +161,7 @@ describe("ProcessSteps — redundant step state words", () => {
 describe("ProcessSteps — compact density", () => {
   it.each(STATES)(
     "sets a %s step as a bare glyph with its state inline, not a ringed row",
-    (state, tone, stateLabel, iconIntent) => {
+    (state, tone, stateLabel) => {
       const html = renderToStaticMarkup(
         <ProcessSteps
           density="compact"
@@ -171,7 +171,10 @@ describe("ProcessSteps — compact density", () => {
 
       expect(html).toContain(`data-zerops-process-state="${state}"`);
       expect(html).toContain(`data-zerops-process-tone="${tone}"`);
-      expect(html).toContain(`data-zerops-process-icon="${iconIntent}"`);
+      // Every step list's marks: a ring whose inside says the state.
+      expect(html).toContain(
+        `data-step-glyph="${{ queued: "waiting", running: "running", done: "done", failed: "failed" }[state]}"`,
+      );
       expect(html).toContain('data-zerops-process-density="compact"');
       expect(html).not.toContain("border-[length:var(--zerops-process-step-border-width)]");
       expect(html).not.toContain("grid-cols-[var(--zerops-process-step-column)_1fr]");

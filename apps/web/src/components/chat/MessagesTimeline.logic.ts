@@ -568,11 +568,15 @@ type MessagesTimelineRowBody =
       isExpandedToolGroupEntry: boolean;
     }
   | {
-      /** A full operation card: a failure, or one the person opened from the log. */
+      /**
+       * An operation's card: a failure, whole, where it failed; or one the
+       * person opened from its log line — its body alone, the line its head.
+       */
       kind: "operation";
       id: string;
       createdAt: string;
       operation: ZeropsOperation;
+      headless?: boolean;
     }
   | {
       /** One strip per stretch for its browser checks: a live stage and a frame per take. */
@@ -1307,6 +1311,7 @@ function stretchContentRows(input: {
               ? [
                   {
                     kind: "operation" as const,
+                    headless: true,
                     id: `card:${op.key}`,
                     createdAt: entry.createdAt,
                     operation: op,

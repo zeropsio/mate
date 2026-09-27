@@ -20,3 +20,5 @@ export { MateFace } from "./MateFace";
 export type { MateFaceProps, MateFaceSize } from "./MateFace";
 export { VERDICT_BORDER_CLASS, VerdictPanel, VerdictPanelWaiting } from "./VerdictPanel";
 export type { VerdictPanelProps } from "./VerdictPanel";
+export { StepGlyph } from "./StepGlyph";
+export type { StepGlyphState } from "./StepGlyph";
