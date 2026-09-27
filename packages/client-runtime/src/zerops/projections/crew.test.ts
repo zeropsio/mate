@@ -226,6 +226,21 @@ describe("deriveCrewView", () => {
     expect(view.stints.has(ThreadId.make("thread-person-1"))).toBe(false);
   });
 
+  it("reads a stint the engine retired as retired, its shell loaded or not", () => {
+    const snapshot = crewSnapshotFixture();
+    const table = [
+      { name: "shell absent", shells: [] },
+      { name: "shell not archived", shells: [idle("thread-crew-backend-1")] },
+    ];
+    for (const row of table) {
+      const view = deriveCrewView(snapshot, row.shells);
+      expect([row.name, view.stints.get(ThreadId.make("thread-crew-backend-1"))?.retired]).toEqual([
+        row.name,
+        true,
+      ]);
+    }
+  });
+
   it("reads a shell's crew origin as a crew thread even when the snapshot does not list its stint", () => {
     const view = deriveCrewView(crewSnapshotFixture(), [
       idle("thread-crew-backend-9", {
