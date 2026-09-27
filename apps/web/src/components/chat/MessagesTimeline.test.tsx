@@ -1423,7 +1423,9 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     const answer = markup.slice(markup.indexOf("data-person-answer"));
-    expect(answer).toContain('data-mate-speech="said"');
+    // The question in the Mate's prose, as its answers stand: no bubble on the page.
+    expect(answer).toContain("data-mate-question");
+    expect(markup).not.toContain("data-mate-speech");
     expect(answer.indexOf("Which accent do you prefer?")).toBeLessThan(answer.indexOf("Teal"));
     // The question's short header was never the person's words.
     expect(markup).not.toContain("Accent colour");

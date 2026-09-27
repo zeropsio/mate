@@ -168,7 +168,6 @@ import {
   EventLine,
   LineMark,
   IncidentLine,
-  MateSpeech,
   MessageReceipt,
   PauseBlock,
   Seam,
@@ -1819,26 +1818,19 @@ function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "afte
 }
 
 /**
- * The Mate's words the person answered, on the page above the run's card:
- * beside its face in its bubble, as the panel said them, with the person's
- * message under them. A run's last words, with no answer after them, stand
- * after its card in the answer's hand.
+ * The Mate's words on the page, in its prose, as its answers stand: the note
+ * the person answered, above their message, and a run's last words after its
+ * card. On the page the Mate never speaks from a bubble — bubbles are the
+ * card's, where it speaks while it works (the owner, 2026-09-27, of its
+ * question in a bubble beside its face: "out of place, when it's the only
+ * place where the AI gets its own chat item bubble").
  */
 function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech" }> }) {
-  const ctx = use(TimelineRowCtx);
-  if (row.hand === "prose") {
-    return (
-      <>
-        <FoldRoom fold={row.foldsFrom} />
-        <MateProse message={row.message} showMeta />
-      </>
-    );
-  }
   return (
-    <MateSpeech speaker={ctx.speaker}>
-      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-      <NoteWords message={row.message} />
-    </MateSpeech>
+    <>
+      {row.hand === "prose" ? <FoldRoom fold={row.foldsFrom} /> : null}
+      <MateProse message={row.message} showMeta={row.hand === "prose"} />
+    </>
   );
 }
 
@@ -2124,15 +2116,13 @@ function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> 
  * the person's own bubble on their side.
  */
 function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer" }> }) {
-  const ctx = use(TimelineRowCtx);
   return (
     <div className="grid gap-3" data-person-answer>
       {row.pairs.map((pair) => (
         <Fragment key={pair.key}>
-          <MateSpeech speaker={ctx.speaker}>
-            <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-            <MateWords text={pair.question} />
-          </MateSpeech>
+          <div data-mate-question>
+            <MateProseWords at={row.createdAt} streaming={false} text={pair.question} />
+          </div>
           <div className="flex justify-end">
             <div className="max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground">
               <MessageAuthorHeading>You</MessageAuthorHeading>
@@ -2473,6 +2463,38 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
  * and no edge clips them (the owner, 2026-09-26: "placement of this utterly
  * sucks + its even cut of overflow").
  */
+/** The Mate's words in its prose hand: the answer's type, links and chips. */
+function MateProseWords({
+  text,
+  at,
+  streaming,
+}: {
+  readonly text: string;
+  /** When they were said: the moment a change chip reads its state at. */
+  readonly at: string;
+  readonly streaming: boolean;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <>
+      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
+      <ChangeChipMomentContext value={at}>
+        <ChatMarkdown
+          variant="answer"
+          text={text}
+          cwd={ctx.markdownCwd}
+          threadRef={ctx.threadRef ?? undefined}
+          isStreaming={streaming}
+          lineBreaks={shouldPreserveAssistantLineBreaks(text)}
+          skills={ctx.skills}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          onRunShellCommand={ctx.onRunShellCommand}
+        />
+      </ChangeChipMomentContext>
+    </>
+  );
+}
+
 function MateProse({
   message,
   showMeta,
@@ -2489,20 +2511,11 @@ function MateProse({
   });
   return (
     <div className="min-w-0">
-      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-      <ChangeChipMomentContext value={message.createdAt}>
-        <ChatMarkdown
-          variant="answer"
-          text={messageText}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          isStreaming={Boolean(message.streaming)}
-          lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
-          skills={ctx.skills}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onRunShellCommand={ctx.onRunShellCommand}
-        />
-      </ChangeChipMomentContext>
+      <MateProseWords
+        at={message.createdAt}
+        streaming={Boolean(message.streaming)}
+        text={messageText}
+      />
       {showMeta ? (
         <div
           className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
