@@ -5,9 +5,8 @@
  * presses: *Ask … to resolve / fix*, *Show on dev*, *Land*.
  *
  * Every press maps to one `CrewCommand`, or — for what only the Mate can do,
- * *Commit my edit* — to the ask it confirms; a person-started Show on dev has
- * no command yet, so it is not offered. `null` for a crewmate without a copy —
- * a reader or the lead.
+ * *Commit my edit* — to the ask it confirms. `null` for a crewmate without a
+ * copy — a reader or the lead.
  *
  * Pure: no clock, no I/O. Every word comes from the crew phrases.
  */
@@ -66,10 +65,16 @@ export interface CrewLaneBarModel {
     readonly ask: string;
     readonly what: string;
   } | null;
+  /**
+   * *Show on dev* (the crewmate's request and your grant at once, between its
+   * turns) or *Back to my tree* while its work is shown; nothing while another
+   * crewmate's work is, or while dev is going back.
+   */
   readonly showOnDev: {
-    readonly kind: "claimGrant" | "claimRelease";
+    readonly kind: "showOnDev" | "claimRelease";
     readonly host: string;
     readonly label: string;
+    readonly enabled: boolean;
   } | null;
   /** The blue Pill: *Land* on a ready task, *Land now* on work never reported. */
   readonly land: {
@@ -208,15 +213,27 @@ export function crewLaneBarModel(
           what: crewAttentionSentence(landingWait, snapshot),
         };
 
-  const claim = host?.claim;
-  const showOnDev: CrewLaneBarModel["showOnDev"] =
-    host === undefined || claim?.handle !== crewmate.handle
-      ? null
-      : claim.state === "requested"
-        ? { kind: "claimGrant", host: host.host, label: CREW_LANE_VERBS.showOnDev }
-        : claim.state === "starting" || claim.state === "held"
-          ? { kind: "claimRelease", host: host.host, label: CREW_LANE_VERBS.backToTree }
-          : null;
+  const showOnDev = ((): CrewLaneBarModel["showOnDev"] => {
+    if (host === undefined) return null;
+    const { state, handle } = host.claim;
+    if (state === "none" || state === "requested") {
+      return {
+        kind: "showOnDev",
+        host: host.host,
+        label: CREW_LANE_VERBS.showOnDev,
+        enabled: !row.working,
+      };
+    }
+    if ((state === "starting" || state === "held") && handle === crewmate.handle) {
+      return {
+        kind: "claimRelease",
+        host: host.host,
+        label: CREW_LANE_VERBS.backToTree,
+        enabled: true,
+      };
+    }
+    return null;
+  })();
 
   const taskId = openTask?.id ?? null;
   const land: CrewLaneBarModel["land"] =

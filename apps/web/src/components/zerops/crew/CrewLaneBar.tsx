@@ -176,9 +176,13 @@ export function CrewLaneBar({
           )}
           {model.showOnDev === null ? null : (
             <Button
-              disabled={busy}
+              disabled={busy || !model.showOnDev.enabled}
               onClick={() =>
-                void command.send({ _tag: model.showOnDev!.kind, host: model.showOnDev!.host })
+                void command.send(
+                  model.showOnDev?.kind === "claimRelease"
+                    ? { _tag: "claimRelease", host: model.showOnDev.host }
+                    : { _tag: "showOnDev", handle },
+                )
               }
               size="xs"
               variant="outline"
