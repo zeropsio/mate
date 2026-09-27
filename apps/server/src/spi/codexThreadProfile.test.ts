@@ -300,14 +300,17 @@ describe("the model a profiled Codex thread runs", () => {
 });
 
 describe("the thread and turn a profiled Codex thread starts", () => {
-  it("asks for every command and file change, without zcp's tools, with the crew's context", () => {
+  it("asks for every command and file change, without zcp's tools, with the crew's context and window", () => {
     const setup = codexThreadSetup(PROFILE);
     assert.deepStrictEqual(setup.thread, {
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
       sandbox: "workspace-write",
       developerInstructions: PROFILE.sessionContext,
-      config: { "mcp_servers.zerops.enabled": false },
+      config: {
+        "mcp_servers.zerops.enabled": false,
+        model_auto_compact_token_limit: PROFILE.contextWindow,
+      },
     });
     assert.deepStrictEqual(setup.turn, {
       approvalPolicy: "untrusted",

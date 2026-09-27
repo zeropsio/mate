@@ -82,7 +82,10 @@ const THREAD_OVERRIDES = {
   approvalsReviewer: "user",
   sandbox: "workspace-write",
   developerInstructions: PROFILE.sessionContext,
-  config: { "mcp_servers.zerops.enabled": false },
+  config: {
+    "mcp_servers.zerops.enabled": false,
+    model_auto_compact_token_limit: PROFILE.contextWindow,
+  },
 };
 
 describe("a thread with a tool profile, on the Codex adapter", () => {

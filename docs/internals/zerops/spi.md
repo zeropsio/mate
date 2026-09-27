@@ -59,8 +59,9 @@ through it would make the two directories import each other.
   asks for the thread's profile at session start and every turn (model, and effort as
   `reasoningEffort`). A thread with a profile starts and resumes with approval policy `untrusted`,
   the user as reviewer, zcp's MCP server (`zerops`, as `zcp init` registers it) off through the
-  thread's `config` overrides, not the app-server argv, and its session context as
-  `developerInstructions`; every `turn/start` carries the same
+  thread's `config` overrides, not the app-server argv, with the profile's context window as
+  `model_auto_compact_token_limit` beside it, and its session context as `developerInstructions`
+  (Codex has no spend cap, so `maxBudgetUsd` is not mapped); every `turn/start` carries the same
   policy and sandbox, so the runtime mode never restores its own. `CodexSessionRuntime.ts` answers
   that thread's approval requests from the gate and parks none for a person: a command is a `Bash`
   call `{ command }`; a patch, whose request names no file, is an `Edit` per updated or deleted
@@ -87,7 +88,7 @@ through it would make the two directories import each other.
 - **What only a live CLI settles.** That `dontAsk` plus a `PreToolUse` allow runs a tool without a
   prompt, and that `SessionStart` context reaches the model, are CLI behavior: probes 1, 2, 14 and 15. The tests pin the options the adapter hands the SDK.
   For Codex, probe 25: that the dotted `config` key turns zcp's server off for that thread alone
-  (no `zerops_*` tool listed), whether `untrusted` sends every command and patch as an approval
+  (no `zerops_*` tool listed) and the compaction limit applies, whether `untrusted` sends every command and patch as an approval
   request or runs the commands Codex holds known-safe unasked, past the gate, that the thread's
   `developerInstructions` survive each turn's collaboration-mode instructions, and that the
   read-only sandbox refuses writes in the zcp container.
