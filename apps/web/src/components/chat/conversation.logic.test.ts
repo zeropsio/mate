@@ -1,3 +1,4 @@
+import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { TimelineEntry } from "../../session-logic";
@@ -14,6 +15,7 @@ import {
   messageReceipt,
   namedToolCall,
   noteLine,
+  readCrewCard,
   readSlashCommand,
   readsAsAnswer,
   splitBatchDeploy,
@@ -93,6 +95,28 @@ describe("readSlashCommand", () => {
     ["/usr/bin is a path?", null],
   ])("%j", (text, expected) => {
     expect(readSlashCommand(text)).toEqual(expected);
+  });
+});
+
+describe("readCrewCard", () => {
+  it.each([
+    [
+      "a card: its first line titles it, the rest is its text",
+      `${CREW_CARD_OPENER}\n#12 Camera rig · from you\nDone when: the camera follows the player\n\`npm test\` passes`,
+      {
+        title: "#12 Camera rig · from you",
+        text: "Done when: the camera follows the player\n`npm test` passes",
+      },
+    ],
+    [
+      "a card with only a title",
+      `  ${CREW_CARD_OPENER}\n\n#13 Score board\n`,
+      { title: "#13 Score board", text: "" },
+    ],
+    ["the person's words", "Add the camera rig", null],
+    ["words that quote the opener", `see ${CREW_CARD_OPENER}`, null],
+  ])("%s", (_, text, expected) => {
+    expect(readCrewCard(text)).toEqual(expected);
   });
 });
 

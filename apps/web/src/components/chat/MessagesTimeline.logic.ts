@@ -26,6 +26,7 @@ import {
   isUserMessageEntry,
   messageReceipt,
   noteLine,
+  readCrewCard,
   readSlashCommand,
   readUsageLimitNotice,
   stretchFace,
@@ -35,6 +36,7 @@ import {
   timelineEntryEnd,
   type BrowserStripModel,
   type ConversationTurn,
+  type CrewCard,
   type IncidentModel,
   type MessageEntry,
   type OutcomeModel,
@@ -571,6 +573,8 @@ type MessagesTimelineRowBody =
       incident: IncidentModel;
     }
   | { kind: "event"; id: string; createdAt: string; event: ConversationEvent }
+  /** The task the server handed a crewmate: its card, never the person's bubble. */
+  | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
   | {
       /** The bottom edge of a stretch's card: nothing but the frame closing. */
       kind: "card-end";
@@ -1519,6 +1523,10 @@ export function deriveMessagesTimelineRows(
     }
   };
   const personRow = (entry: MessageEntry, index: number, aside: boolean): MessagesTimelineRow => {
+    const task = readCrewCard(entry.message.text);
+    if (task !== null) {
+      return { kind: "crew-card", id: entry.id, createdAt: entry.createdAt, task };
+    }
     if (isResumePrompt(entry.message.text)) {
       return {
         kind: "event",

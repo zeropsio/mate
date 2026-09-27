@@ -1,4 +1,5 @@
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
+import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { act, createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -642,6 +643,25 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain('class="group flex flex-row-reverse items-end gap-2"');
+  });
+
+  it("draws a crew task card with its title and text, never as the person's bubble", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          buildUserTimelineEntry(
+            `${CREW_CARD_OPENER}\n#12 Camera rig · from you\nDone when: the camera follows`,
+          ),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-timeline-row-kind="crew-card"');
+    expect(markup).toContain("#12 Camera rig · from you");
+    expect(markup).toContain("Done when: the camera follows");
+    expect(markup).not.toContain(CREW_CARD_OPENER);
+    expect(markup).not.toMatch(/rounded-2xl bg-message/);
   });
 
   it("renders collapse controls for long user messages", () => {

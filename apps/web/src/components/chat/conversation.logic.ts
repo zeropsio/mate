@@ -18,7 +18,9 @@ import { isReadOperationKind, type ZeropsOperation } from "@t3tools/client-runti
 import { workLogEntryIsToolLike, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import type { ChatMessage, TurnDiffSummary } from "../../types";
 import {
+  CREW_CARD_OPENER,
   IMAGE_ONLY_BOOTSTRAP_PROMPT,
+  isCrewCard,
   isSlashCommand,
   isUsageLimitResumePrompt,
 } from "@t3tools/shared/userAsk";
@@ -101,6 +103,21 @@ export function readSlashCommand(text: string): SlashCommand | null {
 /** The server's own message resuming a thread after a usage limit reset — never the person's. */
 export function isResumePrompt(text: string): boolean {
   return isUsageLimitResumePrompt(text);
+}
+
+/** The task the server hands a crewmate, drawn as an event — never the person's bubble. */
+export interface CrewCard {
+  /** The card's first line. */
+  readonly title: string;
+  /** Its other lines. */
+  readonly text: string;
+}
+
+/** A crew task card (`@t3tools/shared/userAsk`) split into its title and text, or null for anything else. */
+export function readCrewCard(text: string): CrewCard | null {
+  if (!isCrewCard(text)) return null;
+  const [title = "", ...rest] = text.trimStart().slice(CREW_CARD_OPENER.length).trim().split("\n");
+  return { title: title.trim(), text: rest.join("\n").trim() };
 }
 
 /** The client's own placeholder for an image-only message: nothing the person wrote. */

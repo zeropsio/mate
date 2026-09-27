@@ -11,7 +11,11 @@ import {
   shouldPreserveAssistantLineBreaks,
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
+import {
+  CREW_CARD_OPENER,
+  IMAGE_ONLY_BOOTSTRAP_PROMPT,
+  USAGE_LIMIT_RESUME_PROMPT,
+} from "@t3tools/shared/userAsk";
 import {
   assistant,
   at,
@@ -1195,6 +1199,21 @@ describe("deriveMessagesTimelineRows", () => {
       settled: "t1",
     });
     expect(list[1]).toMatchObject({ kind: "event", id: "m0", event: { type: "resumed" } });
+  });
+
+  it("draws the server's crew task card as its own row, never the person's bubble", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0, `${CREW_CARD_OPENER}\n#12 Camera rig · from you\nDone when: it follows`),
+        tool("w1", "t1", 1),
+      ],
+      settled: "t1",
+    });
+    expect(list[1]).toMatchObject({
+      kind: "crew-card",
+      id: "m0",
+      task: { title: "#12 Camera rig · from you", text: "Done when: it follows" },
+    });
   });
 
   it("shows an image-only message's images without the placeholder", () => {
