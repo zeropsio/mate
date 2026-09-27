@@ -90,6 +90,7 @@ describe("crewLaneBarModel", () => {
     readonly task: Partial<CrewTask> | null;
     readonly working?: boolean;
     readonly ahead?: number;
+    readonly dirty?: boolean;
     readonly land: CrewLaneBarModel["land"];
   }>([
     {
@@ -109,10 +110,22 @@ describe("crewLaneBarModel", () => {
       land: { kind: "land", taskId: "task-12", label: "Land", enabled: false },
     },
     {
-      name: "Land waits while nothing is ahead of your tree",
+      name: "Land waits while nothing is ahead of your tree or uncommitted in its copy",
       task: { state: "working" },
       ahead: 0,
       land: { kind: "land", taskId: "task-12", label: "Land", enabled: false },
+    },
+    {
+      name: "Land now lands changes no commit holds yet",
+      task: { state: "working" },
+      ahead: 0,
+      dirty: true,
+      land: { kind: "landNow", taskId: "task-12", label: "Land now", enabled: true },
+    },
+    {
+      name: "Land now lands a task sent back for rework",
+      task: { state: "rework" },
+      land: { kind: "landNow", taskId: "task-12", label: "Land now", enabled: true },
     },
     {
       name: "Land waits while the check runs",
@@ -124,12 +137,15 @@ describe("crewLaneBarModel", () => {
       task: null,
       land: { kind: "land", taskId: null, label: "Land", enabled: false },
     },
-  ])("$name", ({ task, working, ahead, land }) => {
+  ])("$name", ({ task, working, ahead, dirty, land }) => {
     expect(
       backend({
         task,
         ...(working === undefined ? {} : { working }),
-        ...(ahead === undefined ? {} : { lane: { ahead } }),
+        lane: {
+          ...(ahead === undefined ? {} : { ahead }),
+          ...(dirty === undefined ? {} : { dirty }),
+        },
       })?.land,
     ).toEqual(land);
   });
