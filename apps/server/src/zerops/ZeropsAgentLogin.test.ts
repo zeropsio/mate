@@ -10,6 +10,7 @@ import type {
   ZeropsAgentId,
 } from "@t3tools/contracts";
 import { ZeropsAgentLoginError } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -38,7 +39,11 @@ interface FakeTerminalManager {
   readonly writes: Ref.Ref<ReadonlyArray<WriteRecord>>;
   readonly closed: Ref.Ref<ReadonlyArray<CloseRecord>>;
   readonly opened: Ref.Ref<
-    ReadonlyArray<{ readonly threadId: string; readonly terminalId: string }>
+    ReadonlyArray<{
+      readonly threadId: string;
+      readonly terminalId: string;
+      readonly env?: Readonly<Record<string, string>>;
+    }>
   >;
   /** Delivers one `output` chunk to whatever session is currently attached to (threadId, terminalId). A no-op if nothing is attached. */
   readonly emit: (threadId: string, terminalId: string, data: string) => Effect.Effect<void>;
@@ -79,14 +84,24 @@ const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
   Effect.gen(function* () {
     const writes = yield* Ref.make<ReadonlyArray<WriteRecord>>([]);
     const closed = yield* Ref.make<ReadonlyArray<CloseRecord>>([]);
-    const opened = yield* Ref.make<ReadonlyArray<{ threadId: string; terminalId: string }>>([]);
+    const opened = yield* Ref.make<
+      ReadonlyArray<{
+        threadId: string;
+        terminalId: string;
+        env?: Readonly<Record<string, string>>;
+      }>
+    >([]);
     const listeners = new Map<string, (event: TerminalAttachStreamEvent) => Effect.Effect<void>>();
 
     const service: TerminalManagerService = {
       open: (input: TerminalOpenInput) =>
         Ref.update(opened, (all) => [
           ...all,
-          { threadId: input.threadId, terminalId: input.terminalId },
+          {
+            threadId: input.threadId,
+            terminalId: input.terminalId,
+            ...(input.env === undefined ? {} : { env: input.env }),
+          },
         ]).pipe(Effect.as(fakeSnapshot(input))),
       write: (input: TerminalWriteInput) =>
         Ref.update(writes, (all) => [
@@ -764,4 +779,153 @@ it.effect("submitCode is refused when no login waits for a code", () =>
       assert.isFalse(writes.some((write) => write.data.includes("abc#def")));
     }),
   ),
+);
+
+// Crew mode's *Runs on*: a login beyond the two defaults signs in through the
+// same walker, in its own terminal, with its own home in the environment.
+const WORK = {
+  id: "claudeAgent-work",
+  env: { CLAUDE_CONFIG_DIR: "/home/zerops/.mate/logins/claudeAgent-work" },
+};
+
+const makeWithLogins = Effect.gen(function* () {
+  const fakeTerminal = yield* makeFakeTerminalManager();
+  const fakeAuth = yield* makeFakeAuth();
+  const loginChecks = yield* Ref.make<ReadonlyArray<string>>([]);
+  const feed = yield* ZeropsAgentLoginModule.make({
+    terminalManager: fakeTerminal.service,
+    zeropsAgentAuth: fakeAuth,
+    zeropsLogins: { recheckNow: (id) => Ref.update(loginChecks, (all) => [...all, id]) },
+    isZeropsEnvironment: true,
+  });
+  return { fakeTerminal, fakeAuth, loginChecks, feed };
+});
+
+it.effect("another login signs in in its own terminal, with its own home in the environment", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { fakeTerminal, feed } = yield* makeWithLogins;
+
+      const result = yield* feed.start("claude-code", "thread-1", "user-test", WORK);
+
+      assert.equal(result.terminalId, "agent-login-claudeAgent-work");
+      assert.deepEqual(yield* Ref.get(fakeTerminal.opened), [
+        { threadId: "thread-1", terminalId: "agent-login-claudeAgent-work", env: WORK.env },
+      ]);
+      assert.equal((yield* Ref.get(fakeTerminal.writes))[0]?.data, "claude /login; exit\r");
+      const logins = yield* feed.latest;
+      assert.equal(logins[WORK.id]?.phase, "menu");
+      assert.isUndefined(logins["claude-code"]);
+    }),
+  ),
+);
+
+it.effect("another login's success asks that login's own check, never its agent's", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { fakeTerminal, fakeAuth, loginChecks, feed } = yield* makeWithLogins;
+      yield* feed.start("claude-code", "thread-1", "user-test", WORK);
+
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-claudeAgent-work",
+        "Login successful. Press Enter to continue…\n",
+      );
+
+      assert.equal((yield* feed.latest)[WORK.id]?.phase, "succeeded");
+      assert.deepEqual(yield* Ref.get(loginChecks), [WORK.id]);
+      assert.deepEqual(yield* Ref.get(fakeAuth.calls), []);
+    }),
+  ),
+);
+
+it.effect("an agent's default login and another of its logins sign in side by side", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { fakeTerminal, feed } = yield* makeWithLogins;
+      yield* feed.start("claude-code", "thread-1", "user-test");
+      yield* feed.start("claude-code", "thread-1", "user-test", WORK);
+      assert.lengthOf(yield* Ref.get(fakeTerminal.opened), 2);
+
+      yield* feed.cancel("claude-code", WORK.id);
+
+      const logins = yield* feed.latest;
+      assert.equal(logins[WORK.id]?.phase, "cancelled");
+      assert.equal(logins["claude-code"]?.phase, "menu");
+    }),
+  ),
+);
+
+it.effect("submitCode with a login id types into that login's terminal", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { fakeTerminal, feed } = yield* makeWithLogins;
+      yield* feed.start("claude-code", "thread-1", "user-test", WORK);
+      yield* fakeTerminal.emit("thread-1", "agent-login-claudeAgent-work", CLAUDE_URL_SCREEN);
+      const before = (yield* Ref.get(fakeTerminal.writes)).length;
+
+      const submit = yield* feed
+        .submitCode("claude-code", "abc123#state", WORK.id)
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("100 millis");
+      yield* Fiber.join(submit);
+
+      const writes = (yield* Ref.get(fakeTerminal.writes)).slice(before);
+      assert.deepEqual(
+        writes.map((write) => [write.terminalId, write.data]),
+        [
+          ["agent-login-claudeAgent-work", "abc123#state"],
+          ["agent-login-claudeAgent-work", "\r"],
+        ],
+      );
+    }),
+  ),
+);
+
+// The one snapshot `subscribeZeropsAgentAuth` sends: the agent rows as before,
+// and every login — each with its own walker state, never another's.
+it.effect("combines the agent rows, every login, and each login's own walker state", () =>
+  Effect.gen(function* () {
+    const walking = {
+      phase: "menu",
+      terminalId: "agent-login-claudeAgent-work",
+      startedAt: yield* DateTime.now,
+    } as const;
+    const combined = ZeropsAgentLoginModule.combineAgentAuth(
+      {
+        available: true,
+        agents: [
+          {
+            agentId: "claude-code",
+            credPresent: true,
+            flagOAuth: true,
+            flagToken: false,
+            providerAuth: "authenticated",
+            state: "authorized",
+          },
+        ],
+      },
+      [
+        {
+          id: "claudeAgent-work",
+          agent: "claude-code",
+          label: "work",
+          kind: "subscription",
+          default: false,
+          state: "not-authorized",
+          token: false,
+        },
+      ],
+      { "claude-code": undefined, "claudeAgent-work": walking },
+    );
+
+    assert.isUndefined(combined.agents[0]?.login);
+    assert.deepEqual(
+      combined.logins?.map((login) => [login.id, login.login?.phase]),
+      [
+        ["claudeAgent", undefined],
+        ["claudeAgent-work", "menu"],
+      ],
+    );
+  }),
 );

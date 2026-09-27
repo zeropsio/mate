@@ -1,7 +1,8 @@
 /**
  * Registers the Zerops feed RPCs (`zerops.lifecycle.get`,
  * `zerops.agentLogin.start`/`cancel`/`submitCode`/`signOut`,
- * `subscribeZeropsLifecycle`, `subscribeZeropsAgentAuth`) — pulled out of the
+ * `zerops.login.add`/`remove`, `subscribeZeropsLifecycle`,
+ * `subscribeZeropsAgentAuth`) — pulled out of the
  * giant `WsRpcGroup.of({...})` literal in `ws.ts` so the zone owns its own
  * RPC wiring (audit C4). Same handlers, same instrumentation, same scopes —
  * `auth/RpcAuthorization.ts` still owns the scope table, unchanged. S8b adds
@@ -11,6 +12,7 @@ import {
   AuthExecOperateScope,
   WS_METHODS,
   EnvironmentAuthorizationError,
+  ZeropsAgentLoginError,
   ZeropsMateUpdateError,
   type WsRpcGroup,
   type ZeropsAgentId,
@@ -29,6 +31,8 @@ import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import type * as ZeropsLoginSignOutModule from "./ZeropsLoginSignOut.ts";
+import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 
 type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsLifecycleGet
@@ -36,6 +40,8 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsAgentLoginCancel
   | typeof WS_METHODS.zeropsAgentLoginSubmitCode
   | typeof WS_METHODS.zeropsAgentLoginSignOut
+  | typeof WS_METHODS.zeropsLoginAdd
+  | typeof WS_METHODS.zeropsLoginRemove
   | typeof WS_METHODS.subscribeZeropsLifecycle
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsBrowserStream
@@ -71,6 +77,10 @@ export interface RegisterZeropsRpcDeps {
    * catches its own dispatch/read errors before handing this in.
    */
   readonly stopAgentSessions: (agentId: ZeropsAgentId) => Effect.Effect<void>;
+  readonly zeropsLogins: ZeropsLoginsModule.ZeropsLogins["Service"];
+  readonly zeropsLoginSignOut: ZeropsLoginSignOutModule.ZeropsLoginSignOut["Service"];
+  /** {@link stopAgentSessions} for a login beyond the defaults, by its id. */
+  readonly stopLoginSessions: (loginId: string) => Effect.Effect<void>;
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
   readonly zeropsCli: ZeropsCli["Service"];
   readonly zeropsMateUpdate: ZeropsMateUpdate["Service"];
@@ -169,7 +179,34 @@ export const runZeropsMateCheckUpdate = (
     return result ?? null;
   });
 
-/** Registers the six Zerops feed RPCs. Called once from `ws.ts`. */
+/**
+ * What a login-targeted `zerops.agentLogin.start` signs in: the login beyond
+ * the defaults under `loginId`, an account of `agentId` — never an API key,
+ * which has nothing to sign in, and never another agent's login.
+ */
+export const resolveLoginTarget = (
+  zeropsLogins: Pick<ZeropsLoginsModule.ZeropsLogins["Service"], "resolve">,
+  agentId: ZeropsAgentId,
+  loginId: string,
+) =>
+  Effect.gen(function* () {
+    const login = yield* zeropsLogins.resolve(loginId);
+    if (login === undefined || login.agent !== agentId) {
+      return yield* new ZeropsAgentLoginError({
+        reason: "unknown-login",
+        detail: "No such login of this agent on this project.",
+      });
+    }
+    if (login.kind === "apiKey") {
+      return yield* new ZeropsAgentLoginError({
+        reason: "invalid-login",
+        detail: "An API key login has nothing to sign in.",
+      });
+    }
+    return { id: login.id, env: ZeropsLoginsModule.mateLoginEnvironment(login) };
+  });
+
+/** Registers the Zerops feed RPCs. Called once from `ws.ts`. */
 export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandlers => {
   const {
     zeropsLifecycle,
@@ -177,6 +214,9 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsAgentLogin,
     zeropsAgentSignOut,
     stopAgentSessions,
+    zeropsLogins,
+    zeropsLoginSignOut,
+    stopLoginSessions,
     zeropsBrowserStream,
     zeropsDataConsole,
     zeropsGitRemoteProbe,
@@ -193,25 +233,49 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.zeropsAgentLoginStart]: (input) =>
       observeRpcEffect(
         WS_METHODS.zeropsAgentLoginStart,
-        zeropsAgentLogin.start(input.agentId, input.threadId, subject),
+        input.loginId === undefined
+          ? zeropsAgentLogin.start(input.agentId, input.threadId, subject)
+          : resolveLoginTarget(zeropsLogins, input.agentId, input.loginId).pipe(
+              Effect.flatMap((login) =>
+                zeropsAgentLogin.start(input.agentId, input.threadId, subject, login),
+              ),
+            ),
         { "rpc.aggregate": "zerops" },
       ),
     [WS_METHODS.zeropsAgentLoginCancel]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsAgentLoginCancel, zeropsAgentLogin.cancel(input.agentId), {
-        "rpc.aggregate": "zerops",
-      }),
+      observeRpcEffect(
+        WS_METHODS.zeropsAgentLoginCancel,
+        zeropsAgentLogin.cancel(input.agentId, input.loginId),
+        { "rpc.aggregate": "zerops" },
+      ),
     // The code rides only into the login terminal: no span attribute or log
     // line here names it.
     [WS_METHODS.zeropsAgentLoginSubmitCode]: (input) =>
       observeRpcEffect(
         WS_METHODS.zeropsAgentLoginSubmitCode,
-        zeropsAgentLogin.submitCode(input.agentId, input.code),
+        zeropsAgentLogin.submitCode(input.agentId, input.code, input.loginId),
         { "rpc.aggregate": "zerops" },
       ),
-    [WS_METHODS.zeropsAgentLoginSignOut]: (input) =>
-      observeRpcEffect(
+    [WS_METHODS.zeropsAgentLoginSignOut]: (input) => {
+      const loginId = input.loginId;
+      return observeRpcEffect(
         WS_METHODS.zeropsAgentLoginSignOut,
-        zeropsAgentSignOut.signOut(input.agentId, () => stopAgentSessions(input.agentId)),
+        loginId === undefined
+          ? zeropsAgentSignOut.signOut(input.agentId, () => stopAgentSessions(input.agentId))
+          : zeropsLoginSignOut.signOut(loginId, () => stopLoginSessions(loginId)),
+        { "rpc.aggregate": "zerops" },
+      );
+    },
+    // The API key rides only into the settings' secret store: no span
+    // attribute or log line here names it.
+    [WS_METHODS.zeropsLoginAdd]: (input) =>
+      observeRpcEffect(WS_METHODS.zeropsLoginAdd, zeropsLogins.add(input), {
+        "rpc.aggregate": "zerops",
+      }),
+    [WS_METHODS.zeropsLoginRemove]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.zeropsLoginRemove,
+        zeropsLoginSignOut.remove(input.id, () => stopLoginSessions(input.id)),
         { "rpc.aggregate": "zerops" },
       ),
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>
@@ -228,31 +292,41 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       observeRpcStream(
         WS_METHODS.subscribeZeropsAgentAuth,
         // Merges `ZeropsAgentAuth`'s snapshot with `ZeropsAgentLogin`'s
-        // per-agent login state (S7 follow-up F8) into the ONE stream the
-        // client reads. Subscribing to both FIRST (each returning its own
-        // value-at-subscribe-time bundled with a live change stream — the
-        // same subscribe-before-snapshot race the two feeds' own `subscribe`
-        // already guards against) avoids a gap between reading an initial
-        // value and starting to listen; a later change from EITHER source
-        // re-reads both feeds' `latest` fresh rather than trusting a stale
-        // captured value, since a `Stream.merge`'d change only tells us
-        // SOMETHING moved, not which side.
+        // per-login state (S7 follow-up F8) and `ZeropsLogins`' logins beyond
+        // the defaults into the ONE stream the client reads. Subscribing to
+        // all three FIRST (each returning its own value-at-subscribe-time
+        // bundled with a live change stream — the same subscribe-before-
+        // snapshot race the feeds' own `subscribe` already guards against)
+        // avoids a gap between reading an initial value and starting to
+        // listen; a later change from ANY source re-reads every feed's
+        // `latest` fresh rather than trusting a stale captured value, since a
+        // `Stream.merge`'d change only tells us SOMETHING moved, not which.
         Stream.unwrap(
           Effect.gen(function* () {
             const authSub = yield* zeropsAgentAuth.subscribe;
             const loginSub = yield* zeropsAgentLogin.subscribe;
-            const recombine = Effect.zip(zeropsAgentAuth.latest, zeropsAgentLogin.latest).pipe(
-              Effect.map(([snapshot, logins]) =>
-                ZeropsAgentLoginModule.mergeAgentAuthLogin(snapshot, logins),
+            const extrasSub = yield* zeropsLogins.subscribe;
+            const recombine = Effect.all([
+              zeropsAgentAuth.latest,
+              zeropsLogins.latest,
+              zeropsAgentLogin.latest,
+            ]).pipe(
+              Effect.map(([snapshot, extras, logins]) =>
+                ZeropsAgentLoginModule.combineAgentAuth(snapshot, extras, logins),
               ),
             );
-            const initial = ZeropsAgentLoginModule.mergeAgentAuthLogin(
+            const initial = ZeropsAgentLoginModule.combineAgentAuth(
               authSub.latest,
+              extrasSub.latest,
               loginSub.latest,
             );
-            const changes = Stream.merge(
-              Stream.map(authSub.changes, () => undefined),
-              Stream.map(loginSub.changes, () => undefined),
+            const changes = Stream.mergeAll(
+              [
+                Stream.map(authSub.changes, () => undefined),
+                Stream.map(loginSub.changes, () => undefined),
+                Stream.map(extrasSub.changes, () => undefined),
+              ],
+              { concurrency: "unbounded" },
             ).pipe(Stream.mapEffect(() => recombine));
             return Stream.concat(Stream.make(initial), changes);
           }),
