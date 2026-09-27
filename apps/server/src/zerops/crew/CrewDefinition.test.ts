@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import {
+  crewHomeDir,
+  crewLane,
   parseCrewHome,
   renderCrewHome,
   validateCrewTopology,
@@ -301,5 +303,22 @@ describe("validateCrewTopology", () => {
     expect(issues.map((issue) => [issue.code, issue.handle])).toEqual(
       codes.map((code) => [code, "backend"]),
     );
+  });
+});
+
+describe("crew paths", () => {
+  it("puts the crew home under the workspace root and a lane in its service's tree", () => {
+    expect(crewHomeDir("/var/www/", "game")).toBe("/var/www/.mate/crew/game");
+    expect(
+      crewLane({ host: "appdev", mountPath: "/var/www/appdev", remotePath: "/var/www" }, "backend"),
+    ).toEqual({
+      host: "appdev",
+      handle: "backend",
+      branch: "crew/backend",
+      mountRoot: "/var/www/appdev",
+      mountDir: "/var/www/appdev/.crew/backend",
+      remoteRoot: "/var/www",
+      remoteDir: "/var/www/.crew/backend",
+    });
   });
 });

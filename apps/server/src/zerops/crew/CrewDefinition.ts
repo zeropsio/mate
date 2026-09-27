@@ -56,6 +56,14 @@
  * decisions` (kept as written) and `## Done when` (one item per non-empty line,
  * list markers dropped). The whole file is the brief's text.
  *
+ * ## A writer's copy of the code
+ *
+ * A writer's lane is branch `crew/<handle>` checked out in `.crew/<handle>`
+ * inside its service's tree (PRD Δ11): `<remotePath>/.crew/<handle>` on the
+ * service, `<mountPath>/.crew/<handle>` through the zcp container's mount.
+ * `crewLane` derives both from the service's `ZeropsRepository`, never from a
+ * literal `/var/www`.
+ *
  * ## Validation
  *
  * `parseCrewHome` reports what the files alone can tell (shape, handles, at
@@ -70,6 +78,8 @@ import { CREW_HANDLE_PATTERN, type CrewHandle, type CrewMemberKind } from "@t3to
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
+import type { ZeropsRepository } from "../ZeropsRepositorySource.ts";
+
 export const CREW_HOME_FILE = "crew.yaml";
 export const CREW_BRIEF_FILE = "brief.md";
 export const CREW_BRIEF_MAX_CHARS = 16_000;
@@ -81,6 +91,32 @@ export const crewJobFile = (handle: string): string => `jobs/${handle}.md`;
 /** The crew home directory for crew `crew` under the zcp container's workspace root. */
 export const crewHomeDir = (workspaceRoot: string, crew: string): string =>
   `${workspaceRoot.replace(/\/+$/u, "")}/.mate/crew/${crew}`;
+
+/** A writer's copy of the code, in both of the paths that reach it. */
+export interface CrewLane {
+  readonly host: string;
+  readonly handle: string;
+  readonly branch: string;
+  /** The service's tree through the zcp container's mount (`/var/www/<host>`). */
+  readonly mountRoot: string;
+  readonly mountDir: string;
+  /** The service's tree on the service itself (`/var/www`). */
+  readonly remoteRoot: string;
+  readonly remoteDir: string;
+}
+
+export const crewLane = (
+  repository: Pick<ZeropsRepository, "host" | "mountPath" | "remotePath">,
+  handle: string,
+): CrewLane => ({
+  host: repository.host,
+  handle,
+  branch: `crew/${handle}`,
+  mountRoot: repository.mountPath,
+  mountDir: `${repository.mountPath}/.crew/${handle}`,
+  remoteRoot: repository.remotePath,
+  remoteDir: `${repository.remotePath}/.crew/${handle}`,
+});
 
 export interface CrewHomeFile {
   readonly path: string;
