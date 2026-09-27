@@ -406,7 +406,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           runtimeMode: command.runtimeMode,
           interactionMode: command.interactionMode,
           branch: command.branch,
-          worktreePath: (yield* zeropsPolicy).worktreesAllowed ? command.worktreePath : null,
+          // A crewmate's conversation runs in its copy of the code even where
+          // a person may make no worktree (ZeropsPolicy).
+          worktreePath:
+            command.type === "thread.crew.create" || (yield* zeropsPolicy).worktreesAllowed
+              ? command.worktreePath
+              : null,
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
           ...(command.type === "thread.crew.create" ? { crew: command.crew } : {}),
@@ -1030,7 +1035,10 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(branch !== undefined ? { branch } : {}),
           ...(command.worktreePath !== undefined
             ? {
-                worktreePath: (yield* zeropsPolicy).worktreesAllowed ? command.worktreePath : null,
+                worktreePath:
+                  thread.crew !== undefined || (yield* zeropsPolicy).worktreesAllowed
+                    ? command.worktreePath
+                    : null,
               }
             : {}),
           ...(command.linkedPullRequest !== undefined

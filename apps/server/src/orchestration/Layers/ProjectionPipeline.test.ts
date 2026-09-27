@@ -3681,6 +3681,62 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
     }),
   );
 
+  it.effect("stores a crew thread's copy as its worktree, from creation and from a repair", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const lane = "/var/www/appdev/.crew/backend";
+      let sequence = 0;
+      const project = (threadId: ThreadId, event: Record<string, unknown>) => {
+        sequence += 1;
+        return eventStore
+          .append({
+            eventId: EventId.make(`evt-crew-worktree-${sequence}`),
+            aggregateKind: "thread",
+            aggregateId: threadId,
+            occurredAt: "2026-09-28T08:00:00.000Z",
+            commandId: CommandId.make(`cmd-crew-worktree-${sequence}`),
+            causationEventId: null,
+            correlationId: null,
+            metadata: {},
+            ...event,
+          } as Parameters<typeof eventStore.append>[0])
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+      };
+      const created = (threadId: ThreadId, worktreePath: string | null) => ({
+        type: "thread.created",
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-crew-worktree"),
+          title: "backend",
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath,
+          createdAt: "2026-09-28T08:00:00.000Z",
+          updatedAt: "2026-09-28T08:00:00.000Z",
+          crew: { crew: "main", crewmate: "backend", stint: 1 },
+        },
+      });
+      const readWorktree = (threadId: ThreadId) =>
+        sql<{ readonly worktreePath: string | null }>`
+          SELECT worktree_path AS "worktreePath" FROM projection_threads WHERE thread_id = ${threadId}
+        `.pipe(Effect.map((rows) => rows.map((row) => row.worktreePath)));
+
+      const fresh = ThreadId.make("thread-crew-worktree-fresh");
+      const old = ThreadId.make("thread-crew-worktree-old");
+      yield* project(fresh, created(fresh, lane));
+      yield* project(old, created(old, null));
+      yield* project(old, {
+        type: "thread.meta-updated",
+        payload: { threadId: old, worktreePath: lane, updatedAt: "2026-09-28T09:00:00.000Z" },
+      });
+      assert.deepEqual([yield* readWorktree(fresh), yield* readWorktree(old)], [[lane], [lane]]);
+    }),
+  );
+
   it.effect("restores pending approvals when a provider reply fails", () =>
     Effect.gen(function* () {
       const projectionPipeline = yield* OrchestrationProjectionPipeline;
