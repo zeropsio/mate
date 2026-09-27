@@ -1,0 +1,135 @@
+[
+  {
+    "scenario": "full-access, no cwd, no model",
+    "queryOptions": {
+      "pathToClaudeCodeExecutable": "claude",
+      "systemPrompt": {
+        "type": "preset",
+        "preset": "claude_code",
+        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]"
+      },
+      "settingSources": ["user", "project", "local"],
+      "thinking": {
+        "type": "adaptive",
+        "display": "summarized"
+      },
+      "permissionMode": "bypassPermissions",
+      "allowDangerouslySkipPermissions": true,
+      "settings": {
+        "showThinkingSummaries": true
+      },
+      "sessionId": "session-0",
+      "includePartialMessages": true,
+      "canUseTool": "[function]",
+      "onUserDialog": "[function]",
+      "supportedDialogKinds": ["resume_return"],
+      "env": {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/home/harness"
+      },
+      "additionalDirectories": ["/tmp/userdata/attachments"],
+      "extraArgs": {
+        "thinking-display": "summarized"
+      }
+    },
+    "sessionConfigured": {
+      "config": {
+        "permissionMode": "bypassPermissions"
+      }
+    },
+    "setModelCalls": [],
+    "setPermissionModeCalls": ["bypassPermissions", "plan"]
+  },
+  {
+    "scenario": "approval-required, cwd, model with effort and fast mode, resumed",
+    "queryOptions": {
+      "cwd": "/srv/app",
+      "model": "claude-synthetic-capable",
+      "pathToClaudeCodeExecutable": "claude",
+      "systemPrompt": {
+        "type": "preset",
+        "preset": "claude_code",
+        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]"
+      },
+      "settingSources": ["user", "project", "local"],
+      "effort": "max",
+      "thinking": {
+        "type": "adaptive",
+        "display": "summarized"
+      },
+      "settings": {
+        "showThinkingSummaries": true,
+        "fastMode": true
+      },
+      "resume": "5d9f1c3a-7b2e-4c8d-9a1f-3e6b8c0d2f47",
+      "includePartialMessages": true,
+      "canUseTool": "[function]",
+      "onUserDialog": "[function]",
+      "supportedDialogKinds": ["resume_return"],
+      "env": {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/home/harness"
+      },
+      "additionalDirectories": ["/srv/app", "/tmp/userdata/attachments"],
+      "extraArgs": {
+        "thinking-display": "summarized"
+      }
+    },
+    "sessionConfigured": {
+      "config": {
+        "model": "claude-synthetic-capable",
+        "cwd": "/srv/app",
+        "effort": "max",
+        "fastMode": true
+      }
+    },
+    "setModelCalls": [],
+    "setPermissionModeCalls": ["default", "plan"]
+  },
+  {
+    "scenario": "auto-accept-edits, launch-arg permission mode, auto-compact window, thinking",
+    "queryOptions": {
+      "cwd": "/srv/app",
+      "model": "claude-synthetic-thinking",
+      "pathToClaudeCodeExecutable": "claude",
+      "systemPrompt": {
+        "type": "preset",
+        "preset": "claude_code",
+        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]"
+      },
+      "settingSources": ["user", "project", "local"],
+      "thinking": {
+        "type": "adaptive",
+        "display": "summarized"
+      },
+      "permissionMode": "acceptEdits",
+      "settings": {
+        "alwaysThinkingEnabled": true,
+        "showThinkingSummaries": true,
+        "autoCompactWindow": 400000
+      },
+      "sessionId": "session-1",
+      "includePartialMessages": true,
+      "canUseTool": "[function]",
+      "onUserDialog": "[function]",
+      "supportedDialogKinds": ["resume_return"],
+      "env": {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/home/harness"
+      },
+      "additionalDirectories": ["/srv/app", "/tmp/userdata/attachments"],
+      "extraArgs": {
+        "thinking-display": "summarized"
+      }
+    },
+    "sessionConfigured": {
+      "config": {
+        "model": "claude-synthetic-thinking",
+        "cwd": "/srv/app",
+        "permissionMode": "acceptEdits"
+      }
+    },
+    "setModelCalls": [],
+    "setPermissionModeCalls": ["acceptEdits", "plan"]
+  }
+]

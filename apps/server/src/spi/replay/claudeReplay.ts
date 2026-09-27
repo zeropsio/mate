@@ -21,15 +21,22 @@
  * `respondToUserInput`/`respondToRequest` — before continuing to the next
  * line.
  *
- * Only `canUseTool` control lines are implemented (the required proof is
- * the AskUserQuestion round trip). A fixture with an `onUserDialog` control
- * line throws naming the gap rather than silently mis-replaying it.
+ * `canUseTool` control lines are implemented (the required proof is the
+ * AskUserQuestion round trip), and `hook` lines for a fixture replayed with
+ * a `ClaudeReplayPolicy`: the policy's profile is installed for the replay
+ * thread, the line's `args.event` names the hook, and the adapter's own
+ * callback must answer exactly the line's `answer` — anything else stops
+ * the replay naming the line. A fixture with an `onUserDialog` control line
+ * throws naming the gap rather than silently mis-replaying it.
  */
 import * as NodeOS from "node:os";
+import * as NodeUtil from "node:util";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
   CanUseTool,
+  HookEvent,
+  HookInput,
   Options as ClaudeQueryOptions,
   PermissionMode,
   SDKMessage,
@@ -54,10 +61,16 @@ import {
   makeClaudeAdapter,
   type ClaudeAdapterLiveOptions,
 } from "../../provider/Layers/ClaudeAdapter.ts";
+import {
+  type ClaudeThreadExtension,
+  ClaudeThreadExtensionRegistry,
+} from "../claudeThreadProfile.ts";
+import { type ThreadToolProfile, ThreadToolPolicyRegistry } from "../threadToolPolicy.ts";
 
 import type { Fixture, FixtureControlLine } from "./types.ts";
 
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const REPLAY_THREAD_ID = ThreadId.make("spi-replay-claude-thread");
 const REPLAY_TURN_INPUT = "spi replay turn";
@@ -149,11 +162,28 @@ interface RecordedCanUseToolAnswer {
   readonly message?: string;
 }
 
+/** What a crew fixture replays against: installed for the replay thread only. */
+export interface ClaudeReplayPolicy {
+  readonly profile: ThreadToolProfile;
+  readonly extension?: ClaudeThreadExtension;
+}
+
+/** A `hook` control line's `args`: the SDK hook event and the input the CLI sent it. */
+interface RecordedHookArgs {
+  readonly event: HookEvent;
+  readonly input: HookInput;
+  readonly toolUseID?: string;
+}
+
 /**
  * Runs a fixture's message/control lines against a fresh Claude adapter
- * instance and returns every `SpiEvent` it emitted, in order.
+ * instance and returns every `SpiEvent` it emitted, in order. With a
+ * policy, the replay thread runs under its profile.
  */
-export async function replayClaude(fixture: Fixture): Promise<ReadonlyArray<SpiEvent>> {
+export async function replayClaude(
+  fixture: Fixture,
+  policy?: ClaudeReplayPolicy,
+): Promise<ReadonlyArray<SpiEvent>> {
   const claudeConfig = decodeClaudeSettings({});
   const query = new ReplayClaudeQuery();
   let createInput:
@@ -168,6 +198,16 @@ export async function replayClaude(fixture: Fixture): Promise<ReadonlyArray<SpiE
   };
 
   const program = Effect.gen(function* () {
+    if (policy) {
+      yield* (yield* ThreadToolPolicyRegistry).install({
+        profileFor: ({ threadId }) =>
+          Effect.succeed(threadId === REPLAY_THREAD_ID ? policy.profile : undefined),
+      });
+      yield* (yield* ClaudeThreadExtensionRegistry).install({
+        extensionFor: (threadId) =>
+          Effect.succeed(threadId === REPLAY_THREAD_ID ? policy.extension : undefined),
+      });
+    }
     const adapter = yield* makeClaudeAdapter(claudeConfig, adapterOptions);
     const collector = makeEventCollector();
     yield* Stream.runForEach(adapter.streamEvents, collector.offer).pipe(Effect.forkScoped);
@@ -204,10 +244,35 @@ export async function replayClaude(fixture: Fixture): Promise<ReadonlyArray<SpiE
           return;
         }
 
+        if (line.name === "hook") {
+          const args = line.args as RecordedHookArgs;
+          const callbacks = (options.hooks?.[args.event] ?? []).flatMap((matcher) => matcher.hooks);
+          if (callbacks.length !== 1) {
+            return yield* Effect.die(
+              new Error(
+                callbacks.length === 0
+                  ? `fixture line ${fixture.lines.indexOf(line)}: the adapter registered no ${args.event} hook — replay a crew fixture with its ClaudeReplayPolicy`
+                  : `fixture line ${fixture.lines.indexOf(line)}: the adapter registered ${callbacks.length} ${args.event} hooks; a hook line replays exactly one`,
+              ),
+            );
+          }
+          const answered = yield* Effect.promise(() =>
+            callbacks[0]!(args.input, args.toolUseID, { signal: new AbortController().signal }),
+          );
+          if (!NodeUtil.isDeepStrictEqual(answered, line.answer)) {
+            return yield* Effect.die(
+              new Error(
+                `fixture line ${fixture.lines.indexOf(line)}: the ${args.event} hook answered ${encodeJson(answered)}, the fixture recorded ${encodeJson(line.answer)}`,
+              ),
+            );
+          }
+          return;
+        }
+
         if (line.name !== "canUseTool") {
           return yield* Effect.die(
             new Error(
-              `replayClaude does not implement control line "${line.name}" yet (only "canUseTool"/"interrupt" are proven) — see claudeReplay.ts`,
+              `replayClaude does not implement control line "${line.name}" yet (only "canUseTool"/"hook"/"interrupt" are proven) — see claudeReplay.ts`,
             ),
           );
         }
@@ -283,6 +348,8 @@ export async function replayClaude(fixture: Fixture): Promise<ReadonlyArray<SpiE
   const testLayer = Layer.mergeAll(
     ServerConfig.layerTest(NodeOS.tmpdir(), NodeOS.tmpdir()),
     ServerSettingsService.layerTest(),
+    ThreadToolPolicyRegistry.layer,
+    ClaudeThreadExtensionRegistry.layer,
   ).pipe(Layer.provideMerge(NodeServices.layer));
 
   return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(testLayer)));

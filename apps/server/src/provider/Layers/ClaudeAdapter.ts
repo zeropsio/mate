@@ -86,6 +86,14 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import {
+  applyClaudeQueryOptionsPatch,
+  claudeProfileModelSelection,
+  claudeQueryOptionsPatch,
+  claudeTurnModelSelection,
+  readClaudeThreadRegistries,
+  resolveClaudeThreadSetup,
+} from "../../spi/claudeThreadProfile.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
@@ -2094,6 +2102,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const serverConfig = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const threadRegistries = yield* readClaudeThreadRegistries;
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
     Effect.provideService(Path.Path, path),
   );
@@ -2855,6 +2864,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ? { totalCostUsd: result.total_cost_usd }
           : {}),
         ...(errorMessage ? { errorMessage } : {}),
+        ...(result?.terminal_reason ? { terminalReason: result.terminal_reason } : {}),
       },
       providerRefs: nativeProviderRefs(context),
     });
@@ -4864,14 +4874,24 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         callbackOptions,
       ) => runPromise(handleResumeDialog(request, callbackOptions));
 
+      // A thread with a tool profile runs gated; every other thread gets
+      // exactly the options below.
+      const threadSetup = yield* resolveClaudeThreadSetup(threadRegistries, {
+        threadId,
+        instanceId: boundInstanceId,
+        ...(input.cwd ? { cwd: input.cwd } : {}),
+      });
       const claudeBinaryPath = claudeSdkExecutablePath;
       const {
         "permission-mode": launchArgPermissionMode,
         "dangerously-skip-permissions": launchArgSkipPermissions,
         ...extraArgs
       } = parseCliArgs(claudeSettings.launchArgs).flags;
-      const selectedModel =
-        input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
+      const selectedModel = claudeProfileModelSelection(
+        threadSetup?.profile,
+        boundInstanceId,
+        input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined,
+      );
       const modelSelection = selectedModel
         ? {
             ...selectedModel,
@@ -4918,11 +4938,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // A permission launch arg is folded into the mode T3 sends rather than
       // passed through: the CLI resolves both inputs together, so argv order
       // never let the user's flag win.
-      const permissionMode =
-        (launchArgPermissionMode as PermissionMode | null | undefined) ??
-        (launchArgSkipPermissions === null || launchArgSkipPermissions === "true"
-          ? "bypassPermissions"
-          : runtimeModeToPermission[input.runtimeMode]);
+      // A profiled thread's tool calls are decided by its PreToolUse hook
+      // alone, so its mode wins over both.
+      const permissionMode: PermissionMode | undefined = threadSetup
+        ? "dontAsk"
+        : ((launchArgPermissionMode as PermissionMode | null | undefined) ??
+          (launchArgSkipPermissions === null || launchArgSkipPermissions === "true"
+            ? "bypassPermissions"
+            : runtimeModeToPermission[input.runtimeMode]));
       const settings = {
         ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
         ...(requestThinkingSummaries ? { showThinkingSummaries: true } : {}),
@@ -4943,7 +4966,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(input.cwd ? [input.cwd] : []),
         serverConfig.attachmentsDir,
       ];
-      const queryOptions: ClaudeQueryOptions = {
+      const baseQueryOptions: ClaudeQueryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
         ...(apiModelId ? { model: apiModelId } : {}),
         pathToClaudeCodeExecutable: claudeBinaryPath,
@@ -4984,6 +5007,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
       };
+      const queryOptions = threadSetup
+        ? applyClaudeQueryOptionsPatch(
+            baseQueryOptions,
+            claudeQueryOptionsPatch(threadSetup.profile, threadSetup.extension, runPromise),
+          )
+        : baseQueryOptions;
 
       yield* Effect.annotateCurrentSpan({
         "provider.kind": PROVIDER,
@@ -5160,10 +5189,17 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const sendTurn: ClaudeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
     const context = yield* requireSession(input.threadId);
     const modelCatalog = yield* modelCatalogEffect;
-    const selectedModel =
+    const selectedModel = yield* claudeTurnModelSelection(
+      threadRegistries,
+      {
+        threadId: input.threadId,
+        instanceId: boundInstanceId,
+        ...(context.session.cwd ? { cwd: context.session.cwd } : {}),
+      },
       input.modelSelection !== undefined && input.modelSelection.instanceId === boundInstanceId
         ? input.modelSelection
-        : undefined;
+        : undefined,
+    );
     const modelSelection = selectedModel
       ? { ...selectedModel, model: resolveClaudeModelSlug(modelCatalog, selectedModel.model) }
       : undefined;

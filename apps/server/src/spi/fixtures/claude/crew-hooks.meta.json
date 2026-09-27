@@ -1,0 +1,11 @@
+{
+  "driver": "claude",
+  "cliVersion": "2.1.283 (Claude Code)",
+  "sdkVersion": "0.3.276",
+  "model": "claude-opus-5[1m]",
+  "capturedAt": "2026-09-27T00:00:00.000Z",
+  "capturedBy": "crew-spi",
+  "cwd": "/var/www/.crew/backend",
+  "synthetic": true,
+  "notes": "Hand-authored, not recorded: a crew turn under a tool profile (replayed with spi/replay/crewReplayPolicy.ts). Proves the Claude translation of a profile \u2014 session.configured carries dontAsk, the PreToolUse gate allows `ls` and denies a delete outside the crewmate's copy, SessionStart returns the extension's context, and turn.completed carries terminalReason. Each `hook` control line's answer is what the adapter's hook must return; the replay stops on a mismatch. Replace with a recording once probes 1, 2, 14 and 15 run a real crew turn on a live Mate (record-claude.mjs does not record hook callbacks yet)."
+}
