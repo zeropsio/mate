@@ -14,6 +14,11 @@ import {
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
   ZeropsAgentLoginState,
+  ZeropsAgentLoginSubmitCodeInput,
+  ZeropsAgentSignOutInput,
+  ZeropsLogin,
+  ZeropsLoginAddInput,
+  ZeropsLoginRemoveInput,
 } from "./zerops.ts";
 
 const decodeAgentId = Schema.decodeUnknownSync(ZeropsAgentId);
@@ -25,6 +30,11 @@ const decodeLoginState = Schema.decodeUnknownSync(ZeropsAgentLoginState);
 const decodeLoginStartInput = Schema.decodeUnknownSync(ZeropsAgentLoginStartInput);
 const decodeLoginStartResult = Schema.decodeUnknownSync(ZeropsAgentLoginStartResult);
 const decodeLoginCancelInput = Schema.decodeUnknownSync(ZeropsAgentLoginCancelInput);
+const decodeLogin = Schema.decodeUnknownSync(ZeropsLogin);
+const decodeSubmitCodeInput = Schema.decodeUnknownSync(ZeropsAgentLoginSubmitCodeInput);
+const decodeSignOutInput = Schema.decodeUnknownSync(ZeropsAgentSignOutInput);
+const decodeLoginAddInput = Schema.decodeUnknownSync(ZeropsLoginAddInput);
+const decodeLoginRemoveInput = Schema.decodeUnknownSync(ZeropsLoginRemoveInput);
 
 describe("ZeropsAgentId", () => {
   it("accepts the two agents with a live-verified credential probe", () => {
@@ -283,5 +293,164 @@ describe("ZeropsAgentLoginStartInput / ZeropsAgentLoginStartResult / ZeropsAgent
   it("decodes a cancel input", () => {
     const decoded = decodeLoginCancelInput({ agentId: "claude-code" });
     expect(decoded.agentId).toBe("claude-code");
+  });
+});
+
+describe("ZeropsLogin", () => {
+  it.each([
+    {
+      name: "a default login",
+      row: {
+        id: "claudeAgent",
+        agent: "claude-code",
+        label: "",
+        kind: "subscription",
+        default: true,
+        state: "authorized",
+        token: false,
+        signedInBy: "u-eva",
+      },
+    },
+    {
+      name: "a second Claude account nobody signed in yet",
+      row: {
+        id: "claudeAgent-work",
+        agent: "claude-code",
+        label: "work",
+        kind: "subscription",
+        default: false,
+        state: "not-authorized",
+        token: false,
+      },
+    },
+    {
+      name: "a Claude API key",
+      row: {
+        id: "claudeAgent-team-key",
+        agent: "claude-code",
+        label: "team key",
+        kind: "apiKey",
+        default: false,
+        state: "authorized",
+        token: false,
+        signedInBy: "u-eva",
+      },
+    },
+  ])("decodes $name", ({ row }) => {
+    expect(decodeLogin(row)).toEqual(row);
+  });
+
+  it.each([
+    { name: "an unknown kind", patch: { kind: "oauth" } },
+    { name: "a state outside the classification", patch: { state: "local-only" } },
+    { name: "an id a signer tag could not carry", patch: { id: "claude:work" } },
+  ])("rejects $name", ({ patch }) => {
+    expect(() =>
+      decodeLogin({
+        id: "codex-work",
+        agent: "codex",
+        label: "work",
+        kind: "subscription",
+        default: false,
+        state: "not-authorized",
+        token: false,
+        ...patch,
+      }),
+    ).toThrow();
+  });
+});
+
+describe("ZeropsAgentAuthSnapshot logins", () => {
+  const agents = [
+    {
+      agentId: "codex",
+      credPresent: false,
+      flagOAuth: false,
+      flagToken: false,
+      providerAuth: "unknown",
+      state: "not-authorized",
+    },
+  ];
+
+  it("decodes an older server's snapshot, which lists no logins", () => {
+    expect(decodeSnapshot({ available: true, agents }).logins).toBeUndefined();
+  });
+
+  it("decodes the logins a newer server lists beside the agents", () => {
+    const decoded = decodeSnapshot({
+      available: true,
+      agents,
+      logins: [
+        {
+          id: "codex",
+          agent: "codex",
+          label: "",
+          kind: "subscription",
+          default: true,
+          state: "not-authorized",
+          token: false,
+        },
+      ],
+    });
+    expect(decoded.logins?.map((login) => login.id)).toEqual(["codex"]);
+  });
+});
+
+describe("login-targeted agent login inputs", () => {
+  it.each([
+    {
+      name: "start",
+      decode: () =>
+        decodeLoginStartInput({ agentId: "codex", threadId: "t", loginId: "codex-work" }),
+    },
+    {
+      name: "cancel",
+      decode: () => decodeLoginCancelInput({ agentId: "codex", loginId: "codex-work" }),
+    },
+    {
+      name: "submitCode",
+      decode: () =>
+        decodeSubmitCodeInput({ agentId: "claude-code", code: "abc", loginId: "codex-work" }),
+    },
+    {
+      name: "signOut",
+      decode: () => decodeSignOutInput({ agentId: "codex", loginId: "codex-work" }),
+    },
+  ])("$name names a login beside its agent", ({ decode }) => {
+    expect(decode().loginId).toBe("codex-work");
+  });
+
+  it("rejects a login id a signer tag could not carry", () => {
+    expect(() => decodeLoginCancelInput({ agentId: "codex", loginId: "codex:work" })).toThrow();
+  });
+});
+
+describe("ZeropsLoginAddInput / ZeropsLoginRemoveInput", () => {
+  it("decodes another account", () => {
+    expect(decodeLoginAddInput({ agent: "codex", kind: "subscription", label: "work" })).toEqual({
+      agent: "codex",
+      kind: "subscription",
+      label: "work",
+    });
+  });
+
+  it("decodes an API key, which rides only in this input", () => {
+    const decoded = decodeLoginAddInput({
+      agent: "claude-code",
+      kind: "apiKey",
+      label: "",
+      apiKey: "sk-ant-xyz",
+    });
+    expect(decoded.apiKey).toBe("sk-ant-xyz");
+  });
+
+  it("rejects a label longer than a row can show", () => {
+    expect(() =>
+      decodeLoginAddInput({ agent: "codex", kind: "subscription", label: "x".repeat(33) }),
+    ).toThrow();
+  });
+
+  it("decodes a removal", () => {
+    expect(decodeLoginRemoveInput({ id: "codex-work" })).toEqual({ id: "codex-work" });
   });
 });
