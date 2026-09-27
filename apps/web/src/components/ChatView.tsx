@@ -178,6 +178,9 @@ import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
+import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import { crewCommands } from "../zerops/crew/crewCommands";
+import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
@@ -1371,6 +1374,7 @@ export default function ChatView(props: ChatViewProps) {
     reportFailure: false,
   });
   const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const sendCrewCommand = useAtomCommand(crewCommands.command, { reportFailure: false });
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
@@ -5112,11 +5116,14 @@ export default function ChatView(props: ChatViewProps) {
     activeThread?.messages.some(
       (message) => message.role === "user" && !isCompactCommandMessage(message),
     ) ?? false;
+  // A crewmate's conversation is the crew engine's to compact and rotate;
+  // `/compact` from here would start a turn around it.
   const compactThreadUnavailable =
     !activeThread ||
     !activeThreadHasCompactableConversation ||
     !activeProject ||
     !isServerThread ||
+    activeThreadShell?.crew != null ||
     !manualCompactionProviderAvailable ||
     isWorking ||
     threadDetailLoading ||
@@ -5130,9 +5137,11 @@ export default function ChatView(props: ChatViewProps) {
   const compactDisabledReason = compactDisabled
     ? !activeProject
       ? "Choose a project before compacting"
-      : !manualCompactionProviderAvailable
-        ? "Compaction is unavailable for this provider"
-        : "Compacting is unavailable right now"
+      : activeThreadShell?.crew != null
+        ? "A crewmate's conversation compacts on its own"
+        : !manualCompactionProviderAvailable
+          ? "Compaction is unavailable for this provider"
+          : "Compacting is unavailable right now"
     : null;
   const resumeCompactionBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (
@@ -6370,6 +6379,29 @@ export default function ChatView(props: ChatViewProps) {
         useQueuedMessageStore.getState().holdAtFront(activeThreadKey, queuedMessage);
       }
     };
+    // A live send that failed goes back into the composer, unless the user
+    // has started writing something else there in the meantime.
+    const composerLeftEmpty = () =>
+      promptRef.current.length === 0 &&
+      composerImagesRef.current.length === 0 &&
+      composerTerminalContextsRef.current.length === 0 &&
+      (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
+        .length ?? 0) === 0;
+    const restoreSentToComposer = () => {
+      promptRef.current = promptForSend;
+      const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
+      composerImagesRef.current = retryComposerImages;
+      composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
+      setComposerDraftPrompt(composerDraftTarget, promptForSend);
+      addComposerDraftImages(composerDraftTarget, retryComposerImages);
+      setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
+      setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
+      composerRef.current?.resetCursorState({
+        cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
+        prompt: promptForSend,
+        detectTrigger: true,
+      });
+    };
     if (supportsAttachmentUploads && composerImagesSnapshot.length > 0) {
       for (const image of composerImagesSnapshot) {
         startAttachmentUpload({ environmentId, image });
@@ -6388,6 +6420,50 @@ export default function ChatView(props: ChatViewProps) {
     ) {
       sendInFlightRef.current = false;
       restoreQueuedMessagesToComposer([queuedMessage]);
+      return;
+    }
+
+    // A crewmate's chat never starts a turn of its own (`crewComposerSend.ts`):
+    // the crew engine opens the task, admits the turn against the crewmate's
+    // login and writes the message into this thread. So no title, no turn
+    // settings — the crewmate's *Runs on* owns model and effort — and no
+    // optimistic row, which only a turn's message id could reconcile.
+    const crewAttachments = getUploadedAttachments({
+      environmentId,
+      images: composerImagesSnapshot,
+    });
+    const crewMessage = crewMessageCommand(activeThreadShell, {
+      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+      attachments: crewAttachments ?? [],
+    });
+    if (crewMessage !== null) {
+      if (crewAttachments === null) {
+        sendInFlightRef.current = false;
+        setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
+        abortQueuedReplay();
+        return;
+      }
+      setThreadError(threadIdForSend, null);
+      if (!queuedMessage) {
+        promptRef.current = "";
+        clearComposerDraftContent(composerDraftTarget);
+        composerRef.current?.resetCursorState();
+      }
+      const crewResult = await sendCrewCommand({ environmentId, input: crewMessage });
+      if (crewResult._tag === "Success") {
+        if (supportsAttachmentUploads) releaseAttachmentUploads(composerImagesSnapshot);
+        acknowledgeActiveThreadWoke();
+      } else {
+        if (queuedMessage) abortQueuedReplay();
+        else if (composerLeftEmpty()) restoreSentToComposer();
+        if (!isAtomCommandInterrupted(crewResult)) {
+          setThreadError(
+            threadIdForSend,
+            crewFailureSentence(squashAtomCommandFailure(crewResult)),
+          );
+        }
+      }
+      sendInFlightRef.current = false;
       return;
     }
 
@@ -6706,13 +6782,7 @@ export default function ChatView(props: ChatViewProps) {
             images: queuedMessage.images.map(cloneComposerImageForRetry),
           });
         }
-      } else if (
-        promptRef.current.length === 0 &&
-        composerImagesRef.current.length === 0 &&
-        composerTerminalContextsRef.current.length === 0 &&
-        (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
-          .length ?? 0) === 0
-      ) {
+      } else if (composerLeftEmpty()) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
           for (const message of removed) {
@@ -6721,19 +6791,7 @@ export default function ChatView(props: ChatViewProps) {
           const next = existing.filter((message) => message.id !== messageIdForSend);
           return next.length === existing.length ? existing : next;
         });
-        promptRef.current = promptForSend;
-        const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
-        composerImagesRef.current = retryComposerImages;
-        composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
-        setComposerDraftPrompt(composerDraftTarget, promptForSend);
-        addComposerDraftImages(composerDraftTarget, retryComposerImages);
-        setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
-        setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
-        composerRef.current?.resetCursorState({
-          cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
-          prompt: promptForSend,
-          detectTrigger: true,
-        });
+        restoreSentToComposer();
       }
       if (!isAtomCommandInterrupted(failure)) {
         const error = squashAtomCommandFailure(failure);
