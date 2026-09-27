@@ -21,6 +21,7 @@ import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import * as CrewChecks from "../CrewChecks.ts";
+import * as CrewIntegration from "../CrewIntegration.ts";
 import * as CrewShell from "../CrewShell.ts";
 import * as CrewStore from "../CrewStore.ts";
 import * as CrewWorkspace from "../CrewWorkspace.ts";
@@ -178,7 +179,10 @@ export const crewStoreLayer = CrewStore.layer.pipe(
 export const crewGitLayer = (root: string, options: CrewShellFixtureOptions = {}) => {
   const shell = crewShellLayer([serviceRepository(root)], options);
   const checks = CrewChecks.layer.pipe(Layer.provideMerge(shell));
-  return CrewWorkspace.layer.pipe(Layer.provideMerge(checks), Layer.provideMerge(crewStoreLayer));
+  return Layer.mergeAll(CrewWorkspace.layer, CrewIntegration.layer).pipe(
+    Layer.provideMerge(checks),
+    Layer.provideMerge(crewStoreLayer),
+  );
 };
 
 /** Runs `body` against a fresh service repository, removed afterwards. */
