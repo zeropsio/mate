@@ -599,13 +599,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
   const rows = useStableRows(rawRows);
-  // A run's panel leaves when the rows stop carrying it, whatever order the
-  // list then mounts and unmounts their rows in.
-  const previousRowsRef = useRef<ReadonlyArray<MessagesTimelineRow>>(rows);
-  if (previousRowsRef.current !== rows) {
-    markPanelsGone(previousRowsRef.current, rows);
-    previousRowsRef.current = rows;
-  }
   const livePauseId = useMemo(
     () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
     [rows],
@@ -3100,6 +3093,9 @@ function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
 
   return useMemo(() => {
     const nextState = computeStableMessagesTimelineRows(rows, prevState.current);
+    // A run's panel leaves when the rows stop carrying it, whatever order the
+    // list then mounts and unmounts their rows in.
+    markPanelsGone(prevState.current.result, nextState.result);
     prevState.current = nextState;
     return nextState.result;
   }, [rows]);
