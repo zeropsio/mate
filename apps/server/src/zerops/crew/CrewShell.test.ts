@@ -137,4 +137,31 @@ describe("CrewShell", () => {
       }),
     ),
   );
+
+  it.effect("tells a missing repository directory from a script's own exit code", () =>
+    Effect.gen(function* () {
+      const root = makeServiceRepository();
+      const missing = { ...serviceRepository(root), remotePath: `${root}/gone` };
+      const outcomes = yield* Effect.gen(function* () {
+        const shell = yield* CrewShell.CrewShell;
+        const own = yield* shell.run(TEST_HOST, CrewShell.script("exit 125"), {
+          timeout: "10 seconds",
+        });
+        return own.code;
+      }).pipe(
+        Effect.provide(crewShellLayer([serviceRepository(root)])),
+        Effect.zip(
+          Effect.gen(function* () {
+            const shell = yield* CrewShell.CrewShell;
+            const error = yield* shell
+              .run(TEST_HOST, CrewShell.script("true"), { timeout: "10 seconds" })
+              .pipe(Effect.flip);
+            return error.reason;
+          }).pipe(Effect.provide(crewShellLayer([missing]))),
+        ),
+        Effect.ensuring(Effect.sync(() => removeServiceRepository(root))),
+      );
+      assert.deepStrictEqual(outcomes, [125, "workspace"]);
+    }),
+  );
 });

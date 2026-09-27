@@ -90,6 +90,7 @@ const IDENTITY_MISMATCH_EXIT_CODE = 126;
 const WORKSPACE_MISSING_EXIT_CODE = 125;
 const REMOTE_TIMEOUT_EXIT_CODE = 124;
 const IDENTITY_MISMATCH_TEXT = "Mate remote workspace identity mismatch";
+const WORKSPACE_MISSING_TEXT = "Mate crew workspace missing";
 
 /** How long the local ssh outlives the remote `timeout`, so the remote one decides. */
 const LOCAL_TIMEOUT_MARGIN = Duration.seconds(15);
@@ -173,7 +174,8 @@ export const makeCrewShell = (options: CrewShellOptions): CrewShellService => {
       );
       const remote =
         `${identityGuard(identity)}` +
-        `cd ${shellQuote(target.remotePath)} || exit ${WORKSPACE_MISSING_EXIT_CODE}; ` +
+        `cd ${shellQuote(target.remotePath)} 2>/dev/null || ` +
+        `{ printf '%s\\n' '${WORKSPACE_MISSING_TEXT}' >&2; exit ${WORKSPACE_MISSING_EXIT_CODE}; }; ` +
         `exec timeout -k 5 ${seconds} sh -c ${shellQuote(PRELUDE + body)}`;
       const output = yield* Semaphore.withPermits(
         gateFor(host),
@@ -205,11 +207,11 @@ export const makeCrewShell = (options: CrewShellOptions): CrewShellService => {
           detail: IDENTITY_MISMATCH_TEXT,
         });
       }
-      if (code === WORKSPACE_MISSING_EXIT_CODE && output.stdout.length === 0) {
+      if (code === WORKSPACE_MISSING_EXIT_CODE && output.stderr.includes(WORKSPACE_MISSING_TEXT)) {
         return yield* new CrewShellError({
           host,
           reason: "workspace",
-          detail: output.stderr.trim() || "the repository directory is missing",
+          detail: `${target.remotePath} is missing on the service`,
         });
       }
       return {
