@@ -14,11 +14,13 @@ import {
   failEnvironmentInternal,
   failEnvironmentInvalidRequest,
   failEnvironmentNotFound,
+  failEnvironmentOperationForbidden,
   requireEnvironmentScope,
 } from "../auth/http.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
+import { ZeropsTurnAdmission } from "../zerops/ZeropsTurnAdmission.ts";
 
 export const orchestrationHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
@@ -27,6 +29,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
     const orchestrationEngine = yield* OrchestrationEngineService;
     const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
+    const turnAdmission = yield* ZeropsTurnAdmission;
 
     return handlers
       .handle(
@@ -97,7 +100,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         "dispatch",
         Effect.fn("environment.orchestration.dispatch")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
-          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          const session = yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
           yield* ProjectCloneTracker.rejectCommandsDuringClone(
             projectCloneTracker,
             args.payload,
@@ -109,14 +112,33 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
           const normalizedCommand = yield* normalizeDispatchCommand(args.payload).pipe(
             Effect.catch(() => failEnvironmentInvalidRequest("invalid_command")),
           );
-          const result = yield* orchestrationEngine.dispatch(normalizedCommand).pipe(
-            Effect.tapError(() =>
-              cleanupFailedUploadedAttachments(args.payload, normalizedCommand),
-            ),
-            Effect.catch((cause) =>
-              failEnvironmentInternal("orchestration_dispatch_failed", cause),
-            ),
-          );
+          // A turn over HTTP spends the same login a turn over the socket
+          // does, so it passes the same gate (D6) as the same person. A
+          // refusal is the caller's to hear, not a server failure.
+          const result = yield* turnAdmission
+            .admit({
+              command: normalizedCommand,
+              principal: { kind: "session", subject: session.subject },
+            })
+            .pipe(
+              Effect.matchEffect({
+                onFailure: (refusal) =>
+                  Effect.logInfo("orchestration dispatch refused a turn (D6)", {
+                    reason: refusal.message,
+                  }).pipe(Effect.andThen(failEnvironmentOperationForbidden("zerops_turn_refused"))),
+                onSuccess: () =>
+                  orchestrationEngine
+                    .dispatch(normalizedCommand)
+                    .pipe(
+                      Effect.catch((cause) =>
+                        failEnvironmentInternal("orchestration_dispatch_failed", cause),
+                      ),
+                    ),
+              }),
+              Effect.tapError(() =>
+                cleanupFailedUploadedAttachments(args.payload, normalizedCommand),
+              ),
+            );
           yield* ProjectCloneTracker.discardCloneForDeletedProject(
             projectCloneTracker,
             normalizedCommand,

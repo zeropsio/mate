@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { parseCrewHome, renderCrewHome, validateCrewTopology } from "./CrewDefinition.ts";
+import { parseCrewHome, renderCrewHome, validateCrewTopology } from "./crewHome.ts";
 import { crewFromTemplate } from "./crewTemplates.ts";
 
 describe("crewFromTemplate", () => {

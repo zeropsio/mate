@@ -192,8 +192,8 @@ import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
+  resolveOwnedAgentId,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { agentIdForProviderInstance } from "@t3tools/contracts";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -3803,8 +3803,9 @@ export default function ChatView(props: ChatViewProps) {
   const zeropsOwnedAgent = zeropsAgentAuth.snapshot?.agents.find(
     (agent) =>
       agent.agentId ===
-      agentIdForProviderInstance(
+      resolveOwnedAgentId(
         activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
+        providerStatuses,
       ),
   );
   const zeropsAgentOwnership = resolveAgentOwnership({
@@ -3838,6 +3839,7 @@ export default function ChatView(props: ChatViewProps) {
   // `resolveZeropsOwnedAgentSendBlockReason` (ChatView.logic.ts).
   const zeropsSendBlockReason = resolveZeropsOwnedAgentSendBlockReason({
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
+    providers: providerStatuses,
     availabilityByInstanceId: zeropsAgentAvailabilityByInstanceId,
   });
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import { EnvironmentId, ThreadId, WS_METHODS } from "@t3tools/contracts";
-import type { ZeropsAgentAuthSnapshot, ZeropsLifecycle } from "@t3tools/contracts";
+import type { CrewSnapshot, ZeropsAgentAuthSnapshot, ZeropsLifecycle } from "@t3tools/contracts";
 import { EnvironmentRegistry, EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
 import { type RpcSession } from "@t3tools/client-runtime/rpc";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -57,11 +58,16 @@ const agentAuthSnapshot = (
  * before the stream attached, and these tests would be racing the runtime
  * rather than testing it.
  */
-const makeHarness = (options?: { readonly oldMate?: boolean }) =>
+const makeHarness = (options?: {
+  readonly oldMate?: boolean;
+  /** A Mate from before crew mode: no `subscribeZeropsCrew`. */
+  readonly withoutCrew?: boolean;
+}) =>
   Effect.gen(function* () {
     const calls: string[] = [];
     const lifecycleRef = yield* SubscriptionRef.make(Option.none<ZeropsLifecycle>());
     const agentAuthRef = yield* SubscriptionRef.make(Option.none<ZeropsAgentAuthSnapshot>());
+    const crewRef = yield* SubscriptionRef.make(Option.none<CrewSnapshot>());
 
     const makeSession = (): RpcSession => {
       const client = {
@@ -80,6 +86,16 @@ const makeHarness = (options?: { readonly oldMate?: boolean }) =>
             return Stream.die(`Unknown request tag: ${WS_METHODS.subscribeZeropsAgentAuth}`);
           }
           return SubscriptionRef.changes(agentAuthRef).pipe(
+            Stream.filter(Option.isSome),
+            Stream.map((value) => value.value),
+          );
+        },
+        [WS_METHODS.subscribeZeropsCrew]: () => {
+          calls.push("crew");
+          if (options?.withoutCrew === true) {
+            return Stream.die(`Unknown request tag: ${WS_METHODS.subscribeZeropsCrew}`);
+          }
+          return SubscriptionRef.changes(crewRef).pipe(
             Stream.filter(Option.isSome),
             Stream.map((value) => value.value),
           );
@@ -125,6 +141,7 @@ const makeHarness = (options?: { readonly oldMate?: boolean }) =>
         SubscriptionRef.set(lifecycleRef, Option.some(value)),
       publishAgentAuth: (value: ZeropsAgentAuthSnapshot) =>
         SubscriptionRef.set(agentAuthRef, Option.some(value)),
+      publishCrew: (value: CrewSnapshot) => SubscriptionRef.set(crewRef, Option.some(value)),
       /** The socket dropped and came back: a brand-new client for the same environment. */
       reconnect: SubscriptionRef.set(session, Option.some(makeSession())),
       /** The socket dropped and nothing replaced it yet. */
@@ -399,6 +416,38 @@ describe("createZeropsFeedAtoms", () => {
         [{ generated: "first" }, { generated: "second" }],
         [{ generated: "second" }, { generated: "second" }],
       ]);
+    }).pipe(Effect.scoped),
+  );
+  it.live("delivers the crew snapshot as a live value, whatever its status", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness();
+      const atom = rig.feeds.crew({ environmentId: ENVIRONMENT_ID, input: {} });
+      rig.registry.mount(atom);
+
+      yield* rig.publishCrew(crewSnapshotFixture({ status: "off", crew: null }));
+      const read = yield* until(() => rig.registry.get(atom), isKnown);
+
+      expect(read.state === "known" && read.value.status).toBe("off");
+      expect(read.state === "known" && read.freshness).toEqual({ kind: "live" });
+      expect(rig.calls).toContain("crew");
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a Mate without the crew RPC is failed(unsupported) and never retried", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness({ withoutCrew: true });
+      const atom = rig.feeds.crew({ environmentId: ENVIRONMENT_ID, input: {} });
+      rig.registry.mount(atom);
+
+      const read = yield* until(
+        () => rig.registry.get(atom),
+        (value) => value.state === "failed",
+      );
+      expect(read).toMatchObject({
+        state: "failed",
+        failure: { kind: "unsupported", capability: WS_METHODS.subscribeZeropsCrew },
+        retryAtMs: null,
+      });
     }).pipe(Effect.scoped),
   );
 });

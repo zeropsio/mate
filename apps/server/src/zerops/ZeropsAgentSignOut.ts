@@ -38,9 +38,9 @@
  * standalone service this layer could construct at boot. So `signOut` takes
  * `stopAgentSessions` as a caller-supplied thunk instead: `ws.ts` builds it
  * (using {@link threadsToStopForAgent}, the pure "which threads" selection
- * below, plus `agentIdForProviderInstance` from `@t3tools/contracts` — the
- * SAME helper the D6 turn-refusal gate in `ws.ts` already uses) and hands it
- * to `registerZeropsRpc.ts`'s handler, which passes it into this call.
+ * below, plus `agentIdForProviderInstance` from `@t3tools/contracts`) and
+ * hands it to `registerZeropsRpc.ts`'s handler, which passes it into this
+ * call.
  *
  * Every step but (a) is best-effort: once step (a) has cleared, sign-out
  * must make progress even when a downstream step fails (a login session
@@ -95,10 +95,13 @@ const LOGOUT_COMMAND: Readonly<
 };
 
 /**
- * Which of `threads`' live sessions belong to `agentId` — by the same
- * `agentIdForProviderInstance` vocabulary `ws.ts`'s own D6 turn-refusal
- * already uses, never a second, hand-rolled agent<->instance mapping. A
- * thread with no session, or one already `"stopped"`, has nothing to stop —
+ * Which of `threads`' live sessions belong to `agentId` — by
+ * `agentIdForProviderInstance`, the ids of the agent's default instance,
+ * whose login is the credential this sign-out removes; never a second,
+ * hand-rolled agent<->instance mapping. (The D6 turn gate,
+ * `ZeropsTurnAdmission`, resolves by driver kind instead: it gates every
+ * instance of the driver.) A thread with no session, or one already
+ * `"stopped"`, has nothing to stop —
  * matching the exact liveness check `ws.ts`'s archive/settle cleanup already
  * uses for the same reason.
  *
