@@ -229,6 +229,7 @@ import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
+import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
 import { SidebarMatePeekLive } from "./zerops/SidebarMatePeekLive";
@@ -1744,9 +1745,6 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   );
 });
 
-/** Until Mine / Everyone narrows it, the menu shows every Mate. */
-const showEveryMate = () => true;
-
 /** How the menu's Mate tree names the listing it is drawn from. */
 const ZEROPS_SIDEBAR_SURFACE = {
   subject: "your projects",
@@ -2317,10 +2315,22 @@ export default function Sidebar() {
     );
     return open.kind === "found" ? open.row.project.id : null;
   }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsListing]);
+  // Whose Mates the menu lists (the account menu's Mine / Everyone): the
+  // tree and the waiting faces read the same answer.
+  const [zeropsMateScope] = useMateScope();
+  const zeropsShown = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) =>
+      shownInScope(
+        zeropsMateScope,
+        zeropsMateOwner(candidate),
+        candidate.project.id === activeZeropsProjectId,
+      ),
+    [activeZeropsProjectId, zeropsMateOwner, zeropsMateScope],
+  );
   const zeropsWaiting = useSidebarWaiting({
     candidates: zeropsCandidates,
     activityOf: zeropsActivityOf,
-    shown: showEveryMate,
+    shown: zeropsShown,
     activeProjectId: activeZeropsProjectId,
     beforeReveal: isMobile
       ? () => {
@@ -4064,7 +4074,9 @@ export default function Sidebar() {
               getFlow={zeropsSidebarFlowWithAsk}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
+              phone={isMobile}
               renderPeek={(peek) => <SidebarMatePeekLive peek={peek} />}
+              shown={zeropsShown}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={(candidate) =>

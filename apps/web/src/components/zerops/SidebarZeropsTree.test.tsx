@@ -12,7 +12,7 @@ import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
-import { act, type ReactElement } from "react";
+import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -153,13 +153,7 @@ function mount(element: ReactElement): ReactTestRenderer {
   const noDom = Object.fromEntries(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
   );
-  // A desktop's width: the peek floats beside the menu rather than rising as a sheet.
-  const matchMedia = () => ({
-    matches: false,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  });
-  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom, { matchMedia }));
+  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
   for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
   let tree: ReactTestRenderer | undefined;
   act(() => {
@@ -2190,11 +2184,7 @@ describe("a Mate's own menu, in its row", () => {
     expect(actions).toContain("group-hover/mate:opacity-100");
     expect(actions).toContain("group-has-[:focus-visible]/mate:opacity-100");
     // The time stands in a slot at least the menu's width, and steps aside.
-    const timeTag = html.lastIndexOf(
-      "<span",
-      html.indexOf('data-zerops-surface="sidebar-mate-time"'),
-    );
-    const slotClass = html.slice(html.lastIndexOf("<span", timeTag - 1), timeTag);
+    const slotClass = /<span class="([^"]*min-w-11[^"]*)"/u.exec(html)?.[1] ?? "";
     expect(slotClass).toContain("min-w-11");
     expect(slotClass).toContain("group-hover/mate:opacity-0");
     expect(html).toContain('aria-label="More for crm-dev"');
@@ -2354,5 +2344,147 @@ describe("a Mate's peek", () => {
       surface(tree, "sidebar-mate").props.onKeyDown({ key: " ", preventDefault: () => {} });
     });
     expect(peek()).toBeNull();
+  });
+});
+
+describe("a long list, kept scannable", () => {
+  const QUIET_MATE = {
+    ...named("crm-old", "CRM - old", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Olga"]),
+    group: "connected",
+  } as ZeropsCandidate;
+  const act = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Something",
+    at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    snippet: undefined,
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: undefined,
+    ...overrides,
+  });
+  const fortnight = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const activities = (id: string) =>
+    id === "crm-old" ? act({ at: fortnight, subject: "Try a new renderer" }) : act();
+  const names = (html: string) =>
+    [...html.matchAll(/data-zerops-surface="sidebar-mate-name"[^>]*>([^<]+)</gu)].map(
+      (match) => match[1],
+    );
+
+  it("folds a Mate untouched for a week behind its count at the end of the Mates", () => {
+    const html = render([CRM_DEV_CONNECTED, QUIET_MATE, CRM_STAGE], {
+      getActivity: (item: ZeropsCandidate) => activities(item.project.id),
+    });
+    expect(names(html)).toEqual(["crm-dev"]);
+    expect(html).toContain(">1 quiet Mate<");
+    // After the Mates, before the stops.
+    expect(html.indexOf("sidebar-quiet-mates")).toBeLessThan(
+      html.indexOf('data-zerops-surface="sidebar-environment"'),
+    );
+  });
+
+  it("unfolds the quiet Mates under the fold, which stays where it is", () => {
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED, QUIET_MATE]}
+        complete
+        getActivity={(item) => activities(item.project.id)}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    press(tree, "sidebar-quiet-mates");
+    const rendered = tree.root
+      .findAll(
+        (node) =>
+          typeof node.type === "string" && typeof node.props["data-zerops-surface"] === "string",
+      )
+      .map((node) => node.props["data-zerops-surface"] as string)
+      .filter((name) => name === "sidebar-mate" || name === "sidebar-quiet-mates");
+    expect(rendered).toEqual(["sidebar-mate", "sidebar-quiet-mates", "sidebar-mate"]);
+    expect(surface(tree, "sidebar-quiet-mates").props["aria-expanded"]).toBe(true);
+  });
+
+  it("never folds the Mate whose conversation is open", () => {
+    const html = render([CRM_DEV_CONNECTED, QUIET_MATE], {
+      getActivity: (item: ZeropsCandidate) => activities(item.project.id),
+      activeProjectId: "crm-old",
+    });
+    expect(names(html)).toEqual(["Olga", "crm-dev"]);
+    expect(html).not.toContain("quiet Mate");
+  });
+
+  it("lists only the Mates the viewer asked for, and leaves out a project where none remains", () => {
+    const LINKS_CONNECTED = { ...LINKS_MATE, group: "connected" } as ZeropsCandidate;
+    const html = render([CRM_DEV_CONNECTED, LINKS_CONNECTED], {
+      getActivity: () => act(),
+      shown: (item: ZeropsCandidate) => item.project.id === "links-dev",
+    });
+    expect(names(html)).toEqual(["Links - dev"]);
+    expect(html).not.toContain('data-zerops-group="aaa"');
+  });
+
+  it("stops a working Mate with x and marks one read or unread with e, from its row", () => {
+    const stop = vi.fn();
+    const toggleUnread = vi.fn();
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => act({ kind: "working", face: "working" })}
+        getMateActions={() => ({ muted: false, entries: [], stop, toggleUnread })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const key = (name: string) => {
+      act_(() => {
+        surface(tree, "sidebar-mate").props.onKeyDown({
+          key: name,
+          preventDefault: () => {},
+          metaKey: false,
+          ctrlKey: false,
+          altKey: false,
+        });
+      });
+    };
+    key("x");
+    key("e");
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(toggleUnread).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows each Mate's number in its time slot while Option is held", () => {
+    const LINKS_CONNECTED = { ...LINKS_MATE, group: "connected" } as ZeropsCandidate;
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED, LINKS_CONNECTED]}
+        complete
+        getActivity={() => act()}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const chips = () =>
+      tree.root
+        .findAll(
+          (node) =>
+            typeof node.type === "string" &&
+            node.props["data-zerops-surface"] === "sidebar-mate-number",
+        )
+        .map((node) => text(node));
+    expect(chips()).toEqual([]);
+    act_(() => {
+      window.dispatchEvent(Object.assign(new Event("keydown"), { key: "Alt" }));
+    });
+    expect(chips()).toEqual(["1", "2"]);
+    act_(() => {
+      window.dispatchEvent(Object.assign(new Event("keyup"), { key: "Alt" }));
+    });
+    expect(chips()).toEqual([]);
   });
 });

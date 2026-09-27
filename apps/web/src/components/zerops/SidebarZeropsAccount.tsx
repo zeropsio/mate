@@ -25,6 +25,7 @@ import {
   readProjectsOnScreen,
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
+import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useSidebar } from "../ui/sidebar";
 import {
@@ -154,6 +155,7 @@ export function SidebarZeropsAccountMenu({
 }: Omit<SidebarZeropsAccountProps, "collapsed">) {
   const choices = sidebarAccountOrganizationChoices(organizations);
   const projectOrder = useProjectOrder();
+  const [mateScope, setMateScope] = useMateScope();
   return (
     <>
       <div className="flex items-center gap-3 px-2 py-2" data-zerops-account-identity="true">
@@ -168,11 +170,31 @@ export function SidebarZeropsAccountMenu({
         </div>
       </div>
 
-      {/* How the projects above are ordered — set once and left alone, so it
-          lives here rather than as chrome over the list; moving one project is
-          the project's own heading and menu. *Custom* starts from the order on
-          screen (`projectOrderPreference.ts`). */}
+      {/* How the list above reads — whose Mates, and in which order the
+          projects — both set once and left alone, so they live here rather
+          than as chrome over the list; moving one project is the project's own
+          heading and menu. *Custom* starts from the order on screen
+          (`projectOrderPreference.ts`). */}
       <MenuSeparator />
+      <MenuRadioGroup
+        onValueChange={(value) => {
+          const choice = MATE_SCOPE_CHOICES.find((entry) => entry.value === value);
+          if (choice !== undefined) setMateScope(choice.value);
+        }}
+        value={mateScope}
+      >
+        <MenuGroupLabel>Show</MenuGroupLabel>
+        {MATE_SCOPE_CHOICES.map((choice) => (
+          <MenuRadioItem
+            closeOnClick
+            data-zerops-account-scope={choice.value}
+            key={choice.value}
+            value={choice.value}
+          >
+            {choice.label}
+          </MenuRadioItem>
+        ))}
+      </MenuRadioGroup>
       <MenuRadioGroup
         onValueChange={(value) => {
           const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);

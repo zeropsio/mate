@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { MATE_SCOPE_STORAGE_KEY, MateScopeSchema } from "~/zerops/mateScope";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 
 import { Menu } from "../ui/menu";
@@ -123,6 +124,30 @@ describe("SidebarZeropsAccountMenu", () => {
     const html = renderMenu({ organizations: [ZEROPS, ACME] });
     expect(html).toContain("Organization");
     expect(html).toContain(">Acme<");
+  });
+
+  describe("whose Mates the list above shows", () => {
+    afterEach(() => {
+      setLocalStorageItem(MATE_SCOPE_STORAGE_KEY, "everyone", MateScopeSchema);
+    });
+    const checked = (html: string, scope: string) =>
+      new RegExp(
+        `<[^>]*aria-checked="true"[^>]*data-zerops-account-scope="${scope}"|<[^>]*data-zerops-account-scope="${scope}"[^>]*aria-checked="true"`,
+        "u",
+      ).test(html);
+
+    it("offers Mine and Everyone, Everyone until the viewer chose otherwise, before the order", () => {
+      const html = renderMenu();
+      expect(html).toContain(">Show<");
+      expect(checked(html, "everyone")).toBe(true);
+      expect(checked(html, "mine")).toBe(false);
+      expect(html.indexOf(">Show<")).toBeLessThan(html.indexOf(">Order<"));
+    });
+
+    it("checks Mine once the viewer chose it", () => {
+      setLocalStorageItem(MATE_SCOPE_STORAGE_KEY, "mine", MateScopeSchema);
+      expect(checked(renderMenu(), "mine")).toBe(true);
+    });
   });
 
   describe("the order of the projects above", () => {

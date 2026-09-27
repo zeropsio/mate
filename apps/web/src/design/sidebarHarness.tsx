@@ -343,7 +343,8 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
     activity({
       subject: "Pull the spacing scale out of the components into one file",
       snippet: "There were four scales. They are one now, and nothing moved…",
-      hours: 52,
+      // Untouched for more than a week: it folds into its project's quiet Mates.
+      hours: 9 * 24,
       face: "idle",
     }),
   ],
@@ -692,7 +693,7 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
  * module store, as in the app), and each one's peek lands over the other.
  * `?w=` sets its width; the owner runs it near 368, the default is 256.
  */
-function SidebarFrame({ width }: { readonly width: number }) {
+function SidebarFrame({ width, phone }: { readonly width: number; readonly phone: boolean }) {
   const waiting = useSidebarWaiting({
     candidates: CANDIDATES,
     activityOf: activityOfCandidate,
@@ -749,6 +750,7 @@ function SidebarFrame({ width }: { readonly width: number }) {
           onBrowseProjects={() => {}}
           onSelect={() => {}}
           activeProjectId="links-enzo"
+          phone={phone}
           renderPeek={(peek) => (
             <MatePeekCard
               appUrl={peek.appUrl ?? "https://example.com"}
@@ -802,7 +804,7 @@ function Harness() {
   const phone = window.matchMedia("(max-width: 767px)").matches;
   return (
     <div className="flex min-h-screen bg-background">
-      <SidebarFrame width={phone ? window.innerWidth : width} />
+      <SidebarFrame phone={phone} width={phone ? window.innerWidth : width} />
       {phone ? null : (
         <main className="flex min-w-0 flex-1 items-start justify-center p-10">
           <p className="max-w-md text-sm text-muted-foreground">
