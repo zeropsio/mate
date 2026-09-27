@@ -62,11 +62,12 @@ describe("crewChatNotices", () => {
     expect(crewChatNotices(backend(running, current), CURRENT)).toEqual({ retired: null, pending });
   });
 
-  it("points an earlier conversation at the one the crewmate talks in now", () => {
+  it("points an earlier conversation at the one the crewmate talks in now, and sends nothing from it", () => {
     expect(crewChatNotices(backend({ brief: 4, job: 4 }, { brief: 4, job: 5 }), EARLIER)).toEqual({
       retired: {
         text: "An earlier conversation with @backend — it goes on in a newer one.",
         currentThreadId: CURRENT,
+        sendBlock: "Write to @backend in its current conversation",
       },
       pending: null,
     });

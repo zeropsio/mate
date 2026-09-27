@@ -5287,18 +5287,23 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : `Message ${activeCrewmate?.crewmate.displayName ?? activeCrewOrigin.crewmate}…`;
   // A crewmate's chat: an earlier conversation points at the one it talks in
-  // now; the current one says what its next turn brings in.
+  // now and sends nothing, as its send would land there; the current one says
+  // what its next turn brings in.
+  const crewNotices = useMemo(
+    () => (activeCrewmate === null ? null : crewChatNotices(activeCrewmate, threadId)),
+    [activeCrewmate, threadId],
+  );
+  const crewSendBlockReason = crewNotices?.retired?.sendBlock ?? null;
   const crewBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
-    if (activeCrewmate === null) return [];
-    const notices = crewChatNotices(activeCrewmate, threadId);
+    if (crewNotices === null) return [];
     const items: ComposerBannerStackItem[] = [];
-    if (notices.retired !== null) {
-      const current = notices.retired.currentThreadId;
+    if (crewNotices.retired !== null) {
+      const current = crewNotices.retired.currentThreadId;
       items.push({
         id: `crew-retired:${threadId}`,
         variant: "info",
         icon: <HistoryIcon />,
-        title: notices.retired.text,
+        title: crewNotices.retired.text,
         ...(current === null
           ? {}
           : {
@@ -5318,16 +5323,16 @@ export default function ChatView(props: ChatViewProps) {
             }),
       });
     }
-    if (notices.pending !== null) {
+    if (crewNotices.pending !== null) {
       items.push({
-        id: `crew-pending:${notices.pending}`,
+        id: `crew-pending:${crewNotices.pending}`,
         variant: "default",
         icon: <RefreshCwIcon />,
-        title: notices.pending,
+        title: crewNotices.pending,
       });
     }
     return items;
-  }, [activeCrewmate, environmentId, navigate, threadId]);
+  }, [crewNotices, environmentId, navigate, threadId]);
   // What a crew thread's task cards need beyond their text: the board, and
   // for the stint's first card — while the conversation is loaded from its
   // start — why this conversation began and the one before it.
@@ -8285,7 +8290,7 @@ export default function ChatView(props: ChatViewProps) {
                                   ? "Sending feedback"
                                   : threadDetailLoading
                                     ? "Messages loading"
-                                    : (projectCloneSendBlockReason ?? null)
+                                    : (crewSendBlockReason ?? projectCloneSendBlockReason ?? null)
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               isPreparingWorktree={isPreparingWorktree}
