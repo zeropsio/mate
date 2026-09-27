@@ -216,14 +216,145 @@ describe("CrewStore", () => {
     it.effect("publishes which table changed for which crew", () =>
       Effect.gen(function* () {
         const store = yield* CrewStore.CrewStore;
-        const seen = yield* store.changes.pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
+        const seen = yield* store.changes.pipe(Stream.take(4), Stream.runCollect, Effect.forkChild);
         yield* Effect.yieldNow;
         yield* store.putLane(lane());
         yield* store.putHost({ host: "appdev", crewPorts: [] });
+        yield* store.updateClaim("appdev", () =>
+          Option.some({
+            host: "appdev",
+            crew: "game",
+            member: "backend",
+            lane: "backend",
+            state: "requested",
+            requestedAt: "2026-09-27T10:00:00.000Z",
+            grantedBy: null,
+            grantedAt: null,
+            expiresAt: null,
+            releasedAt: null,
+          }),
+        );
+        yield* store.clearMemory("game", "backend");
         assert.deepStrictEqual(Array.from(yield* Fiber.join(seen)), [
           { crew: "game", table: "lane" },
           { crew: null, table: "host" },
+          { crew: "game", table: "claim" },
+          { crew: "game", table: "memory" },
         ]);
+      }),
+    );
+  });
+
+  it.layer(storeLayer)("claims", (it) => {
+    it.effect("changes a host's claim in one transaction, and deletes it on none", () =>
+      Effect.gen(function* () {
+        const store = yield* CrewStore.CrewStore;
+        const requested: CrewStore.CrewClaimRow = {
+          host: "appdev",
+          crew: "game",
+          member: "backend",
+          lane: "backend",
+          state: "requested",
+          requestedAt: "2026-09-27T10:00:00.000Z",
+          grantedBy: null,
+          grantedAt: null,
+          expiresAt: null,
+          releasedAt: null,
+        };
+        const created = yield* store.updateClaim("appdev", () => Option.some(requested));
+        const granted = yield* store.updateClaim("appdev", (claim) =>
+          Option.map(claim, (row) => ({
+            ...row,
+            state: "starting" as const,
+            grantedBy: "user-1",
+            grantedAt: "2026-09-27T10:01:00.000Z",
+            expiresAt: "2026-09-27T11:01:00.000Z",
+          })),
+        );
+        const afterGrant = {
+          read: Option.getOrUndefined(yield* store.getClaim("appdev")),
+          ofCrew: (yield* store.claims("game")).map((row) => row.state),
+        };
+        const removed = yield* store.updateClaim("appdev", () => Option.none());
+        const untouched = yield* store.updateClaim("webdev", (claim) => claim);
+        assert.deepStrictEqual(
+          {
+            created: Option.getOrUndefined(created),
+            granted: Option.getOrUndefined(granted)?.state,
+            afterGrant,
+            removed: Option.isNone(removed),
+            gone: Option.isNone(yield* store.getClaim("appdev")),
+            untouched: Option.isNone(untouched),
+          },
+          {
+            created: requested,
+            granted: "starting",
+            afterGrant: {
+              read: {
+                ...requested,
+                state: "starting",
+                grantedBy: "user-1",
+                grantedAt: "2026-09-27T10:01:00.000Z",
+                expiresAt: "2026-09-27T11:01:00.000Z",
+              },
+              ofCrew: ["starting"],
+            },
+            removed: true,
+            gone: true,
+            untouched: true,
+          },
+        );
+      }),
+    );
+  });
+
+  it.layer(storeLayer)("memory", (it) => {
+    it.effect("keeps a crewmate's memory entries, removes one, and clears them all", () =>
+      Effect.gen(function* () {
+        const store = yield* CrewStore.CrewStore;
+        const entry = (
+          member: string,
+          id: string,
+          kind: CrewStore.CrewMemoryKind,
+          updatedAt: string,
+        ): CrewStore.CrewMemoryRow => ({
+          crew: "game",
+          member,
+          id,
+          kind,
+          topic: kind === "note" ? "api-shape" : null,
+          text: `${kind} ${id}`,
+          paths: kind === "fact" ? ["src/api.ts", "src/score.ts"] : [],
+          verifiedAt: kind === "fact" ? "2026-09-27T10:00:00.000Z" : null,
+          fromAssignment: kind === "lesson" ? "a-1" : null,
+          updatedAt,
+        });
+        const fact = entry("backend", "m-2", "fact", "2026-09-27T10:02:00.000Z");
+        const lesson = entry("backend", "m-1", "lesson", "2026-09-27T10:01:00.000Z");
+        const note = entry("backend", "m-3", "note", "2026-09-27T10:03:00.000Z");
+        yield* store.putMemory(fact);
+        yield* store.putMemory(lesson);
+        yield* store.putMemory(note);
+        yield* store.putMemory(entry("frontend", "m-9", "decision", "2026-09-27T10:00:00.000Z"));
+        yield* store.putMemory({ ...fact, text: "fact m-2, verified again" });
+        const all = yield* store.memory("game", "backend");
+        yield* store.deleteMemory("game", "backend", "m-1");
+        const afterDelete = (yield* store.memory("game", "backend")).map((row) => row.id);
+        yield* store.clearMemory("game", "backend");
+        assert.deepStrictEqual(
+          {
+            all,
+            afterDelete,
+            cleared: (yield* store.memory("game", "backend")).length,
+            frontend: (yield* store.memory("game", "frontend")).map((row) => row.id),
+          },
+          {
+            all: [lesson, { ...fact, text: "fact m-2, verified again" }, note],
+            afterDelete: ["m-2", "m-3"],
+            cleared: 0,
+            frontend: ["m-9"],
+          },
+        );
       }),
     );
   });
