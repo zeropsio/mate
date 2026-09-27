@@ -8,9 +8,11 @@
  * - **No crewmate** — a person's thread: no profile and no extension, so
  *   the adapter runs it byte-identical to a Mate without a crew.
  * - **A crewmate whose stint is not live** — the deny-all profile: nothing
- *   runs, whatever is asked.
+ *   runs, whatever is asked, and it only reads.
  * - **A live crewmate** — its prompt (`crewSessionContext`), its Runs-on
- *   overrides, its budget and window, the gate, and its kind's tools.
+ *   overrides, its budget and window, whether it only reads, the gate, its
+ *   kind's tools, and for a writer its commands' lane form, which a driver
+ *   that cannot rewrite a command tells the model.
  *
  * The adapter asks for the profile at every turn (for model and effort) but
  * builds the hooks and the tool server once, when the session starts, and
@@ -34,12 +36,18 @@ import {
   ClaudeThreadExtensionRegistry,
 } from "../../spi/claudeThreadProfile.ts";
 import { type ThreadToolProfile, ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
-import { decideCrewTool } from "./CrewPolicy.ts";
+import { crewExactCommandRule, decideCrewTool, type GateContext } from "./CrewPolicy.ts";
 import { crewSessionContext } from "./crewPrompt.ts";
 import { CrewThreadDirectory, type CrewThreadMember, CrewToolHost } from "./crewSeams.ts";
 import { CREW_RETIRED, crewThreadTools } from "./CrewTools.ts";
 
 const DENY_ALL = { kind: "deny-all" } as const;
+
+/** A writer's lane form, for a driver that cannot rewrite its commands. */
+const exactCalls = (gate: GateContext): Pick<ThreadToolProfile, "exactCallsContext"> => {
+  const rule = crewExactCommandRule(gate);
+  return rule === undefined ? {} : { exactCallsContext: rule };
+};
 
 /**
  * Installs the policy and the Claude extension for the caller's scope. The
@@ -64,6 +72,7 @@ export const installCrewThreadPolicy = Effect.gen(function* () {
     ...(member.model === undefined ? {} : { model: member.model }),
     ...(member.effort === undefined ? {} : { effort: member.effort }),
     readOnly: member.kind !== "writer",
+    ...exactCalls(member.gate),
     decideTool: (call) =>
       Effect.map(liveMember(threadId), (current) =>
         decideCrewTool(Option.isSome(current) ? current.value.gate : DENY_ALL, call),

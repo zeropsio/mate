@@ -70,7 +70,11 @@ through it would make the two directories import each other.
   file and a `Write` per added file or move target, from the changes its `fileChange` item listed
   when it started, relative paths against the session's cwd — every call must allow. A failing or
   silent (15 s) gate declines, and so does an allow that rewrites the call: Codex's answer carries a
-  decision only, so it would run what it asked, not what the gate allowed. Its permission and MCP
+  decision only, so it would run what it asked, not what the gate allowed. So a profile may carry
+  `exactCallsContext`, how to write calls the gate allows as they are, which the Codex setup adds
+  after the session context in `developerInstructions`: the crew sets it for a writer, whose
+  commands the gate allows unchanged only in their lane form (`ssh <host> 'cd <copy> && <port and
+env> timeout <n> sh -c …'`, byte for byte), and gives the model that exact form. Its permission and MCP
   elicitation requests are declined unasked. The deny reason does not reach the model; Codex
   reports a plain rejection.
 - **What a Codex crewmate is in phase C.** Code only: no zcp tools, and no crew tools either — they

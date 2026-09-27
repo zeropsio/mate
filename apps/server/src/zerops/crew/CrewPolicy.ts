@@ -371,6 +371,28 @@ const lanePayload = (
     : undefined;
 };
 
+/**
+ * A writer's lane form as a rule, for a driver that cannot rewrite a call:
+ * its commands run only when they are already that form. None for a
+ * crewmate that runs no commands.
+ */
+export const crewExactCommandRule = (ctx: GateContext): string | undefined => {
+  if (ctx.kind !== "live") return undefined;
+  const { lane } = ctx.member;
+  if (ctx.member.kind !== "writer" || lane === undefined) return undefined;
+  return [
+    "# Commands",
+    "",
+    "Your commands run only exactly as written here, whatever the crew rules say; any other form is refused. Write each one as:",
+    "",
+    laneCommand(ctx, lane, "<command>"),
+    "",
+    "with your command in place of <command>, using double quotes, never single quotes, inside it. For example:",
+    "",
+    laneCommand(ctx, lane, "npm test"),
+  ].join("\n");
+};
+
 const decideCommand = (ctx: LiveGateContext, args: Record<string, unknown>): GateDecision => {
   const { lane } = ctx.member;
   if (ctx.member.kind !== "writer" || lane === undefined) {

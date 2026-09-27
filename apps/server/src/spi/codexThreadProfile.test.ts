@@ -319,6 +319,14 @@ describe("the thread and turn a profiled Codex thread starts", () => {
     });
   });
 
+  it("adds the profile's exact-calls context to its developer instructions", () => {
+    const setup = codexThreadSetup({ ...PROFILE, exactCallsContext: "# Commands\n\nExactly so." });
+    assert.strictEqual(
+      setup.thread.developerInstructions,
+      `${PROFILE.sessionContext}\n\n# Commands\n\nExactly so.`,
+    );
+  });
+
   for (const [readOnly, sandbox, sandboxPolicy] of [
     [undefined, "workspace-write", { type: "workspaceWrite" }],
     [false, "workspace-write", { type: "workspaceWrite" }],

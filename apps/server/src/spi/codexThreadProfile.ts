@@ -173,7 +173,9 @@ export function codexThreadSetup(profile: ThreadToolProfile): CodexThreadSetup {
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
       sandbox: profile.readOnly ? "read-only" : "workspace-write",
-      developerInstructions: profile.sessionContext,
+      developerInstructions: [profile.sessionContext, profile.exactCallsContext]
+        .filter(Boolean)
+        .join("\n\n"),
       config: {
         [`mcp_servers.${ZCP_MCP_SERVER}.enabled`]: false,
         model_auto_compact_token_limit: profile.contextWindow,

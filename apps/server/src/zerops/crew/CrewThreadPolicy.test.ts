@@ -18,7 +18,7 @@ import {
 } from "../../spi/claudeThreadProfile.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { crewLane } from "./CrewDefinition.ts";
-import { crewRefusedRoots, type LiveGateContext } from "./CrewPolicy.ts";
+import { crewExactCommandRule, crewRefusedRoots, type LiveGateContext } from "./CrewPolicy.ts";
 import { crewSessionContext } from "./crewPrompt.ts";
 import { CrewThreadDirectory, type CrewThreadMember, CrewToolHost } from "./crewSeams.ts";
 import { CrewThreadPolicyLive, installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
@@ -230,6 +230,7 @@ describe("CrewThreadPolicy", () => {
           expect(profile.sessionContext).toBe(crewSessionContext(member.prompt));
           expect(profile.tools.map((tool) => tool.name)).toEqual(names);
           expect(profile.readOnly).toBe(readOnly);
+          expect(profile.exactCallsContext).toBe(crewExactCommandRule(member.gate));
           for (const toolName of ["AskUserQuestion", "ExitPlanMode"]) {
             const decision = yield* profile.decideTool({ toolName, input: {}, toolUseId: "t1" });
             expect(decision.kind).toBe("deny");

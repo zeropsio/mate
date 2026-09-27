@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { crewLane } from "./CrewDefinition.ts";
 import {
+  crewExactCommandRule,
   crewRefusedRoots,
   decideCrewTool,
   type GateDecision,
@@ -540,6 +541,28 @@ describe("decideCrewTool — commands", () => {
     ["a reader runs nothing", reader, "Bash", { command: 'ssh appdev "ls"' }, DENY],
     ["the lead runs nothing", lead, "Bash", { command: 'ssh appdev "ls"' }, DENY],
   ]);
+});
+
+describe("crewExactCommandRule — the lane form, for a driver that cannot rewrite a command", () => {
+  it("gives a writer its lane form, and its example runs as it is", () => {
+    const rule = crewExactCommandRule(writer)!;
+    const form =
+      "ssh appdev 'cd /var/www/.crew/backend && CREW_PORT=3001 DATABASE_URL=postgres://db/backend timeout 600 sh -c '\\''<command>'\\'''";
+    expect(rule).toContain(form);
+    const example = form.replace("<command>", "npm test");
+    expect(rule).toContain(example);
+    expect(decideCrewTool(writer, { toolName: "Bash", input: { command: example } })).toEqual(
+      ALLOW,
+    );
+  });
+
+  it.each([
+    ["a reader", reader],
+    ["the lead", lead],
+    ["a thread without a live stint", { kind: "deny-all" } as const],
+  ] as const)("gives %s none: it runs no commands", (_name, ctx) => {
+    expect(crewExactCommandRule(ctx)).toBeUndefined();
+  });
 });
 
 describe("decideCrewTool — the dev server and a claim", () => {
