@@ -39,8 +39,10 @@ export interface CrewPromptInput {
   readonly crewTools?: boolean;
 }
 
-const NO_CREW_TOOLS =
+const WRITER_NO_CREW_TOOLS =
   "- You have no crew tools: your task is done when the person lands your work; say in your answer when it is ready.";
+const READER_NO_CREW_TOOLS =
+  "- You have no crew tools: answer in this conversation; the person reads it.";
 
 const writerRules = (handle: string, lane: CrewLane, crewTools: boolean): ReadonlyArray<string> => [
   `You are @${handle}, a crewmate of this Mate. You change files only in your own copy of the code.`,
@@ -53,7 +55,7 @@ const writerRules = (handle: string, lane: CrewLane, crewTools: boolean): Readon
     ? [
         "- Your task arrives as a card in this conversation. When it is done, or when you need the person, say so with crew_report.",
       ]
-    : ["- Your task arrives as a card in this conversation.", NO_CREW_TOOLS]),
+    : ["- Your task arrives as a card in this conversation.", WRITER_NO_CREW_TOOLS]),
 ];
 
 const readerRules = (handle: string, crewTools: boolean): ReadonlyArray<string> => [
@@ -61,7 +63,7 @@ const readerRules = (handle: string, crewTools: boolean): ReadonlyArray<string> 
   "",
   ...(crewTools
     ? ["- You read files and the crew's changes, and you report what you find with crew_report."]
-    : ["- You read files and the crew's changes.", NO_CREW_TOOLS]),
+    : ["- You read files and the crew's changes.", READER_NO_CREW_TOOLS]),
 ];
 
 const leadRules = (handle: string): ReadonlyArray<string> => [

@@ -63,29 +63,35 @@ describe("crewSessionContext", () => {
 
   const NO_CREW_TOOLS =
     "- You have no crew tools: your task is done when the person lands your work; say in your answer when it is ready.";
+  const READER_NO_CREW_TOOLS =
+    "- You have no crew tools: answer in this conversation; the person reads it.";
 
   it.each([
     {
       name: "a writer",
       input: writer,
       keeps: "- Your task arrives as a card in this conversation.",
+      ending: NO_CREW_TOOLS,
     },
     {
       name: "a reader",
       input: { ...writer, member: { handle: "erik", kind: "reader" as const } },
       keeps: "- You read files and the crew's changes.",
+      ending: READER_NO_CREW_TOOLS,
     },
     {
       name: "a writer with memory",
       input: { ...writer, memory: true },
       keeps: "The brief outranks your memory",
+      ending: NO_CREW_TOOLS,
     },
-  ])("names no crew tool to $name whose agent hosts none", ({ input, keeps }) => {
+  ])("names no crew tool to $name whose agent hosts none", ({ input, keeps, ending }) => {
     const text = crewSessionContext({ ...input, crewTools: false });
 
     expect(text).not.toMatch(/crew_[a-z]/u);
-    expect(text).toContain(NO_CREW_TOOLS);
     expect(text).toContain(keeps);
+    expect(text).toContain(ending);
+    expect(text.split("You have no crew tools")).toHaveLength(2);
   });
 
   it.each([
