@@ -133,4 +133,46 @@ describe("ComposerCommandMenu", () => {
     expect(markup).toContain("Find the right skill or workflow");
     expect(markup).not.toContain("font-medium text-secondary-label");
   });
+  it("offers crewmates by face, handle and job", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerCommandMenu
+        items={[
+          {
+            id: "crewmate:backend",
+            type: "crewmate",
+            handle: "backend",
+            tint: "sky",
+            label: "@backend",
+            description: "Owns the API under src/api and its tests.",
+          },
+        ]}
+        resolvedTheme="dark"
+        isLoading={false}
+        triggerKind="crewmate"
+        activeItemId="crewmate:backend"
+        onHighlightedItemChange={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("@backend");
+    expect(markup).toContain("Owns the API under src/api and its tests.");
+    expect(markup).toContain("fill-[var(--zerops-mate-tint-sky)]");
+  });
+
+  it("says no crewmate matches when none does", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerCommandMenu
+        items={[]}
+        resolvedTheme="dark"
+        isLoading={false}
+        triggerKind="crewmate"
+        activeItemId={null}
+        onHighlightedItemChange={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("No crewmate by that name.");
+  });
 });

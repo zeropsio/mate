@@ -214,6 +214,21 @@ describe("detectComposerTrigger", () => {
     expect(trigger?.kind).toBe("path");
     expect(trigger?.query).toBe("");
   });
+
+  it("offers crewmates on @ only where the composer asks for them", () => {
+    const text = "Rework @back";
+    const table = [
+      { name: "a chat's composer", options: undefined, kind: "path" },
+      { name: "Tell the crew", options: { mentions: "crewmate" } as const, kind: "crewmate" },
+    ] as const;
+
+    for (const row of table) {
+      expect([row.name, detectComposerTrigger(text, text.length, row.options)]).toEqual([
+        row.name,
+        { kind: row.kind, query: "back", rangeStart: "Rework ".length, rangeEnd: text.length },
+      ]);
+    }
+  });
 });
 
 describe("replaceTextRange", () => {
