@@ -31,6 +31,7 @@ const render = () =>
   renderToStaticMarkup(
     <CrewmateHeader
       environmentId={FEN}
+      onEditJob={() => {}}
       origin={BACKEND}
       threadId={ThreadId.make("thread-crew-backend-2")}
     />,

@@ -54,8 +54,8 @@ export function CrewmateHeader({
   readonly threadId: ThreadId;
   /** The thread's crew origin: whose chat this is, before the crew is read. */
   readonly origin: ThreadCrewOrigin;
-  /** Opens the crew section's crewmate sheet on this crewmate; absent until it is wired. */
-  readonly onEditJob?: ((handle: string) => void) | undefined;
+  /** Opens the crew's Crewmate editor on this crewmate. */
+  readonly onEditJob: (handle: string) => void;
 }) {
   const { view } = useCrew(environmentId);
   // The dialogs show their own refusal inline; Start fresh has no surface of
@@ -143,9 +143,7 @@ export function CrewmateHeader({
           <EllipsisIcon aria-hidden="true" className="size-3.5" />
         </MenuTrigger>
         <MenuPopup align="start">
-          {onEditJob === undefined ? null : (
-            <MenuItem onClick={() => onEditJob(handle)}>Edit job</MenuItem>
-          )}
+          <MenuItem onClick={() => onEditJob(handle)}>Edit job</MenuItem>
           <MenuItem onClick={() => openDialog("new-task")}>New task…</MenuItem>
           <MenuItem disabled={startingFresh} onClick={() => void startFresh()}>
             Start fresh

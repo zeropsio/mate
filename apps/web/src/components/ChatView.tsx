@@ -181,6 +181,7 @@ import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
+import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
@@ -5282,6 +5283,8 @@ export default function ChatView(props: ChatViewProps) {
     view: crew.view,
   });
   const activeCrewOrigin = activeThreadShell?.crew ?? null;
+  // *Edit job* in a crewmate's header: the crew's own Crewmate editor.
+  const [editingCrewmate, setEditingCrewmate] = useState<string | null>(null);
   const activeCrewmate =
     activeCrewOrigin === null
       ? null
@@ -8016,6 +8019,7 @@ export default function ChatView(props: ChatViewProps) {
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}
+            onEditCrewmateJob={setEditingCrewmate}
             {...(startSecondChat === null ? {} : { onNewChat: startSecondChat })}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
@@ -8048,6 +8052,11 @@ export default function ChatView(props: ChatViewProps) {
           />
         )}
         {zeropsSignInDialog.dialog}
+        <CrewmateEditor
+          environmentId={environmentId}
+          onClose={() => setEditingCrewmate(null)}
+          target={editingCrewmate === null ? null : { handle: editingCrewmate, lead: false }}
+        />
 
         <ThreadErrorBanner
           error={visibleThreadError}
