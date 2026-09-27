@@ -631,10 +631,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     });
 
     // Whether the person's message lands in a run already on — a turn the
-    // provider is running (the command reactor's continuation) or starting
-    // for an earlier message — and is steered into it: a follow-up, not the
-    // task. A compaction's run is nobody's task: the reactor holds what
-    // arrives during it and starts it as the next run.
+    // provider is running for an ask (the command reactor's continuation) or
+    // starting for an earlier message — and is steered into it: a follow-up,
+    // not the task. A compaction's run, or one a background result woke, is
+    // nobody's task: what arrives during it starts the next run.
     const isSteeredIntoRun = Effect.fn("isSteeredIntoRun")(function* (
       payload: Extract<OrchestrationEvent, { type: "thread.message-sent" }>["payload"],
     ) {
@@ -647,8 +647,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           threadId,
           turnId: activeTurnId,
         });
+        // A run nobody's ask started — a background result woke it — takes no
+        // follow-ups: the provider ends it and runs the message as its own.
         const opener = Option.isSome(turn) ? turn.value.pendingMessageId : null;
-        return opener === null || !(yield* isCompactRequestId(opener));
+        return opener !== null && !(yield* isCompactRequestId(opener));
       }
       if (status !== "starting") return false;
       const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId({

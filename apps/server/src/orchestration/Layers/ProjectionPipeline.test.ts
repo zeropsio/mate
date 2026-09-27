@@ -3346,6 +3346,23 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           ["an ask while that turn runs", { say: "ask-3", text: version }, version],
           ["the compaction ends", { session: "ready" }, version],
         ],
+        // A run nobody's ask started — a helper's result woke the Mate — takes
+        // no follow-ups: the provider ends it and runs what the person sent as
+        // a run of its own (the subject stayed on the ask before, for good).
+        woken: [
+          ["an ask", { say: "ask-1", text: ask }, ask],
+          ["its run is requested", { request: "ask-1" }, ask],
+          ["the run is on", { session: "running", turn: "turn-1" }, ask],
+          ["the run ends", { session: "ready" }, ask],
+          [
+            "a helper's result wakes a run of its own",
+            { session: "running", turn: "turn-woken" },
+            ask,
+          ],
+          ["an ask while the woken run is on", { say: "ask-2", text: footer }, footer],
+          ["its run is requested", { request: "ask-2" }, footer],
+          ["the woken run ends", { session: "ready" }, footer],
+        ],
         revert: [
           ["an ask", { say: "ask-1", text: ask }, ask],
           ["its run is requested", { request: "ask-1" }, ask],
