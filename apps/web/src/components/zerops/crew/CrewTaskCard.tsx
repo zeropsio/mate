@@ -13,7 +13,7 @@ import {
   CREW_PREVIOUS_STINT_LINK,
   crewLandedAsWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewSeam, CrewTask, ThreadId } from "@t3tools/contracts";
+import type { CrewSeam, CrewTask, Crewmate, ThreadId } from "@t3tools/contracts";
 import { createContext, use, useMemo } from "react";
 
 import type { CrewCard } from "../../chat/conversation.logic";
@@ -27,6 +27,8 @@ export interface CrewTimeline {
   /** Why this stint began, and the stint before it; `null` for a crewmate's first conversation. */
   readonly origin: { readonly text: string; readonly previousThreadId: ThreadId | null } | null;
   readonly tasks: ReadonlyArray<CrewTask>;
+  /** Whose conversation this is: its handle, and the crewmate once the crew is read. */
+  readonly crewmate: { readonly handle: string; readonly profile: Crewmate | null };
   readonly onOpenThread: (threadId: ThreadId) => void;
 }
 

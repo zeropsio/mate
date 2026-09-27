@@ -693,6 +693,46 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain('data-timeline-row-kind="background"');
   });
 
+  it("opens an empty crewmate conversation with the crewmate, its stint seam on top", async () => {
+    const { CrewTimelineContext } = await import("../zerops/crew/CrewTaskCard");
+    const markup = renderToStaticMarkup(
+      <CrewTimelineContext
+        value={{
+          firstCardId: null,
+          origin: null,
+          tasks: [],
+          crewmate: { handle: "backend", profile: null },
+          onOpenThread: () => {},
+        }}
+      >
+        <MessagesTimeline
+          {...buildProps()}
+          timelineEntries={[
+            {
+              id: "seam-1",
+              kind: "work",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              entry: {
+                id: "seam-1",
+                createdAt: "2026-03-17T19:12:28.000Z",
+                turnId: null,
+                label: "Started fresh by you",
+                tone: "info",
+                sourceActivityKind: "crew.seam",
+                crewSeam: { seam: "stint", previousThreadId: null },
+              },
+            },
+          ]}
+        />
+      </CrewTimelineContext>,
+    );
+
+    expect(markup).toContain('data-zerops-surface="crewmate-empty-state"');
+    expect(markup).toContain("Started fresh by you");
+    expect(markup).toContain("Message @backend…");
+    expect(markup).not.toContain('data-timeline-row-kind="crew-seam"');
+  });
+
   it("renders collapse controls for long user messages", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline

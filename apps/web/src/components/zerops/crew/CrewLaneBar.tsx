@@ -12,8 +12,6 @@ import { ExternalLinkIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "~/lib/utils";
-import { useDiffPanelStore } from "~/diffPanelStore";
-import { useRightPanelStore } from "~/rightPanelStore";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import { useAskMate } from "~/zerops/useAskMate";
@@ -34,10 +32,16 @@ const NOTE_TONE = {
 export function CrewLaneBar({
   threadRef,
   handle,
+  onOpenChanges,
 }: {
-  /** The crewmate's chat on screen: *Changes* opens its diff there. */
+  /** The crewmate's chat on screen. */
   readonly threadRef: ScopedThreadRef;
   readonly handle: string;
+  /**
+   * *Changes*: the chat's diff panel on this chat's thread — whose worktree is
+   * the copy — as a branch diff against `baseRef` (the panel's own base while `null`).
+   */
+  readonly onOpenChanges: (baseRef: string | null) => void;
 }) {
   const { snapshot, view, current } = useCrew(threadRef.environmentId);
   const command = useCrewCommand(threadRef.environmentId);
@@ -58,11 +62,6 @@ export function CrewLaneBar({
 
   // A press acts on what is shown: nothing is pressed on a stale snapshot.
   const busy = command.pending || !current;
-  const openChanges = () => {
-    // The thread's worktree is the copy, so the branch diff runs in it.
-    useDiffPanelStore.getState().selectBranchBaseRef(threadRef, model.changesBase);
-    useRightPanelStore.getState().open(threadRef, "diff");
-  };
   // Every draft for Fen goes where the section's go: into this chat when it is
   // a person chat, else the main one — from a crewmate's chat, the main one.
   const askFen = (draft: string) => askMate(projectId, draft, { threadId: threadRef.threadId });
@@ -102,7 +101,7 @@ export function CrewLaneBar({
           </span>
         )}
         {model.ahead === null ? null : (
-          <Button onClick={openChanges} size="xs" variant="ghost-muted">
+          <Button onClick={() => onOpenChanges(model.changesBase)} size="xs" variant="ghost-muted">
             Changes
           </Button>
         )}
