@@ -62,6 +62,14 @@ export interface ZeropsProjectFlow {
   readonly missing: ReadonlyArray<MissingEnvironmentRow>;
   /** Every open pull request on the project's repositories, code and recipe. */
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  /**
+   * Whether Gitea has answered for the project: until then `pullRequests` is
+   * empty for want of an answer, not of a change, and the left menu draws the
+   * change rows it remembers (`menuMemory.ts`). A read that failed first is
+   * no answer — the next one usually is, a few seconds on — and one that
+   * fails after an answer keeps it (`flow/groupAnswers.ts`).
+   */
+  readonly changesKnown: boolean;
   /** The changes that have landed — what a conversation's timeline places. */
   readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first. */

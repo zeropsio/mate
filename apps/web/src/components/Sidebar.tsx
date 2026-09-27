@@ -223,7 +223,12 @@ import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
-import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
+import {
+  SidebarZeropsTree,
+  type SidebarDrawn,
+  type SidebarProjectFlow,
+  type SidebarRemembered,
+} from "./zerops/SidebarZeropsTree";
 import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
@@ -239,8 +244,21 @@ import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
 import {
   canCreateProjectsInOrganization,
   flowVerbKey,
+  readZeropsGroupTags,
   type EnvironmentRow,
 } from "@t3tools/client-runtime/zerops";
+import {
+  menuMemory,
+  rememberedActivity,
+  rememberedChangeOf,
+  rememberedChanges,
+  rememberedRowOf,
+  rememberMenu,
+  withChanges,
+  withRows,
+  withStops,
+  type RememberedRow,
+} from "../zerops/menuMemory";
 import {
   candidatesNotice,
   findCandidate,
@@ -1816,6 +1834,8 @@ export default function Sidebar() {
       const stopReads = sidebarStopReads({ flow, deployments: zeropsProjectFlow.deployments });
       return {
         pullRequests: flow.pullRequests,
+        // Until Gitea answers, the tree draws the change rows it remembers.
+        changesKnown: flow.changesKnown,
         // The pull requests that have landed on `main`: without it `groupFlow`
         // never sees a group's own merged code, so it read `main` as empty and
         // *Add production* — `groupFlow.ts`'s own `add-production` case — could
@@ -2295,6 +2315,64 @@ export default function Sidebar() {
   const zeropsAgentActivity = useZeropsAgentActivity();
   // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
   const zeropsMateMenus = useSidebarMateMenus({ threads });
+  // What a Mate's row says: its conversation's once read through an open
+  // socket, and until then what this browser remembers it saying
+  // (`menuMemory.ts`) — a reload paints whole rows, not names that grow as
+  // each Mate connects.
+  const zeropsRowActivity = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) => {
+      const live =
+        candidate.group === "connected" && candidate.environmentId !== undefined
+          ? zeropsAgentActivity.get(candidate.environmentId)
+          : undefined;
+      return live ?? rememberedActivity(candidate.project.id);
+    },
+    [zeropsAgentActivity],
+  );
+  // Remember each connected Mate's row as its conversation says it, and
+  // forget whatever the listing no longer holds.
+  useEffect(() => {
+    if (!zeropsHeld.complete) return;
+    const rows: Record<string, RememberedRow> = {};
+    const listed = new Set<string>();
+    const groups = new Set<string>();
+    for (const candidate of zeropsCandidates) {
+      listed.add(candidate.project.id);
+      const { groupId } = readZeropsGroupTags(candidate.project.tagList);
+      if (groupId !== undefined) groups.add(groupId);
+      if (candidate.group !== "connected" || candidate.environmentId === undefined) continue;
+      const live = zeropsAgentActivity.get(candidate.environmentId);
+      if (live !== undefined) rows[candidate.project.id] = rememberedRowOf(live);
+    }
+    rememberMenu((memory) =>
+      withStops(withChanges(withRows(memory, rows, listed), {}, groups), {}, listed),
+    );
+  }, [zeropsAgentActivity, zeropsCandidates, zeropsHeld.complete]);
+  // The change rows and stop lines the tree drew of what it read, for the
+  // next reload to paint while Gitea and the platform answer again.
+  const zeropsRemembered = useMemo<SidebarRemembered>(
+    () => ({
+      changes: rememberedChanges,
+      stop: (projectId) => menuMemory().stops[projectId],
+    }),
+    [],
+  );
+  const rememberZeropsDrawn = useCallback((drawn: SidebarDrawn) => {
+    rememberMenu((memory) =>
+      withStops(
+        withChanges(
+          memory,
+          Object.fromEntries(
+            Object.entries(drawn.changes).map(([groupId, pulls]) => [
+              groupId,
+              pulls.map(rememberedChangeOf),
+            ]),
+          ),
+        ),
+        drawn.stops,
+      ),
+    );
+  }, []);
   // The Mates waiting on the viewer, for the header's faces and ⌥↓.
   const zeropsActivityOf = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) =>
@@ -4085,11 +4163,9 @@ export default function Sidebar() {
               shown={zeropsShown}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
-              getActivity={(candidate) =>
-                candidate.environmentId === undefined
-                  ? undefined
-                  : zeropsAgentActivity.get(candidate.environmentId)
-              }
+              getActivity={zeropsRowActivity}
+              remembered={zeropsRemembered}
+              onDrawn={rememberZeropsDrawn}
               onSelect={(candidate) => {
                 if (isMobile) {
                   setOpenMobile(false);

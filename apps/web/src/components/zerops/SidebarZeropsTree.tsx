@@ -286,6 +286,12 @@ const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
  */
 export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  /**
+   * Whether Gitea answered for the project; absent reads as answered. Until
+   * it does, `pullRequests` is empty for want of an answer, and the menu
+   * draws the change rows it remembers (`remembered`).
+   */
+  readonly changesKnown?: boolean | undefined;
   readonly environments: ReadonlyMap<string, EnvironmentRow>;
   readonly releaseOffered: boolean;
   /**
@@ -390,6 +396,15 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
   /**
+   * What this browser remembers the menu drawing (`menuMemory.ts`), for what
+   * is not read yet: a project's change rows until Gitea answers, drawn
+   * without their verbs, and what a stop runs until its line settles.
+   * Absent, the menu draws only what it has read.
+   */
+  readonly remembered?: SidebarRemembered | undefined;
+  /** What the menu drew of what it has read, after each draw, for the memory to keep. */
+  readonly onDrawn?: ((drawn: SidebarDrawn) => void) | undefined;
+  /**
    * Whether this person may create a project at all
    * (`canCreateProjectsInOrganization`) — one part of whether *Add
    * production* is offered here (`productionAddable`, the page's own gate).
@@ -450,6 +465,46 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly phone?: boolean;
 }
 
+/** What the menu remembers drawing (`menuMemory.ts`). */
+export interface SidebarRemembered {
+  readonly changes: (groupId: string) => ReadonlyArray<FlowPullRequest> | undefined;
+  readonly stop: (projectId: string) => string | undefined;
+}
+
+/** What the menu drew of what it has read: the change rows Gitea answered, what settled stops run. */
+export interface SidebarDrawn {
+  readonly changes: Readonly<Record<string, ReadonlyArray<FlowPullRequest>>>;
+  readonly stops: Readonly<Record<string, string>>;
+}
+
+const NOTHING_DRAWN: SidebarDrawn = { changes: {}, stops: {} };
+
+/**
+ * What a row may say of a Mate: its conversation's, read through an open
+ * socket — or what this browser remembers it saying, until then
+ * (`menuMemory.ts`); nothing where neither is known.
+ */
+function drawnActivity(
+  candidate: Pick<RosterCandidate, "group">,
+  activity: ZeropsAgentActivity | undefined,
+): ZeropsAgentActivity | undefined {
+  return candidate.group === "connected" || activity?.remembered === true ? activity : undefined;
+}
+
+/** What a change row acts with: the project's flow, or nothing while it is remembered. */
+type ChangeRows = Pick<SidebarProjectFlow, "merging" | "onMerge" | "onAsk" | "onOpenChange"> & {
+  readonly remembered?: true;
+};
+
+/** Change rows drawn from memory: their titles only, until Gitea answers. */
+const REMEMBERED_CHANGE_ROWS: ChangeRows = {
+  merging: () => false,
+  onMerge: () => undefined,
+  onAsk: undefined,
+  onOpenChange: undefined,
+  remembered: true,
+};
+
 /** What the tree hands its peek: the Mate, as its row draws it. */
 export interface SidebarPeekRender<T> {
   readonly candidate: T;
@@ -481,6 +536,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getActivity,
   getOwner,
   getFlow,
+  remembered,
+  onDrawn,
   mayCreate = false,
   health = NO_HEALTH,
   complete,
@@ -544,9 +601,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // written after each render, not during it.
   const mateOrder = useRef<ReadonlyArray<string>>([]);
   const jumpIndex = useRef<SidebarJumpIndex>(EMPTY_JUMP_INDEX);
+  const drawnForMemory = useRef<SidebarDrawn>(NOTHING_DRAWN);
   useEffect(() => {
     useSidebarPeek.getState().setMateOrder(mateOrder.current);
     useSidebarJump.getState().publish(jumpIndex.current);
+    onDrawn?.(drawnForMemory.current);
   });
   const [, setRevealDraw] = useState(0);
   useEffect(() => {
@@ -672,8 +731,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // for the same project.
   const deployments = useZeropsProjectFlowOptional()?.deployments;
 
-  // Until the rows below are drawn, the jump box finds nothing here.
+  // Until the rows below are drawn, the jump box finds nothing here, and the
+  // memory learns nothing new.
   jumpIndex.current = EMPTY_JUMP_INDEX;
+  drawnForMemory.current = NOTHING_DRAWN;
 
   // A Mate being created is one to draw, whatever the listing holds yet.
   const nothing = births.some((birth) => birth.placement.kind === "mate") ? undefined : emptyReason;
@@ -833,6 +894,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const jumpProjects: JumpProject[] = [];
   const jumpChanges: JumpChange[] = [];
   const jumpStops: JumpStop[] = [];
+  // What the memory keeps of this draw (`onDrawn`), gathered alike.
+  const drawnChanges: Record<string, ReadonlyArray<FlowPullRequest>> = {};
+  const drawnStops: Record<string, string> = {};
   const indexSection = (input: {
     readonly id: string;
     readonly group: ZeropsGroup | undefined;
@@ -841,6 +905,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     /** Its Mates as the menu draws them: the ones at work or lately, then the quiet ones. */
     readonly mateEntries: ReadonlyArray<Entry<T>>;
     readonly grouped: ReturnType<typeof pullRequestsByMate>;
+    /** Whether change rows are drawn: Gitea's, or the ones remembered until it answers. */
+    readonly changesDrawn: boolean;
     readonly stopRows: ReadonlyArray<StopRow<T>>;
     readonly projectFlow: GroupFlow;
   }) => {
@@ -868,7 +934,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         }),
       );
     }
-    if (flow !== undefined) {
+    if (input.changesDrawn) {
       const change = (pull: FlowPullRequest, mateProjectId: string | undefined): JumpChange => ({
         key: changeRowKey(pull),
         groupId: id,
@@ -899,7 +965,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         projectFlow,
         deployments,
         nowMs,
+        remembered: remembered?.stop(projectId),
       });
+      if (read.settled && read.line.runs !== undefined) drawnStops[projectId] = read.line.runs;
       const name = environmentNameUnderGroup(groupName, row.item.project.name);
       jumpStops.push({
         projectId,
@@ -970,7 +1038,21 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // Code only — a recipe change is the group's document, left to the
     // projects page, and is never one more thing a Mate's row here answers
     // for.
-    const flowPulls = projectFlow.pullRequests.map((entry) => entry.pull);
+    // The change rows: Gitea's once it answered, and until then the ones this
+    // browser remembers drawing, without their verbs — so a reload grows no
+    // row when the answer comes (`menuMemory.ts`).
+    const changesKnown = flow !== undefined && flow.changesKnown !== false;
+    const rememberedPulls = changesKnown ? undefined : remembered?.changes(id);
+    const changeRows: ChangeRows | undefined =
+      flow !== undefined && changesKnown
+        ? flow
+        : rememberedPulls === undefined
+          ? undefined
+          : REMEMBERED_CHANGE_ROWS;
+    const flowPulls = changesKnown
+      ? projectFlow.pullRequests.map((entry) => entry.pull)
+      : (rememberedPulls ?? []);
+    if (changesKnown) drawnChanges[id] = flowPulls;
     // By every Mate, shown or not: a hidden Mate's change is still its own,
     // never a person's branch.
     const grouped = pullRequestsByMate(
@@ -981,7 +1063,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // then a change nobody's Mate owns, then the last Mate's own last row. A
     // line that runs past its final node into the gap below reads as a list
     // that got cut off rather than as work arriving somewhere.
-    const otherPulls = flow === undefined ? [] : grouped.others;
+    const otherPulls = changeRows === undefined ? [] : grouped.others;
     // Every stage, then production — the order the code travels (the owner,
     // 2026-09-25), not the order the tags happen to list. A stop being
     // created follows the listed ones of its tier.
@@ -1001,7 +1083,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // untouched for a week (`isQuietMate`), open only when asked.
     const quietOf = (item: T) =>
       isQuietMate(
-        item.group === "connected" ? getActivity?.(item) : undefined,
+        drawnActivity(item, getActivity?.(item)),
         nowMs,
         item.project.id === activeProjectId,
       );
@@ -1015,6 +1097,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       flow,
       mateEntries: [...loud, ...quiet],
       grouped,
+      changesDrawn: changeRows !== undefined,
       stopRows,
       projectFlow,
     });
@@ -1062,20 +1145,19 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           const { item } = slot;
           const pulls = grouped.byMate.get(item.project.id) ?? [];
           const listKey = `${id}:${item.project.id}`;
-          const ownRow = pulls.length === 0 || flow === undefined;
+          const ownRow = pulls.length === 0 || changeRows === undefined;
           const appUrl = projectFlow.mates.find(
             (mate) => mate.projectId === item.project.id,
           )?.preview;
           numbered += 1;
           if (renderPeek !== undefined && peekState?.projectId === item.project.id) {
             const activity = getActivity?.(item);
-            const live = item.group === "connected" ? activity : undefined;
+            const live = drawnActivity(item, activity);
             const tags = readZeropsGroupTags(item.project.tagList);
             // The change the peek was asked to show — a jump to it — else its newest.
-            const firstPull =
-              flow === undefined
-                ? undefined
-                : (pulls.find((pull) => changeRowKey(pull) === peekState.change) ?? pulls[0]);
+            const firstPull = !changesKnown
+              ? undefined
+              : (pulls.find((pull) => changeRowKey(pull) === peekState.change) ?? pulls[0]);
             peekTarget = {
               candidate: item,
               activity: live,
@@ -1125,24 +1207,25 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 timestampFormat={timestampFormat}
                 tint={tints.get(item.project.id) ?? "slate"}
               />
-              {pulls.length === 0 || flow === undefined ? null : (
+              {pulls.length === 0 || changeRows === undefined ? null : (
                 <PullRequestList
-                  merging={flow.merging}
-                  onMerge={flow.onMerge}
+                  merging={changeRows.merging}
+                  onMerge={changeRows.onMerge}
                   onToggle={() => {
                     toggle(listKey);
                   }}
                   open={openLists.has(listKey)}
-                  onAsk={flow.onAsk}
-                  onOpenChange={flow.onOpenChange}
+                  onAsk={changeRows.onAsk}
+                  onOpenChange={changeRows.onOpenChange}
                   pulls={pulls}
                   railCap={last ? "end" : undefined}
+                  remembered={changeRows.remembered === true}
                 />
               )}
             </div>
           );
         })}
-        {grouped.others.length === 0 || flow === undefined ? null : (
+        {grouped.others.length === 0 || changeRows === undefined ? null : (
           // Nobody's Mate's: a person's own branch. Indented under the last
           // Mate it read as that Mate's work, which is a lie the row's own
           // `· ada` could not undo at 256px, where it is truncated away.
@@ -1152,11 +1235,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             {grouped.others.map((pull, index) => (
               <PullRequestRow
                 key={`${pull.repository}#${pull.number}`}
-                merging={flow.merging(pull)}
-                onAsk={flow.onAsk}
-                onMerge={flow.onMerge}
-                onOpenChange={flow.onOpenChange}
+                merging={changeRows.merging(pull)}
+                onAsk={changeRows.onAsk}
+                onMerge={changeRows.onMerge}
+                onOpenChange={changeRows.onOpenChange}
                 pull={pull}
+                remembered={changeRows.remembered === true}
                 railCap={
                   stopRows.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
                 }
@@ -1172,6 +1256,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             groupName={groupName}
             onOpenProject={onBrowseProjects}
             projectFlow={projectFlow}
+            rememberedStop={remembered?.stop}
             stops={stopRows}
           />
         ) : null}
@@ -1298,6 +1383,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     changes: jumpChanges,
     stops: jumpStops,
   };
+  drawnForMemory.current = { changes: drawnChanges, stops: drawnStops };
 
   return (
     <nav
@@ -1838,8 +1924,9 @@ function MateRow<T extends RosterCandidate>({
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
   // What it is on, or was last on, and since when — knowable only through an
-  // open socket, and only once somebody has spoken to it.
-  const live = candidate.group === "connected" ? activity : undefined;
+  // open socket, and only once somebody has spoken to it; until the socket
+  // opens, what this browser remembers the row saying.
+  const live = drawnActivity(candidate, activity);
   const subject = live?.subject;
   const snippet = subject === undefined ? undefined : live?.snippet;
   const face = mateFaceFor(candidate.group === "connected", activity);
@@ -2427,6 +2514,7 @@ function PullRequestList({
   onAsk,
   onOpenChange,
   railCap,
+  remembered = false,
 }: {
   readonly pulls: ReadonlyArray<FlowPullRequest>;
   readonly open: boolean;
@@ -2437,6 +2525,8 @@ function PullRequestList({
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
   /** Carried to whichever row is last on screen — folded shut, that is the count. */
   readonly railCap?: RailCap;
+  /** Drawn from memory until Gitea answers: titles only. */
+  readonly remembered?: boolean;
 }) {
   const folded = pullRequestsFolded(pulls.length);
   const listed = !folded || open;
@@ -2465,6 +2555,7 @@ function PullRequestList({
               onOpenChange={onOpenChange}
               pull={pull}
               railCap={index === pulls.length - 1 ? railCap : undefined}
+              remembered={remembered}
             />
           ))}
         </ul>
@@ -2487,6 +2578,7 @@ function PullRequestRow({
   railCap,
   onAsk,
   onOpenChange,
+  remembered = false,
 }: {
   readonly pull: FlowPullRequest;
   readonly merging: boolean;
@@ -2496,6 +2588,8 @@ function PullRequestRow({
   /** False for a change that is nobody's Mate's, which hangs under nothing. */
   readonly underMate?: boolean;
   readonly railCap?: RailCap;
+  /** Drawn from memory until Gitea answers: its title, and no verdict or verb it may no longer have. */
+  readonly remembered?: boolean;
 }) {
   const tone = checkDotTone({ checks: pull.checks });
   const label = sidebarChangeLabel(pull);
@@ -2526,7 +2620,7 @@ function PullRequestRow({
           checks beside it; where Gitea refuses, the reason is written out —
           a red dot alone was the row saying nothing at exactly the moment it
           had something to say (seen in the harness, 2026-09-19). */}
-      {pull.mergeability === "mergeable" ? (
+      {remembered ? null : pull.mergeability === "mergeable" ? (
         <>
           {tone === undefined || pull.checkWord === undefined ? null : (
             <Tooltip>
@@ -2861,6 +2955,7 @@ function EnvironmentRows<T extends RosterCandidate>({
   projectFlow,
   groupName,
   deployments,
+  rememberedStop,
   onOpenProject,
 }: {
   /** Every stage, then production (`section`), listed or being set up. */
@@ -2872,6 +2967,8 @@ function EnvironmentRows<T extends RosterCandidate>({
   readonly groupName: string | undefined;
   /** What each stop runs, read once by the tree and shared with `groupFlow`. */
   readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
+  /** What this browser last saw each stop run, until its line settles. */
+  readonly rememberedStop: ((projectId: string) => string | undefined) | undefined;
   readonly onOpenProject: () => void;
 }) {
   // Only a countdown reads the clock, and a stop's line carries none; the
@@ -2901,6 +2998,7 @@ function EnvironmentRows<T extends RosterCandidate>({
           projectFlow,
           deployments,
           nowMs,
+          remembered: rememberedStop?.(projectId),
         });
         return (
           <StopRowItem
@@ -2945,11 +3043,15 @@ function stopRowRead(input: {
   readonly projectFlow: GroupFlow;
   readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
   readonly nowMs: number;
+  /** What this browser last saw the stop run (`menuMemory.ts`), for while its line is unsettled. */
+  readonly remembered: string | undefined;
 }): {
   readonly declared: EnvironmentRow | undefined;
   readonly view: StopView;
   readonly line: StopRowLine;
   readonly badge: { readonly tone: GroupRowTone; readonly word: string };
+  /** The platform said what runs here, and Gitea — which may name it by its release — answered. */
+  readonly settled: boolean;
 } {
   const { projectId, tier, flow } = input;
   const declared = flow?.environments.get(projectId);
@@ -2962,7 +3064,7 @@ function stopRowRead(input: {
     nowMs: input.nowMs,
   });
   const flowStop = flowStopOf(input.projectFlow, projectId);
-  const line: StopRowLine =
+  const read: StopRowLine =
     tier === undefined || flowStop === undefined
       ? { word: undefined, runs: view.line, distance: undefined }
       : stopRowLine({
@@ -2971,13 +3073,30 @@ function stopRowRead(input: {
           releasing: tier === "production" ? flow?.releaseInFlight : undefined,
           distance: flow?.distances?.get(projectId),
         });
+  const deployment = input.deployments?.get(projectId);
+  const settled =
+    deployment !== undefined &&
+    deployment.state !== "unread" &&
+    deployment.state !== "reading" &&
+    flow !== undefined &&
+    flow.changesKnown !== false;
+  // Until then the line says what this browser last saw it run, rather than
+  // "Checking…" or the platform's name a release is about to replace.
+  const line: StopRowLine =
+    settled || input.remembered === undefined
+      ? read
+      : {
+          word: read.word?.kind === "checking" ? undefined : read.word,
+          runs: input.remembered,
+          distance: read.distance,
+        };
   // A release on its way is the badge's news too, before the platform has
   // seen a deploy start.
   const badge =
     line.word?.kind === "releasing"
       ? { tone: "pending" as const, word: line.word.text }
       : { tone: view.tone, word: view.word };
-  return { declared, view, line, badge };
+  return { declared, view, line, badge, settled };
 }
 
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */

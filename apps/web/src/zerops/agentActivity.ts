@@ -93,6 +93,12 @@ export interface ZeropsAgentActivity {
    * meanwhile — a peek's "You asked" while the row names the step it is on.
    */
   readonly task: string | undefined;
+  /**
+   * What this browser remembered the row saying (`menuMemory.ts`), standing
+   * until the Mate's own conversation is read: its words and its time, at
+   * rest, with nothing only true now.
+   */
+  readonly remembered?: true;
 }
 
 /**

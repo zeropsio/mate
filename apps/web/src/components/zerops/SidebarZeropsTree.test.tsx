@@ -23,6 +23,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { activityFromMemory } from "~/zerops/menuMemory";
 import {
   PROJECT_CUSTOM_ORDER_STORAGE_KEY,
   PROJECT_ORDER_STORAGE_KEY,
@@ -65,7 +66,12 @@ import { PortalGate } from "../ui/portal-gate";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
-import { ProjectHeader, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
+import {
+  ProjectHeader,
+  SidebarZeropsTree,
+  type SidebarDrawn,
+  type SidebarProjectFlow,
+} from "./SidebarZeropsTree";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 
 function candidate(
@@ -2718,5 +2724,154 @@ describe("what the jump box finds in the menu", () => {
       useSidebarPeek.getState().close();
       mounted.unmount();
     });
+  });
+});
+
+describe("a reload paints what the menu last drew (menuMemory)", () => {
+  const known = (label: string): Shown<Deployment> => ({
+    state: "known",
+    value: {
+      kind: "running",
+      activatedAt: null,
+      version: {
+        name: label,
+        commit: "3f9c1b2",
+        sha: "3f9c1b2000000000000000000000000000000000",
+        taggedBy: undefined,
+        label,
+      },
+    },
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const flowOf = (overrides: Partial<SidebarProjectFlow>): SidebarProjectFlow => ({
+    pullRequests: [],
+    environments: new Map(),
+    releaseOffered: false,
+    merging: () => false,
+    releasing: false,
+    onMerge: () => {},
+    onRelease: () => {},
+    ...overrides,
+  });
+  const remembering = (changes: ReadonlyArray<FlowPullRequest> | undefined, stop?: string) => ({
+    changes: () => changes,
+    stop: () => stop,
+  });
+  const running = (label: string) =>
+    ({
+      deployments: new Map([["crm-prod", known(label)]]),
+      flows: new Map(),
+    }) as unknown as ZeropsProjectFlowValue;
+  const RUNS_V230 = running("v2.3.0");
+  const RUNS_V250 = running("v2.5.0");
+  const withRunning = (runs: ZeropsProjectFlowValue, props: Record<string, unknown>) =>
+    renderToStaticMarkup(
+      <ZeropsProjectFlowContext.Provider value={runs}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, CRM_PROD]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          {...props}
+        />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+
+  it("draws a Mate whose socket is not open with the words this browser remembers — asleep, offering nothing", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getActivity: () =>
+        activityFromMemory({
+          subject: "Add a /status page",
+          snippet: "The page reads the build number.",
+          at: "2026-09-27T10:00:00.000Z",
+          unread: false,
+          threadId: "thread-1",
+          threadKey: "env-crm-dev:thread-1",
+        }),
+    });
+    expect(html).toContain("Add a /status page");
+    expect(html).toContain("The page reads the build number.");
+    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).not.toContain('data-zerops-surface="sidebar-mate-stop"');
+  });
+
+  it("still draws nothing it heard through a socket that is not open now", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getActivity: (): ZeropsAgentActivity => ({
+        ...activityFromMemory({
+          subject: "Add a /status page",
+          at: "2026-09-27T10:00:00.000Z",
+          unread: false,
+          threadId: "thread-1",
+          threadKey: "env-crm-dev:thread-1",
+        }),
+        remembered: undefined as never,
+      }),
+    });
+    expect(html).not.toContain("Add a /status page");
+  });
+
+  it("draws the change rows it remembers until Gitea answers: their titles, and no verb", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getFlow: () => flowOf({ changesKnown: false }),
+      remembered: remembering([pull(14, { title: "Add a /status page" })]),
+    });
+    expect(html).toContain("#14 Add a /status page");
+    expect(html).not.toContain('data-zerops-primary-action="Merge"');
+    expect(html).not.toContain('aria-label="Passing"');
+  });
+
+  it("draws Gitea's change rows once it answered, and never the remembered ones", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getFlow: () => flowOf({ changesKnown: true, pullRequests: [pull(15, { title: "Live" })] }),
+      remembered: remembering([pull(14, { title: "Remembered" })]),
+    });
+    expect(html).toContain("#15 Live");
+    expect(html).not.toContain("Remembered");
+    expect(html).toContain('data-zerops-primary-action="Merge"');
+  });
+
+  it("says what a stop last ran until it is read, rather than Checking", () => {
+    const html = render([CRM_DEV, CRM_PROD], {
+      getFlow: () => flowOf({ changesKnown: false }),
+      remembered: remembering(undefined, "v2.4.0"),
+    });
+    expect(stop(html, "crm-prod")).toContain(">v2.4.0<");
+    // Its badge still says it is being read: only the line stands on memory.
+    expect(stop(html, "crm-prod")).not.toContain(">Checking what runs here…<");
+  });
+
+  it("keeps the name it last saw until Gitea answers, which may name the release instead", () => {
+    const unread = withRunning(RUNS_V230, {
+      getFlow: () => flowOf({ changesKnown: false }),
+      remembered: remembering(undefined, "v2.4.0"),
+    });
+    expect(stop(unread, "crm-prod")).toContain("v2.4.0");
+    expect(stop(unread, "crm-prod")).not.toContain("v2.3.0");
+    const answered = withRunning(RUNS_V250, {
+      getFlow: () => flowOf({ changesKnown: true }),
+      remembered: remembering(undefined, "v2.4.0"),
+    });
+    expect(stop(answered, "crm-prod")).toContain("v2.5.0");
+  });
+
+  it("reports what it drew of what it read, for the memory to keep", () => {
+    const drawn: SidebarDrawn[] = [];
+    const change = pull(4);
+    mount(
+      <ZeropsProjectFlowContext.Provider value={RUNS_V250}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, CRM_PROD]}
+          complete
+          getFlow={() => flowOf({ changesKnown: true, pullRequests: [change] })}
+          onBrowseProjects={() => {}}
+          onDrawn={(next: SidebarDrawn) => drawn.push(next)}
+          onSelect={() => {}}
+        />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+    expect(drawn.at(-1)).toEqual({ changes: { aaa: [change] }, stops: { "crm-prod": "v2.5.0" } });
   });
 });

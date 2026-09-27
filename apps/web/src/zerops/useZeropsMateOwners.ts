@@ -26,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
+import { menuMemory, rememberMenu, withMembers } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A Mate's owner, as a face in the corner of the Mate's own draws them. */
@@ -73,13 +74,18 @@ export function useZeropsOrganizationMembersRead(input: {
   readonly status: ZeropsOrganizationMembersStatus;
 } {
   const { client } = useZeropsSession();
-  const [members, setMembers] = useState<ReadonlyArray<ZeropsOrganizationMember>>([]);
+  const { clientId, enabled } = input;
+  // The members this browser read last, until they are read again: whose
+  // each Mate is — its face's badge, *Mine* — from the first paint
+  // (`menuMemory.ts`). What waits for the read itself waits on `status`.
+  const [members, setMembers] = useState<ReadonlyArray<ZeropsOrganizationMember>>(() =>
+    clientId === undefined ? [] : (menuMemory().members[clientId] ?? []),
+  );
   const [settled, setSettled] = useState<{
     readonly clientId: string;
     readonly failed: boolean;
   } | null>(null);
   const read = useRef<string | null>(null);
-  const { clientId, enabled } = input;
 
   useEffect(() => {
     if (!enabled || clientId === undefined) return;
@@ -95,6 +101,7 @@ export function useZeropsOrganizationMembersRead(input: {
         if (controller.signal.aborted) return;
         setMembers(answer);
         setSettled({ clientId, failed: false });
+        rememberMenu((memory) => withMembers(memory, clientId, answer));
       })
       .catch(() => {
         answered = true;
