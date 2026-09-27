@@ -3,6 +3,7 @@ import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
 import {
+  agentIdForDriverKind,
   ZEROPS_AGENT_LOGIN_COMMANDS,
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
@@ -33,6 +34,18 @@ describe("ZeropsAgentId", () => {
 
   it("rejects an agent with no verified probe", () => {
     expect(() => decodeAgentId("cursor")).toThrow();
+  });
+});
+
+describe("agentIdForDriverKind", () => {
+  it.each([
+    { driver: "claudeAgent", expected: "claude-code" },
+    { driver: "codex", expected: "codex" },
+    { driver: "opencode", expected: undefined },
+    { driver: "claude-code", expected: undefined },
+    { driver: undefined, expected: undefined },
+  ] as const)("maps driver $driver to $expected", ({ driver, expected }) => {
+    expect(agentIdForDriverKind(driver)).toBe(expected);
   });
 });
 
