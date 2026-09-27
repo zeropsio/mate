@@ -168,16 +168,16 @@ export const createTask = (
     readonly dependsOn: ReadonlyArray<string>;
     /** `queued` unless the lead proposes it (PRD §5.4). */
     readonly state?: CrewTaskState;
-    /** The run it was created in; `null` outside one. */
-    readonly run?: string | null;
   },
 ) =>
   core.numbered(
     Effect.gen(function* () {
       const now = yield* core.now;
+      const applied = yield* core.applied;
       const row: CrewAssignmentRow = {
         assignment: `task-${yield* core.uuid}`,
-        run: input.run ?? null,
+        // The run it was created in; `null` outside one.
+        run: (applied === undefined ? undefined : runningRun(applied)?.run) ?? null,
         crew: CREW_ID,
         member: input.owner,
         number: yield* asRefusal(core.store.nextTaskNumber(CREW_ID)),
@@ -410,6 +410,8 @@ export const continueTask = (
     const working = yield* stepTask(core, task, { type: "message" }, (next) =>
       task.state === "rework" ? { ...next, waiting: null } : next,
     );
+    // An answered question: its next one goes to the lead first again.
+    if (task.state === "blocked") core.memory.escalated.delete(task.assignment);
     const key = `${working.assignment}:${working.attempt}`;
     core.memory.turns.set(key, (core.memory.turns.get(key) ?? 0) + 1);
     yield* sendTurn(core, member, stint, principal, sent, attachments);

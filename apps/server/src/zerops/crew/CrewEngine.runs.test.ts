@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
 import { CrewThreadDirectory } from "./crewSeams.ts";
+import { CrewStore } from "./CrewStore.ts";
 import {
   eventually,
   spiEvent,
@@ -176,11 +177,15 @@ describe("CrewEngine runs", () => {
               run: [paused.run!.reason, paused.run!.reasonDetail],
               second: paused.board.tasks[1]!.state,
               principal: (yield* Ref.get(world.admitted)).at(-1)?.principal,
+              inRun: (yield* (yield* CrewStore).assignments("main")).map(
+                (task) => task.run === paused.run!.id,
+              ),
             },
             {
               run: ["refused", "You are not this login's signer."],
               second: "queued",
               principal: { kind: "crew", startedBy: "user-karel" },
+              inRun: [true, true],
             },
           );
         }),

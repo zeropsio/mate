@@ -235,7 +235,6 @@ export const propose = (
           card: { brief: task.brief, doneWhen: task.doneWhen ?? "", note: null },
           dependsOn: [],
           state,
-          run: run?.run ?? null,
         }),
       );
     }

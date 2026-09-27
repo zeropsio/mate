@@ -288,32 +288,55 @@ describe("CrewEngine lead", () => {
     ),
   );
 
-  it.live("a question the lead passes on reaches you at once", () =>
-    withCrewEngine((world) =>
-      Effect.gen(function* () {
-        yield* withLead(world);
-        yield* startRun();
-        const thread = yield* firstTurn(world, () => undefined);
-        yield* (yield* CrewToolHost).report(yield* memberOf(thread), {
-          status: "blocked",
-          summary: "Which currency?",
-          question: "CZK or EUR?",
-        });
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const lead = yield* leadThread(world);
-        yield* (yield* CrewToolHost).report(yield* memberOf(lead), {
-          status: "blocked",
-          summary: "The person decides the currency.",
-          question: "CZK or EUR?",
-        });
-        yield* world.publish(spiEvent("turn.completed", lead, { state: "completed" }));
-        const asked = yield* snapshotWhere((current) => current.attention.length === 1);
-        assert.deepStrictEqual(
-          asked.attention.map((row) => [row.kind, row.handle, row.text]),
-          [["question", "backend", "CZK or EUR?"]],
-        );
-      }),
-    ),
+  it.live(
+    "a question the lead passes on reaches you at once; the next one goes to the lead again",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun();
+          const thread = yield* firstTurn(world, () => undefined);
+          yield* (yield* CrewToolHost).report(yield* memberOf(thread), {
+            status: "blocked",
+            summary: "Which currency?",
+            question: "CZK or EUR?",
+          });
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const lead = yield* leadThread(world);
+          yield* (yield* CrewToolHost).report(yield* memberOf(lead), {
+            status: "blocked",
+            summary: "The person decides the currency.",
+            question: "CZK or EUR?",
+          });
+          yield* world.publish(spiEvent("turn.completed", lead, { state: "completed" }));
+          const asked = yield* snapshotWhere((current) => current.attention.length === 1);
+          yield* command({
+            _tag: "answer",
+            handle: "backend",
+            taskId: asked.attention[0]!.taskId,
+            text: "EUR.",
+          });
+          yield* world.publish(spiEvent("turn.started", thread, {}));
+          yield* (yield* CrewToolHost).report(yield* memberOf(thread), {
+            status: "blocked",
+            summary: "Which font?",
+            question: "Serif or sans?",
+          });
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          yield* eventually(
+            Effect.map(lastTurnText(world, lead), (text) => text.includes("Serif or sans?")),
+          );
+          assert.deepStrictEqual(
+            [
+              asked.attention.map((row) => [row.kind, row.handle, row.text]),
+              (yield* snapshotWhere(
+                (current) => current.board.tasks[0]?.question === "Serif or sans?",
+              )).attention,
+            ],
+            [[["question", "backend", "CZK or EUR?"]], []],
+          );
+        }),
+      ),
   );
 
   it.live("the lead's own question waits on you, and your answer reaches the lead", () =>
