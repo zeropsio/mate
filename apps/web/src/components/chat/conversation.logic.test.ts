@@ -657,6 +657,40 @@ describe("latestFinishedWordsAt", () => {
       working: false,
       at: null,
     },
+    // What the held words look past, this looks past too: a plan update, an
+    // empty thought or the person's message after the words left the wait
+    // with no clock to end it, and the words hidden until the next step.
+    {
+      name: "a plan update after the words",
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 2, "Done."),
+        {
+          id: "p1",
+          kind: "turn-plan",
+          createdAt: at(2, 2),
+          turnPlan: { id: "p1", createdAt: at(2, 2), turnId: turn("t1"), plan: [] },
+        } as unknown as TimelineEntry,
+      ],
+      working: true,
+      at: Date.parse(at(2, 1)),
+    },
+    {
+      name: "an empty thought after the words",
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 2, "Done."),
+        assistant("r9", "t1", 2, "  ", { second: 2 }),
+      ],
+      working: true,
+      at: Date.parse(at(2, 1)),
+    },
+    {
+      name: "the person's message after the words",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Done."), user("m1", 3)],
+      working: true,
+      at: Date.parse(at(2, 1)),
+    },
   ])("$name", ({ entries, working, at: expected }) => {
     expect(latestFinishedWordsAt(entries, working)).toBe(expected);
   });
@@ -1109,33 +1143,12 @@ describe("deriveOutcome", () => {
     });
   });
 
-  // Once the Mate is writing its answer the work is done: the report takes
-  // its place then, so the answer streams where it will stand. Before that,
-  // a running turn has no report.
-  it.each([
-    { answering: false, reported: false },
-    { answering: true, reported: true },
-  ])(
-    "reports a running turn only while its answer is written ($answering)",
-    ({ answering, reported }) => {
-      const running = structure(
-        [
-          user("m0", 0),
-          operation("d1", "t1", 1, { kind: "deploy" }),
-          assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
-        ],
-        { live: "t1" },
-      );
-      const outcome = deriveOutcome({ turn: running.turns[0]!, landed: [], diff: null, answering });
-      expect(outcome !== null).toBe(reported);
-    },
-  );
-
   // A git push is no deploy: the build that follows it, if any, says what
   // came of the service, and a push that failed is something it could not do.
   const pushed = (id: string, minute: number, status: string, phase = "done") =>
     operation(id, "t1", minute, {
       kind: "deploy",
+      strategy: "git-push",
       phase: phase as never,
       statusWord: phase === "failed" ? "Failed" : "Pushed",
       resultStatus: status,
@@ -1170,6 +1183,20 @@ describe("deriveOutcome", () => {
       notDone: 0,
     },
     { name: "a push that failed", ops: [pushed("p1", 1, "", "failed")], services: [], notDone: 1 },
+    {
+      // A batch's split service has one step named by the service: one called
+      // "push" is a deploy like any other.
+      name: "a batch-deployed service named push",
+      ops: [
+        operation("b1", "t1", 1, {
+          kind: "deploy",
+          subject: "push",
+          steps: [{ id: "push", label: "push", state: "done", stateLabel: "Done" }],
+        }),
+      ],
+      services: ["Deployed"],
+      notDone: 0,
+    },
   ])("reads a git push as a push: $name", ({ ops, services, notDone }) => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,

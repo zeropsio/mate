@@ -516,6 +516,19 @@ function unnamedRunningTurnId(
 }
 
 /**
+ * Whether an entry is the Mate's last word so far, for holding its words: a
+ * plan update, a task's report and a message of nothing are not — the words
+ * before them are still its last.
+ */
+function countsAsLastWord(entry: TimelineEntry): boolean {
+  return (
+    entry.kind !== "turn-plan" &&
+    !isTaskReport(entry) &&
+    !(entry.kind === "message" && entry.message.text.trim().length === 0)
+  );
+}
+
+/**
  * How long a running turn's last words wait, once finished, before they are
  * placed: the turn nearly always settles within it.
  */
@@ -531,7 +544,7 @@ export function latestFinishedWordsAt(
   isWorking: boolean,
 ): number | null {
   if (!isWorking) return null;
-  const last = entries.at(-1);
+  const last = entries.findLast((entry) => !isUserMessageEntry(entry) && countsAsLastWord(entry));
   if (
     last === undefined ||
     last.kind !== "message" ||
@@ -649,12 +662,7 @@ export function deriveConversationStructure(input: {
     // break. Anything after them — a step, a thought — makes them a note, and
     // so does their end: Codex says nothing of a command until it completes,
     // so words held until a step came after them hid the whole command long.
-    const lastEntry = turnEntries.findLast(
-      (entry) =>
-        entry.kind !== "turn-plan" &&
-        !isTaskReport(entry) &&
-        !(entry.kind === "message" && entry.message.text.trim().length === 0),
-    );
+    const lastEntry = turnEntries.findLast(countsAsLastWord);
     // Words that have just finished wait a moment more: the turn nearly
     // always settles within it, and a short answer then goes straight under
     // the card instead of into the panel and out again.
@@ -1458,7 +1466,10 @@ function failureWords(operation: ZeropsOperation): string {
  */
 export function isGitPushOnly(operation: ZeropsOperation): boolean {
   return (
-    operation.kind === "deploy" && operation.steps.length === 1 && operation.steps[0]!.id === "push"
+    operation.kind === "deploy" &&
+    operation.strategy === "git-push" &&
+    operation.steps.length === 1 &&
+    operation.steps[0]!.id === "push"
   );
 }
 
@@ -1472,11 +1483,9 @@ export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
   readonly landed: ReadonlyArray<ChangeLandedEntry>;
   readonly diff: TurnDiffSummary | null;
-  /** A running turn writing its answer: the work is done, its report stands. */
-  readonly answering?: boolean;
 }): OutcomeModel | null {
   const { turn } = input;
-  if (turn.limitOnly || (turn.live && input.answering !== true)) return null;
+  if (turn.live || turn.limitOnly) return null;
   const operations = turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy);
   const settled = operations.filter((operation) => operation.phase !== "running");
 

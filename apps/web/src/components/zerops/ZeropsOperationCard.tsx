@@ -229,7 +229,10 @@ function CardHeader({
  * target, and a git push — its one step the push — has no build to read.
  */
 function readsPipeline(operation: ZeropsOperation): boolean {
-  const pushOnly = operation.steps.length === 1 && operation.steps[0]?.id === "push";
+  const pushOnly =
+    operation.strategy === "git-push" &&
+    operation.steps.length === 1 &&
+    operation.steps[0]?.id === "push";
   return operation.kind === "deploy" && operation.batch !== true && !pushOnly;
 }
 

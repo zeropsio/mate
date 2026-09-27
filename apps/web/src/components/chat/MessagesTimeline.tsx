@@ -559,9 +559,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   useEffect(() => {
     if (finishedWordsAt === null) return;
+    // At most one wait from now, and past it when it fires: a client clock
+    // behind the server's never stretches the wait.
     const timer = setTimeout(
-      () => setNowMs(Date.now()),
-      Math.max(0, finishedWordsAt + LAST_WORDS_GRACE_MS - Date.now()) + 20,
+      () => setNowMs(Math.max(Date.now(), finishedWordsAt + LAST_WORDS_GRACE_MS + 1)),
+      Math.min(
+        LAST_WORDS_GRACE_MS,
+        Math.max(0, finishedWordsAt + LAST_WORDS_GRACE_MS - Date.now()),
+      ) + 20,
     );
     return () => clearTimeout(timer);
   }, [finishedWordsAt]);
@@ -1630,6 +1635,8 @@ function markPanelsGone(
   }
 }
 const FOLD_FRESH_MS = 1500;
+/** How long after its panel left a run's report, arriving late, still eases in. */
+const FOLD_LATE_MS = 4000;
 const FOLD_EASE = "height 460ms cubic-bezier(0.32, 0.72, 0, 1)";
 
 function rowElementById(id: string): HTMLElement | null {
@@ -1650,6 +1657,12 @@ function takePanelStand(turnKey: string): PanelStand | null {
   if (takenAt === undefined) panelTakenAt.set(turnKey, now);
   else if (now - takenAt > FOLD_RETAKE_MS) return null;
   return now - leftAt < FOLD_FRESH_MS ? stand : null;
+}
+
+/** A run's panel left the rows a moment ago: what arrives in its place late still eases. */
+function panelLeftRecently(turnKey: string): boolean {
+  const leftAt = panelLeftAt.get(turnKey);
+  return leftAt !== undefined && performance.now() - leftAt < FOLD_LATE_MS;
 }
 
 /** Eases an element's height from `from` to `to`, then lets it size itself again. */
@@ -1682,7 +1695,7 @@ function easeHeight(element: HTMLElement, from: number, to: number): () => void 
 }
 
 /** Records where a run's panel stands while the rows carry it. */
-function usePanelStand(turnKey: string) {
+function usePanelStand(turnKey: string, cardKey: string) {
   const markerRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const own = markerRef.current?.closest<HTMLElement>("[data-timeline-row-id]");
@@ -1695,15 +1708,20 @@ function usePanelStand(turnKey: string) {
       if (panel <= 0) return;
       panelStands.set(turnKey, {
         panel,
-        cardEnd: rowElementById(`card-end:${turnKey}`)?.getBoundingClientRect().height ?? 0,
-        line: rowElementById(`work-line:${turnKey}`)?.getBoundingClientRect().height ?? 0,
+        cardEnd: rowElementById(`card-end:${cardKey}`)?.getBoundingClientRect().height ?? 0,
+        line: rowElementById(`work-line:${cardKey}`)?.getBoundingClientRect().height ?? 0,
       });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(own);
-    return () => observer.disconnect();
-  }, [turnKey]);
+    return () => {
+      observer.disconnect();
+      // Unmounted while the rows still carry it — scrolled out of the list's
+      // window — its stand would be stale by the time it is taken.
+      if (!panelLeftAt.has(turnKey)) panelStands.delete(turnKey);
+    };
+  }, [turnKey, cardKey]);
   return markerRef;
 }
 
@@ -1713,18 +1731,22 @@ function usePanelStand(turnKey: string) {
  */
 function FoldRoom({ fold }: { readonly fold: FoldsFrom | undefined }) {
   const roomRef = useRef<HTMLDivElement>(null);
-  const turnKey = fold?.turnKey;
-  const cardClosed = fold?.cardClosed ?? false;
+  // Once it folds it folds through: a report arriving a moment later — the
+  // files a run changed are known after its settle — eases in from the card
+  // while this room eases on to nothing, rather than snapping shut.
+  const [folding, setFolding] = useState<FoldsFrom | undefined>(fold);
+  if (fold !== undefined && folding === undefined) setFolding(fold);
   useLayoutEffect(() => {
     const room = roomRef.current;
-    if (turnKey === undefined || room === null) return;
-    const stand = takePanelStand(turnKey);
+    if (folding === undefined || room === null) return;
+    const stand = takePanelStand(folding.turnKey);
     if (stand === null) return;
-    const lineNow = rowElementById(`work-line:${turnKey}`)?.getBoundingClientRect().height;
+    const lineNow = rowElementById(`work-line:${folding.cardKey}`)?.getBoundingClientRect().height;
     const from =
-      stand.panel + (cardClosed ? stand.cardEnd + (stand.line - (lineNow ?? stand.line)) : 0);
+      stand.panel +
+      (folding.cardClosed ? stand.cardEnd + (stand.line - (lineNow ?? stand.line)) : 0);
     return easeHeight(room, from, 0);
-  }, [turnKey, cardClosed]);
+  }, [folding]);
   return <div ref={roomRef} aria-hidden="true" data-fold-room />;
 }
 
@@ -1736,7 +1758,7 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
   useEffect(() => {
     watchedTurnKeys.add(row.turnKey);
   }, [row.turnKey]);
-  const standRef = usePanelStand(row.turnKey);
+  const standRef = usePanelStand(row.turnKey, row.cardKey);
   return (
     <div ref={standRef} className="contents">
       <ConversationWorking
@@ -1908,11 +1930,12 @@ function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-no
  * on the page above the card.
  */
 function LogPersonTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-person" }> }) {
-  const words = row.message.text.trim().split("\n")[0] ?? "";
+  const words = row.imageOnly ? "" : (row.message.text.trim().split("\n")[0] ?? "");
+  const images = row.message.attachments?.filter(isImageAttachment).length ?? 0;
   return (
     <div className="flex justify-end" data-log-person>
       <p className="max-w-4/5 truncate rounded-2xl bg-message px-3.5 py-1 text-line text-message-foreground">
-        {words.length > 0 ? words : "Image"}
+        {words.length > 0 ? words : images > 1 ? `${images} images` : "An image"}
       </p>
     </div>
   );
@@ -2114,8 +2137,10 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
     const band = markerRef.current?.parentElement;
     if (!band) return;
     const stand = takePanelStand(turnKey);
-    if (stand === null) return;
-    return easeHeight(band, stand.panel, band.getBoundingClientRect().height);
+    if (stand !== null) return easeHeight(band, stand.panel, band.getBoundingClientRect().height);
+    // Its panel already folded into the Mate's last word: the report came
+    // after, and grows in from nothing.
+    if (panelLeftRecently(turnKey)) return easeHeight(band, 0, band.getBoundingClientRect().height);
   }, [turnKey]);
   return (
     <div ref={markerRef} className="contents">

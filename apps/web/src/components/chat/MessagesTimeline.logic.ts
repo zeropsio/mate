@@ -441,6 +441,8 @@ type MessagesTimelineRowBody =
       createdAt: string;
       stretchKey: string;
       turnKey: string;
+      /** The card it stands in: its line and edge are keyed by it. */
+      cardKey: string;
       stream: ReadonlyArray<WorkingStreamItem>;
       /** What its hands are on right now; null while it writes. */
       activity: TurnHeaderActivity | null;
@@ -504,6 +506,8 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       message: ChatMessage;
+      /** The client's own placeholder stands in for the text: the message is its images. */
+      imageOnly: boolean;
     }
   | {
       /** A progress note in an opened log: the Mate's words on the way, in full. */
@@ -647,6 +651,8 @@ export type RowGap = "none" | "tight" | "line" | "block" | "turn";
  */
 export interface FoldsFrom {
   readonly turnKey: string;
+  /** The card the panel stood in: its line and edge are keyed by it. */
+  readonly cardKey: string;
   /** The panel's card closed with it: its bottom edge is gone too. */
   readonly cardClosed: boolean;
 }
@@ -1756,23 +1762,8 @@ export function deriveMessagesTimelineRows(
     // card for a frame, and the answer jumped up as it went (Nova,
     // 2026-09-26).
     const answeredAlone = turn.live && !hasLog && answer !== null;
-    // Once the Mate writes its answer its work is done: a run with a report
-    // to give takes that form there and then, so the answer streams where it
-    // will stand and nothing above it moves at the end (a tall panel folding
-    // into its report at the settle threw a streamed answer 470 px, Nova,
-    // 2026-09-27). Work still running keeps the panel; so does a run with
-    // nothing to report yet — the files it changed are known only at the
-    // settle, and a card folded away would come back for them.
-    const stillRunning = turn.stretches.some((stretch) =>
-      stretchOperations(stretch).some((operation) => operation.phase === "running"),
-    );
     const diff = turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null);
     const landed = landedByTurnKey.get(turn.key) ?? [];
-    const answeringReport =
-      turn.live && answer !== null && !answeredAlone && !stillRunning
-        ? deriveOutcome({ turn, landed, diff, answering: true })
-        : null;
-    const folded = answeringReport !== null;
 
     // What the person and the Mate said to each other while the run went on
     // stands on the page, in the order it was said: each message the person
@@ -1789,7 +1780,17 @@ export function deriveMessagesTimelineRows(
     turn.stretches.forEach((stretch, index) => {
       if (index > 0) {
         const before = turn.stretches[index - 1]!;
-        const said = stretchNotes(before, turn.answer).at(-1) ?? null;
+        // The Mate's last words before the message — none when a question it
+        // asked, and the person's answer, came after them.
+        const answeredAt = before.entries.findLast(
+          (candidate) => candidate.kind === "work" && candidate.entry.inputAnswers !== undefined,
+        )?.createdAt;
+        const note = stretchNotes(before, turn.answer).at(-1) ?? null;
+        const said =
+          note !== null &&
+          (answeredAt === undefined || Date.parse(note.createdAt) >= Date.parse(answeredAt))
+            ? note
+            : null;
         if (said !== null) {
           exchanges.push({
             kind: "speech",
@@ -1808,6 +1809,7 @@ export function deriveMessagesTimelineRows(
               id: `log-person:${stretch.lead.id}`,
               createdAt: stretch.lead.createdAt,
               message: stretch.lead.message,
+              imageOnly: person.imageOnly,
             });
           }
         }
@@ -1857,7 +1859,7 @@ export function deriveMessagesTimelineRows(
         : cardRows.filter((row) => !(row.kind === "event" && row.event.type === "landed"))),
     );
 
-    if (last.live && !answeredAlone && !folded) {
+    if (last.live && !answeredAlone) {
       // Under the person's answer the Mate at work starts afresh: its own
       // panel, so the window of what it said before the question is gone.
       const answeredBy = latestAnswer(last);
@@ -1867,6 +1869,7 @@ export function deriveMessagesTimelineRows(
         createdAt: last.startedAt,
         stretchKey: last.key,
         turnKey: turn.key,
+        cardKey: first.key,
         stream: stretchStream(last, turn.answer, turn.writing),
         activity: liveActivity(last, turn.writing),
         answering: answer !== null,
@@ -1875,11 +1878,13 @@ export function deriveMessagesTimelineRows(
       });
     }
 
-    // Settled — or folded, its answer on the way — the Mate at work becomes
-    // the run's report, the same pills where it was, and the answer follows.
+    // Settled, the Mate at work becomes the run's report — the same pills,
+    // where it was — easing from the panel's height, and the answer follows.
+    // Never before: words that read as an answer mid-run are a note once the
+    // Mate goes on, and a panel folded early would come back at full height.
     let reported = false;
-    if (!turn.live || folded) {
-      const outcome = answeringReport ?? deriveOutcome({ turn, landed, diff });
+    if (!turn.live) {
+      const outcome = deriveOutcome({ turn, landed, diff });
       if (outcome !== null) {
         reported = true;
         rows.push({
@@ -1900,7 +1905,7 @@ export function deriveMessagesTimelineRows(
     const foldsFrom: FoldsFrom | undefined =
       reported || (turn.live && !answeredAlone)
         ? undefined
-        : { turnKey: turn.key, cardClosed: !carded };
+        : { turnKey: turn.key, cardKey: first.key, cardClosed: !carded };
     if (carded) {
       rows.push({
         kind: "card-end",
@@ -2107,7 +2112,7 @@ export function computeStableMessagesTimelineRows(
  * derivation rebuilds compares by value.
  */
 function sameFold(a: FoldsFrom | undefined, b: FoldsFrom | undefined): boolean {
-  return a?.turnKey === b?.turnKey && a?.cardClosed === b?.cardClosed;
+  return a?.turnKey === b?.turnKey && a?.cardKey === b?.cardKey && a?.cardClosed === b?.cardClosed;
 }
 
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
