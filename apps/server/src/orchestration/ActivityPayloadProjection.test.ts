@@ -257,6 +257,124 @@ describe("projectActivityPayload", () => {
     expect(JSON.stringify(projected.payload).length).toBeLessThan(500);
   });
 
+  /**
+   * A tool call's own words: Claude gives every Bash call a one-line
+   * `description`, and the other tools name their target in their input. The
+   * slimming keeps that whitelist for a non-MCP call — never the bodies
+   * (`content`, `old_string`, `new_string`, `prompt`), which can be huge, and
+   * never `command`, which already rides at `data.command`. Every row is
+   * projected twice: the history path re-projects each stored row on read,
+   * and a streamed `tool.updated` is stored already projected.
+   */
+  it.each([
+    {
+      name: "a Bash call keeps its description beside the command",
+      itemType: "command_execution",
+      toolName: "Bash",
+      input: { command: "vp test run", description: "Run the targeted tests", timeout: 60_000 },
+      expected: { description: "Run the targeted tests" },
+    },
+    {
+      name: "a Read keeps its file_path",
+      itemType: "dynamic_tool_call",
+      toolName: "Read",
+      input: { file_path: "/var/www/src/index.ts", offset: 10, limit: 40 },
+      expected: { file_path: "/var/www/src/index.ts" },
+    },
+    {
+      name: "an Edit keeps its file_path and never the strings it swaps",
+      itemType: "file_change",
+      toolName: "Edit",
+      input: {
+        file_path: "/var/www/src/app.ts",
+        old_string: "a".repeat(5_000),
+        new_string: "b".repeat(5_000),
+      },
+      expected: { file_path: "/var/www/src/app.ts" },
+    },
+    {
+      name: "a Write keeps its file_path and never the content",
+      itemType: "file_change",
+      toolName: "Write",
+      input: { file_path: "/var/www/notes.md", content: "c".repeat(10_000) },
+      expected: { file_path: "/var/www/notes.md" },
+    },
+    {
+      name: "a Grep keeps its pattern, path and glob",
+      itemType: "dynamic_tool_call",
+      toolName: "Grep",
+      input: { pattern: "TODO", path: "/var/www/src", glob: "*.ts", output_mode: "content" },
+      expected: { pattern: "TODO", path: "/var/www/src", glob: "*.ts" },
+    },
+    {
+      name: "a WebFetch keeps its url and never the prompt",
+      itemType: "dynamic_tool_call",
+      toolName: "WebFetch",
+      input: { url: "https://example.com/docs", prompt: "Summarize the page. ".repeat(200) },
+      expected: { url: "https://example.com/docs" },
+    },
+    {
+      name: "a WebSearch keeps its query",
+      itemType: "web_search",
+      toolName: "WebSearch",
+      input: { query: "zerops yaml reference", allowed_domains: ["example.com"] },
+      expected: { query: "zerops yaml reference" },
+    },
+    {
+      name: "a subagent keeps its description and never its prompt",
+      itemType: "collab_agent_tool_call",
+      toolName: "Agent",
+      input: {
+        description: "Audit the fold",
+        prompt: "p".repeat(5_000),
+        subagent_type: "explorer",
+      },
+      expected: { description: "Audit the fold" },
+    },
+    {
+      name: "a kept value is trimmed, and a blank or non-string one is dropped",
+      itemType: "command_execution",
+      toolName: "Bash",
+      input: {
+        command: "ls",
+        description: "  List the shots  ",
+        path: 42,
+        pattern: ["a"],
+        query: "   ",
+      },
+      expected: { description: "List the shots" },
+    },
+    {
+      name: "a long value is capped at 300 characters with an ellipsis",
+      itemType: "command_execution",
+      toolName: "Bash",
+      input: { command: "ls", description: `${"d".repeat(1_000)}  ` },
+      expected: { description: `${"d".repeat(299)}…` },
+    },
+    {
+      name: "an input naming none of the kept keys leaves data.input out",
+      itemType: "dynamic_tool_call",
+      toolName: "TodoWrite",
+      input: { todos: [{ content: "Ship", status: "pending" }] },
+      expected: undefined,
+    },
+    {
+      name: "an MCP call keeps its whole input, as before",
+      itemType: "mcp_tool_call",
+      toolName: "mcp__github__create_issue",
+      input: { title: "Broken link", body: "b".repeat(2_000), query: "q" },
+      expected: { title: "Broken link", body: "b".repeat(2_000), query: "q" },
+    },
+  ])("$name", ({ itemType, toolName, input, expected }) => {
+    const dataOf = (projected: OrchestrationThreadActivity) =>
+      (projected.payload as { data: Record<string, unknown> }).data;
+    const once = projectActivityPayload(activity({ itemType, data: { toolName, input } }));
+    const twice = projectActivityPayload(once);
+
+    expect(dataOf(once).input).toEqual(expected);
+    expect(dataOf(twice).input).toEqual(expected);
+  });
+
   it("passes task lifecycle payloads (no data field) through untouched", () => {
     const source = activity({
       taskId: "task-9",
@@ -525,5 +643,65 @@ describe("zerops results survive every route to the client", () => {
     } as unknown as OrchestrationEvent;
 
     expect(projectActivityEvent(event)).toBe(event);
+  });
+});
+
+/**
+ * The description reaches the client on the live path and on every read of
+ * history. A `tool.completed` row is stored with the full payload and the
+ * snapshot query projects it at read time, so a run recorded before this
+ * projection kept the description gets it back on the next read.
+ */
+describe("a tool call's own words survive every route to the client", () => {
+  const storedBashCompletion = () =>
+    activity({
+      itemType: "command_execution",
+      toolCallId: "toolu_bash_1",
+      data: {
+        toolName: "Bash",
+        input: {
+          command: "agent-browser screenshot /home/zerops/shots/home.png",
+          description: "Screenshot the home page",
+        },
+        result: {
+          type: "tool_result",
+          tool_use_id: "toolu_bash_1",
+          content: [{ type: "text", text: `Saved\n${"x".repeat(5_000)}` }],
+        },
+      },
+    });
+
+  const inputOf = (projected: OrchestrationThreadActivity): unknown =>
+    (projected.payload as { data: Record<string, unknown> }).data.input;
+
+  it("carries it on the live event path", () => {
+    const event = projectActivityEvent({
+      type: "thread.activity-appended",
+      payload: { activity: storedBashCompletion() },
+    } as unknown as OrchestrationEvent);
+
+    const projected = (event as unknown as { payload: { activity: OrchestrationThreadActivity } })
+      .payload.activity;
+    expect(inputOf(projected)).toEqual({ description: "Screenshot the home page" });
+  });
+
+  it("carries it on a stored tool.completed row the snapshot query projects", () => {
+    const projected = projectActivityPayload(storedBashCompletion());
+
+    expect(inputOf(projected)).toEqual({ description: "Screenshot the home page" });
+    expect(projected.payload).toMatchObject({
+      data: { command: "agent-browser screenshot /home/zerops/shots/home.png" },
+    });
+  });
+
+  it("carries it on the thread-detail snapshot a reopened thread renders from", () => {
+    const snapshot = projectThreadDetailSnapshot({
+      thread: { messages: [], activities: [storedBashCompletion()] },
+    } as unknown as OrchestrationThreadDetailSnapshot);
+
+    const projected = (
+      snapshot as unknown as { thread: { activities: OrchestrationThreadActivity[] } }
+    ).thread.activities[0]!;
+    expect(inputOf(projected)).toEqual({ description: "Screenshot the home page" });
   });
 });
