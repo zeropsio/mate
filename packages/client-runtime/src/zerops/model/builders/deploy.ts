@@ -454,6 +454,7 @@ function buildGitPushFields(
   return {
     subject,
     kicker: `${GIT_PUSH_LABEL} · ${subject}`,
+    strategy: "git-push",
     voice: gitPushVoice(subject),
     voiceSource: "mate",
     statusWord: gatedStatusWord(

@@ -532,6 +532,9 @@ describe("buildDeployFields — a git push says what it did, a deploy only once 
   ] as const)("$name", ({ call, expected }) => {
     const fields = buildDeployFields(GIT_PUSH_CASES[call], CONTEXT);
     expect([fields.phaseOverride, fields.statusWord]).toEqual(expected);
+    // Marked a push on the operation itself: a batch's service named "push"
+    // is never read as one (its one step is named by the service).
+    expect(fields.strategy).toBe("git-push");
   });
 
   it.each([

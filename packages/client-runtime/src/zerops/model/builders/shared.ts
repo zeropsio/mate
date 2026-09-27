@@ -64,6 +64,8 @@ export interface BuiltCardFields {
   readonly links: ReadonlyArray<ZeropsOperationLink>;
   readonly target?: { readonly hostname: string };
   readonly batch?: true;
+  /** `deploy` only: delivered by a push to a git remote. */
+  readonly strategy?: "git-push";
   readonly resultStatus?: string;
   readonly hasResult: boolean;
   readonly version?: ZeropsOperationVersion;
