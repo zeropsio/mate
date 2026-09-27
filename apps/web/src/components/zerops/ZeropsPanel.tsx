@@ -38,7 +38,11 @@ import { useCrew } from "../../zerops/crew/useCrew";
 import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
-import { useZeropsAgentSignerRecordState } from "../../zerops/useZeropsAgentSigner";
+import {
+  useZeropsAgentSignerRecordState,
+  useZeropsEnvironmentProject,
+} from "../../zerops/useZeropsAgentSigner";
+import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { zeropsMateAt } from "../../zerops/mateIdentities";
 import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
@@ -96,6 +100,15 @@ export function ZeropsPanel({
   const loginsSupported =
     useEnvironment(threadRef?.environmentId ?? null)?.serverConfig?.environment?.capabilities
       .mateLogins === true;
+  // Another member's login says whose it is — read from the Mate's own org,
+  // and only when some login names somebody else.
+  const mateProject = useZeropsEnvironmentProject(threadRef?.environmentId ?? null);
+  const loginSignerName = useZeropsMemberNames({
+    clientId: mateProject?.orgId,
+    enabled: logins.some(
+      (login) => login.signedInBy !== undefined && login.signedInBy !== viewerSubject,
+    ),
+  });
   const [authorizationLoginId, setAuthorizationLoginId] = useState<string | null>(null);
   const authorizationLogin = logins.find(
     (login) => !login.default && login.id === authorizationLoginId,
@@ -149,6 +162,7 @@ export function ZeropsPanel({
         snapshot={agentAuthCard}
         viewerSubject={viewerSubject}
         logins={logins}
+        nameOf={loginSignerName}
         onAddLogin={
           loginsSupported
             ? (input) => {
