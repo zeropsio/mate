@@ -45,6 +45,7 @@ import {
   crewModelOptions,
   crewRewriteBlockers,
   crewServiceHint,
+  crewWriterWithoutHost,
   freeTints,
   jobChangedMostly,
 } from "./CrewEditors.logic";
@@ -79,6 +80,8 @@ interface CrewmateSheetProps {
   /** The dev services a copy may live on, with whether each reaches a database. */
   readonly devHosts: ReadonlyArray<CrewDevHost>;
   readonly mateTint: MateTintId | undefined;
+  /** The Mate who mounts the dev services, named when there is none yet. */
+  readonly mateName: string;
   /** The crewmate's crew port on its service, when it has one. */
   readonly crewPort: number | null;
 }
@@ -118,6 +121,7 @@ function CrewmateForm({
   providers,
   devHosts,
   mateTint,
+  mateName,
   crewPort,
   blockers,
   definition,
@@ -158,8 +162,13 @@ function CrewmateForm({
     (member) => member.handle === draft.handle && member.handle !== target.handle,
   );
   const handleValid = CREW_HANDLE_PATTERN.test(draft.handle) && !handleTaken;
+  const writes = !lead && !draft.readOnly;
   const ready =
-    draft.displayName.trim() !== "" && handleValid && blockers.length === 0 && !commands.pending;
+    draft.displayName.trim() !== "" &&
+    handleValid &&
+    !crewWriterWithoutHost(writes, draft.host) &&
+    blockers.length === 0 &&
+    !commands.pending;
 
   const submit = async (apply: CrewApplyChoice) => {
     if (!ready) return;
@@ -178,7 +187,6 @@ function CrewmateForm({
     onOpenChange(false);
   };
 
-  const writes = !lead && !draft.readOnly;
   return (
     <>
       <CrewSheetBody>
@@ -330,7 +338,10 @@ function CrewmateForm({
         </div>
         {writes ? (
           <>
-            <CrewField hint={crewServiceHint(devHosts, draft.host, crewPort)} label="Service">
+            <CrewField
+              hint={crewServiceHint(devHosts, draft.host, crewPort, mateName)}
+              label="Service"
+            >
               <Select
                 onValueChange={(value) => {
                   if (typeof value === "string") set("host", value);

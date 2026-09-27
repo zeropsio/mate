@@ -9,6 +9,7 @@ import {
   crewRewriteBlockers,
   crewDevHosts,
   crewServiceHint,
+  crewWriterWithoutHost,
   crewEffortOptions,
   crewLoginNote,
   crewLoginOptions,
@@ -245,7 +246,23 @@ describe("crewServiceHint", () => {
     },
     { name: "no service picked yet", host: "", crewPort: null, hint: undefined },
   ])("says $name", ({ host, crewPort, hint }) => {
-    expect(crewServiceHint(devHosts, host, crewPort)).toBe(hint);
+    expect(crewServiceHint(devHosts, host, crewPort, "Fen")).toBe(hint);
+  });
+
+  it("says why there is nothing to pick before the Mate mounted a dev service", () => {
+    expect(crewServiceHint([], "", null, "Fen")).toBe(
+      "No dev service is mounted yet — ask Fen to start development first.",
+    );
+  });
+});
+
+describe("crewWriterWithoutHost", () => {
+  it.each([
+    { name: "a writer with a service", writes: true, host: "appdev", blocked: false },
+    { name: "a writer without one", writes: true, host: "", blocked: true },
+    { name: "a read-only crewmate needs none", writes: false, host: "", blocked: false },
+  ])("$name", ({ writes, host, blocked }) => {
+    expect(crewWriterWithoutHost(writes, host)).toBe(blocked);
   });
 });
 

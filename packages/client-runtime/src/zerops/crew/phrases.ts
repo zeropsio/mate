@@ -364,6 +364,13 @@ export const crewBoardLinkWord = (count: number): string =>
 
 export const crewLandedWord = (count: number): string => `Landed, not delivered · ${count}`;
 
+/**
+ * Why a crewmate that changes files has no service to pick: the Mate has not
+ * mounted a dev service yet, which its develop flow does first.
+ */
+export const crewNoDevHostWord = (mateName: string): string =>
+  `No dev service is mounted yet — ask ${mateName} to start development first.`;
+
 /** A dev service without crew ports (PRD §5.7). */
 export const crewPortsOffWord = (host: string): string => `${host} · Crew ports: off`;
 

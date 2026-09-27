@@ -20,6 +20,7 @@ import {
 import {
   crewApplyWord,
   crewDevHostDatabaseWord,
+  crewNoDevHostWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import type { CrewDefinition, CrewDefinitionIssue } from "@t3tools/shared/crewHome";
@@ -163,14 +164,16 @@ export function crewDevHosts(
 /**
  * What the *Service* field says under the picked service: its crew port, and
  * whether it reaches a database — "unknown" while the engine has not read it,
- * never "no" (a writer there must declare `env:` or `database: shared`).
+ * never "no" (a writer there must declare `env:` or `database: shared`). With
+ * no service to pick at all, why: the Mate has mounted none yet.
  */
 export function crewServiceHint(
   devHosts: ReadonlyArray<CrewDevHost>,
   host: string,
   crewPort: number | null,
+  mateName: string,
 ): string | undefined {
-  if (host === "") return undefined;
+  if (host === "") return devHosts.length === 0 ? crewNoDevHostWord(mateName) : undefined;
   const database = devHosts.find((candidate) => candidate.host === host)?.database ?? null;
   const parts = [
     crewPort === null ? null : `Crew port ${crewPort}`,
@@ -178,6 +181,10 @@ export function crewServiceHint(
   ];
   return parts.filter((part) => part !== null).join(" · ");
 }
+
+/** A crewmate that changes files has nowhere for its copy: it cannot be saved or applied so. */
+export const crewWriterWithoutHost = (writes: boolean, host: string): boolean =>
+  writes && host.trim() === "";
 
 export interface CrewApplyStep {
   readonly id: string;

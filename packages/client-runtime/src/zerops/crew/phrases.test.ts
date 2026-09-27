@@ -34,6 +34,7 @@ import {
   crewDescribeAsk,
   crewLandedWord,
   crewLaneWord,
+  crewNoDevHostWord,
   crewPendingWord,
   crewPortsAsk,
   crewPortsOffWord,
@@ -375,6 +376,12 @@ describe("the section's words (PRD §4.3)", () => {
     [{ job: null, brief: null }, null],
   ] as const)("pending %j reads %j", (pending, word) => {
     expect(crewPendingWord(pending)).toBe(word);
+  });
+
+  it("says why a writer has no service to pick yet", () => {
+    expect(crewNoDevHostWord("Fen")).toBe(
+      "No dev service is mounted yet — ask Fen to start development first.",
+    );
   });
 
   it("words an idle crewmate as the idle crew", () => {

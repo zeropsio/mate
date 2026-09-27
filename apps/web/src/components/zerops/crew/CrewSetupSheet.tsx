@@ -4,7 +4,7 @@
  * crewmates (saved, not yet applied), then **Apply**, which creates each
  * writer's copy of the code and reports per crewmate as it goes.
  */
-import { crewDescribeAsk } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { crewDescribeAsk, crewNoDevHostWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { Crewmate } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { renderCrewHome } from "@t3tools/shared/crewHome";
@@ -102,10 +102,20 @@ function CrewSetupDraft({
     );
   };
 
+  // Before the Mate mounted a dev service, a writer has nowhere for its copy:
+  // Apply waits on the format's `host-missing` issue, and this says why.
+  const noDevHost =
+    devHosts.length === 0 ? (
+      <p className="text-sm text-muted-foreground" data-crew-no-dev-host>
+        {crewNoDevHostWord(mateName)}
+      </p>
+    ) : null;
+
   if (definition === null) {
     return (
       <>
         <CrewSheetBody>
+          {noDevHost}
           <ul className="space-y-2">
             {TEMPLATES.map((template) => (
               <li key={template.id}>
@@ -153,6 +163,7 @@ function CrewSetupDraft({
   return (
     <>
       <CrewSheetBody>
+        {noDevHost}
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 space-y-0.5">
             <span className="block text-xs text-muted-foreground">Brief</span>
