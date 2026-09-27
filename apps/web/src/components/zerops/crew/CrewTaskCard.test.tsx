@@ -19,6 +19,7 @@ const TIMELINE: CrewTimeline = {
     previousThreadId: ThreadId.make("thread-crew-backend-1"),
   },
   tasks: crewSnapshotFixture().board.tasks,
+  crewmate: { handle: "backend", profile: null },
   onOpenThread: () => {},
 };
 

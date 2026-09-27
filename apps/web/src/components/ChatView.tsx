@@ -5376,6 +5376,10 @@ export default function ChatView(props: ChatViewProps) {
         ),
       }),
       tasks: crew.snapshot?.board.tasks ?? [],
+      crewmate: {
+        handle: activeCrewOrigin.crewmate,
+        profile: activeCrewmate?.crewmate ?? null,
+      },
       onOpenThread: (target) =>
         void navigate({
           to: "/$environmentId/$threadId",
