@@ -290,12 +290,11 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     if ((yield* core.applied) !== undefined) yield* installPolicies;
 
     yield* bus.events.pipe(Stream.runForEach(makeTurnHandler(core)), Effect.forkIn(scope));
-    yield* readiness.await.pipe(
-      Effect.andThen(
-        Effect.flatMap(core.applied, (applied) =>
-          applied === undefined ? Effect.void : boot(core),
-        ),
-      ),
+    yield* Effect.flatMap(core.applied, (applied) =>
+      applied === undefined
+        ? Effect.void
+        : core.verify.pipe(Effect.andThen(readiness.await), Effect.andThen(boot(core))),
+    ).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {
           core.memory.lastError = error.message;

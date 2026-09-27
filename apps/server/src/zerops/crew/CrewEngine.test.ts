@@ -19,6 +19,7 @@ import {
   runningPersonThread,
   spiEvent,
   withCrewEngine,
+  withCrewEngines,
   writeCrewHome,
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
@@ -594,53 +595,52 @@ describe("CrewEngine", () => {
 
   it.live(
     "after a restart: policies install at once, the sweep waits for readiness, a died turn re-queues",
-    () =>
-      withCrewEngine((rig) =>
-        Effect.gen(function* () {
-          yield* applied(rig);
-          yield* command({
-            _tag: "message",
-            handle: "backend",
-            text: "Long work",
-            attachments: [],
-          });
-          const [created] = yield* dispatchedOf(rig, "thread.crew.create");
-          yield* Ref.set(rig.threads, [
-            {
-              ...runningPersonThread(),
-              id: created!.threadId,
-              crew: created!.crew,
-            },
-          ]);
-          const turnsBefore = (yield* dispatchedOf(rig, "thread.turn.start")).length;
-          yield* rig.restart(
-            Effect.gen(function* () {
-              assert.strictEqual(yield* Ref.get(rig.installs), 2);
-              yield* Effect.sleep("300 millis");
-              assert.strictEqual(
-                (yield* dispatchedOf(rig, "thread.turn.start")).length,
-                turnsBefore,
-              );
-              yield* (yield* ServerCommandReadiness).complete;
-              yield* eventually(
-                Effect.map(
-                  dispatchedOf(rig, "thread.turn.start"),
-                  (turns) => turns.length === turnsBefore + 1,
-                ),
-              );
-              const snapshot = yield* snapshotWhere(
-                (current) =>
-                  current.board.tasks[0]?.attempts === 2 &&
-                  current.board.tasks[0]?.state === "working",
-              );
-              assert.deepStrictEqual(
-                [snapshot.board.tasks[0]!.state, (yield* Ref.get(rig.admitted)).at(-1)?.principal],
-                ["working", { kind: "crew", startedBy: "user-karel" }],
-              );
-            }),
-          );
-        }),
-      ),
+    () => {
+      let turnsBefore = 0;
+      return withCrewEngines([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            yield* command({
+              _tag: "message",
+              handle: "backend",
+              text: "Long work",
+              attachments: [],
+            });
+            const [created] = yield* dispatchedOf(world, "thread.crew.create");
+            yield* Ref.set(world.threads, [
+              { ...runningPersonThread(), id: created!.threadId, crew: created!.crew },
+            ]);
+            turnsBefore = (yield* dispatchedOf(world, "thread.turn.start")).length;
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            assert.strictEqual(yield* Ref.get(world.installs), 2);
+            yield* Effect.sleep("300 millis");
+            assert.strictEqual(
+              (yield* dispatchedOf(world, "thread.turn.start")).length,
+              turnsBefore,
+            );
+            yield* (yield* ServerCommandReadiness).complete;
+            const snapshot = yield* snapshotWhere(
+              (current) =>
+                current.board.tasks[0]?.attempts === 2 &&
+                current.board.tasks[0]?.state === "working",
+            );
+            assert.deepStrictEqual(
+              [
+                (yield* dispatchedOf(world, "thread.turn.start")).length,
+                (yield* Ref.get(world.admitted)).at(-1)?.principal,
+                snapshot.lastError,
+              ],
+              [turnsBefore + 1, { kind: "crew", startedBy: "user-karel" }, null],
+            );
+            const thread = snapshot.crewmates[0]!.currentThreadId!;
+            const member = yield* (yield* CrewThreadDirectory).memberFor(thread);
+            assert.isTrue(Option.getOrThrow(member).live);
+          }),
+      ]);
+    },
   );
 
   it.live("a subscription reads the tables only: the feed opens no ssh", () =>

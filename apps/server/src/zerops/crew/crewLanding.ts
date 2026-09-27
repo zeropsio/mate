@@ -100,6 +100,11 @@ const runCheck = (core: CrewCore, member: CrewMember, task: CrewAssignmentRow) =
           env: member.spec.env,
         }),
       );
+      // A message during the check returned the task to its crewmate: the
+      // check's verdict is on a tree that will not land.
+      const current = yield* requireTask(core, checking.assignment);
+      if (current.state !== "checking") return current;
+      checking = current;
       switch (outcome._tag) {
         case "passed":
           return yield* stepTask(

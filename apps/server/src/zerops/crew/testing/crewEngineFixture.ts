@@ -27,6 +27,7 @@ import {
   type OrchestrationThreadShell,
   type SpiEvent,
 } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -47,7 +48,7 @@ import { ServerCommandReadiness } from "../../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { resolveZeropsEnvironment } from "../../ZeropsEnvironment.ts";
-import { ZeropsRepositorySource } from "../../ZeropsRepositorySource.ts";
+import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { CrewEngine } from "../CrewEngine.ts";
@@ -128,20 +129,47 @@ export const spiEvent = <T extends SpiEvent["type"]>(
     ...extra,
   }) as SpiEvent;
 
+/**
+ * The service's mount and its verification, as on a container: the mount is
+ * listed without an identity, and only an observation remembers a verified
+ * binding — which a restart forgets.
+ */
+const repositoryLayers = (root: string) =>
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const known = yield* Ref.make<ReadonlyArray<ZeropsRepository>>([]);
+      const { identity: _identity, ...mounted } = serviceRepository(root);
+      const listed = Effect.succeed({ _tag: "available", repositories: [mounted] } as const);
+      const source = ZeropsRepositorySource.of({
+        list: listed,
+        refresh: listed,
+        known: Ref.get(known),
+        remember: (repository) =>
+          Ref.update(known, (all) => [
+            ...all.filter((entry) => entry.host !== repository.host),
+            repository,
+          ]),
+      });
+      const observe = (repository: ZeropsRepository) =>
+        Effect.gen(function* () {
+          const verified = { ...repository, identity: TEST_IDENTITY, rootId: "root" };
+          yield* source.remember(verified);
+          return {
+            _tag: "available",
+            repository: verified,
+            git: { state: "ready", shallow: false },
+            observedAt: "2026-09-27T10:00:00.000Z",
+          } as const;
+        });
+      return Context.make(ZeropsRepositorySource, source).pipe(
+        Context.add(ZeropsWorkspaceObserver, { observe } as ZeropsWorkspaceObserver["Service"]),
+      );
+    }),
+  );
+
 const fakes = (world: Omit<CrewWorld, "publish">, events: PubSub.PubSub<SpiEvent>) =>
   Layer.mergeAll(
-    Layer.succeed(
-      ZeropsRepositorySource,
-      ZeropsRepositorySource.of({
-        list: Effect.succeed({ _tag: "available", repositories: [serviceRepository(world.root)] }),
-        refresh: Effect.succeed({
-          _tag: "available",
-          repositories: [serviceRepository(world.root)],
-        }),
-        known: Effect.succeed([serviceRepository(world.root)]),
-        remember: () => Effect.void,
-      }),
-    ),
+    repositoryLayers(world.root),
     Layer.mock(OrchestrationEngineService)({
       dispatch: (command) =>
         Ref.update(world.dispatched, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
@@ -170,15 +198,6 @@ const fakes = (world: Omit<CrewWorld, "publish">, events: PubSub.PubSub<SpiEvent
               : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
           ),
         ),
-    }),
-    Layer.mock(ZeropsWorkspaceObserver)({
-      observe: (repository) =>
-        Effect.succeed({
-          _tag: "available",
-          repository: { ...repository, identity: TEST_IDENTITY, rootId: "root" },
-          git: { state: "ready", shallow: false },
-          observedAt: "2026-09-27T10:00:00.000Z",
-        }),
     }),
     Layer.mock(ProviderInstances)({
       driverKindOf: () => Effect.succeed(ProviderDriverKind.make("claudeAgent")),
@@ -215,18 +234,15 @@ export type CrewEngineServices =
   | ServerCommandReadiness
   | CrewStore;
 
-/** A world plus `restart`: the same repository and database under a fresh engine, as after a server restart. */
-export interface CrewRig extends CrewWorld {
-  readonly restart: <A, E>(body: Effect.Effect<A, E, CrewEngineServices>) => Effect.Effect<A, E>;
-}
-
 /**
- * Runs `body` against a live crew engine over a fresh service repository and
- * a fresh workspace (the zcp container's `/var/www`, holding the crew home
- * and the crew database). `restart` builds another engine over both.
+ * Runs each phase against its own live crew engine, one after another, over
+ * one fresh service repository and one workspace (the zcp container's
+ * `/var/www`, holding the crew home and the crew database): a phase after the
+ * first is the Mate after a server restart. Each engine is built from fresh
+ * layers and closed before the next starts.
  */
-export const withCrewEngine = <A, E>(
-  body: (rig: CrewRig) => Effect.Effect<A, E, CrewEngineServices>,
+export const withCrewEngines = <E>(
+  phases: ReadonlyArray<(world: CrewWorld) => Effect.Effect<void, E, CrewEngineServices>>,
   options: { readonly installer?: (installs: Ref.Ref<number>) => CrewPolicyInstaller } = {},
 ) =>
   Effect.gen(function* () {
@@ -269,12 +285,9 @@ export const withCrewEngine = <A, E>(
           ).pipe(Layer.provideMerge(NodeServices.layer)),
         ),
       );
-    const rig: CrewRig = {
-      ...world,
-      restart: (next) => next.pipe(Effect.provide(engine().pipe(Layer.orDie))),
-    };
-    return yield* body(rig).pipe(
-      Effect.provide(engine()),
+    yield* Effect.forEach(phases, (phase) =>
+      phase(world).pipe(Effect.provide(engine(), { local: true })),
+    ).pipe(
       Effect.ensuring(
         Effect.sync(() => {
           removeServiceRepository(root);
@@ -283,6 +296,12 @@ export const withCrewEngine = <A, E>(
       ),
     );
   });
+
+/** One engine: see {@link withCrewEngines}. */
+export const withCrewEngine = <E>(
+  body: (world: CrewWorld) => Effect.Effect<void, E, CrewEngineServices>,
+  options: { readonly installer?: (installs: Ref.Ref<number>) => CrewPolicyInstaller } = {},
+) => withCrewEngines([body], options);
 
 /** Polls `check` until it holds, for work the engine runs in the background; dies when it never does. */
 export const eventually = <E, R>(

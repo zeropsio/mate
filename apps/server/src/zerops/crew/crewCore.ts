@@ -205,6 +205,34 @@ export const makeCrewCore = Effect.gen(function* () {
     });
   });
 
+  const observer = yield* ZeropsWorkspaceObserver;
+
+  /**
+   * Verifies every writer's service this process has not verified yet — a
+   * server restart forgets every binding, and the shell refuses an
+   * unverified service — then reads the crew again.
+   */
+  const verify = Effect.gen(function* () {
+    const hosts = new Set(
+      (yield* store.members(CREW_ID)).flatMap((member) =>
+        member.kind === "writer" && member.host !== null ? [member.host] : [],
+      ),
+    );
+    const listed = yield* repositories.list;
+    for (const host of hosts) {
+      if (Option.isSome(yield* Effect.option(shell.repository(host)))) continue;
+      const mounted =
+        listed._tag === "available"
+          ? listed.repositories.find((repository) => repository.host === host)
+          : undefined;
+      const seen = mounted === undefined ? undefined : yield* observer.observe(mounted);
+      if (seen?._tag !== "available") {
+        memory.lastError = `${host} could not be verified: ${seen?.reason ?? "it is not mounted"}`;
+      }
+    }
+    yield* reload;
+  });
+
   return {
     config,
     store,
@@ -220,11 +248,12 @@ export const makeCrewCore = Effect.gen(function* () {
     orchestration: yield* OrchestrationEngineService,
     projection: yield* ProjectionSnapshotQuery,
     admission: yield* ZeropsTurnAdmission,
-    observer: yield* ZeropsWorkspaceObserver,
+    observer,
     instances: yield* ProviderInstances,
     memory,
     applied: Ref.get(cache),
     reload,
+    verify,
     /** Tells the snapshot hub something in memory changed. */
     changed,
     /**
