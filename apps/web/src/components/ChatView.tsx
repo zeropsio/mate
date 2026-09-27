@@ -444,6 +444,7 @@ import {
   startNewThreadForProject,
   waitForStartedServerThread,
   shouldRefocusComposerOnWindowFocus,
+  diffOpeningShowsWorkingTree,
 } from "./ChatView.logic";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
@@ -1822,9 +1823,10 @@ export default function ChatView(props: ChatViewProps) {
   useLayoutEffect(() => {
     const explicitThreadRef = explicitDiffOpenRef.current;
     explicitDiffOpenRef.current = null;
-    // Generic openings always show the checkout, including tab fallbacks and thread changes.
-    // A timeline click instead opens the specific turn/file the user requested.
-    if (diffOpen && activeThreadRef && explicitThreadRef !== activeThreadRef) {
+    if (
+      activeThreadRef &&
+      diffOpeningShowsWorkingTree({ diffOpen, activeThreadRef, explicitThreadRef })
+    ) {
       useDiffPanelStore.getState().selectGitScope(activeThreadRef, "unstaged");
     }
   }, [activeThreadRef, diffOpen]);
@@ -7732,6 +7734,18 @@ export default function ChatView(props: ChatViewProps) {
   const onExpandTimelineImage = useCallback((preview: ExpandedImagePreview) => {
     setExpandedImage(preview);
   }, []);
+  // A crewmate's *Changes*: its copy against the tip of your tree the engine
+  // read — an explicit opening, so the panel keeps that branch diff.
+  const onOpenCrewChanges = useCallback(
+    (baseRef: string | null) => {
+      if (!isServerThread || !activeThreadRef) return;
+      explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
+      useDiffPanelStore.getState().selectBranchBaseRef(activeThreadRef, baseRef);
+      useRightPanelStore.getState().open(activeThreadRef, "diff");
+      onDiffPanelOpen?.();
+    },
+    [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen],
+  );
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
       if (!isServerThread || !activeThreadRef) return;
@@ -8044,7 +8058,11 @@ export default function ChatView(props: ChatViewProps) {
         {/* A crewmate with a copy of the code shows it where a person's chat
             shows its lifecycle (seam S7); a reader and the lead have none. */}
         {activeCrewmate?.crewmate.lane != null && activeThreadRef !== null ? (
-          <CrewLaneBar handle={activeCrewmate.crewmate.handle} threadRef={activeThreadRef} />
+          <CrewLaneBar
+            handle={activeCrewmate.crewmate.handle}
+            onOpenChanges={onOpenCrewChanges}
+            threadRef={activeThreadRef}
+          />
         ) : (
           <ZeropsLifecycleStrip
             agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
