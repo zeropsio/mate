@@ -142,9 +142,15 @@ const cursor = provider({
 
 describe("Runs on", () => {
   it("offers the two default logins this Mate has", () => {
-    expect(crewLoginOptions([cursor, codex, claude])).toEqual([
+    expect(crewLoginOptions([cursor, codex, claude], false)).toEqual([
       { id: "claudeAgent", label: "Claude Code", agent: "claude-code" },
       { id: "codex", label: "Codex", agent: "codex" },
+    ]);
+  });
+
+  it("offers the lead no Codex login: it needs the crew tools, which only Claude hosts", () => {
+    expect(crewLoginOptions([cursor, codex, claude], true)).toEqual([
+      { id: "claudeAgent", label: "Claude Code", agent: "claude-code" },
     ]);
   });
 
@@ -172,7 +178,7 @@ describe("Runs on", () => {
     ["claudeAgent", undefined],
     ["gone", undefined],
   ] as const)("says what the %s login means for the crewmate", (loginId, note) => {
-    expect(crewLoginNote(crewLoginOptions([claude, codex]), loginId)).toBe(note);
+    expect(crewLoginNote(crewLoginOptions([claude, codex], false), loginId)).toBe(note);
   });
 });
 
