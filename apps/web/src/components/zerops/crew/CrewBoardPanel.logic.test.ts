@@ -11,7 +11,9 @@ import {
   crewBoardModel,
   crewDependencyOptions,
   crewNewTaskCommand,
+  crewPlanCard,
   crewPlanCommand,
+  crewRunOn,
   crewTaskEditCommand,
   crewTaskOwners,
   crewTaskSheet,
@@ -158,10 +160,12 @@ describe("crewBoardModel runOn", () => {
     { state: "stopped", on: false },
   ] as const)("a $state run is on: $on", ({ state, on }) => {
     expect(boardOf(crewSnapshotFixture({ run: { ...run, state } })).runOn).toBe(on);
+    expect(crewRunOn({ ...run, state })).toBe(on);
   });
 
   it("no run is not on", () => {
     expect(boardOf(crewSnapshotFixture({ run: null })).runOn).toBe(false);
+    expect(crewRunOn(null)).toBe(false);
   });
 });
 
@@ -358,6 +362,10 @@ describe("crewBoardModel plan", () => {
         })),
       },
     ).toEqual(plan);
+  });
+
+  it("is the plan the lead's chat draws too", () => {
+    expect(crewPlanCard(fixture, viewOf(fixture))).toEqual(boardOf(fixture).plan);
   });
 
   it("draws each row's owner face", () => {

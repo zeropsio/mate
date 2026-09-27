@@ -296,7 +296,7 @@ function CrewTaskCard({
   );
 }
 
-function CrewPlanCardView(props: {
+export function CrewPlanCardView(props: {
   readonly plan: CrewPlanCard;
   readonly editing: boolean;
   readonly canAct: boolean;
