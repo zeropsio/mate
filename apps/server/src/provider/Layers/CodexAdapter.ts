@@ -55,6 +55,11 @@ import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import {
+  codexThreadStart,
+  codexTurnModelSelection,
+  readCodexThreadPolicies,
+} from "../../spi/codexThreadProfile.ts";
+import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
   describeMcpElicitation,
@@ -1748,6 +1753,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const crypto = yield* Crypto.Crypto;
   const serverConfig = yield* Effect.service(ServerConfig);
+  const threadPolicies = yield* readCodexThreadPolicies;
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
@@ -1776,10 +1782,18 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           yield* Effect.suspend(() => stopSessionInternal(existing));
         }
 
-        const serviceTier =
-          input.modelSelection?.instanceId === boundInstanceId
-            ? getCodexServiceTierOptionValue(input.modelSelection)
-            : undefined;
+        // A thread with a tool profile runs gated, on the profile's model;
+        // every other thread gets exactly the options below.
+        const thread = yield* codexThreadStart(
+          threadPolicies,
+          {
+            threadId: input.threadId,
+            instanceId: boundInstanceId,
+            ...(input.cwd ? { cwd: input.cwd } : {}),
+          },
+          input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined,
+        );
+        const serviceTier = getCodexServiceTierOptionValue(thread.modelSelection);
         const runtimeInput: CodexSessionRuntimeOptions = {
           threadId: input.threadId,
           providerInstanceId: boundInstanceId,
@@ -1793,10 +1807,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ? { resumeCursor: input.resumeCursor }
             : {}),
           runtimeMode: input.runtimeMode,
-          ...(input.modelSelection?.instanceId === boundInstanceId
-            ? { model: input.modelSelection.model }
-            : {}),
+          ...(thread.modelSelection ? { model: thread.modelSelection.model } : {}),
           ...(serviceTier ? { serviceTier } : {}),
+          ...(thread.setup ? { threadSetup: thread.setup } : {}),
         };
         const sessionScope = yield* Scope.make("sequential");
         let sessionScopeTransferred = false;
@@ -1965,20 +1978,18 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     );
 
     const session = yield* requireSession(input.threadId);
-    const reasoningEffort =
-      input.modelSelection?.instanceId === boundInstanceId
-        ? getModelSelectionStringOptionValue(input.modelSelection, "reasoningEffort")
-        : undefined;
-    const serviceTier =
-      input.modelSelection?.instanceId === boundInstanceId
-        ? getCodexServiceTierOptionValue(input.modelSelection)
-        : undefined;
+    const { cwd } = yield* session.runtime.getSession;
+    const modelSelection = yield* codexTurnModelSelection(
+      threadPolicies,
+      { threadId: input.threadId, instanceId: boundInstanceId, ...(cwd ? { cwd } : {}) },
+      input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined,
+    );
+    const reasoningEffort = getModelSelectionStringOptionValue(modelSelection, "reasoningEffort");
+    const serviceTier = getCodexServiceTierOptionValue(modelSelection);
     return yield* session.runtime
       .sendTurn({
         ...(input.input !== undefined ? { input: input.input } : {}),
-        ...(input.modelSelection?.instanceId === boundInstanceId
-          ? { model: input.modelSelection.model }
-          : {}),
+        ...(modelSelection ? { model: modelSelection.model } : {}),
         ...(reasoningEffort
           ? {
               effort: reasoningEffort as EffectCodexSchema.V2TurnStartParams__ReasoningEffort,

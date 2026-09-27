@@ -125,6 +125,7 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
           params: {
             threadId: PEER_THREAD_ID,
             turnId: PEER_TURN_ID,
+            startedAtMs: 1,
             item: {
               type: "fileChange",
               id: FILE_CHANGE_ITEM,
