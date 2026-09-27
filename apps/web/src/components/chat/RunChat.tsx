@@ -328,7 +328,9 @@ function ChatScroll({
           ref={scrollerRef}
           className={cn(
             CHAT_MAX_HEIGHT,
-            "-mx-1.5 overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 scrollbar-none",
+            // A column, so the bubbles stand at its foot beside the face when
+            // the room it keeps is taller than they are.
+            "-mx-1.5 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 scrollbar-none",
           )}
           onKeyDown={markGesture}
           onScroll={onScroll}
@@ -344,7 +346,7 @@ function ChatScroll({
           <ol
             ref={contentRef}
             aria-label={label}
-            className="flex min-w-0 flex-col justify-end gap-1 pt-1 pb-2"
+            className="mt-auto flex min-w-0 flex-col gap-1 pt-1 pb-2"
           >
             {children}
           </ol>
@@ -649,7 +651,8 @@ function Headline({
       {time !== null || opens ? (
         <span
           className={cn(
-            "flex shrink-0 items-center gap-1 self-center text-xs tabular-nums",
+            // On the first line's baseline, however far the words wrap.
+            "flex shrink-0 items-center gap-1 text-xs tabular-nums",
             timeTone === "busy"
               ? "text-status-busy-text"
               : timeTone === "failed"

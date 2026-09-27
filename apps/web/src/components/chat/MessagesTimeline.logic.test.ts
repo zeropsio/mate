@@ -709,6 +709,26 @@ describe("deriveMessagesTimelineRows", () => {
     expect(answering.at(-1)?.id).toBe("a2");
   });
 
+  // The thought it had before it began to write ended there: it stays in the
+  // chat while the words are on their way — a thought that vanished under
+  // the writing dots and came back above the note once it was known flickered
+  // (Nova, 2026-09-27) — and the same while an answer streams under the card.
+  it("keeps the thought that led to the words it is writing", () => {
+    const before = [user("m0", 0), tool("w1", "t1", 1), reasoning("r1", "t1", 2)];
+    const writing = rows({
+      entries: [...before, assistant("a2", "t1", 3, "Checking /status next.", { streaming: true })],
+      live: "t1",
+    });
+    expect(lines(writing)).toEqual(["· pnpm test", "~ thinking about it"]);
+    expect(recordOf(writing)?.now).toEqual({ kind: "writing" });
+    const answering = rows({
+      entries: [...before, assistant("a2", "t1", 3, "All three pass.\n\nThe routes:")],
+      live: "t1",
+    });
+    expect(lines(answering)).toEqual(["· pnpm test", "~ thinking about it"]);
+    expect(recordOf(answering)).toMatchObject({ answering: true, now: null });
+  });
+
   // A background result wakes the Mate. A helper's review came back after the
   // run that started it ended, and the run it woke had no line saying why it
   // began (Nova, 2026-09-26). What finished while the run before still

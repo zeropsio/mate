@@ -1073,8 +1073,13 @@ function stretchRecord(input: {
     }
     previous = entry;
     // Words not placed yet split nothing: a block of thinking drawn around
-    // them would have the note land between its halves once it is known.
-    if (entry === input.answer || entry === input.writing) continue;
+    // them would have the note land between its halves once it is known. The
+    // thinking before them ended where they began, though: it stays in the
+    // chat while they are on their way.
+    if (entry === input.answer || entry === input.writing) {
+      flushReasoning(entry.createdAt);
+      continue;
+    }
     // The Mate's question tool: its question and the person's answer stand
     // on the page, so the call itself is never a line of its own.
     if ((entry.kind === "work" || entry.kind === "generic-call") && isQuestionToolCall(entry.entry))
