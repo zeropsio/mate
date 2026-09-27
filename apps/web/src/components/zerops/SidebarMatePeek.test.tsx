@@ -3,7 +3,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { MatePeekCard, useMatePeekKeys, type MatePeekCardProps } from "./SidebarMatePeek";
+import { PortalGate } from "../ui/portal-gate";
+import { SheetPopup } from "../ui/sheet";
+import {
+  MatePeekCard,
+  MatePeekHost,
+  useMatePeekKeys,
+  type MatePeekCardProps,
+} from "./SidebarMatePeek";
 import { askedLabelFor, type MatePeekChoice } from "./SidebarMatePeek.logic";
 
 const card = (props: Partial<MatePeekCardProps> = {}) =>
@@ -255,5 +262,38 @@ describe("useMatePeekKeys — the peek's keys, wherever it stands", () => {
     const done = keys(true, false);
     expect(press("x")).toBe(false);
     expect(done.stopped).toBe(0);
+  });
+});
+
+describe("MatePeekHost — where the peek stands", () => {
+  let mounted: ReactTestRenderer | undefined;
+  afterEach(() => {
+    act(() => {
+      mounted?.unmount();
+    });
+  });
+
+  it("rises as a sheet on a phone with no cross over the card's time", () => {
+    act(() => {
+      mounted = create(
+        <PortalGate closed>
+          <MatePeekHost
+            anchor={() => null}
+            onClose={() => {}}
+            onInteract={() => {}}
+            onPointerEnter={() => {}}
+            onPointerLeave={() => {}}
+            open
+            phone
+            title="Vera, at a glance"
+          >
+            <span data-card="">card</span>
+          </MatePeekHost>
+        </PortalGate>,
+      );
+    });
+    const sheet = mounted!.root.findByType(SheetPopup);
+    expect(sheet.props.showCloseButton).toBe(false);
+    expect(sheet.props["data-zerops-surface"]).toBe("sidebar-mate-peek-popup");
   });
 });

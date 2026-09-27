@@ -448,15 +448,25 @@ export function MatePeekHost({
         }}
         open={open}
       >
+        {/* A handle, not a cross: the kit's cross sat on the peek's own time
+            slot, and a sheet is put away the way sheets are — a tap above
+            it, or Escape. */}
         <SheetPopup
           aria-labelledby={titleId}
           data-zerops-surface="sidebar-mate-peek-popup"
+          showCloseButton={false}
           side="bottom"
         >
           <SheetTitle className="sr-only" id={titleId}>
             {title}
           </SheetTitle>
-          <div className="px-4 pt-4 pb-3">{children}</div>
+          <div className="px-4 pt-2 pb-3">
+            <span
+              aria-hidden="true"
+              className="mx-auto mb-3 block h-1 w-9 rounded-full bg-border"
+            />
+            {children}
+          </div>
         </SheetPopup>
       </Sheet>
     );
