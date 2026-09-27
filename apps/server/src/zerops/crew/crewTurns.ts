@@ -24,6 +24,7 @@ import * as Effect from "effect/Effect";
 import {
   asRefusal,
   memberOf,
+  runningRun,
   type AppliedCrew,
   type CrewCore,
   type CrewMember,
@@ -36,7 +37,8 @@ import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
 import { recordRunSpend, recordUsage } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
-import { continueAfterSave, openTaskOf, parkTask, pump } from "./crewTasks.ts";
+import { continueAfterSave, openTaskOf, parkTask } from "./crewTasks.ts";
+import { advance, advanceAll } from "./crewRunFlow.ts";
 
 const GUARD_WORDS = {
   dependencies: "an unignored dependency directory",
@@ -146,6 +148,7 @@ const turnEnded = (
     const { memory } = core;
     const shaped = memory.shaped.get(stint.threadId);
     memory.working.delete(stint.threadId);
+    memory.endings.set(stint.threadId, event.payload.state);
     memory.shaped.delete(stint.threadId);
     if (event.payload.terminalReason !== undefined) {
       memory.terminalReasons.set(stint.threadId, event.payload.terminalReason);
@@ -189,10 +192,10 @@ const turnEnded = (
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
     if (after?.state === "merging") {
       yield* core.background(
-        integrate(core, after.assignment).pipe(Effect.andThen(pump(core, handle))),
+        integrate(core, after.assignment).pipe(Effect.andThen(advance(core, handle))),
       );
-    } else if (after === undefined) {
-      yield* pump(core, handle);
+    } else {
+      yield* advance(core, handle);
     }
   });
 
@@ -266,7 +269,7 @@ export const makeTurnHandler = (core: CrewCore) => {
         return;
       }
       for (const handle of outcome.readded) core.memory.missingLanes.delete(handle);
-      for (const handle of applied.members.keys()) yield* pump(core, handle);
+      yield* advanceAll(core);
     });
 
   return (event: SpiEvent) =>
@@ -291,7 +294,13 @@ export const makeTurnHandler = (core: CrewCore) => {
         yield* moveClaim(core, personDevServer, "person-dev-server");
       }
       if (event.type === "account.rate-limits.updated") yield* recordUsage(core, event);
-      if (stint === undefined) return;
+      if (stint === undefined) {
+        // A landing a run holds while your chat works goes on once it is done.
+        if (event.type === "turn.completed" && runningRun(applied) !== undefined) {
+          yield* core.background(advanceAll(core));
+        }
+        return;
+      }
       switch (event.type) {
         case "turn.started":
           core.memory.working.add(stint.threadId);

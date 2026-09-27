@@ -12,6 +12,8 @@
  *   apply now*, **resolve** a merge-in's conflicts, **fix** a failed check,
  *   **restart the dev server** after a landing, **show** the copy on dev and
  *   **give dev back**;
+ * - a run's own turns: the **nudge** after a turn that ended without a
+ *   report, and **carry on** when a paused run goes on;
  * - the **carried** card a new conversation's first turn on an open task
  *   starts from, so every stint begins with a card for its seam line.
  *
@@ -98,6 +100,20 @@ export const fixCard = (
     task.output.trimEnd(),
     "```",
     "Fix it in your copy, then report with crew_report.",
+  ]);
+
+/** The one nudge a run sends when a turn ended without a report (CONCEPT §5 *Endings*). */
+export const nudgeCard = (task: CardTask): string =>
+  card(task, "no report yet", [
+    "Your turn ended without crew_report. If the task is done, report done. If only the person " +
+      "or the lead can unblock you, report blocked with your question. Otherwise carry on.",
+  ]);
+
+/** The turn a paused run's interrupted task gets when the run goes on. */
+export const resumeCard = (task: CardTask): string =>
+  card(task, "carry on", [
+    "The run was paused, which stopped your last turn; it goes on now. Carry on with your task " +
+      "from your copy and its history.",
   ]);
 
 export const afterLandCard = (

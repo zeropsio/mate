@@ -436,22 +436,6 @@ export const pump = (
     yield* core.changed;
   });
 
-/** Pumps every crewmate; a failure is the section's last error, never a stop. */
-export const pumpAll = (core: CrewCore) =>
-  Effect.gen(function* () {
-    const applied = yield* core.applied;
-    if (applied === undefined) return;
-    for (const handle of applied.members.keys()) {
-      yield* pump(core, handle).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            core.memory.lastError = error.message;
-          }),
-        ),
-      );
-    }
-  });
-
 /* ------------------------------------------------------------ commands */
 
 /** A crewmate chat's send (PRD §5.2a). */

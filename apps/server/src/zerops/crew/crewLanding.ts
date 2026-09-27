@@ -467,6 +467,25 @@ export const landNow = (core: CrewCore, principal: TurnPrincipal, taskId: string
     }
   });
 
+/** The turn a task back as rework goes to its crewmate with: resolve the conflicts, or fix the check. */
+export const reworkCard = (
+  member: CrewMember,
+  task: CrewAssignmentRow,
+  on: "conflict" | "check-failed",
+): string =>
+  on === "conflict"
+    ? resolveCard({
+        number: task.number,
+        title: task.title,
+        paths: readTaskWait(task.waiting)?.paths ?? [],
+      })
+    : fixCard({
+        number: task.number,
+        title: task.title,
+        command: member.spec.check ?? "the check",
+        output: readTaskCheck(task.check)?.output ?? "",
+      });
+
 /** *Ask to resolve* a merge-in's conflicts, or *Ask to fix* a failed check: one turn as the person. */
 export const askRework = (
   core: CrewCore,
@@ -477,20 +496,10 @@ export const askRework = (
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
     const task = yield* requireTask(core, taskId);
-    const wait = readTaskWait(task.waiting);
-    if (task.state !== "rework" || wait?.on !== on) {
+    if (task.state !== "rework" || readTaskWait(task.waiting)?.on !== on) {
       return yield* refuse("wrong-state", `#${task.number} is ${task.state}`);
     }
     const member = memberOf(applied, task.member);
     if (member === undefined) return yield* refuse("unknown-crewmate", `@${task.member}`);
-    const text =
-      on === "conflict"
-        ? resolveCard({ number: task.number, title: task.title, paths: wait.paths })
-        : fixCard({
-            number: task.number,
-            title: task.title,
-            command: member.spec.check ?? "the check",
-            output: readTaskCheck(task.check)?.output ?? "",
-          });
-    yield* continueTask(core, applied, member, task, principal, text);
+    yield* continueTask(core, applied, member, task, principal, reworkCard(member, task, on));
   });

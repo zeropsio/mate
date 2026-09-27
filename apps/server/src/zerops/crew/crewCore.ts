@@ -144,6 +144,12 @@ export interface EngineMemory {
   runTick: boolean;
   /** Each login's fullest usage window, from the provider's rate-limit events. */
   readonly usage: Map<string, number>;
+  /** How each crew thread's last turn ended (`turn.completed`'s state). */
+  readonly endings: Map<string, string>;
+  /** Crew threads whose turn a pausing run interrupted, to carry on when it goes on. */
+  readonly runInterrupted: Set<string>;
+  /** Task attempts a run has nudged once (`<assignment>:<attempt>`). */
+  readonly nudged: Set<string>;
   lastError: string | null;
 }
 
@@ -178,6 +184,9 @@ export const makeMemory = (): EngineMemory => ({
   runningSince: null,
   runTick: false,
   usage: new Map(),
+  endings: new Map(),
+  runInterrupted: new Set(),
+  nudged: new Set(),
   lastError: null,
 });
 

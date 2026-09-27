@@ -84,17 +84,9 @@ import * as CrewStateRef from "./CrewStateRef.ts";
 import * as CrewStore from "./CrewStore.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import { editMemory, forgetMemory, removeMemory } from "./crewMemoryCommands.ts";
-import {
-  discard,
-  editTask,
-  markFresh,
-  message,
-  newTask,
-  pumpAll,
-  retryTask,
-  tell,
-} from "./crewTasks.ts";
+import { discard, editTask, markFresh, message, newTask, retryTask, tell } from "./crewTasks.ts";
 import { makeTurnHandler } from "./crewTurns.ts";
+import { advanceAll } from "./crewRunFlow.ts";
 import {
   finishRun,
   pressPause,
@@ -295,7 +287,7 @@ const run = (
       case "start": {
         const { _tag: _, ...options } = command;
         yield* startRun(core, principal, options);
-        yield* pumpAll(core);
+        yield* advanceAll(core);
         return done;
       }
       case "pause":
@@ -303,7 +295,7 @@ const run = (
         return done;
       case "resume":
         yield* resumeRun(core, command.runId);
-        yield* pumpAll(core);
+        yield* advanceAll(core);
         return done;
       case "stop":
         yield* stopRun(core, command.runId);

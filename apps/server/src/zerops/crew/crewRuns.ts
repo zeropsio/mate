@@ -5,7 +5,7 @@
  *
  * - **Start** records the run as running; *Pause*, *Resume*, *Stop* and
  *   *Finish* move it (`runTransition`). Whoever starts or resumes one then
- *   pumps the crew (`crewTasks.pumpAll`). A limit reached pauses it with that
+ *   advances the crew (`crewRunFlow.advanceAll`). A limit reached pauses it with that
  *   limit as its reason; a dispatch admission refused pauses it as
  *   `refused`, with admission's words.
  * - **Pausing or stopping** interrupts every running crew turn: each ends
@@ -157,6 +157,7 @@ const interruptCrewTurns = (core: CrewCore, applied: AppliedCrew) =>
     const now = yield* core.now;
     for (const stint of applied.stints) {
       if (stint.retiredAt !== null || !core.memory.working.has(stint.threadId)) continue;
+      core.memory.runInterrupted.add(stint.threadId);
       yield* asRefusal(
         core.orchestration.dispatch({
           type: "thread.turn.interrupt",
