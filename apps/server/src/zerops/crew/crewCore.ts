@@ -1,0 +1,360 @@
+/**
+ * crewCore — what every part of the live engine shares: its services, the
+ * applied crew as it was last read from the tables, and the facts it keeps
+ * only in memory.
+ *
+ * The engine's parts (`crewApply`, `crewTasks`, `crewLanding`, `crewTurns`,
+ * `crewDirectory`, `crewBoot`) are functions over one {@link CrewCore}. The
+ * tables are the truth; {@link CrewCore.applied} is their read-through copy,
+ * reloaded after every write that changes the crew, so the thread directory
+ * answers a hook's lookup from memory (`memberFor` runs at every tool call).
+ *
+ * {@link CrewMemory} holds what is cheap to lose: Apply's progress, the
+ * lane figures read at turn end, which crew threads have a turn running,
+ * refused dispatches, shaped turns, apply choices waiting on a turn's end. A
+ * restart loses it and the boot sweep reads it again.
+ *
+ * @module crewCore
+ */
+import {
+  CrewCommandError,
+  type CrewApplyChoice,
+  type CrewClaimState,
+  type CrewRefusalReason,
+  type CrewServed,
+} from "@t3tools/contracts";
+import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
+import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
+import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
+
+import { ServerConfig } from "../../config.ts";
+import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProviderInstances } from "../../spi/providerInstances.ts";
+import { ZeropsRepositorySource, type ZeropsRepository } from "../ZeropsRepositorySource.ts";
+import {
+  principalUserId,
+  ZeropsTurnAdmission,
+  type TurnPrincipal,
+} from "../ZeropsTurnAdmission.ts";
+import { ZeropsWorkspaceObserver } from "../ZeropsWorkspaceObserver.ts";
+import { CrewApp } from "./CrewApp.ts";
+import { CrewChecks } from "./CrewChecks.ts";
+import { CREW_ID, CrewHome } from "./CrewHome.ts";
+import { CrewIntegration } from "./CrewIntegration.ts";
+import { CrewReads } from "./CrewReads.ts";
+import { CrewRuntime } from "./CrewRuntime.ts";
+import { CrewShell } from "./CrewShell.ts";
+import { CrewStateRef } from "./CrewStateRef.ts";
+import {
+  CrewStore,
+  type CrewAssignmentRow,
+  type CrewMemberRow,
+  type CrewStintRow,
+} from "./CrewStore.ts";
+import { CrewWorkspace } from "./CrewWorkspace.ts";
+import type { GateTurn } from "./CrewPolicy.ts";
+import type { LaneProgress, SnapshotRuntime } from "./crewSnapshot.ts";
+import type { PromptChange } from "./crewCards.ts";
+import type { LaneStats } from "./CrewReads.ts";
+
+/** A crewmate's login when neither `crew.yaml` nor the project names one. */
+export const DEFAULT_CREW_LOGIN = "claudeAgent";
+
+/** The applied crew, as the tables hold it. */
+export interface AppliedCrew {
+  readonly definition: CrewDefinition;
+  readonly briefVersion: number;
+  readonly seq: number;
+  readonly flushedSeq: number;
+  readonly homeHost: string | null;
+  readonly members: ReadonlyMap<string, CrewMemberRow>;
+  readonly stints: ReadonlyArray<CrewStintRow>;
+  /** The verified repository of every writer's host. */
+  readonly repositories: ReadonlyMap<string, ZeropsRepository>;
+  /** Each crewmate's login's driver kind; a Codex crewmate hosts no crew tools (PRD §2.3). */
+  readonly drivers: ReadonlyMap<string, string | undefined>;
+}
+
+/** A shaped turn the gate lets through one tool shape for (CONCEPT §3.3). */
+export interface ShapedTurn {
+  readonly turn: Exclude<GateTurn, "work">;
+  readonly devServer?: { readonly port: number; readonly command: string };
+}
+
+/** A save applied `now` to a crewmate whose turn was running: rotate and continue at its end. */
+export interface PendingContinue {
+  readonly startedBy: string;
+  readonly change: PromptChange;
+}
+
+/** The engine's in-memory facts; see the module doc. Mutated only inside `Effect.sync`. */
+export interface CrewMemory {
+  readonly progress: Map<string, LaneProgress>;
+  readonly laneStats: Map<string, LaneStats>;
+  readonly missingLanes: Set<string>;
+  readonly apps: Map<string, "running" | "stopped">;
+  readonly context: Map<string, { readonly tokens: number; readonly window: number }>;
+  readonly delivered: Set<string>;
+  readonly cantStart: Map<string, { readonly text: string; readonly at: string }>;
+  /** Crew threads with a turn running. */
+  readonly working: Set<string>;
+  /** The last turn's terminal reason per crew thread (SPI 2.5). */
+  readonly terminalReasons: Map<string, string>;
+  readonly shaped: Map<string, ShapedTurn>;
+  /** A pending save's apply choice per crewmate, read at its next turn. */
+  readonly applyChoices: Map<string, CrewApplyChoice>;
+  /** Crewmates to rotate when their running turn ends (`fresh` on a working crewmate). */
+  readonly freshAtTurnEnd: Set<string>;
+  readonly continueAtTurnEnd: Map<string, PendingContinue>;
+  /** Turns sent per task attempt, for its WIP commits' messages. */
+  readonly turns: Map<string, number>;
+  /** Tasks whose merge-in and check are running, so a second ask waits for the first. */
+  readonly integrating: Set<string>;
+  /** Each dev service's Show-on-dev claim, as the gate's `holdsClaim` reads it. */
+  readonly claims: Map<string, MemoryClaim>;
+  /** What each dev service's dev server served when last read. */
+  readonly served: Map<string, CrewServed>;
+  lastError: string | null;
+}
+
+export interface MemoryClaim {
+  readonly state: CrewClaimState;
+  readonly handle: string | null;
+  readonly grantedBy: string | null;
+  readonly requestedAt: string;
+}
+
+export const makeMemory = (): CrewMemory => ({
+  progress: new Map(),
+  laneStats: new Map(),
+  missingLanes: new Set(),
+  apps: new Map(),
+  context: new Map(),
+  delivered: new Set(),
+  cantStart: new Map(),
+  working: new Set(),
+  terminalReasons: new Map(),
+  shaped: new Map(),
+  applyChoices: new Map(),
+  freshAtTurnEnd: new Set(),
+  continueAtTurnEnd: new Map(),
+  turns: new Map(),
+  integrating: new Set(),
+  claims: new Map(),
+  served: new Map(),
+  lastError: null,
+});
+
+/** The memory as the snapshot reads it. */
+export const runtimeOf = (
+  memory: CrewMemory,
+  logins: SnapshotRuntime["logins"],
+): SnapshotRuntime => ({
+  progress: memory.progress,
+  laneStats: memory.laneStats,
+  missingLanes: memory.missingLanes,
+  apps: memory.apps,
+  context: memory.context,
+  delivered: memory.delivered,
+  cantStart: memory.cantStart,
+  served: memory.served,
+  logins,
+  lastError: memory.lastError,
+});
+
+/** A refusal with the engine's detail. */
+export const refuse = (reason: CrewRefusalReason, detail: string | null = null) =>
+  new CrewCommandError({ reason, detail });
+
+const isCrewCommandError = Schema.is(CrewCommandError);
+
+/** Any failure the command cannot name otherwise: the crew home or a service could not be reached. */
+export const asRefusal = <A, E extends { readonly message: string }, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, CrewCommandError, R> =>
+  effect.pipe(
+    Effect.mapError((error) => (isCrewCommandError(error) ? error : refuse("io", error.message))),
+  );
+
+export const makeCrewCore = Effect.gen(function* () {
+  const config = yield* ServerConfig;
+  const store = yield* CrewStore;
+  const crypto = yield* Crypto.Crypto;
+  const repositories = yield* ZeropsRepositorySource;
+  const shell = yield* CrewShell;
+  const instances = yield* ProviderInstances;
+  const cache = yield* Ref.make<AppliedCrew | undefined>(undefined);
+  const signals = yield* PubSub.unbounded<void>();
+  const memory = makeMemory();
+  const scope = yield* Effect.scope;
+  const numbering = yield* Semaphore.make(1);
+  const changed = PubSub.publish(signals, undefined).pipe(Effect.asVoid);
+
+  /** Reads the applied crew back from the tables into {@link cache}. */
+  const reload = Effect.gen(function* () {
+    const row = yield* store.getDefinition(CREW_ID);
+    if (Option.isNone(row) || row.value.state !== "applied") {
+      yield* Ref.set(cache, undefined);
+      return;
+    }
+    const definition = row.value.spec as CrewDefinition;
+    const members = new Map(
+      (yield* store.members(CREW_ID)).map((member) => [member.handle, member]),
+    );
+    const hosts = new Set(
+      [...members.values()].flatMap((member) =>
+        member.kind === "writer" && member.host !== null ? [member.host] : [],
+      ),
+    );
+    const known = new Map<string, ZeropsRepository>();
+    for (const host of hosts) {
+      const repository = yield* Effect.option(shell.repository(host));
+      if (Option.isSome(repository)) known.set(host, repository.value);
+    }
+    const drivers = new Map<string, string | undefined>();
+    for (const member of members.values()) {
+      drivers.set(member.handle, yield* instances.driverKindOf(member.login ?? DEFAULT_CREW_LOGIN));
+    }
+    yield* Ref.set(cache, {
+      drivers,
+      definition,
+      briefVersion: row.value.briefVersion,
+      seq: row.value.seq,
+      flushedSeq: row.value.flushedSeq,
+      homeHost: row.value.homeHost,
+      members,
+      stints: yield* store.stints(CREW_ID),
+      repositories: known,
+    });
+  });
+
+  const observer = yield* ZeropsWorkspaceObserver;
+
+  /**
+   * Verifies every writer's service this process has not verified yet — a
+   * server restart forgets every binding, and the shell refuses an
+   * unverified service — then reads the crew again.
+   */
+  const verify = Effect.gen(function* () {
+    const hosts = new Set(
+      (yield* store.members(CREW_ID)).flatMap((member) =>
+        member.kind === "writer" && member.host !== null ? [member.host] : [],
+      ),
+    );
+    const listed = yield* repositories.list;
+    for (const host of hosts) {
+      if (Option.isSome(yield* Effect.option(shell.repository(host)))) continue;
+      const mounted =
+        listed._tag === "available"
+          ? listed.repositories.find((repository) => repository.host === host)
+          : undefined;
+      const seen = mounted === undefined ? undefined : yield* observer.observe(mounted);
+      if (seen?._tag !== "available") {
+        memory.lastError = `${host} could not be verified: ${seen?.reason ?? "it is not mounted"}`;
+      }
+    }
+    yield* reload;
+  });
+
+  return {
+    config,
+    store,
+    shell,
+    repositories,
+    home: yield* CrewHome,
+    workspace: yield* CrewWorkspace,
+    integration: yield* CrewIntegration,
+    checks: yield* CrewChecks,
+    app: yield* CrewApp,
+    stateRef: yield* CrewStateRef,
+    reads: yield* CrewReads,
+    runtime: yield* CrewRuntime,
+    orchestration: yield* OrchestrationEngineService,
+    projection: yield* ProjectionSnapshotQuery,
+    admission: yield* ZeropsTurnAdmission,
+    observer,
+    instances,
+    memory,
+    applied: Ref.get(cache),
+    reload,
+    verify,
+    /** Tells the snapshot hub something in memory changed. */
+    changed,
+    /**
+     * Runs `effect` beside the caller, for the life of the engine: a merge-in
+     * and its check take minutes and must not hold a press or the event loop.
+     * Its failure becomes the section's last error.
+     */
+    background: <E extends { readonly message: string }>(effect: Effect.Effect<void, E>) =>
+      effect.pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            memory.lastError = error.message;
+          }).pipe(Effect.andThen(changed)),
+        ),
+        Effect.forkIn(scope),
+        Effect.asVoid,
+      ),
+    signals: Stream.fromPubSub(signals),
+    /** Serializes what takes a task's `#N`: two presses at once never share a number. */
+    numbered: <A, E, R>(effect: Effect.Effect<A, E, R>) => numbering.withPermits(1)(effect),
+    now: Effect.map(DateTime.now, DateTime.formatIso),
+    uuid: crypto.randomUUIDv4.pipe(Effect.orDie),
+  };
+});
+
+export type CrewCore = Effect.Success<typeof makeCrewCore>;
+
+/** The applied crew, or the refusal that nothing is applied. */
+export const requireApplied = (core: CrewCore) =>
+  Effect.flatMap(core.applied, (applied) =>
+    applied === undefined ? Effect.fail(refuse("no-crew")) : Effect.succeed(applied),
+  );
+
+export interface CrewMember {
+  readonly row: CrewMemberRow;
+  readonly spec: CrewMemberSpec;
+}
+
+/** A crewmate of the applied crew by handle. */
+export const memberOf = (applied: AppliedCrew, handle: string): CrewMember | undefined => {
+  const row = applied.members.get(handle);
+  const spec = applied.definition.members.find((member) => member.handle === handle);
+  return row === undefined || spec === undefined ? undefined : { row, spec };
+};
+
+export const requireMember = (applied: AppliedCrew, handle: string) => {
+  const member = memberOf(applied, handle);
+  return member === undefined
+    ? Effect.fail(refuse("unknown-crewmate", `@${handle}`))
+    : Effect.succeed(member);
+};
+
+/** A crewmate's conversation now: its newest stint that is not retired. */
+export const currentStint = (applied: AppliedCrew, handle: string): CrewStintRow | undefined =>
+  applied.stints.findLast((stint) => stint.member === handle && stint.retiredAt === null);
+
+/** Whether a turn runs on the crewmate's current conversation. */
+export const isWorking = (core: CrewCore, applied: AppliedCrew, handle: string): boolean => {
+  const stint = currentStint(applied, handle);
+  return stint !== undefined && core.memory.working.has(stint.threadId);
+};
+
+/** The Zerops user a principal stands for; a session with no such subject stands for itself. */
+export const principalUser = (principal: TurnPrincipal): string =>
+  principalUserId(principal) ??
+  (principal.kind === "session" ? principal.subject : principal.startedBy);
+
+/** The principal a later dispatch of a task runs as: the person whose press or message made it. */
+export const laterPrincipal = (task: Pick<CrewAssignmentRow, "createdBy">): TurnPrincipal => ({
+  kind: "crew",
+  startedBy: task.createdBy,
+});

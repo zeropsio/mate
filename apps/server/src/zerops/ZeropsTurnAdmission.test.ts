@@ -20,6 +20,7 @@ import * as Option from "effect/Option";
 import * as ServerConfig from "../config.ts";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
+import { ThreadToolPolicyRegistry, type ThreadToolProfile } from "../spi/threadToolPolicy.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ZeropsAgentAuthModule from "./ZeropsAgentAuth.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -79,6 +80,14 @@ interface World {
   readonly members?: Readonly<Record<string, boolean | undefined>>;
   /** Configured instance → driver kind; the two default instances when absent. */
   readonly drivers?: Readonly<Record<string, string>>;
+  /**
+   * The thread is a crewmate's stint (seam 13): retired or not, and what the
+   * thread tool policy registry answers for it.
+   */
+  readonly crewThread?: {
+    readonly archived?: boolean;
+    readonly profile: "given" | "none" | "no-registry";
+  };
   /** Logins beyond the defaults (`ZeropsLogins`), by id → their state. */
   readonly logins?: Readonly<Record<string, ZeropsLoginState>>;
 }
@@ -98,10 +107,17 @@ const admission = (world: World) =>
         Layer.mock(ProjectionSnapshotQuery)({
           getThreadShellById: () =>
             Effect.succeed(
-              world.threadInstanceId === undefined
+              world.threadInstanceId === undefined && world.crewThread === undefined
                 ? Option.none()
                 : Option.some({
-                    modelSelection: { instanceId: world.threadInstanceId, model: "m" },
+                    modelSelection: {
+                      instanceId: world.threadInstanceId ?? "claudeAgent",
+                      model: "m",
+                    },
+                    archivedAt: world.crewThread?.archived === true ? CREATED_AT : null,
+                    ...(world.crewThread === undefined
+                      ? {}
+                      : { crew: { crew: "main", crewmate: "backend", stint: 1 } }),
                   } as unknown as OrchestrationThreadShell),
             ),
           getUserInputActivity: () =>
@@ -168,6 +184,19 @@ const admission = (world: World) =>
             ),
           isActiveMember: (userId) => Effect.succeed(world.members?.[userId]),
         }),
+        world.crewThread === undefined || world.crewThread.profile === "no-registry"
+          ? Layer.empty
+          : Layer.succeed(ThreadToolPolicyRegistry, {
+              install: () => Effect.void,
+              current: Effect.succeed(
+                Option.some({
+                  profileFor: () =>
+                    Effect.succeed(
+                      world.crewThread?.profile === "given" ? ({} as ThreadToolProfile) : undefined,
+                    ),
+                }),
+              ),
+            }),
       ),
     ),
   );
@@ -207,6 +236,16 @@ const answer: OrchestrationCommand = {
   answers: { q1: "yes" },
   createdAt: CREATED_AT,
 };
+
+const onCrewThread = (type: "thread.archive" | "thread.unarchive" | "thread.delete") =>
+  ({ type, commandId: CommandId.make("command-1"), threadId: THREAD }) as OrchestrationCommand;
+
+const CREW_KEEPS_IT =
+  "A crewmate's conversation is the crew's to archive, restore or delete; use the crew's own actions.";
+const RETIRED =
+  "This crewmate conversation is retired; message the crewmate in its current conversation.";
+const NOT_RUNNING =
+  "Crew mode is not running this crewmate's conversation, so it cannot take a turn.";
 
 const janSignedClaude: World = {
   agents: [signedIn("claude-code")],
@@ -437,6 +476,51 @@ describe("ZeropsTurnAdmission", () => {
       turnStart("opencode"),
       { kind: "crew", startedBy: JAN },
       "Could not confirm that the person this turn runs for is still a member of this Zerops organization. Try again in a moment.",
+    ],
+    ...(["thread.archive", "thread.unarchive", "thread.delete"] as const).map(
+      (type) =>
+        [
+          `refuses ${type} on a crewmate's conversation from a session`,
+          { ...janSignedClaude, crewThread: { profile: "given" } },
+          onCrewThread(type),
+          session(JAN),
+          CREW_KEEPS_IT,
+        ] as const,
+    ),
+    [
+      "leaves archiving a crewmate's conversation to the crew itself",
+      { ...janSignedClaude, crewThread: { profile: "given" } },
+      onCrewThread("thread.archive"),
+      { kind: "crew", startedBy: JAN },
+      undefined,
+    ],
+    [
+      "refuses a session's turn on a retired crewmate conversation",
+      { ...janSignedClaude, crewThread: { archived: true, profile: "given" } },
+      turnStart("claudeAgent"),
+      session(JAN),
+      RETIRED,
+    ],
+    [
+      "refuses a crewmate turn the thread tool policy has no profile for",
+      { ...janSignedClaude, crewThread: { profile: "none" } },
+      turnStart("claudeAgent"),
+      { kind: "crew", startedBy: JAN },
+      NOT_RUNNING,
+    ],
+    [
+      "refuses a crewmate turn where no thread tool policy registry exists",
+      { ...janSignedClaude, crewThread: { profile: "no-registry" } },
+      turnStart("claudeAgent"),
+      session(JAN),
+      NOT_RUNNING,
+    ],
+    [
+      "admits a crewmate turn its profile gates, as its signer",
+      { ...janSignedClaude, crewThread: { profile: "given" } },
+      turnStart("claudeAgent"),
+      session(JAN),
+      undefined,
     ],
     [
       "leaves a person's own session to the membership watch",

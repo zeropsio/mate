@@ -77,6 +77,7 @@ const configLayer = (overrides: Partial<ServerConfig.ServerConfig["Service"]>) =
         devAllowedOrigins: [],
         zeropsFixtures: undefined,
         zerops: undefined,
+        zeropsCrew: false,
         noBrowser: false,
         startupPresentation: "browser",
         ...overrides,

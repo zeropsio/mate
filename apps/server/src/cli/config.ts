@@ -182,6 +182,8 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  // Crew mode (ARCHITECTURE seam 25): an env variable only, never a flag.
+  zeropsCrew: Config.Boolean("T3CODE_ZEROPS_CREW").pipe(Config.withDefault(true)),
   noBrowser: Config.Boolean("T3CODE_NO_BROWSER").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -483,6 +485,7 @@ export const resolveServerConfig = (
       devAllowedOrigins: env.devAllowedOrigins,
       zeropsFixtures,
       zerops,
+      zeropsCrew: env.zeropsCrew,
       noBrowser,
       startupPresentation,
       desktopBootstrapToken,

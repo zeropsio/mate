@@ -36,6 +36,7 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import { crewLayerInert } from "./crew/crewLayer.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
@@ -567,6 +568,9 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       }),
     ),
     fixtureSignersLayer,
+    // A fixture scene has no dev services for a crew to work on: crew mode
+    // is off, the feed says so and every crew request is refused.
+    crewLayerInert,
     // A fixture scene has no live env store either: the reader answers
     // `undefined` explicitly, never a hidden default. `ZeropsIdentityStatus`
     // is not provided here — it is supplied once, live or fixture alike, in

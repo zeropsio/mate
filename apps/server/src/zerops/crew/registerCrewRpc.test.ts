@@ -1,36 +1,86 @@
 /**
- * The crew RPCs' inert form (ARCHITECTURE §2 *Activation*): where crew mode is
- * not on, the feed says so once and every request is refused as unavailable.
+ * The crew RPCs over the engine: inert where crew mode is off, live
+ * otherwise, and a command always runs as the connecting session.
  */
 import { WS_METHODS } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
-import { CREW_OFF_SNAPSHOT, registerCrewRpc } from "./registerCrewRpc.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
+import { CrewEngine, inertCrewEngine } from "./CrewEngine.ts";
+import { registerCrewRpc } from "./registerCrewRpc.ts";
+import { eventually, withCrewEngine } from "./testing/crewEngineFixture.ts";
 
-const handlers = registerCrewRpc({
-  observeRpcEffect: (_method, effect) => effect,
-  observeRpcStream: (_method, stream) => stream,
-});
+const observe = {
+  observeRpcEffect: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
+  observeRpcStream: <A, E, R>(_method: string, stream: Stream.Stream<A, E, R>) => stream,
+};
 
-describe("registerCrewRpc, inert", () => {
-  it.effect("streams one snapshot saying crew mode is off", () =>
+const SUBJECT = `${ZEROPS_SUBJECT_PREFIX}user-karel`;
+
+describe("registerCrewRpc", () => {
+  const inert = registerCrewRpc({ crew: inertCrewEngine, subject: SUBJECT, ...observe });
+
+  it.effect("inert: streams one snapshot saying crew mode is off", () =>
     Effect.gen(function* () {
-      const frames = yield* Stream.runCollect(handlers[WS_METHODS.subscribeZeropsCrew]({}));
-      expect(frames).toEqual([CREW_OFF_SNAPSHOT]);
-      expect(CREW_OFF_SNAPSHOT.status).toBe("off");
+      const frames = yield* Stream.runCollect(inert[WS_METHODS.subscribeZeropsCrew]({}));
+      expect(frames.map((frame) => frame.status)).toEqual(["off"]);
     }),
   );
 
   it.effect.each([
-    ["files.get", handlers[WS_METHODS.zeropsCrewFilesGet]({})],
-    ["files.put", handlers[WS_METHODS.zeropsCrewFilesPut]({ files: [] })],
-    ["command", handlers[WS_METHODS.zeropsCrewCommand]({ _tag: "apply" })],
-  ] as const)("refuses %s as unavailable", ([, request]) =>
+    ["files.get", inert[WS_METHODS.zeropsCrewFilesGet]({})],
+    ["files.put", inert[WS_METHODS.zeropsCrewFilesPut]({ files: [] })],
+    ["command", inert[WS_METHODS.zeropsCrewCommand]({ _tag: "apply" })],
+  ] as const)("inert: refuses %s as unavailable", ([, request]) =>
     Effect.gen(function* () {
       const error = yield* Effect.flip(request);
       expect(error).toMatchObject({ _tag: "CrewCommandError", reason: "unavailable" });
     }),
+  );
+
+  it.live("live: saves the crew home, applies it as the session, and streams the crew", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        const handlers = registerCrewRpc({ crew: yield* CrewEngine, subject: SUBJECT, ...observe });
+        const latest = handlers[WS_METHODS.subscribeZeropsCrew]({}).pipe(
+          Stream.take(1),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+        const before = yield* latest;
+        yield* handlers[WS_METHODS.zeropsCrewFilesPut]({
+          files: [
+            {
+              path: "crew.yaml",
+              content:
+                "name: Game team\nbriefTitle: Space shooter\nmembers:\n  - handle: erik\n    displayName: Erik\n    kind: reader\n",
+            },
+            { path: "brief.md", content: "Ship it.\n" },
+            { path: "jobs/erik.md", content: "Write the plan.\n" },
+          ],
+        });
+        const files = yield* handlers[WS_METHODS.zeropsCrewFilesGet]({});
+        yield* handlers[WS_METHODS.zeropsCrewCommand]({ _tag: "apply" });
+        yield* eventually(Effect.map(latest, (snapshot) => snapshot.status === "applied"));
+        const after = yield* latest;
+        expect({
+          before: before.status,
+          files: files.files.map((file) => file.path),
+          after: [after.crew?.name, after.crewmates.map((mate) => mate.handle)],
+          seq: after.seq > before.seq,
+          installs: yield* Ref.get(world.installs),
+        }).toEqual({
+          before: "none",
+          files: ["brief.md", "crew.yaml", "jobs/erik.md"],
+          after: ["Game team", ["erik"]],
+          seq: true,
+          installs: 1,
+        });
+      }),
+    ),
   );
 });

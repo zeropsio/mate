@@ -3,23 +3,19 @@
  * `zerops.crew.files.put`, `zerops.crew.command`), spread by `ws.ts` beside
  * `registerZeropsRpc`. Scopes stay in `auth/RpcAuthorization.ts`.
  *
- * This is the crew layer's inert form (ARCHITECTURE §2 *Activation*): the feed
- * sends one snapshot saying crew mode is off, and every request is refused as
- * `unavailable`. The live form arrives behind this same function with the
- * crew engine.
+ * Every handler answers from the `CrewEngine` the server was built with —
+ * its inert form where crew mode is off (the feed says `off` once, every
+ * request is `unavailable`), the live engine otherwise. A command runs as the
+ * connecting session: its subject comes from the authenticated session in
+ * `ws.ts`, never from RPC input, and any turn the command starts is admitted
+ * as that person.
  */
-import {
-  CrewCommandError,
-  WS_METHODS,
-  type CrewSnapshot,
-  type WsRpcGroup,
-} from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Stream from "effect/Stream";
+import { WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
 import type * as Rpc from "effect/unstable/rpc/Rpc";
 import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
 import type { RegisterZeropsRpcDeps } from "../registerZeropsRpc.ts";
+import type { CrewEngineService } from "./CrewEngine.ts";
 
 type CrewRpcTag =
   | typeof WS_METHODS.subscribeZeropsCrew
@@ -34,38 +30,32 @@ type CrewRpcHandlers = {
   readonly [Current in CrewRpc as Current["_tag"]]: Rpc.ToHandlerFn<Current, never>;
 };
 
-type RegisterCrewRpcDeps = Pick<RegisterZeropsRpcDeps, "observeRpcEffect" | "observeRpcStream">;
-
-/** What the feed sends where crew mode is not on. */
-export const CREW_OFF_SNAPSHOT: CrewSnapshot = {
-  status: "off",
-  seq: 0,
-  crew: null,
-  crewmates: [],
-  hosts: [],
-  board: { tasks: [] },
-  run: null,
-  attention: [],
-  landedNotDelivered: 0,
-  lastError: null,
+type RegisterCrewRpcDeps = Pick<
+  RegisterZeropsRpcDeps,
+  "observeRpcEffect" | "observeRpcStream" | "subject"
+> & {
+  readonly crew: CrewEngineService;
 };
-
-const unavailable = Effect.fail(new CrewCommandError({ reason: "unavailable", detail: null }));
 
 const traceAttributes = { "rpc.aggregate": "zerops" } as const;
 
-export const registerCrewRpc = ({ observeRpcEffect, observeRpcStream }: RegisterCrewRpcDeps) =>
+export const registerCrewRpc = ({
+  crew,
+  subject,
+  observeRpcEffect,
+  observeRpcStream,
+}: RegisterCrewRpcDeps) =>
   ({
     [WS_METHODS.subscribeZeropsCrew]: (_input) =>
-      observeRpcStream(
-        WS_METHODS.subscribeZeropsCrew,
-        Stream.make(CREW_OFF_SNAPSHOT),
+      observeRpcStream(WS_METHODS.subscribeZeropsCrew, crew.snapshot, traceAttributes),
+    [WS_METHODS.zeropsCrewFilesGet]: (_input) =>
+      observeRpcEffect(WS_METHODS.zeropsCrewFilesGet, crew.readFiles, traceAttributes),
+    [WS_METHODS.zeropsCrewFilesPut]: (input) =>
+      observeRpcEffect(WS_METHODS.zeropsCrewFilesPut, crew.writeFiles(input), traceAttributes),
+    [WS_METHODS.zeropsCrewCommand]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.zeropsCrewCommand,
+        crew.command(input, { kind: "session", subject }),
         traceAttributes,
       ),
-    [WS_METHODS.zeropsCrewFilesGet]: (_input) =>
-      observeRpcEffect(WS_METHODS.zeropsCrewFilesGet, unavailable, traceAttributes),
-    [WS_METHODS.zeropsCrewFilesPut]: (_input) =>
-      observeRpcEffect(WS_METHODS.zeropsCrewFilesPut, unavailable, traceAttributes),
-    [WS_METHODS.zeropsCrewCommand]: (_input) =>
-      observeRpcEffect(WS_METHODS.zeropsCrewCommand, unavailable, traceAttributes),
   }) satisfies CrewRpcHandlers;

@@ -73,6 +73,30 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     logWebSocketEvents: Option.none(),
   } as const;
 
+  it.effect.each([
+    ["is on when the environment says nothing", {}, true],
+    ["is off when the environment turns it off", { T3CODE_ZEROPS_CREW: "false" }, false],
+    ["is on when the environment turns it on", { T3CODE_ZEROPS_CREW: "true" }, true],
+  ] as const)("crew mode's switch %s", ([, env, expected]) =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const resolved = yield* resolveServerConfig(
+        {
+          ...noFlags,
+          port: Option.some(3773),
+          baseDir: Option.some(join(NodeOS.tmpdir(), "t3-cli-config-crew")),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(ConfigProvider.layer(ConfigProvider.fromEnv({ env })), NetService.layer),
+        ),
+      );
+
+      expect(resolved.zeropsCrew).toBe(expected);
+    }),
+  );
+
   it.effect("reads Zerops fixtures from the environment without enabling the identity door", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;
@@ -297,6 +321,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
+        zeropsCrew: true,
       });
       assert.equal(resolved.stateDir, join(baseDir, "userdata"));
     }),
@@ -366,6 +391,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
+        zeropsCrew: true,
       });
       assert.equal(resolved.dbPath, join(baseDir, "userdata", "state.sqlite"));
     }),
@@ -436,6 +462,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         desktopBootstrapToken: "desktop-bootstrap-token",
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
+        zeropsCrew: true,
       });
     }),
   );
@@ -516,6 +543,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         resourceMonitorPath: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
+        zeropsCrew: true,
       });
       assert.equal(join(baseDir, "userdata"), resolved.stateDir);
       assert.equal(resolved.desktopTelemetryFd, 4);
@@ -643,6 +671,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         desktopBootstrapToken: "desktop-token",
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
+        zeropsCrew: true,
       });
     }),
   );
@@ -714,6 +743,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
+        zeropsCrew: true,
       });
     }),
   );
@@ -948,6 +978,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
+        zeropsCrew: true,
       });
     }),
   );
