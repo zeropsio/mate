@@ -395,6 +395,10 @@
       "types": "./src/zerops/crew/phrases.ts",
       "default": "./src/zerops/crew/phrases.ts"
     },
+    "./zerops/projections/crew": {
+      "types": "./src/zerops/projections/crew.ts",
+      "default": "./src/zerops/projections/crew.ts"
+    },
     "./zerops/crew/testing/fixtures": {
       "types": "./src/zerops/crew/testing/fixtures.ts",
       "default": "./src/zerops/crew/testing/fixtures.ts"
