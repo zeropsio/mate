@@ -396,3 +396,272 @@ describe("buildDeployFields — a result that reports its own failure settles fa
     expect([fields.phaseOverride, fields.statusWord]).toEqual(["done", "Deployed"]);
   });
 });
+
+/**
+ * `zerops_deploy` with `strategy: "git-push"` answers zcp's
+ * `deployGitPushResponse` (`internal/tools/deploy_git_push.go`): an
+ * `ops.GitPushResult` (`internal/ops/deploy_common.go`) and, on the account's
+ * own Gitea, the pull request the pushed branch lands through. It is a deploy
+ * only once the build its push triggered was watched to ACTIVE (`DELIVERED`).
+ * Read as a deploy, a two-second push to a branch said "Done", "Deploying
+ * appdev." and five build steps it never ran.
+ */
+const GIT_PUSH_INPUT = { targetService: "appdev", strategy: "git-push" };
+const REMOTE = "https://git.example.com/acme/app.git";
+const gitPush = (result?: unknown, overrides: Partial<ZeropsCall> = {}) =>
+  deployCall({ input: GIT_PUSH_INPUT, result, ...overrides });
+const pushResult = (fields: Record<string, unknown> = {}) => ({
+  status: "PUSHED",
+  remoteUrl: REMOTE,
+  branch: "main",
+  message: `Code pushed from appdev to ${REMOTE} (branch: main)`,
+  ...fields,
+});
+const GIT_PUSH_CASES = {
+  running: gitPush(),
+  pushedForPullRequest: gitPush(
+    pushResult({
+      branch: "mate/fen",
+      pullRequest: {
+        repo: "acme/app",
+        branch: "mate/fen",
+        base: "main",
+        number: 8,
+        created: true,
+        url: "https://git.example.com/acme/app/pulls/8",
+      },
+    }),
+  ),
+  pushed: gitPush(pushResult()),
+  pushedWithNoBuildWired: gitPush(pushResult({ buildTarget: "appstage" })),
+  upToDate: gitPush({
+    status: "NOTHING_TO_PUSH",
+    remoteUrl: REMOTE,
+    branch: "main",
+    message: "Nothing to push from appdev — remote is up to date",
+  }),
+  delivered: gitPush(
+    pushResult({
+      status: "DELIVERED",
+      buildTarget: "appstage",
+      buildStatus: "ACTIVE",
+      buildObserved: true,
+      autoRecorded: true,
+      verifyTarget: "appstage",
+    }),
+  ),
+  buildFailed: gitPush(
+    pushResult({
+      buildTarget: "appstage",
+      buildStatus: "FAILED",
+      buildObserved: true,
+      failureClassification: {
+        category: "build",
+        likelyCause: "Build pipeline failed; no recognized log pattern matched.",
+      },
+      buildLogs: lines(20, "build"),
+    }),
+  ),
+  // zcp's build watch only ends on ACTIVE/FAILED/CANCELED, so a build the
+  // platform failed as BUILD_FAILED comes back as a watch that gave up.
+  buildFailedPastTheWatch: gitPush(
+    pushResult({ buildTarget: "appstage", buildStatus: "BUILD_FAILED", buildObserved: true }),
+  ),
+  prepareFailedPastTheWatch: gitPush(
+    pushResult({
+      buildTarget: "appstage",
+      buildStatus: "PREPARING_RUNTIME_FAILED",
+      buildObserved: true,
+    }),
+  ),
+  noBuildFollowed: gitPush(pushResult({ buildTarget: "appstage", buildStatus: "NOT_OBSERVED" })),
+  buildStillRunning: gitPush(
+    pushResult({ buildTarget: "appstage", buildStatus: "BUILDING", buildObserved: true }),
+  ),
+  refused: gitPush({
+    status: "GIT_TOKEN_MISSING",
+    message:
+      "meta records git-push as configured for appdev, but the service env carries no GIT_TOKEN secret.",
+    instructions: 'Re-run zerops_workflow action="git-push-setup" service="appdev".',
+  }),
+  pushFailed: gitPush(
+    {
+      code: "SSH_DEPLOY_FAILED",
+      error: "git-push from appdev failed: ! [rejected] main -> main (fetch first)\nhint: more",
+      failureClassification: { category: "credential", likelyCause: "GIT_TOKEN rejected" },
+    },
+    { status: "failed" },
+  ),
+  interrupted: gitPush(undefined, {
+    status: "interrupted",
+    settledAt: "2026-09-01T00:00:50.000Z",
+  }),
+  unknownResult: gitPush({ status: "SOMETHING_NEW", branch: "main" }),
+} satisfies Record<string, ZeropsCall>;
+
+describe("buildDeployFields — a git push says what it did, a deploy only once its build landed", () => {
+  it.each([
+    { name: "pushing while the call runs", call: "running", expected: ["running", "Pushing"] },
+    { name: "pushed", call: "pushed", expected: ["done", "Pushed"] },
+    { name: "nothing new to push", call: "upToDate", expected: ["done", "Up to date"] },
+    { name: "the build it triggered landed", call: "delivered", expected: ["done", "Deployed"] },
+    { name: "the build it triggered failed", call: "buildFailed", expected: ["failed", "Failed"] },
+    {
+      name: "the build failed after zcp stopped watching for its end",
+      call: "buildFailedPastTheWatch",
+      expected: ["failed", "Failed"],
+    },
+    {
+      name: "no build followed the push",
+      call: "noBuildFollowed",
+      expected: ["uncertain", "Unconfirmed"],
+    },
+    {
+      name: "the build was still running when zcp stopped watching",
+      call: "buildStillRunning",
+      expected: ["uncertain", "Unconfirmed"],
+    },
+    { name: "refused before pushing", call: "refused", expected: ["failed", "Failed"] },
+    { name: "the push itself failed", call: "pushFailed", expected: ["failed", "Failed"] },
+    { name: "interrupted", call: "interrupted", expected: ["interrupted", "Interrupted"] },
+    {
+      name: "a result this build cannot read claims nothing",
+      call: "unknownResult",
+      expected: ["done", "Done"],
+    },
+  ] as const)("$name", ({ call, expected }) => {
+    const fields = buildDeployFields(GIT_PUSH_CASES[call], CONTEXT);
+    expect([fields.phaseOverride, fields.statusWord]).toEqual(expected);
+  });
+
+  it.each([
+    { call: "running", expected: undefined },
+    { call: "pushedForPullRequest", expected: "Pushed to pull request #8." },
+    { call: "pushed", expected: "Pushed to main." },
+    { call: "pushedWithNoBuildWired", expected: "Pushed to main." },
+    { call: "upToDate", expected: "Nothing new to push." },
+    { call: "delivered", expected: "appstage is live." },
+    {
+      call: "buildFailed",
+      expected: "Build pipeline failed; no recognized log pattern matched.",
+    },
+    { call: "buildFailedPastTheWatch", expected: "Failed." },
+    { call: "noBuildFollowed", expected: "No result from the build. Check it in Zerops." },
+    { call: "buildStillRunning", expected: "No result from the build. Check it in Zerops." },
+    {
+      call: "refused",
+      expected:
+        "meta records git-push as configured for appdev, but the service env carries no GIT_TOKEN secret.",
+    },
+    {
+      call: "pushFailed",
+      expected: "git-push from appdev failed: ! [rejected] main -> main (fetch first)",
+    },
+    { call: "unknownResult", expected: "Finished." },
+  ] as const)("its closing, $call: $expected", ({ call, expected }) => {
+    expect(buildDeployFields(GIT_PUSH_CASES[call], CONTEXT).closing).toBe(expected);
+  });
+
+  it.each([
+    { name: "while it runs", call: gitPush() },
+    { name: "once it pushed", call: GIT_PUSH_CASES.pushed },
+    { name: "once its build landed", call: GIT_PUSH_CASES.delivered },
+    {
+      name: "when only the result says it was a push",
+      call: deployCall({ input: { targetService: "appdev" }, result: pushResult() }),
+    },
+  ])("names a push, never a deploy, $name", ({ call }) => {
+    const fields = buildDeployFields(call, CONTEXT);
+    expect([fields.subject, fields.kicker, fields.voice]).toEqual([
+      "appdev",
+      "Push · appdev",
+      "Pushing appdev.",
+    ]);
+  });
+});
+
+const PUSH_STEP = (state: string, stateLabel: string) => [["Push", state, stateLabel]];
+
+describe("buildDeployFields — a git push holds one push step, the pipeline only for a build it watched", () => {
+  it.each([
+    { call: "running", expected: PUSH_STEP("running", "Running") },
+    { call: "pushedForPullRequest", expected: PUSH_STEP("done", "Done") },
+    { call: "upToDate", expected: PUSH_STEP("done", "Done") },
+    { call: "noBuildFollowed", expected: PUSH_STEP("done", "Done") },
+    { call: "buildStillRunning", expected: PUSH_STEP("done", "Done") },
+    { call: "refused", expected: PUSH_STEP("failed", "Failed") },
+    { call: "pushFailed", expected: PUSH_STEP("failed", "Failed") },
+    { call: "interrupted", expected: PUSH_STEP("queued", "Waiting") },
+    { call: "unknownResult", expected: PUSH_STEP("done", "Done") },
+    { call: "delivered", expected: five("done", "Done") },
+    {
+      call: "buildFailedPastTheWatch",
+      expected: slots(
+        ["done", "Done"],
+        ["failed", "Failed"],
+        ["queued", "Cancelled"],
+        ["queued", "Cancelled"],
+        ["queued", "Cancelled"],
+      ),
+    },
+    {
+      call: "prepareFailedPastTheWatch",
+      expected: slots(
+        ["done", "Done"],
+        ["done", "Done"],
+        ["done", "Done"],
+        ["failed", "Failed"],
+        ["queued", "Cancelled"],
+      ),
+    },
+  ] as const)("$call", ({ call, expected }) => {
+    const fields = buildDeployFields(GIT_PUSH_CASES[call], CONTEXT);
+    expect(fields.steps.map((step) => [step.label, step.state, step.stateLabel])).toEqual(expected);
+  });
+});
+
+/**
+ * zcp builds a standard pair's push on its stage half (`buildTarget`), so a
+ * build the push was watched to is that service's deploy — and a push that
+ * built nothing leaves the push source's result as zcp stated it.
+ */
+describe("buildDeployFields — the service a git push's outcome is about", () => {
+  it.each([
+    { call: "running", expected: ["appdev", undefined] },
+    { call: "pushed", expected: ["appdev", "PUSHED"] },
+    { call: "pushedWithNoBuildWired", expected: ["appdev", "PUSHED"] },
+    { call: "upToDate", expected: ["appdev", "NOTHING_TO_PUSH"] },
+    { call: "delivered", expected: ["appstage", "DELIVERED"] },
+    { call: "buildFailed", expected: ["appstage", "PUSHED"] },
+    { call: "noBuildFollowed", expected: ["appstage", "PUSHED"] },
+    { call: "refused", expected: ["appdev", "GIT_TOKEN_MISSING"] },
+    { call: "pushFailed", expected: ["appdev", undefined] },
+  ] as const)("$call", ({ call, expected }) => {
+    const fields = buildDeployFields(GIT_PUSH_CASES[call], CONTEXT);
+    expect([fields.target?.hostname, fields.resultStatus]).toEqual(expected);
+  });
+});
+
+describe("buildDeployFields — why a git push failed", () => {
+  it.each([
+    { call: "pushed", expected: undefined },
+    {
+      call: "buildFailed",
+      expected: {
+        reason: "Build pipeline failed; no recognized log pattern matched.",
+        logTail: lines(20, "build").slice(-12),
+      },
+    },
+    { call: "buildFailedPastTheWatch", expected: undefined },
+    {
+      call: "refused",
+      expected: {
+        reason:
+          "meta records git-push as configured for appdev, but the service env carries no GIT_TOKEN secret.",
+      },
+    },
+    { call: "pushFailed", expected: { reason: "GIT_TOKEN rejected" } },
+  ] as const)("$call", ({ call, expected }) => {
+    expect(buildDeployFields(GIT_PUSH_CASES[call], CONTEXT).explanation).toEqual(expected);
+  });
+});
