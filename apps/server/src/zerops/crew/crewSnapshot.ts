@@ -212,6 +212,27 @@ const laneState = (
   return { state: "ready", detail: null };
 };
 
+/** A writer's copy: from its lane row, or from Apply's progress while the row does not exist yet. */
+const laneSummary = (
+  handle: string,
+  lane: CrewLaneRow | undefined,
+  open: CrewAssignmentRow | undefined,
+  runtime: SnapshotRuntime,
+  lastCheck: CrewAssignmentRow | undefined,
+): Crewmate["lane"] => {
+  const progress = runtime.progress.get(handle);
+  if (lane === undefined && progress === undefined) return null;
+  const stats = runtime.laneStats.get(handle);
+  return {
+    branch: lane?.branch ?? `crew/${handle}`,
+    ahead: stats?.ahead ?? 0,
+    insertions: stats?.insertions ?? 0,
+    deletions: stats?.deletions ?? 0,
+    check: lastCheck === undefined ? null : readTaskCheck(lastCheck.check),
+    ...(lane === undefined ? progress! : laneState(handle, lane, open, runtime)),
+  };
+};
+
 const toTask = (row: CrewAssignmentRow, input: AppliedSnapshotInput): CrewTask => {
   const card = readTaskCard(row.card);
   const wait = readTaskWait(row.waiting);
@@ -307,7 +328,6 @@ const toCrewmate = (
   const open = tasks.find((task) => isOpenTask(task.state));
   const lane = input.lanes.find((candidate) => candidate.lane === row.handle);
   const readOnly = row.kind !== "writer";
-  const stats = runtime.laneStats.get(row.handle);
   const lastCheck = tasks.findLast((task) => readTaskCheck(task.check) !== null);
   const context = current === undefined ? undefined : runtime.context.get(current.threadId);
   return {
@@ -341,17 +361,7 @@ const toCrewmate = (
     memory: { entries: 0, unfiled: 0 },
     openTaskId: open?.assignment ?? null,
     queuedTaskIds: tasks.filter((task) => task.state === "queued").map((task) => task.assignment),
-    lane:
-      readOnly || lane === undefined
-        ? null
-        : {
-            branch: lane.branch,
-            ahead: stats?.ahead ?? 0,
-            insertions: stats?.insertions ?? 0,
-            deletions: stats?.deletions ?? 0,
-            check: lastCheck === undefined ? null : readTaskCheck(lastCheck.check),
-            ...laneState(row.handle, lane, open, runtime),
-          },
+    lane: readOnly ? null : laneSummary(row.handle, lane, open, runtime, lastCheck),
     app: readOnly
       ? null
       : {

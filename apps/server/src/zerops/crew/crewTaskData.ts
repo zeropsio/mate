@@ -5,7 +5,6 @@
  * | Column         | Shape            | Holds                                                   |
  * |----------------|------------------|---------------------------------------------------------|
  * | `card_json`    | {@link TaskCard} | what the task asks: its brief, Done when, the fan-out note |
- * | `pending_json` | {@link TaskPending} | the card text a queued task sends when it starts     |
  * | `report_json`  | {@link TaskReport} | the crewmate's last `crew_report`                     |
  * | `check_json`   | `CrewCheck`      | the last check on the tree that would land              |
  * | `review_json`  | `CrewReview`     | the last review (phase C)                               |
@@ -27,9 +26,6 @@ export const TaskCard = Schema.Struct({
   note: Schema.NullOr(Schema.String),
 });
 export type TaskCard = typeof TaskCard.Type;
-
-export const TaskPending = Schema.Struct({ card: Schema.String });
-export type TaskPending = typeof TaskPending.Type;
 
 export const TaskReport = Schema.Struct({
   status: Schema.Literals(["done", "blocked", "progress"]),
@@ -57,7 +53,6 @@ const read =
     value === null || value === undefined ? null : Option.getOrNull(decode(value));
 
 export const readTaskCard = read(Schema.decodeUnknownOption(TaskCard));
-export const readTaskPending = read(Schema.decodeUnknownOption(TaskPending));
 export const readTaskReport = read(Schema.decodeUnknownOption(TaskReport));
 export const readTaskWait = read(Schema.decodeUnknownOption(TaskWait));
 export const readTaskCheck = read(Schema.decodeUnknownOption(CrewCheck));
