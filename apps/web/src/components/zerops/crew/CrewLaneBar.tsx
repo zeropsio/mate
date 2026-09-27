@@ -17,7 +17,7 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import { useAskMate } from "~/zerops/useAskMate";
-import { useEnvironmentProjectRef } from "~/zerops/useZeropsFeeds";
+import { useEnvironmentProjectRef, useZeropsTopology } from "~/zerops/useZeropsFeeds";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { Button } from "../../ui/button";
 import { StatusDot } from "../primitives";
@@ -43,14 +43,16 @@ export function CrewLaneBar({
   const command = useCrewCommand(threadRef.environmentId);
   const askMate = useAskMate();
   const projectId = useEnvironmentProjectRef(threadRef.environmentId)?.projectId;
+  const services = useZeropsTopology(threadRef.environmentId)?.services;
   const whoLivesHere = useZeropsMate(threadRef.environmentId);
   const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
   const [portsHost, setPortsHost] = useState<string | null>(null);
   const [askingCommit, setAskingCommit] = useState(false);
   const row = view?.crewmates.find(({ crewmate }) => crewmate.handle === handle);
   const model = useMemo(
-    () => (snapshot === null || row === undefined ? null : crewLaneBarModel(snapshot, row)),
-    [row, snapshot],
+    () =>
+      snapshot === null || row === undefined ? null : crewLaneBarModel(snapshot, row, services),
+    [row, services, snapshot],
   );
   if (model === null) return null;
 

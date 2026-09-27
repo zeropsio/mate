@@ -22,7 +22,10 @@ vi.mock("~/zerops/crew/useCrewCommand", () => ({
   useCrewCommand: () => ({ send: vi.fn(), pending: false, error: null, clearError: vi.fn() }),
 }));
 vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => vi.fn() }));
-vi.mock("~/zerops/useZeropsFeeds", () => ({ useEnvironmentProjectRef: () => null }));
+vi.mock("~/zerops/useZeropsFeeds", () => ({
+  useEnvironmentProjectRef: () => null,
+  useZeropsTopology: () => undefined,
+}));
 vi.mock("~/zerops/useZeropsMates", () => ({
   useZeropsMate: () => ({ kind: "mate", mate: { name: "Fen", tint: "amber", connected: true } }),
 }));
