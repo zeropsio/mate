@@ -284,6 +284,13 @@ describe("taskTransition", () => {
     ["done merges", "working", c(), { type: "report-done" }, moved("merging")],
     ["Land now merges without a report", "working", c(), { type: "land-now" }, moved("merging")],
     [
+      "Land now takes a task back from rework as it stands",
+      "rework",
+      c({ reworks: 1 }),
+      { type: "land-now" },
+      moved("merging", c({ reworks: 1 })),
+    ],
+    [
       "an infrastructure ending re-queues once",
       "working",
       c({ rotations: 1 }),

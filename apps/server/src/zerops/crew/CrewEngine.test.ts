@@ -597,6 +597,29 @@ describe("CrewEngine", () => {
       ),
   );
 
+  it.live("Land now takes a task back from rework as its copy stands", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/b.txt", "crew\n"),
+        );
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const failed = yield* snapshotWhere(
+          (snapshot) => snapshot.board.tasks[0]?.state === "rework",
+        );
+        write(world.root, ".crew/backend/ok.txt", "ok\n");
+        yield* command({ _tag: "landNow", taskId: failed.board.tasks[0]!.id });
+        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
+        assert.deepStrictEqual(
+          [read(world.root, "b.txt"), read(world.root, "ok.txt")],
+          ["crew\n", "ok\n"],
+        );
+      }),
+    ),
+  );
+
   it.live("a self-deploy onto the service freezes its copies and interrupts their turns", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
