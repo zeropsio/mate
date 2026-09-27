@@ -3808,8 +3808,10 @@ export default function ChatView(props: ChatViewProps) {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
   });
-  // The crew board's tab exists only while the crew feed says a crew is, or could be, set up.
-  const crewStatus = useCrew(activeThreadEnvironmentId).status;
+  // The Mate's crew: the board's tab exists only while its status says a crew
+  // is, or could be, set up; its view gives the strip its crew group and a
+  // crew thread its crewmate.
+  const crew = useCrew(activeThreadEnvironmentId);
   // The band's sign-in request lands here: the first agent that needs a
   // sign-in gets the dialog, without a detour through the panel.
   const openAgentAuthDialog = useCallback(() => {
@@ -5274,11 +5276,6 @@ export default function ChatView(props: ChatViewProps) {
     currentThreadId: isServerThread ? threadId : null,
     typing: composerHasUnsentContent && activeThreadShell?.crew == null,
   });
-  // The Mate's crew, where a Mate lives: its group in the strip, and the
-  // crewmate this conversation belongs to when it is a crew thread.
-  const crew = useCrew(
-    zeropsMateAt(zeropsMates, environmentId).kind === "mate" ? environmentId : null,
-  );
   const crewStripGroups = useCrewStripGroups({
     environmentId,
     currentThreadId: isServerThread ? threadId : null,
@@ -7791,7 +7788,7 @@ export default function ChatView(props: ChatViewProps) {
     gitRepo: isGitRepo,
     serverThread: isServerThread,
     zeropsPanel: zeropsChrome.panel,
-    crewStatus,
+    crewStatus: crew.status,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {
