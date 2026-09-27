@@ -1241,8 +1241,11 @@ describe("CrewEngine", () => {
           write(world.root, ".crew/backend/.env", "SECRET=1\n"),
         );
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        // The guard left the file uncommitted: the copy reads dirty with nothing ahead.
         const parked = yield* snapshotWhere(
-          (current) => current.board.tasks[0]?.state === "parked",
+          (current) =>
+            current.board.tasks[0]?.state === "parked" &&
+            current.crewmates[0]!.lane?.dirty === true,
         );
         NodeFS.rmSync(NodePath.join(world.root, ".crew/backend/.env"));
         yield* command({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });

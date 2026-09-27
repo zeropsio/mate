@@ -321,6 +321,7 @@ describe("the section's words (PRD §4.3)", () => {
     ahead: 0,
     insertions: 0,
     deletions: 0,
+    dirty: false,
     check: null,
     state: "ready",
     detail: null,

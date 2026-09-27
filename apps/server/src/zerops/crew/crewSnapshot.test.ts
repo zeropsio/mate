@@ -207,6 +207,7 @@ describe("crew snapshot", () => {
         ahead: 0,
         insertions: 0,
         deletions: 0,
+        dirty: false,
         check: null,
         state: "ready",
         detail: null,
@@ -260,16 +261,19 @@ describe("crew snapshot", () => {
           ...EMPTY_RUNTIME,
           delivered: new Set<string>(),
           cantStart: new Map([["t-5", { text: "not the login's signer", at: AT }]]),
-          laneStats: new Map([["backend", { ahead: 2, insertions: 10, deletions: 1 }]]),
+          laneStats: new Map([
+            ["backend", { ahead: 2, insertions: 10, deletions: 1, dirty: true }],
+          ]),
         },
       }),
     );
     const backend = snapshot.crewmates.find((mate) => mate.handle === "backend")!;
-    expect([backend.openTaskId, backend.queuedTaskIds, backend.lane?.state]).toEqual([
-      "t-2",
-      ["t-3"],
-      "conflicts",
-    ]);
+    expect([
+      backend.openTaskId,
+      backend.queuedTaskIds,
+      backend.lane?.state,
+      backend.lane?.dirty,
+    ]).toEqual(["t-2", ["t-3"], "conflicts", true]);
     expect(snapshot.board.tasks.find((entry) => entry.id === "t-2")).toMatchObject({
       reason: "conflicts with what landed",
       attempts: 1,

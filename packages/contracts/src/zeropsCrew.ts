@@ -133,6 +133,8 @@ export const CrewLaneSummary = Schema.Struct({
   ahead: NonNegativeInt,
   insertions: NonNegativeInt,
   deletions: NonNegativeInt,
+  /** Changes in the copy no commit holds yet, as last read; *Land now* commits them first. */
+  dirty: Schema.Boolean,
   /** The copy's latest check; `null` before its first. */
   check: Schema.NullOr(CrewCheck),
   state: CrewLaneState,

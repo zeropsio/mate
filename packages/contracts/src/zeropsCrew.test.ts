@@ -60,6 +60,7 @@ const appliedSnapshot = {
         ahead: 3,
         insertions: 214,
         deletions: 12,
+        dirty: false,
         check: { state: "passed", output: "" },
         state: "ready",
         detail: null,

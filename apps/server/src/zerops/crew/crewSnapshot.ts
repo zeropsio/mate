@@ -105,7 +105,12 @@ export interface SnapshotRuntime {
   /** A lane against your tree, read at turn end and after a merge-in or a landing. */
   readonly laneStats: ReadonlyMap<
     string,
-    { readonly ahead: number; readonly insertions: number; readonly deletions: number }
+    {
+      readonly ahead: number;
+      readonly insertions: number;
+      readonly deletions: number;
+      readonly dirty: boolean;
+    }
   >;
   /** Lanes whose directory a sweep or a script found gone. */
   readonly missingLanes: ReadonlySet<string>;
@@ -238,6 +243,7 @@ const laneSummary = (
     ahead: stats?.ahead ?? 0,
     insertions: stats?.insertions ?? 0,
     deletions: stats?.deletions ?? 0,
+    dirty: stats?.dirty ?? false,
     check: lastCheck === undefined ? null : readTaskCheck(lastCheck.check),
     ...(lane === undefined ? progress! : laneState(handle, lane, open, runtime)),
   };
