@@ -3,11 +3,13 @@
 The declared contract between the **ported** driver zone (`apps/server/src/provider/**`,
 `packages/contracts/src/provider*.ts`) and everything **owned** that consumes provider events. A
 port that drops or reshapes a lifecycle event fails a test here, not at runtime for a user.
-Enforcement: `scripts/mate-zone-architecture.test.ts`'s four rules — ported zone imports nothing
+Enforcement: `scripts/mate-zone-architecture.test.ts`'s five rules — ported zone imports nothing
 matching `zerops`; owned product reaches providers only through the SPI; only `spi/**` and one
 named exception (`provider/Services/ProviderInstanceRegistry.ts`, consumed directly by
 `TextGeneration.ts`'s `resolveInstance`) may import provider internals from
-`textGeneration/**`/`usage/**`; owned product never contains the literal text `payload.data`.
+`textGeneration/**`/`usage/**`; owned product never contains the literal text `payload.data`; and
+the Ported↔spi rule — `provider/**` imports from `spi/` only the two inbound files of §1a, which
+import only each other.
 
 ## 1. The boundary
 
@@ -24,6 +26,45 @@ Stream<SpiEnrichmentFailure>` (§5). Today only `apps/server/src/zerops/**` cons
 Consumers never read `payload.data` (a driver's raw, per-provider item shape) — that is
 `toolCall.ts`'s job alone (§5); everything downstream reads `event.toolCall`
 (`zeropsToolResult.ts:31`, `zeropsActivityResult.ts:51-53`).
+
+## 1a. The inbound direction: thread tool policy
+
+Everything above wraps the ported zone from outside. Two files point the other way, so a driver can
+ask owned code how to run one thread: `apps/server/src/spi/threadToolPolicy.ts` (provider-neutral —
+`ThreadToolProfile`, `ToolDecision`, `ThreadToolPolicy`, `ThreadToolPolicyRegistry`) and
+`apps/server/src/spi/claudeThreadProfile.ts` (Claude's extension — `ClaudeThreadExtension`,
+`ClaudeThreadExtensionRegistry`, and `claudeQueryOptionsPatch`, the translation of a profile into SDK
+options). They are the only `spi/` files `provider/**` may import, and they import only each other
+and packages (effect, contracts, the Claude Agent SDK) — any other spi file reaches `provider/**`,
+so one hop through it would make the two directories import each other. Codex gets its own
+extension file when Codex crewmates land.
+
+- **Registries.** Each is a one-entry slot a policy is installed into for the life of a scope; a
+  later install wins, and closing an earlier install's scope never clears a later one. Both are
+  provided at the bottom of the server layer (`server.ts`, beside `ZeropsGitSpawner.layer`); nothing
+  installs a policy yet.
+- **The Claude seam.** `ClaudeAdapter.ts` reads both registries once, when a driver builds it
+  (`Effect.serviceOption`, so the driver's and the replay's requirements are unchanged), and asks for
+  the thread's profile at session start. A thread with a profile runs in `dontAsk` ahead of launch
+  args and runtime mode, so every default-mode turn restores it; its session context follows the
+  runtime instructions; its settings carry the profile's context window as `autoCompactWindow`; a
+  `PreToolUse` hook turns `decideTool` into the tool decision and denies when it fails or stays
+  silent for 15 s; the extension's `SessionStart` and `PostCompact` hooks carry session starts (a
+  fork arrives as a resume) and compaction summaries; its tools are served as an in-process `crew`
+  MCP server with their JSON Schemas as given; its spend cap becomes `maxBudgetUsd`; the dialog
+  kinds are dropped. The profile's model and effort override the thread's selection at session
+  start and again at every turn, so a change applies from the thread's next turn.
+- **Byte identity without a profile.** `claudeNoCrewSnapshot.test.ts` pins the options, the
+  session config and the permission calls of three input rows against a golden taken before the
+  seam existed (`fixtures/claude-options/no-crew.expected.json`), under no registries, empty
+  registries and a policy with no profile for the thread. `threadToolPolicy.contract.test.ts`
+  pins what a profile changes, through the real adapter.
+- **What only a live CLI settles.** That `dontAsk` plus a `PreToolUse` allow runs a tool without a
+  prompt, and that `SessionStart` context reaches the model, are CLI behavior: probes 1, 2, 14 and 15. The tests pin the options the adapter hands the SDK.
+
+`apps/server/src/spi/serverCommandReadiness.ts` sits beside them without being SPI: a `Deferred`
+the runtime startup completes where it opens its command gate, for layers beneath the startup that
+must not dispatch before it.
 
 ## 2. Version + changelog
 
@@ -102,6 +143,8 @@ changes the wrapped shape fails the named test, not a spawn call site:
 
 `ProviderRegistryTest.ts`/`ProviderInstanceTest.ts` are not capabilities — owned test-only fakes so
 a test outside `spi/**` never has to import driver internals to satisfy those tags.
+`claudeAdapterHarness.ts` is likewise test-only: it builds the real Claude adapter through
+`createQuery` with a fixed environment and catalog and records what reaches the SDK (§1a).
 
 ## 7. Fixtures
 
@@ -125,7 +168,8 @@ widen it to a mutating tool on a shared rig. `synthetic: true` marks a fixture h
 prove a code path rather than recorded from a real driver run.
 
 **Regenerating goldens**: `goldens.test.ts` runs every driver's replay/record function
-(`replayClaude`/`replayCodex` for the two JSONL drivers; `recordCursorBaseline`/
+(`replayClaude`/`replayCodex` for the two JSONL drivers — `replayClaude` takes an optional
+`ClaudeReplayPolicy` for a crew fixture; `recordCursorBaseline`/
 `recordGrokBaseline`/`recordOpenCodeBaseline` for the three live ones), applies `applyToolCall`
 (goldens pin the enriched bus shape, not the driver's raw output), redacts, then diffs against the
 checked-in `<name>.expected.json` via `checkOrUpdateGolden`. Set `SPI_UPDATE_GOLDENS=1` to rewrite
@@ -136,21 +180,28 @@ except review.
 `createdAt` → the fixed `REDACTED_CREATED_AT` placeholder; every value of a `turnId`/
 `providerTurnId`, `itemId`/`providerItemId`, or `requestId`/`providerRequestId` field is rewritten
 **by value**, wherever it occurs (nested in `payload`/`raw` too), to a stable
-`turn-<n>`/`item-<n>`/`req-<n>` so two events sharing a real id keep sharing their placeholder; any
-string equal to (or path-prefixed by) `process.cwd()`, `os.homedir()`, or `os.tmpdir()` becomes
-`<CWD>`/`<HOME>`/`<TMPDIR>`, longest path first.
+`turn-<n>`/`item-<n>`/`req-<n>` so two events sharing a real id keep sharing their placeholder.
+Paths are deliberately not masked: a golden's paths come from wherever it was recorded, and masking
+them with the comparing host's cwd/home/tmpdir made the result depend on where the test ran.
 
-Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `claude-opus-5[1m]`)
+**Hook lines** (Claude): a `{"kind":"control","name":"hook","args":{"event","input","toolUseID?"},
+"answer":<hook output>}` line calls the adapter's own callback for that hook event; its answer must
+deep-equal the recorded one, or the replay stops naming the line. Hooks exist only under a profile,
+so a fixture with hook lines replays with a `ClaudeReplayPolicy` (`replay/crewReplayPolicy.ts`).
 
-- 1 Codex fixture (`multi-agent-wire`, converted once from the upstream ported-zone test fixture
-  `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) + 4 live baselines (cursor, grok,
-  antigravity, opencode, each `synthetic: true`) = 9 goldens total.
+Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `claude-opus-5[1m]`),
+1 synthetic Claude crew fixture (`crew-hooks`: a gate allow and deny, a session start, a
+`terminal_reason`), 1 Codex fixture (`multi-agent-wire`, converted once from the upstream
+ported-zone test fixture `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) and 4 live
+baselines (cursor, grok, antigravity, opencode, each `synthetic: true`) = 10 goldens total. The
+no-crew options golden (`fixtures/claude-options/no-crew.expected.json`, §1a) is not a replay
+golden.
 
 ## 8. Porting checklist
 
 1. **Import the wire packages** — regenerate `imported.lock` from the new upstream ref: `imported-lock --write --upstream <ref>` (`scripts/imported-lock.ts`); it refuses to write if HEAD has diverged from the ref for either imported path (an import must stay byte-identical).
 2. **Port the driver commits** behind the SPI, minimally — the ported zone (`provider/**`, `packages/effect-codex-app-server/**`, `packages/effect-acp/**`) must still import nothing matching `zerops`.
-3. **Run the goldens** (`replay/goldens.test.ts`) **+ the zone test** (`scripts/mate-zone-architecture.test.ts`) **+ package typecheck**.
+3. **Run the goldens** (`replay/goldens.test.ts`) **+ the no-crew options snapshot and the SPI contract test** (`claudeNoCrewSnapshot.test.ts`, `threadToolPolicy.contract.test.ts`, §1a) **+ the zone test** (`scripts/mate-zone-architecture.test.ts`) **+ package typecheck**.
 4. If a golden diverges: fix `toolCall.ts`'s readers or the typed capabilities (§6) to match the new driver shape — **never edit `apps/server/src/zerops/**`to chase a driver change**; that tree only ever reads`event.toolCall`, never `payload.data`.
 5. Add a `compat.md` row for the new port.
 6. Bump `PROVIDER_RUNTIME_SPI_VERSION` (§2) only when the change alters what owned code may depend on — not for every port.
@@ -159,6 +210,7 @@ Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `cl
 
 - `orchestration/Layers/ProviderRuntimeIngestion.ts` and `CheckpointReactor.ts` read `ProviderService.streamEvents` directly (`ProviderRuntimeIngestion.ts:32,896,2071`) — **by design, not a gap**: orchestration is owned core, the service tags are its sanctioned seam (`fork.md` §3), durable ingestion must sit on the raw lossless stream before any observational fan-out, and it needs no `toolCall`. The bus + enrichment are the owned-product boundary (`zerops/**`), which is exactly what the zone test scans. Revisit only if orchestration ever needs the enriched view.
 - Codex's collab-agent synthesis (`CodexSessionRuntime`'s child-registration step) is not replayed — `replay/codexReplay.ts` addresses each captured notification at its own wire `threadId` directly rather than through that synthesis path (covered elsewhere by `CodexCollabWire.test.ts`/`CodexCollabRuntime.integration.test.ts`).
-- Claude's `onUserDialog` control line is not replayed — `replay/claudeReplay.ts` implements only `canUseTool`; a fixture with an `onUserDialog` line throws naming the gap.
+- Claude's `onUserDialog` control line is not replayed — `replay/claudeReplay.ts` implements `canUseTool` and `hook` lines only; a fixture with an `onUserDialog` line throws naming the gap.
+- `recording/record-claude.mjs` records no hook callbacks, so the crew fixture is hand-authored until a live crew turn is recorded.
 - Codex non-MCP tool items (`commandExecution`, `fileChange`, `collabAgentToolCall`, `webSearch`, ...) are `unrecognized` by design — the Codex reader only decodes the `mcpToolCall` item variant.
 - `openCodeRuntimeCapability`'s Effect keeps the driver's own `OpenCodeRuntime.OpenCodeRuntime` Context.Service tag identity rather than declaring an owned tag — the narrowing is in the returned shape, not the dependency it resolves through.
