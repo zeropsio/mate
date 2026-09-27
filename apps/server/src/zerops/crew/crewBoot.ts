@@ -25,6 +25,7 @@ import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { laneSpecsOn } from "./crewTurns.ts";
 import { advanceAll } from "./crewRunFlow.ts";
+import { repairWorktrees } from "./CrewStints.ts";
 import { requeueTask, saveTask, stepTask } from "./crewTasks.ts";
 
 const sweepHost = (core: CrewCore, host: string) =>
@@ -127,6 +128,7 @@ export const boot = (core: CrewCore) =>
       }
     }
     yield* settleAllClaims(core);
+    yield* repairWorktrees(core, (yield* core.applied) ?? applied);
     yield* advanceAll(core);
     yield* core.changed;
   });

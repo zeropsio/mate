@@ -52,7 +52,7 @@ import { taskTransition, type TaskCounters, type TaskEvent } from "./crewMachine
 import { implicitTaskTitle, routeCrewMessage } from "./crewRouting.ts";
 import { pauseRun } from "./crewRuns.ts";
 import { isOpenTask } from "./crewSnapshot.ts";
-import { openStint, rotate } from "./CrewStints.ts";
+import { currentOrFirstStint, rotate } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { readTaskCard, type TaskCard, type TaskWait } from "./crewTaskData.ts";
 import {
@@ -248,9 +248,7 @@ export const stintForTurn = (
 ) =>
   Effect.gen(function* () {
     const stint = currentStint(applied, member.row.handle);
-    if (stint === undefined) {
-      return yield* openStint(core, applied, member, { reason: null, seed: null });
-    }
+    if (stint === undefined) return yield* currentOrFirstStint(core, member);
     const attempt =
       task === undefined
         ? undefined
@@ -461,17 +459,20 @@ export const continueTask = (
 /** A turn of the lead's, outside any task: the person's message, or a wake as the run's starter. */
 export const leadTurn = (
   core: CrewCore,
-  applied: AppliedCrew,
   lead: CrewMember,
   principal: TurnPrincipal,
   text: string,
   attachments: ReadonlyArray<ChatAttachment> = [],
 ) =>
   Effect.gen(function* () {
-    const stint =
-      currentStint(applied, lead.row.handle) ??
-      (yield* openStint(core, applied, lead, { reason: null, seed: null }));
-    yield* sendTurn(core, lead, stint, principal, text, attachments);
+    yield* sendTurn(
+      core,
+      lead,
+      yield* currentOrFirstStint(core, lead),
+      principal,
+      text,
+      attachments,
+    );
   });
 
 /* ------------------------------------------------------------ the queue */
@@ -543,7 +544,7 @@ export const message = (
     }
     if (member.row.kind === "lead") {
       core.memory.leadSpokenBy = principalUser(principal);
-      yield* leadTurn(core, applied, member, principal, input.text, input.attachments);
+      yield* leadTurn(core, member, principal, input.text, input.attachments);
       return;
     }
     if (open !== undefined) {
@@ -556,8 +557,7 @@ export const message = (
       yield* continueTask(core, applied, member, open, principal, input.text, input.attachments);
       return;
     }
-    const stint =
-      current ?? (yield* openStint(core, applied, member, { reason: null, seed: null }));
+    const stint = current ?? (yield* currentOrFirstStint(core, member));
     const probe = yield* crewTurnCommand(core, {
       threadId: stint.threadId,
       modelSelection: yield* modelSelectionFor(core, member.row),

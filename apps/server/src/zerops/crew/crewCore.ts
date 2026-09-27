@@ -160,6 +160,10 @@ export interface EngineMemory {
   readonly woken: Set<string>;
   /** Wakes each run has spent, capped per run (CONCEPT §5 caps). */
   readonly wakeCounts: Map<string, number>;
+  /** When the lead was last woken (clock ms), for the spacing between wakes. */
+  lastWakeAt: number | null;
+  /** A wake waits for its spacing to pass. */
+  wakeWaiting: boolean;
   /** Questions the lead passed on to the person: shown at once, not after 15 minutes. */
   readonly escalated: Set<string>;
   /** The lead's own question for the person, per lead. */
@@ -219,6 +223,8 @@ export const makeMemory = (): EngineMemory => ({
   leadWakes: new Map(),
   woken: new Set(),
   wakeCounts: new Map(),
+  lastWakeAt: null,
+  wakeWaiting: false,
   escalated: new Set(),
   leadQuestions: new Map(),
   lastText: new Map(),
@@ -285,6 +291,7 @@ export const makeCrewCore = Effect.gen(function* () {
   const memory = makeMemory();
   const scope = yield* Effect.scope;
   const numbering = yield* Semaphore.make(1);
+  const opening = yield* Semaphore.make(1);
   const changed = PubSub.publish(signals, undefined).pipe(Effect.asVoid);
 
   /** Reads the applied crew back from the tables into {@link cache}. */
@@ -457,6 +464,8 @@ export const makeCrewCore = Effect.gen(function* () {
     signals: Stream.fromPubSub(signals),
     /** Serializes what takes a task's `#N`: two presses at once never share a number. */
     numbered: <A, E, R>(effect: Effect.Effect<A, E, R>) => numbering.withPermits(1)(effect),
+    /** Serializes opening a crewmate's first conversation: two callers at once open one. */
+    opening: <A, E, R>(effect: Effect.Effect<A, E, R>) => opening.withPermits(1)(effect),
     now: Effect.map(DateTime.now, DateTime.formatIso),
     uuid: crypto.randomUUIDv4.pipe(Effect.orDie),
   };

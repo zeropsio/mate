@@ -22,7 +22,9 @@
  *
  * @module crewLead
  */
-import type { CrewReviewVerdict } from "@t3tools/contracts";
+import type { CrewCommandError, CrewReviewVerdict } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import { answerCard, questionCard, reviewCard } from "./crewCards.ts";
@@ -55,8 +57,9 @@ import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { readTaskReport } from "./crewTaskData.ts";
 import { continueTask, createTask, discard, leadTurn, requireTask, stepTask } from "./crewTasks.ts";
 
-/** Wakes per run (CONCEPT §5 caps). */
+/** Wakes per run, and the least time between two (CONCEPT §5 caps). */
 const LEAD_WAKES_MAX = 30;
+const LEAD_WAKE_SPACING_MS = 2 * 60_000;
 
 const text = (value: string): CrewToolText => ({ text: value, isError: false });
 const error = (value: string): CrewToolText => ({ text: value, isError: true });
@@ -107,8 +110,15 @@ const nextWake = (
   return undefined;
 };
 
-/** Wakes a free lead for the next review or question, in a running run. */
-export const wakeLead = (core: CrewCore, applied: AppliedCrew, lead: CrewMember) =>
+/**
+ * Wakes a free lead for the next review or question, in a running run; a
+ * wake sooner than two minutes after the last waits for them to pass.
+ */
+export const wakeLead = (
+  core: CrewCore,
+  applied: AppliedCrew,
+  lead: CrewMember,
+): Effect.Effect<void, CrewCommandError> =>
   Effect.gen(function* () {
     const run = runningRun(applied);
     if (run === undefined || isWorking(core, applied, lead.row.handle)) return;
@@ -116,15 +126,24 @@ export const wakeLead = (core: CrewCore, applied: AppliedCrew, lead: CrewMember)
     if (spent >= LEAD_WAKES_MAX) return;
     const next = nextWake(applied, core, yield* asRefusal(core.store.assignments(CREW_ID)));
     if (next === undefined) return;
+    const wait =
+      (core.memory.lastWakeAt ?? 0) + LEAD_WAKE_SPACING_MS - (yield* Clock.currentTimeMillis);
+    if (wait > 0) {
+      if (core.memory.wakeWaiting) return;
+      core.memory.wakeWaiting = true;
+      yield* core.background(
+        Effect.gen(function* () {
+          core.memory.wakeWaiting = false;
+          const now = yield* core.applied;
+          const member = now === undefined ? undefined : memberOf(now, lead.row.handle);
+          if (now !== undefined && member !== undefined) yield* wakeLead(core, now, member);
+        }).pipe(Effect.delay(Duration.millis(wait))),
+      );
+      return;
+    }
     yield* remember(core, { kind: "lead-woken", key: next.wake.key }, run.run);
     core.memory.leadWakes.set(lead.row.handle, next.wake);
-    yield* leadTurn(
-      core,
-      applied,
-      lead,
-      { kind: "crew", startedBy: run.startedBy },
-      next.card,
-    ).pipe(
+    yield* leadTurn(core, lead, { kind: "crew", startedBy: run.startedBy }, next.card).pipe(
       Effect.catchTag("CrewCommandError", (refusal) =>
         refusal.reason === "not-allowed"
           ? pauseRun(core, "refused", refusal.detail)

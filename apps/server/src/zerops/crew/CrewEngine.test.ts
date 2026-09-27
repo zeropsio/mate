@@ -4,7 +4,11 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
-import { ProviderInstanceId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  ThreadId as ThreadIdSchema,
+  type OrchestrationThreadShell,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -717,6 +721,49 @@ describe("CrewEngine", () => {
         );
       }),
     ),
+  );
+
+  it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.crew.create"), (creates) => creates.length > 0),
+          );
+          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
+            (entry) => entry.crew.crewmate === "backend",
+          )!;
+          yield* Ref.set(world.threads, [
+            {
+              ...runningPersonThread(),
+              id: created.threadId,
+              crew: created.crew,
+              session: null,
+              worktreePath: null,
+            } as unknown as OrchestrationThreadShell,
+          ]);
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
+            (entry) => entry.crew.crewmate === "backend",
+          )!;
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.meta.update"), (updates) => updates.length > 0),
+          );
+          const [update] = yield* dispatchedOf(world, "thread.meta.update");
+          assert.deepStrictEqual(
+            [
+              update?.threadId,
+              update?.worktreePath,
+              created.worktreePath?.endsWith("/.crew/backend"),
+            ],
+            [created.threadId, created.worktreePath, true],
+          );
+        }),
+    ]),
   );
 
   it.live(
