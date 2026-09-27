@@ -6,7 +6,7 @@ import {
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { ChevronDownIcon, PlusIcon, XIcon } from "lucide-react";
+import { ChevronDownIcon, MessagesSquareIcon, PlusIcon, XIcon } from "lucide-react";
 import { useLayoutEffect, useMemo, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -23,7 +23,9 @@ import { Separator } from "../ui/separator";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateFace, StatusDot } from "../zerops/primitives";
+import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import {
+  alsoWorkingLine,
   chatEntries,
   foldStrip,
   mateChats,
@@ -376,4 +378,38 @@ export function ConversationStrip({
       />
     </div>
   );
+}
+
+/**
+ * The quiet line over the composer while you type in one of a Mate's chats
+ * and it works in another. Nothing is refused: it only says so.
+ */
+export function useAlsoWorkingBanner({
+  environmentId,
+  currentThreadId,
+  typing,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly currentThreadId: ThreadId | null;
+  readonly typing: boolean;
+}): ComposerBannerStackItem | null {
+  const whoLivesHere = useZeropsMate(environmentId);
+  const shells = useThreadShells();
+  const mateName = whoLivesHere.kind === "mate" ? whoLivesHere.mate.name : null;
+  return useMemo(() => {
+    if (mateName === null) return null;
+    const line = alsoWorkingLine({
+      mateName,
+      chats: mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
+      currentThreadId,
+      typing,
+    });
+    if (line === null) return null;
+    return {
+      id: "mate-also-working",
+      variant: "default",
+      icon: <MessagesSquareIcon />,
+      title: line,
+    };
+  }, [currentThreadId, environmentId, mateName, shells, typing]);
 }

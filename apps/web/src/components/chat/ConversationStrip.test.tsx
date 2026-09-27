@@ -1,5 +1,5 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -38,7 +38,12 @@ vi.mock("~/hooks/useThreadActions", async (original) => ({
   }),
 }));
 
-import { ConversationStrip, ConversationStripView } from "./ConversationStrip";
+import type { ComposerBannerStackItem } from "./ComposerBannerStack";
+import {
+  ConversationStrip,
+  ConversationStripView,
+  useAlsoWorkingBanner,
+} from "./ConversationStrip";
 
 function shell(
   id: string,
@@ -205,5 +210,47 @@ describe("ConversationStripView", () => {
     );
     expect(html).toContain('aria-label="More for logs"');
     expect(html).not.toContain('aria-label="More for main"');
+  });
+});
+
+describe("useAlsoWorkingBanner", () => {
+  const running = {
+    latestTurn: {
+      turnId: TurnId.make("turn-1"),
+      state: "running" as const,
+      requestedAt: "2026-09-05T10:01:00.000Z",
+      startedAt: "2026-09-05T10:01:00.000Z",
+      completedAt: null,
+      assistantMessageId: null,
+    },
+  };
+  function Probe({
+    typing,
+    receive,
+  }: {
+    readonly typing: boolean;
+    readonly receive: (item: ComposerBannerStackItem | null) => void;
+  }) {
+    receive(
+      useAlsoWorkingBanner({ environmentId: FEN, currentThreadId: ThreadId.make("logs"), typing }),
+    );
+    return null;
+  }
+  function banner(typing: boolean): ComposerBannerStackItem | null {
+    const items: Array<ComposerBannerStackItem | null> = [];
+    renderToStaticMarkup(<Probe receive={(item) => items.push(item)} typing={typing} />);
+    return items[0] ?? null;
+  }
+
+  it("says the Mate is at work in the main chat while you type in another", () => {
+    state.shells = [
+      shell("main", { ...running, latestUserMessageAt: "2026-09-05T12:00:00.000Z" }),
+      shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" }),
+    ];
+    expect(banner(true)).toMatchObject({
+      variant: "default",
+      title: "Fen is also working in your main chat — both change the same files.",
+    });
+    expect(banner(false)).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  alsoWorkingLine,
   chatEntries,
   chatStatus,
   foldStrip,
@@ -261,6 +262,75 @@ describe("stripShown", () => {
   for (const row of cases) {
     it(`${row.shown ? "shows" : "hides"} the chip row for ${row.name}`, () => {
       expect(stripShown(row.chats, row.extra)).toBe(row.shown);
+    });
+  }
+});
+
+describe("alsoWorkingLine", () => {
+  const running = {
+    latestTurn: {
+      turnId: TurnId.make("turn-1"),
+      state: "running" as const,
+      requestedAt: "2026-09-05T10:01:00.000Z",
+      startedAt: "2026-09-05T10:01:00.000Z",
+      completedAt: null,
+      assistantMessageId: null,
+    },
+  };
+  const main = shell("main");
+  const logs = shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" });
+  const line = (input: {
+    chats: ReadonlyArray<EnvironmentThreadShell>;
+    current: string | null;
+    typing: boolean;
+  }) =>
+    alsoWorkingLine({
+      mateName: "Fen",
+      chats: input.chats,
+      currentThreadId: input.current === null ? null : ThreadId.make(input.current),
+      typing: input.typing,
+    });
+
+  const cases = [
+    {
+      name: "names the main chat while you type in another",
+      chats: [shell("main", running), logs],
+      current: "logs",
+      typing: true,
+      expected: "Fen is also working in your main chat — both change the same files.",
+    },
+    {
+      name: "names another chat by its title while you type in the main one",
+      chats: [main, shell("logs", { ...running, title: "Logs" })],
+      current: "main",
+      typing: true,
+      expected: "Fen is also working in ‘Logs’ — both change the same files.",
+    },
+    {
+      name: "counts every chat as another while you start a new one",
+      chats: [shell("main", running), logs],
+      current: null,
+      typing: true,
+      expected: "Fen is also working in your main chat — both change the same files.",
+    },
+    {
+      name: "stays silent until you type",
+      chats: [shell("main", running), logs],
+      current: "logs",
+      typing: false,
+      expected: null,
+    },
+    {
+      name: "stays silent when only the chat you are in works",
+      chats: [main, shell("logs", { ...running, title: "Logs" })],
+      current: "logs",
+      typing: true,
+      expected: null,
+    },
+  ];
+  for (const row of cases) {
+    it(row.name, () => {
+      expect(line(row)).toBe(row.expected);
     });
   }
 });

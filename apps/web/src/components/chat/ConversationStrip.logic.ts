@@ -200,6 +200,28 @@ export function stripShown(
 }
 
 /**
+ * The quiet line over the composer while you type in one chat and the Mate is
+ * at work in another: nothing is refused — two chats are two terminals on one
+ * tree — but the person should know both are changing the same files. The
+ * main chat is named first; otherwise the first other chat that works.
+ */
+export function alsoWorkingLine(input: {
+  readonly mateName: string;
+  /** The Mate's chats, main first (`mateChats`). */
+  readonly chats: ReadonlyArray<EnvironmentThreadShell>;
+  readonly currentThreadId: ThreadId | null;
+  readonly typing: boolean;
+}): string | null {
+  if (!input.typing) return null;
+  const index = input.chats.findIndex(
+    (chat) => chat.id !== input.currentThreadId && resolveThreadStatus(chat).kind === "working",
+  );
+  if (index < 0) return null;
+  const where = index === 0 ? "your main chat" : `‘${input.chats[index]!.title}’`;
+  return `${input.mateName} is also working in ${where} — both change the same files.`;
+}
+
+/**
  * Folds the strip's tail into *More* when it holds more entries than there
  * are slots — the *More* chip takes a slot of its own. The entry you are on
  * never folds: the one before it goes instead, so the strip always shows

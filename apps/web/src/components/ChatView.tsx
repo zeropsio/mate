@@ -322,7 +322,7 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
-import { ConversationStrip } from "./chat/ConversationStrip";
+import { ConversationStrip, useAlsoWorkingBanner } from "./chat/ConversationStrip";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -5235,6 +5235,12 @@ export default function ChatView(props: ChatViewProps) {
     question: activePendingUserInput !== null,
     approval: activePendingApproval !== null,
   });
+  // Typing here while the Mate works in another of its chats (`ConversationStrip.tsx`).
+  const alsoWorkingBannerItem = useAlsoWorkingBanner({
+    environmentId,
+    currentThreadId: isServerThread ? threadId : null,
+    typing: composerHasUnsentContent,
+  });
 
   const feedbackBannerItems = useMemo(
     () =>
@@ -5309,6 +5315,7 @@ export default function ChatView(props: ChatViewProps) {
       ...systemComposerBannerItems.filter(isUrgentSystemItem),
     ];
     const mateNextStepItems = mateNextStepBannerItem === null ? [] : [mateNextStepBannerItem];
+    const alsoWorkingItems = alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const resumeCompactionItems =
       resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
@@ -5322,6 +5329,7 @@ export default function ChatView(props: ChatViewProps) {
         ...urgentSystemItems,
         ...usageLimitsItems,
         ...mateNextStepItems,
+        ...alsoWorkingItems,
         ...feedbackBannerItems,
         ...projectCloneItems,
         ...calmSystemItems,
@@ -5334,6 +5342,7 @@ export default function ChatView(props: ChatViewProps) {
       ...urgentSystemItems,
       ...usageLimitsItems,
       ...mateNextStepItems,
+      ...alsoWorkingItems,
       ...feedbackBannerItems,
       ...projectCloneItems,
       ...calmSystemItems,
@@ -5383,6 +5392,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeBranchMismatchKey,
     agentOwnershipBannerItem,
+    alsoWorkingBannerItem,
     feedbackBannerItems,
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
