@@ -180,6 +180,13 @@ import {
   ZeropsMateUpdateResult,
 } from "./zerops.ts";
 import {
+  CrewCommand,
+  CrewCommandError,
+  CrewCommandResult,
+  CrewFiles,
+  CrewSnapshot,
+} from "./zeropsCrew.ts";
+import {
   UsageLimitSourceError,
   ProviderConsumeResetCreditInput,
   ProviderConsumeResetCreditResult,
@@ -322,6 +329,9 @@ export const WS_METHODS = {
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
   zeropsDataConsoleCall: "zerops.dataConsole.call",
   zeropsGitProbeRemote: "zerops.git.probeRemote",
+  zeropsCrewFilesGet: "zerops.crew.files.get",
+  zeropsCrewFilesPut: "zerops.crew.files.put",
+  zeropsCrewCommand: "zerops.crew.command",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -336,6 +346,7 @@ export const WS_METHODS = {
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
   subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
   subscribeZeropsDataConsole: "subscribeZeropsDataConsole",
+  subscribeZeropsCrew: "subscribeZeropsCrew",
 } as const;
 
 const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -1060,6 +1071,38 @@ const WsSubscribeZeropsDataConsoleRpc = Rpc.make(WS_METHODS.subscribeZeropsDataC
   stream: true,
 });
 
+/**
+ * The crew feed (ARCHITECTURE §6): one whole {@link CrewSnapshot} per change,
+ * coalesced to at most four a second, read from the crew tables only — it
+ * never opens ssh. `status: "off"` where crew mode is not on.
+ */
+const WsSubscribeZeropsCrewRpc = Rpc.make(WS_METHODS.subscribeZeropsCrew, {
+  payload: Schema.Struct({}),
+  success: CrewSnapshot,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+/** The crew home's files, for the editors (PRD §4.7). */
+const WsZeropsCrewFilesGetRpc = Rpc.make(WS_METHODS.zeropsCrewFilesGet, {
+  payload: Schema.Struct({}),
+  success: CrewFiles,
+  error: Schema.Union([CrewCommandError, EnvironmentAuthorizationError]),
+});
+
+/** Saves editor or *Describe it* output into the crew home; nothing applies until a command does. */
+const WsZeropsCrewFilesPutRpc = Rpc.make(WS_METHODS.zeropsCrewFilesPut, {
+  payload: CrewFiles,
+  error: Schema.Union([CrewCommandError, EnvironmentAuthorizationError]),
+});
+
+/** One press on a crew surface; the state it changes arrives on the crew feed. */
+const WsZeropsCrewCommandRpc = Rpc.make(WS_METHODS.zeropsCrewCommand, {
+  payload: CrewCommand,
+  success: CrewCommandResult,
+  error: Schema.Union([CrewCommandError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -1156,6 +1199,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsDataConsoleCallRpc,
   WsZeropsGitProbeRemoteRpc,
   WsSubscribeZeropsDataConsoleRpc,
+  WsSubscribeZeropsCrewRpc,
+  WsZeropsCrewFilesGetRpc,
+  WsZeropsCrewFilesPutRpc,
+  WsZeropsCrewCommandRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,
