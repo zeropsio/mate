@@ -588,4 +588,34 @@ describe("CrewStore", () => {
       }),
     );
   });
+
+  it.layer(storeLayer)("log", (it) => {
+    it.effect("reads back the entries of the kinds asked, oldest first", () =>
+      Effect.gen(function* () {
+        const store = yield* CrewStore.CrewStore;
+        const entry = (kind: string, key: string): CrewStore.CrewLogEntry => ({
+          crew: "game",
+          run: "run-1",
+          at: "2026-09-27T10:00:00.000Z",
+          kind,
+          payload: { key },
+        });
+        yield* store.appendLog(entry("nudged", "a-1:1"));
+        yield* store.appendLog(entry("landed", "a-1"));
+        yield* store.appendLog(entry("lead-woken", "review:a-1:1"));
+        yield* store.appendLog({ ...entry("nudged", "a-9:1"), crew: "shop" });
+        assert.deepStrictEqual(
+          (yield* store.logOf("game", ["nudged", "lead-woken"])).map((row) => [
+            row.kind,
+            row.run,
+            row.payload,
+          ]),
+          [
+            ["nudged", "run-1", { key: "a-1:1" }],
+            ["lead-woken", "run-1", { key: "review:a-1:1" }],
+          ],
+        );
+      }),
+    );
+  });
 });

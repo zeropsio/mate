@@ -48,6 +48,10 @@ import {
 /** How long a crewmate's question waits on the lead before the person sees it too (PRD §5.4). */
 export const QUESTION_TO_PERSON_MS = 15 * 60_000;
 
+/** A crewmate's question, once per asking: its task and when it asked. */
+export const questionKey = (task: Pick<CrewAssignmentRow, "assignment" | "updatedAt">): string =>
+  `question:${task.assignment}:${task.updatedAt}`;
+
 /** What the feed sends where crew mode is not on. */
 export const CREW_OFF_SNAPSHOT: CrewSnapshot = {
   status: "off",
@@ -145,7 +149,7 @@ export interface SnapshotRuntime {
   >;
   /** A crewmate's login as the section names it. */
   readonly logins: ReadonlyMap<string, CrewLogin>;
-  /** Crewmates' questions the lead passed on to the person. */
+  /** Crewmates' questions the lead passed on to the person, by `questionKey`. */
   readonly escalated: ReadonlySet<string>;
   /** The lead's own questions for the person. */
   readonly leadQuestions: ReadonlyMap<string, { readonly text: string; readonly at: string }>;
@@ -339,7 +343,7 @@ const taskAttention = (
     case "blocked":
       // The lead takes the question first; the person sees it once the lead passes it on, or after 15 minutes.
       return input.leadAnswers &&
-        !runtime.escalated.has(row.assignment) &&
+        !runtime.escalated.has(questionKey(row)) &&
         input.nowMs - Date.parse(row.updatedAt) < QUESTION_TO_PERSON_MS
         ? undefined
         : attention("question", { text: readTaskReport(row.report)?.question ?? null });

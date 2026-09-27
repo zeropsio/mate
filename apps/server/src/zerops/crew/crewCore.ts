@@ -178,6 +178,8 @@ export interface EngineMemory {
 export interface LeadWake {
   readonly kind: "review" | "question";
   readonly taskId: string;
+  /** The wake's key in `woken`; a question's is its `questionKey`. */
+  readonly key: string;
 }
 
 export interface MemoryClaim {

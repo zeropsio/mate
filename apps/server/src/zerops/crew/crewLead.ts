@@ -42,7 +42,9 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { initialTaskState } from "./crewMachines.ts";
+import { remember } from "./crewNotes.ts";
 import { finishRun, pauseRun, runOptionsOf } from "./crewRuns.ts";
+import { questionKey } from "./crewSnapshot.ts";
 import type {
   CrewProposedTask,
   CrewReportInput,
@@ -59,8 +61,6 @@ const LEAD_WAKES_MAX = 30;
 const text = (value: string): CrewToolText => ({ text: value, isError: false });
 const error = (value: string): CrewToolText => ({ text: value, isError: true });
 
-/** The key a question's wake is sent once for: the task and when it asked. */
-const questionKey = (task: CrewAssignmentRow) => `question:${task.assignment}:${task.updatedAt}`;
 const reviewKey = (task: CrewAssignmentRow) => `review:${task.assignment}:${task.attempt}`;
 
 /** Whether the lead takes the crew's questions first: a run is running and the crew has a lead. */
@@ -76,8 +76,7 @@ const nextWake = (
   for (const task of tasks) {
     if (task.state === "review" && !core.memory.woken.has(reviewKey(task))) {
       return {
-        key: reviewKey(task),
-        wake: { kind: "review" as const, taskId: task.assignment },
+        wake: { kind: "review" as const, taskId: task.assignment, key: reviewKey(task) },
         card: reviewCard({
           number: task.number,
           title: task.title,
@@ -92,12 +91,10 @@ const nextWake = (
       applied.members.get(task.member)?.kind !== "lead" &&
       question !== undefined &&
       question !== null &&
-      !core.memory.woken.has(questionKey(task)) &&
-      !core.memory.escalated.has(task.assignment)
+      !core.memory.woken.has(questionKey(task))
     ) {
       return {
-        key: questionKey(task),
-        wake: { kind: "question" as const, taskId: task.assignment },
+        wake: { kind: "question" as const, taskId: task.assignment, key: questionKey(task) },
         card: questionCard({
           number: task.number,
           title: task.title,
@@ -119,8 +116,7 @@ export const wakeLead = (core: CrewCore, applied: AppliedCrew, lead: CrewMember)
     if (spent >= LEAD_WAKES_MAX) return;
     const next = nextWake(applied, core, yield* asRefusal(core.store.assignments(CREW_ID)));
     if (next === undefined) return;
-    core.memory.woken.add(next.key);
-    core.memory.wakeCounts.set(run.run, spent + 1);
+    yield* remember(core, { kind: "lead-woken", key: next.wake.key }, run.run);
     core.memory.leadWakes.set(lead.row.handle, next.wake);
     yield* leadTurn(
       core,
@@ -145,7 +141,7 @@ export const settleLeadWake = (core: CrewCore, applied: AppliedCrew, lead: CrewM
   Effect.gen(function* () {
     const wake = core.memory.leadWakes.get(lead.row.handle);
     core.memory.leadWakes.delete(lead.row.handle);
-    if (wake?.kind !== "question" || core.memory.escalated.has(wake.taskId)) return;
+    if (wake?.kind !== "question" || core.memory.escalated.has(wake.key)) return;
     const stint = currentStint(applied, lead.row.handle);
     const answer = stint === undefined ? undefined : core.memory.lastText.get(stint.threadId);
     const task = yield* requireTask(core, wake.taskId);
@@ -171,21 +167,23 @@ export const leadReport = (core: CrewCore, member: CrewThreadMember, input: Crew
   Effect.gen(function* () {
     if (input.status !== "blocked") return text("Noted.");
     const wake = core.memory.leadWakes.get(member.handle);
-    if (wake?.kind === "question") {
-      core.memory.escalated.add(wake.taskId);
-    } else {
-      core.memory.leadQuestions.set(member.handle, {
-        text: input.question ?? input.summary,
-        at: yield* core.now,
-      });
-    }
+    const run = (yield* core.applied)?.run?.run ?? null;
+    yield* wake?.kind === "question"
+      ? remember(core, { kind: "escalated", key: wake.key }, run)
+      : remember(
+          core,
+          { kind: "lead-asked", handle: member.handle, text: input.question ?? input.summary },
+          run,
+        );
     yield* core.changed;
     return text("The question is with the person. Stop here; the answer arrives as a message.");
   });
 
 /** The person answered the lead's own question: it is no longer waiting. */
 export const leadAnswered = (core: CrewCore, handle: string) =>
-  Effect.sync(() => core.memory.leadQuestions.delete(handle));
+  core.memory.leadQuestions.has(handle)
+    ? remember(core, { kind: "lead-answered", handle }, null)
+    : Effect.void;
 
 /**
  * `crew_propose`: the plan onto the board, `proposed` for the person's Start,

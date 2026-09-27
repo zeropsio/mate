@@ -37,6 +37,7 @@ import {
 import { CREW_ID } from "./CrewHome.ts";
 import { grantClaim } from "./crewClaims.ts";
 import { land, reworkCard } from "./crewLanding.ts";
+import { remember } from "./crewNotes.ts";
 import { wakeLead } from "./crewLead.ts";
 import { pauseRun, runOptionsOf } from "./crewRuns.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
@@ -120,7 +121,7 @@ const carryOn = (
         if (memory.endings.get(stint.threadId) !== "completed" || memory.nudged.has(attempt)) {
           return;
         }
-        memory.nudged.add(attempt);
+        yield* remember(core, { kind: "nudged", key: attempt }, runningRun(applied)?.run ?? null);
         yield* runTurn(core, applied, member, task, nudgeCard(task));
         return;
       }

@@ -452,8 +452,6 @@ export const continueTask = (
     const working = yield* stepTask(core, task, { type: "message" }, (next) =>
       task.state === "rework" ? { ...next, waiting: null } : next,
     );
-    // An answered question: its next one goes to the lead first again.
-    if (task.state === "blocked") core.memory.escalated.delete(task.assignment);
     const key = `${working.assignment}:${working.attempt}`;
     core.memory.turns.set(key, (core.memory.turns.get(key) ?? 0) + 1);
     yield* sendTurn(core, member, stint, principal, sent, attachments);

@@ -101,6 +101,7 @@ import {
   tell,
 } from "./crewTasks.ts";
 import { makeTurnHandler } from "./crewTurns.ts";
+import { restoreNotes } from "./crewNotes.ts";
 import { MIRRORED_TABLES } from "./crewState.ts";
 import { advanceAll, retryRefused } from "./crewRunFlow.ts";
 import {
@@ -337,6 +338,7 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
 export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
   Effect.gen(function* () {
     const core = yield* makeCrewCore;
+    yield* restoreNotes(core);
     const bus = yield* ProviderRuntimeEventBus;
     const agentAuth = yield* ZeropsAgentAuth;
     const readiness = yield* ServerCommandReadiness;

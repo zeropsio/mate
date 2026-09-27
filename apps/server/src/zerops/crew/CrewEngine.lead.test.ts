@@ -4,10 +4,12 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import { CrewThreadDirectory, CrewToolHost, type CrewThreadMember } from "./crewSeams.ts";
+import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import {
   eventually,
   spiEvent,
   withCrewEngine,
+  withCrewEngines,
   writeCrewHome,
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
@@ -424,5 +426,61 @@ describe("CrewEngine lead", () => {
         );
       }),
     ),
+  );
+
+  it.live("a restart does not wake the lead again for a review it was woken for", () => {
+    const wakes = (world: CrewWorld) =>
+      Effect.gen(function* () {
+        const lead = yield* leadThread(world);
+        return (yield* dispatchedOf(world, "thread.turn.start")).filter(
+          (turn) => turn.threadId === lead,
+        ).length;
+      });
+    let before = 0;
+    return withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun({ landing: "lead" });
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          yield* wokenWith(world, yield* leadThread(world), "review @backend's work");
+          before = yield* wakes(world);
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          yield* snapshotWhere((current) => current.run?.state === "running");
+          yield* Effect.sleep("500 millis");
+          assert.deepStrictEqual([before, yield* wakes(world)], [1, 1]);
+        }),
+    ]);
+  });
+
+  it.live("the lead's own question still waits on you after a restart", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* command({ _tag: "message", handle: "lead", text: "Plan it", attachments: [] });
+          const lead = yield* leadThread(world);
+          yield* (yield* CrewToolHost).report(yield* memberOf(lead), {
+            status: "blocked",
+            summary: "Mobile first?",
+          });
+          yield* snapshotWhere((current) => current.attention.length === 1);
+        }),
+      () =>
+        Effect.gen(function* () {
+          const waiting = yield* snapshotWhere((current) => current.attention.length === 1);
+          assert.deepStrictEqual(
+            waiting.attention.map((row) => [row.kind, row.handle, row.text]),
+            [["question", "lead", "Mobile first?"]],
+          );
+        }),
+    ]),
   );
 });
