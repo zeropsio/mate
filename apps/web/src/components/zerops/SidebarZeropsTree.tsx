@@ -739,6 +739,23 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     useSidebarPeek.getState().close();
     onSelect(candidate);
   };
+  // A peek put away while the focus was in it hands the focus back to its
+  // Mate's row, where it came from — never to the page behind.
+  const closePeek = () => {
+    const open = useSidebarPeek.getState().peek;
+    const inside =
+      typeof document !== "undefined" &&
+      document
+        .querySelector('[data-zerops-surface="sidebar-mate-peek-popup"]')
+        ?.contains(document.activeElement) === true;
+    useSidebarPeek.getState().close();
+    if (open === null || !inside) return;
+    document
+      .querySelector<HTMLElement>(
+        `[data-zerops-mate-row="${open.projectId}"] [data-zerops-surface="sidebar-mate"]`,
+      )
+      ?.focus({ preventScroll: true });
+  };
   // Each drawn Mate's number, top to bottom, for the ⌥ chips.
   let numbered = 0;
   const mateKeys: MateRowKeys = {
@@ -929,9 +946,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               onOpen: () => {
                 selectMate(item);
               },
-              onClose: () => {
-                useSidebarPeek.getState().close();
-              },
+              onClose: closePeek,
               onMore:
                 phone && getMateActions !== undefined
                   ? () => {
@@ -1148,9 +1163,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   `[data-zerops-mate-row="${peekState.projectId}"]`,
                 ) ?? null)
           }
-          onClose={() => {
-            useSidebarPeek.getState().close();
-          }}
+          onClose={closePeek}
           onInteract={() => {
             useSidebarPeek.getState().pin();
           }}

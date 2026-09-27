@@ -448,7 +448,11 @@ export function MatePeekHost({
         }}
         open={open}
       >
-        <SheetPopup aria-labelledby={titleId} side="bottom">
+        <SheetPopup
+          aria-labelledby={titleId}
+          data-zerops-surface="sidebar-mate-peek-popup"
+          side="bottom"
+        >
           <SheetTitle className="sr-only" id={titleId}>
             {title}
           </SheetTitle>
