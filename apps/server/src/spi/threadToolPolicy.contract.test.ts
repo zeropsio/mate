@@ -314,6 +314,148 @@ describe("a thread with a tool profile, on the Claude adapter", () => {
     );
   }
 
+  // The CLI runs its startup and resume SessionStart before the SDK has
+  // registered any callback (CLI 2.1.283), so a process's start reaches the
+  // extension with its first prompt instead — once, whichever arrives first.
+  const TRANSCRIPT = "/home/zerops/.claude/projects/x/session-1.jsonl";
+  const hookInput = (event: "UserPromptSubmit" | "SessionStart", source?: string) =>
+    event === "UserPromptSubmit"
+      ? {
+          hook_event_name: event,
+          prompt: "work",
+          session_id: "session-1",
+          transcript_path: TRANSCRIPT,
+          cwd: "/var/www/.crew/backend",
+        }
+      : {
+          hook_event_name: event,
+          source,
+          session_id: "session-1",
+          transcript_path: TRANSCRIPT,
+          cwd: "/var/www/.crew/backend",
+        };
+  const FIRST_PROMPT_CASES: ReadonlyArray<{
+    readonly name: string;
+    readonly resumed: boolean;
+    readonly calls: ReadonlyArray<readonly ["UserPromptSubmit" | "SessionStart", string?]>;
+    readonly seen: ReadonlyArray<string>;
+    readonly outputs: ReadonlyArray<unknown>;
+  }> = [
+    {
+      name: "a new session's start arrives with its first prompt, once",
+      resumed: false,
+      calls: [["UserPromptSubmit"], ["UserPromptSubmit"]],
+      seen: ["startup"],
+      outputs: [
+        {
+          hookSpecificOutput: {
+            hookEventName: "UserPromptSubmit",
+            additionalContext: "context for startup",
+          },
+        },
+        {},
+      ],
+    },
+    {
+      name: "a resumed session's start arrives with its first prompt as a resume",
+      resumed: true,
+      calls: [["UserPromptSubmit"]],
+      seen: ["resume"],
+      outputs: [
+        {
+          hookSpecificOutput: {
+            hookEventName: "UserPromptSubmit",
+            additionalContext: "context for resume",
+          },
+        },
+      ],
+    },
+    {
+      name: "a start the CLI does deliver is not handed over again with the first prompt",
+      resumed: false,
+      calls: [["SessionStart", "startup"], ["UserPromptSubmit"]],
+      seen: ["startup"],
+      outputs: [
+        {
+          hookSpecificOutput: {
+            hookEventName: "SessionStart",
+            additionalContext: "context for startup",
+          },
+        },
+        {},
+      ],
+    },
+    {
+      name: "a compaction after the first prompt still arrives through SessionStart",
+      resumed: false,
+      calls: [["UserPromptSubmit"], ["SessionStart", "compact"]],
+      seen: ["startup", "compact"],
+      outputs: [
+        {
+          hookSpecificOutput: {
+            hookEventName: "UserPromptSubmit",
+            additionalContext: "context for startup",
+          },
+        },
+        {
+          hookSpecificOutput: {
+            hookEventName: "SessionStart",
+            additionalContext: "context for compact",
+          },
+        },
+      ],
+    },
+  ];
+
+  for (const { name, resumed, calls, seen, outputs } of FIRST_PROMPT_CASES) {
+    it.effect(name, () =>
+      Effect.gen(function* () {
+        const sources: Array<string> = [];
+        const { adapter, sessions } = yield* withProfile(PROFILE, {
+          extension: {
+            ...EXTENSION,
+            onSessionStart: (event) =>
+              Effect.sync(() => {
+                assert.deepStrictEqual(
+                  [event.sessionId, event.transcriptPath],
+                  ["session-1", TRANSCRIPT],
+                );
+                sources.push(event.source);
+                return `context for ${event.source}`;
+              }),
+          },
+        });
+        yield* adapter.startSession(
+          startInput(
+            resumed
+              ? {
+                  resumeCursor: {
+                    threadId: THREAD_ID,
+                    resume: "5d9f1c3a-7b2e-4c8d-9a1f-3e6b8c0d2f47",
+                    turnCount: 1,
+                  },
+                }
+              : {},
+          ),
+        );
+        const hooks = sessions[0]!.options.hooks ?? {};
+        const results: Array<unknown> = [];
+        for (const [event, source] of calls) {
+          const [callback] = hooks[event]?.[0]?.hooks ?? [];
+          results.push(
+            yield* Effect.promise(() =>
+              callback!(hookInput(event, source) as never, undefined, {
+                signal: new AbortController().signal,
+              }),
+            ),
+          );
+        }
+        assert.deepStrictEqual(sources, seen);
+        assert.deepStrictEqual(results, outputs);
+      }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+    );
+  }
+
   it.effect("runs the profile's model and effort over the thread's, on start and every turn", () =>
     Effect.gen(function* () {
       const threadSelection: ModelSelection = {

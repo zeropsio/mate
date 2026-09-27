@@ -253,38 +253,64 @@ const crewToolServer = (
   };
 };
 
+/** How the adapter started the CLI session: a new conversation, or a resumed transcript. */
+export type ClaudeSessionStart = "startup" | "resume";
+
 /**
- * The extension's session events. A fork resumes a transcript, so it
- * reaches the extension as a resume. A failing extension adds no context
- * and the session goes on.
+ * The extension's session events. The CLI runs a process's own startup or
+ * resume SessionStart before the SDK has registered any callback (measured
+ * on CLI 2.1.283 with SDK 0.3.276: the callback never runs, while a
+ * settings hook does), so that start reaches the extension with the
+ * process's first prompt instead, and its context rides on that prompt.
+ * Whichever arrives first wins; the other adds nothing. Compaction and
+ * `/clear` happen mid-session and arrive through SessionStart itself; a
+ * fork resumes a transcript, so it reaches the extension as a resume. A
+ * failing extension adds no context and the session goes on.
  */
 const extensionHooks = (
   extension: ClaudeThreadExtension,
   runPromise: RunPromise,
+  start: ClaudeSessionStart,
 ): Partial<Record<HookEvent, Array<HookCallbackMatcher>>> => {
-  const sessionStart: HookCallback = (input) =>
-    input.hook_event_name !== "SessionStart"
-      ? Promise.resolve({})
-      : runPromise(
-          extension
-            .onSessionStart({
-              source: input.source === "fork" ? "resume" : input.source,
-              sessionId: input.session_id,
-              transcriptPath: input.transcript_path,
-            })
-            .pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("claude.thread-extension.session-start-failed", { cause }).pipe(
-                  Effect.as(undefined),
-                ),
-              ),
-              Effect.map((additionalContext): SyncHookJSONOutput =>
-                additionalContext === undefined
-                  ? {}
-                  : { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } },
-              ),
-            ),
-        );
+  let started = false;
+  const sessionStarted = (
+    event: Parameters<ClaudeThreadExtension["onSessionStart"]>[0],
+    hookEventName: "SessionStart" | "UserPromptSubmit",
+  ) =>
+    runPromise(
+      extension.onSessionStart(event).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("claude.thread-extension.session-start-failed", { cause }).pipe(
+            Effect.as(undefined),
+          ),
+        ),
+        Effect.map((additionalContext): SyncHookJSONOutput =>
+          additionalContext === undefined
+            ? {}
+            : { hookSpecificOutput: { hookEventName, additionalContext } },
+        ),
+      ),
+    );
+  const sessionStart: HookCallback = (input) => {
+    if (input.hook_event_name !== "SessionStart") return Promise.resolve({});
+    const source = input.source === "fork" ? "resume" : input.source;
+    if (source === "startup" || source === "resume") {
+      if (started) return Promise.resolve({});
+      started = true;
+    }
+    return sessionStarted(
+      { source, sessionId: input.session_id, transcriptPath: input.transcript_path },
+      "SessionStart",
+    );
+  };
+  const firstPrompt: HookCallback = (input) => {
+    if (input.hook_event_name !== "UserPromptSubmit" || started) return Promise.resolve({});
+    started = true;
+    return sessionStarted(
+      { source: start, sessionId: input.session_id, transcriptPath: input.transcript_path },
+      "UserPromptSubmit",
+    );
+  };
   const postCompact: HookCallback = (input) =>
     input.hook_event_name !== "PostCompact"
       ? Promise.resolve({})
@@ -296,7 +322,11 @@ const extensionHooks = (
             Effect.as({}),
           ),
         );
-  return { SessionStart: matchers(sessionStart), PostCompact: matchers(postCompact) };
+  return {
+    SessionStart: matchers(sessionStart),
+    UserPromptSubmit: matchers(firstPrompt),
+    PostCompact: matchers(postCompact),
+  };
 };
 
 /**
@@ -312,6 +342,7 @@ export function claudeQueryOptionsPatch(
   profile: ThreadToolProfile,
   extension: ClaudeThreadExtension | undefined,
   runPromise: RunPromise,
+  start: ClaudeSessionStart,
 ): Partial<ClaudeQueryOptions> {
   const preToolUse: HookCallback = (input) =>
     input.hook_event_name !== "PreToolUse"
@@ -334,7 +365,7 @@ export function claudeQueryOptionsPatch(
         );
   const hooks: Partial<Record<HookEvent, Array<HookCallbackMatcher>>> = {
     PreToolUse: matchers(preToolUse),
-    ...(extension ? extensionHooks(extension, runPromise) : {}),
+    ...(extension ? extensionHooks(extension, runPromise, start) : {}),
   };
   return {
     systemPrompt: { type: "preset", preset: "claude_code", append: profile.sessionContext },
