@@ -228,6 +228,7 @@ import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZero
 import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
+import { SidebarMatePeekLive } from "./zerops/SidebarMatePeekLive";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
 import {
@@ -4030,6 +4031,7 @@ export default function Sidebar() {
               getFlow={zeropsSidebarFlowWithAsk}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
+              renderPeek={(peek) => <SidebarMatePeekLive peek={peek} />}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={(candidate) =>

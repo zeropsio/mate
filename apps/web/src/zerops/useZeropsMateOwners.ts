@@ -33,6 +33,8 @@ export interface ZeropsMateOwner {
   readonly name: string;
   readonly initials: string;
   readonly avatarUrl: string | null;
+  /** The owner is the person looking: "You asked", and *Mine* keeps this Mate. */
+  readonly isViewer: boolean;
 }
 
 /**
@@ -42,11 +44,18 @@ export interface ZeropsMateOwner {
  */
 export function zeropsMateOwner(
   member: ZeropsOrganizationMember | undefined,
+  viewerUserId?: string | null,
 ): ZeropsMateOwner | undefined {
   const name = member === undefined ? undefined : mateMemberName(member);
   if (member?.user === undefined || name === undefined) return undefined;
   const display = zeropsAccountDisplay(member.user);
-  return { name, initials: display.initials, avatarUrl: display.avatarUrl };
+  const userId = member.user.id;
+  return {
+    name,
+    initials: display.initials,
+    avatarUrl: display.avatarUrl,
+    isViewer: userId !== undefined && viewerUserId !== undefined && userId === viewerUserId,
+  };
 }
 
 /**
@@ -124,7 +133,8 @@ export function useZeropsMateOwners(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly enabled: boolean;
 }): (candidate: ZeropsCandidate) => ZeropsMateOwner | undefined {
-  const { activeOrganization } = useZeropsSession();
+  const { activeOrganization, user } = useZeropsSession();
+  const viewerUserId = user?.id;
   const members = useZeropsOrganizationMembers({
     clientId: activeOrganization?.id,
     enabled:
@@ -137,7 +147,7 @@ export function useZeropsMateOwners(input: {
   });
   return useCallback(
     (candidate: ZeropsCandidate) =>
-      zeropsMateOwner(resolveMateOwner({ project: candidate.project, members })),
-    [members],
+      zeropsMateOwner(resolveMateOwner({ project: candidate.project, members }), viewerUserId),
+    [members, viewerUserId],
   );
 }

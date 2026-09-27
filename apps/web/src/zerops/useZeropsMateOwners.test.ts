@@ -12,7 +12,23 @@ describe("zeropsMateOwner", () => {
           avatar: { smallAvatarUrl: null, externalAvatarUrl: "https://cdn/jan.png" },
         },
       }),
-    ).toEqual({ name: "Jan Novák", initials: "JN", avatarUrl: "https://cdn/jan.png" });
+    ).toEqual({
+      name: "Jan Novák",
+      initials: "JN",
+      avatarUrl: "https://cdn/jan.png",
+      isViewer: false,
+    });
+  });
+
+  it.each([
+    { viewer: "u-jan", isViewer: true },
+    { viewer: "u-ada", isViewer: false },
+    { viewer: undefined, isViewer: false },
+  ])("says whether the owner is the one looking: $viewer", ({ viewer, isViewer }) => {
+    expect(
+      zeropsMateOwner({ id: "cu-jan", user: { id: "u-jan", fullName: "Jan Novák" } }, viewer)
+        ?.isViewer,
+    ).toBe(isViewer);
   });
 
   it("falls back to initials, and to an e-mail for a name", () => {
@@ -20,6 +36,7 @@ describe("zeropsMateOwner", () => {
       name: "quiet@example.com",
       initials: "Q",
       avatarUrl: null,
+      isViewer: false,
     });
   });
 

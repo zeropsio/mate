@@ -33,10 +33,24 @@ import {
   type FlowPullRequest,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
-import { ThreadId } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
+import { PlusIcon } from "lucide-react";
+
+import { MateLockup } from "~/components/MateLockup";
+import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
+import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
+import { MatePeekCard } from "~/components/zerops/SidebarMatePeek";
+import type { MatePeekStep } from "~/components/zerops/SidebarMatePeek.logic";
+import { askedLabelFor } from "~/components/zerops/SidebarMatePeek.logic";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
+import { useComposerDraftStore } from "~/composerDraftStore";
+import { setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { openAccountLifetime } from "~/zerops/accountLifetime";
+import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 
 import "../index.css";
@@ -85,27 +99,57 @@ function candidate(
 }
 
 function activity(input: {
+  readonly id?: string;
   readonly subject?: string;
   readonly snippet?: string;
   readonly hours: number;
   readonly face: ZeropsAgentActivity["face"];
+  readonly kind?: ZeropsAgentActivity["kind"];
+  readonly progress?: ZeropsAgentActivity["progress"];
+  readonly unread?: boolean;
+  readonly pausedUntil?: string;
+  readonly task?: string;
 }): ZeropsAgentActivity {
+  const id = input.id ?? "thread";
   return {
-    threadId: ThreadId.make("thread"),
-    kind: "idle",
+    threadId: ThreadId.make(`thread-${id}`),
+    kind: input.kind ?? "idle",
     status: null,
     face: input.face,
     subject: input.subject,
     snippet: input.snippet,
     at: hoursAgo(input.hours),
-    progress: undefined,
-    unread: false,
-    pausedUntil: undefined,
-    threadKey: "env:thread",
+    progress: input.progress,
+    unread: input.unread ?? false,
+    pausedUntil: input.pausedUntil,
+    threadKey: `env-${id}:thread-${id}`,
+    task: input.task ?? input.subject,
   };
 }
 
 const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
+
+/** The plans a peek reads off a working Mate's thread. */
+const PEEK_STEPS = new Map<string, ReadonlyArray<MatePeekStep>>([
+  [
+    "links-enzo",
+    [
+      { text: "Read how the list is rendered", state: "done" },
+      { text: "Add the search box and its filter", state: "done" },
+      { text: "Run the build", state: "running" },
+      { text: "Deploy to stage", state: "waiting" },
+      { text: "Open a change", state: "waiting" },
+    ],
+  ],
+  [
+    "shop-mira",
+    [
+      { text: "Split the checkout into two steps", state: "done" },
+      { text: "Keep the basket across a reload", state: "running" },
+      { text: "Deploy to stage", state: "waiting" },
+    ],
+  ],
+]);
 
 const LINKS = group("links", "Links");
 const SHOP = group("shop", "Shop");
@@ -181,34 +225,43 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   [
     "links-enzo",
     activity({
-      subject: "Add a search box above the list that filters the saved links",
-      snippet: "Done. The search box is live on both services. What changes…",
-      hours: 11,
+      id: "links-enzo",
+      task: "Add a search box above the list that filters the saved links",
+      subject: "Run the build",
+      snippet: "The search box filters as you type. Running the build now.",
+      hours: 0.053,
       face: "working",
+      kind: "working",
+      progress: { completed: 2, total: 5 },
     }),
   ],
   ["links-theo", activity({ subject: "/compact", hours: 9, face: "idle" })],
   [
     "shop-mira",
     activity({
+      id: "shop-mira",
       subject: "Split the checkout into a two-step flow with a saved basket",
-      snippet: "The basket survives a reload now. Six branches are open…",
+      snippet: "I hit the usage limit. I pick up again when it resets.",
       hours: 1,
-      face: "working",
+      face: "sleep",
+      pausedUntil: new Date(Date.now() + 2.5 * 3_600_000).toISOString(),
     }),
   ],
   [
     "shop-otto",
     activity({
+      id: "shop-otto",
       subject: "Why does the VAT come out wrong for Irish orders?",
       snippet: "Because the rate table is keyed by country and Ireland has…",
       hours: 30,
-      face: "idle",
+      face: "done",
+      unread: true,
     }),
   ],
   [
     "notes-iris",
     activity({
+      id: "notes-iris",
       subject: "Show a live character count under the body field of the note form",
       snippet: 'Healthy, and the rendered body confirms "0 characters"…',
       hours: 20,
@@ -559,50 +612,134 @@ const PORTRAIT = `data:image/svg+xml,${encodeURIComponent(
  * Mate whose owner the member list could not name — which wears no badge.
  */
 const OWNERS = new Map<string, ZeropsMateOwner>([
-  ["links-enzo", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
-  ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null }],
-  ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
-  ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null }],
-  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
+  ["links-enzo", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
+  ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+  ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
+  ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null, isViewer: false }],
+  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
 ]);
 
+const ACCOUNT = zeropsAccountDisplay({
+  email: "ada@example.com",
+  fullName: "Ada Lovelace",
+  firstName: "Ada",
+});
+const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
+
 /**
- * One sidebar at one width. The panel is resizable (`SIDEBAR_WIDTH` is the
- * 256px default, and the owner runs it near 368), so every width in that range
- * is a width this has to read at — the narrow one is where truncation bites.
+ * One sidebar, as the app lays it out: its header, the listing, its foot —
+ * one of it, as in the app. Two trees on one page share the one peek (a
+ * module store, as in the app), and each one's peek lands over the other.
+ * `?w=` sets its width; the owner runs it near 368, the default is 256.
  */
-function Panel({ label, width }: { readonly label: string; readonly width: number }) {
+function SidebarFrame({ width }: { readonly width: number }) {
   return (
-    <div className="flex flex-col gap-2">
-      <span className="px-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-        {label}
-      </span>
-      <div
-        className="h-[1600px] overflow-y-auto border border-border bg-sidebar py-2"
-        style={{ width }}
-      >
+    <aside
+      className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
+      data-sidebar="sidebar"
+      style={{ width }}
+    >
+      <header className="flex h-13 shrink-0 items-center gap-2 px-4">
+        <MateLockup className="h-6 w-auto" decorative />
+      </header>
+      <div className="shrink-0 px-2 pb-2">
+        <button
+          className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          type="button"
+        >
+          <PlusIcon className="size-4 shrink-0" />
+          <span>New project</span>
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto ps-2.25 pe-2 pb-1">
         <SidebarZeropsTree
           candidates={CANDIDATES}
-          className="px-1"
+          className="mb-2"
           complete
           getActivity={(item) => ACTIVITY.get(item.project.id)}
           getFlow={(groupId) => FLOWS.get(groupId)}
           getOwner={(item) => OWNERS.get(item.project.id)}
+          getMateActions={(item, live) => ({
+            muted: item.project.id === "notes-iris",
+            toggleMute: () => {},
+            toggleUnread: () => {},
+            copyLink: () => {},
+            rename: {
+              initialValue: "",
+              validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
+              commit: () => {},
+            },
+            ...(live?.face === "working" ? { stop: () => {} } : {}),
+            entries: [
+              { id: "restart", label: "Restart", onSelect: () => {} },
+              { id: "assign", label: "Hand over…", onSelect: () => {} },
+              { id: "move", label: "Move to project…", onSelect: () => {} },
+            ],
+          })}
           onBrowseProjects={() => {}}
           onSelect={() => {}}
           activeProjectId="links-enzo"
+          renderPeek={(peek) => (
+            <MatePeekCard
+              appUrl={peek.appUrl ?? "https://example.com"}
+              askedLabel={askedLabelFor(peek.owner)}
+              change={peek.change}
+              decision={undefined}
+              face={peek.face}
+              lastWords={peek.activity?.snippet}
+              name={peek.name}
+              onChoose={() => {}}
+              onMore={peek.onMore}
+              onOpen={peek.onOpen}
+              onStop={undefined}
+              onText={() => {}}
+              projectName={peek.projectName}
+              responding={false}
+              steps={PEEK_STEPS.get(peek.candidate.project.id)}
+              stepsLabel={
+                peek.activity?.pausedUntil === undefined ? "Plan" : "Plan, paused at a usage limit"
+              }
+              task={peek.activity?.task}
+              time={peek.time}
+              tint={peek.tint}
+              waitingOn={undefined}
+            />
+          )}
+          timestampFormat="24-hour"
         />
       </div>
-    </div>
+      <footer className="flex shrink-0 items-center gap-1 p-2">
+        <div className="min-w-0 flex-1">
+          <SidebarZeropsAccount
+            account={ACCOUNT}
+            activeOrganization={ORGANIZATION}
+            destination={null}
+            destinationIcon={() => null}
+            onGo={() => {}}
+            onSelectOrganization={() => {}}
+            onSignOut={() => {}}
+            organizations={[ORGANIZATION]}
+          />
+        </div>
+      </footer>
+    </aside>
   );
 }
 
 function Harness() {
+  const params = new URLSearchParams(location.search);
+  const width = Number(params.get("w") ?? 256);
+  const phone = window.matchMedia("(max-width: 767px)").matches;
   return (
-    <div className="flex min-h-screen items-start gap-8 bg-background p-6">
-      {[256, 320, 368].map((width) => (
-        <Panel key={width} label={`${width}px`} width={width} />
-      ))}
+    <div className="flex min-h-screen bg-background">
+      <SidebarFrame width={phone ? window.innerWidth : width} />
+      {phone ? null : (
+        <main className="flex min-w-0 flex-1 items-start justify-center p-10">
+          <p className="max-w-md text-sm text-muted-foreground">
+            The conversation opens here. A Mate&apos;s peek floats over it, beside the menu.
+          </p>
+        </main>
+      )}
     </div>
   );
 }
@@ -614,6 +751,24 @@ document.documentElement.classList.toggle(
   "dark",
   new URLSearchParams(location.search).get("theme") === "dark",
 );
+
+// An account is open, as in the app: the order and the mutes are kept under
+// its key. A draft stands in Iris's composer, as the composer would keep it.
+openAccountLifetime("design-harness");
+const params = new URLSearchParams(location.search);
+const order = params.get("order");
+if (order === "custom" || order === "name" || order === "newest") {
+  setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
+}
+useComposerDraftStore
+  .getState()
+  .setPrompt(
+    scopeThreadRef(EnvironmentId.make("env-notes-iris"), ThreadId.make("thread-notes-iris")),
+    "also count the title",
+  );
+
+// A handle for the audit browser: which Mate is peeked, and how.
+(window as unknown as { __sidebarPeek?: typeof useSidebarPeek }).__sidebarPeek = useSidebarPeek;
 
 const host = document.getElementById("design");
 if (host) {

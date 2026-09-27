@@ -55,6 +55,8 @@ import {
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
+import { PortalGate } from "../ui/portal-gate";
+import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import { ProjectHeader, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
@@ -151,7 +153,13 @@ function mount(element: ReactElement): ReactTestRenderer {
   const noDom = Object.fromEntries(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
   );
-  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
+  // A desktop's width: the peek floats beside the menu rather than rising as a sheet.
+  const matchMedia = () => ({
+    matches: false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  });
+  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom, { matchMedia }));
   for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
   let tree: ReactTestRenderer | undefined;
   act(() => {
@@ -258,6 +266,7 @@ describe("SidebarZeropsTree", () => {
       unread: false,
       pausedUntil: undefined,
       threadKey: "env:thread",
+      task: undefined,
     };
     const html = render([connected], { getActivity: () => idle });
     expect(html).toContain('data-mate-face-state="idle"');
@@ -283,6 +292,7 @@ describe("SidebarZeropsTree", () => {
       unread: false,
       pausedUntil: undefined,
       threadKey: "env:thread",
+      task: undefined,
     };
     const html = render([connected], { getActivity: () => spoken });
     const subjectAt = html.indexOf('data-zerops-surface="sidebar-mate-subject"');
@@ -833,6 +843,7 @@ describe("the project's flow under it", () => {
       unread: false,
       pausedUntil: undefined,
       threadKey: "env:thread",
+      task: undefined,
     };
     const getActivity = () => activity;
     const withMergedCode = flow({ pullRequests: [], merged: [pull(4, { merged: true })], missing });
@@ -1444,6 +1455,7 @@ describe("the project's flow under it", () => {
         unread: false,
         pausedUntil: undefined,
         threadKey: "env:thread",
+        task: undefined,
       };
       const html = render([CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD], {
         getActivity: () => talked,
@@ -1793,6 +1805,7 @@ describe("the Mate's card", () => {
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread",
+    task: undefined,
   };
 
   it("leads with the agent's name — not the project's, not its tag", () => {
@@ -2051,6 +2064,7 @@ describe("a Mate's row says more without words", () => {
     unread: false,
     pausedUntil: undefined,
     threadKey: "env-crm-dev:thread-1",
+    task: undefined,
     ...overrides,
   });
   const row = (activity: ZeropsAgentActivity, props: Record<string, unknown> = {}) =>
@@ -2159,6 +2173,7 @@ describe("a Mate's own menu, in its row", () => {
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread",
+    task: undefined,
   };
   const row = (actions: MateRowActions | undefined) =>
     render([CRM_DEV_CONNECTED], {
@@ -2216,5 +2231,120 @@ describe("a Mate's own menu, in its row", () => {
     const menu = mounted.root.findByType(MateMenu);
     expect(menu.props.open).toBe(true);
     expect(menu.props.at).toEqual({ x: 120, y: 340 });
+  });
+});
+
+describe("a Mate's peek", () => {
+  const spoken: ZeropsAgentActivity = {
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Add a /status page",
+    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    snippet: "Done. /status answers on stage.",
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: "Add a /status page",
+  };
+  const renderPeek = vi.fn((_peek: unknown) => null);
+  const mounted = () =>
+    mount(
+      <PortalGate closed>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV_CONNECTED]}
+          complete
+          getActivity={() => spoken}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          renderPeek={renderPeek}
+        />
+      </PortalGate>,
+    );
+  const row = (tree: ReactTestRenderer) => surface(tree, "sidebar-mate-row");
+  const peek = () => useSidebarPeek.getState().peek;
+  afterEach(() => {
+    act(() => {
+      useSidebarPeek.getState().close();
+    });
+    renderPeek.mockClear();
+    vi.useRealTimers();
+  });
+
+  it("opens after half a second's rest on the row, and closes once the pointer has left", () => {
+    vi.useFakeTimers();
+    const tree = mounted();
+    act(() => {
+      row(tree).props.onPointerEnter({ pointerType: "mouse" });
+    });
+    act(() => {
+      vi.advanceTimersByTime(499);
+    });
+    expect(peek()).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(peek()).toEqual({ projectId: "crm-dev", mode: "hover" });
+    expect(renderPeek).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: "crm-dev", projectName: "Beviro CRM" }),
+    );
+    // Lit while its peek is open.
+    expect(surface(tree, "sidebar-mate").props.className).toContain("bg-sidebar-row-hover");
+    act(() => {
+      row(tree).props.onPointerLeave({ pointerType: "mouse" });
+    });
+    act(() => {
+      vi.advanceTimersByTime(220);
+    });
+    expect(peek()).toBeNull();
+  });
+
+  it("never opens for a pointer that only passes over the row", () => {
+    vi.useFakeTimers();
+    const tree = mounted();
+    act(() => {
+      row(tree).props.onPointerEnter({ pointerType: "mouse" });
+      vi.advanceTimersByTime(300);
+      row(tree).props.onPointerLeave({ pointerType: "mouse" });
+      vi.advanceTimersByTime(1000);
+    });
+    expect(peek()).toBeNull();
+  });
+
+  it("opens with Space and keeps it, and Space again puts it away — never pressing the row", () => {
+    const tree = mounted();
+    let prevented = 0;
+    const space = { key: " ", preventDefault: () => (prevented += 1) };
+    act(() => {
+      surface(tree, "sidebar-mate").props.onKeyDown(space);
+    });
+    expect(peek()).toEqual({ projectId: "crm-dev", mode: "pinned" });
+    expect(prevented).toBe(1);
+    act(() => {
+      row(tree).props.onPointerLeave({ pointerType: "mouse" });
+    });
+    expect(peek()?.mode).toBe("pinned");
+    act(() => {
+      surface(tree, "sidebar-mate").props.onKeyDown(space);
+    });
+    expect(peek()).toBeNull();
+  });
+
+  it("gives no peek where nobody draws one", () => {
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    act(() => {
+      surface(tree, "sidebar-mate").props.onKeyDown({ key: " ", preventDefault: () => {} });
+    });
+    expect(peek()).toBeNull();
   });
 });

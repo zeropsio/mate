@@ -383,3 +383,20 @@ describe("what a Mate's row says without words", () => {
     expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.threadKey).toBe(key);
   });
 });
+
+describe("the task as the person asked it", () => {
+  it("keeps the ask while the row says the running plan step", () => {
+    const working = shell({
+      ...RUNNING,
+      latestUserMessagePreview: {
+        role: "user",
+        text: "Add a /status page",
+        createdAt: "2026-09-05T10:00:00.000Z",
+      },
+      planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
+    });
+    const activity = deriveZeropsAgentActivity([working], {}).get(FEN);
+    expect(activity?.subject).toBe("Run the build");
+    expect(activity?.task).toBe("Add a /status page");
+  });
+});

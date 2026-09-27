@@ -87,6 +87,11 @@ export interface ZeropsAgentActivity {
   readonly pausedUntil: string | undefined;
   /** The conversation's scoped key — what its unsent draft is kept under. */
   readonly threadKey: string;
+  /**
+   * The last task as the person asked it, whatever the row's subject says
+   * meanwhile — a peek's "You asked" while the row names the step it is on.
+   */
+  readonly task: string | undefined;
 }
 
 /**
@@ -193,6 +198,7 @@ export function deriveZeropsAgentActivity(
       unread: hasUnseenCompletion({ latestTurn: primary.latestTurn, ...visited }),
       pausedUntil: pause?.resetsAt,
       threadKey,
+      task: agentActivitySubject(primary, "idle"),
     });
   }
   return activity;

@@ -592,6 +592,7 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread",
+    task: undefined,
   });
   const cases: ReadonlyArray<
     [
