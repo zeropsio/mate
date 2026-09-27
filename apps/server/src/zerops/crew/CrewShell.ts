@@ -19,7 +19,8 @@
  *   to config (zcp `ops/git_identity.go`), and `core.fsync=objects,reference`
  *   with `core.fsyncMethod=fsync` (`vcs/GitVcsDriver.ts` `durableWrite`), so an
  *   unclean restart leaves no 0-byte ref. `LC_ALL=C` keeps git's refusals in
- *   the words `classifyLandingRefusal` reads.
+ *   the words `classifyLandingRefusal` reads; `core.quotePath=false` prints
+ *   every path as it is on disk.
  *
  * @module CrewShell
  */
@@ -63,6 +64,8 @@ const GIT_CONFIG: ReadonlyArray<string> = [
   "core.fsync=objects,reference",
   "-c",
   "core.fsyncMethod=fsync",
+  "-c",
+  "core.quotePath=false",
 ];
 
 /** A word passed to the shell unquoted: a variable the script set (`"$H"`). */

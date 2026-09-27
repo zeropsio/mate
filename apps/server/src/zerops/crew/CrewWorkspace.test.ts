@@ -192,6 +192,12 @@ describe("CrewWorkspace", () => {
       paths: ["config/.env.local"],
     },
     {
+      name: "an .env under a directory with a non-ASCII name",
+      arrange: (lane) => write(lane, "Úkoly/.env", "SECRET=1\n"),
+      reason: "secrets",
+      paths: ["Úkoly/.env"],
+    },
+    {
       name: "an unignored node_modules",
       arrange: (lane) => write(lane, "node_modules/left-pad/index.js", "module.exports = 1;\n"),
       reason: "dependencies",
@@ -553,6 +559,25 @@ describe("CrewWorkspace", () => {
         assert.deepStrictEqual(yield* workspace.orphanScan(TEST_HOST), [
           { handle: "map", unlanded: 2 },
         ]);
+      }),
+    ),
+  );
+
+  it.effect("names a conflicted file with a non-ASCII name and commits none of its markers", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        write(root, "Úkol.md", "base\n");
+        git(root, ["add", "-A"]);
+        git(root, ["commit", "-q", "-m", "base"]);
+        yield* workspace.create(BACKEND);
+        write(root, ".crew/backend/Úkol.md", "lane\n");
+        yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+        write(root, "Úkol.md", "person\n");
+        git(root, ["commit", "-q", "-am", "person"]);
+        gitExit(`${root}/.crew/backend`, ["merge", "-q", "main"]);
+        const outcome = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 2 });
+        assert.deepStrictEqual(outcome, { _tag: "rework", paths: ["Úkol.md"] });
       }),
     ),
   );

@@ -362,4 +362,19 @@ describe("CrewIntegration", () => {
       }),
     ),
   );
+
+  it.effect("names a conflicted file with a non-ASCII name as it is on disk", () =>
+    withCrew((root) =>
+      Effect.gen(function* () {
+        const integration = yield* CrewIntegration.CrewIntegration;
+        personCommits(root, "Úkol.md", "base\n");
+        yield* laneWork(root, "Úkol.md", "lane\n");
+        personCommits(root, "Úkol.md", "person\n");
+        const conflict = yield* integration.mergeIn(BACKEND);
+        assert.deepStrictEqual(conflict._tag === "conflict" ? conflict.paths : conflict, [
+          "Úkol.md",
+        ]);
+      }),
+    ),
+  );
 });
