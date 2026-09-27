@@ -55,7 +55,15 @@ export function createArchivedThreadSnapshotsAtomFamily<E>(options: {
 
         const snapshot = Option.getOrNull(AsyncResult.value(result));
         if (snapshot !== null) {
-          snapshots.push({ environmentId, snapshot });
+          // A crewmate's retired stint is the crew's history, reached from the
+          // crew; unarchiving or deleting it is not the person's to do.
+          snapshots.push({
+            environmentId,
+            snapshot: {
+              ...snapshot,
+              threads: snapshot.threads.filter((thread) => thread.crew === undefined),
+            },
+          });
         }
 
         if (error === null && result._tag === "Failure") {
