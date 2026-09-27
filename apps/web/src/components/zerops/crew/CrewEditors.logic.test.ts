@@ -9,6 +9,7 @@ import {
   crewRewriteBlockers,
   crewDevHosts,
   crewEffortOptions,
+  crewLoginNote,
   crewLoginOptions,
   crewModelOptions,
   freeTints,
@@ -161,6 +162,17 @@ describe("Runs on", () => {
     ]);
     expect(crewEffortOptions([claude, codex], "claudeAgent", "claude-haiku")).toEqual([]);
     expect(crewEffortOptions([claude, codex], "claudeAgent", null)).toEqual([]);
+  });
+
+  it.each([
+    [
+      "codex",
+      "A Codex crewmate works on code only, with no Zerops tools. Its task is done when you land it.",
+    ],
+    ["claudeAgent", undefined],
+    ["gone", undefined],
+  ] as const)("says what the %s login means for the crewmate", (loginId, note) => {
+    expect(crewLoginNote(crewLoginOptions([claude, codex]), loginId)).toBe(note);
   });
 });
 
