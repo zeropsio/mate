@@ -393,6 +393,7 @@ export const CREW_ATTENTION_VERBS = {
   reviewPlan: "Review plan",
   allow: "Allow",
   notNow: "Not now",
+  tryAgain: "Try again",
 } as const;
 
 export const crewAskToResolveWord = (name: string): string => `Ask ${name} to resolve`;
@@ -460,11 +461,11 @@ export const crewConflictWord = (paths: ReadonlyArray<string>): string =>
     ? "Conflicts with what landed"
     : `Conflicts with what landed: ${pathSummary(paths)}`;
 
-/** A task's landing in your tree (PRD §4.5). */
+/** A task's landing in your tree, by its commit's short sha (PRD §4.5). */
 export const crewLandedAsWord = (task: {
   readonly number: number;
   readonly landedCommit: string;
-}): string => `Task #${task.number} landed as ${task.landedCommit}`;
+}): string => `Task #${task.number} landed as ${task.landedCommit.slice(0, 7)}`;
 
 /** A crewmate's own app on its crew port (PRD §5.7). */
 export function crewAppWord(
@@ -543,3 +544,9 @@ export const crewEarlierStintNotice = (
 /** A stint that began without a reason of its own, and the link to the one before it. */
 export const CREW_NEW_STINT_WORD = "New conversation";
 export const CREW_PREVIOUS_STINT_LINK = "previous conversation";
+
+/** Whether a dev service reaches a database (the crewmate editor's *Service*); `null` is unknown, never "no". */
+export function crewDevHostDatabaseWord(database: boolean | null): string {
+  if (database === null) return "Database unknown";
+  return database ? "Has a database" : "No database";
+}

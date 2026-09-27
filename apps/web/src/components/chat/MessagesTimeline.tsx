@@ -181,7 +181,8 @@ import {
   type ServerUsagePause,
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
-import { CrewTaskCard } from "../zerops/crew/CrewTaskCard";
+import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
+import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -605,6 +606,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
   const rows = useStableRows(rawRows);
+  // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
+  // only) is empty while it holds nothing but seams.
+  const crew = use(CrewTimelineContext);
   const livePauseId = useMemo(
     () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
     [rows],
@@ -990,14 +994,23 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
-  if (rows.length === 0 && !isWorking) {
+  const empty =
+    crew === null
+      ? rows.length === 0
+      : rows.every((row) => row.kind === "seam" || row.kind === "crew-seam");
+  if (empty && !isWorking) {
     if (hideEmptyPlaceholder) {
       // Occupy the pane with the theme surface so a thread switch cannot
       // punch a hole through to the window chrome (white in light mode).
       return <div className="h-full min-h-0 bg-background" data-timeline-loading="true" />;
     }
-    return (
+    return crew === null ? (
       <TimelineEmptyState environmentId={activeThreadEnvironmentId} threadKey={routeThreadKey} />
+    ) : (
+      <CrewmateEmptyState
+        crewmate={crew.crewmate}
+        seams={rows.flatMap((row) => (row.kind === "crew-seam" ? [row] : []))}
+      />
     );
   }
 
@@ -1405,14 +1418,21 @@ const GAP_CLASS: Record<RowGap, string> = {
 
 /**
  * Where a row with no card sits across the column. The person's messages hug
- * the right edge, a seam spans it, and the Mate's work that outlived its
+ * the right edge, a seam — a day's, a crew's — spans it, and the Mate's work that outlived its
  * turn is a card of its own; everything else the Mate says stands on the
  * composer's text edge — its 1 px frame and 16 px padding — so the answer,
  * an event and the text inside every card start on one line.
  */
 function rowInset(row: TimelineRow): string {
   if (row.kind === "message" && row.message.role === "user") return "";
-  if (row.kind === "queued-message" || row.kind === "seam" || row.kind === "after-work") return "";
+  if (
+    row.kind === "queued-message" ||
+    row.kind === "seam" ||
+    row.kind === "crew-seam" ||
+    row.kind === "after-work"
+  ) {
+    return "";
+  }
   // A line with no card keeps the card's geometry in a frame nobody sees, so
   // opening it draws the card around the line without moving it.
   if (row.kind === "work-line") return "border-x border-t border-transparent px-4 pt-2";
@@ -1505,6 +1525,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
+      {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}

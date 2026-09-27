@@ -60,7 +60,11 @@ import {
   type Known,
   type MateFeedEvent,
 } from "@t3tools/client-runtime/zerops/knowledge";
-import { EnvironmentAuthorizationError, WS_METHODS } from "@t3tools/contracts";
+import {
+  CrewFrameUndecodable,
+  EnvironmentAuthorizationError,
+  WS_METHODS,
+} from "@t3tools/contracts";
 import type {
   CrewSnapshot,
   EnvironmentId,
@@ -70,6 +74,7 @@ import type {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -113,6 +118,14 @@ const targetKey = (target: {
 const UNKNOWN_REQUEST_TAG = "Unknown request tag";
 
 const isEnvironmentAuthorizationError = Schema.is(EnvironmentAuthorizationError);
+const isCrewFrameUndecodable = Schema.is(CrewFrameUndecodable);
+
+/**
+ * A frame the feed's own codec decoded as unreadable (`CrewFeedFrame`): a
+ * server newer or older than this client. It fails that feed alone — the
+ * codec never lets it fail the socket's decode, which would drop every feed.
+ */
+class FeedFrameUndecodable extends Data.TaggedError("FeedFrameUndecodable") {}
 
 const defectMessage = (defect: unknown): string =>
   typeof defect === "string" ? defect : defect instanceof Error ? defect.message : String(defect);
@@ -125,6 +138,9 @@ function feedFailure(capability: string, cause: Cause.Cause<unknown>): FailureRe
   for (const reason of cause.reasons) {
     if (Cause.isDieReason(reason) && defectMessage(reason.defect).startsWith(UNKNOWN_REQUEST_TAG)) {
       return { kind: "unsupported", capability };
+    }
+    if (Cause.isFailReason(reason) && reason.error instanceof FeedFrameUndecodable) {
+      return { kind: "malformed", detail: `${capability} sent a frame this client cannot read` };
     }
     if (Cause.isFailReason(reason) && isEnvironmentAuthorizationError(reason.error)) {
       return { kind: "refused", code: reason.error._tag, words: reason.error.message };
@@ -240,7 +256,13 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
     subscribe: (
       input: ZeropsCrewTarget["input"],
     ): Stream.Stream<CrewSnapshot, unknown, EnvironmentSupervisor> =>
-      subscribe(WS_METHODS.subscribeZeropsCrew, input),
+      subscribe(WS_METHODS.subscribeZeropsCrew, input).pipe(
+        Stream.mapEffect((frame) =>
+          isCrewFrameUndecodable(frame)
+            ? Effect.fail(new FeedFrameUndecodable())
+            : Effect.succeed(frame),
+        ),
+      ),
   });
 
   /**

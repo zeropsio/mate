@@ -8,6 +8,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ScopedThreadRef,
   type ServerProvider,
   ThreadId,
   TurnId,
@@ -33,6 +34,7 @@ import {
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   deriveLockedProvider,
+  diffOpeningShowsWorkingTree,
   dismissBranchMismatchForSession,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
   getAntigravitySendBlockReason,
@@ -2166,5 +2168,49 @@ describe("resolveZeropsConversationReadOnly", () => {
     ["no Zerops agent at all", undefined, "someone-else", null],
   ] as const)("%s", (_label, agent, ownership, expected) => {
     expect(resolveZeropsConversationReadOnly({ agent, ownership })).toEqual(expected);
+  });
+});
+
+describe("diffOpeningShowsWorkingTree", () => {
+  const thread: ScopedThreadRef = {
+    environmentId: EnvironmentId.make("env-1"),
+    threadId: ThreadId.make("thread-1"),
+  };
+  const other: ScopedThreadRef = { ...thread, threadId: ThreadId.make("thread-2") };
+
+  it.each<{
+    readonly name: string;
+    readonly diffOpen: boolean;
+    readonly explicitThreadRef: ScopedThreadRef | null;
+    readonly resets: boolean;
+  }>([
+    {
+      name: "a generic opening shows the working tree",
+      diffOpen: true,
+      explicitThreadRef: null,
+      resets: true,
+    },
+    {
+      name: "an opening made for one diff keeps its selection",
+      diffOpen: true,
+      explicitThreadRef: thread,
+      resets: false,
+    },
+    {
+      name: "an opening made for another thread's diff does not count here",
+      diffOpen: true,
+      explicitThreadRef: other,
+      resets: true,
+    },
+    {
+      name: "a closed panel shows nothing",
+      diffOpen: false,
+      explicitThreadRef: null,
+      resets: false,
+    },
+  ])("$name", ({ diffOpen, explicitThreadRef, resets }) => {
+    expect(
+      diffOpeningShowsWorkingTree({ diffOpen, activeThreadRef: thread, explicitThreadRef }),
+    ).toBe(resets);
   });
 });

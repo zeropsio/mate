@@ -201,8 +201,18 @@ export function crewAttentionActions(
               command: { _tag: "askFix", taskId: row.taskId },
             },
           ];
-    case "parked":
     case "cant-start":
+      // The engine starts the queued task again, admission and all.
+      return row.taskId === null
+        ? []
+        : [
+            {
+              kind: "command",
+              label: CREW_ATTENTION_VERBS.tryAgain,
+              command: { _tag: "taskRetry", taskId: row.taskId },
+            },
+          ];
+    case "parked":
       return [];
   }
 }

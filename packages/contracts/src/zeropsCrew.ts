@@ -13,8 +13,16 @@
  * engine sends codes and facts — a handle, a path, a count — never a sentence.
  * The closed vocabularies live in `zeropsCrewStates.ts`; the unions declared
  * here are the ones only this wire carries.
+ *
+ * Client and server ship apart (the hosted client against a pinned Mate), so
+ * every field added after the first contract decodes when absent, to the value
+ * an older server means by leaving it out; and the feed's frame decodes
+ * through {@link CrewFeedFrame}, which never fails.
  */
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
   IsoDateTime,
@@ -134,7 +142,7 @@ export const CrewLaneSummary = Schema.Struct({
   insertions: NonNegativeInt,
   deletions: NonNegativeInt,
   /** Changes in the copy no commit holds yet, as last read; *Land now* commits them first. */
-  dirty: Schema.Boolean,
+  dirty: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** The copy's latest check; `null` before its first. */
   check: Schema.NullOr(CrewCheck),
   state: CrewLaneState,
@@ -229,14 +237,17 @@ export const CrewHost = Schema.Struct({
       branch: Schema.NullOr(TrimmedNonEmptyString),
       head: TrimmedNonEmptyString,
     }),
-  ),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   /**
    * Declared once per dev service (PRD §5.7); empty until *Add crew ports* is
    * done. `routed` is whether the subdomain routes the port; `null` when the
    * engine cannot know (not confirmed).
    */
   crewPorts: Schema.Array(
-    Schema.Struct({ port: PortSchema, routed: Schema.NullOr(Schema.Boolean) }),
+    Schema.Struct({
+      port: PortSchema,
+      routed: Schema.NullOr(Schema.Boolean).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+    }),
   ),
   served: CrewServed,
   /** The Show-on-dev claim; `handle` is its holder or requester, `null` in `none`. */
@@ -279,7 +290,7 @@ export const CrewTask = Schema.Struct({
    * who else the message went to and which part is this crewmate's (PRD §5.3);
    * `null` when the card says nothing more.
    */
-  note: Schema.NullOr(Schema.String),
+  note: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   attempts: NonNegativeInt,
   /** Why it went to `rework` or `parked`. */
   reason: Schema.NullOr(Schema.String),
@@ -425,13 +436,45 @@ export const CrewSnapshot = Schema.Struct({
   run: Schema.NullOr(CrewRun),
   attention: Schema.Array(CrewAttention),
   /** Where a writer's copy may live (the crewmate editor's *Service*); empty where crew mode is off. */
-  devHosts: Schema.Array(CrewDevHost),
+  devHosts: Schema.Array(CrewDevHost).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   /** Landed tasks whose change has not gone out with *Deliver* yet. */
   landedNotDelivered: NonNegativeInt,
   /** The engine's last failure the section should show; `null` when none stands. */
   lastError: Schema.NullOr(Schema.String),
 });
 export type CrewSnapshot = typeof CrewSnapshot.Type;
+
+/** A crew feed frame this build could not decode (see {@link CrewFeedFrame}). */
+export const CrewFrameUndecodable = Schema.TaggedStruct("CrewFrameUndecodable", {});
+export type CrewFrameUndecodable = typeof CrewFrameUndecodable.Type;
+
+const decodeSnapshotOption = Schema.decodeUnknownOption(CrewSnapshot);
+
+/**
+ * The crew feed's wire codec. A frame this build cannot decode — a server
+ * newer than the client, or older in a way no default covers — decodes as
+ * {@link CrewFrameUndecodable} instead of failing: a stream chunk that fails
+ * to decode takes the whole connection down with it (effect's `RpcClient`
+ * dies on it), and every other feed of the Mate with it. The client reads an
+ * undecodable frame as a Mate whose crew it cannot show. Encoding is the
+ * snapshot's own.
+ */
+export const CrewFeedFrame = Schema.Unknown.pipe(
+  Schema.decodeTo(
+    Schema.Union([CrewSnapshot, CrewFrameUndecodable]),
+    SchemaTransformation.transform<
+      typeof CrewSnapshot.Encoded | typeof CrewFrameUndecodable.Encoded,
+      unknown
+    >({
+      decode: (raw) =>
+        Option.isSome(decodeSnapshotOption(raw))
+          ? (raw as typeof CrewSnapshot.Encoded)
+          : { _tag: "CrewFrameUndecodable" },
+      encode: (frame) => frame,
+    }),
+  ),
+);
+export type CrewFeedFrame = typeof CrewFeedFrame.Type;
 
 const taskRef = { taskId: CrewTaskId } as const;
 const handleRef = { handle: CrewHandle } as const;

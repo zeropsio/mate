@@ -15,6 +15,7 @@ import {
   crewAheadWord,
   crewAppWord,
   crewConflictWord,
+  crewDevHostDatabaseWord,
   crewDiffStatWord,
   crewEarlierStintNotice,
   crewJobVersionWord,
@@ -271,6 +272,14 @@ describe("crewAttentionSentence", () => {
       "Can't start Backend: the login is not yours",
     ],
     [
+      {
+        kind: "cant-start",
+        handle: "backend",
+        text: "Backend's login was signed in by another member. Only their crews can use it.",
+      },
+      "Can't start Backend: Backend's login was signed in by another member. Only their crews can use it.",
+    ],
+    [
       { kind: "conflict", handle: "backend", paths: ["src/api/items.ts"] },
       "Backend's copy conflicts with what landed: src/api/items.ts",
     ],
@@ -408,6 +417,7 @@ describe("the section's words (PRD §4.3)", () => {
       "Review plan",
       "Allow",
       "Not now",
+      "Try again",
     ]);
     expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
     expect(crewAskToFixWord("Backend")).toBe("Ask Backend to fix");
@@ -466,10 +476,13 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
     );
   });
 
-  it("names a landing by its task and commit", () => {
+  it("names a landing by its task and its commit's short sha", () => {
     expect(crewLandedAsWord({ number: 11, landedCommit: "a1b2c3d" })).toBe(
       "Task #11 landed as a1b2c3d",
     );
+    expect(
+      crewLandedAsWord({ number: 11, landedCommit: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" }),
+    ).toBe("Task #11 landed as a1b2c3d");
   });
 
   it.each([
@@ -523,5 +536,15 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
       text: "An earlier conversation with @backend — it goes on in a newer one.",
       sendBlock: "Write to @backend in its current conversation",
     });
+  });
+});
+
+describe("crewDevHostDatabaseWord", () => {
+  it.each([
+    [true, "Has a database"],
+    [false, "No database"],
+    [null, "Database unknown"],
+  ] as const)("says a dev service's database %s as %s", (database, word) => {
+    expect(crewDevHostDatabaseWord(database)).toBe(word);
   });
 });

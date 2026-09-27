@@ -2,7 +2,9 @@ import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import { EnvironmentId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { buttonsLabelled, press, TestNode } from "../../../zerops/__fixtures__/testDom";
 
 const state = vi.hoisted(() => ({ snapshot: null as CrewSnapshot | null, current: true }));
 
@@ -30,6 +32,12 @@ vi.mock("~/zerops/useZeropsMates", () => ({
   useZeropsMate: () => ({ kind: "mate", mate: { name: "Fen", tint: "amber", connected: true } }),
 }));
 
+// The test DOM draws no SVG.
+vi.mock("lucide-react", async (original) => ({
+  ...(await original<typeof import("lucide-react")>()),
+  ExternalLinkIcon: () => null,
+}));
+
 import { CrewLaneBar } from "./CrewLaneBar";
 
 const THREAD = {
@@ -38,7 +46,9 @@ const THREAD = {
 };
 
 const render = (handle: string) =>
-  renderToStaticMarkup(<CrewLaneBar handle={handle} threadRef={THREAD} />);
+  renderToStaticMarkup(
+    <CrewLaneBar handle={handle} onOpenChanges={() => undefined} threadRef={THREAD} />,
+  );
 
 describe("CrewLaneBar", () => {
   it("draws a writer's copy against your tree, its app and its presses", () => {
@@ -80,5 +90,51 @@ describe("CrewLaneBar", () => {
     const html = render("backend");
     state.current = true;
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Land now<\/button>/u);
+  });
+});
+
+describe("CrewLaneBar Changes", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("opens the copy's diff against the tip of your tree the engine read", async () => {
+    state.snapshot = crewSnapshotFixture();
+    const opened: Array<string | null> = [];
+    const document = new TestNode("#document", null, 9);
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", {
+      document,
+      Element: TestNode,
+      HTMLElement: TestNode,
+      HTMLIFrameElement: TestNode,
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      addEventListener() {},
+      removeEventListener() {},
+    });
+    vi.stubGlobal("HTMLIFrameElement", TestNode);
+    vi.stubGlobal("Element", TestNode);
+    vi.stubGlobal("HTMLElement", TestNode);
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const container = document.createElement("div");
+    const root = createRoot(container as unknown as Element);
+    try {
+      await act(async () =>
+        root.render(
+          <CrewLaneBar
+            handle="backend"
+            onOpenChanges={(baseRef) => opened.push(baseRef)}
+            threadRef={THREAD}
+          />,
+        ),
+      );
+      await act(async () => press(buttonsLabelled(container, "Changes")[0]!));
+    } finally {
+      await act(async () => root.unmount());
+    }
+    expect(opened).toEqual(["a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"]);
   });
 });

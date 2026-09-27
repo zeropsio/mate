@@ -184,12 +184,10 @@ import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
+import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
-import {
-  CREW_NEW_STINT_WORD,
-  crewMessagePlaceholder,
-} from "@t3tools/client-runtime/zerops/crew/phrases";
+import { crewMessagePlaceholder } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -446,6 +444,7 @@ import {
   startNewThreadForProject,
   waitForStartedServerThread,
   shouldRefocusComposerOnWindowFocus,
+  diffOpeningShowsWorkingTree,
 } from "./ChatView.logic";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
@@ -1824,9 +1823,10 @@ export default function ChatView(props: ChatViewProps) {
   useLayoutEffect(() => {
     const explicitThreadRef = explicitDiffOpenRef.current;
     explicitDiffOpenRef.current = null;
-    // Generic openings always show the checkout, including tab fallbacks and thread changes.
-    // A timeline click instead opens the specific turn/file the user requested.
-    if (diffOpen && activeThreadRef && explicitThreadRef !== activeThreadRef) {
+    if (
+      activeThreadRef &&
+      diffOpeningShowsWorkingTree({ diffOpen, activeThreadRef, explicitThreadRef })
+    ) {
       useDiffPanelStore.getState().selectGitScope(activeThreadRef, "unstaged");
     }
   }, [activeThreadRef, diffOpen]);
@@ -5353,12 +5353,10 @@ export default function ChatView(props: ChatViewProps) {
   }, [crewNotices, environmentId, navigate, threadId]);
   // What a crew thread's task cards need beyond their text: the board, and
   // for the stint's first card — while the conversation is loaded from its
-  // start — why this conversation began and the one before it.
+  // start — why this conversation began and the one before it, unless the
+  // engine's own stint seam says so already.
   const crewTimeline = useMemo<CrewTimeline | null>(() => {
     if (activeCrewOrigin === null) return null;
-    const stints = activeCrewmate?.crewmate.stints ?? [];
-    const index = stints.findIndex((stint) => stint.threadId === threadId);
-    const stint = stints[index];
     const firstCard =
       loadEarlierTurns === null
         ? displayedTimeline.entries.find(
@@ -5370,14 +5368,18 @@ export default function ChatView(props: ChatViewProps) {
         : undefined;
     return {
       firstCardId: firstCard?.id ?? null,
-      origin:
-        stint === undefined || (index === 0 && stint.reason === null)
-          ? null
-          : {
-              text: stint.reason ?? CREW_NEW_STINT_WORD,
-              previousThreadId: stints[index - 1]?.threadId ?? null,
-            },
+      origin: crewCardOrigin({
+        stints: activeCrewmate?.crewmate.stints ?? [],
+        threadId,
+        seamed: displayedTimeline.entries.some(
+          (entry) => entry.kind === "work" && entry.entry.crewSeam?.seam === "stint",
+        ),
+      }),
       tasks: crew.snapshot?.board.tasks ?? [],
+      crewmate: {
+        handle: activeCrewOrigin.crewmate,
+        profile: activeCrewmate?.crewmate ?? null,
+      },
       onOpenThread: (target) =>
         void navigate({
           to: "/$environmentId/$threadId",
@@ -7736,6 +7738,18 @@ export default function ChatView(props: ChatViewProps) {
   const onExpandTimelineImage = useCallback((preview: ExpandedImagePreview) => {
     setExpandedImage(preview);
   }, []);
+  // A crewmate's *Changes*: its copy against the tip of your tree the engine
+  // read — an explicit opening, so the panel keeps that branch diff.
+  const onOpenCrewChanges = useCallback(
+    (baseRef: string | null) => {
+      if (!isServerThread || !activeThreadRef) return;
+      explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
+      useDiffPanelStore.getState().selectBranchBaseRef(activeThreadRef, baseRef);
+      useRightPanelStore.getState().open(activeThreadRef, "diff");
+      onDiffPanelOpen?.();
+    },
+    [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen],
+  );
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
       if (!isServerThread || !activeThreadRef) return;
@@ -8048,7 +8062,11 @@ export default function ChatView(props: ChatViewProps) {
         {/* A crewmate with a copy of the code shows it where a person's chat
             shows its lifecycle (seam S7); a reader and the lead have none. */}
         {activeCrewmate?.crewmate.lane != null && activeThreadRef !== null ? (
-          <CrewLaneBar handle={activeCrewmate.crewmate.handle} threadRef={activeThreadRef} />
+          <CrewLaneBar
+            handle={activeCrewmate.crewmate.handle}
+            onOpenChanges={onOpenCrewChanges}
+            threadRef={activeThreadRef}
+          />
         ) : (
           <ZeropsLifecycleStrip
             agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}

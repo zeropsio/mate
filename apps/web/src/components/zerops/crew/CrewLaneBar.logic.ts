@@ -82,7 +82,10 @@ export interface CrewLaneBarModel {
     readonly label: string;
     readonly enabled: boolean;
   } | null;
-  /** The blue Pill: *Land* on a ready task, *Land now* on work never reported. */
+  /**
+   * The blue Pill: *Land* on a ready task; *Land now* between turns on work
+   * never reported — commits ahead of your tree, or changes no commit holds yet.
+   */
   readonly land: {
     readonly kind: "land" | "landNow";
     readonly taskId: string | null;
@@ -248,7 +251,7 @@ export function crewLaneBarModel(
       ? { kind: "land", taskId, label: CREW_ATTENTION_VERBS.land, enabled: true }
       : (openTask?.state === "working" || openTask?.state === "rework") &&
           !row.working &&
-          ahead !== null
+          (ahead !== null || lane.dirty)
         ? { kind: "landNow", taskId, label: CREW_LANE_VERBS.landNow, enabled: true }
         : { kind: "land", taskId, label: CREW_ATTENTION_VERBS.land, enabled: false };
 

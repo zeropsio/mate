@@ -9,7 +9,12 @@
  * `jobSave` — only *Save and start fresh* once its login changed (§2.3). A job
  * rewritten for the most part pre-selects a fresh conversation and says why.
  */
-import { CREW_HANDLE_PATTERN, type CrewApplyChoice, type ServerProvider } from "@t3tools/contracts";
+import {
+  CREW_HANDLE_PATTERN,
+  type CrewApplyChoice,
+  type CrewDevHost,
+  type ServerProvider,
+} from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_HOME_FILE,
@@ -39,6 +44,7 @@ import {
   crewLoginOptions,
   crewModelOptions,
   crewRewriteBlockers,
+  crewServiceHint,
   freeTints,
   jobChangedMostly,
 } from "./CrewEditors.logic";
@@ -70,7 +76,8 @@ interface CrewmateSheetProps {
   readonly applied: ReadonlySet<string>;
   /** The Mate's coding agents; `undefined` while its config is not read. */
   readonly providers: ReadonlyArray<ServerProvider> | undefined;
-  readonly devHosts: ReadonlyArray<string>;
+  /** The dev services a copy may live on, with whether each reaches a database. */
+  readonly devHosts: ReadonlyArray<CrewDevHost>;
   readonly mateTint: MateTintId | undefined;
   /** The crewmate's crew port on its service, when it has one. */
   readonly crewPort: number | null;
@@ -143,8 +150,9 @@ function CrewmateForm({
   const choice: CrewApplyChoice = loginChanged
     ? "fresh"
     : (picked ?? (rewritten ? "fresh" : "nextTurn"));
+  const hostNames = devHosts.map((host) => host.host);
   const hostChoices =
-    draft.host === "" || devHosts.includes(draft.host) ? devHosts : [...devHosts, draft.host];
+    draft.host === "" || hostNames.includes(draft.host) ? hostNames : [...hostNames, draft.host];
 
   const handleTaken = definition.members.some(
     (member) => member.handle === draft.handle && member.handle !== target.handle,
@@ -322,10 +330,7 @@ function CrewmateForm({
         </div>
         {writes ? (
           <>
-            <CrewField
-              hint={crewPort === null ? undefined : `Crew port ${crewPort}`}
-              label="Service"
-            >
+            <CrewField hint={crewServiceHint(devHosts, draft.host, crewPort)} label="Service">
               <Select
                 onValueChange={(value) => {
                   if (typeof value === "string") set("host", value);
