@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   live: true,
   completedAt: null as string | null,
   archivedAt: null as string | null,
+  crew: undefined as { crew: string; crewmate: string; stint: number } | undefined,
   input: false,
   approval: false,
   sessionError: false,
@@ -38,6 +39,7 @@ vi.mock("@effect/atom-react", () => ({
           id: "thread-1",
           title: "Fix the login form",
           archivedAt: state.archivedAt,
+          crew: state.crew,
           hasPendingUserInput: state.input,
           hasPendingApprovals: state.approval,
           session: state.sessionError ? { status: "error" } : null,
@@ -113,6 +115,7 @@ beforeEach(() => {
     live: true,
     completedAt: null,
     archivedAt: null,
+    crew: undefined,
     input: false,
     approval: false,
     sessionError: false,
@@ -168,6 +171,21 @@ describe("thread notifications", () => {
       expect(state.add).not.toHaveBeenCalled();
     },
   );
+
+  it("never alerts for a crewmate's thread, by toast, sound or system popup", async () => {
+    state.mode = "notifications-and-sound";
+    state.crew = { crew: "shop", crewmate: "backend", stint: 1 };
+    await render();
+    state.input = true;
+    await render();
+    state.input = false;
+    state.focused = false;
+    await complete();
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+  });
 
   it.each([
     ["input", "Input needed"],

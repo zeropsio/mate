@@ -314,6 +314,14 @@
     "./favicon": {
       "types": "./src/favicon.ts",
       "import": "./src/favicon.ts"
+    },
+    "./crewHome": {
+      "types": "./src/crewHome.ts",
+      "import": "./src/crewHome.ts"
+    },
+    "./crewTemplates": {
+      "types": "./src/crewTemplates.ts",
+      "import": "./src/crewTemplates.ts"
     }
   },
   "scripts": {

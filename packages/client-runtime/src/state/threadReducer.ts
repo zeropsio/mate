@@ -112,6 +112,7 @@ export function applyThreadDetailEvent(
           activities: [],
           checkpoints: [],
           session: null,
+          ...(event.payload.crew !== undefined ? { crew: event.payload.crew } : {}),
         },
       };
 

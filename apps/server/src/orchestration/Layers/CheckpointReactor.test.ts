@@ -9,6 +9,7 @@ import {
   ProviderRuntimeEvent,
   ProviderSession,
   ProviderInstanceId,
+  type ThreadCrewOrigin,
 } from "@t3tools/contracts";
 import {
   CommandId,
@@ -311,6 +312,8 @@ describe("CheckpointReactor", () => {
     readonly gitStatusRefresh?: Effect.Effect<void>;
     /** Zerops: the services mounted under the cwd, each a repository of its own. */
     readonly repositoryHosts?: ReadonlyArray<string>;
+    /** thread-1 is a crewmate's stint, made by the server. */
+    readonly crew?: ThreadCrewOrigin;
   }) {
     const cwd = createGitRepository();
     if (options?.initializeGit === false) {
@@ -463,7 +466,9 @@ describe("CheckpointReactor", () => {
     await Effect.runPromise(
       engine
         .dispatch({
-          type: "thread.create",
+          ...(options?.crew
+            ? { type: "thread.crew.create" as const, crew: options.crew }
+            : { type: "thread.create" as const }),
           commandId: CommandId.make("cmd-thread-create"),
           threadId: ThreadId.make("thread-1"),
           projectId: asProjectId("project-1"),
@@ -1018,6 +1023,59 @@ describe("CheckpointReactor", () => {
           followUp?.checkpoints.find((checkpoint) => checkpoint.turnId === followUpTurnId),
         ).toMatchObject({ checkpointTurnCount: 2, files: [] });
       }),
+  );
+
+  effectIt.effect.each([
+    { name: "without workspace history", history: false },
+    { name: "with workspace history", history: true },
+  ])("a crew thread's turn writes no checkpoint $name", ({ history }) =>
+    Effect.gen(function* () {
+      const finish = vi.fn<WorkspaceHistory["Service"]["finish"]>(() =>
+        Effect.die("a crew turn is never captured"),
+      );
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          seedFilesystemCheckpoints: false,
+          crew: { crew: "shop", crewmate: "backend", stint: 1 },
+          ...(history
+            ? {
+                workspaceHistory: {
+                  finish,
+                  bindTurn: () => Effect.void,
+                  release: () => Effect.void,
+                },
+              }
+            : {}),
+        }),
+      );
+      harness.provider.emit({
+        type: "turn.started",
+        eventId: EventId.make("evt-crew-turn-started"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId("turn-crew"),
+      });
+      NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "v2\n", "utf8");
+      harness.provider.emit({
+        type: "turn.completed",
+        eventId: EventId.make("evt-crew-turn-completed"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId("turn-crew"),
+        payload: { state: "completed" },
+      });
+      yield* Effect.promise(harness.drain);
+
+      expect(finish).not.toHaveBeenCalled();
+      expect(runGit(harness.cwd, ["for-each-ref", "refs/t3/checkpoints"])).toBe("");
+      const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+        (entry) => entry.id === "thread-1",
+      );
+      expect(thread?.crew).toEqual({ crew: "shop", crewmate: "backend", stint: 1 });
+      expect(thread?.checkpoints).toEqual([]);
+    }),
   );
 
   it("does not capture an aborted turn without a matching start or active session", async () => {

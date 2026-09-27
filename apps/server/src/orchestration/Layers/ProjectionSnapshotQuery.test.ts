@@ -4,6 +4,7 @@ import {
   EventId,
   MessageId,
   ProjectId,
+  ThreadCrewOrigin,
   ThreadId,
   ThreadUsagePauseState,
   TurnId,
@@ -38,6 +39,7 @@ const encodeChatAttachments = Schema.encodeEffect(
   Schema.fromJsonString(Schema.Array(ChatAttachment)),
 );
 const encodeUsagePause = Schema.encodeEffect(Schema.fromJsonString(ThreadUsagePauseState));
+const encodeCrewOrigin = Schema.encodeEffect(Schema.fromJsonString(ThreadCrewOrigin));
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
@@ -951,6 +953,84 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         assert.deepEqual(fromSnapshot?.usagePause, row.expected, `snapshot ${row.id}`);
         const shell = yield* snapshotQuery.getThreadShellById(ThreadId.make(row.id));
         assert.deepEqual(Option.getOrUndefined(shell)?.usagePause, row.expected, `shell ${row.id}`);
+      }
+    }),
+  );
+
+  it.effect("reads a crew thread's origin onto every shell and thread; a person's has none", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_thread_messages`;
+      yield* sql`DELETE FROM projection_thread_proposed_plans`;
+      yield* sql`DELETE FROM projection_thread_activities`;
+      yield* sql`DELETE FROM projection_turns`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, default_model_selection_json, scripts_json,
+          created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-crew', 'Crew', '/var/www',
+          '{"provider":"claudeAgent","model":"opus"}', '[]',
+          '2026-09-27T00:00:00.000Z', '2026-09-27T00:00:00.000Z', NULL
+        )
+      `;
+      const crew = { crew: "shop", crewmate: "backend", stint: 2 };
+      const crewJson = yield* encodeCrewOrigin(crew);
+      const rows = [
+        { id: "thread-person", crew: null, archivedAt: null, expected: undefined },
+        { id: "thread-stint", crew: crewJson, archivedAt: null, expected: crew },
+        {
+          id: "thread-retired-stint",
+          crew: crewJson,
+          archivedAt: "2026-09-27T09:00:00.000Z",
+          expected: crew,
+        },
+      ];
+      for (const row of rows) {
+        yield* sql`
+          INSERT INTO projection_threads (
+            thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+            latest_user_message_at, pending_approval_count, pending_user_input_count,
+            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at,
+            crew_json
+          ) VALUES (
+            ${row.id}, 'project-crew', ${row.id},
+            '{"provider":"claudeAgent","model":"opus"}', 'approval-required', 'default',
+            NULL, 0, 0, 0, '2026-09-27T08:00:00.000Z', '2026-09-27T08:00:00.000Z',
+            ${row.archivedAt}, NULL, ${row.crew}
+          )
+        `;
+      }
+
+      const shells = (yield* snapshotQuery.getShellSnapshot()).threads;
+      const archivedShells = (yield* snapshotQuery.getArchivedShellSnapshot()).threads;
+      const snapshotThreads = (yield* snapshotQuery.getSnapshot()).threads;
+      const commandThreads = (yield* snapshotQuery.getCommandReadModel()).threads;
+      for (const row of rows) {
+        const id = ThreadId.make(row.id);
+        const live = row.archivedAt === null;
+        const readers = {
+          shellSnapshot: (live ? shells : archivedShells).find((thread) => thread.id === id),
+          snapshot: snapshotThreads.find((thread) => thread.id === id),
+          commandReadModel: commandThreads.find((thread) => thread.id === id),
+          ...(live
+            ? {
+                shellById: Option.getOrUndefined(yield* snapshotQuery.getThreadShellById(id)),
+                detailById: Option.getOrUndefined(yield* snapshotQuery.getThreadDetailById(id)),
+              }
+            : {}),
+        };
+        for (const [reader, thread] of Object.entries(readers)) {
+          assert.isDefined(thread, `${reader} ${row.id}`);
+          assert.deepEqual(thread?.crew, row.expected, `${reader} ${row.id}`);
+          // A person's thread reads exactly as before crews: no key at all.
+          assert.strictEqual(thread !== undefined && "crew" in thread, row.expected !== undefined);
+        }
       }
     }),
   );

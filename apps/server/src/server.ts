@@ -33,6 +33,9 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import { ZeropsLayerLive } from "./zerops/zeropsFeedsLayer.ts";
 import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import { ProviderRuntimeEventBusLive } from "./spi/ProviderRuntimeEventBus.ts";
+import { ClaudeThreadExtensionRegistry } from "./spi/claudeThreadProfile.ts";
+import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
+import { ThreadToolPolicyRegistry } from "./spi/threadToolPolicy.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
 import * as ProviderSessionRuntime from "./persistence/ProviderSessionRuntime.ts";
@@ -734,6 +737,17 @@ const makeServerLayer = Layer.unwrap(
       Layer.provide(ApplicationObservabilityLive),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provideMerge(VcsProcess.layer),
+      // Zero-dependency seams below the provider runtime and the runtime
+      // startup: the thread tool policy registries a driver reads when it
+      // builds its adapter, and the command readiness startup completes for
+      // layers that sit beneath it.
+      Layer.provideMerge(
+        Layer.mergeAll(
+          ThreadToolPolicyRegistry.layer,
+          ClaudeThreadExtensionRegistry.layer,
+          ServerCommandReadiness.layer,
+        ),
+      ),
       // Inside a Zerops container every git spawn above this line is rewritten
       // into `ssh <service> git -C /var/www …`; everything else reaches the
       // platform spawner below unchanged. The repository source reads the

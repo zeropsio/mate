@@ -1,0 +1,905 @@
+[
+  {
+    "type": "session.started",
+    "eventId": "evt-0",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "payload": {},
+    "providerRefs": {}
+  },
+  {
+    "type": "session.configured",
+    "eventId": "evt-1",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "payload": {
+      "config": {
+        "permissionMode": "dontAsk"
+      }
+    },
+    "providerRefs": {}
+  },
+  {
+    "type": "session.state.changed",
+    "eventId": "evt-2",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "payload": {
+      "state": "ready"
+    },
+    "providerRefs": {}
+  },
+  {
+    "type": "turn.started",
+    "eventId": "evt-3",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "payload": {},
+    "providerRefs": {}
+  },
+  {
+    "type": "thread.started",
+    "eventId": "evt-4",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "payload": {
+      "providerThreadId": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f"
+    },
+    "providerRefs": {},
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/thread/started",
+      "payload": {
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f"
+      }
+    }
+  },
+  {
+    "eventId": "evt-5",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "providerRefs": {},
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/system/init",
+      "messageType": "system:init",
+      "payload": {
+        "type": "system",
+        "subtype": "init",
+        "cwd": "/var/www/.crew/backend",
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "tools": ["Bash", "Edit", "Read", "Write"],
+        "mcp_servers": [
+          {
+            "name": "zerops",
+            "status": "connected"
+          }
+        ],
+        "model": "claude-opus-5[1m]",
+        "permissionMode": "dontAsk",
+        "apiKeySource": "none",
+        "claude_code_version": "2.1.283",
+        "output_style": "default",
+        "uuid": "00000000-0000-4000-8000-000000000001"
+      }
+    },
+    "type": "session.configured",
+    "payload": {
+      "config": {
+        "type": "system",
+        "subtype": "init",
+        "cwd": "/var/www/.crew/backend",
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "tools": ["Bash", "Edit", "Read", "Write"],
+        "mcp_servers": [
+          {
+            "name": "zerops",
+            "status": "connected"
+          }
+        ],
+        "model": "claude-opus-5[1m]",
+        "permissionMode": "dontAsk",
+        "apiKeySource": "none",
+        "claude_code_version": "2.1.283",
+        "output_style": "default",
+        "uuid": "00000000-0000-4000-8000-000000000001"
+      }
+    }
+  },
+  {
+    "type": "item.started",
+    "eventId": "evt-6",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "inProgress",
+      "title": "Command run",
+      "detail": "Bash: {}",
+      "data": {
+        "toolName": "Bash",
+        "input": {}
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/content_block_start",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_start",
+          "index": 0,
+          "content_block": {
+            "type": "tool_use",
+            "id": "item-0",
+            "name": "Bash",
+            "input": {}
+          }
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000003"
+      }
+    },
+    "toolCall": {
+      "name": "Bash",
+      "rawName": "Bash",
+      "arguments": {}
+    }
+  },
+  {
+    "type": "item.updated",
+    "eventId": "evt-7",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "inProgress",
+      "title": "Command run",
+      "detail": "Bash: ls",
+      "data": {
+        "toolName": "Bash",
+        "input": {
+          "command": "ls",
+          "description": "Run a command"
+        }
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/content_block_delta/input_json_delta",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "input_json_delta",
+            "partial_json": "{\"command\": \"ls\", \"description\": \"Run a command\"}"
+          }
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000004"
+      }
+    },
+    "toolCall": {
+      "name": "Bash",
+      "rawName": "Bash",
+      "arguments": {
+        "command": "ls",
+        "description": "Run a command"
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-8",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "usage": {
+        "usedTokens": 12022,
+        "lastUsedTokens": 12022,
+        "inputTokens": 12002,
+        "outputTokens": 20
+      }
+    },
+    "providerRefs": {},
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/message_delta",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "message_delta",
+          "delta": {
+            "stop_reason": "tool_use",
+            "stop_sequence": null
+          },
+          "usage": {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 12000,
+            "output_tokens": 20,
+            "service_tier": "standard"
+          }
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000007"
+      }
+    }
+  },
+  {
+    "type": "item.updated",
+    "eventId": "evt-9",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "inProgress",
+      "title": "Command run",
+      "detail": "Bash: ls",
+      "data": {
+        "toolName": "Bash",
+        "input": {
+          "command": "ls",
+          "description": "Run a command"
+        },
+        "result": {
+          "tool_use_id": "item-0",
+          "type": "tool_result",
+          "content": "README.md\nsrc",
+          "is_error": false
+        }
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/user",
+      "payload": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "item-0",
+              "type": "tool_result",
+              "content": "README.md\nsrc",
+              "is_error": false
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "uuid": "00000000-0000-4000-8000-000000000009"
+      }
+    },
+    "toolCall": {
+      "name": "Bash",
+      "rawName": "Bash",
+      "arguments": {
+        "command": "ls",
+        "description": "Run a command"
+      },
+      "result": {
+        "text": "README.md\nsrc",
+        "failed": false
+      }
+    }
+  },
+  {
+    "type": "content.delta",
+    "eventId": "evt-10",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "streamKind": "command_output",
+      "delta": "README.md\nsrc"
+    },
+    "providerRefs": {
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/user",
+      "payload": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "item-0",
+              "type": "tool_result",
+              "content": "README.md\nsrc",
+              "is_error": false
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "uuid": "00000000-0000-4000-8000-000000000009"
+      }
+    }
+  },
+  {
+    "type": "item.completed",
+    "eventId": "evt-11",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "completed",
+      "title": "Command run",
+      "detail": "Bash: ls",
+      "data": {
+        "toolName": "Bash",
+        "input": {
+          "command": "ls",
+          "description": "Run a command"
+        },
+        "result": {
+          "tool_use_id": "item-0",
+          "type": "tool_result",
+          "content": "README.md\nsrc",
+          "is_error": false
+        }
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/user",
+      "payload": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "item-0",
+              "type": "tool_result",
+              "content": "README.md\nsrc",
+              "is_error": false
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "uuid": "00000000-0000-4000-8000-000000000009"
+      }
+    },
+    "toolCall": {
+      "name": "Bash",
+      "rawName": "Bash",
+      "arguments": {
+        "command": "ls",
+        "description": "Run a command"
+      },
+      "result": {
+        "text": "README.md\nsrc",
+        "failed": false
+      }
+    }
+  },
+  {
+    "type": "item.started",
+    "eventId": "evt-12",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "inProgress",
+      "title": "Command run",
+      "detail": "Bash: {}",
+      "data": {
+        "toolName": "Bash",
+        "input": {}
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/content_block_start",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_start",
+          "index": 0,
+          "content_block": {
+            "type": "tool_use",
+            "id": "item-1",
+            "name": "Bash",
+            "input": {}
+          }
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000011"
+      }
+    },
+    "toolCall": {
+      "name": "Bash",
+      "rawName": "Bash",
+      "arguments": {}
+    }
+  },
+  {
+    "type": "item.updated",
+    "eventId": "evt-13",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "inProgress",
+      "title": "Command run",
+      "detail": "Bash: rm -rf /var/www/src",
+      "data": {
+        "toolName": "Bash",
+        "input": {
+          "command": "rm -rf /var/www/src",
+          "description": "Run a command"
+        }
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/content_block_delta/input_json_delta",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "input_json_delta",
+            "partial_json": "{\"command\": \"rm -rf /var/www/src\", \"description\": \"Run a command\"}"
+          }
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000012"
+      }
+    },
+    "toolCall": {
+      "name": "Bash",
+      "rawName": "Bash",
+      "arguments": {
+        "command": "rm -rf /var/www/src",
+        "description": "Run a command"
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-14",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "usage": {
+        "usedTokens": 12022,
+        "lastUsedTokens": 12022,
+        "inputTokens": 12002,
+        "outputTokens": 20
+      }
+    },
+    "providerRefs": {},
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/message_delta",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "message_delta",
+          "delta": {
+            "stop_reason": "tool_use",
+            "stop_sequence": null
+          },
+          "usage": {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 12000,
+            "output_tokens": 20,
+            "service_tier": "standard"
+          }
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000015"
+      }
+    }
+  },
+  {
+    "type": "item.updated",
+    "eventId": "evt-15",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "failed",
+      "title": "Command run",
+      "detail": "Bash: rm -rf /var/www/src",
+      "data": {
+        "toolName": "Bash",
+        "input": {
+          "command": "rm -rf /var/www/src",
+          "description": "Run a command"
+        },
+        "result": {
+          "tool_use_id": "item-1",
+          "type": "tool_result",
+          "content": "Only your own copy of the code: /var/www/.crew/backend.",
+          "is_error": true
+        }
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/user",
+      "payload": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "item-1",
+              "type": "tool_result",
+              "content": "Only your own copy of the code: /var/www/.crew/backend.",
+              "is_error": true
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "uuid": "00000000-0000-4000-8000-000000000017"
+      }
+    },
+    "toolCall": {
+      "name": "Bash",
+      "rawName": "Bash",
+      "arguments": {
+        "command": "rm -rf /var/www/src",
+        "description": "Run a command"
+      },
+      "result": {
+        "text": "Only your own copy of the code: /var/www/.crew/backend.",
+        "failed": true
+      }
+    }
+  },
+  {
+    "type": "content.delta",
+    "eventId": "evt-16",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "payload": {
+      "streamKind": "command_output",
+      "delta": "Only your own copy of the code: /var/www/.crew/backend."
+    },
+    "providerRefs": {
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/user",
+      "payload": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "item-1",
+              "type": "tool_result",
+              "content": "Only your own copy of the code: /var/www/.crew/backend.",
+              "is_error": true
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "uuid": "00000000-0000-4000-8000-000000000017"
+      }
+    }
+  },
+  {
+    "type": "item.completed",
+    "eventId": "evt-17",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "failed",
+      "title": "Command run",
+      "detail": "Bash: rm -rf /var/www/src",
+      "data": {
+        "toolName": "Bash",
+        "input": {
+          "command": "rm -rf /var/www/src",
+          "description": "Run a command"
+        },
+        "result": {
+          "tool_use_id": "item-1",
+          "type": "tool_result",
+          "content": "Only your own copy of the code: /var/www/.crew/backend.",
+          "is_error": true
+        }
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/user",
+      "payload": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "item-1",
+              "type": "tool_result",
+              "content": "Only your own copy of the code: /var/www/.crew/backend.",
+              "is_error": true
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "uuid": "00000000-0000-4000-8000-000000000017"
+      }
+    },
+    "toolCall": {
+      "name": "Bash",
+      "rawName": "Bash",
+      "arguments": {
+        "command": "rm -rf /var/www/src",
+        "description": "Run a command"
+      },
+      "result": {
+        "text": "Only your own copy of the code: /var/www/.crew/backend.",
+        "failed": true
+      }
+    }
+  },
+  {
+    "type": "content.delta",
+    "eventId": "evt-18",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-2",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "Listed my copy; the delete outside it was refused."
+    },
+    "providerRefs": {},
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/content_block_delta",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "text_delta",
+            "text": "Listed my copy; the delete outside it was refused."
+          }
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000020"
+      }
+    }
+  },
+  {
+    "type": "item.completed",
+    "eventId": "evt-19",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "itemId": "item-2",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "completed",
+      "title": "Assistant message",
+      "detail": "Listed my copy; the delete outside it was refused."
+    },
+    "providerRefs": {},
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/content_block_stop",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_stop",
+          "index": 0
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000022"
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-20",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "usage": {
+        "usedTokens": 12022,
+        "lastUsedTokens": 12022,
+        "inputTokens": 12002,
+        "outputTokens": 20
+      }
+    },
+    "providerRefs": {},
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/stream_event/message_delta",
+      "payload": {
+        "type": "stream_event",
+        "event": {
+          "type": "message_delta",
+          "delta": {
+            "stop_reason": "end_turn",
+            "stop_sequence": null
+          },
+          "usage": {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 12000,
+            "output_tokens": 20,
+            "service_tier": "standard"
+          }
+        },
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "parent_tool_use_id": null,
+        "uuid": "00000000-0000-4000-8000-000000000023"
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-21",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "usage": {
+        "usedTokens": 12022,
+        "lastUsedTokens": 12022,
+        "totalProcessedTokens": 36066,
+        "inputTokens": 12002,
+        "outputTokens": 20
+      }
+    },
+    "providerRefs": {},
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/result",
+      "payload": {
+        "type": "result",
+        "subtype": "success",
+        "is_error": false,
+        "duration_ms": 4100,
+        "duration_api_ms": 3900,
+        "num_turns": 3,
+        "result": "Listed my copy; the delete outside it was refused.",
+        "stop_reason": "end_turn",
+        "session_id": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+        "total_cost_usd": 0.0421,
+        "usage": {
+          "input_tokens": 6,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 36000,
+          "output_tokens": 60,
+          "service_tier": "standard"
+        },
+        "modelUsage": {},
+        "permission_denials": [
+          {
+            "tool_name": "Bash",
+            "tool_use_id": "item-1",
+            "tool_input": {
+              "command": "rm -rf /var/www/src",
+              "description": "Run a command"
+            }
+          }
+        ],
+        "terminal_reason": "completed",
+        "uuid": "00000000-0000-4000-8000-000000000025"
+      }
+    }
+  },
+  {
+    "type": "turn.completed",
+    "eventId": "evt-22",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "state": "completed",
+      "stopReason": "end_turn",
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 36000,
+        "output_tokens": 60,
+        "service_tier": "standard"
+      },
+      "modelUsage": {},
+      "totalCostUsd": 0.0421,
+      "terminalReason": "completed"
+    },
+    "providerRefs": {}
+  }
+]

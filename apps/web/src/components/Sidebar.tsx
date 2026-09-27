@@ -2012,13 +2012,14 @@ export default function Sidebar() {
     [isMobile, setOpenMobile],
   );
   const { environments } = useEnvironments();
-  // One environment is one conversation, and its roster row is that
-  // conversation. So a Zerops environment's project, threads and drafts are
-  // folded into its row rather than listed a second time below in T3's tree;
-  // an environment that is not Zerops (a local server) keeps the tree. An
-  // environment counts as Zerops when it is a roster candidate now or came in
-  // through the Zerops door — a container deleted on the platform is still
-  // registered here, and its leftovers must not resurface as a tree.
+  // A Mate's roster row stands for all its chats: it opens the main one, and
+  // the conversation strip the others. So a Zerops environment's project,
+  // threads and drafts are folded into its row rather than listed a second
+  // time below in T3's tree; an environment that is not Zerops (a local
+  // server) keeps the tree. An environment counts as Zerops when it is a
+  // roster candidate now or came in through the Zerops door — a container
+  // deleted on the platform is still registered here, and its leftovers must
+  // not resurface as a tree.
   const zeropsEnvironmentIds = useMemo(
     () => new Set(environments.map((environment) => environment.environmentId)),
     [environments],
@@ -2319,9 +2320,11 @@ export default function Sidebar() {
     // memo exactly at the next wake boundary.
     void snoozeWakeTick;
     const preciseNow = new Date().toISOString();
+    // A crewmate's thread is the crew's, never an ordinary row.
     const visible = threads.filter(
       (thread) =>
         thread.archivedAt === null &&
+        thread.crew === undefined &&
         !zeropsEnvironmentIds.has(thread.environmentId) &&
         (scopedProjectKeys === null ||
           scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
@@ -4046,9 +4049,9 @@ export default function Sidebar() {
                   void router.navigate({ to: "/zerops" });
                   return;
                 }
-                // One environment is one conversation: open *its* conversation,
-                // not whichever project anywhere was touched last — which is
-                // what landing on the index would pick.
+                // Open the Mate's main chat, not whichever project anywhere
+                // was touched last — which is what landing on the index
+                // would pick. Its other chats are in its conversation strip.
                 const { primary } = resolvePrimaryConversation(
                   threads.filter((thread) => thread.environmentId === environmentId),
                 );

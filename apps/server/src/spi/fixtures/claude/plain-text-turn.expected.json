@@ -736,7 +736,8 @@
           "costBasis": "list"
         }
       },
-      "totalCostUsd": 0.10659600000000001
+      "totalCostUsd": 0.10659600000000001,
+      "terminalReason": "completed"
     },
     "providerRefs": {}
   }

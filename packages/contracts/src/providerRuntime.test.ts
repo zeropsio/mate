@@ -47,6 +47,26 @@ describe("ProviderRuntimeEvent", () => {
     expect(parsed.payload.blocked).toEqual(blocked);
   });
 
+  it.each([
+    ["no terminal reason", {}, undefined],
+    ["the driver's terminal reason", { terminalReason: "prompt_too_long" }, "prompt_too_long"],
+  ])("decodes turn.completed with %s", (_, extra, terminalReason) => {
+    const parsed = decodeRuntimeEvent({
+      type: "turn.completed",
+      eventId: "event-turn-completed",
+      provider: "claudeAgent",
+      createdAt: "2026-02-28T00:00:00.000Z",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      payload: { state: "failed", ...extra },
+    });
+
+    if (parsed.type !== "turn.completed") {
+      throw new Error("expected turn.completed");
+    }
+    expect(parsed.payload.terminalReason).toBe(terminalReason);
+  });
+
   it("decodes turn.plan.updated for plan rendering", () => {
     const parsed = decodeRuntimeEvent({
       type: "turn.plan.updated",

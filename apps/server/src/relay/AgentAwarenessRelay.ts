@@ -278,7 +278,7 @@ export function resolveAgentAwarenessRelayActiveThreadIds(input: {
   return input.threads
     .filter((thread) => {
       const project = projectById.get(thread.projectId);
-      if (!project) {
+      if (!project || thread.crew !== undefined) {
         return false;
       }
       const state = projectThreadAwareness({
@@ -413,6 +413,11 @@ export const make = Effect.gen(function* () {
       });
 
     const thread = yield* snapshotQuery.getThreadShellById(threadId);
+    // A crewmate's thread speaks through the crew, never as a thread alert.
+    if (Option.isSome(thread) && thread.value.crew !== undefined) {
+      yield* Effect.logDebug("agent activity publish skipped; crew thread", { threadId });
+      return;
+    }
     const project = Option.isSome(thread)
       ? yield* snapshotQuery.getProjectShellById(thread.value.projectId)
       : Option.none<OrchestrationProjectShell>();

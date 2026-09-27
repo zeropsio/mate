@@ -1274,7 +1274,8 @@
           "costBasis": "list"
         }
       },
-      "totalCostUsd": 0.09651
+      "totalCostUsd": 0.09651,
+      "terminalReason": "completed"
     },
     "providerRefs": {}
   }

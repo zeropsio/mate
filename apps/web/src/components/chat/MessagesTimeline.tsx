@@ -1496,6 +1496,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       ) : null}
       {row.kind === "incident" ? <IncidentLine incident={row.incident} /> : null}
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
+      {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? (
         <ErrorLine label={row.entry.label} detail={row.entry.detail} />
@@ -2101,6 +2102,18 @@ function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }
       speaker={ctx.speaker}
       timestampFormat={ctx.timestampFormat}
     />
+  );
+}
+
+/** The task the server handed a crewmate: its title and text, plainly, on the Mate's side. */
+function CrewCardTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "crew-card" }> }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card px-4 py-2.5">
+      <p className="text-prose font-medium text-foreground">{row.task.title}</p>
+      {row.task.text.length > 0 ? (
+        <p className="whitespace-pre-wrap text-line text-muted-foreground">{row.task.text}</p>
+      ) : null}
+    </div>
   );
 }
 

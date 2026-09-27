@@ -194,6 +194,7 @@ export type BuildThreadActionItemsThread = Pick<
   | "archivedAt"
   | "branch"
   | "createdAt"
+  | "crew"
   | "environmentId"
   | "id"
   | "modelSelection"
@@ -222,8 +223,9 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>;
   limit?: number;
 }): CommandPaletteActionItem[] {
+  // A crewmate's thread is the crew's, opened from the crew, never listed.
   const sortedThreads = sortThreads(
-    input.threads.filter((thread) => thread.archivedAt === null),
+    input.threads.filter((thread) => thread.archivedAt === null && thread.crew === undefined),
     input.sortOrder,
   );
   const visibleThreads =

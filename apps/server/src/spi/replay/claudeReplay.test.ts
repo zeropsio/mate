@@ -2,10 +2,12 @@
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
-import { assert, describe, it } from "vite-plus/test";
+import { assert, describe, expect, it } from "vite-plus/test";
 
 import { loadFixture } from "./loader.ts";
 import { replayClaude } from "./claudeReplay.ts";
+import { CREW_REPLAY_POLICY } from "./crewReplayPolicy.ts";
+import type { FixtureLine } from "./types.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const fixturesDir = NodePath.join(__dirname, "../fixtures/claude");
@@ -80,5 +82,54 @@ describe("replayClaude", () => {
       | undefined;
     assert.isDefined(turnCompleted, "expected a turn.completed event");
     assert.equal(turnCompleted?.payload.state, "interrupted");
+  }, 20_000);
+
+  it("replays a crew turn's hook lines against the installed profile: dontAsk, the gate's allow and deny, the session context", async () => {
+    // Synthetic until probes 1, 2, 14 and 15 record a real crew turn.
+    const fixture = loadFixture(fixturesDir, "crew-hooks");
+    const events = await replayClaude(fixture, CREW_REPLAY_POLICY);
+    const byType = (type: string) => events.filter((event) => event.type === type);
+
+    const [configured] = byType("session.configured") as ReadonlyArray<{
+      readonly payload: { readonly config: { readonly permissionMode?: string } };
+    }>;
+    assert.equal(configured?.payload.config.permissionMode, "dontAsk");
+
+    const bashResults = (
+      byType("item.completed") as ReadonlyArray<{
+        readonly payload: { readonly itemType: string; readonly status: string };
+      }>
+    ).filter((event) => event.payload.itemType === "command_execution");
+    assert.deepEqual(
+      bashResults.map((event) => event.payload.status),
+      ["completed", "failed"],
+    );
+
+    const [completed] = byType("turn.completed") as ReadonlyArray<{
+      readonly payload: { readonly terminalReason?: string };
+    }>;
+    assert.equal(completed?.payload.terminalReason, "completed");
+  }, 20_000);
+
+  it("stops at a hook line the adapter answers differently than the fixture recorded, naming it", async () => {
+    const fixture = loadFixture(fixturesDir, "crew-hooks");
+    const flipped: ReadonlyArray<FixtureLine> = fixture.lines.map((line) =>
+      line.kind === "control" && JSON.stringify(line.answer).includes('"deny"')
+        ? {
+            ...line,
+            answer: {
+              hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
+            },
+          }
+        : line,
+    );
+    await expect(replayClaude({ ...fixture, lines: flipped }, CREW_REPLAY_POLICY)).rejects.toThrow(
+      /PreToolUse hook answered/,
+    );
+  }, 20_000);
+
+  it("stops at a hook line when the replay installed no profile, naming the gap", async () => {
+    const fixture = loadFixture(fixturesDir, "crew-hooks");
+    await expect(replayClaude(fixture)).rejects.toThrow(/no SessionStart hook/);
   }, 20_000);
 });

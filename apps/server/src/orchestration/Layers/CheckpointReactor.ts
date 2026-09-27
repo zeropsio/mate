@@ -8,6 +8,7 @@ import {
   TurnId,
   type OrchestrationEvent,
   type ProviderRuntimeEvent,
+  type ThreadCrewOrigin,
   type VcsStatusLocalResult,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -230,13 +231,19 @@ const make = Effect.gen(function* () {
   // Resolves the workspace CWD for checkpoint operations, preferring the
   // active provider session CWD and falling back to the thread/project config.
   // Returns undefined when no CWD can be determined or the workspace is not
-  // a git repository.
+  // a git repository, and for a crew thread: a crewmate's work is kept in its
+  // lane, never in checkpoints, and its turns were never prepared.
   const resolveCheckpointCwd = Effect.fn("resolveCheckpointCwd")(function* (input: {
     readonly threadId: ThreadId;
-    readonly thread: { readonly projectId: ProjectId; readonly worktreePath: string | null };
+    readonly thread: {
+      readonly projectId: ProjectId;
+      readonly worktreePath: string | null;
+      readonly crew?: ThreadCrewOrigin | undefined;
+    };
     readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
     readonly preferSessionRuntime: boolean;
   }): Effect.fn.Return<string | undefined, CheckpointStoreError> {
+    if (input.thread.crew !== undefined) return undefined;
     const fromSession = yield* resolveSessionRuntimeForThread(input.threadId);
     const fromThread = resolveThreadWorkspaceCwd({
       thread: input.thread,

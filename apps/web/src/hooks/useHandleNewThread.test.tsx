@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   servers: new Map<string, { readonly environment: { readonly zerops?: unknown } }>(),
   navigate: vi.fn(async (_to: { readonly to: string }) => {}),
   latestUserMessageAt: "2026-09-01T10:00:00.000Z" as string | null,
+  pin: vi.fn(async (_command: unknown) => ({ _tag: "Success" as const })),
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
@@ -21,13 +22,14 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 // spoken into it is the row's.
 vi.mock("../state/entities", () => ({
   readEnvironmentAllowsWorktrees: () => false,
+  readEnvironmentSupportsPinning: () => true,
   readThreadShell: () => null,
   readThreadShells: () => [
     {
       id: "thread-existing",
       environmentId: "environment-1",
       archivedAt: null,
-      pinned: false,
+      pinnedAt: null,
       latestUserMessageAt: state.latestUserMessageAt,
       updatedAt: "2026-09-01T10:00:00.000Z",
       createdAt: "2026-09-01T09:00:00.000Z",
@@ -42,6 +44,8 @@ vi.mock("../state/server", async () => {
 });
 
 vi.mock("../state/zerops", () => ({}));
+
+vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => state.pin }));
 
 // No list read yet: only a server that runs outside Zerops is known to hold nobody.
 vi.mock("../zerops/useZeropsMates", () => ({
@@ -77,6 +81,7 @@ describe("New thread before the candidate list is read", () => {
   beforeEach(() => {
     state.servers.clear();
     state.navigate.mockClear();
+    state.pin.mockClear();
     state.latestUserMessageAt = "2026-09-01T10:00:00.000Z";
   });
 
@@ -133,5 +138,32 @@ describe("New thread before the candidate list is read", () => {
       .getState()
       .getComposerDraft(scopeThreadRef(ENVIRONMENT, ThreadId.make("thread-existing")));
     expect(draft?.prompt ?? "").toBe("");
+  });
+
+  it("starts a second chat beside a Mate's conversation, pinning that one first so it stays main", async () => {
+    state.servers.set(ENVIRONMENT, { environment: { zerops: { projectId: "project-1" } } });
+
+    await captureHandler()(
+      { environmentId: ENVIRONMENT, projectId: ProjectId.make("project") },
+      { chat: true },
+    );
+
+    expect(state.pin).toHaveBeenCalledWith({
+      environmentId: ENVIRONMENT,
+      input: { threadId: "thread-existing" },
+    });
+    expect(state.navigate.mock.calls[0]![0].to).toBe("/draft/$draftId");
+  });
+
+  it("pins nothing when the conversation is replaced rather than joined", async () => {
+    state.servers.set(ENVIRONMENT, { environment: { zerops: { projectId: "project-1" } } });
+
+    await captureHandler()(
+      { environmentId: ENVIRONMENT, projectId: ProjectId.make("project") },
+      { fresh: true },
+    );
+
+    expect(state.pin).not.toHaveBeenCalled();
+    expect(state.navigate.mock.calls[0]![0].to).toBe("/draft/$draftId");
   });
 });

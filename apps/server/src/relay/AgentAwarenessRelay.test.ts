@@ -24,6 +24,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
@@ -403,6 +404,54 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
     ).toEqual([activeThreadId, newCompletedId]);
   });
 
+  it("never selects a crewmate's thread for startup catch-up, even while it works", () => {
+    const now = "2026-09-27T08:00:00.000Z";
+    const projectId = "project-1" as ProjectId;
+    const running = {
+      projectId,
+      title: "backend",
+      modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      latestTurn: {
+        turnId: "turn-1" as TurnId,
+        state: "running",
+        requestedAt: now,
+        startedAt: now,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      createdAt: now,
+      updatedAt: now,
+      archivedAt: null,
+      settledOverride: null,
+      settledAt: null,
+      session: null,
+      latestUserMessageAt: null,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+    } satisfies Omit<OrchestrationThreadShell, "id">;
+
+    expect(
+      AgentAwarenessRelay.resolveAgentAwarenessRelayActiveThreadIds({
+        environmentId: "env-1" as EnvironmentId,
+        startedAt: Date.parse(now),
+        projects: [{ id: projectId, title: "Shop" }],
+        threads: [
+          { ...running, id: "thread-person" as ThreadId },
+          {
+            ...running,
+            id: "thread-stint" as ThreadId,
+            crew: { crew: "shop", crewmate: "backend", stint: 1 },
+          },
+        ],
+      }),
+    ).toEqual(["thread-person"]);
+  });
+
   it("signs the activity publish JWT and rejects tampering", async () => {
     const keyPair = NodeCrypto.generateKeyPairSync("ed25519", {
       privateKeyEncoding: { format: "pem", type: "pkcs8" },
@@ -769,6 +818,109 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
           ),
           Effect.provideService(RelayClientTracer, Option.some(collectingTracer(productSpans))),
           Effect.withTracer(collectingTracer(userSpans)),
+        );
+      }),
+    ),
+  );
+
+  it.effect.each([
+    { name: "a person's working thread is published", crew: undefined, publishes: 1 },
+    {
+      name: "a crewmate's working thread is never published",
+      crew: { crew: "shop", crewmate: "backend", stint: 1 },
+      publishes: 0,
+    },
+  ])("$name", ({ crew, publishes: expected }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const secrets = makeMemorySecretStore();
+        const now = DateTime.formatIso(yield* DateTime.now);
+        const threadId = "thread-1" as ThreadId;
+        const projectId = "project-1" as ProjectId;
+        const project = {
+          id: projectId,
+          title: "Shop",
+          workspaceRoot: "/var/www",
+          repositoryIdentity: null,
+          defaultModelSelection: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        } satisfies OrchestrationProjectShell;
+        const thread = {
+          id: threadId,
+          projectId,
+          title: "backend",
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          latestTurn: {
+            turnId: "turn-1" as TurnId,
+            state: "running",
+            requestedAt: now,
+            startedAt: now,
+            completedAt: null,
+            assistantMessageId: null,
+          },
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "Claude",
+            runtimeMode: "approval-required",
+            activeTurnId: "turn-1" as TurnId,
+            lastError: null,
+            updatedAt: now,
+          },
+          latestUserMessageAt: now,
+          hasPendingApprovals: false,
+          hasPendingUserInput: false,
+          hasActionableProposedPlan: false,
+          ...(crew === undefined ? {} : { crew }),
+        } satisfies OrchestrationThreadShell;
+        let publishes = 0;
+        // Provided to the publish itself: FetchHttpClient memoizes its
+        // default, so swapping globalThis.fetch would count another test's.
+        const countingFetch = (() => {
+          publishes += 1;
+          return Promise.resolve(Response.json({ ok: true, deliveries: [] }));
+        }) as unknown as typeof fetch;
+        yield* secrets.setString(RELAY_URL_SECRET, "https://relay.example.test");
+        yield* secrets.setString(RELAY_ENVIRONMENT_CREDENTIAL_SECRET, "relay-credential");
+        yield* secrets.setString(PUBLISH_AGENT_ACTIVITY_SECRET, "true");
+
+        const layer = Layer.mergeAll(
+          Layer.succeed(ServerSecretStore.ServerSecretStore, secrets.store),
+          Layer.succeed(ServerEnvironment.ServerEnvironment, {
+            getEnvironmentId: Effect.succeed("env-1" as EnvironmentId),
+            getDescriptor: Effect.die("unused descriptor"),
+          }),
+          Layer.succeed(OrchestrationEngineService, {} as OrchestrationEngineShape),
+          Layer.succeed(ProjectionSnapshotQuery, {
+            getThreadShellById: () => Effect.succeedSome(thread),
+            getProjectShellById: () => Effect.succeedSome(project),
+          } as unknown as ProjectionSnapshotQueryShape),
+        );
+
+        yield* Effect.gen(function* () {
+          const relay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
+          yield* relay
+            .publishThread(threadId)
+            .pipe(Effect.provideService(FetchHttpClient.Fetch, countingFetch));
+          expect(publishes).toBe(expected);
+        }).pipe(
+          Effect.provide(
+            AgentAwarenessRelay.layer.pipe(
+              Layer.provide(layer),
+              Layer.provideMerge(NodeServices.layer),
+            ),
+          ),
         );
       }),
     ),

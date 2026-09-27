@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  CREW_CARD_OPENER,
   IMAGE_ONLY_BOOTSTRAP_PROMPT,
   USAGE_LIMIT_RESUME_PROMPT,
   attachmentsLabel,
+  isCrewCard,
   isSlashCommand,
   isUsageLimitResumePrompt,
   userAskOf,
@@ -12,6 +14,7 @@ import {
 
 const image = { type: "image" } as const;
 const file = { type: "file" } as const;
+const card = `${CREW_CARD_OPENER}\n#12 Camera rig · from you\nDone when: the camera follows the player`;
 
 describe("isSlashCommand", () => {
   it.each([
@@ -38,6 +41,17 @@ describe("isUsageLimitResumePrompt", () => {
     ["plain words", "continue", false],
   ])("%s", (_, text, expected) => {
     expect(isUsageLimitResumePrompt(text)).toBe(expected);
+  });
+});
+
+describe("isCrewCard", () => {
+  it.each([
+    ["a task card", card, true],
+    ["a task card with whitespace before it", `\n ${card}`, true],
+    ["words that quote the opener", `see ${CREW_CARD_OPENER}`, false],
+    ["plain words", "Add the camera rig", false],
+  ])("%s", (_, text, expected) => {
+    expect(isCrewCard(text)).toBe(expected);
   });
 });
 
@@ -84,6 +98,7 @@ describe("userAskOf", () => {
     ["a slash command with arguments", { text: "/model opus" }],
     ["a slash command beside an image", { text: "/review", attachments: [image] }],
     ["the usage-limit resume prompt", { text: USAGE_LIMIT_RESUME_PROMPT }],
+    ["a crew task card", { text: card }],
     ["the placeholder without attachments", { text: IMAGE_ONLY_BOOTSTRAP_PROMPT }],
     ["nothing", { text: "  ", attachments: [] }],
   ])("%s asks nothing", (_, message) => {

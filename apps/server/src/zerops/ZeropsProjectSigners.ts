@@ -39,7 +39,11 @@
  *
  * @module ZeropsProjectSigners
  */
-import type { ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
+import type {
+  OrchestrationThreadActivity,
+  ZeropsAgentAuth,
+  ZeropsAgentId,
+} from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
   type ZeropsAgentAuthFields,
@@ -179,12 +183,31 @@ export function planAgentSignOut(input: {
  * other command — interrupting a runaway turn, archiving, renaming — stays
  * open to every member who can open the Mate: a colleague must be able to stop
  * an agent they are not allowed to start.
+ *
+ * An answer to a question the agent asked in message mode is one of them: its
+ * turn has ended, and the decider starts a new one with the answer as the
+ * message. An answer to a native callback question is not — the agent's turn
+ * is still running and waits on it. `request` is the question's latest
+ * activity, which only an answer needs.
  */
-export function isTurnStartingCommand(type: string): boolean {
-  return type === "thread.turn.start";
+export function isTurnStartingCommand(
+  command: { readonly type: string },
+  request?: Pick<OrchestrationThreadActivity, "kind" | "payload">,
+): boolean {
+  if (command.type === "thread.turn.start") return true;
+  if (command.type !== "thread.user-input.respond" || request === undefined) return false;
+  return (
+    request.kind === "user-input.requested" &&
+    typeof request.payload === "object" &&
+    request.payload !== null &&
+    (request.payload as { readonly responseMode?: unknown }).responseMode === "message"
+  );
 }
 
-/** How long a read of the project's tags stays good for the dispatch gate. */
+/**
+ * How long a read stays good for the dispatch gate — of the project's tags,
+ * and of the org's member list.
+ */
 export const SIGNERS_CACHE_TTL = Duration.seconds(30);
 
 export class ZeropsProjectSigners extends Context.Service<
@@ -204,6 +227,13 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
       readonly subject: string | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
+    /**
+     * Whether the org lists `userId` as an `ACTIVE` member, from a read no
+     * older than {@link SIGNERS_CACHE_TTL}; `undefined` when the member list
+     * cannot be read and nothing was known before. A read that fails answers
+     * from the last list read, as the signers do.
+     */
+    readonly isActiveMember: (userId: string) => Effect.Effect<boolean | undefined>;
     /** Runs one leave check now and answers how many agents it signed out. */
     readonly checkLeaversNow: Effect.Effect<number>;
   }
@@ -317,6 +347,10 @@ export const make = Effect.gen(function* () {
   const cache = yield* Ref.make<{ readonly at: number; readonly value: ProjectSigners } | null>(
     null,
   );
+  const members = yield* Ref.make<{
+    readonly at: number;
+    readonly value: ReadonlySet<string>;
+  } | null>(null);
   // The process-wide reader, shared with the door and the watch — provided
   // by the layer this service's own layer composes above
   // (`zeropsFeedsLayer.ts`).
@@ -357,6 +391,28 @@ export const make = Effect.gen(function* () {
       return yield* readThrough(environment);
     });
 
+  /** The org's active members read now, cached on success. */
+  const readMembersThrough = (environment: ZeropsEnvironment) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const read = yield* withHttp(readActiveMemberIds({ environment }));
+      if (read !== undefined) yield* Ref.set(members, { at: now, value: read });
+      return read;
+    });
+
+  const isActiveMember: ZeropsProjectSigners["Service"]["isActiveMember"] = (userId) =>
+    environment === undefined
+      ? Effect.succeed(undefined)
+      : Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis;
+          const held = yield* Ref.get(members);
+          if (held !== null && now - held.at < Duration.toMillis(SIGNERS_CACHE_TTL)) {
+            return held.value.has(userId);
+          }
+          const read = yield* readMembersThrough(environment);
+          return (read ?? held?.value)?.has(userId);
+        });
+
   const signers: ZeropsProjectSigners["Service"]["signers"] =
     environment === undefined
       ? Effect.succeed({})
@@ -378,7 +434,7 @@ export const make = Effect.gen(function* () {
       : Effect.gen(function* () {
           const current = (yield* readThrough(environment)).value;
           if (Object.keys(current).length === 0) return 0;
-          const activeMemberIds = yield* withHttp(readActiveMemberIds({ environment }));
+          const activeMemberIds = yield* readMembersThrough(environment);
           const departed = planAgentSignOut({ signers: current, activeMemberIds });
           for (const agentId of departed) {
             yield* fs
@@ -402,7 +458,12 @@ export const make = Effect.gen(function* () {
     );
   }
 
-  return ZeropsProjectSigners.of({ signers, turnRefusal: gateTurn, checkLeaversNow });
+  return ZeropsProjectSigners.of({
+    signers,
+    turnRefusal: gateTurn,
+    isActiveMember,
+    checkLeaversNow,
+  });
 });
 
 export const layer = Layer.effect(ZeropsProjectSigners, make);

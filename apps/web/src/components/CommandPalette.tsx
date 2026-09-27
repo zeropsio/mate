@@ -656,10 +656,12 @@ function OpenCommandPaletteDialog(props: {
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threadShells = useThreadShells();
   // Every thread link the palette offers — a thread row, a project's latest
-  // thread — opens only into an environment the route gate would open.
+  // thread — opens only into an environment the route gate would open, and
+  // never into a crewmate's thread, which is the crew's to open.
   const { linkable } = useEnvironmentLinks();
   const threads = useMemo(
-    () => threadShells.filter((thread) => linkable(thread.environmentId)),
+    () =>
+      threadShells.filter((thread) => linkable(thread.environmentId) && thread.crew === undefined),
     [linkable, threadShells],
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);

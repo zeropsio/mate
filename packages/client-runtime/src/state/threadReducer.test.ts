@@ -101,7 +101,35 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.branch).toBe("main");
         expect(result.thread.messages).toEqual([]);
         expect(result.thread.session).toBeNull();
+        expect("crew" in result.thread).toBe(false);
       }
+    });
+
+    it("keeps a crewmate's thread's crew origin", () => {
+      const crew = { crew: "shop", crewmate: "backend", stint: 2 };
+      const result = applyThreadDetailEvent(baseThread, {
+        ...baseEventFields,
+        sequence: 1,
+        occurredAt: "2026-09-27T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-crew"),
+        type: "thread.created",
+        payload: {
+          threadId: ThreadId.make("thread-crew"),
+          projectId: ProjectId.make("project-1"),
+          title: "backend",
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-09-27T08:00:00.000Z",
+          updatedAt: "2026-09-27T08:00:00.000Z",
+          crew,
+        },
+      });
+
+      expect(result.kind === "updated" && result.thread.crew).toEqual(crew);
     });
   });
 
