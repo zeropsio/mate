@@ -205,8 +205,8 @@ import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
-  resolveOwnedAgentId,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
+import { resolveSpentLogin } from "@t3tools/client-runtime/zerops/logins";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -3824,31 +3824,30 @@ export default function ChatView(props: ChatViewProps) {
     const agent = agents.find((entry) => agentAuthAction(entry) === "sign-in") ?? agents[0];
     if (agent !== undefined) zeropsSignInDialog.openFor(agent.agentId);
   }, [zeropsChrome.agentAuthCard, zeropsSignInDialog]);
-  // The agent this composer would actually spend — the selected provider
-  // instance, resolved to one of the two agents Mate signs people in to. A
-  // driver Mate never signs anybody in to has no signer to speak of.
-  const zeropsOwnedAgent = zeropsAgentAuth.snapshot?.agents.find(
-    (agent) =>
-      agent.agentId ===
-      resolveOwnedAgentId(
-        activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
-        providerStatuses,
-      ),
+  // The login this composer would actually spend — the selected provider
+  // instance, resolved as the server's admission resolves it: a login beyond
+  // the defaults by its own row, any other instance by one of the two agents
+  // Mate signs people in to. A driver Mate never signs anybody in to has no
+  // signer to speak of.
+  const zeropsSpentLogin = resolveSpentLogin(
+    activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
+    zeropsAgentAuth.snapshot,
+    providerStatuses,
   );
+  const zeropsOwnedAgent = zeropsSpentLogin?.agent;
   const zeropsAgentOwnership = resolveAgentOwnership({
     credPresent: zeropsOwnedAgent?.credPresent ?? false,
     authorizedBy:
-      zeropsOwnedAgent === undefined
+      zeropsSpentLogin === undefined
         ? undefined
         : resolveAgentAuthorizer(
-            zeropsOwnedAgent.agentId,
-            zeropsOwnedAgent.authorizedBy,
+            zeropsSpentLogin.key,
+            zeropsSpentLogin.agent.authorizedBy,
             zeropsLocalSigners,
           ),
     viewerSubject: zeropsViewerSubject,
     recordFailed:
-      zeropsOwnedAgent !== undefined &&
-      zeropsSignInDialog.recordFailed.has(zeropsOwnedAgent.agentId),
+      zeropsSpentLogin !== undefined && zeropsSignInDialog.recordFailed.has(zeropsSpentLogin.key),
   });
   // Someone else's agent: the conversation is read, not run — the composer
   // gives way to `ZeropsReadOnlyConversationFooter`.
