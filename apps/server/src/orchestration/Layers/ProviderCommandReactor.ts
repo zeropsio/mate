@@ -1498,7 +1498,8 @@ const make = Effect.gen(function* () {
     }
     const sendPreparedTurn = Effect.gen(function* () {
       const coordinator = Option.getOrUndefined(workspaceHistory);
-      if (coordinator) {
+      // A crewmate's work is kept in its lane, never in checkpoints.
+      if (coordinator && thread.crew === undefined) {
         const project = yield* resolveProject(thread.projectId);
         const cwd = resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] });
         if (cwd)

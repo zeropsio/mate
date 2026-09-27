@@ -5,8 +5,8 @@
  *
  * Not every user message is an ask. A slash command (`/compact`,
  * `/model opus`) is an instruction to the agent's harness, and the
- * usage-limit resume prompt is sent by the server, not the person: neither
- * titles a thread nor becomes the last ask. A message that carries only
+ * usage-limit resume prompt and a crew task card are sent by the server, not
+ * the person: none of them titles a thread or becomes the last ask. A message that carries only
  * attachments asks by its attachments, whatever placeholder text the client
  * put in front of them for the agent.
  */
@@ -31,6 +31,15 @@ export const IMAGE_ONLY_BOOTSTRAP_PROMPT =
 export const USAGE_LIMIT_RESUME_PROMPT =
   "[The usage limit has reset. Continue the work that was paused, and answer anything that arrived while you waited.]";
 
+/**
+ * The first line of a crew task card: the task the server hands a crewmate
+ * (`OrchestrationThreadShell.crew`), written into its thread as a user message
+ * because a provider turn starts from one. The card's lines follow it. A
+ * client recognises a card with {@link isCrewCard} and renders it as an event,
+ * never as the person's bubble. Nothing but this module spells the opener.
+ */
+export const CREW_CARD_OPENER = "[Crew task card]";
+
 /** The effort prefix `applyClaudePromptEffortPrefix` puts in front of the person's text. */
 const EFFORT_PREFIX = "Ultrathink:";
 
@@ -49,6 +58,10 @@ export function isUsageLimitResumePrompt(text: string): boolean {
   return text.trim() === USAGE_LIMIT_RESUME_PROMPT;
 }
 
+export function isCrewCard(text: string): boolean {
+  return text.trimStart().startsWith(CREW_CARD_OPENER);
+}
+
 export type UserAsk =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "attachments"; readonly images: number; readonly files: number };
@@ -60,12 +73,15 @@ export interface UserAskSource {
 
 /**
  * The ask a user message makes, or null when it asks nothing: a slash command,
- * the server's resume prompt, or no words and no attachments. Words win over
- * attachments; the effort prefix is not part of what the person typed.
+ * the server's resume prompt or crew task card, or no words and no
+ * attachments. Words win over attachments; the effort prefix is not part of
+ * what the person typed.
  */
 export function userAskOf(message: UserAskSource): UserAsk | null {
   const trimmed = message.text.trim();
-  if (isSlashCommand(trimmed) || isUsageLimitResumePrompt(trimmed)) return null;
+  if (isSlashCommand(trimmed) || isUsageLimitResumePrompt(trimmed) || isCrewCard(trimmed)) {
+    return null;
+  }
   const words = trimmed.startsWith(EFFORT_PREFIX)
     ? trimmed.slice(EFFORT_PREFIX.length).trim()
     : trimmed;

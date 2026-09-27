@@ -337,6 +337,7 @@ export function projectEvent(
             activities: [],
             checkpoints: [],
             session: null,
+            ...(payload.crew !== undefined ? { crew: payload.crew } : {}),
           },
           event.type,
           "thread",

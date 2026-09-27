@@ -378,7 +378,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
-    case "thread.create": {
+    case "thread.create":
+    case "thread.crew.create": {
       yield* requireProject({
         readModel,
         command,
@@ -408,6 +409,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           worktreePath: (yield* zeropsPolicy).worktreesAllowed ? command.worktreePath : null,
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
+          ...(command.type === "thread.crew.create" ? { crew: command.crew } : {}),
         },
       };
     }

@@ -461,6 +461,30 @@ describe("buildThreadActionItems", () => {
 
     expect(items.map((item) => item.value)).toEqual(["thread:thread-active"]);
   });
+
+  it("never offers a crewmate's thread, however recent", () => {
+    const items = buildThreadActionItems({
+      threads: [
+        makeThread({
+          id: ThreadId.make("thread-person"),
+          title: "Checkout flow",
+          updatedAt: "2026-03-19T00:00:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.make("thread-stint"),
+          title: "backend",
+          updatedAt: "2026-03-20T00:00:00.000Z",
+          crew: { crew: "shop", crewmate: "backend", stint: 1 },
+        }),
+      ],
+      projectTitleById: new Map([[PROJECT_ID, "Project"]]),
+      sortOrder: "updated_at",
+      icon: null,
+      runThread: async (_thread) => undefined,
+    });
+
+    expect(items.map((item) => item.value)).toEqual(["thread:thread-person"]);
+  });
 });
 
 describe("buildBrowseGroups", () => {

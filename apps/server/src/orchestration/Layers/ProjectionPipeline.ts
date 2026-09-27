@@ -761,6 +761,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             pendingApprovalCount: 0,
             pendingUserInputCount: 0,
             hasActionableProposedPlan: 0,
+            crew: event.payload.crew ?? null,
             deletedAt: null,
           });
           return;

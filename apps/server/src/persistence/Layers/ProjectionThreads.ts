@@ -17,6 +17,7 @@ import {
   ThreadLinkedPullRequest,
   ThreadMessagePreview,
   ThreadTitleState,
+  ThreadCrewOrigin,
   ThreadUsagePauseState,
 } from "@t3tools/contracts";
 
@@ -28,6 +29,7 @@ const ProjectionThreadDbRow = ProjectionThread.mapFields(
     latestMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
     latestUserMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
     usagePause: Schema.NullOr(Schema.fromJsonString(ThreadUsagePauseState)),
+    crew: Schema.NullOr(Schema.fromJsonString(ThreadCrewOrigin)),
   }),
 );
 
@@ -72,6 +74,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           has_actionable_proposed_plan,
           usage_pause_json,
           usage_auto_resume_disabled_at,
+          crew_json,
           deleted_at
         )
         VALUES (
@@ -108,6 +111,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.hasActionableProposedPlan},
           ${row.usagePause === undefined || row.usagePause === null ? null : JSON.stringify(row.usagePause)},
           ${row.usageAutoResumeDisabledAt ?? null},
+          ${row.crew === undefined || row.crew === null ? null : JSON.stringify(row.crew)},
           ${row.deletedAt}
         )
         ON CONFLICT (thread_id)
@@ -144,6 +148,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           has_actionable_proposed_plan = excluded.has_actionable_proposed_plan,
           usage_pause_json = excluded.usage_pause_json,
           usage_auto_resume_disabled_at = excluded.usage_auto_resume_disabled_at,
+          crew_json = excluded.crew_json,
           deleted_at = excluded.deleted_at
       `,
   });
@@ -187,6 +192,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           usage_pause_json AS "usagePause",
           usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
+          crew_json AS "crew",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE thread_id = ${threadId}

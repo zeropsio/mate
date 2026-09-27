@@ -12,6 +12,7 @@ import {
   TurnId,
   ProviderInstanceId,
   ThreadMessagePreview,
+  ThreadCrewOrigin,
   ThreadUsagePauseState,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -52,6 +53,7 @@ import { ServerConfig } from "../../config.ts";
 const decodeCheckpointHistory = Schema.decodeUnknownSync(Schema.fromJsonString(CheckpointHistory));
 const decodePreview = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadMessagePreview));
 const decodeUsagePause = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadUsagePauseState));
+const decodeCrewOrigin = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadCrewOrigin));
 function parsePreview(preview: string | null): ThreadMessagePreview | null {
   return preview === null ? null : decodePreview(preview);
 }
@@ -3608,6 +3610,74 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         // The pause is an overlay: it never moves the thread in a list.
         assert.deepEqual(yield* readRow, [{ ...expected, updatedAt: "2026-09-26T08:00:00.000Z" }]);
       }
+    }),
+  );
+
+  it.effect("keeps a crew thread's origin on the thread row for its whole life", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const crew = { crew: "shop", crewmate: "backend", stint: 1 };
+      let sequence = 0;
+      const project = (threadId: ThreadId, event: Record<string, unknown>) => {
+        sequence += 1;
+        return eventStore
+          .append({
+            eventId: EventId.make(`evt-crew-origin-${sequence}`),
+            aggregateKind: "thread",
+            aggregateId: threadId,
+            occurredAt: "2026-09-27T08:00:00.000Z",
+            commandId: CommandId.make(`cmd-crew-origin-${sequence}`),
+            causationEventId: null,
+            correlationId: null,
+            metadata: {},
+            ...event,
+          } as Parameters<typeof eventStore.append>[0])
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+      };
+      const created = (threadId: ThreadId, extra: Record<string, unknown>) => ({
+        type: "thread.created",
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-crew-origin"),
+          title: "backend",
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-09-27T08:00:00.000Z",
+          updatedAt: "2026-09-27T08:00:00.000Z",
+          ...extra,
+        },
+      });
+      const readCrew = (threadId: ThreadId) =>
+        sql<{ readonly crew: string | null }>`
+          SELECT crew_json AS "crew" FROM projection_threads WHERE thread_id = ${threadId}
+        `.pipe(
+          Effect.map((rows) =>
+            rows.map((row) => (row.crew === null ? null : decodeCrewOrigin(row.crew))),
+          ),
+        );
+
+      const stint = ThreadId.make("thread-crew-origin");
+      const person = ThreadId.make("thread-person-origin");
+      yield* project(stint, created(stint, { crew }));
+      yield* project(person, created(person, {}));
+      assert.deepEqual(yield* readCrew(stint), [crew]);
+      assert.deepEqual(yield* readCrew(person), [null]);
+
+      // Retirement archives the stint; the row still says whose it was.
+      yield* project(stint, {
+        type: "thread.archived",
+        payload: {
+          threadId: stint,
+          archivedAt: "2026-09-27T09:00:00.000Z",
+          updatedAt: "2026-09-27T09:00:00.000Z",
+        },
+      });
+      assert.deepEqual(yield* readCrew(stint), [crew]);
     }),
   );
 

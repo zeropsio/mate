@@ -133,7 +133,8 @@ function EnvironmentNotifications({
           ? completedAt
           : (prior?.completion ?? null);
       next.set(thread.id, { attention, completion });
-      if (!prior || thread.archivedAt !== null) continue;
+      // A crewmate's thread speaks through the crew, never as a thread alert.
+      if (!prior || thread.archivedAt !== null || thread.crew !== undefined) continue;
       const kind =
         attention && attention !== prior.attention
           ? "input"

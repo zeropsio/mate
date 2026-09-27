@@ -23,6 +23,7 @@ import {
   TurnId,
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
+import { CrewHandle } from "./zeropsCrewStates.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
@@ -620,6 +621,21 @@ export const ThreadUsagePause = Schema.Struct({
 });
 export type ThreadUsagePause = typeof ThreadUsagePause.Type;
 
+/**
+ * The crew a thread works for: a crewmate's stint, a thread the server makes
+ * (internal `thread.crew.create`) and never a person. Set once, at creation.
+ * A crew thread is not a conversation the person had: it never ranks as an
+ * environment's conversation, lists as a thread, checkpoints or notifies.
+ */
+export const ThreadCrewOrigin = Schema.Struct({
+  crew: TrimmedNonEmptyString,
+  /** The crewmate's handle. */
+  crewmate: CrewHandle,
+  /** Which of the crewmate's conversations this is, from 1. */
+  stint: PositiveInt,
+});
+export type ThreadCrewOrigin = typeof ThreadCrewOrigin.Type;
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -678,6 +694,8 @@ export const OrchestrationThread = Schema.Struct({
   activities: Schema.Array(OrchestrationThreadActivity),
   checkpoints: Schema.Array(OrchestrationCheckpointSummary),
   session: Schema.NullOr(OrchestrationSession),
+  // Absent on a person's thread (see ThreadCrewOrigin).
+  crew: Schema.optional(ThreadCrewOrigin),
 });
 export type OrchestrationThread = typeof OrchestrationThread.Type;
 
@@ -773,6 +791,11 @@ export const OrchestrationThreadShell = Schema.Struct({
    * Optional so old servers/clients interop; absent or null = not paused.
    */
   usagePause: Schema.optional(Schema.NullOr(ThreadUsagePause)),
+  /**
+   * The crew the thread works for (see ThreadCrewOrigin). Absent on a
+   * person's thread; a client from before crews lists a crew thread as its own.
+   */
+  crew: Schema.optional(ThreadCrewOrigin),
 });
 export type OrchestrationThreadShell = typeof OrchestrationThreadShell.Type;
 
@@ -1442,7 +1465,16 @@ const ThreadUsagePauseSetCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+// A crewmate's stint thread. The crew engine's alone: a person never makes
+// one, so no client can send it.
+const ThreadCrewCreateCommand = Schema.Struct({
+  ...ThreadCreateCommand.fields,
+  type: Schema.Literal("thread.crew.create"),
+  crew: ThreadCrewOrigin,
+});
+
 const InternalOrchestrationCommand = Schema.Union([
+  ThreadCrewCreateCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,
@@ -1548,6 +1580,8 @@ export const ThreadCreatedPayload = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  // Absent on a person's thread. A server from before crews ignores it.
+  crew: Schema.optional(ThreadCrewOrigin),
 });
 
 export const ThreadDeletedPayload = Schema.Struct({
